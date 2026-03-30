@@ -4281,6 +4281,46 @@ sai_status_t SwitchStateBase::queryBufferProfilePacketAdmissionFailActionCapabil
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryTamTransportTypeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    /* SAI_TAM_TRANSPORT_TYPE_NONE. */
+    constexpr uint32_t value_count = 1;
+
+    if (enum_values_capability->count < value_count)
+    {
+        enum_values_capability->count = value_count;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = value_count;
+    enum_values_capability->list[0] = SAI_TAM_TRANSPORT_TYPE_NONE;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryTamBindPointTypeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    /* SAI_TAM_BIND_POINT_TYPE_SWITCH. */
+    constexpr uint32_t value_count = 1;
+
+    if (enum_values_capability->count < value_count)
+    {
+        enum_values_capability->count = value_count;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = value_count;
+    enum_values_capability->list[0] = SAI_TAM_BIND_POINT_TYPE_SWITCH;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
@@ -4323,6 +4363,14 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
     else if (object_type == SAI_OBJECT_TYPE_BUFFER_PROFILE && attr_id == SAI_BUFFER_PROFILE_ATTR_PACKET_ADMISSION_FAIL_ACTION)
     {
         return queryBufferProfilePacketAdmissionFailActionCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_TAM_TRANSPORT && attr_id == SAI_TAM_TRANSPORT_ATTR_TRANSPORT_TYPE)
+    {
+        return queryTamTransportTypeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_TAM && attr_id == SAI_TAM_ATTR_TAM_BIND_POINT_TYPE_LIST)
+    {
+        return queryTamBindPointTypeCapability(enum_values_capability);
     }
 
     return SAI_STATUS_NOT_SUPPORTED;
