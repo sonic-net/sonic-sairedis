@@ -254,8 +254,7 @@ std::string sai_serialize_switch_shutdown_request(
 
 std::string sai_serialize_enum(
         _In_ const int32_t value,
-        _In_ const sai_enum_metadata_t* meta,
-        _In_ bool flagCheck = true);
+        _In_ const sai_enum_metadata_t* meta);
 
 std::string sai_serialize_enum_list(
         _In_ const sai_s32_list_t& list,
