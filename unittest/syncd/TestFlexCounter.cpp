@@ -6,6 +6,7 @@
 #include "VidManager.h"
 #include "NumberOidIndexGenerator.h"
 #include <string>
+#include <chrono>
 #include <gtest/gtest.h>
 
 using namespace saimeta;
@@ -87,6 +88,133 @@ void removeTimeStamp(std::vector<std::string>& keys, swss::Table& countersTable)
     {
         countersTable.del("TIME_STAMP");
         keys.erase(it);
+    }
+}
+
+/*
+ * Count keys in the table, excluding the TIME_STAMP entry without deleting it.
+ */
+size_t countNonTimestampKeys(swss::Table& countersTable)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> keys;
+    countersTable.getKeys(keys);
+
+    auto it = std::find(keys.begin(), keys.end(), "TIME_STAMP");
+
+    return (it != keys.end()) ? keys.size() - 1 : keys.size();
+}
+
+/*
+ * Poll-wait for at least the expected number of counter keys in COUNTERS_DB.
+ * Replaces hardcoded usleep(1000*1050) which is flaky under CI load.
+ * Polls every 100ms, asserts on timeout after 5 seconds.
+ */
+void waitForCounterKeys(
+        swss::Table& countersTable,
+        size_t expectedKeys,
+        int timeoutMs = 5000)
+{
+    SWSS_LOG_ENTER();
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    size_t actualKeys = 0;
+
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        actualKeys = countNonTimestampKeys(countersTable);
+
+        if (actualKeys >= expectedKeys)
+        {
+            return;
+        }
+        usleep(100 * 1000);
+    }
+
+    ADD_FAILURE() << "waitForCounterKeys timed out after " << timeoutMs
+                  << "ms: expected " << expectedKeys
+                  << " keys, got " << actualKeys;
+}
+
+/*
+ * Poll-wait for a counter field to have a value other than "0" (or empty).
+ * Used after counter keys appear to wait for the first real poll cycle.
+ * Polls every 100ms, asserts on timeout after 5 seconds.
+ */
+void waitForNonZeroCounterValue(
+        swss::Table& countersTable,
+        const std::string& key,
+        const std::string& field,
+        int timeoutMs = 5000)
+{
+    SWSS_LOG_ENTER();
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        std::string value;
+        if (countersTable.hget(key, field, value) && !value.empty() && value != "0")
+        {
+            return;
+        }
+        usleep(100 * 1000);
+    }
+
+    std::string value;
+    countersTable.hget(key, field, value);
+    ADD_FAILURE() << "waitForNonZeroCounterValue timed out after " << timeoutMs
+                  << "ms: key='" << key << "' field='" << field
+                  << "' actual='" << value << "'";
+}
+
+/*
+ * Poll-wait for ALL counter fields to reach their expected values in the DB.
+ * Combines waiting and verification into a single function to avoid races
+ * between separate wait and verify steps. Polls every 100ms, asserts on
+ * timeout after 5 seconds.
+ */
+void waitForCounterValues(
+        swss::Table& countersTable,
+        const std::string& key,
+        const std::vector<std::string>& fields,
+        const std::vector<std::string>& expectedValues,
+        int timeoutMs = 5000)
+{
+    SWSS_LOG_ENTER();
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        bool allMatch = true;
+        for (size_t i = 0; i < fields.size(); i++)
+        {
+            std::string value;
+            if (!countersTable.hget(key, fields[i], value) || value != expectedValues[i])
+            {
+                allMatch = false;
+                break;
+            }
+        }
+        if (allMatch)
+        {
+            return;
+        }
+        usleep(100 * 1000);
+    }
+
+    // Timeout — report which fields didn't match
+    for (size_t i = 0; i < fields.size(); i++)
+    {
+        std::string value;
+        countersTable.hget(key, fields[i], value);
+        if (value != expectedValues[i])
+        {
+            ADD_FAILURE() << "waitForCounterValues timed out after " << timeoutMs
+                          << "ms: key='" << key << "' field='" << fields[i]
+                          << "' expected='" << expectedValues[i]
+                          << "' actual='" << value << "'";
+        }
     }
 }
 
@@ -172,10 +300,26 @@ void testAddRemoveCounter(
 
     EXPECT_EQ(fc.isEmpty(), false);
 
-    usleep(1000*1050);
     swss::DBConnector db("COUNTERS_DB", 0);
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    waitForCounterKeys(countersTable, object_ids.size());
+
+    // Wait for the first counter to be populated with a real value to ensure
+    // at least one real poll cycle has completed. If expected values are known,
+    // wait for the exact value; otherwise wait for any non-zero value (handles
+    // tests with initialization check phases that write zeros first).
+    std::string firstKey = toOid(object_ids[0]);
+    if (!expectedValues.empty())
+    {
+        waitForCounterValues(countersTable, firstKey,
+                {counterIdNames[0]}, {expectedValues[0]});
+    }
+    else
+    {
+        waitForNonZeroCounterValue(countersTable, firstKey, counterIdNames[0]);
+    }
 
     std::vector<std::string> keys;
     countersTable.getKeys(keys);
@@ -883,10 +1027,11 @@ TEST(FlexCounter, addRemoveCounterForPort)
     values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
     fc.addCounterPlugin(values);
 
-    usleep(1000*1000);
     swss::DBConnector db("COUNTERS_DB", 0);
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    waitForCounterKeys(countersTable, 1);
 
     std::vector<std::string> keys;
     countersTable.getKeys(keys);
@@ -926,11 +1071,9 @@ TEST(FlexCounter, addRemoveCounterForPort)
     fc.addCounter(counterVid, counterRid, values);
     EXPECT_EQ(fc.isEmpty(), false);
 
-    usleep(1000*2000);
-    countersTable.hget(expectedKey, "SAI_PORT_STAT_IF_IN_OCTETS", value);
-    EXPECT_EQ(value, "100");
-    countersTable.hget(expectedKey, "SAI_PORT_STAT_IF_IN_ERRORS", value);
-    EXPECT_EQ(value, "200");
+    waitForCounterValues(countersTable, expectedKey,
+                      {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_ERRORS"},
+                      {"100", "200"});
 
     fc.removeCounter(counterVid);
     EXPECT_EQ(fc.isEmpty(), true);
@@ -1668,15 +1811,6 @@ TEST(FlexCounter, counterIdChange)
         }
         return SAI_STATUS_SUCCESS;
     };
-    auto counterVerifyFunc = [] (swss::Table &countersTable, const std::string& key, const std::vector<std::string>& counterIdNames, const std::vector<std::string>& expectedValues)
-    {
-        std::string value;
-        for (size_t i = 0; i < counterIdNames.size(); i++)
-        {
-            countersTable.hget(key, counterIdNames[i], value);
-            ASSERT_EQ(value, expectedValues[i]);
-        }
-    };
 
     FlexCounter fc("test", sai, "COUNTERS_DB");
 
@@ -1693,16 +1827,17 @@ TEST(FlexCounter, counterIdChange)
     sai_object_id_t oid{0x1000000000000};
     fc.addCounter(oid, oid, values);
 
-    usleep(1000*1050);
     swss::DBConnector db("COUNTERS_DB", 0);
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    waitForCounterKeys(countersTable, 1);
 
     std::vector<std::string> keys;
     countersTable.getKeys(keys);
     EXPECT_EQ(keys.size(),1);
     std::string expectedKey = toOid(oid);
-    counterVerifyFunc(countersTable,
+    waitForCounterValues(countersTable,
                       expectedKey,
                       {"SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS", "SAI_PORT_STAT_IF_IN_DISCARDS"},
                       {"10", "20"});
@@ -1712,8 +1847,7 @@ TEST(FlexCounter, counterIdChange)
     values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_UCAST_PKTS");
     fc.addCounter(oid, oid, values);
 
-    usleep(1000*1050);
-    counterVerifyFunc(countersTable,
+    waitForCounterValues(countersTable,
                       expectedKey,
                       {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS"},
                       {"100", "200"});
@@ -1723,8 +1857,7 @@ TEST(FlexCounter, counterIdChange)
     values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS");
     fc.addCounter(oid, oid, values);
 
-    usleep(1000*1050);
-    counterVerifyFunc(countersTable,
+    waitForCounterValues(countersTable,
                       expectedKey,
                       {"SAI_PORT_STAT_IF_IN_OCTETS"},
                       {"100"});
@@ -1735,8 +1868,8 @@ TEST(FlexCounter, counterIdChange)
     values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_UCAST_PKTS");
     fc.addCounter(oid1, oid1, values);
 
-    usleep(1000*1050);
-    counterVerifyFunc(countersTable,
+    waitForCounterKeys(countersTable, 2);
+    waitForCounterValues(countersTable,
                       toOid(oid1),
                       {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS"},
                       {"100", "200"});
@@ -1746,8 +1879,7 @@ TEST(FlexCounter, counterIdChange)
     values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS,SAI_PORT_STAT_IF_IN_UCAST_PKTS");
     fc.addCounter(oid, oid, values);
 
-    usleep(1000*1050);
-    counterVerifyFunc(countersTable,
+    waitForCounterValues(countersTable,
                       expectedKey,
                       {"SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS"},
                       {"10", "20"});
@@ -1756,14 +1888,13 @@ TEST(FlexCounter, counterIdChange)
     values.clear();
     values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS,SAI_PORT_STAT_IF_IN_DISCARDS");
     fc.addCounter(oid, oid, values);
-    usleep(1000*1050);
-    counterVerifyFunc(countersTable,
+    waitForCounterValues(countersTable,
                       expectedKey,
                       {"SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS", "SAI_PORT_STAT_IF_IN_DISCARDS"},
                       {"10", "20"});
 
     // verify oid1 is still using bulk
-    counterVerifyFunc(countersTable,
+    waitForCounterValues(countersTable,
                       toOid(oid1),
                       {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS"},
                       {"100", "200"});
@@ -1817,7 +1948,10 @@ void testDashMeterAddRemoveCounter(
     {
         EXPECT_EQ(fc.isEmpty(), false);
 
-        usleep(1000*1050);
+        swss::DBConnector pollDb("COUNTERS_DB", 0);
+        swss::RedisPipeline pollPipeline(&pollDb);
+        swss::Table pollTable(&pollPipeline, COUNTERS_TABLE, false);
+        waitForCounterKeys(pollTable, object_ids.size());
     }
     else
     {
