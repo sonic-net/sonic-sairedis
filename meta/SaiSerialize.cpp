@@ -872,7 +872,8 @@ static std::string sai_serialize_flags(
 
 std::string sai_serialize_enum(
         _In_ const int32_t value,
-        _In_ const sai_enum_metadata_t* meta)
+        _In_ const sai_enum_metadata_t* meta,
+        bool flagCheck)
 {
     SWSS_LOG_ENTER();
 
@@ -881,7 +882,7 @@ std::string sai_serialize_enum(
         return sai_serialize_number(value);
     }
 
-    if (meta->flagstype == SAI_ENUM_FLAGS_TYPE_STRICT)
+    if ((flagCheck) && (meta->flagstype == SAI_ENUM_FLAGS_TYPE_STRICT))
     {
         return sai_serialize_flags(value, meta);
     }
@@ -3439,7 +3440,7 @@ json sai_serialize_stat_capability(
 
     json j;
 
-    j["stat_enum"] = sai_serialize_enum(stat_capability.stat_enum, meta);
+    j["stat_enum"] = sai_serialize_enum(stat_capability.stat_enum, meta, false);
 
     json arr = json::array();
 
