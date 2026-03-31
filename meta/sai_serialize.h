@@ -256,15 +256,6 @@ std::string sai_serialize_enum(
         _In_ const int32_t value,
         _In_ const sai_enum_metadata_t* meta);
 
-/**
- * Serialize a bitmask for enums marked @flags strict.
- * Produces "FLAG_A|FLAG_B" for composite values; unknown bits are appended as a hex literal.
- * If metadata is not strict-flags, falls back to sai_serialize_enum.
- */
-std::string sai_serialize_flags(
-        _In_ const int32_t value,
-        _In_ const sai_enum_metadata_t* meta);
-
 std::string sai_serialize_enum_list(
         _In_ const sai_s32_list_t& list,
         _In_ const sai_enum_metadata_t* meta,
@@ -429,15 +420,6 @@ std::string sai_serialize_macsec_post_status_ntf(
 void sai_deserialize_enum(
         _In_ const std::string& s,
         _In_ const sai_enum_metadata_t * meta,
-        _Out_ int32_t& value);
-
-/**
- * Deserialize strict flags produced by sai_serialize_flags.
- * Accepts "0", "NAME|NAME|...", and hex tokens (0x..) for raw bits.
- */
-void sai_deserialize_flags(
-        _In_ const std::string& s,
-        _In_ const sai_enum_metadata_t* meta,
         _Out_ int32_t& value);
 
 void sai_deserialize_number(

@@ -2388,3 +2388,110 @@ TEST(SaiSerialize, serialize_u64_range)
     EXPECT_EQ(dst.value.u64range.min, 111);
     EXPECT_EQ(dst.value.u64range.max, 222);
 }
+
+TEST(SaiSerialize, sai_serialize_enum)
+{
+    auto *emd = &sai_metadata_enum_sai_port_error_status_t;
+
+    int flags = 0;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_CLEAR");
+
+    flags = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT");
+
+    flags = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE");
+
+    flags = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE | 0x80000;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0x80000");
+
+    flags = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE | 0xe0000;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0xe0000");
+
+    flags = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| 0x67100 | 0xff000000;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|"
+            "SAI_PORT_ERROR_STATUS_NO_RX_REACHABILITY|SAI_PORT_ERROR_STATUS_LLR_TX_FLUSH|0xff064000");
+
+    flags = 0xff000000;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "0xff000000");
+
+    emd = &sai_metadata_enum_sai_stats_mode_t;
+
+    flags = 0;
+
+    // has zero flag
+    if (emd->values[0] == 0)
+        EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_STATS_MODE_NONE");
+    else
+        EXPECT_EQ(sai_serialize_enum(flags, emd), "0x0");
+
+    flags = SAI_STATS_MODE_READ;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_STATS_MODE_READ");
+
+    flags = SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR");
+
+    flags = SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR|0xff00;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR|0xff00");
+
+    flags = 0xf1230000;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "0xf1230000");
+}
+
+TEST(SaiDeserialize, sai_deserialize_enum)
+{
+    auto *emd = &sai_metadata_enum_sai_port_error_status_t;
+
+    int32_t value;
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_CLEAR", emd, value);
+    EXPECT_EQ(value, 0);
+
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT", emd, value);
+    EXPECT_EQ(value, SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT);
+
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE", emd, value);
+    EXPECT_EQ(value, SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE);
+
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_MAC_REMOTE_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0x80000", emd, value);
+    EXPECT_EQ(value, SAI_PORT_ERROR_STATUS_MAC_REMOTE_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0x80000);
+
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_LOCAL_REMOTE_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0xe0000", emd, value);
+    EXPECT_EQ(value, SAI_PORT_ERROR_STATUS_MAC_REMOTE_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0xe0000);
+
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|"
+            "SAI_PORT_ERROR_STATUS_NO_RX_REACHABILITY|SAI_PORT_ERROR_STATUS_LLR_TX_FLUSH|0xff064000", emd, value);
+    EXPECT_EQ(value, SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|
+                     SAI_PORT_ERROR_STATUS_NO_RX_REACHABILITY|SAI_PORT_ERROR_STATUS_LLR_TX_FLUSH|0xff064000);
+
+    sai_deserialize_enum("0xff000000", emd, value);
+    EXPECT_EQ(value, 0xff000000);
+
+    emd = &sai_metadata_enum_sai_stats_mode_t;
+
+
+    // has zero flag
+    if (emd->values[0] == 0)
+       sai_deserialize_enum("SAI_STATS_MODE_NONE", emd, value);
+    else
+       sai_deserialize_enum("0x0", emd, value);
+    EXPECT_EQ(value, 0);
+
+    sai_deserialize_enum("SAI_STATS_MODE_READ", emd, value);
+    EXPECT_EQ(value, SAI_STATS_MODE_READ);
+
+    sai_deserialize_enum("SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR", emd, value);
+    EXPECT_EQ(value, SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR);
+
+    sai_deserialize_enum("SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR|0xff00", emd, value);
+    EXPECT_EQ(value, SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR|0xff00);
+
+    sai_deserialize_enum("0xf1230000", emd, value);
+    EXPECT_EQ(value, 0xf1230000);
+
+    sai_deserialize_enum("SAI_STATS_MODE_READ|", emd, value);
+    EXPECT_EQ(value, 0xf1230000);
+
+    // Not checking the syslog warning
+    sai_deserialize_enum("SAI_STATS_MODE_READ|SAI_STATS_MODE_WRITE", emd, value);
+    EXPECT_EQ(value, SAI_STATS_MODE_READ);
+}
