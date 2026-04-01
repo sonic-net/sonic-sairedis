@@ -1826,6 +1826,27 @@ TEST(SaiSerialize, sai_deserialize_taps_list)
     EXPECT_EQ(taps_list.count, 0);
     EXPECT_EQ(taps_list.list, nullptr);
 
+    // Test non-contiguous lane indices (missing lane "1")
+    // This should trigger an exception when .at() tries to access missing key
+    std::string non_contiguous = "{\"0\":[{\"tap0\":10},{\"tap1\":50}],"
+        "\"2\":[{\"tap0\":30},{\"tap1\":70}],"
+        "\"3\":[{\"tap0\":40},{\"tap1\":80}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(non_contiguous, taps_list, false);
+    // Should catch exception and set to error state
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test empty tap object (missing tap key)
+    // This should trigger an exception when tap_obj doesn't contain expected tap key
+    std::string empty_tap_obj = "{\"0\":[{\"tap0\":10},{},{\"tap2\":30}],"
+        "\"1\":[{\"tap0\":20},{},{\"tap2\":40}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(empty_tap_obj, taps_list, false);
+    // Should catch exception and set to error state
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
     // Test countOnly mode
     std::string count_str = "5";
     memset(&taps_list, 0, sizeof(taps_list));
