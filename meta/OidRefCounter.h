@@ -69,7 +69,8 @@ namespace saimeta
              * Throws if object don't exists or object is in use.
              */
             void objectReferenceRemove(
-                    _In_ sai_object_id_t oid);
+                    _In_ sai_object_id_t oid,
+                    _In_ bool force = false);
 
             /**
              * @brief Clear object reference.
