@@ -667,14 +667,22 @@ sai_status_t Meta::bulkRemove(                                                  
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        if (status != SAI_STATUS_SUCCESS)                                                                               \
+        {                                                                                                               \
+            object_statuses[idx] = status;                                                                              \
+            return status;                                                                                              \
+        }                                                                              \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
             };                                                                                                          \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_remove(meta_key);                                                              \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        if (status != SAI_STATUS_SUCCESS)                                                                               \
+        {                                                                                                               \
+            object_statuses[idx] = status;                                                                            \
+            return status;                                                                                              \
+        }                                                                                  \
     }                                                                                                                   \
     auto status = m_implementation->bulkRemove(object_count, ot, mode, object_statuses);                                \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
