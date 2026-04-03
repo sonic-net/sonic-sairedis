@@ -1507,7 +1507,7 @@ TEST(SaiSerialize, serialize_stat_capability_list)
     std::string exp_count_str = "{\"count\":2,\"list\":null}";
     EXPECT_EQ(capab_count, exp_count_str);
 
-    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"stat_enum\":\"34\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"stat_enum\":\"0\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
+    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"stat_enum\":\"34\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"stat_enum\":\"SAI_STATS_MODE_NONE\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
     EXPECT_EQ(capab_str, exp_capab_str);
 
     std::vector<std::string> vec_stat_enum;
@@ -1580,7 +1580,7 @@ TEST(SaiSerialize, serialize_stat_st_capability_list)
     std::string exp_count_str = "{\"count\":2,\"list\":null}";
     EXPECT_EQ(capab_count, exp_count_str);
 
-    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"minimal_polling_interval\":\"100\",\"stat_enum\":\"34\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"minimal_polling_interval\":\"200\",\"stat_enum\":\"0\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
+    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"minimal_polling_interval\":\"100\",\"stat_enum\":\"34\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"minimal_polling_interval\":\"200\",\"stat_enum\":\"SAI_STATS_MODE_NONE\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
     EXPECT_EQ(capab_str, exp_capab_str);
 
     std::vector<std::string> vec_stat_enum;
