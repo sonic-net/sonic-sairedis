@@ -2923,7 +2923,7 @@ sai_status_t Meta::meta_sai_validate_direction_lookup_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_direction_lookup_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -2969,7 +2969,7 @@ sai_status_t Meta::meta_sai_validate_eni_ether_address_map_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_eni_ether_address_map_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3015,7 +3015,7 @@ sai_status_t Meta::meta_sai_validate_vip_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_vip_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3061,7 +3061,7 @@ sai_status_t Meta::meta_sai_validate_inbound_routing_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_inbound_routing_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3107,7 +3107,7 @@ sai_status_t Meta::meta_sai_validate_pa_validation_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_pa_validation_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3153,7 +3153,7 @@ sai_status_t Meta::meta_sai_validate_outbound_routing_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_outbound_routing_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3199,7 +3199,7 @@ sai_status_t Meta::meta_sai_validate_outbound_ca_to_pa_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_outbound_ca_to_pa_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
