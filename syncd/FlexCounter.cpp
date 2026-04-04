@@ -116,7 +116,7 @@ void BaseCounterContext::addPlugins(
         }
         else
         {
-            SWSS_LOG_ERROR("Plugin %s already registered", sha.c_str());
+            SWSS_LOG_NOTICE("Plugin %s already registered, skipping", sha.c_str());
         }
     }
 }

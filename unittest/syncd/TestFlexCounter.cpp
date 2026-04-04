@@ -845,6 +845,25 @@ TEST(FlexCounter, addRemoveCounterPlugin)
     }
 }
 
+TEST(FlexCounter, addDuplicateCounterPlugin)
+{
+    SWSS_LOG_ENTER();
+
+    FlexCounter fc("test", sai, "COUNTERS_DB", true);
+
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(PORT_PLUGIN_FIELD, "dummy_sha_string");
+    fc.addCounterPlugin(values);
+    EXPECT_EQ(fc.isEmpty(), false);
+
+    // Adding the same plugin again should be a no-op (duplicate ignored)
+    fc.addCounterPlugin(values);
+    EXPECT_EQ(fc.isEmpty(), false);
+
+    fc.removeCounterPlugins();
+    EXPECT_EQ(fc.isEmpty(), true);
+}
+
 TEST(FlexCounter, addRemoveCounterForPort)
 {
     FlexCounter fc("test", sai, "COUNTERS_DB");
