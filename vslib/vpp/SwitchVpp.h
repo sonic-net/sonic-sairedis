@@ -101,6 +101,11 @@ namespace saivs
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability) override;
 
+            virtual sai_status_t queryStatsStCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_st_capability_list_t *stats_capability) override;
+
             virtual uint64_t getObjectTypeAvailability(
                     _In_ sai_object_type_t object_type) override;
 
