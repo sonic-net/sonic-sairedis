@@ -11,6 +11,7 @@ ENABLE_SAITHRIFT=0
 TEMPLATES_DIR=/usr/share/sonic/templates
 PLATFORM_DIR=/usr/share/sonic/platform
 HWSKU_DIR=/usr/share/sonic/hwsku
+CONTEXT_CONFIG_FILE=$HWSKU_DIR/context_config.json
 SAI_PROFILE_DIR=/etc/sai.d
 
 VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
@@ -41,8 +42,14 @@ mkdir -p /var/log/sai_failure_dump/
 # Otherwise, set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
 SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
+SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.orch_southbound_zmq_enabled')
 if [ "$SWITCH_TYPE" == "dpu" ]; then
-    CMD_ARGS+=" -z zmq_sync -x /usr/share/sonic/hwsku/context_config.json"
+    CMD_ARGS+=" -z zmq_sync -x $CONTEXT_CONFIG_FILE"
+elif [ "$SOUTHBOUND_ZMQ" == "true" ]; then
+    CMD_ARGS+=" -z zmq_sync"
+    if [ -f "$CONTEXT_CONFIG_FILE" ]; then
+        CMD_ARGS+=" -x $CONTEXT_CONFIG_FILE"
+    fi
 elif [ "$SYNC_MODE" == "enable" ]; then
     CMD_ARGS+=" -s"
 fi

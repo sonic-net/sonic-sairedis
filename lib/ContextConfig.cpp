@@ -18,8 +18,9 @@ ContextConfig::ContextConfig(
     m_dbFlex(dbFlex),
     m_dbState(dbState),
     m_zmqEnable(false),
-    m_zmqEndpoint("ipc:///tmp/zmq_ep"),
-    m_zmqNtfEndpoint("ipc:///tmp/zmq_ntf_ep")
+    m_loadedFromJson(false),
+    m_zmqEndpoint("tcp://127.0.0.1:5555"),
+    m_zmqNtfEndpoint("tcp://127.0.0.1:5556")
 {
     SWSS_LOG_ENTER();
 
