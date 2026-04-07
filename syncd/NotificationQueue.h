@@ -9,6 +9,7 @@ extern "C" {
 #include "FlowDump.h"
 
 #include <queue>
+#include <list>
 #include <mutex>
 #include <memory>
 
@@ -82,7 +83,7 @@ namespace syncd
 
             std::mutex m_mutex;
 
-            std::shared_ptr<std::queue<NotificationItem>> m_queue;
+            std::shared_ptr<std::queue<NotificationItem, std::list<NotificationItem>>> m_queue;
 
             size_t m_queueSizeLimit;
 
