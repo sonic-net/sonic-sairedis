@@ -22,6 +22,8 @@
 #include "swss/tokenize.h"
 #include "swss/notificationproducer.h"
 #include "swss/exec.h"
+#include "swss/dbconnector.h"
+#include "swss/table.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/ZeroMQSelectableChannel.h"
@@ -82,16 +84,8 @@ Syncd::Syncd(
         SWSS_LOG_THROW("no context config defined at global context %u", m_commandLineOptions->m_globalContext);
     }
 
-    if (m_contextConfig->m_zmqEnable && m_commandLineOptions->m_enableSyncMode)
-    {
-        SWSS_LOG_NOTICE("disabling command line sync mode, since context zmq enabled");
-
-        m_commandLineOptions->m_enableSyncMode = false;
-
-        m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
-    }
-
-    if (m_commandLineOptions->m_enableSyncMode)
+    if (m_commandLineOptions->m_enableSyncMode
+            && !(m_contextConfig->m_loadedFromJson && m_contextConfig->m_zmqEnable))
     {
         SWSS_LOG_WARN("enable sync mode is deprecated, please use communication mode, FORCING redis sync mode");
 
@@ -104,11 +98,25 @@ Syncd::Syncd(
 
     if (m_commandLineOptions->m_redisCommunicationMode == SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC)
     {
-        SWSS_LOG_NOTICE("zmq sync mode enabled via cmd line");
+        // If context_config.json explicitly set zmq_enable=false,
+        // respect it and fall back to Redis sync
+        if (m_contextConfig->m_loadedFromJson && !m_contextConfig->m_zmqEnable)
+        {
+            SWSS_LOG_NOTICE("context %u: zmq_enable=false in context config, falling back to Redis sync",
+                    m_contextConfig->m_guid);
 
-        m_contextConfig->m_zmqEnable = true;
+            m_enableSyncMode = true;
 
-        m_enableSyncMode = true;
+            m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+        }
+        else
+        {
+            SWSS_LOG_NOTICE("zmq sync mode enabled via cmd line for context %u", m_contextConfig->m_guid);
+
+            m_contextConfig->m_zmqEnable = true;
+
+            m_enableSyncMode = true;
+        }
     }
 
     auto vso = std::make_shared<VendorSaiOptions>();
@@ -155,8 +163,14 @@ Syncd::Syncd(
     }
 
     bool isVirtualSwitch = m_profileMap.find(SAI_KEY_VS_SWITCH_TYPE) != m_profileMap.end();
+    swss::DBConnector configDb("CONFIG_DB", 0);
+    swss::Table deviceMetadataTable(&configDb, "DEVICE_METADATA");
+    std::string switchType;
+    deviceMetadataTable.hget("localhost", "switch_type", switchType);
 
-    if (m_contextConfig->m_zmqEnable && !isVirtualSwitch)
+    bool isDpuSwitch = switchType == "dpu";
+
+    if (m_contextConfig->m_zmqEnable && isDpuSwitch && !isVirtualSwitch)
     {
         m_client = std::make_shared<DisabledRedisClient>();
     }

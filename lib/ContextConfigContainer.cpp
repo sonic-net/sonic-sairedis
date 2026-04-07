@@ -126,6 +126,7 @@ std::shared_ptr<ContextConfigContainer> ContextConfigContainer::loadFromFile(
             cc->m_zmqEnable = item["zmq_enable"];
             cc->m_zmqEndpoint = item["zmq_endpoint"];
             cc->m_zmqNtfEndpoint = item["zmq_ntf_endpoint"];
+            cc->m_loadedFromJson = true;
 
             SWSS_LOG_NOTICE("contextConfig zmq enable %s, endpoint: %s, ntf endpoint: %s",
                     (cc->m_zmqEnable) ? "true" : "false",

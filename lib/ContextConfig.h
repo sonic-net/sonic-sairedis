@@ -42,6 +42,8 @@ namespace sairedis
 
             bool m_zmqEnable;
 
+            bool m_loadedFromJson;
+
             std::string m_zmqEndpoint;
 
             std::string m_zmqNtfEndpoint;
