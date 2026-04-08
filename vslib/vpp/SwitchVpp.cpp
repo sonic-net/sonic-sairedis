@@ -1019,6 +1019,13 @@ sai_status_t SwitchVpp::create(
         return status;
     }
 
+    if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
+    {
+        CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
+        m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry(serializedObjectId, attr_count, attr_list);
+        return SAI_STATUS_SUCCESS;
+    }
+
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
 }
 
