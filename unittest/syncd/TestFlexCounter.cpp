@@ -1565,9 +1565,16 @@ TEST(FlexCounter, bulkChunksize)
                 counters[i * number_of_counters + j] = counterMap[counter_ids[j]];
                 record.emplace_back(counter_ids[j]);
                 value.emplace_back(counterSeed);
+                // Only assert the unified chunk size when all counters are
+                // polled together (merged state). Between the two
+                // addCounterPlugin calls that set and then remove per-prefix
+                // chunk sizes, the polling thread can poll with per-prefix
+                // partitions that have fewer counters and different chunk
+                // sizes. Those polls should fall through to the per-counter
+                // switch below.
                 if (unifiedBulkChunkSize > 0)
                 {
-                    if (object_count != unifiedBulkChunkSize)
+                    if (object_count != unifiedBulkChunkSize && number_of_counters == allCounters.size())
                     {
                         EXPECT_EQ(object_count, unifiedBulkChunkSize);
                     }
