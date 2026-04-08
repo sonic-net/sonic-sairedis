@@ -1702,25 +1702,22 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
         return SAI_STATUS_FAILURE;
     }
 
-    if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+    uint16_t vlan_id = 0;
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
-        vpp_router_interface_remove_vrf(obj_id);
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+        status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &attr);
 
-        return SAI_STATUS_SUCCESS;
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("attr SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID was not passed");
+
+            return SAI_STATUS_FAILURE;
+        }
+
+        vlan_id = attr.value.u16;
     }
-
-
-    attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
-    status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &attr);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("attr SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID was not passed");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    uint16_t vlan_id = attr.value.u16;
 
     auto attr_type_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
 
@@ -1787,6 +1784,11 @@ sai_status_t SwitchVpp::vpp_router_interface_remove_vrf(
     }
 
     SWSS_LOG_NOTICE("Resetting to default vrf for interface %s, %s", linux_ifname, hwif_name);
+
+    /* Remove all IP addresses before changing VRF.
+     * VPP requires no addresses on the interface when rebinding to a new VRF table
+     * (returns VNET_API_ERROR_ADDRESS_FOUND_FOR_INTERFACE / -114 otherwise). */
+    interface_ip_address_del_all(hwif_name);
 
     uint32_t vrf_id = 0;
     /* For now support is only for ipv4 tables */
