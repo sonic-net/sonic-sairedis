@@ -2,6 +2,8 @@
 
 #include "FlexCounter.h"
 
+#include <functional>
+
 namespace syncd
 {
     class FlexCounterManager
@@ -48,6 +50,10 @@ namespace syncd
                     _In_ sai_object_id_t vid,
                     _In_ const std::string& instanceId);
 
+            /** Set resolver for VID->RID when RID is 0 (read from Redis VIDTORID). Syncd sets this after translator is created. */
+            void setVidToRidResolver(
+                    _In_ std::function<bool(sai_object_id_t vid, sai_object_id_t& rid)> resolver);
+
         private:
 
                 std::map<std::string, std::shared_ptr<FlexCounter>> m_flexCounters;
@@ -59,6 +65,8 @@ namespace syncd
                 std::string m_dbCounters;
 
                 std::string m_supportingBulkGroups;
+
+                std::function<bool(sai_object_id_t vid, sai_object_id_t& rid)> m_vidToRidResolver;
     };
 }
 

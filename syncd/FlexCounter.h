@@ -14,6 +14,7 @@ extern "C" {
 #include <unordered_map>
 #include <memory>
 #include <type_traits>
+#include <functional>
 
 // Placeholder type for attributes not requiring data allocation
 // Used as default template parameter for simple attributes
@@ -84,11 +85,33 @@ namespace syncd
 
         virtual bool hasObject() const = 0;
 
+        /** Optional: when RID is 0, collectData can call this to resolve VID from Redis (VIDTORID). */
+        void setVidToRidResolver(
+                _In_ std::function<bool(sai_object_id_t vid, sai_object_id_t& rid)> resolver)
+        {
+            m_vidToRidResolver = std::move(resolver);
+        }
+
     protected:
+
+        /**
+         * @brief Attempt to resolve a VID to RID when the stored RID is SAI_NULL_OBJECT_ID.
+         *
+         * @param vid        The virtual object id.
+         * @param[in,out] rid On entry the current (possibly null) RID; on success updated to resolved RID.
+         *
+         * @return true if rid is valid and the caller should proceed; false if the
+         *         object should be skipped this poll cycle.
+         */
+        bool resolveRid(
+                _In_ sai_object_id_t vid,
+                _Inout_ sai_object_id_t &rid);
+
         std::string m_name;
         std::string m_instanceId;
         std::set<std::string> m_plugins;
         std::string m_bulkChunkSizePerPrefix;
+        std::function<bool(sai_object_id_t vid, sai_object_id_t& rid)> m_vidToRidResolver;
 
     public:
         bool always_check_supported_counters = false;
@@ -222,8 +245,15 @@ namespace syncd
 
             bool m_noDoubleCheckBulkCapability;
 
+            std::function<bool(sai_object_id_t vid, sai_object_id_t& rid)> m_vidToRidResolver;
+
             static const std::map<std::string, std::string> m_plugIn2CounterType;
 
             static const std::map<std::tuple<sai_object_type_t, std::string>, std::string> m_objectTypeField2CounterType;
+
+        public:
+            /** Set resolver for VID->RID when RID is 0 (e.g. warm reboot). Called by FlexCounterManager. */
+            void setVidToRidResolver(
+                    _In_ std::function<bool(sai_object_id_t vid, sai_object_id_t& rid)> resolver);
     };
 }
