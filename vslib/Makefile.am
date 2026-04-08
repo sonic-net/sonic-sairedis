@@ -66,6 +66,7 @@ libSaiVS_a_SOURCES = \
 					  SwitchStateBaseFdb.cpp \
 					  SwitchStateBaseHostif.cpp \
 					  SwitchStateBaseMACsec.cpp \
+					  SwitchStateBaseStel.cpp \
 					  SwitchState.cpp \
 					  TrafficFilterPipes.cpp \
 					  TrafficForwarder.cpp \
@@ -110,12 +111,12 @@ libSaiVS_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVER
 
 libsaivs_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaivs_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libsaivs_la_LIBADD = -lhiredis -lswsscommon libSaiVS.a $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
+libsaivs_la_LIBADD = -lhiredis -lswsscommon -lnl-genl-3 -lnl-3 libSaiVS.a $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 bin_PROGRAMS = tests
 
 tests_SOURCES = tests.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread libsaivs.la -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(VPP_LIBS)
+tests_LDADD = -lhiredis -lswsscommon -lpthread libsaivs.la -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq -lnl-genl-3 -lnl-3 $(VPP_LIBS)
 
 TESTS = tests

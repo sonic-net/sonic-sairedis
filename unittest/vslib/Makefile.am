@@ -47,6 +47,7 @@ tests_SOURCES = main.cpp \
 				TestSwitchStateBaseMACsec.cpp \
 				TestMACsecManager.cpp \
 				TestSwitchStateBase.cpp \
+				TestTAMIpfixTemplate.cpp \
 				TestSai.cpp \
 				TestVirtualSwitchSaiInterface.cpp \
 				TestTAM.cpp

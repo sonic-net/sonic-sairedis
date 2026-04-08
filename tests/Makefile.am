@@ -2,7 +2,7 @@ AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I$(top_srcdir)/vslib
 
 bin_PROGRAMS = vssyncd tests testclient testdash_gtest
 
-SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs $(VPP_LIBS)
+SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs -lnl-genl-3 -lnl-3 $(VPP_LIBS)
 
 vssyncd_SOURCES = main.cpp
 vssyncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)

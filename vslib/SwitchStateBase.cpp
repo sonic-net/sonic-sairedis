@@ -64,6 +64,8 @@ SwitchStateBase::~SwitchStateBase()
 {
     SWSS_LOG_ENTER();
 
+    stopStelStream();
+
     m_macsecManager.cleanup_macsec_device();
 }
 
@@ -565,9 +567,61 @@ sai_status_t SwitchStateBase::setTamTelType(
 {
     SWSS_LOG_ENTER();
 
-    if (attr->id == SAI_TAM_TEL_TYPE_ATTR_STATE && attr->value.s32 == SAI_TAM_TEL_TYPE_STATE_CREATE_CONFIG)
+    if (attr->id == SAI_TAM_TEL_TYPE_ATTR_STATE)
     {
-        send_tam_tel_type_config_change(tam_tel_type_id);
+        switch (attr->value.s32)
+        {
+            case SAI_TAM_TEL_TYPE_STATE_CREATE_CONFIG:
+                send_tam_tel_type_config_change(tam_tel_type_id);
+                break;
+
+            case SAI_TAM_TEL_TYPE_STATE_START_STREAM:
+            {
+                // Count counter subscriptions for this tel_type to determine num_counters
+                size_t num_counters = 0;
+                auto it = m_objectHash.find(SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION);
+                if (it != m_objectHash.end())
+                {
+                    for (auto &kv : it->second)
+                    {
+                        auto tel_it = kv.second.find(sai_serialize_attr_id(
+                            *sai_metadata_get_attr_metadata(
+                                SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+                                SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_TEL_TYPE)));
+
+                        if (tel_it != kv.second.end() &&
+                            tel_it->second->getAttr()->value.oid == tam_tel_type_id)
+                        {
+                            num_counters++;
+                        }
+                    }
+                }
+
+                // Default poll interval: 100ms (100000 us)
+                // In real HW this comes from TAM report config; for vslib use a reasonable default
+                uint32_t poll_interval_us = 100000;
+                uint16_t template_id = 256;
+
+                SWSS_LOG_NOTICE("Starting STEL stream for tel_type %s: %zu counters, %u us interval",
+                                sai_serialize_object_id(tam_tel_type_id).c_str(),
+                                num_counters, poll_interval_us);
+
+                if (num_counters > 0)
+                {
+                    startStelStream(poll_interval_us, template_id, num_counters);
+                }
+                break;
+            }
+
+            case SAI_TAM_TEL_TYPE_STATE_STOP_STREAM:
+                SWSS_LOG_NOTICE("Stopping STEL stream for tel_type %s",
+                                sai_serialize_object_id(tam_tel_type_id).c_str());
+                stopStelStream();
+                break;
+
+            default:
+                break;
+        }
     }
 
     auto sid = sai_serialize_object_id(tam_tel_type_id);
@@ -1103,6 +1157,8 @@ sai_status_t SwitchStateBase::set_switch_supported_object_types()
         SAI_OBJECT_TYPE_TAM_REPORT,
         SAI_OBJECT_TYPE_TAM_TRANSPORT,
         SAI_OBJECT_TYPE_TAM_TELEMETRY,
+        SAI_OBJECT_TYPE_TAM_TEL_TYPE,
+        SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
         SAI_OBJECT_TYPE_TAM_EVENT_THRESHOLD
     };
 
@@ -1282,6 +1338,18 @@ sai_status_t SwitchStateBase::set_initial_tam_objects()
     attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
     attr.value.objlist.count = 0;
     attr.value.objlist.list = nullptr;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // Initialize TAM stream telemetry chunk size (default 65535 per SAI spec)
+    attr.id = SAI_SWITCH_ATTR_TAM_ST_REPORT_CHUNK_SIZE;
+    attr.value.u32 = 65535;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // Initialize TAM stream telemetry chunk count (default 0 = vendor determined)
+    attr.id = SAI_SWITCH_ATTR_TAM_ST_CHUNK_COUNT;
+    attr.value.u32 = 0;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
@@ -4645,6 +4713,80 @@ sai_status_t SwitchStateBase::queryQueueStatsCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryBufferPoolStatsCapability(
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    static std::vector<sai_buffer_pool_stat_t> bufferPoolStatList = {
+        SAI_BUFFER_POOL_STAT_CURR_OCCUPANCY_BYTES,
+        SAI_BUFFER_POOL_STAT_WATERMARK_BYTES,
+        SAI_BUFFER_POOL_STAT_DROPPED_PACKETS,
+        SAI_BUFFER_POOL_STAT_GREEN_WRED_DROPPED_PACKETS,
+        SAI_BUFFER_POOL_STAT_GREEN_WRED_DROPPED_BYTES,
+        SAI_BUFFER_POOL_STAT_YELLOW_WRED_DROPPED_PACKETS,
+        SAI_BUFFER_POOL_STAT_YELLOW_WRED_DROPPED_BYTES,
+        SAI_BUFFER_POOL_STAT_RED_WRED_DROPPED_PACKETS,
+        SAI_BUFFER_POOL_STAT_RED_WRED_DROPPED_BYTES,
+        SAI_BUFFER_POOL_STAT_WRED_DROPPED_PACKETS,
+        SAI_BUFFER_POOL_STAT_WRED_DROPPED_BYTES,
+        SAI_BUFFER_POOL_STAT_WRED_ECN_MARKED_PACKETS,
+        SAI_BUFFER_POOL_STAT_WRED_ECN_MARKED_BYTES,
+        SAI_BUFFER_POOL_STAT_CURR_OCCUPANCY_CELLS,
+        SAI_BUFFER_POOL_STAT_WATERMARK_CELLS
+    };
+
+    if (stats_capability->count < bufferPoolStatList.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(bufferPoolStatList.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(bufferPoolStatList.size());
+
+    for (std::uint32_t i = 0; i < bufferPoolStatList.size(); i++)
+    {
+        stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ;
+        stats_capability->list[i].stat_enum = static_cast<sai_stat_id_t>(bufferPoolStatList.at(i));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryIngressPriorityGroupStatsCapability(
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    static std::vector<sai_ingress_priority_group_stat_t> pgStatList = {
+        SAI_INGRESS_PRIORITY_GROUP_STAT_PACKETS,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_CURR_OCCUPANCY_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_WATERMARK_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_SHARED_CURR_OCCUPANCY_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_SHARED_WATERMARK_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_XOFF_ROOM_CURR_OCCUPANCY_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_XOFF_ROOM_WATERMARK_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_DROPPED_PACKETS
+    };
+
+    if (stats_capability->count < pgStatList.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(pgStatList.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(pgStatList.size());
+
+    for (std::uint32_t i = 0; i < pgStatList.size(); i++)
+    {
+        stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ;
+        stats_capability->list[i].stat_enum = static_cast<sai_stat_id_t>(pgStatList.at(i));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryStatsCapability(
                               _In_ sai_object_id_t switchId,
                               _In_ sai_object_type_t objectType,
@@ -4663,6 +4805,14 @@ sai_status_t SwitchStateBase::queryStatsCapability(
     else if (objectType == SAI_OBJECT_TYPE_PORT)
     {
         return queryPortStatsCapability(stats_capability);
+    }
+    else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL)
+    {
+        return queryBufferPoolStatsCapability(stats_capability);
+    }
+    else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP)
+    {
+        return queryIngressPriorityGroupStatsCapability(stats_capability);
     }
 
     return SAI_STATUS_NOT_SUPPORTED;
@@ -4746,23 +4896,187 @@ void SwitchStateBase::send_tam_tel_type_config_change(
     m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
 }
 
+/**
+ * @brief Helper to write a 16-bit value in network byte order (big-endian).
+ */
+static void write_u16_be(std::vector<uint8_t> &buf, uint16_t val)
+{
+    // SWSS_LOG_ENTER() omitted - hot-path helper
+    buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
+    buf.push_back(static_cast<uint8_t>(val & 0xFF));
+}
+
+/**
+ * @brief Helper to write a 32-bit value in network byte order (big-endian).
+ */
+static void write_u32_be(std::vector<uint8_t> &buf, uint32_t val)
+{
+    // SWSS_LOG_ENTER() omitted - hot-path helper
+    buf.push_back(static_cast<uint8_t>((val >> 24) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((val >> 16) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
+    buf.push_back(static_cast<uint8_t>(val & 0xFF));
+}
+
 sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t tam_tel_type_id)
 {
     SWSS_LOG_ENTER();
 
-    std::vector<uint8_t> ipfix_templates;
+    /*
+     * Generate a real IPFIX template based on the counter subscriptions
+     * that reference this TAM telemetry type.
+     *
+     * IPFIX Template format (per HLD 7.2.2):
+     *   Set ID (2B) = 2
+     *   Set Length (2B) = 12 + num_stats * 8
+     *   Template ID (2B) > 256
+     *   Number of Fields (2B) = 1 + num_stats
+     *   Field 0: observationTimeNanoseconds (Element ID=325, Length=8)
+     *   Field 1..N: Enterprise fields with:
+     *     Element ID = label | 0x8000 (enterprise bit set)
+     *     Field Length = 8
+     *     Enterprise Number = (stat_id << 16) | object_type (with EF flags)
+     */
 
-    // TODO: This is a placeholder for the actual logic to generate IPFIX templates.
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<uint16_t> dist(0, 255);
-    ipfix_templates.resize(64 * 1024);
+    // Collect all TAM_COUNTER_SUBSCRIPTION objects that reference this tel_type
+    struct CounterSubInfo {
+        uint16_t label;       // object index / element ID
+        uint32_t stat_id;     // SAI stat enum value
+        sai_object_type_t object_type; // type of the subscribed object
+    };
 
-    for (size_t i = 0; i < ipfix_templates.size(); ++i)
+    std::vector<CounterSubInfo> subscriptions;
+
+    auto it = m_objectHash.find(SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION);
+    if (it == m_objectHash.end() || it->second.empty())
     {
-        ipfix_templates[i] = static_cast<uint8_t>(dist(gen));
+        SWSS_LOG_INFO("No TAM counter subscriptions found, generating empty IPFIX template");
+
+        // Generate a minimal empty template (header only, 0 enterprise fields)
+        std::vector<uint8_t> ipfix_templates;
+        write_u16_be(ipfix_templates, 2);    // Set ID = 2
+        write_u16_be(ipfix_templates, 12);   // Set Length = 12 (header + template header + 1 field)
+        write_u16_be(ipfix_templates, 256);  // Template ID
+        write_u16_be(ipfix_templates, 1);    // Number of Fields = 1
+        write_u16_be(ipfix_templates, 325);  // observationTimeNanoseconds
+        write_u16_be(ipfix_templates, 8);    // 8 bytes
+
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES;
+        attr.value.u8list.count = static_cast<uint32_t>(ipfix_templates.size());
+        attr.value.u8list.list = ipfix_templates.data();
+        return set(SAI_OBJECT_TYPE_TAM_TEL_TYPE, tam_tel_type_id, &attr);
     }
 
+    auto &counter_sub_objs = it->second;
+
+    for (auto &kv : counter_sub_objs)
+    {
+        auto &attrs = kv.second;
+
+        // Check if this subscription references our tam_tel_type
+        auto tel_type_it = attrs.find(sai_serialize_attr_id(
+            *sai_metadata_get_attr_metadata(
+                SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+                SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_TEL_TYPE)));
+
+        if (tel_type_it == attrs.end())
+            continue;
+
+        sai_object_id_t ref_tel_type = tel_type_it->second->getAttr()->value.oid;
+
+        if (ref_tel_type != tam_tel_type_id)
+            continue;
+
+        CounterSubInfo info;
+
+        // Get LABEL (element ID / object index)
+        auto label_it = attrs.find(sai_serialize_attr_id(
+            *sai_metadata_get_attr_metadata(
+                SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+                SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_LABEL)));
+
+        info.label = 0;
+        if (label_it != attrs.end())
+        {
+            uint64_t raw_label = label_it->second->getAttr()->value.u64;
+            if (raw_label > 0x7FFF)
+            {
+                SWSS_LOG_WARN("TAM counter subscription label %lu exceeds 15-bit IPFIX element ID range (max 0x7FFF), truncating",
+                              static_cast<unsigned long>(raw_label));
+            }
+            info.label = static_cast<uint16_t>(raw_label & 0x7FFF);
+        }
+
+        // Get STAT_ID
+        auto stat_it = attrs.find(sai_serialize_attr_id(
+            *sai_metadata_get_attr_metadata(
+                SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+                SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_STAT_ID)));
+
+        info.stat_id = 0;
+        if (stat_it != attrs.end())
+        {
+            info.stat_id = stat_it->second->getAttr()->value.u32;
+        }
+
+        // Get OBJECT_ID and determine its object type
+        auto obj_it = attrs.find(sai_serialize_attr_id(
+            *sai_metadata_get_attr_metadata(
+                SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+                SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_OBJECT_ID)));
+
+        info.object_type = SAI_OBJECT_TYPE_NULL;
+        if (obj_it != attrs.end())
+        {
+            sai_object_id_t subscribed_obj = obj_it->second->getAttr()->value.oid;
+            info.object_type = objectTypeQuery(subscribed_obj);
+        }
+
+        subscriptions.push_back(info);
+    }
+
+    SWSS_LOG_INFO("Generating IPFIX template for TAM Tel Type %s with %zu counter subscriptions",
+                  sai_serialize_object_id(tam_tel_type_id).c_str(),
+                  subscriptions.size());
+
+    // Build the IPFIX template binary
+    std::vector<uint8_t> ipfix_templates;
+
+    uint16_t num_fields = static_cast<uint16_t>(1 + subscriptions.size()); // 1 for observationTimeNanoseconds
+    uint16_t set_length = static_cast<uint16_t>(12 + subscriptions.size() * 8); // header(4) + templatehdr(4) + timestamp_field(4) + N * (field(4) + enterprise(4))
+    uint16_t template_id = 256; // Template ID > 256 as per spec
+
+    // Set ID = 2 (template set)
+    write_u16_be(ipfix_templates, 2);
+    // Set Length
+    write_u16_be(ipfix_templates, set_length);
+    // Template ID
+    write_u16_be(ipfix_templates, template_id);
+    // Number of Fields
+    write_u16_be(ipfix_templates, num_fields);
+
+    // Field 0: observationTimeNanoseconds (IANA Element ID = 325, 8 bytes)
+    write_u16_be(ipfix_templates, 325);
+    write_u16_be(ipfix_templates, 8);
+
+    // Fields 1..N: Enterprise fields for each counter subscription
+    for (auto &sub : subscriptions)
+    {
+        // Element ID with enterprise bit (bit 15) set: label | 0x8000
+        uint16_t element_id = sub.label | 0x8000;
+        write_u16_be(ipfix_templates, element_id);
+
+        // Field Length = 8 bytes (64-bit counter)
+        write_u16_be(ipfix_templates, 8);
+
+        // Enterprise Number encoding per HLD:
+        // (stat_id << 16) | object_type
+        // With EF (extension flag) in bit 15 of each half if SAI extension type/stat
+        uint32_t obj_type_val = static_cast<uint32_t>(sub.object_type);
+        uint32_t enterprise_number = (sub.stat_id << 16) | (obj_type_val & 0xFFFF);
+        write_u32_be(ipfix_templates, enterprise_number);
+    }
 
     sai_attribute_t attr;
     attr.id = SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES;
@@ -4777,7 +5091,8 @@ sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t ta
     }
     else
     {
-        SWSS_LOG_INFO("Successfully set IPFIX templates for TAM Tel Type %s",
+        SWSS_LOG_INFO("Successfully set IPFIX templates (%zu bytes) for TAM Tel Type %s",
+                      ipfix_templates.size(),
                       sai_serialize_object_id(tam_tel_type_id).c_str());
     }
 
