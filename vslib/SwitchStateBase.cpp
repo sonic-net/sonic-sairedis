@@ -4689,11 +4689,19 @@ sai_status_t SwitchStateBase::queryStatsStCapability(
     {
         for (uint32_t i = 0; i < stats_capability.count; i++)
         {
+            stats_st_capability->count = stats_capability.count;
             stats_st_capability->list[i].capability.stat_enum = stats_capability.list[i].stat_enum;
             stats_st_capability->list[i].capability.stat_modes = stats_capability.list[i].stat_modes;
             stats_st_capability->list[i].minimal_polling_interval = static_cast<uint64_t>(1e6 * 100);
             ; // 100ms
         }
+    }
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        stats_st_capability->count = stats_capability.count;
+        SWSS_LOG_WARN("Buffer overflow for object type %s, count: %u",
+                      sai_serialize_object_type(objectType).c_str(),
+                      stats_st_capability->count);
     }
     else
     {
