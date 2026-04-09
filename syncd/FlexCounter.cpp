@@ -3704,6 +3704,7 @@ void FlexCounter::removeCounter(
     {
         if (hasCounterContext(COUNTER_TYPE_ENI))
         {
+            removeDataFromCountersDB(vid, "");
             getCounterContext(COUNTER_TYPE_ENI)->removeObject(vid);
         }
         if (hasCounterContext(COUNTER_TYPE_METER_BUCKET))
