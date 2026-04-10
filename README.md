@@ -27,14 +27,14 @@ The SAI Redis provides a SAI redis service built on top of redis database. It co
 
 Before installing, add key and package sources:
 
-    sudo apt-key adv --keyserver apt-mo.trafficmanager.net --recv-keys 417A0893
-    echo 'deb http://apt-mo.trafficmanager.net/repos/sonic/ trusty main' | sudo tee -a /etc/apt/sources.list.d/sonic.list
+    sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 417A0893
+    echo 'deb http://packages.microsoft.com/repos/sonic/ trusty main' | sudo tee -a /etc/apt/sources.list.d/sonic.list
     sudo apt-get update
 
 Install dependencies:
 
     sudo apt-get install redis-server -t trusty
-    sudo apt-get install libhiredis0.13 -t trusty
+    sudo apt-get install libhiredis0.14 -t trusty
 
 Install building dependencies:
 
@@ -61,9 +61,9 @@ Get ASIC SDK and SAI packages from your ASIC vendor and install them.
 
 Install prerequisite packages:
 
-    sudo apt-get install libswsscommon libswsscommon-dev libhiredis-dev libzmq3-dev libpython-dev
+    sudo apt-get install libzmq3-dev libpython-dev
 
-> Note: libswsscommon-dev requires libnl-3-200-dev, libnl-route-3-200-dev and libnl-nf-3-200-dev version >= 3.5.0. If these are not available via apt repositories, you can get them from the latest [sonic-buildimage build](https://sonic-build.azurewebsites.net/api/sonic/artifacts?branchName=master&platform=vs&format=zip&target=target%2Fdebs%2Fbuster).
+> Note: libswsscommon-dev requires libnl-3-200-dev, libnl-route-3-200-dev and libnl-nf-3-200-dev version >= 3.5.0. If these are not available via apt repositories, you can get them from the latest [sonic-buildimage build](https://github.com/sonic-net/sonic-buildimage/actions).
 
 Install SAI dependencies:
 
