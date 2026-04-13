@@ -3747,7 +3747,6 @@ static void sai_deserialize_flags(
     SWSS_LOG_ENTER();
 
     value = 0;
-    size_t i;
 
     const auto tokens = swss::tokenize(s, '|');
 
@@ -3762,6 +3761,7 @@ static void sai_deserialize_flags(
             continue;
         }
 
+        size_t i;
         for (i = 0; i < meta->valuescount; ++i)
         {
             if (v == meta->valuesnames[i])
