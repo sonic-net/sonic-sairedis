@@ -149,6 +149,19 @@ namespace saivs
             _In_ uint32_t attr_count,
             _In_ const sai_attribute_t *attr_list);
 
+        /**
+         * @brief Handle tunnel map entry removal for L2 VXLAN.
+         *
+         * Called before a VNI-to-VLAN mapper entry is removed from the SAI DB.
+         * Removes the corresponding VPP tunnel for that VNI, allowing individual
+         * map entries to be deleted without tearing down the entire tunnel.
+         *
+         * @param serializedObjectId The serialized tunnel map entry object ID.
+         * @return SAI_STATUS_SUCCESS on success or if not applicable.
+         */
+        sai_status_t handle_l2_vxlan_tunnel_map_entry_removal(
+            _In_ const std::string& serializedObjectId);
+
     private:
         SwitchVpp* m_switch_db;
         std::array<uint8_t, 6> m_router_mac;
