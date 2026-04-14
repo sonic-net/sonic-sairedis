@@ -2340,6 +2340,159 @@ std::string sai_serialize_segment_list(
     return s + ":" + l;
 }
 
+std::string sai_serialize_prbs_per_lane_rx_status_list(
+        _In_ const sai_prbs_per_lane_rx_status_list_t& prbs_rx_status_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["count"] = prbs_rx_status_list.count;
+
+    if (prbs_rx_status_list.list == NULL || countOnly)
+    {
+        j["list"] = nullptr;
+
+        return j.dump();
+    }
+
+    if (prbs_rx_status_list.count > 256)
+    {
+        SWSS_LOG_THROW("PRBS RX status list count %u exceeds sanity maximum (256)", prbs_rx_status_list.count);
+    }
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < prbs_rx_status_list.count; ++i)
+    {
+        json item;
+        item["lane"] = sai_serialize_number(prbs_rx_status_list.list[i].lane, false);
+        item["rx_status"] = sai_serialize_enum(prbs_rx_status_list.list[i].rx_status, &sai_metadata_enum_sai_port_prbs_rx_status_t);
+        arr.push_back(item);
+    }
+
+    j["list"] = arr;
+
+    return j.dump();
+}
+
+static json sai_serialize_prbs_rx_state_json(
+        _In_ const sai_prbs_rx_state_t& prbs_rx_state)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["rx_status"] = sai_serialize_enum(prbs_rx_state.rx_status, &sai_metadata_enum_sai_port_prbs_rx_status_t);
+    j["error_count"] = sai_serialize_number(prbs_rx_state.error_count);
+
+    return j;
+}
+
+std::string sai_serialize_prbs_rx_state(
+        _In_ const sai_prbs_rx_state_t& prbs_rx_state)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_prbs_rx_state_json(prbs_rx_state).dump();
+}
+
+std::string sai_serialize_prbs_per_lane_rx_state_list(
+        _In_ const sai_prbs_per_lane_rx_state_list_t& prbs_rx_state_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["count"] = prbs_rx_state_list.count;
+
+    if (prbs_rx_state_list.list == NULL || countOnly)
+    {
+        j["list"] = nullptr;
+
+        return j.dump();
+    }
+
+    if (prbs_rx_state_list.count > 256)
+    {
+        SWSS_LOG_THROW("PRBS RX state list count %u exceeds sanity maximum (256)", prbs_rx_state_list.count);
+    }
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < prbs_rx_state_list.count; ++i)
+    {
+        json item;
+        item["lane"] = sai_serialize_number(prbs_rx_state_list.list[i].lane, false);
+        item["rx_state"] = sai_serialize_prbs_rx_state_json(prbs_rx_state_list.list[i].rx_state);
+        arr.push_back(item);
+    }
+
+    j["list"] = arr;
+
+    return j.dump();
+}
+
+static json sai_serialize_prbs_bit_error_rate_json(
+        _In_ const sai_prbs_bit_error_rate_t& prbs_ber)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["mantissa"] = sai_serialize_number(prbs_ber.mantissa);
+    j["exponent"] = sai_serialize_number(prbs_ber.exponent);
+
+    return j;
+}
+
+std::string sai_serialize_prbs_bit_error_rate(
+        _In_ const sai_prbs_bit_error_rate_t& prbs_ber)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_prbs_bit_error_rate_json(prbs_ber).dump();
+}
+
+std::string sai_serialize_prbs_per_lane_bit_error_rate_list(
+        _In_ const sai_prbs_per_lane_bit_error_rate_list_t& prbs_ber_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["count"] = prbs_ber_list.count;
+
+    if (prbs_ber_list.list == NULL || countOnly)
+    {
+        j["list"] = nullptr;
+
+        return j.dump();
+    }
+
+    if (prbs_ber_list.count > 256)
+    {
+        SWSS_LOG_THROW("PRBS BER list count %u exceeds sanity maximum (256)", prbs_ber_list.count);
+    }
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < prbs_ber_list.count; ++i)
+    {
+        json item;
+        item["lane"] = sai_serialize_number(prbs_ber_list.list[i].lane, false);
+        item["ber"] = sai_serialize_prbs_bit_error_rate_json(prbs_ber_list.list[i].ber);
+        arr.push_back(item);
+    }
+
+    j["list"] = arr;
+
+    return j.dump();
+}
+
 std::string sai_serialize_attr_value(
         _In_ const sai_attr_metadata_t& meta,
         _In_ const sai_attribute_t &attr,
@@ -2538,6 +2691,21 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
             return sai_serialize_poe_port_power_consumption(attr.value.portpowerconsumption);
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
+            return sai_serialize_prbs_rx_state(attr.value.rx_state);
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+            return sai_serialize_prbs_per_lane_rx_status_list(attr.value.prbs_rx_status_list, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+            return sai_serialize_prbs_per_lane_rx_state_list(attr.value.prbs_rx_state_list, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+            return sai_serialize_prbs_bit_error_rate(attr.value.prbs_ber);
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+            return sai_serialize_prbs_per_lane_bit_error_rate_list(attr.value.prbs_ber_list, countOnly);
 
         default:
             SWSS_LOG_THROW("sai attr value type %s is not implemented, FIXME", sai_serialize_attr_value_type(meta.attrvaluetype).c_str());
@@ -5134,6 +5302,21 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
             return sai_deserialize_poe_port_power_consumption(s, attr.value.portpowerconsumption);
 
+        case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
+            return sai_deserialize_prbs_rx_state(s, attr.value.rx_state);
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+            return sai_deserialize_prbs_per_lane_rx_status_list(s, attr.value.prbs_rx_status_list, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+            return sai_deserialize_prbs_per_lane_rx_state_list(s, attr.value.prbs_rx_state_list, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+            return sai_deserialize_prbs_bit_error_rate(s, attr.value.prbs_ber);
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+            return sai_deserialize_prbs_per_lane_bit_error_rate_list(s, attr.value.prbs_ber_list, countOnly);
+
         default:
             SWSS_LOG_THROW("deserialize type %s is not supported yet FIXME",
                     sai_serialize_attr_value_type(meta.attrvaluetype).c_str());
@@ -6563,6 +6746,24 @@ void sai_deserialize_free_attribute_value(
         case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
             break;
 
+        case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+            sai_free_list(attr.value.prbs_rx_status_list);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+            sai_free_list(attr.value.prbs_rx_state_list);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+            sai_free_list(attr.value.prbs_ber_list);
+            break;
+
         default:
             SWSS_LOG_THROW("sai attr value %s is not implemented, FIXME", sai_serialize_attr_value_type(type).c_str());
     }
@@ -6593,6 +6794,163 @@ void sai_deserialzie_poe_port_signature_type(
     SWSS_LOG_ENTER();
 
     sai_deserialize_enum(s, &sai_metadata_enum_sai_poe_port_signature_type_t, (int32_t&)value);
+}
+
+void sai_deserialize_prbs_per_lane_rx_status_list(
+        _In_ const std::string& s,
+        _Out_ sai_prbs_per_lane_rx_status_list_t& prbs_rx_status_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    prbs_rx_status_list.count = j["count"];
+
+    if (countOnly)
+    {
+        return;
+    }
+
+    if (j["list"] == nullptr)
+    {
+        prbs_rx_status_list.list = NULL;
+        return;
+    }
+
+    json arr = j["list"];
+
+    if (arr.size() != (size_t)prbs_rx_status_list.count)
+    {
+        SWSS_LOG_THROW("PRBS per-lane RX status list count mismatch %lu vs %u", arr.size(), prbs_rx_status_list.count);
+    }
+
+    prbs_rx_status_list.list = sai_alloc_n_of_ptr_type(prbs_rx_status_list.count, prbs_rx_status_list.list);
+
+    for (uint32_t i = 0; i < prbs_rx_status_list.count; i++)
+    {
+        sai_deserialize_number(arr[i]["lane"], prbs_rx_status_list.list[i].lane, false);
+
+        int32_t rx_status;
+        sai_deserialize_enum(arr[i]["rx_status"], &sai_metadata_enum_sai_port_prbs_rx_status_t, rx_status);
+        prbs_rx_status_list.list[i].rx_status = (sai_port_prbs_rx_status_t)rx_status;
+    }
+}
+
+static void sai_deserialize_prbs_rx_state_json(
+        _In_ const json& j,
+        _Out_ sai_prbs_rx_state_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    int32_t rx_status;
+    sai_deserialize_enum(j["rx_status"], &sai_metadata_enum_sai_port_prbs_rx_status_t, rx_status);
+    value.rx_status = (sai_port_prbs_rx_status_t)rx_status;
+    sai_deserialize_number(j["error_count"], value.error_count);
+}
+
+void sai_deserialize_prbs_rx_state(
+        _In_ const std::string& s,
+        _Out_ sai_prbs_rx_state_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_prbs_rx_state_json(json::parse(s), value);
+}
+
+static void sai_deserialize_prbs_bit_error_rate_json(
+        _In_ const json& j,
+        _Out_ sai_prbs_bit_error_rate_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_number(j["mantissa"], value.mantissa);
+    sai_deserialize_number(j["exponent"], value.exponent);
+}
+
+void sai_deserialize_prbs_bit_error_rate(
+        _In_ const std::string& s,
+        _Out_ sai_prbs_bit_error_rate_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_prbs_bit_error_rate_json(json::parse(s), value);
+}
+
+void sai_deserialize_prbs_per_lane_rx_state_list(
+        _In_ const std::string& s,
+        _Out_ sai_prbs_per_lane_rx_state_list_t& prbs_rx_state_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    prbs_rx_state_list.count = j["count"];
+
+    if (countOnly)
+    {
+        return;
+    }
+
+    if (j["list"] == nullptr)
+    {
+        prbs_rx_state_list.list = NULL;
+        return;
+    }
+
+    json arr = j["list"];
+
+    if (arr.size() != (size_t)prbs_rx_state_list.count)
+    {
+        SWSS_LOG_THROW("PRBS per-lane RX state list count mismatch %lu vs %u", arr.size(), prbs_rx_state_list.count);
+    }
+
+    prbs_rx_state_list.list = sai_alloc_n_of_ptr_type(prbs_rx_state_list.count, prbs_rx_state_list.list);
+
+    for (uint32_t i = 0; i < prbs_rx_state_list.count; i++)
+    {
+        sai_deserialize_number(arr[i]["lane"], prbs_rx_state_list.list[i].lane, false);
+        sai_deserialize_prbs_rx_state_json(arr[i]["rx_state"], prbs_rx_state_list.list[i].rx_state);
+    }
+}
+
+void sai_deserialize_prbs_per_lane_bit_error_rate_list(
+        _In_ const std::string& s,
+        _Out_ sai_prbs_per_lane_bit_error_rate_list_t& prbs_ber_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    prbs_ber_list.count = j["count"];
+
+    if (countOnly)
+    {
+        return;
+    }
+
+    if (j["list"] == nullptr)
+    {
+        prbs_ber_list.list = NULL;
+        return;
+    }
+
+    json arr = j["list"];
+
+    if (arr.size() != (size_t)prbs_ber_list.count)
+    {
+        SWSS_LOG_THROW("PRBS per-lane BER list count mismatch %lu vs %u", arr.size(), prbs_ber_list.count);
+    }
+
+    prbs_ber_list.list = sai_alloc_n_of_ptr_type(prbs_ber_list.count, prbs_ber_list.list);
+
+    for (uint32_t i = 0; i < prbs_ber_list.count; i++)
+    {
+        sai_deserialize_number(arr[i]["lane"], prbs_ber_list.list[i].lane, false);
+        sai_deserialize_prbs_bit_error_rate_json(arr[i]["ber"], prbs_ber_list.list[i].ber);
+    }
 }
 
 void sai_deserialize_poe_port_power_consumption(
