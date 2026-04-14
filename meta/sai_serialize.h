@@ -334,6 +334,24 @@ std::string sai_serialize_taps_list(
         _In_ const sai_taps_list_t& port_serdes_taps_list,
         _In_ bool countOnly);
 
+std::string sai_serialize_prbs_rx_state(
+        _In_ const sai_prbs_rx_state_t& prbs_rx_state);
+
+std::string sai_serialize_prbs_per_lane_rx_status_list(
+        _In_ const sai_prbs_per_lane_rx_status_list_t& prbs_rx_status_list,
+        _In_ bool countOnly);
+
+std::string sai_serialize_prbs_per_lane_rx_state_list(
+        _In_ const sai_prbs_per_lane_rx_state_list_t& prbs_rx_state_list,
+        _In_ bool countOnly);
+
+std::string sai_serialize_prbs_bit_error_rate(
+        _In_ const sai_prbs_bit_error_rate_t& prbs_ber);
+
+std::string sai_serialize_prbs_per_lane_bit_error_rate_list(
+        _In_ const sai_prbs_per_lane_bit_error_rate_list_t& prbs_ber_list,
+        _In_ bool countOnly);
+
 // serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
@@ -626,6 +644,29 @@ void sai_deserialize_chardata(
 void sai_deserialize_poe_port_power_consumption(
         _In_ const std::string& s,
         _Out_ sai_poe_port_power_consumption_t& pppc);
+
+void sai_deserialize_prbs_rx_state(
+        _In_ const std::string& s,
+        _Out_ sai_prbs_rx_state_t& value);
+
+void sai_deserialize_prbs_per_lane_rx_status_list(
+        _In_ const std::string& s,
+        _Out_ sai_prbs_per_lane_rx_status_list_t& prbs_rx_status_list,
+        _In_ bool countOnly);
+
+void sai_deserialize_prbs_per_lane_rx_state_list(
+        _In_ const std::string& s,
+        _Out_ sai_prbs_per_lane_rx_state_list_t& prbs_rx_state_list,
+        _In_ bool countOnly);
+
+void sai_deserialize_prbs_bit_error_rate(
+        _In_ const std::string& s,
+        _Out_ sai_prbs_bit_error_rate_t& value);
+
+void sai_deserialize_prbs_per_lane_bit_error_rate_list(
+        _In_ const std::string& s,
+        _Out_ sai_prbs_per_lane_bit_error_rate_list_t& prbs_ber_list,
+        _In_ bool countOnly);
 
 // deserialize notifications
 
