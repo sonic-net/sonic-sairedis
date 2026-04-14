@@ -14,6 +14,7 @@
 
 #include "swss/redisapi.h"
 #include "swss/tokenize.h"
+#include "swss/dbconnector.h"
 
 using namespace syncd;
 using namespace std;
@@ -1780,9 +1781,11 @@ public:
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
             _In_ sai_stats_mode_t &stats_mode,
-            _In_ const std::string &dbCounters):
+            _In_ const std::string &dbCounters,
+            _In_ bool isTcpConn):
         Base(name, instance, object_type, vendor_sai, stats_mode),
-        m_dbCounters(dbCounters)
+        m_dbCounters(dbCounters),
+        m_isTcpConn(isTcpConn)
     {
         SWSS_LOG_ENTER();
     }
@@ -1983,7 +1986,7 @@ public:
         SWSS_LOG_ENTER();
 
         // Create dedicated PORT_PHY_ATTR table
-        swss::DBConnector db(m_dbCounters, 0);
+        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
         swss::RedisPipeline pipeline(&db);
         swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
 
@@ -2171,6 +2174,7 @@ private:
     };
 
     std::string m_dbCounters;
+    bool m_isTcpConn;
     std::map<sai_object_id_t, std::map<sai_port_attr_t, uint32_t>> m_portLaneCountMap;
     // Map: [VID][attr_id][lane_number] -> metadata
     std::map<sai_object_id_t, std::map<sai_port_attr_t, std::map<uint32_t, LaneMetadata>>> m_laneMetadata;
@@ -2198,9 +2202,11 @@ public:
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
             _In_ sai_stats_mode_t &stats_mode,
-            _In_ const std::string &dbCounters):
+            _In_ const std::string &dbCounters,
+            _In_ bool isTcpConn):
         Base(name, instance, object_type, vendor_sai, stats_mode),
-        m_dbCounters(dbCounters)
+        m_dbCounters(dbCounters),
+        m_isTcpConn(isTcpConn)
     {
         SWSS_LOG_ENTER();
     }
@@ -2230,7 +2236,7 @@ public:
 
         try
         {
-            swss::DBConnector db(m_dbCounters, 0);
+            swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
             swss::Table portSerdesIdToPortIdTable(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
 
             std::string port_serdes_vid_str = sai_serialize_object_id(port_serdes_vid);
@@ -2505,7 +2511,7 @@ public:
         SWSS_LOG_ENTER();
 
         // Collected port phy serdes attrs data will be written to PORT_PHY_ATTR_TABLE (shared with port phy attrs)
-        swss::DBConnector db(m_dbCounters, 0);
+        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
         swss::RedisPipeline pipeline(&db);
         swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
 
@@ -2611,6 +2617,7 @@ private:
     static const std::unordered_map<sai_port_serdes_attr_t, std::string> m_attrAliases;
 
     std::string m_dbCounters;
+    bool m_isTcpConn;
     std::map<sai_object_id_t, PortIdInfo> m_portSerdesIdToPortIdMap;
     std::map<sai_object_id_t, uint32_t> m_portSerdesIdToLaneCountMap;
     std::map<sai_object_id_t, std::map<sai_port_serdes_attr_t, uint32_t>> m_portSerdesTapsCountMap;
@@ -2629,8 +2636,9 @@ public:
             _In_ const std::string &name,
             _In_ const std::string &instance,
             _In_ sairedis::SaiInterface *vendor_sai,
-            _In_ std::string dbCounters):
-    BaseCounterContext(name, instance), m_dbCounters(dbCounters), m_vendorSai(vendor_sai)
+            _In_ std::string dbCounters,
+            _In_ bool isTcpConn):
+    BaseCounterContext(name, instance), m_dbCounters(dbCounters), m_isTcpConn(isTcpConn), m_vendorSai(vendor_sai)
     {
         SWSS_LOG_ENTER();
     }
@@ -2704,7 +2712,7 @@ public:
             return;
         }
         // delete all meter bucket stats for this object from counters DB
-        swss::DBConnector db(m_dbCounters, 0);
+        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
         swss::RedisPipeline pipeline(&db);
         swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
         for (const auto& object_key: it->second.object_keys) {
@@ -2999,6 +3007,7 @@ private:
     std::vector<sai_meter_bucket_entry_stat_t> m_supportedMeterCounters;
     sai_object_type_t m_objectType = (sai_object_type_t) SAI_OBJECT_TYPE_METER_BUCKET_ENTRY;
     std::string m_dbCounters;
+    bool m_isTcpConn;
     sairedis::SaiInterface *m_vendorSai;
     sai_stats_mode_t m_groupStatsMode = SAI_STATS_MODE_READ;
     sai_object_id_t m_switchId = 0UL;
@@ -3023,6 +3032,8 @@ FlexCounter::FlexCounter(
 
     m_enable = false;
     m_isDiscarded = false;
+
+    m_isTcpConn = swss::SonicDBConfig::getDbSock(dbCounters).empty();
 
     startFlexCounterThread();
 }
@@ -3095,7 +3106,7 @@ void FlexCounter::removeDataFromCountersDB(
         _In_ const std::string &ratePrefix)
 {
     SWSS_LOG_ENTER();
-    swss::DBConnector db(m_dbCounters, 0);
+    swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
 
@@ -3373,15 +3384,15 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_METER_BUCKET)
     {
-        return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters);
+        return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters, m_isTcpConn);
     }
     else if (context_name == ATTR_TYPE_PORT_PHY_ATTR)
     {
-        return std::make_shared<PortPhyAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode, m_dbCounters);
+        return std::make_shared<PortPhyAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn);
     }
     else if (context_name == ATTR_TYPE_PORT_PHY_SERDES_ATTR)
     {
-        return std::make_shared<PortPhySerdesAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT_SERDES, m_vendorSai.get(), m_statsMode, m_dbCounters);
+        return std::make_shared<PortPhySerdesAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT_SERDES, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn);
     }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
@@ -3504,7 +3515,7 @@ void FlexCounter::flexCounterThreadRunFunction()
 {
     SWSS_LOG_ENTER();
 
-    swss::DBConnector db(m_dbCounters, 0);
+    swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
 
