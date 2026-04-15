@@ -641,7 +641,7 @@ vl_api_want_interface_events_reply_t_handler (vl_api_want_interface_events_reply
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sw interface events enable failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sw interface events enable failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sw interface events enable successful"); }
 }
 
@@ -752,7 +752,7 @@ vl_api_create_subif_reply_t_handler (vl_api_create_subif_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("subinterface creation failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("subinterface creation failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("subinterface creation successful"); }
 }
 
@@ -762,7 +762,7 @@ vl_api_delete_subif_reply_t_handler (vl_api_delete_subif_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("subinterface deletion failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("subinterface deletion failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("subinterface deletion successful"); }
 }
 
@@ -772,7 +772,7 @@ vl_api_sw_interface_set_table_reply_t_handler (vl_api_sw_interface_set_table_rep
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sw interface vrf set failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sw interface vrf set failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sw interface vrf set successful"); }
 }
 
@@ -782,7 +782,7 @@ vl_api_sw_interface_add_del_address_reply_t_handler (vl_api_sw_interface_add_del
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sw interface address add/del failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sw interface address add/del failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sw interface address add/del successful"); }
 }
 
@@ -792,7 +792,7 @@ vl_api_sw_interface_set_flags_reply_t_handler (vl_api_sw_interface_set_flags_rep
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sw interface state set failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sw interface state set failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sw interface state set successful"); }
 }
 
@@ -802,7 +802,7 @@ vl_api_sw_interface_set_mtu_reply_t_handler (vl_api_sw_interface_set_mtu_reply_t
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sw interface mtu set failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sw interface mtu set failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sw interface mtu set successful"); }
 }
 static void
@@ -811,7 +811,7 @@ vl_api_sw_interface_set_mac_address_reply_t_handler (vl_api_sw_interface_set_mac
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sw interface mac set failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sw interface mac set failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sw interface mac set successful"); }
 }
 static void
@@ -820,7 +820,7 @@ vl_api_hw_interface_set_mtu_reply_t_handler (vl_api_hw_interface_set_mtu_reply_t
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("hw interface mtu set failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("hw interface mtu set failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("hw interface mtu set successful"); }
 }
 
@@ -830,7 +830,7 @@ vl_api_ip_table_add_del_reply_t_handler (vl_api_ip_table_add_del_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("ip vrf add failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("ip vrf add failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("ip vrf add successful"); }
 }
 
@@ -840,7 +840,7 @@ vl_api_ip_route_add_del_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("ip route add failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("ip route add failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("ip route add successful"); }
 }
 
@@ -851,7 +851,7 @@ vl_api_sw_interface_ip6_enable_disable_reply_t_handler(
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("ip6 enable/disable failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("ip6 enable/disable failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("ip6 enable/disable successful"); }
 }
 
@@ -861,7 +861,7 @@ vl_api_set_ip_flow_hash_v2_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("ip flow has set failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("ip flow has set failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("ip flow has set successful"); }
 }
 
@@ -871,7 +871,7 @@ vl_api_ip_neighbor_add_del_reply_t_handler (vl_api_ip_neighbor_add_del_reply_t *
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("ip neighbor add/del failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("ip neighbor add/del failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("ip neighbor add/del successful"); }
 }
 
@@ -881,7 +881,7 @@ vl_api_bridge_domain_add_del_reply_t_handler (vl_api_bridge_domain_add_del_reply
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bridge_domain_add_del add/del failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bridge_domain_add_del add/del failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bridge_domain_add_del add/del successful"); }
 
 }
@@ -891,7 +891,7 @@ vl_api_sw_interface_set_l2_bridge_reply_t_handler (vl_api_sw_interface_set_l2_br
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sw inteface set l2 bridge reply handler failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sw inteface set l2 bridge reply handler failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sw inteface set l2 bridge reply handler successful"); }
 
 }
@@ -901,7 +901,7 @@ vl_api_l2_interface_vlan_tag_rewrite_reply_t_handler (vl_api_l2_interface_vlan_t
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("l2 interface vlan tag rewrite reply handler failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("l2 interface vlan tag rewrite reply handler failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("l2 interface vlan tag rewrite reply handler successful"); }
 
 }
@@ -911,7 +911,7 @@ vl_api_bvi_create_reply_t_handler (vl_api_bvi_create_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bvi create reply handler failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bvi create reply handler failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bvi create reply handler successful"); }
 }
 
@@ -921,7 +921,7 @@ vl_api_bvi_delete_reply_t_handler (vl_api_bvi_delete_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bvi delete reply handler failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bvi delete reply handler failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bvi delete reply handler successful"); }
 }
 
@@ -931,7 +931,7 @@ vl_api_bridge_flags_reply_t_handler (vl_api_bridge_flags_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bridge flags reply handler failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bridge flags reply handler failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bridge flags reply handler successful"); }
 }
 
@@ -941,7 +941,7 @@ vl_api_l2fib_add_del_reply_t_handler (vl_api_l2fib_add_del_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("l2fib add del reply handler failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("l2fib add del reply handler failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("l2fib add del reply handler successful"); }
 
 }
@@ -951,7 +951,7 @@ vl_api_l2fib_flush_all_reply_t_handler (vl_api_l2fib_flush_all_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("l2fib flush all reply handler failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("l2fib flush all reply handler failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("l2fib flush all reply handler successful"); }
 
 }
@@ -961,7 +961,7 @@ vl_api_l2fib_flush_int_reply_t_handler (vl_api_l2fib_flush_int_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("l2fib flush int reply handler failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("l2fib flush int reply handler failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("l2fib flush int reply handler successful"); }
 
 }
@@ -972,7 +972,7 @@ vl_api_l2fib_flush_bd_reply_t_handler (vl_api_l2fib_flush_bd_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("l2fib flush bd reply handler failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("l2fib flush bd reply handler failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("l2fib flush bd reply handler successful"); }
 }
 
@@ -982,7 +982,7 @@ vl_api_bfd_udp_add_reply_t_handler (vl_api_bfd_udp_add_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bfd udp add reply handler  failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bfd udp add reply handler  failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bfd udp add reply handler  successful"); }
 
 }
@@ -993,7 +993,7 @@ vl_api_bfd_udp_del_reply_t_handler (vl_api_bfd_udp_del_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bfd udp del reply handler  failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bfd udp del reply handler  failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bfd udp del reply handler  successful"); }
 
 }
@@ -1004,7 +1004,7 @@ vl_api_want_bfd_events_reply_t_handler (vl_api_want_bfd_events_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bfd events enable failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bfd events enable failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bfd events enable successful"); }
 }
 
@@ -1014,7 +1014,7 @@ vl_api_bfd_udp_enable_multihop_reply_t_handler (vl_api_bfd_udp_enable_multihop_r
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bfd enable multihop failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bfd enable multihop failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bfd enable multihop successful"); }
 }
 
@@ -1078,7 +1078,7 @@ vl_api_vxlan_add_del_tunnel_v3_reply_t_handler (
 
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-    if (retval) { SAIVPP_ERROR("vxlan_add_del handler failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("vxlan_add_del handler failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("vxlan_add_del handler successful: if_idx,%d", ntohl(msg->sw_if_index)); }
 }
 
@@ -1091,7 +1091,7 @@ vl_api_tunterm_acl_add_replace_reply_t_handler(vl_api_tunterm_acl_add_replace_re
     uint32_t *tunterm_index = (uint32_t *) get_index_ptr(msg->context);
     *tunterm_index = ntohl(msg->tunterm_acl_index);
 
-    if (retval) { SAIVPP_ERROR("tunterm acl add_replace failed(%d) tunterm_index index %u", retval, *tunterm_index); }
+    if (retval) { SAIVPP_ERROR("tunterm acl add_replace failed(%d:%s) tunterm_index index %u", retval, sai_vpp_err_to_string(retval), *tunterm_index); }
     else { SAIVPP_INFO("tunterm acl add_replace successful tunterm_index index %u", *tunterm_index); }
     release_index(msg->context);
 }
@@ -1102,7 +1102,7 @@ vl_api_tunterm_acl_del_reply_t_handler(vl_api_tunterm_acl_del_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("tunterm acl del failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("tunterm acl del failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("tunterm acl del successful"); }
 }
 
@@ -1112,7 +1112,7 @@ vl_api_tunterm_acl_interface_add_del_reply_t_handler(vl_api_tunterm_acl_interfac
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("tunterm acl interface set/reset failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("tunterm acl interface set/reset failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("tunterm acl interface set/reset successful"); }
 }
 
@@ -1127,7 +1127,7 @@ vl_api_bond_create_reply_t_handler (vl_api_bond_create_reply_t *msg)
       *swif_idx = ntohl(msg->sw_if_index);
     }
 
-    if (retval) { SAIVPP_ERROR("bond add failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bond add failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else
     {
         uint32_t bond_if_index =  ntohl(msg->sw_if_index);
@@ -1142,7 +1142,7 @@ vl_api_bond_delete_reply_t_handler (vl_api_bond_delete_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bond delete failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bond delete failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bond delete successful"); }
 }
 
@@ -1152,7 +1152,7 @@ vl_api_bond_add_member_reply_t_handler (vl_api_bond_add_member_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bond add member failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bond add member failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bond add member successful"); }
 }
 
@@ -1162,7 +1162,7 @@ vl_api_bond_detach_member_reply_t_handler (vl_api_bond_detach_member_reply_t *ms
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("bond detach member failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("bond detach member failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("bond detach member successful"); }
 }
 
@@ -1172,7 +1172,7 @@ vl_api_sr_localsid_add_del_reply_t_handler(vl_api_sr_localsid_add_del_reply_t *m
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sr local sid add/del failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sr local sid add/del failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sr local sid add/del successful"); }
 }
 
@@ -1182,7 +1182,7 @@ vl_api_sr_policy_add_v2_reply_t_handler(vl_api_sr_policy_add_v2_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sr policy add failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sr policy add failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sr policy add successful"); }
 }
 
@@ -1192,7 +1192,7 @@ vl_api_sr_policy_del_reply_t_handler(vl_api_sr_policy_del_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sr policy del failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sr policy del failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sr policy del successful"); }
 }
 
@@ -1202,7 +1202,7 @@ vl_api_sr_steering_add_del_reply_t_handler(vl_api_sr_steering_add_del_reply_t *m
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sr steer add/del failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sr steer add/del failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sr steer add/del successful"); }
 }
 
@@ -1212,7 +1212,7 @@ vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *m
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("sr set encap source failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("sr set encap source failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("sr set encap source successful"); }
 }
 
@@ -1333,7 +1333,7 @@ static void vl_api_lcp_itf_pair_add_del_reply_t_handler(vl_api_lcp_itf_pair_add_
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("linux_cp hostif creation failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("linux_cp hostif creation failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("linux_cp hostif creation successful"); }
 }
 
@@ -1342,7 +1342,7 @@ static void vl_api_lcp_ethertype_enable_reply_t_handler(vl_api_lcp_ethertype_ena
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("linux_cp ethertype enabled failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("linux_cp ethertype enabled failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("linux_cp ethertype enabled successful"); }
 }
 
@@ -1354,7 +1354,7 @@ static void vl_api_acl_add_replace_reply_t_handler(vl_api_acl_add_replace_reply_
     uint32_t *acl_index = (uint32_t *) get_index_ptr(msg->context);
     *acl_index = ntohl(msg->acl_index);
 
-    if (retval) { SAIVPP_ERROR("acl add_replace failed(%d) acl index %u", retval, *acl_index); }
+    if (retval) { SAIVPP_ERROR("acl add_replace failed(%d:%s) acl index %u", retval, sai_vpp_err_to_string(retval), *acl_index); }
     else { SAIVPP_INFO("acl add_replace successful acl index %u", *acl_index); }
     release_index(msg->context);
 }
@@ -1364,7 +1364,7 @@ static void vl_api_acl_del_reply_t_handler(vl_api_acl_del_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("acl del failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("acl del failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("acl del successful"); }
 }
 
@@ -1374,7 +1374,7 @@ vl_api_acl_stats_intf_counters_enable_reply_t_handler (vl_api_acl_stats_intf_cou
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("acl counters enable failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("acl counters enable failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("acl counters enable successful"); }
 }
 
@@ -1384,7 +1384,7 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("acl interface set/reset failed(%d)", retval); }
+    if (retval) { SAIVPP_ERROR("acl interface set/reset failed(%d:%s)", retval, sai_vpp_err_to_string(retval)); }
     else { SAIVPP_INFO("acl interface set/reset successful"); }
 }
 
