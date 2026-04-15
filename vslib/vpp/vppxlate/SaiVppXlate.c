@@ -26,6 +26,18 @@
 #include <vppinfra/error.h>
 
 #include "SaiVppXlate.h"
+#include <vnet/api_errno.h>
+
+/*
+ * Compile-time checks: ensure every SAI_VPP_ERR_ constant in SaiVppXlate.h
+ * matches the corresponding VNET_API_ERROR_* value from vnet/api_errno.h.
+ * If VPP renumbers an error code, the build will fail here.
+ */
+#define _(a, b) \
+    _Static_assert(SAI_VPP_ERR_##a == VNET_API_ERROR_##a, \
+                   "SAI_VPP_ERR_" #a " mismatch with VPP");
+foreach_sai_vpp_error
+#undef _
 
 #include <vnet/ip/ip_types_api.h>
 

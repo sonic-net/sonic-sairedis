@@ -22,6 +22,173 @@ extern "C" {
 
 #include <netinet/in.h>
 
+/*
+ * VPP API error codes mirrored from vnet/error.h.
+ * Use SAI_VPP_ERR_ prefix to avoid collision with the VPP enum names.
+ * Verified at compile time via _Static_assert in SaiVppXlate.c.
+ *
+ * Keep in sync with foreach_vnet_error in vnet/error.h.
+ */
+#define foreach_sai_vpp_error                                                  \
+  _(UNSPECIFIED, -1)                                                           \
+  _(INVALID_SW_IF_INDEX, -2)                                                   \
+  _(NO_SUCH_FIB, -3)                                                           \
+  _(NO_SUCH_INNER_FIB, -4)                                                     \
+  _(NO_SUCH_LABEL, -5)                                                         \
+  _(NO_SUCH_ENTRY, -6)                                                         \
+  _(INVALID_VALUE, -7)                                                         \
+  _(INVALID_VALUE_2, -8)                                                       \
+  _(UNIMPLEMENTED, -9)                                                         \
+  _(INVALID_SW_IF_INDEX_2, -10)                                                \
+  _(SYSCALL_ERROR_1, -11)                                                      \
+  _(SYSCALL_ERROR_2, -12)                                                      \
+  _(SYSCALL_ERROR_3, -13)                                                      \
+  _(SYSCALL_ERROR_4, -14)                                                      \
+  _(SYSCALL_ERROR_5, -15)                                                      \
+  _(SYSCALL_ERROR_6, -16)                                                      \
+  _(SYSCALL_ERROR_7, -17)                                                      \
+  _(SYSCALL_ERROR_8, -18)                                                      \
+  _(SYSCALL_ERROR_9, -19)                                                      \
+  _(SYSCALL_ERROR_10, -20)                                                     \
+  _(FEATURE_DISABLED, -30)                                                     \
+  _(INVALID_REGISTRATION, -31)                                                 \
+  _(NEXT_HOP_NOT_IN_FIB, -50)                                                  \
+  _(UNKNOWN_DESTINATION, -51)                                                  \
+  _(NO_PATHS_IN_ROUTE, -52)                                                    \
+  _(NEXT_HOP_NOT_FOUND_MP, -53)                                                \
+  _(NO_MATCHING_INTERFACE, -54)                                                \
+  _(INVALID_VLAN, -55)                                                         \
+  _(VLAN_ALREADY_EXISTS, -56)                                                  \
+  _(INVALID_SRC_ADDRESS, -57)                                                  \
+  _(INVALID_DST_ADDRESS, -58)                                                  \
+  _(ADDRESS_LENGTH_MISMATCH, -59)                                              \
+  _(ADDRESS_NOT_FOUND_FOR_INTERFACE, -60)                                      \
+  _(ADDRESS_NOT_DELETABLE, -61)                                                \
+  _(IP6_NOT_ENABLED, -62)                                                      \
+  _(NO_SUCH_NODE, -63)                                                         \
+  _(NO_SUCH_NODE2, -64)                                                        \
+  _(NO_SUCH_TABLE, -65)                                                        \
+  _(NO_SUCH_TABLE2, -66)                                                       \
+  _(NO_SUCH_TABLE3, -67)                                                       \
+  _(SUBIF_ALREADY_EXISTS, -68)                                                 \
+  _(SUBIF_CREATE_FAILED, -69)                                                  \
+  _(INVALID_MEMORY_SIZE, -70)                                                  \
+  _(INVALID_INTERFACE, -71)                                                    \
+  _(INVALID_VLAN_TAG_COUNT, -72)                                               \
+  _(INVALID_ARGUMENT, -73)                                                     \
+  _(UNEXPECTED_INTF_STATE, -74)                                                \
+  _(TUNNEL_EXIST, -75)                                                         \
+  _(INVALID_DECAP_NEXT, -76)                                                   \
+  _(RESPONSE_NOT_READY, -77)                                                   \
+  _(NOT_CONNECTED, -78)                                                        \
+  _(IF_ALREADY_EXISTS, -79)                                                    \
+  _(BOND_SLAVE_NOT_ALLOWED, -80)                                               \
+  _(VALUE_EXIST, -81)                                                          \
+  _(SAME_SRC_DST, -82)                                                        \
+  _(IP6_MULTICAST_ADDRESS_NOT_PRESENT, -83)                                    \
+  _(SR_POLICY_NAME_NOT_PRESENT, -84)                                           \
+  _(NOT_RUNNING_AS_ROOT, -85)                                                  \
+  _(ALREADY_CONNECTED, -86)                                                    \
+  _(UNSUPPORTED_JNI_VERSION, -87)                                              \
+  _(IP_PREFIX_INVALID, -88)                                                    \
+  _(INVALID_WORKER, -89)                                                       \
+  _(LISP_DISABLED, -90)                                                        \
+  _(CLASSIFY_TABLE_NOT_FOUND, -91)                                             \
+  _(INVALID_EID_TYPE, -92)                                                     \
+  _(CANNOT_CREATE_PCAP_FILE, -93)                                              \
+  _(INCORRECT_ADJACENCY_TYPE, -94)                                             \
+  _(EXCEEDED_NUMBER_OF_RANGES_CAPACITY, -95)                                   \
+  _(EXCEEDED_NUMBER_OF_PORTS_CAPACITY, -96)                                    \
+  _(INVALID_ADDRESS_FAMILY, -97)                                               \
+  _(INVALID_SUB_SW_IF_INDEX, -98)                                              \
+  _(TABLE_TOO_BIG, -99)                                                        \
+  _(CANNOT_ENABLE_DISABLE_FEATURE, -100)                                       \
+  _(BFD_EEXIST, -101)                                                          \
+  _(BFD_ENOENT, -102)                                                          \
+  _(BFD_EINUSE, -103)                                                          \
+  _(BFD_NOTSUPP, -104)                                                         \
+  _(ADDRESS_IN_USE, -105)                                                      \
+  _(ADDRESS_NOT_IN_USE, -106)                                                  \
+  _(QUEUE_FULL, -107)                                                          \
+  _(APP_UNSUPPORTED_CFG, -108)                                                 \
+  _(URI_FIFO_CREATE_FAILED, -109)                                              \
+  _(LISP_RLOC_LOCAL, -110)                                                     \
+  _(BFD_EAGAIN, -111)                                                          \
+  _(INVALID_GPE_MODE, -112)                                                    \
+  _(LISP_GPE_ENTRIES_PRESENT, -113)                                            \
+  _(ADDRESS_FOUND_FOR_INTERFACE, -114)                                         \
+  _(SESSION_CONNECT, -115)                                                     \
+  _(ENTRY_ALREADY_EXISTS, -116)                                                \
+  _(SVM_SEGMENT_CREATE_FAIL, -117)                                             \
+  _(APPLICATION_NOT_ATTACHED, -118)                                            \
+  _(BD_ALREADY_EXISTS, -119)                                                   \
+  _(BD_IN_USE, -120)                                                           \
+  _(BD_NOT_MODIFIABLE, -121)                                                   \
+  _(BD_ID_EXCEED_MAX, -122)                                                    \
+  _(SUBIF_DOESNT_EXIST, -123)                                                  \
+  _(L2_MACS_EVENT_CLINET_PRESENT, -124)                                        \
+  _(INVALID_QUEUE, -125)                                                       \
+  _(UNSUPPORTED, -126)                                                         \
+  _(DUPLICATE_IF_ADDRESS, -127)                                                \
+  _(APP_INVALID_NS, -128)                                                      \
+  _(APP_WRONG_NS_SECRET, -129)                                                 \
+  _(APP_CONNECT_SCOPE, -130)                                                   \
+  _(APP_ALREADY_ATTACHED, -131)                                                \
+  _(SESSION_REDIRECT, -132)                                                    \
+  _(ILLEGAL_NAME, -133)                                                        \
+  _(NO_NAME_SERVERS, -134)                                                     \
+  _(NAME_SERVER_NOT_FOUND, -135)                                               \
+  _(NAME_RESOLUTION_NOT_ENABLED, -136)                                         \
+  _(NAME_SERVER_FORMAT_ERROR, -137)                                            \
+  _(NAME_SERVER_NO_SUCH_NAME, -138)                                            \
+  _(NAME_SERVER_NO_ADDRESSES, -139)                                            \
+  _(NAME_SERVER_NEXT_SERVER, -140)                                             \
+  _(APP_CONNECT_FILTERED, -141)                                                \
+  _(ACL_IN_USE_INBOUND, -142)                                                  \
+  _(ACL_IN_USE_OUTBOUND, -143)                                                 \
+  _(INIT_FAILED, -144)                                                         \
+  _(NETLINK_ERROR, -145)                                                       \
+  _(BIER_BSL_UNSUP, -146)                                                      \
+  _(INSTANCE_IN_USE, -147)                                                     \
+  _(INVALID_SESSION_ID, -148)                                                  \
+  _(ACL_IN_USE_BY_LOOKUP_CONTEXT, -149)                                        \
+  _(INVALID_VALUE_3, -150)                                                     \
+  _(NON_ETHERNET, -151)                                                        \
+  _(BD_ALREADY_HAS_BVI, -152)                                                  \
+  _(INVALID_PROTOCOL, -153)                                                    \
+  _(INVALID_ALGORITHM, -154)                                                   \
+  _(RSRC_IN_USE, -155)                                                         \
+  _(KEY_LENGTH, -156)                                                          \
+  _(FIB_PATH_UNSUPPORTED_NH_PROTO, -157)                                       \
+  _(API_ENDIAN_FAILED, -159)                                                   \
+  _(NO_CHANGE, -160)                                                           \
+  _(MISSING_CERT_KEY, -161)                                                    \
+  _(LIMIT_EXCEEDED, -162)                                                      \
+  _(IKE_NO_PORT, -163)                                                         \
+  _(UDP_PORT_TAKEN, -164)                                                      \
+  _(EAGAIN, -165)                                                              \
+  _(INVALID_VALUE_4, -166)                                                     \
+  _(BUSY, -167)                                                                \
+  _(BUG, -168)                                                                 \
+  _(FEATURE_ALREADY_DISABLED, -169)                                            \
+  _(FEATURE_ALREADY_ENABLED, -170)                                             \
+  _(INVALID_PREFIX_LENGTH, -171)
+
+/* Generate SAI_VPP_ERR_<NAME> defines */
+#define _(a, b) static const int SAI_VPP_ERR_##a = (b);
+foreach_sai_vpp_error
+#undef _
+
+    static inline const char *sai_vpp_err_to_string(int err)
+    {
+        switch (err) {
+#define _(a, b) case (b): return #a;
+        foreach_sai_vpp_error
+#undef _
+        default: return "UNKNOWN";
+        }
+    }
+
     typedef enum {
 	VPP_NEXTHOP_NORMAL = 1,
 	VPP_NEXTHOP_LOCAL = 2

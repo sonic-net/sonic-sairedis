@@ -382,11 +382,14 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
     // enable ipv6, which will set link local address based on mac. ipv4 can be enabled
     // when ip is configured.
     err = sw_interface_ip6_enable_disable(hwif_name, true);
-    if (err < 0)
+    if (err == SAI_VPP_ERR_VALUE_EXIST)
     {
-        SWSS_LOG_ERROR("failed to enable ipv6 for %s", hwif_name);
-        close(tapfd);
-        return SAI_STATUS_FAILURE;
+        // IPv6 already enabled by LCP netlink sync
+        SWSS_LOG_INFO("ipv6 already enabled for %s, skipping", hwif_name);
+    }
+    else if (err < 0)
+    {
+        SWSS_LOG_ERROR("failed to enable ipv6 for %s (err=%d), continuing", hwif_name, err);
     }
 
     setIfNameToPortId(name, obj_id);
