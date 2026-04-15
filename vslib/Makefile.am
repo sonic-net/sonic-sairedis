@@ -89,6 +89,7 @@ libSaiVS_a_SOURCES +=\
 					  vpp/SwitchVppNbr.cpp \
 					  vpp/SwitchVppSRv6.cpp \
 					  vpp/TunnelManager.cpp \
+					  vpp/SaiVppLog.cpp \
 					  vpp/vppxlate/SaiVppXlate.c \
 					  vpp/vppxlate/SaiVppStats.c \
 					  vpp/vppxlate/SaiAclStats.c \
