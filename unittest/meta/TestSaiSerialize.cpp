@@ -1635,3 +1635,360 @@ TEST(SaiSerialize, serialize_stat_st_capability_list)
     EXPECT_EQ(stats_capability.list[1].minimal_polling_interval, 200);
 }
 
+TEST(SaiSerialize, sai_serialize_flow_bulk_get_session_event_ntf_null_data)
+{
+    SWSS_LOG_ENTER();
+
+    EXPECT_THROW(sai_serialize_flow_bulk_get_session_event_ntf(0x123456789abcdef, 1, nullptr), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_single_finished)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t flow_bulk_session_id = 0x123456789abcdef;
+    uint32_t count = 1;
+    sai_flow_bulk_get_session_event_data_t event_data[1];
+
+    memset(&event_data[0], 0, sizeof(event_data[0]));
+    event_data[0].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED;
+    event_data[0].attr_count = 0;
+    event_data[0].attr = nullptr;
+
+    std::string serialized = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, count, event_data);
+
+    sai_object_id_t deserialized_session_id;
+    uint32_t deserialized_count;
+    sai_flow_bulk_get_session_event_data_t* deserialized_data;
+
+    sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
+
+    EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
+    EXPECT_EQ(deserialized_count, count);
+    EXPECT_EQ(deserialized_data[0].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED);
+    EXPECT_EQ(deserialized_data[0].attr_count, 0);
+    EXPECT_EQ(deserialized_data[0].attr, nullptr);
+
+    sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
+}
+
+TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_multiple_events)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t flow_bulk_session_id = 0xabcdef1234567890;
+    uint32_t count = 3;
+    sai_flow_bulk_get_session_event_data_t event_data[3];
+
+    memset(event_data, 0, sizeof(event_data));
+
+    event_data[0].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY;
+    event_data[0].attr_count = 0;
+    event_data[0].attr = nullptr;
+
+    event_data[1].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED;
+    event_data[1].attr_count = 0;
+    event_data[1].attr = nullptr;
+
+    event_data[2].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY;
+    event_data[2].attr_count = 0;
+    event_data[2].attr = nullptr;
+
+    std::string serialized = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, count, event_data);
+
+    sai_object_id_t deserialized_session_id;
+    uint32_t deserialized_count;
+    sai_flow_bulk_get_session_event_data_t* deserialized_data;
+
+    sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
+
+    EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
+    EXPECT_EQ(deserialized_count, count);
+
+    EXPECT_EQ(deserialized_data[0].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY);
+    EXPECT_EQ(deserialized_data[0].attr_count, 0);
+    EXPECT_EQ(deserialized_data[0].attr, nullptr);
+
+    EXPECT_EQ(deserialized_data[1].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED);
+    EXPECT_EQ(deserialized_data[1].attr_count, 0);
+    EXPECT_EQ(deserialized_data[1].attr, nullptr);
+
+    EXPECT_EQ(deserialized_data[2].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY);
+    EXPECT_EQ(deserialized_data[2].attr_count, 0);
+    EXPECT_EQ(deserialized_data[2].attr, nullptr);
+
+    sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
+}
+
+TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_empty_array)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t flow_bulk_session_id = 0x9876543210fedcba;
+    uint32_t count = 0;
+    sai_flow_bulk_get_session_event_data_t event_data[1];
+
+    memset(&event_data[0], 0, sizeof(event_data[0]));
+    event_data[0].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED;
+    event_data[0].attr_count = 0;
+    event_data[0].attr = nullptr;
+
+    std::string serialized = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, count, event_data);
+
+    sai_object_id_t deserialized_session_id;
+    uint32_t deserialized_count;
+    sai_flow_bulk_get_session_event_data_t* deserialized_data;
+
+    sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
+
+    EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
+    EXPECT_EQ(deserialized_count, 0);
+
+    sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
+}
+
+TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_null_session_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t flow_bulk_session_id = SAI_NULL_OBJECT_ID;
+    uint32_t count = 1;
+    sai_flow_bulk_get_session_event_data_t event_data[1];
+
+    memset(&event_data[0], 0, sizeof(event_data[0]));
+    event_data[0].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED;
+    event_data[0].attr_count = 0;
+    event_data[0].attr = nullptr;
+
+    std::string serialized = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, count, event_data);
+
+    sai_object_id_t deserialized_session_id;
+    uint32_t deserialized_count;
+    sai_flow_bulk_get_session_event_data_t* deserialized_data;
+
+    sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
+
+    EXPECT_EQ(deserialized_session_id, SAI_NULL_OBJECT_ID);
+    EXPECT_EQ(deserialized_count, count);
+    EXPECT_EQ(deserialized_data[0].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED);
+
+    sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
+}
+
+TEST(SaiSerialize, sai_serialize_taps_list)
+{
+    // Create test data
+    sai_taps_list_t taps_list;
+    sai_s32_list_t taps[3];
+
+    int32_t tap0_values[] = {10, 20, 30, 40};
+    taps[0].count = 4;
+    taps[0].list = tap0_values;
+
+    int32_t tap1_values[] = {50, 60, 70, 80};
+    taps[1].count = 4;
+    taps[1].list = tap1_values;
+
+    int32_t tap2_values[] = {90, 100, 110, 120};
+    taps[2].count = 4;
+    taps[2].list = tap2_values;
+
+    taps_list.count = 3;
+    taps_list.list = taps;
+
+    // Test normal serialization
+    auto s = sai_serialize_taps_list(taps_list, false);
+
+    std::string expected = "{\"0\":[{\"tap0\":10},{\"tap1\":50},{\"tap2\":90}],"
+        "\"1\":[{\"tap0\":20},{\"tap1\":60},{\"tap2\":100}],"
+        "\"2\":[{\"tap0\":30},{\"tap1\":70},{\"tap2\":110}],"
+        "\"3\":[{\"tap0\":40},{\"tap1\":80},{\"tap2\":120}]}";
+
+    EXPECT_EQ(s, expected);
+
+    // Test empty taps list (count = 0)
+    taps_list.count = 0;
+    taps_list.list = NULL;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{}");
+
+    // Test NULL list
+    taps_list.count = 3;
+    taps_list.list = NULL;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{}");
+
+    // Test first tap with NULL list
+    taps_list.count = 3;
+    taps_list.list = taps;
+    taps[0].list = NULL;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{}");
+    taps[0].list = tap0_values; // restore
+
+    // Test first tap with count = 0
+    taps[0].count = 0;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{}");
+    taps[0].count = 4; // restore
+
+    // Test single lane, single tap
+    sai_s32_list_t single_tap;
+    int32_t single_value[] = {42};
+    single_tap.count = 1;
+    single_tap.list = single_value;
+    taps_list.count = 1;
+    taps_list.list = &single_tap;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{\"0\":[{\"tap0\":42}]}");
+
+    // Test countOnly mode
+    taps_list.count = 3;
+    taps_list.list = taps;
+    s = sai_serialize_taps_list(taps_list, true);
+    EXPECT_EQ(s, "3");
+}
+
+TEST(SaiSerialize, sai_deserialize_taps_list)
+{
+    // Create test string
+    std::string json_str = "{\"0\":[{\"tap0\":10},{\"tap1\":50},{\"tap2\":90}],"
+        "\"1\":[{\"tap0\":20},{\"tap1\":60},{\"tap2\":100}],"
+        "\"2\":[{\"tap0\":30},{\"tap1\":70},{\"tap2\":110}],"
+        "\"3\":[{\"tap0\":40},{\"tap1\":80},{\"tap2\":120}]}";
+
+    sai_taps_list_t taps_list;
+    memset(&taps_list, 0, sizeof(taps_list));
+
+    // deserialize string
+    sai_deserialize_taps_list(json_str, taps_list, false);
+
+    EXPECT_EQ(taps_list.count, 3);
+    ASSERT_NE(taps_list.list, nullptr);
+
+    // Verify tap 0 (all lane's tap0 values): 4 lanes [10, 20, 30, 40]
+    EXPECT_EQ(taps_list.list[0].count, 4);
+    ASSERT_NE(taps_list.list[0].list, nullptr);
+    EXPECT_EQ(taps_list.list[0].list[0], 10);
+    EXPECT_EQ(taps_list.list[0].list[1], 20);
+    EXPECT_EQ(taps_list.list[0].list[2], 30);
+    EXPECT_EQ(taps_list.list[0].list[3], 40);
+
+    // Verify tap 1 (all lane's tap1 values): 4 lanes [50, 60, 70, 80]
+    EXPECT_EQ(taps_list.list[1].count, 4);
+    ASSERT_NE(taps_list.list[1].list, nullptr);
+    EXPECT_EQ(taps_list.list[1].list[0], 50);
+    EXPECT_EQ(taps_list.list[1].list[1], 60);
+    EXPECT_EQ(taps_list.list[1].list[2], 70);
+    EXPECT_EQ(taps_list.list[1].list[3], 80);
+
+    // Verify tap 2 (all lane's tap2 values): 4 lanes [90, 100, 110, 120]
+    EXPECT_EQ(taps_list.list[2].count, 4);
+    ASSERT_NE(taps_list.list[2].list, nullptr);
+    EXPECT_EQ(taps_list.list[2].list[0], 90);
+    EXPECT_EQ(taps_list.list[2].list[1], 100);
+    EXPECT_EQ(taps_list.list[2].list[2], 110);
+    EXPECT_EQ(taps_list.list[2].list[3], 120);
+
+    // Clean up
+    for (uint32_t i = 0; i < taps_list.count; i++)
+    {
+        delete[] taps_list.list[i].list;
+    }
+    delete[] taps_list.list;
+
+    // Test empty object
+    std::string empty_json_str = "{}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(empty_json_str, taps_list, false);
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test missing lane "0"
+    std::string missing_lane0 = "{\"1\":[{\"tap0\":10}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(missing_lane0, taps_list, false);
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test lane "0" with empty array
+    std::string empty_array = "{\"0\":[]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(empty_array, taps_list, false);
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test lane "0" is not an array
+    std::string not_array = "{\"0\":\"invalid\"}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(not_array, taps_list, false);
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test single lane with all taps
+    std::string single_lane = "{\"0\":[{\"tap0\":100},{\"tap1\":200},{\"tap2\":300}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(single_lane, taps_list, false);
+    EXPECT_EQ(taps_list.count, 3);
+    ASSERT_NE(taps_list.list, nullptr);
+    EXPECT_EQ(taps_list.list[0].count, 1);
+    EXPECT_EQ(taps_list.list[0].list[0], 100);
+    EXPECT_EQ(taps_list.list[1].count, 1);
+    EXPECT_EQ(taps_list.list[1].list[0], 200);
+    EXPECT_EQ(taps_list.list[2].count, 1);
+    EXPECT_EQ(taps_list.list[2].list[0], 300);
+
+    // Clean up
+    for (uint32_t i = 0; i < taps_list.count; i++)
+    {
+        delete[] taps_list.list[i].list;
+    }
+    delete[] taps_list.list;
+
+    // Test single tap, single lane
+    std::string single_single = "{\"0\":[{\"tap0\":42}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(single_single, taps_list, false);
+    EXPECT_EQ(taps_list.count, 1);
+    ASSERT_NE(taps_list.list, nullptr);
+    EXPECT_EQ(taps_list.list[0].count, 1);
+    EXPECT_EQ(taps_list.list[0].list[0], 42);
+
+    // Clean up
+    delete[] taps_list.list[0].list;
+    delete[] taps_list.list;
+
+    // Test invalid JSON (parse error)
+    std::string invalid_json = "{invalid json";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(invalid_json, taps_list, false);
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test non-contiguous lane indices (missing lane "1")
+    // This should trigger an exception when .at() tries to access missing key
+    std::string non_contiguous = "{\"0\":[{\"tap0\":10},{\"tap1\":50}],"
+        "\"2\":[{\"tap0\":30},{\"tap1\":70}],"
+        "\"3\":[{\"tap0\":40},{\"tap1\":80}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(non_contiguous, taps_list, false);
+    // Should catch exception and set to error state
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test empty tap object (missing tap key)
+    // This should trigger an exception when tap_obj doesn't contain expected tap key
+    std::string empty_tap_obj = "{\"0\":[{\"tap0\":10},{},{\"tap2\":30}],"
+        "\"1\":[{\"tap0\":20},{},{\"tap2\":40}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(empty_tap_obj, taps_list, false);
+    // Should catch exception and set to error state
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test countOnly mode
+    std::string count_str = "5";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(count_str, taps_list, true);
+    EXPECT_EQ(taps_list.count, 5);
+}

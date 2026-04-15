@@ -8,6 +8,7 @@
 #include "TunnelManager.h"
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
+#include "CRMTracker.h"
 
 #include "vppxlate/SaiVppXlate.h"
 
@@ -53,6 +54,8 @@ namespace saivs
 
             virtual sai_status_t create_qos_queues() override;
 
+            virtual sai_status_t create_default_hash() override;
+
             virtual sai_status_t create_scheduler_group_tree(
                     _In_ const std::vector<sai_object_id_t>& sgs,
                     _In_ sai_object_id_t port_id) override;
@@ -72,6 +75,10 @@ namespace saivs
 
             virtual sai_status_t create_port_serdes_per_port(
                     _In_ sai_object_id_t port_id) override;
+
+            virtual sai_status_t refresh_read_only(
+                    _In_ const sai_attr_metadata_t *meta,
+                    _In_ sai_object_id_t object_id) override;
 
         private: // from vpp VirtualSwitchSaiInterface
 
@@ -93,6 +100,11 @@ namespace saivs
                     _In_ sai_object_type_t object_type,
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability) override;
+
+            virtual sai_status_t queryStatsStCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_st_capability_list_t *stats_capability) override;
 
             virtual uint64_t getObjectTypeAvailability(
                     _In_ sai_object_type_t object_type) override;
@@ -175,6 +187,21 @@ namespace saivs
             virtual sai_status_t bulkRemove(
                     _In_ sai_object_type_t object_type,
                     _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses) override;
+
+            virtual sai_status_t bulkSet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ const sai_attribute_t *attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses) override;
+
+            virtual sai_status_t bulkGet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ const uint32_t *attr_count,
+                    _Inout_ sai_attribute_t **attr_list,
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
@@ -296,6 +323,20 @@ namespace saivs
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
+
+            /**
+             * @brief Check if a bridge port is of type TUNNEL.
+             *
+             * Tunnel bridge ports carry SAI_BRIDGE_PORT_ATTR_TUNNEL_ID instead of
+             * SAI_BRIDGE_PORT_ATTR_PORT_ID.  VPP functions that dereference PORT_ID
+             * must call this first to avoid null-pointer crashes.
+             *
+             * @param[in] br_port_id The bridge port object ID to check.
+             * @return true if the bridge port type is SAI_BRIDGE_PORT_TYPE_TUNNEL.
+             */
+            bool is_tunnel_bridge_port(
+                    _In_ sai_object_id_t br_port_id);
+
 
             /* BFD Session */
             sai_status_t bfd_session_add(
@@ -585,6 +626,11 @@ namespace saivs
 
             sai_status_t IpRouteAddRemove(
                     _In_ const SaiObject* route_obj,
+                    _In_ bool is_add);
+
+            sai_status_t IpRoutePathAddRemove(
+                    _In_ const SaiObject* route_obj,
+                    _In_ nexthop_grp_member_t *member,
                     _In_ bool is_add);
 
             sai_status_t updateIpRoute(
@@ -937,6 +983,13 @@ namespace saivs
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
+            CRMTracker m_crmTracker;
+
+            bool isIPv4Route(const std::string &serializedObjectId);
+            bool isIPv4Neighbor(const std::string &serializedObjectId);
+
+            virtual sai_status_t set_static_crm_values() override;
+
             // SRv6 object tracking for CRM
             constexpr static const int m_maxMySidEntries = 1000;
             uint32_t m_srv6_my_sid_count = 0;
@@ -948,6 +1001,9 @@ namespace saivs
             TunnelManagerSRv6 m_tunnel_mgr_srv6;
 
         protected: // switch capability related
+            virtual sai_status_t queryNextHopGroupTypeCapability(
+                _Inout_ sai_s32_list_t *enum_values_capability) override;
+
             virtual sai_status_t queryHashNativeHashFieldListCapability(
                 _Inout_ sai_s32_list_t *enum_values_capability) override;
 

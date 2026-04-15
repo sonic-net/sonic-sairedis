@@ -20,7 +20,7 @@
 
 #include <inttypes.h>
 
-#define SAI_ZMQ_DEFAULT_RESPONSE_BUFFER_SIZE (64*1024*1024)
+#define SAI_ZMQ_DEFAULT_RESPONSE_BUFFER_SIZE (128*1024*1024)
 
 using namespace sairedis;
 using namespace saimeta;

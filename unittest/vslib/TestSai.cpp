@@ -29,7 +29,10 @@ static int profile_get_next_value(
 {
     SWSS_LOG_ENTER();
 
-    return 0;
+    if (value == NULL)
+        return 0;
+
+    return -1;
 }
 
 static sai_service_method_table_t test_services = {

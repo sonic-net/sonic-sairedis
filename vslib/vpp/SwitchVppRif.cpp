@@ -154,11 +154,11 @@ std::string get_intf_name_for_prefix (
     is_v6 = (route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6) ? true : false;
 
     std::string full_if_name = "";
-        bool found = vpp_get_intf_name_for_prefix(route_entry.destination, is_v6, full_if_name);
-        if (found == false)
-        {
+    bool found = vpp_get_intf_name_for_prefix(route_entry.destination, is_v6, full_if_name);
+    if (found == false)
+    {
         auto prefix_str = sai_serialize_ip_prefix(route_entry.destination);
-            SWSS_LOG_ERROR("host interface for prefix not found: %s", prefix_str.c_str());
+        SWSS_LOG_INFO("host interface for prefix not found: %s", prefix_str.c_str());
     }
     return full_if_name;
 
@@ -359,7 +359,7 @@ bool SwitchVpp::vpp_get_hwif_name (
 
     if (found == false)
     {
-        SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(object_id).c_str());
+        SWSS_LOG_NOTICE("host interface for port id %s not found", sai_serialize_object_id(object_id).c_str());
         return false;
     }
 
@@ -486,7 +486,7 @@ sai_status_t SwitchVpp::asyncIntfStateUpdate(const char *hwif_name, bool link_up
     auto port_oid = getPortIdFromIfName(std::string(tap));
 
     if (port_oid == SAI_NULL_OBJECT_ID) {
-        SWSS_LOG_NOTICE("Failed find port oid for tap interface %s", tap);
+        SWSS_LOG_NOTICE("Failed find port oid for tap interface %s. Ignore the update.", tap);
         return SAI_STATUS_SUCCESS;
     }
 
@@ -883,6 +883,16 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
     bool is_v6 = false;
 
     is_v6 = (route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6) ? true : false;
+
+    // Check if this is an IPv6 link-local address (fe80::/10)
+    if (is_v6) {
+        const uint8_t* addr = route_entry.destination.addr.ip6;
+        // Link-local addresses start with fe80::/10, so first byte is 0xfe and second byte is 0x80-0xbf
+        if (addr[0] == 0xfe && (addr[1] & 0xc0) == 0x80) {
+            SWSS_LOG_INFO("Skipping configuring interface IP: IPv6 link-local address");
+            return SAI_STATUS_SUCCESS;
+        }
+    }
 
     std::string full_if_name;
     std::string ip_prefix_str;
@@ -1692,25 +1702,22 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
         return SAI_STATUS_FAILURE;
     }
 
-    if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+    uint16_t vlan_id = 0;
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
-        vpp_router_interface_remove_vrf(obj_id);
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+        status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &attr);
 
-        return SAI_STATUS_SUCCESS;
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("attr SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID was not passed");
+
+            return SAI_STATUS_FAILURE;
+        }
+
+        vlan_id = attr.value.u16;
     }
-
-
-    attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
-    status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &attr);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("attr SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID was not passed");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    uint16_t vlan_id = attr.value.u16;
 
     auto attr_type_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
 
@@ -1777,6 +1784,11 @@ sai_status_t SwitchVpp::vpp_router_interface_remove_vrf(
     }
 
     SWSS_LOG_NOTICE("Resetting to default vrf for interface %s, %s", linux_ifname, hwif_name);
+
+    /* Remove all IP addresses before changing VRF.
+     * VPP requires no addresses on the interface when rebinding to a new VRF table
+     * (returns VNET_API_ERROR_ADDRESS_FOUND_FOR_INTERFACE / -114 otherwise). */
+    interface_ip_address_del_all(hwif_name);
 
     uint32_t vrf_id = 0;
     /* For now support is only for ipv4 tables */
