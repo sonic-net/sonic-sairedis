@@ -1992,3 +1992,189 @@ TEST(SaiSerialize, sai_deserialize_taps_list)
     sai_deserialize_taps_list(count_str, taps_list, true);
     EXPECT_EQ(taps_list.count, 5);
 }
+
+TEST(SaiSerialize, serialize_u64_range_list)
+{
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    sai_u64_range_t ranges[] = {{100, 200}, {300, 400}, {500, 600}};
+
+    attr.value.u64rangelist.count = 3;
+    attr.value.u64rangelist.list = NULL;
+
+    meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_TAM_INT, attr.id);
+
+    ASSERT_NE(meta, nullptr);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "3:null");
+
+    attr.value.u64rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "3:100,200,300,400,500,600");
+
+    attr.value.u64rangelist.count = 0;
+    attr.value.u64rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "0:null");
+
+    attr.value.u64rangelist.count = 0;
+    attr.value.u64rangelist.list = NULL;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "0:null");
+
+    // countOnly
+    attr.value.u64rangelist.count = 3;
+    attr.value.u64rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr, true);
+
+    EXPECT_EQ(s, "3");
+
+    // deserialize with actual data
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    sai_deserialize_attr_value("3:100,200,300,400,500,600", *meta, attr, false);
+
+    EXPECT_EQ(attr.value.u64rangelist.count, 3);
+    ASSERT_NE(attr.value.u64rangelist.list, nullptr);
+    EXPECT_EQ(attr.value.u64rangelist.list[0].min, 100);
+    EXPECT_EQ(attr.value.u64rangelist.list[0].max, 200);
+    EXPECT_EQ(attr.value.u64rangelist.list[1].min, 300);
+    EXPECT_EQ(attr.value.u64rangelist.list[1].max, 400);
+    EXPECT_EQ(attr.value.u64rangelist.list[2].min, 500);
+    EXPECT_EQ(attr.value.u64rangelist.list[2].max, 600);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+
+    // deserialize null list
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    sai_deserialize_attr_value("2:null", *meta, attr, false);
+
+    EXPECT_EQ(attr.value.u64rangelist.count, 2);
+    EXPECT_EQ(attr.value.u64rangelist.list, nullptr);
+
+    // deserialize countOnly
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    sai_deserialize_attr_value("5", *meta, attr, true);
+
+    EXPECT_EQ(attr.value.u64rangelist.count, 5);
+
+    // round-trip serialize -> deserialize
+    attr.value.u64rangelist.count = 3;
+    attr.value.u64rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.u64rangelist.count, 3);
+    EXPECT_EQ(attr2.value.u64rangelist.list[0].min, 100);
+    EXPECT_EQ(attr2.value.u64rangelist.list[0].max, 200);
+    EXPECT_EQ(attr2.value.u64rangelist.list[2].min, 500);
+    EXPECT_EQ(attr2.value.u64rangelist.list[2].max, 600);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+
+    // transfer_attributes for u64_range_list
+    sai_attribute_t src, dst;
+    memset(&src, 0, sizeof(src));
+    memset(&dst, 0, sizeof(dst));
+
+    src.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+    dst.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    src.value.u64rangelist.count = 3;
+    src.value.u64rangelist.list = ranges;
+
+    sai_u64_range_t dst_ranges[3];
+    dst.value.u64rangelist.count = 3;
+    dst.value.u64rangelist.list = dst_ranges;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes(SAI_OBJECT_TYPE_TAM_INT, 1, &src, &dst, false));
+
+    EXPECT_EQ(dst.value.u64rangelist.count, 3);
+    EXPECT_EQ(dst.value.u64rangelist.list[0].min, 100);
+    EXPECT_EQ(dst.value.u64rangelist.list[0].max, 200);
+    EXPECT_EQ(dst.value.u64rangelist.list[1].min, 300);
+    EXPECT_EQ(dst.value.u64rangelist.list[1].max, 400);
+
+    // transfer countOnly
+    memset(&dst, 0, sizeof(dst));
+    dst.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes(SAI_OBJECT_TYPE_TAM_INT, 1, &src, &dst, true));
+
+    EXPECT_EQ(dst.value.u64rangelist.count, 3);
+}
+
+TEST(SaiSerialize, serialize_u64_range)
+{
+    // UINT64_RANGE has no real SAI attributes in current metadata,
+    // so use calloc to get zeroed, properly-aligned memory for metadata
+    // (the struct has const members so default construction is deleted).
+    void *raw = calloc(1, sizeof(sai_attr_metadata_t));
+    ASSERT_NE(raw, nullptr);
+    sai_attr_metadata_t *pmeta = static_cast<sai_attr_metadata_t*>(raw);
+    pmeta->attrvaluetype = SAI_ATTR_VALUE_TYPE_UINT64_RANGE;
+    const sai_attr_metadata_t &meta = *pmeta;
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+
+    attr.value.u64range.min = 1000;
+    attr.value.u64range.max = 2000;
+
+    std::string s = sai_serialize_attr_value(meta, attr);
+
+    EXPECT_EQ(s, "1000,2000");
+
+    // deserialize
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+
+    sai_deserialize_attr_value("3000,4000", meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.u64range.min, 3000);
+    EXPECT_EQ(attr2.value.u64range.max, 4000);
+
+    sai_deserialize_free_attribute_value(meta.attrvaluetype, attr2);
+
+    // round-trip with edge values
+    attr.value.u64range.min = 0;
+    attr.value.u64range.max = 18446744073709551615ULL;
+
+    s = sai_serialize_attr_value(meta, attr);
+
+    sai_attribute_t attr3;
+    memset(&attr3, 0, sizeof(attr3));
+
+    sai_deserialize_attr_value(s, meta, attr3, false);
+
+    EXPECT_EQ(attr3.value.u64range.min, 0);
+    EXPECT_EQ(attr3.value.u64range.max, 18446744073709551615ULL);
+
+    sai_deserialize_free_attribute_value(meta.attrvaluetype, attr3);
+
+    free(raw);
+}
