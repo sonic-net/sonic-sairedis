@@ -337,6 +337,8 @@ config_syncd_bcm()
         CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
     fi
 
+    CMD_ARGS+=" -l"
+
     if [ -f "$HWSKU_DIR/context_config.json" ]; then
         CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
     fi
