@@ -36,6 +36,8 @@ CommandLineOptions::CommandLineOptions()
 
     m_watchdogWarnTimeSpan = 30 * 1000000;
 
+    m_watchdogInitTimeSpan = 30 * 1000000;
+
 #ifdef SAITHRIFT
 
     m_runRPCServer = false;
@@ -69,6 +71,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " ContextConfig=" << m_contextConfig;
     ss << " BreakConfig=" << m_breakConfig;
     ss << " WatchdogWarnTimeSpan=" << m_watchdogWarnTimeSpan;
+    ss << " WatchdogInitTimeSpan=" << m_watchdogInitTimeSpan;
     ss << " SupportingBulkCounters=" << m_supportingBulkCounterGroups;
     ss << " EnableAttrVersionCheck=" << (m_enableAttrVersionCheck ? "YES" : "NO");
 

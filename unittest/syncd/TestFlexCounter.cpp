@@ -598,7 +598,7 @@ TEST(FlexCounter, addRemoveCounter)
         {"SAI_ENI_STAT_FLOW_CREATED", "SAI_ENI_STAT_FLOW_CREATE_FAILED", "SAI_ENI_STAT_FLOW_DELETED", "SAI_ENI_STAT_FLOW_DELETE_FAILED"},
         {"100", "200", "300", "400"},
         counterVerifyFunc,
-        false);
+        true);
 
     testAddRemoveCounter(
         1,
@@ -1009,6 +1009,25 @@ TEST(FlexCounter, addRemoveCounterPlugin)
     }
 }
 
+TEST(FlexCounter, addDuplicateCounterPlugin)
+{
+    SWSS_LOG_ENTER();
+
+    FlexCounter fc("test", sai, "COUNTERS_DB", true);
+
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(PORT_PLUGIN_FIELD, "dummy_sha_string");
+    fc.addCounterPlugin(values);
+    EXPECT_EQ(fc.isEmpty(), false);
+
+    // Adding the same plugin again should be a no-op (duplicate ignored)
+    fc.addCounterPlugin(values);
+    EXPECT_EQ(fc.isEmpty(), false);
+
+    fc.removeCounterPlugins();
+    EXPECT_EQ(fc.isEmpty(), true);
+}
+
 TEST(FlexCounter, addRemoveCounterForPort)
 {
     FlexCounter fc("test", sai, "COUNTERS_DB");
@@ -1285,7 +1304,7 @@ TEST(FlexCounter, bulkCounter)
         {"SAI_ENI_STAT_FLOW_CREATED", "SAI_ENI_STAT_FLOW_CREATE_FAILED", "SAI_ENI_STAT_FLOW_DELETED", "SAI_ENI_STAT_FLOW_DELETE_FAILED"},
         {"100", "200", "300", "400"},
         counterVerifyFunc,
-        false);
+        true);
 
     clearCalled = false;
     capabilities = (SAI_STATS_MODE_READ|SAI_STATS_MODE_READ_AND_CLEAR);
@@ -1546,9 +1565,16 @@ TEST(FlexCounter, bulkChunksize)
                 counters[i * number_of_counters + j] = counterMap[counter_ids[j]];
                 record.emplace_back(counter_ids[j]);
                 value.emplace_back(counterSeed);
+                // Only assert the unified chunk size when all counters are
+                // polled together (merged state). Between the two
+                // addCounterPlugin calls that set and then remove per-prefix
+                // chunk sizes, the polling thread can poll with per-prefix
+                // partitions that have fewer counters and different chunk
+                // sizes. Those polls should fall through to the per-counter
+                // switch below.
                 if (unifiedBulkChunkSize > 0)
                 {
-                    if (object_count != unifiedBulkChunkSize)
+                    if (object_count != unifiedBulkChunkSize && number_of_counters == allCounters.size())
                     {
                         EXPECT_EQ(object_count, unifiedBulkChunkSize);
                     }
@@ -2110,6 +2136,134 @@ TEST(FlexCounter, addRemoveDashMeterCounter)
         expectedValues,
         counterVerifyFunc,
         true);
+}
+
+TEST(FlexCounter, removeEniDeletesBothEniAndDashMeterCounters)
+{
+    sai->mock_getStatsExt = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            counters[i] = (i + 1) * 100;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t object_type, sai_stat_capability_list_t *stats_capability)
+    {
+        if (object_type == (sai_object_type_t)SAI_OBJECT_TYPE_METER_BUCKET_ENTRY)
+        {
+            sai_stat_id_t meter_stats_cap[] = {
+                SAI_METER_BUCKET_ENTRY_STAT_INBOUND_BYTES,
+                SAI_METER_BUCKET_ENTRY_STAT_OUTBOUND_BYTES
+            };
+            stats_capability->count = sizeof(meter_stats_cap) / sizeof(sai_stat_id_t);
+            if (stats_capability->list == nullptr) {
+                return SAI_STATUS_BUFFER_OVERFLOW;
+            }
+            for (uint32_t i = 0; i < stats_capability->count; ++i) {
+                stats_capability->list[i].stat_enum = meter_stats_cap[i];
+                stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ;
+            }
+            return SAI_STATUS_SUCCESS;
+        }
+        return SAI_STATUS_FAILURE;
+    };
+
+    sai->mock_get = [] (sai_object_type_t, sai_object_id_t, uint32_t attr_count, sai_attribute_t *attr_list)
+    {
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            if (attr_list[i].id == SAI_SWITCH_ATTR_DASH_CAPS_MAX_METER_BUCKET_COUNT_PER_ENI)
+            {
+                attr_list[i].value.u32 = DASH_NUM_METER_BUCKETS_PER_ENI;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai->mock_bulkGetStats = [](sai_object_id_t,
+                                sai_object_type_t,
+                                uint32_t object_count,
+                                const sai_object_key_t *,
+                                uint32_t number_of_counters,
+                                const sai_stat_id_t *,
+                                sai_stats_mode_t,
+                                sai_status_t *object_status,
+                                uint64_t *counters)
+    {
+        for (uint32_t i = 0; i < object_count; ++i)
+        {
+            dash_meter_fill_values(i, number_of_counters, &(counters[i * number_of_counters]), nullptr);
+            object_status[i] = SAI_STATUS_SUCCESS;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+
+    sai_object_type_t object_type = (sai_object_type_t)SAI_OBJECT_TYPE_ENI;
+    test_syncd::mockVidManagerObjectTypeQuery(object_type);
+
+    std::vector<sai_object_id_t> object_ids = generateOids(2, object_type);
+
+    // Enable flex counter polling
+    std::vector<swss::FieldValueTuple> pluginValues;
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(pluginValues);
+
+    // Add both ENI counter IDs and DASH meter counter IDs for each ENI object
+    std::vector<swss::FieldValueTuple> counterValues;
+    counterValues.emplace_back(ENI_COUNTER_ID_LIST,
+        "SAI_ENI_STAT_FLOW_CREATED,SAI_ENI_STAT_FLOW_CREATE_FAILED");
+    counterValues.emplace_back(DASH_METER_COUNTER_ID_LIST,
+        "SAI_METER_BUCKET_ENTRY_STAT_OUTBOUND_BYTES,SAI_METER_BUCKET_ENTRY_STAT_INBOUND_BYTES");
+    for (auto oid : object_ids)
+    {
+        fc.addCounter(oid, oid, counterValues);
+    }
+
+    EXPECT_FALSE(fc.isEmpty());
+
+    // Wait for ENI counter keys to appear in COUNTERS_DB
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    // Wait for ENI counter entries to be populated
+    waitForCounterKeys(countersTable, object_ids.size());
+
+    // Wait for the first ENI counter value to be written by a real poll cycle
+    std::string firstEniKey = toOid(object_ids[0]);
+    waitForCounterValues(countersTable, firstEniKey,
+        {"SAI_ENI_STAT_FLOW_CREATED"}, {"100"});
+
+    // Verify meter bucket entries also exist
+    auto switchVid = VidManager::switchIdQuery(object_ids[0]);
+    auto meterEntryKey = sai_meter_bucket_entry_t {
+        .switch_id = switchVid, .eni_id = object_ids[0], .meter_class = 1};
+    auto meterKey = sai_serialize_meter_bucket_entry(meterEntryKey);
+    waitForNonZeroCounterValue(countersTable, meterKey,
+        "SAI_METER_BUCKET_ENTRY_STAT_OUTBOUND_BYTES");
+
+    // Verify we have both ENI and meter bucket keys
+    std::vector<std::string> keys;
+    countersTable.getKeys(keys);
+    removeTimeStamp(keys, countersTable);
+    EXPECT_GT(keys.size(), object_ids.size());
+
+    // Remove all ENI counters — should clean up both ENI and meter bucket entries
+    for (auto oid : object_ids)
+    {
+        fc.removeCounter(oid);
+    }
+    EXPECT_TRUE(fc.isEmpty());
+
+    // Verify all counter entries (both ENI and DASH meter) are deleted
+    countersTable.getKeys(keys);
+    removeTimeStamp(keys, countersTable);
+    ASSERT_TRUE(keys.empty());
 }
 
 TEST(FlexCounter, noSupportedDashMeterCounter)

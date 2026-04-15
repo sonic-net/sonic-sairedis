@@ -75,6 +75,7 @@ libSaiVS_a_SOURCES = \
 
 if USE_VPP
 libSaiVS_a_SOURCES +=\
+					  vpp/CRMTracker.cpp \
 					  vpp/SaiObjectDB.cpp \
 					  vpp/SwitchVpp.cpp \
 					  vpp/SwitchVppAcl.cpp \
@@ -88,6 +89,7 @@ libSaiVS_a_SOURCES +=\
 					  vpp/SwitchVppNbr.cpp \
 					  vpp/SwitchVppSRv6.cpp \
 					  vpp/TunnelManager.cpp \
+					  vpp/SaiVppLog.cpp \
 					  vpp/vppxlate/SaiVppXlate.c \
 					  vpp/vppxlate/SaiVppStats.c \
 					  vpp/vppxlate/SaiAclStats.c \

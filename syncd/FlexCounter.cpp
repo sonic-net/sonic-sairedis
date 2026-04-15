@@ -118,7 +118,7 @@ void BaseCounterContext::addPlugins(
         }
         else
         {
-            SWSS_LOG_ERROR("Plugin %s already registered", sha.c_str());
+            SWSS_LOG_NOTICE("Plugin %s already registered, skipping", sha.c_str());
         }
     }
 }
@@ -2348,7 +2348,7 @@ public:
         }
     }
 
-    void initAttrData(
+    bool initAttrData(
         sai_object_id_t rid,
         sai_attribute_t *attr,
         PortPhySerdesAttributeData* data)
@@ -2358,7 +2358,7 @@ public:
         if (!attr || !data)
         {
             SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Invalid input params : attr : %p, data : %p", attr, data);
-            return;
+            return false;
         }
 
         // Look up lane count from m_portSerdesIdToLaneCountMap
@@ -2366,7 +2366,7 @@ public:
         if (it == m_portSerdesIdToLaneCountMap.end())
         {
             SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no lane count information", rid);
-            return;
+            return false;
         }
 
         uint32_t laneCount = it->second;
@@ -2377,7 +2377,7 @@ public:
                 data->rxVgaData.resize(laneCount);
                 attr->value.u32list.count = laneCount;
                 attr->value.u32list.list = data->rxVgaData.data();
-                break;
+                return true;
 
             case SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST:
             {
@@ -2386,14 +2386,14 @@ public:
                 if (count_it == m_portSerdesTapsCountMap.end())
                 {
                  SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no serdes count attribute information", rid);
-                 break;
+                 return false;
                 }
                 auto& attrCountMap = count_it->second;
                 auto tap_it = attrCountMap.find(SAI_PORT_SERDES_ATTR_TX_FIR_COUNT);
                 if (tap_it == attrCountMap.end())
                 {
                     SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: TX_FIR_COUNT not found for port_serdes_rid:0x%" PRIx64, rid);
-                     break;
+                    return false;
                 }
                 uint32_t tapCount = tap_it->second;
 
@@ -2416,12 +2416,12 @@ public:
                 // Set up the top-level attribute pointer
                 attr->value.portserdestaps.count = tapCount;
                 attr->value.portserdestaps.list = data->txFirTapsList.data();
-                break;
+                return true;
             }
 
             default:
                 SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: initAttrData: Unsupported attr-id : %d", attr->id);
-                break;
+                return false;
         }
     }
 
@@ -2522,10 +2522,23 @@ public:
             SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
 
+            // Initialize all attributes - if any fail, skip this object
+            bool attrDataInitialized = true;
             for (size_t i = 0; i < attrIds.size(); i++)
             {
                 attrs[i].id = attrIds[i];
-                initAttrData(rid, &attrs[i], &attrData);
+                if (!initAttrData(rid, &attrs[i], &attrData))
+                {
+                    SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Failed to initialize attribute %s for RID:0x%" PRIx64 ", skipping object",
+                                  sai_serialize_port_serdes_attr(attrIds[i]).c_str(), rid);
+                    attrDataInitialized = false;
+                    break;
+                }
+            }
+
+            if (!attrDataInitialized)
+            {
+                continue;
             }
 
             sai_status_t status = Base::m_vendorSai->get(
@@ -3691,6 +3704,7 @@ void FlexCounter::removeCounter(
     {
         if (hasCounterContext(COUNTER_TYPE_ENI))
         {
+            removeDataFromCountersDB(vid, "");
             getCounterContext(COUNTER_TYPE_ENI)->removeObject(vid);
         }
         if (hasCounterContext(COUNTER_TYPE_METER_BUCKET))

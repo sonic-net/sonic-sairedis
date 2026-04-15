@@ -41,7 +41,7 @@
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 #define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
-#define SYNCD_ZMQ_RESPONSE_BUFFER_SIZE (64*1024*1024)
+#define SYNCD_ZMQ_RESPONSE_BUFFER_SIZE (128*1024*1024)
 
 using namespace syncd;
 using namespace saimeta;
@@ -4534,6 +4534,13 @@ sai_status_t Syncd::processNotifySyncd(
             // we need to clear current temp view to make space for new one
 
             clearTempView();
+
+            /*
+            * Transition to longer watchdog timeout in INIT_VIEW on Chassis Switch
+            * Wait for create:SAI_OBJECT_TYPE_SWITCH
+            * Then transition back in APPLY_VIEW
+            */
+            transitionToInitWatchdogTimeout();
         }
         else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW)
         {
@@ -4556,12 +4563,18 @@ sai_status_t Syncd::processNotifySyncd(
             }
 
             SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", key.c_str());
+
+            transitionToNormalWatchdogTimeout();
         }
         else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC)
         {
             SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
 
+            transitionToInitWatchdogTimeout();
+
             inspectAsic();
+
+            transitionToNormalWatchdogTimeout();
 
             sendNotifyResponse(SAI_STATUS_SUCCESS);
         }
@@ -4592,6 +4605,13 @@ sai_status_t Syncd::processNotifySyncd(
 
         SWSS_LOG_WARN("syncd switched to INIT VIEW mode, all op will be saved to TEMP view");
 
+        /*
+        * Transition to longer watchdog timeout in INIT_VIEW on Chassis Switch
+        * Wait for create:SAI_OBJECT_TYPE_SWITCH
+        * Then transition back in APPLY_VIEW
+        */
+        transitionToInitWatchdogTimeout();
+
         sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
     else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW)
@@ -4601,7 +4621,6 @@ sai_status_t Syncd::processNotifySyncd(
         // NOTE: Currently as WARN to be easier to spot, later should be NOTICE.
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
-
 
         try
         {
@@ -4620,6 +4639,8 @@ sai_status_t Syncd::processNotifySyncd(
 
             throw;
         }
+
+        transitionToNormalWatchdogTimeout();
 
         sendNotifyResponse(status);
 
@@ -4657,7 +4678,11 @@ sai_status_t Syncd::processNotifySyncd(
     {
         SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
 
+        transitionToInitWatchdogTimeout();
+
         inspectAsic();
+
+        transitionToNormalWatchdogTimeout();
 
         sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
@@ -4685,6 +4710,24 @@ void Syncd::sendNotifyResponse(
     SWSS_LOG_INFO("sending response: %s", strStatus.c_str());
 
     m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_NOTIFY);
+}
+
+void Syncd::transitionToNormalWatchdogTimeout()
+{
+    SWSS_LOG_ENTER();
+
+    int64_t normalTimeout = m_commandLineOptions->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR;
+
+    m_timerWatchdog.setWarnTimespan(normalTimeout);
+}
+
+void Syncd::transitionToInitWatchdogTimeout()
+{
+    SWSS_LOG_ENTER();
+
+    int64_t initTimeout = m_commandLineOptions->m_watchdogInitTimeSpan * WD_DELAY_FACTOR;
+
+    m_timerWatchdog.setWarnTimespan(initTimeout);
 }
 
 void Syncd::clearTempView()

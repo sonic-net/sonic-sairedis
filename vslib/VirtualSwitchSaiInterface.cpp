@@ -1062,41 +1062,19 @@ sai_status_t VirtualSwitchSaiInterface::queryStatsStCapability(
 {
     SWSS_LOG_ENTER();
 
-    sai_stat_capability_list_t stats_capability;
-    std::vector<sai_stat_capability_t> stats_list(stats_st_capability->count);
-    stats_capability.count = stats_st_capability->count;
-    stats_capability.list = stats_list.data();
+    if (m_switchStateMap.find(switchId) == m_switchStateMap.end())
+    {
+        SWSS_LOG_ERROR("failed to find switch %s in switch state map", sai_serialize_object_id(switchId).c_str());
 
-    sai_status_t status = queryStatsCapability(
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto ss = m_switchStateMap.at(switchId);
+
+    return ss->queryStatsStCapability(
         switchId,
         objectType,
-        &stats_capability);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        stats_st_capability->count = stats_capability.count;
-        for (uint32_t i = 0; i < stats_capability.count; i++)
-        {
-            stats_st_capability->list[i].capability.stat_enum = stats_capability.list[i].stat_enum;
-            stats_st_capability->list[i].capability.stat_modes = stats_capability.list[i].stat_modes;
-            stats_st_capability->list[i].minimal_polling_interval = static_cast<uint64_t>(1e6 * 100); // 100ms
-        }
-    }
-    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
-    {
-        stats_st_capability->count = stats_capability.count;
-        SWSS_LOG_WARN("Buffer overflow for object type %s, count: %u",
-                      sai_serialize_object_type(objectType).c_str(),
-                      stats_st_capability->count);
-    }
-    else
-    {
-        SWSS_LOG_WARN("Failed to query stats capability for object type %s, status: %s",
-                      sai_serialize_object_type(objectType).c_str(),
-                      sai_serialize_status(status).c_str());
-    }
-
-    return status;
+        stats_st_capability);
 }
 
 sai_status_t VirtualSwitchSaiInterface::getStatsExt(
