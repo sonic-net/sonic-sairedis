@@ -1155,16 +1155,6 @@ vl_api_bond_detach_member_reply_t_handler (vl_api_bond_detach_member_reply_t *ms
 }
 
 static void
-vl_api_sr_localsid_add_del_reply_t_handler(vl_api_sr_localsid_add_del_reply_t *msg)
-{
-    int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
-
-    if (retval) { SAIVPP_ERROR("sr local sid add/del failed(%d)", retval); }
-    else { SAIVPP_INFO("sr local sid add/del successful"); }
-}
-
-static void
 vl_api_sr_localsid_add_del_v2_reply_t_handler(vl_api_sr_localsid_add_del_v2_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1412,7 +1402,6 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     _(TUNTERM_MSG_ID(TUNTERM_ACL_INTERFACE_ADD_DEL_REPLY), tunterm_acl_interface_add_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_DEL_REPLY), tunterm_acl_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_ADD_REPLACE_REPLY), tunterm_acl_add_replace_reply) \
-    _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_REPLY), sr_localsid_add_del_reply) \
     _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_V2_REPLY), sr_localsid_add_del_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
