@@ -27,32 +27,37 @@ The SAI Redis provides a SAI redis service built on top of redis database. It co
 
 Before installing, add key and package sources:
 
-    sudo apt-key adv --keyserver apt-mo.trafficmanager.net --recv-keys 417A0893
-    echo 'deb http://apt-mo.trafficmanager.net/repos/sonic/ trusty main' | sudo tee -a /etc/apt/sources.list.d/sonic.list
+    sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 417A0893
+    echo 'deb http://packages.microsoft.com/repos/sonic/ bookworm main' | sudo tee -a /etc/apt/sources.list.d/sonic.list
     sudo apt-get update
 
 Install dependencies:
 
-    sudo apt-get install redis-server -t trusty
-    sudo apt-get install libhiredis0.13 -t trusty
+    sudo apt-get install redis-server
+    sudo apt-get install libhiredis0.14
 
 Install building dependencies:
 
-    sudo apt-get install libtool autoconf dh-exec
+    sudo apt-get install libtool autoconf autoconf-archive dh-exec git
 
 There are a few different ways you can install sairedis.
 
 #### Install from Debian Repo
 
-For your convenience, you can install prepared packages on Debian Jessie:
+For your convenience, you can install prepared packages:
 
     sudo apt-get install libsairedis syncd
 
 #### Install from Source
 
-Checkout the source: `git clone https://github.com/sonic-net/sonic-sairedis.git` and install it yourself.
+Checkout the source:
 
-You will also need SAI submodule: `git submodule update --init --recursive`
+    git clone https://github.com/sonic-net/sonic-sairedis.git
+    cd ./sonic-sairedis/
+
+You will also need SAI submodule:
+
+    git submodule update --init --recursive
 
 Get SAI header files into /usr/include/sai. Put the SAI header files that you use to compile
 libsairedis into /usr/include/sai
@@ -61,9 +66,9 @@ Get ASIC SDK and SAI packages from your ASIC vendor and install them.
 
 Install prerequisite packages:
 
-    sudo apt-get install libswsscommon libswsscommon-dev libhiredis-dev libzmq3-dev libpython-dev
+    sudo apt-get install libzmq3-dev python3-dev
 
-> Note: libswsscommon-dev requires libnl-3-200-dev, libnl-route-3-200-dev and libnl-nf-3-200-dev version >= 3.5.0. If these are not available via apt repositories, you can get them from the latest [sonic-buildimage build](https://sonic-build.azurewebsites.net/api/sonic/artifacts?branchName=master&platform=vs&format=zip&target=target%2Fdebs%2Fbuster).
+> Note: libswsscommon-dev requires libnl-3-200-dev, libnl-route-3-200-dev and libnl-nf-3-200-dev version >= 3.5.0. If these are not available via apt repositories, you can get them from the latest [sonic-buildimage build](https://github.com/sonic-net/sonic-buildimage/actions).
 
 Install SAI dependencies:
 
@@ -113,7 +118,7 @@ Guide for performing commits:
 >
 >     [List of changes]
 >
-> 	  Signed-off-by: Your Name your@email.com
+>       Signed-off-by: Your Name your@email.com
 
 For example:
 
