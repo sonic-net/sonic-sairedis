@@ -228,6 +228,8 @@ namespace syncd
 
             std::string m_dbCounters;
 
+            bool m_isTcpConn;
+
             bool m_isDiscarded;
 
             std::map<std::string, std::shared_ptr<BaseCounterContext>> m_counterContext;
