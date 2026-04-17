@@ -1844,7 +1844,7 @@ public:
         }
     }
 
-    void initAttrData(
+    bool initAttrData(
         sai_object_id_t rid,
         sai_attribute_t *attr,
         PortPhyAttributeData* data)
@@ -1854,7 +1854,7 @@ public:
         if (!attr || !data)
         {
             SWSS_LOG_ERROR("PORT_PHY_ATTR: Invalid input params : attr : %p, data : %p", attr, data);
-            return;
+            return false;
         }
 
         auto outer_it = m_portLaneCountMap.find(rid);
@@ -1862,7 +1862,7 @@ public:
         {
           SWSS_LOG_ERROR("PORT_PHY_ATTR: Rid:0x%" PRIx64 " not found in m_portLaneCountMap, attr->id : %d",
                          rid, attr->id);
-          return;
+          return false;
         }
 
         const auto &attrLaneCountMap = outer_it->second;
@@ -1871,7 +1871,7 @@ public:
         {
           SWSS_LOG_ERROR("PORT_PHY_ATTR: Attr Id(%d) not found in m_portLaneCountMap[Rid:0x%" PRIx64 "]",
                          attr->id, rid);
-          return;
+          return false;
         }
 
         auto portLaneCount = inner_it->second;
@@ -1883,23 +1883,23 @@ public:
                 data->rxSignalDetectData.resize(portLaneCount);
                 attr->value.portlanelatchstatuslist.count = portLaneCount;
                 attr->value.portlanelatchstatuslist.list = data->rxSignalDetectData.data();
-                break;
+                return true;
 
             case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
                 data->fecAlignmentLockData.resize(portLaneCount);
                 attr->value.portlanelatchstatuslist.count = portLaneCount;
                 attr->value.portlanelatchstatuslist.list = data->fecAlignmentLockData.data();
-                break;
+                return true;
 
             case SAI_PORT_ATTR_RX_SNR:
                 data->rxSnrData.resize(portLaneCount);
                 attr->value.portsnrlist.count = portLaneCount;
                 attr->value.portsnrlist.list = data->rxSnrData.data();
-                break;
+                return true;
 
             default:
                 SWSS_LOG_ERROR("PORT_PHY_ATTR: initAttrData: Unsupported attr-id : %d", attr->id);
-                break;
+                return false;
         }
     }
 
@@ -1981,10 +1981,22 @@ public:
             SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
 
+            bool attrDataInitialized = true;
             for (size_t i = 0; i < attrIds.size(); i++)
             {
                 attrs[i].id = attrIds[i];
-                initAttrData(rid, &attrs[i], &attrData);
+                if (!initAttrData(rid, &attrs[i], &attrData))
+                {
+                    SWSS_LOG_WARN("PORT_PHY_ATTR: Failed to initialize attribute %d for RID:0x%" PRIx64 ", skipping object",
+                                  attrIds[i], rid);
+                    attrDataInitialized = false;
+                    break;
+                }
+            }
+
+            if (!attrDataInitialized)
+            {
+                continue;
             }
 
             // Collect attributes from SAI
