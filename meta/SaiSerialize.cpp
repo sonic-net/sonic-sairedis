@@ -1822,12 +1822,12 @@ std::string sai_serialize_port_snr_list(
     }
 
     // Convert raw U16 SNR (in 1/256 dB units) to dB value per SAI definition
-    // e.g., raw value 5248 represents 5248/256 = 20.5 dB (Single decimal precision)
+    // e.g., raw value 5248 represents 5248/256 = 20.50 dB (Two decimal precision)
     for (uint32_t i = 0; i < snr_list.count; ++i)
     {
         std::string lane_key = std::to_string(snr_list.list[i].lane);
         double dB = static_cast<double>(snr_list.list[i].snr) / 256.0;
-        j[lane_key] = std::round(dB * 10.0) / 10.0;
+        j[lane_key] = std::round(dB * 100.0) / 100.0;
     }
 
     return j.dump();
