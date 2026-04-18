@@ -473,6 +473,7 @@ static uintptr_t get_index_ptr (uint32_t idx)
 
 vat_main_t vat_main;
 uword *interface_name_by_sw_index = NULL;
+uword *link_speed_by_sw_index = NULL;
 
 f64
 vat_time_now (vat_main_t * vam)
@@ -689,6 +690,9 @@ vl_api_sw_interface_details_t_handler (vl_api_sw_interface_details_t *mp)
   hash_set_mem (vam->sw_if_index_by_interface_name, s,
                 ntohl (mp->sw_if_index));
   hash_set (interface_name_by_sw_index, ntohl (mp->sw_if_index), s);
+
+  /* Save link speed (in Kbps) per interface */
+  hash_set (link_speed_by_sw_index, ntohl (mp->sw_if_index), ntohl (mp->link_speed));
 
   /* In sub interface case, fill the sub interface table entry */
   if (mp->sw_if_index != mp->sup_sw_if_index)
@@ -1536,6 +1540,7 @@ api_sw_interface_dump (vat_main_t *vam)
 
     /* Interface name is from the index_table which is already freed */
     hash_free (interface_name_by_sw_index);
+    hash_free (link_speed_by_sw_index);
 
     vec_foreach (sub, vam->sw_if_subif_table)
     {
@@ -1781,6 +1786,7 @@ int init_vpp_client()
     vam->socket_name = format (0, "%s%c", API_SOCKET_FILE, 0);
     vam->sw_if_index_by_interface_name = hash_create_string (0, sizeof (uword));
     interface_name_by_sw_index = hash_create (0, sizeof (uword));
+    link_speed_by_sw_index = hash_create (0, sizeof (uword));
 
     if (vsc_socket_connect(vam, client_name) == 0) {
         int rc;
@@ -2731,6 +2737,32 @@ int interface_get_state (const char *hwif_name, bool *link_is_up)
     VPP_UNLOCK();
 
     return ret;
+}
+
+int vpp_get_interface_speed (const char *hwif_name, uint32_t *speed)
+{
+    vat_main_t *vam = &vat_main;
+    uword *p;
+
+    VPP_LOCK();
+
+    u32 idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+	VPP_UNLOCK();
+	return -EINVAL;
+    }
+
+    p = hash_get(link_speed_by_sw_index, idx);
+    if (!p) {
+	VPP_UNLOCK();
+	return -ENOENT;
+    }
+
+    *speed = (uint32_t) p[0];
+
+    VPP_UNLOCK();
+
+    return 0;
 }
 
 int vpp_sync_for_events ()
