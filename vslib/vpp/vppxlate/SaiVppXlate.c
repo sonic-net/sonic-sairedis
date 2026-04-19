@@ -32,20 +32,6 @@
 
 #include <vlibapi/vat_helper_macros.h>
 
-/*
- * Normalize VPP return code for delete operations.
- * If the operation is a delete and VPP returns NO_SUCH_ENTRY,
- * the entry is already gone — treat it as success.
- */
-static inline int vpp_normalize_ret(int ret, bool is_del, const char *func)
-{
-    if (is_del && ret == VNET_API_ERROR_NO_SUCH_ENTRY) {
-	    SAIVPP_INFO("%s: ignoring NO_SUCH_ENTRY(%d) on delete", func, ret);
-	    ret = 0;
-    }
-    return ret;
-}
-
 /* Declare message IDs */
 #include <vnet/format_fns.h>
 #include <vnet/interface.api_enum.h>
@@ -346,6 +332,20 @@ void classify_get_trace_chain(void ){}
 void os_exit(int code) {}
 
 #include "../SaiVppLog.h"
+
+/*
+ * Normalize VPP return code for delete operations.
+ * If the operation is a delete and VPP returns NO_SUCH_ENTRY,
+ * the entry is already gone — treat it as success.
+ */
+static inline int vpp_normalize_ret(int ret, bool is_del, const char *func)
+{
+    if (is_del && ret == VNET_API_ERROR_NO_SUCH_ENTRY) {
+	    SAIVPP_INFO("%s: ignoring NO_SUCH_ENTRY(%d) on delete", func, ret);
+	    ret = 0;
+    }
+    return ret;
+}
 
 #define M22(T, mp, n)                                            \
 do {                                                            \
