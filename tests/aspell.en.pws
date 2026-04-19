@@ -55,6 +55,7 @@ IPv
 Inseg
 KEYs
 LLC
+LLR
 LOGLEVEL
 LOOPBACK
 MACsec
@@ -136,6 +137,7 @@ ATTR
 AttrHash
 attrid
 attridname
+attribs
 attrs
 attrvalue
 BCM
