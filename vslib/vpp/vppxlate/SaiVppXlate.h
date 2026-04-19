@@ -261,6 +261,16 @@ typedef enum {
         bool          is_l3;
      } vpp_vxlan_tunnel_t;
 
+    typedef struct _vpp_ipip_tunnel {
+        vpp_ip_addr_t src_address;
+        vpp_ip_addr_t dst_address;
+        uint32_t      table_id;         // underlay VRF
+        uint8_t       flags;            // tunnel_encap_decap_flags
+        uint8_t       mode;             // 0=P2P, 1=MP
+        uint8_t       dscp;             // fixed DSCP value
+        uint32_t      instance;         // ~0 for auto
+    } vpp_ipip_tunnel_t;
+
     extern vpp_event_info_t * vpp_ev_dequeue();
     extern void vpp_ev_free(vpp_event_info_t *evp);
 
@@ -333,6 +343,13 @@ typedef enum {
     extern int vpp_sidlist_del(vpp_ip_addr_t *bsid);
     extern int vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del);
     extern int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src);
+    extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
+    extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
+    extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
+                                           uint32_t ip_sw_if_index, bool is_add);
+    extern int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip,
+                                           uint32_t vrf_id,
+                                           uint32_t *out_sw_if_index);
 #ifdef __cplusplus
 }
 #endif
