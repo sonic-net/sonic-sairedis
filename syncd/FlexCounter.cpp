@@ -510,10 +510,7 @@ protected:
     CounterGroupRef makeCounterGroupRef(size_t idx, size_t size)
     {
         SWSS_LOG_ENTER();
-        CounterGroupRef ctx;
-        ctx.idx = idx;
-        ctx.size = size;
-        return ctx;
+        return {idx, size};
     }
     std::set<StatType>* getSortedCGRef(CounterGroupRef const& cgr)
     {
@@ -596,6 +593,7 @@ public:
 
         std::set<StatType> counter_ids_set = setupBaseCounterGroup(rid, counter_ids, effective_stats_mode);
         counter_ids = std::vector<StatType>(counter_ids_set.begin(), counter_ids_set.end());
+        std::sort(counter_ids.begin(), counter_ids.end());
         updateSupportedCounterGroups(rid, vid, counter_ids, effective_stats_mode);
 
         if (m_objectSupportedCountersGroupMap.count(vid) == 0)
@@ -622,7 +620,7 @@ public:
             }
         }
 
-         // Perform a remove and re-add to simplify the logic here
+        // Perform a remove and re-add to simplify the logic here
         removeObject(vid, false);
 
         bool supportBulk;
@@ -1025,7 +1023,7 @@ public:
                 _In_ const std::vector<sai_object_id_t>& vids,
                 _In_ const std::vector<sai_object_id_t>& rids,
                 _In_ const std::vector<std::string>& idStrings,
-                _In_ const std::string &per_object_stats_mode)
+                _In_ const std::string &per_object_stats_mode) override
     {
         SWSS_LOG_ENTER();
         sai_stats_mode_t effective_stats_mode;
@@ -1060,6 +1058,7 @@ public:
 
         std::set<StatType> counter_ids_set = setupBaseCounterGroup(rids[0], allCounterIds, effective_stats_mode);
         allCounterIds = std::vector<StatType>(counter_ids_set.begin(), counter_ids_set.end());
+        std::sort(allCounterIds.begin(), allCounterIds.end());
         for (size_t i = 0; i < vids.size(); i++)
         {
             updateSupportedCounterGroups(rids[i], vids[i], allCounterIds, effective_stats_mode);
@@ -1215,7 +1214,10 @@ public:
                             m_objectIdsMap.erase(it_vid);
                         }
 
-                        auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
+                        size_t groupIndex = m_objectSupportedCountersGroupMap[vid];
+                        std::vector<StatType> objCounterIds(m_supportedCounterGroups[groupIndex].begin(),
+                                                            m_supportedCounterGroups[groupIndex].end());
+                        auto counter_data = std::make_shared<CounterIds<StatType>>(rid, objCounterIds);
                         m_objectIdsMap.emplace(vid, counter_data);
                     }
                     else
@@ -1530,7 +1532,7 @@ public:
             std::vector<uint64_t> stats(statIds.size(), 0);
             if (!collectData(rid, statIds, effective_stats_mode, true, stats))
             {
-                SWSS_LOG_ERROR("counter read failed on RID 0x%x on intf 0x%x", rid, vid);
+                SWSS_LOG_ERROR("counter read failed on RID 0x%" PRIx64 " on intf 0x%" PRIx64, rid, vid);
                 continue;
             }
 
@@ -1592,7 +1594,7 @@ public:
 private:
     std::set<StatType> setupBaseCounterGroup(
             _In_ sai_object_id_t rid,
-            _In_ const std::vector<StatType> counter_ids,
+            _In_ const std::vector<StatType>& counter_ids,
             _In_ sai_stats_mode_t &stats_mode)
     {
         SWSS_LOG_ENTER();
@@ -1987,7 +1989,9 @@ private:
                 std::vector<StatType> extraCounters;
                 std::set<StatType> newCounters;
 
-                // Counter groups is a subset of counter_ids in any situation
+                // Counter groups are a subset of counter_ids in any situation
+                // Vectors need to be sorted for set_difference for defined behavior - counter_ids are already sorted
+                std::sort(countersToPoll.begin(), countersToPoll.end());
                 std::set_difference(counter_ids.begin(), counter_ids.end(), countersToPoll.begin(), countersToPoll.end(),
                                     std::inserter(extraCounters, extraCounters.begin()));
                 for (const StatType &counter : extraCounters)
@@ -2029,8 +2033,10 @@ private:
                     if (m_objectSupportedCountersGroupMap.count(vid) && dont_clear_support_counter &&
                             m_supportedCounterGroups[m_objectSupportedCountersGroupMap[vid]] != m_supportedCounterGroups[m_counterGroupsSorted[i].idx])
                     {
-                            std::set<StatType> oldGroup = m_supportedCounterGroups[m_counterGroupsSorted[i].idx];
-                            newCounters.insert(oldGroup.begin(), oldGroup.end());
+                            std::set<StatType> prevGroup = m_supportedCounterGroups[m_objectSupportedCountersGroupMap[vid]];
+                            newCounters.insert(prevGroup.begin(), prevGroup.end());
+                            std::set<StatType> currGroup = m_supportedCounterGroups[m_counterGroupsSorted[i].idx];
+                            newCounters.insert(currGroup.begin(), currGroup.end());
                             m_objectSupportedCountersGroupMap[vid] = m_supportedCounterGroups.size();
                             m_supportedCounterGroups.push_back(newCounters);
                             m_counterGroupsSorted.push_back(makeCounterGroupRef(m_supportedCounterGroups.size()-1, newCounters.size()));
@@ -2335,6 +2341,7 @@ public:
     {
         addObject(vid, rid, idStrings, per_object_stats_mode);
     }
+
     void addObject(
             _In_ sai_object_id_t vid,
             _In_ sai_object_id_t rid,
@@ -2461,7 +2468,7 @@ public:
             _In_ const std::vector<std::string>& idStrings,
             _In_ const std::string &per_object_stats_mode) override
     {
-           bulkAddObject(vids, rids, idStrings, per_object_stats_mode);
+        bulkAddObject(vids, rids, idStrings, per_object_stats_mode);
     }
 
     void bulkAddObject(
@@ -3460,8 +3467,18 @@ void FlexCounter::addCounter(
                         "");
 
             }
+            catch (const std::exception& e)
+            {
+                SWSS_LOG_WARN("Error initializing SAI objects with counter groups: %s, falling back", e.what());
+                getCounterContext(counterGroupRef->second)->addObject(
+                        vid,
+                        rid,
+                        idStrings,
+                        "");
+            }
             catch (...) {
-                SWSS_LOG_WARN("Error occurred initializing SAI objects with counter groups, falling back to global counter list implementation");
+                SWSS_LOG_WARN("Unknown error initializing SAI objects with counter groups, falling back");
+
                 getCounterContext(counterGroupRef->second)->addObject(
                         vid,
                         rid,
@@ -3532,9 +3549,18 @@ void FlexCounter::bulkAddCounter(
                         idStrings,
                         "");
             }
+            catch (const std::exception& e)
+            {
+                SWSS_LOG_WARN("Error initializing SAI objects with counter groups: %s, falling back", e.what());
+                getCounterContext(counterGroupRef->second)->bulkAddObject(
+                        vids,
+                        rids,
+                        idStrings,
+                        "");
+            }
             catch (...)
             {
-                SWSS_LOG_WARN("Error occurred initializing SAI objects with counter groups, falling back to global counter list implementation");
+                SWSS_LOG_WARN("Unknown error initializing SAI objects with counter groups, falling back");
                 getCounterContext(counterGroupRef->second)->bulkAddObject(
                         vids,
                         rids,
@@ -3572,9 +3598,18 @@ void FlexCounter::bulkAddCounter(
                     statsMode);
 
         }
+        catch (const std::exception& e)
+        {
+            SWSS_LOG_WARN("Error initializing SAI objects with counter groups: %s, falling back", e.what());
+            getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObject(
+                    vids,
+                    rids,
+                    counterIds,
+                    statsMode);
+        }
         catch (...)
         {
-            SWSS_LOG_WARN("Error occurred initializing SAI objects with counter groups, falling back to global counter list implementation");
+            SWSS_LOG_WARN("Unknown error initializing SAI objects with counter groups, falling back");
             getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObject(
                     vids,
                     rids,
