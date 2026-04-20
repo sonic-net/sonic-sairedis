@@ -27,18 +27,19 @@ The SAI Redis provides a SAI redis service built on top of redis database. It co
 
 Before installing, add key and package sources:
 
-    sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 417A0893
-    echo 'deb http://packages.microsoft.com/repos/sonic/ bookworm main' | sudo tee -a /etc/apt/sources.list.d/sonic.list
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /etc/apt/keyrings/sonic.gpg
+    echo 'deb [signed-by=/etc/apt/keyrings/sonic.gpg] http://packages.microsoft.com/repos/sonic/ bookworm main' | sudo tee /etc/apt/sources.list.d/sonic.list
     sudo apt-get update
 
 Install dependencies:
 
-    sudo apt-get install redis-server
-    sudo apt-get install libhiredis0.14
+    sudo apt-get install -y redis-server
+    sudo apt-get install -y libhiredis0.14
 
 Install building dependencies:
 
-    sudo apt-get install libtool autoconf autoconf-archive dh-exec git
+    sudo apt-get install -y libtool autoconf autoconf-archive dh-exec git
 
 There are a few different ways you can install sairedis.
 
@@ -46,7 +47,7 @@ There are a few different ways you can install sairedis.
 
 For your convenience, you can install prepared packages:
 
-    sudo apt-get install libsairedis syncd
+    sudo apt-get install -y libsairedis syncd
 
 #### Install from Source
 
@@ -66,13 +67,13 @@ Get ASIC SDK and SAI packages from your ASIC vendor and install them.
 
 Install prerequisite packages:
 
-    sudo apt-get install libzmq3-dev python3-dev
+    sudo apt-get install -y libswsscommon libswsscommon-dev libhiredis-dev libzmq3-dev python3-dev
 
 > Note: libswsscommon-dev requires libnl-3-200-dev, libnl-route-3-200-dev and libnl-nf-3-200-dev version >= 3.5.0. If these are not available via apt repositories, you can get them from the latest [sonic-buildimage build](https://github.com/sonic-net/sonic-buildimage/actions).
 
 Install SAI dependencies:
 
-    sudo apt-get install doxygen graphviz aspell
+    sudo apt-get install -y doxygen graphviz aspell
 
 You can compile and install from source using:
 
