@@ -12,6 +12,31 @@
 
 #include <set>
 
+bool Meta::isMetaObjectCollectionSkipped(
+        _In_ sai_object_type_t objectType)
+{
+    /*
+     * These DASH entry types are created in very large quantities (millions
+     * of entries across 64+ ENIs) and storing them in SaiObjectCollection
+     * consumes GiBs of memory. Skipping meta collection tracking for
+     * these types is safe because they are non-object-id entry types (leafs
+     * in the SAI dependency tree) whose lifecycle is managed deterministically
+     * by orchagent via EntityBulker.
+     */
+
+    switch (objectType)
+    {
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 // TODO add validation for all oids belong to the same switch
 
 #define MAX_LIST_COUNT (0x1<<24) // 16M
@@ -1561,6 +1586,16 @@ sai_status_t Meta::meta_generic_validation_remove(
 {
     SWSS_LOG_ENTER();
 
+	if (isMetaObjectCollectionSkipped(meta_key.objecttype))
+    {
+        // skip existence check for high-scale DASH types
+        auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+        if (info->isnonobjectid)
+        {
+            return SAI_STATUS_SUCCESS;
+        }
+    }
+
     if (!m_saiObjectCollection.objectExists(meta_key))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
@@ -1866,6 +1901,31 @@ void Meta::meta_generic_validation_post_remove(
          */
 
         clean_after_switch_remove(meta_key.objectkey.key.object_id);
+
+        return;
+    }
+
+    if (isMetaObjectCollectionSkipped(meta_key.objecttype))
+    {
+        // For high-scale DASH types, only decrement struct member OID refs.
+        // We never stored attributes, so skip the attribute iteration.
+
+        auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+        if (info->isnonobjectid)
+        {
+            for (size_t j = 0; j < info->structmemberscount; ++j)
+            {
+                const sai_struct_member_info_t *m = info->structmembers[j];
+
+                if (m->membervaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+                {
+                    continue;
+                }
+
+                m_oids.objectReferenceDecrement(m->getoid(&meta_key));
+            }
+        }
 
         return;
     }
@@ -3031,6 +3091,11 @@ sai_status_t Meta::meta_sai_validate_inbound_routing_entry(
         }
     };
 
+    if (isMetaObjectCollectionSkipped(SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     if (create)
     {
         if (m_saiObjectCollection.objectExists(meta_key_inbound_routing_entry))
@@ -3076,6 +3141,11 @@ sai_status_t Meta::meta_sai_validate_pa_validation_entry(
             .key = { .pa_validation_entry = *pa_validation_entry }
         }
     };
+
+    if (isMetaObjectCollectionSkipped(SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
 
     if (create)
     {
@@ -3123,6 +3193,12 @@ sai_status_t Meta::meta_sai_validate_outbound_routing_entry(
         }
     };
 
+
+    if (isMetaObjectCollectionSkipped(SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     if (create)
     {
         if (m_saiObjectCollection.objectExists(meta_key_outbound_routing_entry))
@@ -3168,6 +3244,11 @@ sai_status_t Meta::meta_sai_validate_outbound_ca_to_pa_entry(
             .key = { .outbound_ca_to_pa_entry = *outbound_ca_to_pa_entry }
         }
     };
+
+    if (isMetaObjectCollectionSkipped(SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
 
     if (create)
     {
@@ -3843,7 +3924,11 @@ sai_status_t Meta::meta_generic_validation_create(
     {
         // just sanity check if object already exists
 
-        if (m_saiObjectCollection.objectExists(meta_key))
+        if (isMetaObjectCollectionSkipped(meta_key.objecttype))
+        {
+            // skip duplicate check for high-scale DASH types
+        }
+        else if (m_saiObjectCollection.objectExists(meta_key))
         {
             SWSS_LOG_ERROR("object key %s already exists",
                     sai_serialize_object_meta_key(meta_key).c_str());
@@ -4482,7 +4567,11 @@ sai_status_t Meta::meta_generic_validation_set(
 
     // check if object on which we perform operation exists
 
-    if (!m_saiObjectCollection.objectExists(meta_key))
+    if (isMetaObjectCollectionSkipped(meta_key.objecttype))
+    {
+        // skip existence check for high-scale DASH types
+    }
+	else if (!m_saiObjectCollection.objectExists(meta_key))
     {
         META_LOG_ERROR(md, "object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key).c_str());
@@ -4815,7 +4904,11 @@ sai_status_t Meta::meta_generic_validation_get(
         }
     }
 
-    if (!m_saiObjectCollection.objectExists(meta_key))
+	if (isMetaObjectCollectionSkipped(meta_key.objecttype))
+    {
+        // skip existence check for high-scale DASH types
+    }
+    else if (!m_saiObjectCollection.objectExists(meta_key))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key).c_str());
@@ -5714,6 +5807,33 @@ void Meta::meta_generic_validation_post_create(
         }
     }
 
+    bool skipCollection = isMetaObjectCollectionSkipped(meta_key.objecttype);
+
+    if (skipCollection)
+    {
+        // For high-scale DASH types, skip object collection entirely.
+        // Still track struct member OID references (switch_id, eni_id).
+
+        auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+        if (info->isnonobjectid)
+        {
+            for (size_t j = 0; j < info->structmemberscount; ++j)
+            {
+                const sai_struct_member_info_t *m = info->structmembers[j];
+
+                if (m->membervaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+                {
+                    continue;
+                }
+
+                m_oids.objectReferenceIncrement(m->getoid(&meta_key));
+            }
+        }
+
+        return;
+    }
+
     if (m_saiObjectCollection.objectExists(meta_key))
     {
         if (m_warmBoot && meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
@@ -6019,6 +6139,11 @@ void Meta::meta_generic_validation_post_set(
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
+
+    if (isMetaObjectCollectionSkipped(meta_key.objecttype))
+    {
+        return;
+    }
 
     auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 

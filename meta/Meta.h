@@ -638,6 +638,19 @@ namespace saimeta
             void clean_after_switch_remove(
                     _In_ sai_object_id_t switchId);
 
+            /**
+             * @brief Check if SaiObjectCollection tracking should be skipped
+             * for a given object type.
+             *
+             * High-scale DASH entry types are skipped to avoid excessive
+             * memory consumption (10+ GiB at scale).
+             *
+             * @param[in] objectType The SAI object type to check.
+             * @return true if collection tracking should be skipped.
+             */
+            static bool isMetaObjectCollectionSkipped(
+                    _In_ sai_object_type_t objectType);
+
         private:
 
             std::shared_ptr<sairedis::SaiInterface> m_implementation;
