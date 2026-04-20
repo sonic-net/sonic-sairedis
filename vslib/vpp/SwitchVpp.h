@@ -80,6 +80,9 @@ namespace saivs
                     _In_ const sai_attr_metadata_t *meta,
                     _In_ sai_object_id_t object_id) override;
 
+            virtual sai_status_t refresh_port_oper_speed(
+                    _In_ sai_object_id_t port_id) override;
+
         private: // from vpp VirtualSwitchSaiInterface
 
             void setPortStats(
