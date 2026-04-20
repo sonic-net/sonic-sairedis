@@ -2748,14 +2748,14 @@ int vpp_get_interface_speed (const char *hwif_name, uint32_t *speed)
 
     u32 idx = get_swif_idx(vam, hwif_name);
     if (idx == (u32) -1) {
-	VPP_UNLOCK();
-	return -EINVAL;
+        VPP_UNLOCK();
+        return -EINVAL;
     }
 
     p = hash_get(link_speed_by_sw_index, idx);
     if (!p) {
-	VPP_UNLOCK();
-	return -ENOENT;
+        VPP_UNLOCK();
+        return -ENOENT;
     }
 
     *speed = (uint32_t) p[0];
