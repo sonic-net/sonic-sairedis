@@ -26,10 +26,10 @@ bool Meta::isMetaObjectCollectionSkipped(
 
     switch (objectType)
     {
-        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
-        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
-        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
-        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+        case (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+        case (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+        case (sai_object_type_t)SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+        case (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
             return true;
 
         default:
@@ -3091,7 +3091,7 @@ sai_status_t Meta::meta_sai_validate_inbound_routing_entry(
         }
     };
 
-    if (isMetaObjectCollectionSkipped(SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY))
+    if (isMetaObjectCollectionSkipped((sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY))
     {
         return SAI_STATUS_SUCCESS;
     }
@@ -3142,7 +3142,7 @@ sai_status_t Meta::meta_sai_validate_pa_validation_entry(
         }
     };
 
-    if (isMetaObjectCollectionSkipped(SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY))
+    if (isMetaObjectCollectionSkipped((sai_object_type_t)SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY))
     {
         return SAI_STATUS_SUCCESS;
     }
@@ -3194,7 +3194,7 @@ sai_status_t Meta::meta_sai_validate_outbound_routing_entry(
     };
 
 
-    if (isMetaObjectCollectionSkipped(SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY))
+    if (isMetaObjectCollectionSkipped((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY))
     {
         return SAI_STATUS_SUCCESS;
     }
@@ -3245,7 +3245,7 @@ sai_status_t Meta::meta_sai_validate_outbound_ca_to_pa_entry(
         }
     };
 
-    if (isMetaObjectCollectionSkipped(SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY))
+    if (isMetaObjectCollectionSkipped((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY))
     {
         return SAI_STATUS_SUCCESS;
     }
