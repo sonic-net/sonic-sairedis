@@ -440,7 +440,10 @@ namespace saivs
 
             std::map<sai_object_id_t, std::shared_ptr<IpVrfInfo>> vrf_objMap;
             bool nbr_env_read = false;
-            bool nbr_active = false;
+            // nbr_active is true by default, can be set to false by env var NO_LINUX_NL = n.
+            // If false, it will rely on linux_nl_plugin to sync ip to VPP.
+            // no neighbor entries will be added to vpp from SAI
+            bool nbr_active = true;
             std::map<std::string, std::string> m_intf_prefix_map;
             std::unordered_map<std::string, uint32_t> lpbInstMap;
             std::unordered_map<std::string, std::string> lpbIpToHostIfMap;
