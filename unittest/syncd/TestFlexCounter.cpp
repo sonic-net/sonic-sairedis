@@ -1742,13 +1742,13 @@ TEST(FlexCounter, counterIdChange)
 
     // support bulk to not support bulk
     values.clear();
-    values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS,SAI_PORT_STAT_IF_IN_UCAST_PKTS");
+    values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_UCAST_PKTS,SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS");
     fc.addCounter(oid, oid, values);
 
     usleep(1000*1050);
     counterVerifyFunc(countersTable,
                       expectedKey,
-                      {"SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS"},
+                      {"SAI_PORT_STAT_IF_IN_UCAST_PKTS", "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS"},
                       {"10", "20"});
 
     // not support bulk but counter id changes
