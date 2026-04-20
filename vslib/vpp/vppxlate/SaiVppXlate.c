@@ -1049,7 +1049,7 @@ vl_api_ipip_add_tunnel_reply_t_handler(vl_api_ipip_add_tunnel_reply_t *msg)
 
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-    SAIVPP_DEBUG("ipip_add_tunnel handler: if_idx,%d,status,%d",vam->sw_if_index, vam->retval);
+    SAIVPP_DEBUG("ipip_add_tunnel handler: if_idx,%d,status,%d", ntohl(msg->sw_if_index), retval);
 }
 
 static void
@@ -1057,7 +1057,7 @@ vl_api_ipip_del_tunnel_reply_t_handler(vl_api_ipip_del_tunnel_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-    SAIVPP_DEBUG("ipip_del_tunnel handler: status,%d", vam->retval);
+    SAIVPP_DEBUG("ipip_del_tunnel handler: status,%d", retval);
 }
 
 /*
