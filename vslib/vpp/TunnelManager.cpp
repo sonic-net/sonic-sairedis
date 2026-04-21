@@ -827,6 +827,8 @@ TunnelManagerIpIp::map_sai_to_vpp_flags(const SaiObject* tunnel_obj)
 
 uint32_t TunnelManagerIpIp::resolve_vrf_id(_In_ sai_object_id_t vr_oid)
 {
+    SWSS_LOG_ENTER();
+
     if (vr_oid == SAI_NULL_OBJECT_ID) {
         return 0;
     }
@@ -843,6 +845,8 @@ uint32_t TunnelManagerIpIp::resolve_vrf_id(_In_ sai_object_id_t vr_oid)
 
 uint32_t TunnelManagerIpIp::resolve_vrf_from_rif(_In_ sai_object_id_t rif_oid)
 {
+    SWSS_LOG_ENTER();
+
     auto rif_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_ROUTER_INTERFACE,
                                                sai_serialize_object_id(rif_oid));
     if (rif_obj) {
