@@ -41,23 +41,21 @@ namespace saivs
     /**
      * @brief VPP data associated with an IPIP tunnel.
      */
-    class IpIpTunnelVPPData
-    {
+    class IpIpTunnelVPPData {
     public:
-        enum tunnel_mode : u_int8_t
-        {
+        enum tunnel_mode : u_int8_t {
             /** point-to-point */
             TUNNEL_API_MODE_P2P = 0,
             /** multi-point */
             TUNNEL_API_MODE_MP,
         };
 
-        IpIpTunnelVPPData()
-        {
+        IpIpTunnelVPPData() {
             SWSS_LOG_ENTER();
             memset(&src_ip, 0, sizeof(src_ip));
             memset(&dst_ip, 0, sizeof(dst_ip));
         }
+
         u_int32_t sw_if_index = 0;
         sai_ip_address_t src_ip;                            // outer src (local endpoint)
         sai_ip_address_t dst_ip;                            // outer dst (remote endpoint; 0.0.0.0 for P2MP)
@@ -374,8 +372,7 @@ namespace saivs
                         _Out_ vpp_ip_addr_t &bsid);
     };
 
-    class TunnelManagerIpIp
-    {
+    class TunnelManagerIpIp {
     public:
         TunnelManagerIpIp(SwitchVpp *switch_db);
         ~TunnelManagerIpIp() = default;
@@ -400,13 +397,11 @@ namespace saivs
          */
         sai_status_t get_tunnel_if(
             _In_ sai_object_id_t nexthop_oid,
-            _Out_ u_int32_t &sw_if_index)
-        {
+            _Out_ u_int32_t &sw_if_index) {
             SWSS_LOG_ENTER();
 
             auto it = m_ipip_encap_nh_map.find(nexthop_oid);
-            if (it != m_ipip_encap_nh_map.end())
-            {
+            if (it != m_ipip_encap_nh_map.end()) {
                 sw_if_index = it->second.sw_if_index;
                 return SAI_STATUS_SUCCESS;
             }
@@ -414,12 +409,12 @@ namespace saivs
         }
 
         /**
-         * @brief Create an IPIP decap tunnel triggered by a tunnel term table entry.
+         * @brief Create an IPIP decap tunnel triggered by a tunnel decap term entry.
          *
          * Reads DST_IP, SRC_IP, TYPE from the term entry and TTL/DSCP/ECN modes
          * from the referenced tunnel object.
          *
-         * @param serializedObjectId The serialized tunnel term table entry ID.
+         * @param serializedObjectId The serialized tunnel decap term entry ID.
          * @param switch_id The switch ID.
          * @param attr_count Number of attributes.
          * @param attr_list Attribute list.
@@ -434,7 +429,7 @@ namespace saivs
         /**
          * @brief Remove an IPIP decap tunnel.
          *
-         * @param serializedObjectId The serialized tunnel term table entry ID.
+         * @param serializedObjectId The serialized tunnel decap term entry ID.
          * @return SAI_STATUS_SUCCESS on success, error status on failure.
          */
         sai_status_t remove_ipip_tunnel_term(

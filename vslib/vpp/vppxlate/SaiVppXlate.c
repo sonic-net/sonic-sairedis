@@ -806,7 +806,7 @@ vl_api_sw_interface_get_table_reply_t_handler (vl_api_sw_interface_get_table_rep
     }
 
     SAIVPP_DEBUG("sw interface get table %s(%d) vrf_id=%u",
-                retval ? "failed" : "successful", retval, ntohl(msg->vrf_id));
+                 retval ? "failed" : "successful", retval, ntohl(msg->vrf_id));
 }
 
 static void
@@ -4256,13 +4256,13 @@ int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index)
     mp->tunnel.dscp = tunnel->dscp;
 
     if (!vpp_to_vl_api_ip_addr(&mp->tunnel.src, &tunnel->src_address)) {
-        SAIVPP_ERROR("Unknown protocol in src address");
+        SAIVPP_ERROR("Unknown protocol in ipip tunnel src address");
         VPP_UNLOCK();
         return -EINVAL;
     }
 
     if (!vpp_to_vl_api_ip_addr(&mp->tunnel.dst, &tunnel->dst_address)) {
-        SAIVPP_ERROR("Unknown protocol in dst address");
+        SAIVPP_ERROR("Unknown protocol in ipip tunnel dst address");
         VPP_UNLOCK();
         return -EINVAL;
     }
@@ -4371,8 +4371,7 @@ int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
         /* Pre-filter: skip interfaces not in the target VRF */
         if (vrf_id != (uint32_t)~0) {
             uint32_t if_vrf_id = (uint32_t)~0;
-            if (__sw_interface_get_table(sw_if_idxs[i], is_ipv6, &if_vrf_id) != 0
-                || if_vrf_id != vrf_id)
+            if (__sw_interface_get_table(sw_if_idxs[i], is_ipv6, &if_vrf_id) != 0 || if_vrf_id != vrf_id)
                 continue;
         }
 
