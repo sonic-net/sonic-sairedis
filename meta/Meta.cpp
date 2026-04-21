@@ -1953,7 +1953,9 @@ void Meta::meta_generic_validation_post_remove(
                 }
                 break;
 
-                // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+                // no object references to decrement for uint8 list
+                break;
 
                 // ACL ACTION
 
@@ -3620,7 +3622,12 @@ sai_status_t Meta::meta_generic_validation_create(
                     break;
                 }
 
-                // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+                if (value.aclfield.enable)
+                {
+                    VALIDATION_LIST(md, value.aclfield.data.u8list);
+                }
+                break;
 
                 // ACL ACTION
 
@@ -4273,7 +4280,12 @@ sai_status_t Meta::meta_generic_validation_set(
                 break;
             }
 
-            // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+            if (value.aclfield.enable)
+            {
+                VALIDATION_LIST(md, value.aclfield.data.u8list);
+            }
+            break;
 
             // ACL ACTION
 
@@ -4748,7 +4760,9 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.aclfield.data.objlist);
                 break;
 
-                // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+                VALIDATION_LIST(md, value.aclfield.data.u8list);
+                break;
 
                 // ACL ACTION
 
@@ -5017,7 +5031,12 @@ void Meta::meta_generic_validation_post_get(
                     meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
                 break;
 
-                // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST: (2 lists)
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+                if (value.aclfield.enable)
+                {
+                    VALIDATION_LIST_GET(md, value.aclfield.data.u8list);
+                }
+                break;
 
                 // ACL ACTION
 
@@ -5995,7 +6014,9 @@ void Meta::meta_generic_validation_post_create(
                 }
                 break;
 
-                // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+                // no object references to increment for uint8 list
+                break;
 
                 // ACL ACTION
 
@@ -6222,7 +6243,9 @@ void Meta::meta_generic_validation_post_set(
                 break;
             }
 
-            // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+            // no object references to handle for uint8 list
+            break;
 
             // ACL ACTION
 
@@ -7526,6 +7549,10 @@ void Meta::populate(
                         count = value.aclfield.data.objlist.count;
                         list = value.aclfield.data.objlist.list;
                     }
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+                    // no object references in uint8 list
                     break;
 
                 case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
