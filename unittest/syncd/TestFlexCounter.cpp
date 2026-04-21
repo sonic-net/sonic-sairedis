@@ -2022,7 +2022,7 @@ TEST(FlexCounter, noEniDashMeterCounter)
 
 TEST(FlexCounter, dynamicCounterGroups)
 {
-    // This test tests counter group functionality. It ensures ecah interface only polls the counters they support.
+    // This test tests counter group functionality. It ensures each interface only polls the counters they support.
 
     // All 6 counters are requested for every port, but getStats fails for
     // unsupported ones, so each port's counter group only contains its subset.
