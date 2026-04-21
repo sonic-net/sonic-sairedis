@@ -2019,3 +2019,180 @@ TEST(FlexCounter, noEniDashMeterCounter)
         counterVerifyFunc,
         false);
 }
+
+TEST(FlexCounter, dynamicCounterGroups)
+{
+    // This test tests counter group functionality. It ensures ecah interface only polls the counters they support.
+
+    // All 6 counters are requested for every port, but getStats fails for
+    // unsupported ones, so each port's counter group only contains its subset.
+    // Port 0: IN_OCTETS, OUT_OCTETS, IN_ERRORS                  (3 of 6)
+    // Port 1: IN_UCAST_PKTS, OUT_UCAST_PKTS, OUT_ERRORS         (3 of 6)
+    // Port 2: IN_OCTETS, IN_UCAST_PKTS, IN_ERRORS, OUT_ERRORS   (4 of 6, overlaps both)
+    //
+    // Unsupported counters must not appear in Redis for any port.
+
+    std::vector<std::string> allCounterNames = {
+        "SAI_PORT_STAT_IF_IN_OCTETS",
+        "SAI_PORT_STAT_IF_OUT_OCTETS",
+        "SAI_PORT_STAT_IF_IN_UCAST_PKTS",
+        "SAI_PORT_STAT_IF_OUT_UCAST_PKTS",
+        "SAI_PORT_STAT_IF_IN_ERRORS",
+        "SAI_PORT_STAT_IF_OUT_ERRORS"
+    };
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+    auto oids = generateOids(3, SAI_OBJECT_TYPE_PORT);
+    ASSERT_EQ(oids.size(), 3u);
+
+    // Per-RID supported counter sets (keyed by object_id since RID == VID in tests)
+    std::map<sai_object_id_t, std::set<sai_port_stat_t>> supportedMap;
+    supportedMap[oids[0]] = {SAI_PORT_STAT_IF_IN_OCTETS, SAI_PORT_STAT_IF_OUT_OCTETS, SAI_PORT_STAT_IF_IN_ERRORS};
+    supportedMap[oids[1]] = {SAI_PORT_STAT_IF_IN_UCAST_PKTS, SAI_PORT_STAT_IF_OUT_UCAST_PKTS, SAI_PORT_STAT_IF_OUT_ERRORS};
+    supportedMap[oids[2]] = {SAI_PORT_STAT_IF_IN_OCTETS, SAI_PORT_STAT_IF_IN_UCAST_PKTS, SAI_PORT_STAT_IF_IN_ERRORS, SAI_PORT_STAT_IF_OUT_ERRORS};
+
+    // Deterministic counter values: value = (port_index + 1) * 1000 + stat_enum
+    auto computeValue = [&](sai_object_id_t rid, sai_port_stat_t stat) -> uint64_t {
+        int portIdx = 0;
+        for (size_t i = 0; i < oids.size(); i++)
+        {
+            if (oids[i] == rid) { portIdx = static_cast<int>(i); break; }
+        }
+        return static_cast<uint64_t>((portIdx + 1) * 1000 + static_cast<int>(stat));
+    };
+
+    auto isAllSupported = [&](sai_object_id_t rid, uint32_t count, const sai_stat_id_t *ids) -> bool {
+        auto it = supportedMap.find(rid);
+        if (it == supportedMap.end()) return false;
+        for (uint32_t i = 0; i < count; i++)
+        {
+            if (it->second.count(static_cast<sai_port_stat_t>(ids[i])) == 0)
+                return false;
+        }
+        return true;
+    };
+
+    // Succeed only when all requested counters are in the RID's supported set.
+    sai->mock_getStats = [&](sai_object_type_t, sai_object_id_t rid,
+                             uint32_t count, const sai_stat_id_t *ids,
+                             uint64_t *counters) -> sai_status_t
+    {
+        if (!isAllSupported(rid, count, ids))
+            return SAI_STATUS_FAILURE;
+        for (uint32_t i = 0; i < count; i++)
+            counters[i] = computeValue(rid, static_cast<sai_port_stat_t>(ids[i]));
+        return SAI_STATUS_SUCCESS;
+    };
+
+    // Same per-RID logic; PORT uses getStats, but mock this as a safety net.
+    sai->mock_getStatsExt = [&](sai_object_type_t, sai_object_id_t rid,
+                                uint32_t count, const sai_stat_id_t *ids,
+                                sai_stats_mode_t, uint64_t *counters) -> sai_status_t
+    {
+        if (!isAllSupported(rid, count, ids))
+            return SAI_STATUS_FAILURE;
+        for (uint32_t i = 0; i < count; i++)
+            counters[i] = computeValue(rid, static_cast<sai_port_stat_t>(ids[i]));
+        return SAI_STATUS_SUCCESS;
+    };
+
+    // Skip HW capability query; counter support is determined by getStats probing.
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t,
+                                        sai_stat_capability_list_t *)
+    {
+        return SAI_STATUS_FAILURE;
+    };
+
+    // Force non-bulk path so per-port counter groups are polled individually.
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t,
+                                const sai_object_key_t *, uint32_t,
+                                const sai_stat_id_t *, sai_stats_mode_t,
+                                sai_status_t *, uint64_t *)
+    {
+        return SAI_STATUS_FAILURE;
+    };
+
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+
+    std::vector<swss::FieldValueTuple> pluginValues;
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(pluginValues);
+
+    std::vector<swss::FieldValueTuple> counterValues;
+    counterValues.emplace_back(PORT_COUNTER_ID_LIST, join(allCounterNames));
+
+    for (auto oid : oids)
+    {
+        fc.addCounter(oid, oid, counterValues);
+    }
+
+    EXPECT_FALSE(fc.isEmpty());
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    waitForCounterKeys(countersTable, 3);
+
+    // Verify each port has exactly its supported counters with correct values,
+    // and unsupported counters are absent.
+    std::set<sai_port_stat_t> allStats = {
+        SAI_PORT_STAT_IF_IN_OCTETS,
+        SAI_PORT_STAT_IF_OUT_OCTETS,
+        SAI_PORT_STAT_IF_IN_UCAST_PKTS,
+        SAI_PORT_STAT_IF_OUT_UCAST_PKTS,
+        SAI_PORT_STAT_IF_IN_ERRORS,
+        SAI_PORT_STAT_IF_OUT_ERRORS
+    };
+
+    for (size_t p = 0; p < oids.size(); p++)
+    {
+        std::string key = toOid(oids[p]);
+        const auto &supported = supportedMap[oids[p]];
+
+        // Wait for one of the supported counters to be populated
+        sai_port_stat_t firstSupported = *supported.begin();
+        std::string firstField = sai_serialize_port_stat(firstSupported);
+        std::string expectedFirstVal = std::to_string(computeValue(oids[p], firstSupported));
+        waitForCounterValues(countersTable, key, {firstField}, {expectedFirstVal});
+
+        // Verify all supported counters have correct values
+        for (auto stat : supported)
+        {
+            std::string field = sai_serialize_port_stat(stat);
+            std::string value;
+            ASSERT_TRUE(countersTable.hget(key, field, value))
+                << "Port " << p << " missing supported counter " << field;
+            std::string expected = std::to_string(computeValue(oids[p], stat));
+            EXPECT_EQ(value, expected)
+                << "Port " << p << " counter " << field << " value mismatch";
+        }
+
+        // Verify unsupported counters are absent
+        for (auto stat : allStats)
+        {
+            if (supported.count(stat))
+                continue;
+            std::string field = sai_serialize_port_stat(stat);
+            std::string value;
+            EXPECT_FALSE(countersTable.hget(key, field, value))
+                << "Port " << p << " should NOT have unsupported counter " << field
+                << " but found value '" << value << "'";
+        }
+    }
+
+    // Cleanup
+    for (auto oid : oids)
+    {
+        fc.removeCounter(oid);
+        countersTable.del(toOid(oid));
+    }
+    EXPECT_TRUE(fc.isEmpty());
+
+    std::vector<std::string> keys;
+    countersTable.getKeys(keys);
+    removeTimeStamp(keys, countersTable);
+    ASSERT_TRUE(keys.empty());
+}
