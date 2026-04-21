@@ -12,7 +12,7 @@
 
 #include <set>
 
-bool Meta::isMetaObjectCollectionSkipped(
+bool saimeta::Meta::isMetaObjectCollectionSkipped(
         _In_ sai_object_type_t objectType)
 {
     /*
@@ -24,17 +24,15 @@ bool Meta::isMetaObjectCollectionSkipped(
      * by orchagent via EntityBulker.
      */
 
-    switch (objectType)
+    if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY ||
+        objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY ||
+        objectType == (sai_object_type_t)SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY ||
+        objectType == (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY)
     {
-        case (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
-        case (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
-        case (sai_object_type_t)SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
-        case (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
-            return true;
-
-        default:
-            return false;
+        return true;
     }
+
+    return false;
 }
 
 // TODO add validation for all oids belong to the same switch
@@ -1577,6 +1575,20 @@ void Meta::clean_after_switch_remove(
         }
     }
 
+    // clear skipped OID attr tracking for entries belonging to this switch
+
+    for (auto it = m_skippedOidAttrs.begin(); it != m_skippedOidAttrs.end(); )
+    {
+        if (switchIdQuery(it->first.objectkey.key.object_id) == switchId)
+        {
+            it = m_skippedOidAttrs.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
     SWSS_LOG_NOTICE("removed all objects related to switch %s",
             sai_serialize_object_id(switchId).c_str());
 }
@@ -1907,8 +1919,8 @@ void Meta::meta_generic_validation_post_remove(
 
     if (isMetaObjectCollectionSkipped(meta_key.objecttype))
     {
-        // For high-scale DASH types, only decrement struct member OID refs.
-        // We never stored attributes, so skip the attribute iteration.
+        // For high-scale DASH types, decrement struct member OID refs
+        // and any OID attribute refs tracked in the lightweight map.
 
         auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
 
@@ -1925,6 +1937,20 @@ void Meta::meta_generic_validation_post_remove(
 
                 m_oids.objectReferenceDecrement(m->getoid(&meta_key));
             }
+        }
+
+        // Decrement OID attribute refs and remove tracking entry.
+
+        auto it = m_skippedOidAttrs.find(meta_key);
+
+        if (it != m_skippedOidAttrs.end())
+        {
+            for (auto& oidPair : it->second)
+            {
+                m_oids.objectReferenceDecrement(oidPair.second);
+            }
+
+            m_skippedOidAttrs.erase(it);
         }
 
         return;
@@ -5831,6 +5857,24 @@ void Meta::meta_generic_validation_post_create(
             }
         }
 
+        // Also track OID-valued create attributes for correct refcounting.
+        // Types like OUTBOUND_ROUTING_ENTRY have CREATE_AND_SET OID attrs
+        // (e.g. COUNTER_ID, DST_VNET_ID) whose refs must be maintained.
+
+        for (uint32_t idx = 0; idx < attr_count; ++idx)
+        {
+            const sai_attribute_t* attr = &attr_list[idx];
+
+            auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
+
+            if (mdp->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            {
+                m_oids.objectReferenceIncrement(attr->value.oid);
+
+                m_skippedOidAttrs[meta_key].emplace_back(attr->id, attr->value.oid);
+            }
+        }
+
         return;
     }
 
@@ -6142,6 +6186,35 @@ void Meta::meta_generic_validation_post_set(
 
     if (isMetaObjectCollectionSkipped(meta_key.objecttype))
     {
+        // For skipped types, handle OID attribute refcount updates
+        // using the lightweight tracking map instead of the full collection.
+
+        auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
+
+        if (mdp->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+        {
+            auto& vec = m_skippedOidAttrs[meta_key];
+            bool found = false;
+
+            for (auto& p : vec)
+            {
+                if (p.first == attr->id)
+                {
+                    m_oids.objectReferenceDecrement(p.second);
+                    p.second = attr->value.oid;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                vec.emplace_back(attr->id, attr->value.oid);
+            }
+
+            m_oids.objectReferenceIncrement(attr->value.oid);
+        }
+
         return;
     }
 

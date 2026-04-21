@@ -13,6 +13,7 @@
 #include <vector>
 #include <memory>
 #include <set>
+#include <unordered_map>
 
 #define DEFAULT_VLAN_NUMBER 1
 #define MINIMUM_VLAN_NUMBER 1
@@ -677,6 +678,23 @@ namespace saimeta
             OidRefCounter m_oids;
 
             SaiObjectCollection m_saiObjectCollection;
+
+            /**
+             * @brief Lightweight OID attribute tracking for skipped entry types.
+             *
+             * Entry types skipped by isMetaObjectCollectionSkipped() are not
+             * stored in m_saiObjectCollection, but some of them have mutable
+             * OID attributes (e.g. COUNTER_ID, DST_VNET_ID) whose reference
+             * counts must still be maintained correctly.
+             *
+             * This map stores only the current OID attribute values for those
+             * entries, using far less memory than full SaiObjectCollection
+             * storage (no SaiAttrWrapper deep copies, no non-OID attrs).
+             */
+            std::unordered_map<
+                sai_object_meta_key_t,
+                std::vector<std::pair<sai_attr_id_t, sai_object_id_t>>,
+                MetaKeyHasher, MetaKeyHasher> m_skippedOidAttrs;
 
             AttrKeyMap m_attrKeys;
 
