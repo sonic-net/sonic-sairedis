@@ -2029,7 +2029,7 @@ TEST(FlexCounter, dynamicCounterGroups)
     // Port 0: IN_OCTETS, OUT_OCTETS, IN_ERRORS                            (3 of 6)
     // Port 1: IN_UCAST_PKTS, OUT_UCAST_PKTS, OUT_ERRORS                   (3 of 6)
     // Port 2: IN_OCTETS, IN_UCAST_PKTS, IN_ERRORS, OUT_ERRORS             (4 of 6, overlaps both)
-    // Port 3: IN_OCTETS, OUT_OCTETS, IN_UCAST_PKTS, IN_ERRORS, OUT_ERRORS (5 of 6, superset of Port 2)
+    // Port 3: IN_OCTETS, OUT_OCTETS, IN_UCAST_PKTS, IN_ERRORS, OUT_ERRORS (5 of 6, super-set of Port 2)
     //
     // Port 3 matches Port 2's existing group, but supports an extra counter
     // (OUT_OCTETS), so a new larger group must be created rather than reusing
