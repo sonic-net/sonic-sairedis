@@ -66,6 +66,7 @@ TunnelManager::get_tunnel_if(
         sw_if_index = it->second.sw_if_index;
         return SAI_STATUS_SUCCESS;
     }
+
     // Fall through to IPIP encap nexthop map
     return m_switch_db->m_tunnel_mgr_ipip.get_tunnel_if(nexthop_oid, sw_if_index);
 }
@@ -831,11 +832,11 @@ uint32_t TunnelManagerIpIp::resolve_vrf_id(_In_ sai_object_id_t vr_oid)
     }
     auto vrf = m_switch_db->vpp_get_ip_vrf(vr_oid);
     if (vrf) {
-        SWSS_LOG_NOTICE("IpIp: VR %s -> VRF %u",
-                        sai_serialize_object_id(vr_oid).c_str(), vrf->m_vrf_id);
+        SWSS_LOG_INFO("IpIp: VR %s -> VRF %u",
+                      sai_serialize_object_id(vr_oid).c_str(), vrf->m_vrf_id);
         return vrf->m_vrf_id;
     }
-    SWSS_LOG_WARN("IpIp: VR %s not found, using default VRF",
+    SWSS_LOG_WARN("IpIp: vr %s not found, using default vrf",
                   sai_serialize_object_id(vr_oid).c_str());
     return 0;
 }
@@ -851,7 +852,7 @@ uint32_t TunnelManagerIpIp::resolve_vrf_from_rif(_In_ sai_object_id_t rif_oid)
             return resolve_vrf_id(rif_attr.value.oid);
         }
     }
-    SWSS_LOG_WARN("IpIp: could not resolve VRF from RIF %s",
+    SWSS_LOG_WARN("IpIp: could not resolve vrf from rif %s",
                   sai_serialize_object_id(rif_oid).c_str());
     return 0;
 }
@@ -909,6 +910,7 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
     if (ret < 0) {
         SWSS_LOG_ERROR("IpIp: failed to set interface vrf for %s vrf=%u is_ipv6=%d ret=%d",
                        ifname, vrf_id, is_ipv6, ret);
+        vpp_ipip_tunnel_del(sw_if_index);
         return SAI_STATUS_FAILURE;
     }
 
@@ -919,6 +921,7 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
         if (ret < 0) {
             SWSS_LOG_ERROR("IpIp: failed to set interface unnumbered sw_if=%u use sw_if=%u ret=%d",
                            sw_if_index, owner_sw_if_index, ret);
+            vpp_ipip_tunnel_del(sw_if_index);
             return SAI_STATUS_FAILURE;
         } else {
             const char *owner_ifname = vpp_get_swif_name(owner_sw_if_index);
@@ -929,8 +932,10 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
     else {
         char ip_str[INET6_ADDRSTRLEN];
         vpp_ip_addr_t_to_string(&req.src_address, ip_str, sizeof(ip_str));
-        SWSS_LOG_WARN("IpIp: No interface found for IP %s in vrf %u, unnumbered not set",
-                      ip_str, vrf_id);
+        SWSS_LOG_ERROR("IpIp: No interface found for IP %s in vrf %u, unnumbered not set",
+                       ip_str, vrf_id);
+        vpp_ipip_tunnel_del(sw_if_index);
+        return SAI_STATUS_FAILURE;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1179,7 +1184,7 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
         uint32_t vrf_id = resolve_vrf_from_rif(tunnel_overlay_if_oid);
         sai_status_t status = create_ipip_vpp_tunnel(req, vrf_id, sw_if_index);
         if (status != SAI_STATUS_SUCCESS) {
-            SWSS_LOG_ERROR("IpIp Encap: create_ipip_vpp_tunnel failed for NH %s",
+            SWSS_LOG_ERROR("IpIp Encap: create_ipip_vpp_tunnel failed for nexthop %s",
                             tunnel_nh_obj->get_id().c_str());
             return status;
         }
@@ -1202,7 +1207,7 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
         char src_str[INET6_ADDRSTRLEN], dst_str[INET6_ADDRSTRLEN];
         vpp_ip_addr_t_to_string(&req.src_address, src_str, sizeof(src_str));
         vpp_ip_addr_t_to_string(&req.dst_address, dst_str, sizeof(dst_str));
-        SWSS_LOG_NOTICE("IpIp Encap: created P2P tunnel NH %s: src=%s dst=%s sw_if=%u",
+        SWSS_LOG_NOTICE("IpIp Encap: created P2P tunnel nexthop %s: src=%s dst=%s sw_if=%u",
                         tunnel_nh_obj->get_id().c_str(), src_str, dst_str, sw_if_index);
 
     } else if (action == Action::DELETE) {
