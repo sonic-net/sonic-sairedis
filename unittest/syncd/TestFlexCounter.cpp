@@ -2444,9 +2444,14 @@ TEST(FlexCounter, dynamicCounterGroups)
 
     // All 6 counters are requested for every port, but getStats fails for
     // unsupported ones, so each port's counter group only contains its subset.
-    // Port 0: IN_OCTETS, OUT_OCTETS, IN_ERRORS                  (3 of 6)
-    // Port 1: IN_UCAST_PKTS, OUT_UCAST_PKTS, OUT_ERRORS         (3 of 6)
-    // Port 2: IN_OCTETS, IN_UCAST_PKTS, IN_ERRORS, OUT_ERRORS   (4 of 6, overlaps both)
+    // Port 0: IN_OCTETS, OUT_OCTETS, IN_ERRORS                            (3 of 6)
+    // Port 1: IN_UCAST_PKTS, OUT_UCAST_PKTS, OUT_ERRORS                   (3 of 6)
+    // Port 2: IN_OCTETS, IN_UCAST_PKTS, IN_ERRORS, OUT_ERRORS             (4 of 6, overlaps both)
+    // Port 3: IN_OCTETS, OUT_OCTETS, IN_UCAST_PKTS, IN_ERRORS, OUT_ERRORS (5 of 6, superset of Port 2)
+    //
+    // Port 3 matches Port 2's existing group, but supports an extra counter
+    // (OUT_OCTETS), so a new larger group must be created rather than reusing
+    // Port 2's group.
     //
     // Unsupported counters must not appear in Redis for any port.
 
@@ -2460,14 +2465,15 @@ TEST(FlexCounter, dynamicCounterGroups)
     };
 
     test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
-    auto oids = generateOids(3, SAI_OBJECT_TYPE_PORT);
-    ASSERT_EQ(oids.size(), 3u);
+    auto oids = generateOids(4, SAI_OBJECT_TYPE_PORT);
+    ASSERT_EQ(oids.size(), 4u);
 
     // Per-RID supported counter sets (keyed by object_id since RID == VID in tests)
     std::map<sai_object_id_t, std::set<sai_port_stat_t>> supportedMap;
     supportedMap[oids[0]] = {SAI_PORT_STAT_IF_IN_OCTETS, SAI_PORT_STAT_IF_OUT_OCTETS, SAI_PORT_STAT_IF_IN_ERRORS};
     supportedMap[oids[1]] = {SAI_PORT_STAT_IF_IN_UCAST_PKTS, SAI_PORT_STAT_IF_OUT_UCAST_PKTS, SAI_PORT_STAT_IF_OUT_ERRORS};
     supportedMap[oids[2]] = {SAI_PORT_STAT_IF_IN_OCTETS, SAI_PORT_STAT_IF_IN_UCAST_PKTS, SAI_PORT_STAT_IF_IN_ERRORS, SAI_PORT_STAT_IF_OUT_ERRORS};
+    supportedMap[oids[3]] = {SAI_PORT_STAT_IF_IN_OCTETS, SAI_PORT_STAT_IF_OUT_OCTETS, SAI_PORT_STAT_IF_IN_UCAST_PKTS, SAI_PORT_STAT_IF_IN_ERRORS, SAI_PORT_STAT_IF_OUT_ERRORS};
 
     // Deterministic counter values: value = (port_index + 1) * 1000 + stat_enum
     auto computeValue = [&](sai_object_id_t rid, sai_port_stat_t stat) -> uint64_t {
@@ -2552,7 +2558,7 @@ TEST(FlexCounter, dynamicCounterGroups)
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
 
-    waitForCounterKeys(countersTable, 3);
+    waitForCounterKeys(countersTable, 4);
 
     // Verify each port has exactly its supported counters with correct values,
     // and unsupported counters are absent.
