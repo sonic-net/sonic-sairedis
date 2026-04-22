@@ -18,6 +18,7 @@
 #include <string>
 #include <gtest/gtest.h>
 #include <memory>
+#include <cmath>
 
 using namespace saimeta;
 using namespace sairedis;
@@ -247,16 +248,17 @@ TEST_F(TestPortPhyAttr, CollectDataAndValidateCountersDB)
 
     std::cout << "Actual rx_snr value: " << rxSnrValue << std::endl;
 
-    // Lane key is string, SNR value is number (no quotes around value)
-    // Validate all lanes (0-7) with SNR values: 145, 150, 155, 160, 165, 170, 175, 180
+    // Lane key is string, SNR value is dB (raw_value / 256.0, rounded to 2 decimals)
+    // Validate all lanes (0-7) with raw SNR values: 145, 150, 155, 160, 165, 170, 175, 180
+    // Converted to dB: 0.57, 0.59, 0.61, 0.63, 0.64, 0.66, 0.68, 0.7
     for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++) {
-        uint32_t expected_snr = 145 + (lane * 5);
+        uint32_t raw_snr = 145 + (lane * 5);
+        double dB = std::round(static_cast<double>(raw_snr) / 256.0 * 100.0) / 100.0;
         std::ostringstream expected_entry;
-        expected_entry << "\"" << lane << "\":" << expected_snr;
+        expected_entry << "\"" << lane << "\":" << dB;
 
         EXPECT_TRUE(rxSnrValue.find(expected_entry.str()) != std::string::npos)
-            << "Lane " << lane << " SNR should be " << expected_snr
-            << " in format \"" << lane << "\":" << expected_snr
+            << "Lane " << lane << " SNR should be " << dB << " dB (raw " << raw_snr << ")"
             << "\nActual full value: " << rxSnrValue
             << "\nLooking for: " << expected_entry.str();
     }

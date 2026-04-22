@@ -9,6 +9,7 @@
 #include <vector>
 #include <climits>
 #include <algorithm>
+#include <cmath>
 #include <unordered_map>
 
 #include <arpa/inet.h>
@@ -1812,11 +1813,13 @@ std::string sai_serialize_port_snr_list(
         return j.dump();
     }
 
-    // Create dictionary format: {"0": 3712, "1": 3840, ...}
+    // Convert raw U16 SNR (in 1/256 dB units) to dB value per SAI definition
+    // e.g., raw value 5248 represents 5248/256 = 20.50 dB (Two decimal precision)
     for (uint32_t i = 0; i < snr_list.count; ++i)
     {
         std::string lane_key = std::to_string(snr_list.list[i].lane);
-        j[lane_key] = snr_list.list[i].snr;
+        double dB = static_cast<double>(snr_list.list[i].snr) / 256.0;
+        j[lane_key] = std::round(dB * 100.0) / 100.0;
     }
 
     return j.dump();
@@ -4616,14 +4619,15 @@ void sai_deserialize_port_snr_list(
         uint32_t idx = 0;
         for (auto it = j.begin(); it != j.end(); ++it, ++idx)
         {
-            if (!it.value().is_number_unsigned())
+            if (!it.value().is_number())
             {
                 SWSS_LOG_ERROR("Invalid SNR value type for lane %s", it.key().c_str());
                 continue;
             }
 
+            // Convert dB value back to raw U16 (in 1/256 dB units) per SAI definition
             snr_list.list[idx].lane = static_cast<uint32_t>(std::stoul(it.key()));
-            snr_list.list[idx].snr = it.value().get<sai_uint16_t>();
+            snr_list.list[idx].snr = static_cast<sai_uint16_t>(std::round(it.value().get<double>() * 256.0));
         }
     }
     catch (const json::parse_error& e)
