@@ -1,3 +1,6 @@
+#include <algorithm>
+#include <functional>
+
 #include "SwitchVppUtils.h"
 #include "SwitchVpp.h"
 #include "SaiObjectDB.h"
@@ -874,7 +877,48 @@ uint32_t TunnelManagerIpIp::resolve_vrf_from_rif(_In_ sai_object_id_t rif_oid)
  * remove_ipip_vpp_tunnel:
  *   1. interface_set_state DOWN
  *   2. vpp_ipip_tunnel_del
+ *
+ * Both use a refcount map keyed by {src, dst, mode} to avoid creating
+ * duplicate VPP tunnels when both decap (tunnel_term) and encap (nexthop)
+ * paths request the same tunnel (e.g. MuxTunnel0 P2P).
  */
+
+static bool sai_ip_address_equal(const sai_ip_address_t &a, const sai_ip_address_t &b)
+{
+    if (a.addr_family != b.addr_family) {
+        return false;
+    }
+    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
+        return a.addr.ip4 == b.addr.ip4;
+    }
+    return memcmp(a.addr.ip6, b.addr.ip6, sizeof(a.addr.ip6)) == 0;
+}
+
+bool TunnelManagerIpIp::IpIpTunnelKey::operator==(const IpIpTunnelKey &o) const
+{
+    return (mode == o.mode &&
+            sai_ip_address_equal(src, o.src) &&
+            sai_ip_address_equal(dst, o.dst));
+}
+
+std::size_t TunnelManagerIpIp::IpIpTunnelKeyHash::operator()(const IpIpTunnelKey &k) const
+{
+    std::size_t h = std::hash<uint8_t>()(k.mode);
+    if (k.src.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
+        h ^= std::hash<uint32_t>()(k.src.addr.ip4) << 1;
+    }
+    else {
+        h ^= std::hash<uint64_t>()(*(const uint64_t *)k.src.addr.ip6) << 1;
+    }
+    if (k.dst.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
+        h ^= std::hash<uint32_t>()(k.dst.addr.ip4) << 2;
+    }
+    else {
+        h ^= std::hash<uint64_t>()(*(const uint64_t *)k.dst.addr.ip6) << 2;
+    }
+    return h;
+}
+
 sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
     _Inout_ vpp_ipip_tunnel_t &req,
     _In_ uint32_t vrf_id,
@@ -883,6 +927,23 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
     SWSS_LOG_ENTER();
 
     sw_if_index = 0;
+
+    // Check if a VPP tunnel with the same {src, dst, mode} already exists
+    IpIpTunnelKey key;
+    memset(&key, 0, sizeof(key));
+    vpp_ip_addr_t_to_sai_ip_address_t(req.src_address, key.src);
+    vpp_ip_addr_t_to_sai_ip_address_t(req.dst_address, key.dst);
+    key.mode = req.mode;
+
+    auto ref_it = m_ipip_tunnel_refcount.find(key);
+    if (ref_it != m_ipip_tunnel_refcount.end()) {
+        // Tunnel already exists
+        ref_it->second.refcount++;
+        sw_if_index = ref_it->second.sw_if_index;
+        SWSS_LOG_NOTICE("IpIp: reusing existing vpp ipip tunnel sw_if=%u (refcount=%u)",
+                        sw_if_index, ref_it->second.refcount);
+        return SAI_STATUS_SUCCESS;
+    }
 
     // Create the IPIP tunnel
     int ret = vpp_ipip_tunnel_add(&req, &sw_if_index);
@@ -896,14 +957,12 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
     const char *ifname = vpp_get_swif_name(sw_if_index);
     if (!ifname) {
         SWSS_LOG_ERROR("IpIp: could not get interface name for sw_if_index=%u", sw_if_index);
-        vpp_ipip_tunnel_del(sw_if_index);
         return SAI_STATUS_FAILURE;
     }
 
     ret = interface_set_state(ifname, true);
     if (ret < 0) {
         SWSS_LOG_ERROR("IpIp: failed to set interface up for %s ret=%d", ifname, ret);
-        vpp_ipip_tunnel_del(sw_if_index);
         return SAI_STATUS_FAILURE;
     }
     SWSS_LOG_NOTICE("IpIp: tunnel %s (sw_if=%u) set UP", ifname, sw_if_index);
@@ -914,7 +973,6 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
     if (ret < 0) {
         SWSS_LOG_ERROR("IpIp: failed to set interface vrf for %s vrf=%u is_ipv6=%d ret=%d",
                        ifname, vrf_id, is_ipv6, ret);
-        vpp_ipip_tunnel_del(sw_if_index);
         return SAI_STATUS_FAILURE;
     }
 
@@ -925,7 +983,6 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
         if (ret < 0) {
             SWSS_LOG_ERROR("IpIp: failed to set interface unnumbered sw_if=%u use sw_if=%u ret=%d",
                            sw_if_index, owner_sw_if_index, ret);
-            vpp_ipip_tunnel_del(sw_if_index);
             return SAI_STATUS_FAILURE;
         } else {
             const char *owner_ifname = vpp_get_swif_name(owner_sw_if_index);
@@ -936,11 +993,15 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
     else {
         char ip_str[INET6_ADDRSTRLEN];
         vpp_ip_addr_t_to_string(&req.src_address, ip_str, sizeof(ip_str));
-        SWSS_LOG_ERROR("IpIp: No interface found for IP %s in vrf %u, unnumbered not set",
+        SWSS_LOG_ERROR("IpIp: no interface found for IP %s in vrf %u, unnumbered not set",
                        ip_str, vrf_id);
-        vpp_ipip_tunnel_del(sw_if_index);
         return SAI_STATUS_FAILURE;
     }
+
+    IpIpTunnelRef ref_data;
+    ref_data.sw_if_index = sw_if_index;
+    ref_data.refcount = 1;
+    m_ipip_tunnel_refcount[key] = ref_data;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -948,6 +1009,18 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
 sai_status_t TunnelManagerIpIp::remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index)
 {
     SWSS_LOG_ENTER();
+
+    auto it = std::find_if(m_ipip_tunnel_refcount.begin(), m_ipip_tunnel_refcount.end(),
+                           [sw_if_index](const auto &entry)
+                           { return entry.second.sw_if_index == sw_if_index; });
+    if (it != m_ipip_tunnel_refcount.end()) {
+        if (--it->second.refcount > 0) {
+            SWSS_LOG_NOTICE("IpIp: tunnel sw_if=%u still in use (refcount=%u), skipping delete",
+                            sw_if_index, it->second.refcount);
+            return SAI_STATUS_SUCCESS;
+        }
+        m_ipip_tunnel_refcount.erase(it);
+    }
 
     const char *ifname = vpp_get_swif_name(sw_if_index);
     if (ifname) {
