@@ -192,7 +192,7 @@ TEST(SaiSerialize, sai_serialize_port_snr_list)
 
             auto s = sai_serialize_attr_value(*meta, attr, false);
 
-            std::string expected = "{\"0\":3712,\"1\":3840,\"2\":4160}";
+            std::string expected = "{\"0\":14.5,\"1\":15.0,\"2\":16.25}";
             EXPECT_EQ(s, expected);
 
         }
@@ -201,7 +201,7 @@ TEST(SaiSerialize, sai_serialize_port_snr_list)
 
 TEST(SaiSerialize, sai_deserialize_port_snr_list)
 {
-    std::string json_str = R"({"0":3712,"1":4032})";
+    std::string json_str = R"({"0":14.5,"1":15.75})";
 
     sai_port_snr_list_t snr_list;
     memset(&snr_list, 0, sizeof(snr_list));
