@@ -14,6 +14,7 @@
  */
 
 #include <stdio.h>
+#include <stdint.h>
 #include <endian.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -2711,6 +2712,11 @@ int vpp_get_interface_speed (const char *hwif_name, uint32_t *speed)
     }
 
     *speed = (uint32_t) p[0];
+
+    if (*speed == 0 || *speed == UINT32_MAX) {
+        VPP_UNLOCK();
+        return -ENOENT;
+    }
 
     VPP_UNLOCK();
 
