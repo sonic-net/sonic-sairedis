@@ -904,17 +904,20 @@ bool TunnelManagerIpIp::IpIpTunnelKey::operator==(const IpIpTunnelKey &o) const
 std::size_t TunnelManagerIpIp::IpIpTunnelKeyHash::operator()(const IpIpTunnelKey &k) const
 {
     std::size_t h = std::hash<uint8_t>()(k.mode);
+    uint64_t tmp;
     if (k.src.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
         h ^= std::hash<uint32_t>()(k.src.addr.ip4) << 1;
     }
     else {
-        h ^= std::hash<uint64_t>()(*(const uint64_t *)k.src.addr.ip6) << 1;
+        memcpy(&tmp, k.src.addr.ip6, sizeof(tmp));
+        h ^= std::hash<uint64_t>()(tmp) << 1;
     }
     if (k.dst.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
         h ^= std::hash<uint32_t>()(k.dst.addr.ip4) << 2;
     }
     else {
-        h ^= std::hash<uint64_t>()(*(const uint64_t *)k.dst.addr.ip6) << 2;
+        memcpy(&tmp, k.dst.addr.ip6, sizeof(tmp));
+        h ^= std::hash<uint64_t>()(tmp) << 2;
     }
     return h;
 }
