@@ -487,5 +487,31 @@ namespace saivs
         std::unordered_map<sai_object_id_t, IpIpTunnelVPPData> m_ipip_encap_nh_map;
         // Decap: tunnel term OID → IPIP tunnel data
         std::unordered_map<sai_object_id_t, IpIpTunnelVPPData> m_ipip_term_map;
+
+        /**
+         * @brief Key for deduplicating VPP IPIP tunnels.
+         *
+         * Multiple SAI objects (decap term + encap nexthop) may map to the same
+         * underlying VPP tunnel (same src, dst, mode).  We reference-count to
+         * avoid creating duplicates or deleting a tunnel still in use.
+         */
+        struct IpIpTunnelKey {
+            sai_ip_address_t src;
+            sai_ip_address_t dst;
+            uint8_t mode;
+
+            bool operator==(const IpIpTunnelKey &o) const;
+        };
+
+        struct IpIpTunnelKeyHash {
+            std::size_t operator()(const IpIpTunnelKey &k) const;
+        };
+
+        struct IpIpTunnelRef {
+            uint32_t sw_if_index;
+            uint32_t refcount;
+        };
+
+        std::unordered_map<IpIpTunnelKey, IpIpTunnelRef, IpIpTunnelKeyHash> m_ipip_tunnel_refcount;
     };
 }
