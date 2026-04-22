@@ -2129,10 +2129,7 @@ TEST(FlexCounter, dynamicCounterGroups)
     std::vector<swss::FieldValueTuple> counterValues;
     counterValues.emplace_back(PORT_COUNTER_ID_LIST, join(allCounterNames));
 
-    for (auto oid : oids)
-    {
-        fc.addCounter(oid, oid, counterValues);
-    }
+    fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, oids, oids, counterValues);
 
     EXPECT_FALSE(fc.isEmpty());
 
