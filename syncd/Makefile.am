@@ -46,6 +46,7 @@ libSyncd_a_SOURCES = \
 				SaiObj.cpp \
 				SaiSwitch.cpp \
 				SaiSwitchInterface.cpp \
+				SelectablesTracker.cpp \
 				ServiceMethodTable.cpp \
 				SingleReiniter.cpp \
 				SwitchNotifications.cpp \
