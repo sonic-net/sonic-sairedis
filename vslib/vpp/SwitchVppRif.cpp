@@ -1902,10 +1902,10 @@ sai_status_t SwitchVpp::createRouterif(
 
     if (m_switchConfig->m_useTapDevice == true)
     {
-        sai_attribute_t tattr;
+        auto sid = sai_serialize_object_id(object_id);
+        auto &objectHash = m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
 
-        tattr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
-        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &tattr) == SAI_STATUS_ITEM_NOT_FOUND)
+        if (objectHash.find(sid) == objectHash.end())
         {
             vpp_create_router_interface(attr_count, attr_list);
         } else {
