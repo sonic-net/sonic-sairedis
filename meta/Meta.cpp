@@ -6700,7 +6700,7 @@ void Meta::meta_sai_on_port_host_tx_ready_change(
 
     if (!m_oids.objectReferenceExists(port_id))
     {
-        SWSS_LOG_NOTICE("port_id new object spotted %s not present in local DB (snoop!)",
+        SWSS_LOG_INFO("port_id new object spotted %s not present in local DB (snoop!)",
                 sai_serialize_object_id(port_id).c_str());
 
         sai_object_meta_key_t host_tx_ready_key = { .objecttype = ot, .objectkey = { .key = { .object_id = port_id } } };
@@ -6844,7 +6844,7 @@ void Meta::meta_sai_on_port_state_change_single(
 
     if (valid && !m_oids.objectReferenceExists(data.port_id))
     {
-        SWSS_LOG_NOTICE("data.port_id new object spotted %s not present in local DB (snoop!)",
+        SWSS_LOG_INFO("data.port_id new object spotted %s not present in local DB (snoop!)",
                 sai_serialize_object_id(data.port_id).c_str());
 
         sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = data.port_id } } };

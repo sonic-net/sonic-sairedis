@@ -2057,3 +2057,82 @@ TEST(Meta, meta_validation_post_create_remove_uint16_range)
     // Verify the object was removed
     EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m.remove(SAI_OBJECT_TYPE_ACL_RANGE, acl_range_id));
 }
+
+TEST(Meta, meta_sai_on_port_state_change_snoop)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    // Port OID not in local DB — hits the snoop path (SWSS_LOG_INFO)
+    sai_port_oper_status_notification_t data;
+    data.port_id = 0x100000000001a; // encodes as SAI_OBJECT_TYPE_PORT
+    data.port_state = SAI_PORT_OPER_STATUS_UP;
+
+    m.meta_sai_on_port_state_change(1, &data);
+
+    // SAI_NULL_OBJECT_ID — hits the invalid type error path
+    data.port_id = SAI_NULL_OBJECT_ID;
+    m.meta_sai_on_port_state_change(1, &data);
+
+    // Port that IS in the DB — should NOT hit the snoop path
+    sai_object_id_t portId = create_port(m, switchId);
+    data.port_id = portId;
+    data.port_state = SAI_PORT_OPER_STATUS_UP;
+    m.meta_sai_on_port_state_change(1, &data);
+
+    // count > 0 with NULL data pointer — hits the NULL guard
+    m.meta_sai_on_port_state_change(1, nullptr);
+
+    // count == 0 — no-op
+    m.meta_sai_on_port_state_change(0, nullptr);
+}
+
+TEST(Meta, meta_sai_on_port_host_tx_ready_change_snoop)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    // Port OID not in local DB — hits the snoop path (SWSS_LOG_INFO)
+    m.meta_sai_on_port_host_tx_ready_change(
+            0x100000000001a, // encodes as SAI_OBJECT_TYPE_PORT, not in local DB
+            switchId,
+            SAI_PORT_HOST_TX_READY_STATUS_READY);
+
+    // SAI_NULL_OBJECT_ID — hits the unexpected type error path
+    m.meta_sai_on_port_host_tx_ready_change(
+            SAI_NULL_OBJECT_ID,
+            switchId,
+            SAI_PORT_HOST_TX_READY_STATUS_READY);
+
+    // Invalid enum value — early return, drops notification
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+    m.meta_sai_on_port_host_tx_ready_change(
+            0x100000000001a,
+            switchId,
+            (sai_port_host_tx_ready_status_t)9999);
+#pragma GCC diagnostic pop
+
+    // Port that IS in the DB — should NOT hit the snoop path
+    sai_object_id_t portId = create_port(m, switchId);
+    m.meta_sai_on_port_host_tx_ready_change(
+            portId,
+            switchId,
+            SAI_PORT_HOST_TX_READY_STATUS_NOT_READY);
+}
