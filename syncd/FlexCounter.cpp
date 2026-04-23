@@ -1152,6 +1152,12 @@ public:
             const auto &rid = kv.second->rid;
             const auto &statIds = kv.second->counter_ids;
 
+            if (rid == SAI_NULL_OBJECT_ID)
+            {
+                SWSS_LOG_DEBUG("Skipping counter collection for VID 0x%" PRIx64 " with null RID", vid);
+                continue;
+            }
+
             // TODO: use if const expression when cpp17 is supported
             if (HasStatsMode<CounterIdsType>::value)
             {
@@ -1730,6 +1736,12 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
+            if (rid == SAI_NULL_OBJECT_ID)
+            {
+                SWSS_LOG_DEBUG("Skipping attr collection for VID 0x%" PRIx64 " with null RID", vid);
+                continue;
+            }
+
             std::vector<sai_attribute_t> attrs(attrIds.size());
             for (size_t i = 0; i < attrIds.size(); i++)
             {
@@ -1995,6 +2007,12 @@ public:
             const auto &vid = kv.first;
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
+
+            if (rid == SAI_NULL_OBJECT_ID)
+            {
+                SWSS_LOG_DEBUG("Skipping port phy attr collection for VID 0x%" PRIx64 " with null RID", vid);
+                continue;
+            }
 
             std::vector<sai_attribute_t> attrs(attrIds.size());
             PortPhyAttributeData attrData;
