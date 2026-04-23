@@ -3623,6 +3623,16 @@ void FlexCounter::removeCounter(
         }
         if (hasCounterContext(ATTR_TYPE_PORT_PHY_ATTR))
         {
+            swss::DBConnector db(m_dbCounters, 0);
+            swss::RedisPipeline pipeline(&db);
+            swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
+
+            std::string vid_str = sai_serialize_object_id(vid);
+            portPhyAttrTable.del(vid_str);
+            portPhyAttrTable.flush();
+
+            SWSS_LOG_INFO("Flushed PORT_PHY_ATTR entries for VID %s", vid_str.c_str());
+
             getCounterContext(ATTR_TYPE_PORT_PHY_ATTR)->removeObject(vid);
         }
     }
@@ -3754,6 +3764,29 @@ void FlexCounter::removeCounter(
     {
         if (hasCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR))
         {
+            swss::DBConnector db(m_dbCounters, 0);
+
+            // Look up port VID from serdes-to-port mapping in COUNTERS_DB
+            swss::Table serdesMap(&db, COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP);
+            std::string serdes_vid_str = sai_serialize_object_id(vid);
+            std::string port_vid_str;
+
+            if (serdesMap.hget("", serdes_vid_str, port_vid_str))
+            {
+                swss::RedisPipeline pipeline(&db);
+                swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
+                portPhyAttrTable.del(port_vid_str);
+                portPhyAttrTable.flush();
+
+                SWSS_LOG_INFO("Flushed PORT_PHY_ATTR entries for port VID %s (serdes VID %s)",
+                              port_vid_str.c_str(), serdes_vid_str.c_str());
+            }
+            else
+            {
+                SWSS_LOG_WARN("Could not find port VID mapping for serdes VID %s, PORT_PHY_ATTR entry may already be removed",
+                              serdes_vid_str.c_str());
+            }
+
             getCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR)->removeObject(vid);
         }
     }
