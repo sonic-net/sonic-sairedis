@@ -885,6 +885,8 @@ uint32_t TunnelManagerIpIp::resolve_vrf_from_rif(_In_ sai_object_id_t rif_oid)
 
 static bool sai_ip_address_equal(const sai_ip_address_t &a, const sai_ip_address_t &b)
 {
+    SWSS_LOG_ENTER();
+
     if (a.addr_family != b.addr_family) {
         return false;
     }
@@ -896,6 +898,8 @@ static bool sai_ip_address_equal(const sai_ip_address_t &a, const sai_ip_address
 
 bool TunnelManagerIpIp::IpIpTunnelKey::operator==(const IpIpTunnelKey &o) const
 {
+    SWSS_LOG_ENTER();
+
     return (mode == o.mode &&
             sai_ip_address_equal(src, o.src) &&
             sai_ip_address_equal(dst, o.dst));
@@ -903,6 +907,8 @@ bool TunnelManagerIpIp::IpIpTunnelKey::operator==(const IpIpTunnelKey &o) const
 
 std::size_t TunnelManagerIpIp::IpIpTunnelKeyHash::operator()(const IpIpTunnelKey &k) const
 {
+    SWSS_LOG_ENTER();
+
     std::size_t h = std::hash<uint8_t>()(k.mode);
     uint64_t tmp;
     if (k.src.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
