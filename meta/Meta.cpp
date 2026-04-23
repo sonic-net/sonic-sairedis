@@ -18,6 +18,17 @@
 
 #define CHECK_STATUS_SUCCESS(s) { if ((s) != SAI_STATUS_SUCCESS) return (s); }
 
+// Like CHECK_STATUS_SUCCESS, but on failure updates object_statuses[idx] before return.
+#define CHECK_STATUS_SUCCESS_AND_UPDATE(s, object_statuses, idx)                 \
+    do {                                                                         \
+        sai_status_t _object_st = (s);                                           \
+        if (_object_st != SAI_STATUS_SUCCESS)                                    \
+        {                                                                        \
+            (object_statuses)[(idx)] = _object_st;                               \
+            return _object_st;                                                   \
+        }                                                                        \
+    } while (0)
+
 #define VALIDATION_LIST(md,vlist)                                               \
 {                                                                               \
     auto _status = meta_genetic_validation_list(md,vlist.count,vlist.list);     \
@@ -623,14 +634,14 @@ sai_status_t Meta::bulkCreate(                                                  
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], true);                                                 \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
              };                                                                                                         \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_create(meta_key, ot[idx].switch_id, attr_count[idx], attr_list[idx]);          \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
     }                                                                                                                   \
     auto status = m_implementation->bulkCreate(object_count, ot, attr_count, attr_list, mode, object_statuses);         \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -667,14 +678,14 @@ sai_status_t Meta::bulkRemove(                                                  
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
             };                                                                                                          \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_remove(meta_key);                                                              \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
     }                                                                                                                   \
     auto status = m_implementation->bulkRemove(object_count, ot, mode, object_statuses);                                \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -713,14 +724,14 @@ sai_status_t Meta::bulkSet(                                                     
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
              };                                                                                                         \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_set(meta_key, &attr_list[idx]);                                                \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
     }                                                                                                                   \
     auto status = m_implementation->bulkSet(object_count, ot, attr_list, mode, object_statuses);                        \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -2912,7 +2923,7 @@ sai_status_t Meta::meta_sai_validate_direction_lookup_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_direction_lookup_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -2958,7 +2969,7 @@ sai_status_t Meta::meta_sai_validate_eni_ether_address_map_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_eni_ether_address_map_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3004,7 +3015,7 @@ sai_status_t Meta::meta_sai_validate_vip_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_vip_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3050,7 +3061,7 @@ sai_status_t Meta::meta_sai_validate_inbound_routing_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_inbound_routing_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3096,7 +3107,7 @@ sai_status_t Meta::meta_sai_validate_pa_validation_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_pa_validation_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3142,7 +3153,7 @@ sai_status_t Meta::meta_sai_validate_outbound_routing_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_outbound_routing_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3188,7 +3199,7 @@ sai_status_t Meta::meta_sai_validate_outbound_ca_to_pa_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_outbound_ca_to_pa_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
