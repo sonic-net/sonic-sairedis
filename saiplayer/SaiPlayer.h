@@ -106,6 +106,12 @@ namespace saiplayer
                     _In_ uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list);
 
+            sai_status_t handle_my_sid(
+                    _In_ const std::string &str_object_id,
+                    _In_ sai_common_api_t api,
+                    _In_ uint32_t attr_count,
+                    _In_ sai_attribute_t *attr_list);
+
             sai_status_t handle_neighbor(
                     _In_ const std::string& str_object_id,
                     _In_ sai_common_api_t api,

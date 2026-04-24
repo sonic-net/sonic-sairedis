@@ -279,6 +279,8 @@ namespace syncd
             StrObjectIdToSaiObjectHash m_soInsegs;
             StrObjectIdToSaiObjectHash m_soOids;
             StrObjectIdToSaiObjectHash m_soAll;
+            StrObjectIdToSaiObjectHash m_soMySidEntries;
+
 
             std::unordered_map<std::string,std::vector<std::string>> m_routesByPrefix;
             std::unordered_map<std::string,std::vector<std::string>> m_neighborsByIp;
