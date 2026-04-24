@@ -2779,3 +2779,133 @@ TEST(SaiSerialize, serialize_u64_range)
     EXPECT_EQ(dst.value.u64range.min, 111);
     EXPECT_EQ(dst.value.u64range.max, 222);
 }
+
+TEST(SaiSerialize, sai_serialize_prbs_bit_error_rate_roundtrip)
+{
+    SWSS_LOG_ENTER();
+
+    sai_prbs_bit_error_rate_t ber;
+    ber.mantissa = 123;
+    ber.exponent = 9;
+
+    auto s = sai_serialize_prbs_bit_error_rate(ber);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["mantissa"], "123");
+    EXPECT_EQ(j["exponent"], "9");
+
+    sai_prbs_bit_error_rate_t ber2;
+    memset(&ber2, 0, sizeof(ber2));
+    sai_deserialize_prbs_bit_error_rate(s, ber2);
+
+    EXPECT_EQ(ber2.mantissa, 123u);
+    EXPECT_EQ(ber2.exponent, 9u);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_rx_status_list_count_overflow_throws)
+{
+    SWSS_LOG_ENTER();
+
+    sai_prbs_per_lane_rx_status_t dummy[1] = {};
+    sai_prbs_per_lane_rx_status_list_t list;
+    list.count = 257;
+    list.list = dummy;
+
+    EXPECT_THROW(sai_serialize_prbs_per_lane_rx_status_list(list, false), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_rx_state_list_count_overflow_throws)
+{
+    SWSS_LOG_ENTER();
+
+    sai_prbs_per_lane_rx_state_t dummy[1] = {};
+    sai_prbs_per_lane_rx_state_list_t list;
+    list.count = 257;
+    list.list = dummy;
+
+    EXPECT_THROW(sai_serialize_prbs_per_lane_rx_state_list(list, false), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_ber_list_count_overflow_throws)
+{
+    SWSS_LOG_ENTER();
+
+    sai_prbs_per_lane_bit_error_rate_t dummy[1] = {};
+    sai_prbs_per_lane_bit_error_rate_list_t list;
+    list.count = 257;
+    list.list = dummy;
+
+    EXPECT_THROW(sai_serialize_prbs_per_lane_bit_error_rate_list(list, false), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_deserialize_prbs_rx_status_list_count_mismatch_throws)
+{
+    SWSS_LOG_ENTER();
+
+    // Build JSON with count=2 but only 1 entry in the list to trigger count mismatch
+    json j;
+    j["count"] = 2;
+    json arr = json::array();
+    json item;
+    item["lane"] = "0";
+    item["rx_status"] = "SAI_PORT_PRBS_RX_STATUS_OK";
+    arr.push_back(item);
+    j["list"] = arr;
+
+    std::string s = j.dump();
+
+    sai_prbs_per_lane_rx_status_list_t list;
+    memset(&list, 0, sizeof(list));
+
+    EXPECT_THROW(sai_deserialize_prbs_per_lane_rx_status_list(s, list, false), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_deserialize_prbs_rx_state_list_count_mismatch_throws)
+{
+    SWSS_LOG_ENTER();
+
+    // Build JSON with count=2 but only 1 entry in the list to trigger count mismatch
+    json j;
+    j["count"] = 2;
+    json arr = json::array();
+    json item;
+    item["lane"] = "0";
+    json rx_state;
+    rx_state["rx_status"] = "SAI_PORT_PRBS_RX_STATUS_OK";
+    rx_state["error_count"] = "0";
+    item["rx_state"] = rx_state;
+    arr.push_back(item);
+    j["list"] = arr;
+
+    std::string s = j.dump();
+
+    sai_prbs_per_lane_rx_state_list_t list;
+    memset(&list, 0, sizeof(list));
+
+    EXPECT_THROW(sai_deserialize_prbs_per_lane_rx_state_list(s, list, false), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_deserialize_prbs_ber_list_count_mismatch_throws)
+{
+    SWSS_LOG_ENTER();
+
+    // Build JSON with count=2 but only 1 entry in the list to trigger count mismatch
+    json j;
+    j["count"] = 2;
+    json arr = json::array();
+    json item;
+    item["lane"] = "0";
+    json ber;
+    ber["mantissa"] = "123";
+    ber["exponent"] = "9";
+    item["ber"] = ber;
+    arr.push_back(item);
+    j["list"] = arr;
+
+    std::string s = j.dump();
+
+    sai_prbs_per_lane_bit_error_rate_list_t list;
+    memset(&list, 0, sizeof(list));
+
+    EXPECT_THROW(sai_deserialize_prbs_per_lane_bit_error_rate_list(s, list, false), std::runtime_error);
+}

@@ -2157,3 +2157,99 @@ TEST(Meta, meta_validation_uint64_range_list)
     // Remove exercises meta_generic_validation_post_remove (UINT64_RANGE_LIST path)
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(SAI_OBJECT_TYPE_TAM_INT, tam_int_id));
 }
+
+TEST(Meta, meta_validation_prbs_get_per_lane_ber_and_rx_state)
+{
+    SWSS_LOG_ENTER();
+
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switch_id = 0;
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    // Create a port so the object exists in metadata collection
+    sai_object_id_t port_id = 0;
+    uint32_t lanes[1] = {1};
+    sai_attribute_t port_attrs[2];
+
+    port_attrs[0].id = SAI_PORT_ATTR_HW_LANE_LIST;
+    port_attrs[0].value.u32list.count = 1;
+    port_attrs[0].value.u32list.list = lanes;
+    port_attrs[1].id = SAI_PORT_ATTR_SPEED;
+    port_attrs[1].value.u32 = 10000;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_PORT, &port_id, switch_id, 2, port_attrs));
+
+    // Test get with SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST
+    // Exercises meta_generic_validation_get and meta_generic_validation_post_get PRBS_PER_LANE_BIT_ERROR_RATE_LIST case
+    sai_prbs_per_lane_bit_error_rate_t ber_lanes[4] = {};
+    memset(ber_lanes, 0, sizeof(ber_lanes));
+
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST;
+    attr.value.prbs_ber_list.count = 4;
+    attr.value.prbs_ber_list.list = ber_lanes;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+
+    // Test get with SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST
+    sai_prbs_per_lane_rx_state_t state_lanes[4] = {};
+    memset(state_lanes, 0, sizeof(state_lanes));
+
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATE_LIST;
+    attr.value.prbs_rx_state_list.count = 4;
+    attr.value.prbs_rx_state_list.list = state_lanes;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+}
+
+TEST(Meta, meta_validation_prbs_set_per_lane_ber_list)
+{
+    SWSS_LOG_ENTER();
+
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switch_id = 0;
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_object_id_t port_id = 0;
+    uint32_t lanes[1] = {2};
+    sai_attribute_t port_attrs[2];
+
+    port_attrs[0].id = SAI_PORT_ATTR_HW_LANE_LIST;
+    port_attrs[0].value.u32list.count = 1;
+    port_attrs[0].value.u32list.list = lanes;
+    port_attrs[1].id = SAI_PORT_ATTR_SPEED;
+    port_attrs[1].value.u32 = 10000;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_PORT, &port_id, switch_id, 2, port_attrs));
+
+    // Enable unittest mode and allow setting the READ_ONLY PRBS BER list attribute
+    // This exercises meta_generic_validation_set PRBS_PER_LANE_BIT_ERROR_RATE_LIST case
+    m.meta_unittests_enable(true);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.meta_unittests_allow_readonly_set_once(
+            SAI_OBJECT_TYPE_PORT, SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST));
+
+    sai_prbs_per_lane_bit_error_rate_t ber_lanes[2] = {};
+    ber_lanes[0].lane = 0;
+    ber_lanes[0].ber.mantissa = 123;
+    ber_lanes[0].ber.exponent = 9;
+    ber_lanes[1].lane = 1;
+    ber_lanes[1].ber.mantissa = 456;
+    ber_lanes[1].ber.exponent = 12;
+
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST;
+    attr.value.prbs_ber_list.count = 2;
+    attr.value.prbs_ber_list.list = ber_lanes;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+}
