@@ -435,6 +435,16 @@ namespace saivs
         sai_status_t remove_ipip_tunnel_term(
             _In_ const std::string &serializedObjectId);
 
+        /**
+         * @brief Retry pending unnumbered operations matching the given RIF IP.
+         *
+         * Called after a rif address is successfully programmed.
+         * Only processes ipip tunnels whose source IP matches the rif ip.
+         *
+         * @param rif_ip The IP address just programmed on a RIF.
+         */
+        void retry_pending_unnumbered(_In_ const vpp_ip_addr_t &rif_ip);
+
     private:
         /**
          * @brief Map SAI tunnel TTL/DSCP/ECN modes to VPP tunnel_encap_decap_flags.
@@ -481,12 +491,17 @@ namespace saivs
         sai_status_t remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index);
 
     private:
-        SwitchVpp *m_switch_db;
 
-        // Encap: nexthop OID → IPIP tunnel data
-        std::unordered_map<sai_object_id_t, IpIpTunnelVPPData> m_ipip_encap_nh_map;
-        // Decap: tunnel term OID → IPIP tunnel data
-        std::unordered_map<sai_object_id_t, IpIpTunnelVPPData> m_ipip_term_map;
+        /**
+         * @brief Record for a deferred set-unnumbered attempt.
+         */
+        struct PendingUnnumbered {
+            uint32_t sw_if_index;       ///< tunnel sw_if_index
+            vpp_ip_addr_t src_address;  ///< tunnel source IP
+            uint32_t vrf_id;            ///< VRF for the lookup
+        };
+
+
 
         /**
          * @brief Key for deduplicating VPP IPIP tunnels.
@@ -512,6 +527,18 @@ namespace saivs
             uint32_t refcount;
         };
 
+
+        SwitchVpp *m_switch_db;
+
+        // Pending unnumbered tunnels
+        std::unordered_multimap<std::string, PendingUnnumbered> m_pending_unnumbered;
+
+        // Encap: nexthop OID -> IPIP tunnel data
+        std::unordered_map<sai_object_id_t, IpIpTunnelVPPData> m_ipip_encap_nh_map;
+        // Decap: tunnel term OID -> IPIP tunnel data
+        std::unordered_map<sai_object_id_t, IpIpTunnelVPPData> m_ipip_term_map;
+
+        // IPIP tunnel ref count map
         std::unordered_map<IpIpTunnelKey, IpIpTunnelRef, IpIpTunnelKeyHash> m_ipip_tunnel_refcount;
     };
 }
