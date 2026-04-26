@@ -3201,19 +3201,23 @@ sai_status_t Syncd::processFlexCounterEvent(
         {
             sai_object_id_t vid, rid;
             sai_deserialize_object_id(strVid, vid);
-            vids.emplace_back(vid);
 
             if (!m_translator->tryTranslateVidToRid(vid, rid))
             {
                 SWSS_LOG_ERROR("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
                                sai_serialize_object_id(vid).c_str());
+                continue;
             }
 
+            vids.emplace_back(vid);
             rids.emplace_back(rid);
             keys.emplace_back(groupName + ":" + strVid);
         }
 
-        m_manager->bulkAddCounter(vids, rids, groupName, values);
+        if (!vids.empty())
+        {
+            m_manager->bulkAddCounter(vids, rids, groupName, values);
+        }
 
         for (auto &singleKey: keys)
         {
