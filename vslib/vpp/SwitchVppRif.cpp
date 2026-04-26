@@ -1028,6 +1028,9 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     if (ret == 0)
     {
+        if (is_add) {
+            m_tunnel_mgr_ipip.retry_pending_unnumbered(vpp_ip_prefix.prefix_addr);
+        }
         return SAI_STATUS_SUCCESS;
     }
     else {
@@ -1187,6 +1190,8 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
     int ret = interface_ip_address_add_del(vppIfname, &ip_route, is_add);
     if (ret != 0) {
         SWSS_LOG_ERROR("interface_ip_address_add returned error");
+    } else if (is_add) {
+        m_tunnel_mgr_ipip.retry_pending_unnumbered(ip_route.prefix_addr);
     }
 
     return SAI_STATUS_SUCCESS;

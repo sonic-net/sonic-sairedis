@@ -1002,9 +1002,13 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
     else {
         char ip_str[INET6_ADDRSTRLEN];
         vpp_ip_addr_t_to_string(&req.src_address, ip_str, sizeof(ip_str));
-        SWSS_LOG_ERROR("IpIp: no interface found for IP %s in vrf %u, unnumbered not set",
-                       ip_str, vrf_id);
-        return SAI_STATUS_FAILURE;
+        SWSS_LOG_WARN("IpIp: no interface found for IP %s in vrf %u yet, deferring unnumbered for sw_if=%u",
+                      ip_str, vrf_id, sw_if_index);
+        PendingUnnumbered pending;
+        pending.sw_if_index = sw_if_index;
+        pending.src_address = req.src_address;
+        pending.vrf_id = vrf_id;
+        m_pending_unnumbered.emplace(std::string(ip_str), pending);
     }
 
     IpIpTunnelRef ref_data;
@@ -1031,6 +1035,15 @@ sai_status_t TunnelManagerIpIp::remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index
         m_ipip_tunnel_refcount.erase(it);
     }
 
+    // Remove any pending unnumbered entries for this tunnel
+    for (auto pending_it = m_pending_unnumbered.begin(); pending_it != m_pending_unnumbered.end(); ) {
+        if (pending_it->second.sw_if_index == sw_if_index) {
+            pending_it = m_pending_unnumbered.erase(pending_it);
+        } else {
+            ++pending_it;
+        }
+    }
+
     const char *ifname = vpp_get_swif_name(sw_if_index);
     if (ifname) {
         interface_set_state(ifname, false);
@@ -1043,6 +1056,49 @@ sai_status_t TunnelManagerIpIp::remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+void TunnelManagerIpIp::retry_pending_unnumbered(_In_ const vpp_ip_addr_t &rif_ip)
+{
+    SWSS_LOG_ENTER();
+
+    if (m_pending_unnumbered.empty()) {
+        return;
+    }
+
+    vpp_ip_addr_t *rif_ip_ptr = const_cast<vpp_ip_addr_t *>(&rif_ip);
+
+    char ip_str[INET6_ADDRSTRLEN];
+    vpp_ip_addr_t_to_string(rif_ip_ptr, ip_str, sizeof(ip_str));
+
+    auto range = m_pending_unnumbered.equal_range(std::string(ip_str));
+    if (range.first == range.second) {
+        return;
+    }
+
+    SWSS_LOG_NOTICE("IpIp: retrying %zu pending unnumbered for IP %s",
+                    (size_t)std::distance(range.first, range.second), ip_str);
+
+    // Find the owner interface for this IP
+    uint32_t owner_sw_if_index = 0;
+    if (vpp_sw_interface_find_by_ip(rif_ip_ptr, range.first->second.vrf_id, &owner_sw_if_index) != 0) {
+        SWSS_LOG_WARN("IpIp: still no owner interface for IP %s", ip_str);
+        return;
+    }
+
+    const char *owner_ifname = vpp_get_swif_name(owner_sw_if_index);
+    for (auto it = range.first; it != range.second; ) {
+        int ret = sw_interface_set_unnumbered(it->second.sw_if_index, owner_sw_if_index, true);
+        if (ret < 0) {
+            SWSS_LOG_ERROR("IpIp: deferred unnumbered failed sw_if=%u use sw_if=%u ret=%d",
+                           it->second.sw_if_index, owner_sw_if_index, ret);
+            ++it;
+            continue;
+        }
+        SWSS_LOG_NOTICE("IpIp: deferred unnumbered succeeded sw_if=%u using %s (sw_if=%u)",
+                        it->second.sw_if_index, owner_ifname ? owner_ifname : "?", owner_sw_if_index);
+        it = m_pending_unnumbered.erase(it);
+    }
 }
 
 sai_status_t TunnelManagerIpIp::create_ipip_tunnel_term(
@@ -1131,6 +1187,10 @@ sai_status_t TunnelManagerIpIp::create_ipip_tunnel_term(
     req.instance = ~0;
     req.mode = vpp_mode;
     req.flags = vpp_flags;
+    // ENCAP_INNER_HASH: hash on inner 5-tuple for ECMP for P2P ipip tunnel
+    if (vpp_mode == IpIpTunnelVPPData::TUNNEL_API_MODE_P2P) {
+        req.flags |= 0x20;
+    }
 
     sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.src_address);
     if (has_src_ip && vpp_mode == IpIpTunnelVPPData::TUNNEL_API_MODE_P2P) {
@@ -1260,7 +1320,8 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
         memset(&req, 0, sizeof(req));
         req.instance = ~0;
         req.mode = IpIpTunnelVPPData::TUNNEL_API_MODE_P2P;
-        req.flags = vpp_flags;
+        // ENCAP_INNER_HASH: hash on inner 5-tuple for ECMP for P2P ipip tunnel
+        req.flags = vpp_flags | 0x20;
 
         sai_ip_address_t_to_vpp_ip_addr_t(src_ip, req.src_address);
         sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.dst_address);
