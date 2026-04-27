@@ -301,6 +301,7 @@ typedef enum {
     extern int vpp_tunterm_acl_interface_add_del (uint32_t tunterm_index,
                                            bool is_bind, const char *hwif_name);
     extern int interface_get_state(const char *hwif_name, bool *link_is_up);
+    extern int vpp_get_interface_speed(const char *hwif_name, uint32_t *speed);
     extern int vpp_sync_for_events();
     extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
     extern int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type);

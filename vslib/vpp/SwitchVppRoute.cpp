@@ -128,7 +128,12 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
     }
 
     attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
-    CHECK_STATUS_QUIET(route_obj->get_mandatory_attr(attr));
+    status = route_obj->get_attr(attr);
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_NOTICE("Ignoring ip route %s: no next hop id",
+                        serializedObjectId.c_str());
+        return SAI_STATUS_SUCCESS;
+    }
     next_hop_oid = attr.value.oid;
 
     sai_route_entry_t route_entry;

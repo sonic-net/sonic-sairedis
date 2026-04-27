@@ -2210,3 +2210,46 @@ sai_status_t SwitchVpp::refresh_read_only(
     // For all other cases, delegate to the base class implementation
     return SwitchStateBase::refresh_read_only(meta, object_id);
 }
+
+sai_status_t SwitchVpp::refresh_port_oper_speed(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+
+    CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+
+    if (attr.value.s32 == SAI_PORT_OPER_STATUS_DOWN)
+    {
+        attr.value.u32 = 0;
+    }
+    else
+    {
+        std::string hwif_name;
+        uint32_t vpp_speed_kbps = 0;
+
+        if (vpp_get_hwif_name(port_id, 0, hwif_name) &&
+            vpp_get_interface_speed(hwif_name.c_str(), &vpp_speed_kbps) == 0 &&
+            vpp_speed_kbps > 0)
+        {
+            /* VPP reports link_speed in Kbps, SAI uses Mbps */
+            attr.value.u32 = vpp_speed_kbps / 1000;
+        }
+        else
+        {
+            /* Fall back to configured SAI_PORT_ATTR_SPEED */
+            attr.id = SAI_PORT_ATTR_SPEED;
+
+            CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+        }
+    }
+
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
