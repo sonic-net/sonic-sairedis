@@ -10,6 +10,8 @@
 #include "swss/logger.h"
 #include "swss/notificationproducer.h"
 
+#include "swss/producerstatetable.h"
+
 #include <inttypes.h>
 
 using namespace syncd;
@@ -18,7 +20,8 @@ using namespace saimeta;
 NotificationProcessor::NotificationProcessor(
         _In_ std::shared_ptr<NotificationProducerBase> producer,
         _In_ std::shared_ptr<BaseRedisClient> client,
-        _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer):
+        _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer,
+        _In_ std::shared_ptr<swss::DBConnector> dbAsic):
     m_synchronizer(synchronizer),
     m_client(client),
     m_notifications(producer)
@@ -28,6 +31,12 @@ NotificationProcessor::NotificationProcessor(
     m_runThread = false;
 
     m_notificationQueue = std::make_shared<NotificationQueue>();
+
+    if (dbAsic)
+    {
+        m_fdbEventStateProducer = std::make_shared<swss::ProducerStateTable>(
+                dbAsic.get(), REDIS_TABLE_FDB_EVENT_STATE);
+    }
 }
 
 NotificationProcessor::~NotificationProcessor()
@@ -314,6 +323,14 @@ void NotificationProcessor::process_on_fdb_event(
 
     bool sendntf = true;
 
+    /*
+     * Separate FLUSH events from LEARN/AGED/MOVE events.
+     * FLUSH events are sent via PUBLISH (NotificationProducer) as before.
+     * LEARN/AGED/MOVE events use ProducerStateTable for key-based dedup.
+     */
+    std::vector<sai_fdb_event_notification_data_t> flushEvents;
+    std::vector<sai_fdb_event_notification_data_t> nonFlushEvents;
+
     for (uint32_t i = 0; i < count; i++)
     {
         sai_fdb_event_notification_data_t *fdb = &data[i];
@@ -334,24 +351,76 @@ void NotificationProcessor::process_on_fdb_event(
 
         m_translator->translateRidToVid(SAI_OBJECT_TYPE_FDB_ENTRY, fdb->fdb_entry.switch_id, fdb->attr_count, fdb->attr, true);
 
-        /*
-         * Currently because of brcm bug, we need to install fdb entries in
-         * asic view and currently this event don't have fdb type which is
-         * required on creation.
-         */
-
         redisPutFdbEntryToAsicView(fdb);
+
+        if (fdb->event_type == SAI_FDB_EVENT_FLUSHED)
+        {
+            flushEvents.push_back(*fdb);
+        }
+        else
+        {
+            nonFlushEvents.push_back(*fdb);
+        }
     }
 
-    if (sendntf)
+    if (!sendntf)
     {
-        std::string s = sai_serialize_fdb_event_ntf(count, data);
+        SWSS_LOG_ERROR("FDB notification was not sent since it contain invalid OIDs, bug?");
+        return;
+    }
+
+    /* Send FLUSH events via PUBLISH (preserves existing behavior) */
+    if (!flushEvents.empty())
+    {
+        std::string s = sai_serialize_fdb_event_ntf(
+                (uint32_t)flushEvents.size(), flushEvents.data());
 
         sendNotification(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s);
     }
-    else
+
+    /* Send LEARN/AGED/MOVE events via ProducerStateTable (key-based dedup) */
+    if (m_fdbEventStateProducer && !nonFlushEvents.empty())
     {
-        SWSS_LOG_ERROR("FDB notification was not sent since it contain invalid OIDs, bug?");
+        for (auto &fdb : nonFlushEvents)
+        {
+            std::string key = sai_serialize_fdb_entry(fdb.fdb_entry);
+
+            if (fdb.event_type == SAI_FDB_EVENT_AGED)
+            {
+                m_fdbEventStateProducer->del(key);
+            }
+            else
+            {
+                std::vector<swss::FieldValueTuple> fvs;
+
+                fvs.emplace_back("event_type", sai_serialize_fdb_event(fdb.event_type));
+
+                for (uint32_t j = 0; j < fdb.attr_count; j++)
+                {
+                    if (fdb.attr[j].id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
+                    {
+                        fvs.emplace_back("bridge_port_id",
+                                sai_serialize_object_id(fdb.attr[j].value.oid));
+                    }
+                    else if (fdb.attr[j].id == SAI_FDB_ENTRY_ATTR_TYPE)
+                    {
+                        fvs.emplace_back("sai_fdb_type",
+                                sai_serialize_enum(fdb.attr[j].value.s32,
+                                    &sai_metadata_enum_sai_fdb_entry_type_t));
+                    }
+                }
+
+                m_fdbEventStateProducer->set(key, fvs);
+            }
+        }
+    }
+    else if (!nonFlushEvents.empty())
+    {
+        /* Fallback: no ProducerStateTable (e.g., ZeroMQ mode), use PUBLISH */
+        std::string s = sai_serialize_fdb_event_ntf(
+                (uint32_t)nonFlushEvents.size(), nonFlushEvents.data());
+
+        sendNotification(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s);
     }
 }
 
