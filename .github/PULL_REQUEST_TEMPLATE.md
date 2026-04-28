@@ -41,7 +41,7 @@ Fixes # (issue)
 
 #### Any platform specific information?
 
-### Documentation 
+### Documentation
 <!--
 (If it's a new feature, new test case)
 Did you update documentation/Wiki relevant to your implementation?
