@@ -1690,6 +1690,12 @@ int init_vpp_client()
         }
         dump_interface_table(vam);
 
+        /* Initialize the event queue before enabling any VPP event source,
+         * otherwise an early sw_interface_event from VPP can be dispatched
+         * to vl_api_sw_interface_event_t_handler -> vpp_ev_enqueue while
+         * vpp_evq_p is still NULL, causing a SIGSEGV. */
+        vpp_evq_init();
+
         vpp_acl_counters_enable_disable(true);
 
         /* Enable LACP punt/xc in linux-cp */
@@ -1712,7 +1718,6 @@ int init_vpp_client()
         /* Enable BFD multihop support in VPP */
         vpp_bfd_udp_enable_multihop();
 
-        vpp_evq_init();
         vpp_client_init = 1;
         return 0;
     } else {
