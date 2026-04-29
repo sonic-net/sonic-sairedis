@@ -676,28 +676,34 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry(
 {
     SWSS_LOG_ENTER();
 
+    SaiCachedObject map_entry_obj(m_switch_db, SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY,
+                                  serializedObjectId, attr_count, attr_list);
+
     int32_t tunnel_map_type = -1;
     uint32_t vni = 0;
     uint16_t vlan_id = 0;
     sai_object_id_t tunnel_map_oid = SAI_NULL_OBJECT_ID;
 
-    for (uint32_t i = 0; i < attr_count; i++) {
-        switch (attr_list[i].id) {
-            case SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE:
-                tunnel_map_type = attr_list[i].value.s32;
-                break;
-            case SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY:
-                vni = attr_list[i].value.u32;
-                break;
-            case SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE:
-                vlan_id = attr_list[i].value.u16;
-                break;
-            case SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP:
-                tunnel_map_oid = attr_list[i].value.oid;
-                break;
-            default:
-                break;
-        }
+    sai_attribute_t attr;
+
+    attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE;
+    if (map_entry_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
+        tunnel_map_type = attr.value.s32;
+    }
+
+    attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+    if (map_entry_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
+        vni = attr.value.u32;
+    }
+
+    attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE;
+    if (map_entry_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
+        vlan_id = attr.value.u16;
+    }
+
+    attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+    if (map_entry_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
+        tunnel_map_oid = attr.value.oid;
     }
 
     if (tunnel_map_type != SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID) {
