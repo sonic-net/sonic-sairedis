@@ -140,8 +140,8 @@ bool SwitchVpp::is_ip_nbr_active()
         const char *val;
 
         val = getenv("NO_LINUX_NL");
-        if (val && (*val == 'y' || *val == 'Y')) {
-            nbr_active = true;
+        if (val && (*val == 'n' || *val == 'N')) {
+            nbr_active = false;
         }
         nbr_env_read = true;
     }

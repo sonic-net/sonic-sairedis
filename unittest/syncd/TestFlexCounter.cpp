@@ -7,7 +7,9 @@
 #include "NumberOidIndexGenerator.h"
 #include <string>
 #include <chrono>
+#include <fstream>
 #include <gtest/gtest.h>
+#include "swss/dbconnector.h"
 
 using namespace saimeta;
 using namespace sairedis;
@@ -1570,11 +1572,15 @@ TEST(FlexCounter, bulkChunksize)
                 // addCounterPlugin calls that set and then remove per-prefix
                 // chunk sizes, the polling thread can poll with per-prefix
                 // partitions that have fewer counters and different chunk
-                // sizes. Those polls should fall through to the per-counter
-                // switch below.
+                // sizes. After the merge-back, FlexCounter also re-probes
+                // bulk capability with single-object calls (object_count=1)
+                // that have all counters. Skip the assertion for both
+                // per-prefix polls and re-probe polls.
                 if (unifiedBulkChunkSize > 0)
                 {
-                    if (object_count != unifiedBulkChunkSize && number_of_counters == allCounters.size())
+                    if (object_count != unifiedBulkChunkSize
+                        && number_of_counters == allCounters.size()
+                        && object_count > 1)
                     {
                         EXPECT_EQ(object_count, unifiedBulkChunkSize);
                     }
@@ -2328,4 +2334,106 @@ TEST(FlexCounter, noEniDashMeterCounter)
         expectedValues,
         counterVerifyFunc,
         false);
+}
+
+class FlexCounterTcpFallback : public ::testing::Test
+{
+protected:
+    static constexpr const char *configPath = "/tmp/test_tcp_fallback_db_config.json";
+
+    void SetUp() override
+    {
+        const std::string configContent = R"({
+            "INSTANCES": {
+                "redis": {
+                    "hostname": "127.0.0.1",
+                    "port": 6379,
+                    "unix_socket_path": ""
+                }
+            },
+            "DATABASES": {
+                "COUNTERS_DB": {
+                    "id": 2,
+                    "separator": ":",
+                    "instance": "redis"
+                }
+            },
+            "VERSION": "1.0"
+        })";
+
+        std::ofstream ofs(configPath);
+        ofs << configContent;
+        ofs.close();
+
+        swss::SonicDBConfig::reset();
+        swss::SonicDBConfig::initialize(configPath);
+    }
+
+    void TearDown() override
+    {
+        std::remove(configPath);
+        swss::SonicDBConfig::reset();
+        swss::SonicDBConfig::initialize();
+    }
+};
+
+TEST_F(FlexCounterTcpFallback, tcpFallbackWhenNoUnixSocket)
+{
+    EXPECT_TRUE(swss::SonicDBConfig::getDbSock("COUNTERS_DB").empty());
+
+    sai->mock_getStatsExt = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            counters[i] = (i + 1) * 100;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            counters[i] = (i + 1) * 100;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *, uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    // FlexCounter should detect empty socket path and use TCP
+    FlexCounter fc("test_tcp", sai, "COUNTERS_DB");
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    values.clear();
+    values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_UCAST_PKTS");
+
+    auto object_ids = generateOids(1, SAI_OBJECT_TYPE_PORT);
+    fc.addCounter(object_ids[0], object_ids[0], values);
+    EXPECT_FALSE(fc.isEmpty());
+
+    // Use TCP to connect and verify counters were written
+    swss::DBConnector db("COUNTERS_DB", 0, true);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    waitForCounterKeys(countersTable, 1);
+
+    std::string key = toOid(object_ids[0]);
+    waitForCounterValues(countersTable, key,
+        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS"},
+        {"100", "200"});
+
+    fc.removeCounter(object_ids[0]);
+    EXPECT_TRUE(fc.isEmpty());
+
+    countersTable.del(key);
 }
