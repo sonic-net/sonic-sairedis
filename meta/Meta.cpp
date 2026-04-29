@@ -3896,6 +3896,13 @@ sai_status_t Meta::meta_generic_validation_create(
             continue;
         }
 
+        if (md.isdeprecated)
+        {
+            // skip deprecated attributes
+            META_LOG_NOTICE(md, "attribute is mandatory but deprecated, skipping validation");
+            continue;
+        }
+
         const auto &it = attrs.find(md.attrid);
 
         if (it == attrs.end())
