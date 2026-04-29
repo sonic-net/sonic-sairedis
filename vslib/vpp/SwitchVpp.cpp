@@ -1341,20 +1341,6 @@ sai_status_t SwitchVpp::remove(
         return status;
     }
 
-    if (object_type == SAI_OBJECT_TYPE_TUNNEL)
-    {
-        sai_object_id_t object_id;
-        sai_deserialize_object_id(serializedObjectId, object_id);
-
-        sai_status_t status = m_tunnel_mgr.remove_l2_vxlan_tunnel(object_id);
-        if (status != SAI_STATUS_SUCCESS) {
-            SWSS_LOG_ERROR("Failed to remove L2 VXLAN tunnel resources");
-        }
-
-        // still need to clean up internal SAI state
-        return remove_internal(object_type, serializedObjectId);
-    }
-
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
         m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry_removal(serializedObjectId);
