@@ -659,7 +659,6 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry(
     for (auto& tunnel_pair : *tunnels) {
         auto tunnel_obj = tunnel_pair.second;
 
-        sai_attribute_t attr;
         attr.id = SAI_TUNNEL_ATTR_TYPE;
         if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS ||
             attr.value.s32 != SAI_TUNNEL_TYPE_VXLAN) continue;
