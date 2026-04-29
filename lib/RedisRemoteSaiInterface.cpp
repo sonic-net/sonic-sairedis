@@ -339,6 +339,7 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
             m_responseTimeoutMs = attr->value.u64;
 
+            m_recorder->recordSyncResponseTimeout(m_responseTimeoutMs);
             m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
             SWSS_LOG_NOTICE("set response timeout to %lu ms", m_responseTimeoutMs);
