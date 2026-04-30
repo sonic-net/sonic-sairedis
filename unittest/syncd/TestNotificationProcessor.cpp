@@ -6,6 +6,9 @@
 #include "lib/sairediscommon.h"
 #include "vslib/Sai.h"
 
+#include "swss/table.h"
+#include "swss/logger.h"
+
 #include <gtest/gtest.h>
 
 using namespace syncd;
@@ -143,4 +146,172 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->insertRidAndVid(0x123456789abcdef, 0x123456789abcdef);
     notificationProcessor->syncProcessNotification(flowBulkGetSessionEventItem);
     translator->eraseRidAndVid(0x123456789abcdef, 0x123456789abcdef);
+}
+
+
+/*
+ * Helper: build a processor with a DB connection so m_fdbEventStateProducer
+ * is initialized.
+ */
+static std::shared_ptr<NotificationProcessor> makeProcessorWithDb(
+    std::shared_ptr<swss::DBConnector> dbAsic,
+    std::shared_ptr<VirtualOidTranslator> &outTranslator)
+{
+    SWSS_LOG_ENTER();
+    auto sai      = std::make_shared<saivs::Sai>();
+    auto client   = std::make_shared<RedisClient>(dbAsic);
+    auto producer = std::make_shared<syncd::RedisNotificationProducer>("ASIC_DB");
+
+    auto np = std::make_shared<NotificationProcessor>(producer, client,
+                                                      [](const swss::KeyOpFieldsValuesTuple&){},
+                                                      dbAsic);
+
+    auto switchConfigContainer  = std::make_shared<sairedis::SwitchConfigContainer>();
+    auto ridxGen = std::make_shared<sairedis::RedisVidIndexGenerator>(dbAsic, REDIS_KEY_VIDCOUNTER);
+    auto voim = std::make_shared<sairedis::VirtualObjectIdManager>(0, switchConfigContainer, ridxGen);
+
+    outTranslator = std::make_shared<VirtualOidTranslator>(client, voim, sai);
+    np->m_translator = outTranslator;
+
+    return np;
+}
+
+/*
+ * ProducerStateTable writes field data to "_FDB_EVENT_STATE:{key}" in Redis.
+ * Use this helper to verify what was written.
+ */
+static std::string fdbStateKey(const std::string &fdbKey)
+{
+    // SWSS_LOG_ENTER omitted (simple helper)
+    return "_FDB_EVENT_STATE:" + fdbKey;
+}
+
+/*
+ * Test: LEARN event is written to FDB_EVENT_STATE via ProducerStateTable.
+ */
+TEST(NotificationProcessor, FdbLearnGoesToProducerStateTable)
+{
+    auto dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+    std::shared_ptr<VirtualOidTranslator> translator;
+    auto np = makeProcessorWithDb(dbAsic, translator);
+
+    translator->insertRidAndVid(0x21000000000000, 0x210000000000);
+    translator->insertRidAndVid(0x1003a0000004c,  0x3a000000000c00);
+    translator->insertRidAndVid(0x2600000010,     0x26000000000010);
+
+    std::string fdbKey =
+        "{\"bvid\":\"oid:0x26000000000010\","
+        "\"mac\":\"00:00:00:00:00:10\","
+        "\"switch_id\":\"oid:0x210000000000\"}";
+
+    dbAsic->del(fdbStateKey(fdbKey));
+
+    std::string learnData =
+        "[{\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x2600000010\\\","
+        "\\\"mac\\\":\\\"00:00:00:00:00:10\\\","
+        "\\\"switch_id\\\":\\\"oid:0x21000000000000\\\"}\","
+        "\"fdb_event\":\"SAI_FDB_EVENT_LEARNED\","
+        "\"list\":["
+            "{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\","
+             "\"value\":\"oid:0x1003a0000004c\"},"
+            "{\"id\":\"SAI_FDB_ENTRY_ATTR_TYPE\","
+             "\"value\":\"SAI_FDB_ENTRY_TYPE_DYNAMIC\"}"
+        "]}]";
+
+    std::vector<swss::FieldValueTuple> empty;
+    swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, learnData, empty);
+    np->syncProcessNotification(item);
+
+    auto val = dbAsic->hget(fdbStateKey(fdbKey), "event_type");
+    EXPECT_NE(val, nullptr) << "LEARN event not written to FDB_EVENT_STATE";
+    if (val)
+    {
+        EXPECT_EQ(*val, "SAI_FDB_EVENT_LEARNED");
+    }
+
+    dbAsic->del(fdbStateKey(fdbKey));
+    dbAsic->del("FDB_EVENT_STATE_KEY_SET");
+    translator->eraseRidAndVid(0x21000000000000, 0x210000000000);
+    translator->eraseRidAndVid(0x1003a0000004c,  0x3a000000000c00);
+    translator->eraseRidAndVid(0x2600000010,     0x26000000000010);
+}
+
+/*
+ * Test: AGED event issues DEL on FDB_EVENT_STATE (deletes the key).
+ */
+TEST(NotificationProcessor, FdbAgedDeletesFromProducerStateTable)
+{
+    auto dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+    std::shared_ptr<VirtualOidTranslator> translator;
+    auto np = makeProcessorWithDb(dbAsic, translator);
+
+    translator->insertRidAndVid(0x21000000000000, 0x210000000000);
+    translator->insertRidAndVid(0x2600000011,     0x26000000000011);
+
+    std::string fdbKey =
+        "{\"bvid\":\"oid:0x26000000000011\","
+        "\"mac\":\"00:00:00:00:00:11\","
+        "\"switch_id\":\"oid:0x210000000000\"}";
+
+    /* Pre-populate so we can verify deletion */
+    dbAsic->hset(fdbStateKey(fdbKey), "event_type", "SAI_FDB_EVENT_LEARNED");
+
+    std::string agedData =
+        "[{\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x2600000011\\\","
+        "\\\"mac\\\":\\\"00:00:00:00:00:11\\\","
+        "\\\"switch_id\\\":\\\"oid:0x21000000000000\\\"}\","
+        "\"fdb_event\":\"SAI_FDB_EVENT_AGED\","
+        "\"list\":[]}]";
+
+    std::vector<swss::FieldValueTuple> empty;
+    swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, agedData, empty);
+    np->syncProcessNotification(item);
+
+    /* ProducerStateTable::del does not remove the key immediately in Redis;
+     * it publishes a DEL notification. The _G_ scratch key should be deleted. */
+    auto val = dbAsic->hget(fdbStateKey(fdbKey), "event_type");
+    EXPECT_EQ(val, nullptr) << "AGED event should delete entry from FDB_EVENT_STATE scratch";
+
+    dbAsic->del("FDB_EVENT_STATE_KEY_SET");
+    translator->eraseRidAndVid(0x21000000000000, 0x210000000000);
+    translator->eraseRidAndVid(0x2600000011,     0x26000000000011);
+}
+
+/*
+ * Test: FLUSH event goes via PUBLISH, not to FDB_EVENT_STATE.
+ */
+TEST(NotificationProcessor, FdbFlushDoesNotWriteToProducerStateTable)
+{
+    auto dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+    std::shared_ptr<VirtualOidTranslator> translator;
+    auto np = makeProcessorWithDb(dbAsic, translator);
+
+    translator->insertRidAndVid(0x21000000000000, 0x210000000000);
+    translator->insertRidAndVid(0x2600000012,     0x26000000000012);
+
+    std::string fdbKey =
+        "{\"bvid\":\"oid:0x26000000000012\","
+        "\"mac\":\"00:00:00:00:00:00\","
+        "\"switch_id\":\"oid:0x210000000000\"}";
+
+    dbAsic->del(fdbStateKey(fdbKey));
+
+    std::string flushData =
+        "[{\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x2600000012\\\","
+        "\\\"mac\\\":\\\"00:00:00:00:00:00\\\","
+        "\\\"switch_id\\\":\\\"oid:0x21000000000000\\\"}\","
+        "\"fdb_event\":\"SAI_FDB_EVENT_FLUSHED\","
+        "\"list\":[]}]";
+
+    std::vector<swss::FieldValueTuple> empty;
+    swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, flushData, empty);
+    np->syncProcessNotification(item);
+
+    /* FLUSH must NOT appear in the scratch table */
+    auto val = dbAsic->hget(fdbStateKey(fdbKey), "event_type");
+    EXPECT_EQ(val, nullptr) << "FLUSH event must not be written to FDB_EVENT_STATE";
+
+    dbAsic->del("FDB_EVENT_STATE_KEY_SET");
+    translator->eraseRidAndVid(0x21000000000000, 0x210000000000);
+    translator->eraseRidAndVid(0x2600000012,     0x26000000000012);
 }
