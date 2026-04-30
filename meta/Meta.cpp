@@ -1997,9 +1997,11 @@ void Meta::meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
             case SAI_ATTR_VALUE_TYPE_JSON:
                 // no special action required
                 break;
@@ -3713,6 +3715,17 @@ sai_status_t Meta::meta_generic_validation_create(
                 }
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
+                VALIDATION_LIST(md, value.u64rangelist);
+                for (uint32_t i = 0; i < value.u64rangelist.count; i++) {
+                    if (value.u64rangelist.list[i].min > value.u64rangelist.list[i].max)
+                    {
+                        META_LOG_ERROR(md, "invalid range %" PRIu64 " .. %" PRIu64, value.u64rangelist.list[i].min, value.u64rangelist.list[i].max);
+                        return SAI_STATUS_INVALID_PARAMETER;
+                    }
+                }
+                break;
+
             case SAI_ATTR_VALUE_TYPE_JSON:
                 VALIDATION_LIST(md, value.json.json);
                 break;
@@ -3738,6 +3751,7 @@ sai_status_t Meta::meta_generic_validation_create(
                 }
 
                 break;
+
 
             case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
 
@@ -4353,6 +4367,17 @@ sai_status_t Meta::meta_generic_validation_set(
             }
             break;
 
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
+            VALIDATION_LIST(md, value.u64rangelist);
+            for (uint32_t i = 0; i < value.u64rangelist.count; i++) {
+                if (value.u64rangelist.list[i].min > value.u64rangelist.list[i].max)
+                {
+                    META_LOG_ERROR(md, "invalid range %" PRIu64 " .. %" PRIu64, value.u64rangelist.list[i].min, value.u64rangelist.list[i].max);
+                    return SAI_STATUS_INVALID_PARAMETER;
+                }
+            }
+            break;
+
         case SAI_ATTR_VALUE_TYPE_JSON:
             VALIDATION_LIST(md, value.json.json);
             break;
@@ -4788,6 +4813,10 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.u16rangelist);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
+                VALIDATION_LIST(md, value.u64rangelist);
+                break;
+
             case SAI_ATTR_VALUE_TYPE_JSON:
                 VALIDATION_LIST(md, value.json.json);
                 break;
@@ -4795,6 +4824,7 @@ sai_status_t Meta::meta_generic_validation_get(
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
                 // primitives
                 break;
 
@@ -5065,6 +5095,16 @@ void Meta::meta_generic_validation_post_get(
                 }
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
+                VALIDATION_LIST_GET(md, value.u64rangelist);
+                for (uint32_t i = 0; i < value.u64rangelist.count; i++) {
+                    if (value.u64rangelist.list[i].min > value.u64rangelist.list[i].max)
+                    {
+                        META_LOG_ERROR(md, "invalid range %" PRIu64 " .. %" PRIu64, value.u64rangelist.list[i].min, value.u64rangelist.list[i].max);
+                    }
+                }
+                break;
+
             case SAI_ATTR_VALUE_TYPE_JSON:
                 VALIDATION_LIST_GET(md, value.json.json);
                 break;
@@ -5092,6 +5132,15 @@ void Meta::meta_generic_validation_post_get(
                 if (value.s32range.min > value.s32range.max)
                 {
                     META_LOG_ERROR(md, "invalid range %u .. %u", value.s32range.min, value.s32range.max);
+                }
+
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
+
+                if (value.u64range.min > value.u64range.max)
+                {
+                    META_LOG_ERROR(md, "invalid range %" PRIu64 " .. %" PRIu64, value.u64range.min, value.u64range.max);
                 }
 
                 break;
@@ -5991,9 +6040,11 @@ void Meta::meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
             case SAI_ATTR_VALUE_TYPE_JSON:
                 // no special action required
                 break;
@@ -6237,10 +6288,12 @@ void Meta::meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
         case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
         case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
         case SAI_ATTR_VALUE_TYPE_JSON:
             // no special action required
             break;
