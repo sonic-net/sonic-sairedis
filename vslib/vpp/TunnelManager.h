@@ -129,8 +129,35 @@ namespace saivs
             _In_ sai_object_id_t tunnel_oid,
             _Out_ uint32_t& sw_if_index);
 
-        sai_status_t remove_l2_vxlan_tunnel(
-            _In_ sai_object_id_t tunnel_oid);
+        /**
+         * @brief Handle late tunnel map entry for L2 VXLAN.
+         *
+         * Called when a VNI-to-VLAN mapper entry is created after a P2P tunnel
+         * already exists. Creates the VPP tunnel for the new VNI on the spot,
+         * eliminating the race between mapper entry creation and BGP IMET.
+         *
+         * @param serializedObjectId The serialized tunnel map entry object ID.
+         * @param attr_count Number of attributes.
+         * @param attr_list Attribute list.
+         * @return SAI_STATUS_SUCCESS on success or if not applicable.
+         */
+        sai_status_t handle_l2_vxlan_tunnel_map_entry(
+            _In_ const std::string& serializedObjectId,
+            _In_ uint32_t attr_count,
+            _In_ const sai_attribute_t *attr_list);
+
+        /**
+         * @brief Handle tunnel map entry removal for L2 VXLAN.
+         *
+         * Called before a VNI-to-VLAN mapper entry is removed from the SAI DB.
+         * Removes the corresponding VPP tunnel for that VNI, allowing individual
+         * map entries to be deleted without tearing down the entire tunnel.
+         *
+         * @param serializedObjectId The serialized tunnel map entry object ID.
+         * @return SAI_STATUS_SUCCESS on success or if not applicable.
+         */
+        sai_status_t handle_l2_vxlan_tunnel_map_entry_removal(
+            _In_ const std::string& serializedObjectId);
 
     private:
         SwitchVpp* m_switch_db;
@@ -138,8 +165,8 @@ namespace saivs
         u_int16_t m_vxlan_port;
         //nexthop SAI object ID to sw_if_index map
         std::unordered_map<sai_object_id_t, TunnelVPPData> m_tunnel_encap_nexthop_map;
-        // Map from tunnel SAI OID to VPP tunnel data (L2 VXLAN / EVPN)
-        std::unordered_map<sai_object_id_t, TunnelVPPData> m_l2_tunnel_map;
+        // Map from VNI to VPP tunnel data (L2 VXLAN / EVPN)
+        std::unordered_map<uint32_t, TunnelVPPData> m_l2_tunnel_map;
 
         sai_status_t tunnel_encap_nexthop_action(
                         _In_ const SaiObject* tunnel_nh_obj,
@@ -179,6 +206,27 @@ namespace saivs
 
         sai_status_t remove_vpp_vxlan_decap(
                         _In_ TunnelVPPData& tunnel_data);
+
+         /**
+         * @brief Create a single VPP VXLAN tunnel for one VNI.
+         *
+         * Shared helper used by both create_l2_vxlan_tunnel (BGP IMET trigger)
+         * and handle_l2_vxlan_tunnel_map_entry (late mapper trigger). Skips
+         * creation if the VNI already has a tunnel in m_l2_tunnel_map.
+         *
+         * @param src_ip Source VTEP IP.
+         * @param dst_ip Destination VTEP IP.
+         * @param vni VXLAN Network Identifier.
+         * @param vlan_id VLAN ID for bridge domain binding.
+         * @param sw_if_index Output VPP interface index.
+         * @return SAI_STATUS_SUCCESS on success or if skipped (duplicate VNI).
+         */
+        sai_status_t create_l2_vxlan_tunnel_for_vni(
+            _In_ sai_ip_address_t src_ip,
+            _In_ sai_ip_address_t dst_ip,
+            _In_ uint32_t vni,
+            _In_ uint16_t vlan_id,
+            _Out_ uint32_t& sw_if_index);
     };
 
     class TunnelManagerSRv6 {
