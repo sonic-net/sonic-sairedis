@@ -27,6 +27,9 @@
 #include "swss/notificationconsumer.h"
 
 #include <memory>
+#include <vector>
+#include <string>
+#include <tuple>
 
 namespace syncd
 {
@@ -543,5 +546,20 @@ namespace syncd
             TimerWatchdog m_timerWatchdog;
 
             std::set<sai_object_id_t> m_createdInInitView;
+
+            /*
+             * Queue of FlexCounter START_POLL events received during INIT_VIEW
+             * mode. During warm-boot reconciliation, SAI object creation is
+             * deferred until applyView() runs, so VIDTORID is not yet
+             * populated when FlexCounter registration events arrive. We
+             * queue these events here and replay them after applyView()
+             * completes successfully and VIDTORID is up to date.
+             *
+             * Each entry stores (key, op, values) from processFlexCounterEvent.
+             */
+            std::vector<std::tuple<std::string,
+                                   std::string,
+                                   std::vector<swss::FieldValueTuple>>>
+                m_pendingFlexCounterRegistrations;
     };
 }
