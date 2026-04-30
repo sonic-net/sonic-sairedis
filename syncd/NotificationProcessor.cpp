@@ -328,7 +328,8 @@ void NotificationProcessor::process_on_fdb_event(
     /*
      * Separate FLUSH events from LEARN/AGED/MOVE events.
      * FLUSH events are sent via PUBLISH (NotificationProducer) as before.
-     * LEARN/AGED/MOVE events use ProducerStateTable for key-based dedup.
+     * LEARN/AGED/MOVE events use ProducerStateTable so rapid events for the
+     * same entry are merged before orchagent processes them.
      */
     std::vector<sai_fdb_event_notification_data_t> flushEvents;
     std::vector<sai_fdb_event_notification_data_t> nonFlushEvents;
@@ -380,7 +381,7 @@ void NotificationProcessor::process_on_fdb_event(
         sendNotification(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s);
     }
 
-    /* Send LEARN/AGED/MOVE events via ProducerStateTable (key-based dedup) */
+    /* Send LEARN/AGED/MOVE events via ProducerStateTable (merged by key) */
     if (m_fdbEventStateProducer && !nonFlushEvents.empty())
     {
         for (auto &fdb : nonFlushEvents)
@@ -418,7 +419,7 @@ void NotificationProcessor::process_on_fdb_event(
     }
     else if (!nonFlushEvents.empty())
     {
-        /* Fallback: no ProducerStateTable (e.g., ZeroMQ mode), use PUBLISH */
+        /* Fallback: m_fdbEventStateProducer not initialized, use PUBLISH */
         std::string s = sai_serialize_fdb_event_ntf(
                 (uint32_t)nonFlushEvents.size(), nonFlushEvents.data());
 
