@@ -3200,16 +3200,23 @@ sai_status_t Syncd::processFlexCounterEvent(
         {
             sai_object_id_t vid, rid;
             sai_deserialize_object_id(strVid, vid);
-            vids.emplace_back(vid);
 
             if (!m_translator->tryTranslateVidToRid(vid, rid))
             {
-                SWSS_LOG_ERROR("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
-                               sai_serialize_object_id(vid).c_str());
+                SWSS_LOG_WARN("VID %s could not be translated to RID; skipping flex counter registration",
+                              sai_serialize_object_id(vid).c_str());
+                continue;
             }
 
+            vids.emplace_back(vid);
             rids.emplace_back(rid);
             keys.emplace_back(groupName + ":" + strVid);
+        }
+
+        if (vids.empty())
+        {
+            sendApiResponse(SAI_COMMON_API_SET, SAI_STATUS_SUCCESS);
+            return SAI_STATUS_SUCCESS;
         }
 
         m_manager->bulkAddCounter(vids, rids, groupName, values);
