@@ -230,6 +230,11 @@ namespace saivs
                     _In_ int tapfd,
                     _In_ sai_object_id_t port_id) override;
 
+            bool register_hostif_info(
+                    _In_ const std::string &tapname,
+                    _In_ int tapfd,
+                    _In_ sai_object_id_t port_id);
+
             virtual sai_status_t vs_create_hostif_tap_interface(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) override;
