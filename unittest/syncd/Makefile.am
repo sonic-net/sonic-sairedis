@@ -25,7 +25,8 @@ tests_SOURCES = main.cpp \
 				TestWorkaround.cpp \
 				TestSyncd.cpp \
 				TestVendorSai.cpp \
-				TestFlowDump.cpp
+				TestFlowDump.cpp \
+				TestSaiLoglevelNotify.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs

@@ -38,6 +38,8 @@
 
 #include <iterator>
 #include <algorithm>
+#include <map>
+#include <string>
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 #define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
@@ -5528,8 +5530,35 @@ void Syncd::saiLoglevelNotify(
 
     try
     {
+        // Translate swss log level string to SAI log level string before
+        // deserializing.  swss::Logger::linkToDb passes short names like
+        // "INFO" or "NOTICE", but sai_deserialize_log_level expects the full
+        // SAI enum name "SAI_LOG_LEVEL_INFO" / "SAI_LOG_LEVEL_NOTICE".
+        // Failing to translate causes the error logged in issue #170:
+        //   "Invalid SAI loglevel SAI_API_NEIGHBOR INFO"
+        
+        // Map swss priority names → SAI log level enum names
+        static const std::map<std::string, std::string> levelMap = {
+            { "EMERG",   "SAI_LOG_LEVEL_CRITICAL" },
+            { "ALERT",   "SAI_LOG_LEVEL_CRITICAL" },
+            { "CRIT",    "SAI_LOG_LEVEL_CRITICAL" },
+            { "ERROR",   "SAI_LOG_LEVEL_ERROR"    },
+            { "WARN",    "SAI_LOG_LEVEL_WARN"     },
+            { "NOTICE",  "SAI_LOG_LEVEL_NOTICE"   },
+            { "INFO",    "SAI_LOG_LEVEL_INFO"     },
+            { "DEBUG",   "SAI_LOG_LEVEL_DEBUG"    },
+        };
+
+        std::string saiLogLevel = strLogLevel;
+        auto it = levelMap.find(strLogLevel);
+        if (it != levelMap.end())
+        {
+            saiLogLevel = it->second;
+        }
+        // If not found, pass through unchanged (backward compatibility)
+
         sai_log_level_t logLevel;
-        sai_deserialize_log_level(strLogLevel, logLevel);
+        sai_deserialize_log_level(saiLogLevel, logLevel);
 
         sai_api_t api;
         sai_deserialize_api(strApi, api);
@@ -5538,7 +5567,7 @@ void Syncd::saiLoglevelNotify(
 
         if (status == SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_NOTICE("Setting SAI loglevel %s on %s", strLogLevel.c_str(), strApi.c_str());
+            SWSS_LOG_NOTICE("Setting SAI loglevel %s on %s", saiLogLevel.c_str(), strApi.c_str());
         }
         else
         {
