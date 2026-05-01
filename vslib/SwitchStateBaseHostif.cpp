@@ -953,11 +953,11 @@ void SwitchStateBase::syncOnLinkMsg(
     auto portId = getPortIdFromIfName(ifname);
 
     /*
-     * Runtime netlink events can arrive for a Linux hostif name that is not in
-     * lanemap. VPP, for example, keeps lanemap keyed by hardware names such as
-     * etp1 while Linux CP reports events for the TAP name Ethernet1. Once the
-     * ifindex and hostif name are registered, accept the event without requiring
-     * the TAP name to also appear in lanemap.
+     * Runtime link events can arrive for a Linux hostif name that is absent
+     * from the lane map. Some switch models keep the lane map keyed by
+     * hardware names, while Linux reports events for the hostif name. Once the
+     * index and hostif name are registered, accept the event without requiring
+     * the hostif name to also appear in the lane map.
      */
     if (strncmp(ifname.c_str(), SAI_VS_VETH_PREFIX, sizeof(SAI_VS_VETH_PREFIX) - 1) != 0 &&
             portId == SAI_NULL_OBJECT_ID && !map->hasInterface(ifname))
