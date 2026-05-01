@@ -48,6 +48,8 @@ namespace saivs
             TUNNEL_API_MODE_P2P = 0,
             /** multi-point */
             TUNNEL_API_MODE_MP,
+            /** multi-point to point (decap-only) */
+            TUNNEL_API_MODE_MP2P,
         };
 
         IpIpTunnelVPPData() {
@@ -59,7 +61,7 @@ namespace saivs
         u_int32_t sw_if_index = 0;
         sai_ip_address_t src_ip;                            // outer src (local endpoint)
         sai_ip_address_t dst_ip;                            // outer dst (remote endpoint; 0.0.0.0 for P2MP)
-        tunnel_mode mode = TUNNEL_API_MODE_MP;              // IPIP tunnel mode
+        tunnel_mode mode = TUNNEL_API_MODE_MP2P;            // IPIP tunnel mode
         u_int8_t flags = 0;                                 // tunnel_encap_decap_flags
         sai_object_id_t tunnel_oid = SAI_NULL_OBJECT_ID;    // referenced SAI tunnel object
         uint32_t vrf_id = 0;                                // vrf
