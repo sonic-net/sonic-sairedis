@@ -830,6 +830,46 @@ std::string sai_serialize_number(
     return std::to_string(number);
 }
 
+// internal
+static std::string sai_serialize_flags(
+        _In_ int32_t value,
+        _In_ const sai_enum_metadata_t* meta)
+{
+    SWSS_LOG_ENTER();
+
+    if (value == 0)
+        return meta->values[0] ? "0x0" : meta->valuesnames[0];
+
+    std::string s;
+
+    s.reserve(1024);
+
+    for (size_t i = 0; i < meta->valuescount; ++i)
+    {
+        if (value & meta->values[i])
+        {
+            if (s.size())
+                s.append("|");
+
+            s += meta->valuesnames[i];
+
+            value &= ~meta->values[i];
+        }
+    }
+
+    if (value)
+    {
+        SWSS_LOG_WARN("unrecognized flags: 0x%x in enum %s", value, meta->name);
+
+        if (s.size())
+            s.append("|");
+
+        s += sai_serialize_number<uint32_t>(value, true);
+    }
+
+    return s;
+}
+
 std::string sai_serialize_enum(
         _In_ const int32_t value,
         _In_ const sai_enum_metadata_t* meta)
@@ -839,6 +879,11 @@ std::string sai_serialize_enum(
     if (meta == NULL)
     {
         return sai_serialize_number(value);
+    }
+
+    if (meta->flagstype == SAI_ENUM_FLAGS_TYPE_STRICT)
+    {
+        return sai_serialize_flags(value, meta);
     }
 
     for (size_t i = 0; i < meta->valuescount; ++i)
@@ -3692,6 +3737,47 @@ void sai_deserialize_number(
     sai_deserialize_number<uint32_t>(s, number, hex);
 }
 
+
+// internal
+static void sai_deserialize_flags(
+        _In_ const std::string& s,
+        _In_ const sai_enum_metadata_t *meta,
+        _Out_ int32_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    value = 0;
+
+    const auto tokens = swss::tokenize(s, '|');
+
+    for (auto& v: tokens)
+    {
+        if (v[0] == '0')
+        {
+            uint32_t val;
+            sai_deserialize_number(v, val, true);
+
+            value |= val;
+            continue;
+        }
+
+        size_t i;
+        for (i = 0; i < meta->valuescount; ++i)
+        {
+            if (v == meta->valuesnames[i])
+            {
+                value |= meta->values[i];
+                break;
+            }
+        }
+        if (i == meta->valuescount)
+        {
+            // v is empty or doesn't match any enum
+            SWSS_LOG_WARN("%s in %s has invalid enum for %s", v.c_str(), s.c_str(), meta->name);
+        }
+    }
+}
+
 void sai_deserialize_enum(
         _In_ const std::string& s,
         _In_ const sai_enum_metadata_t *meta,
@@ -3702,6 +3788,11 @@ void sai_deserialize_enum(
     if (meta == NULL)
     {
         return sai_deserialize_number(s, value);
+    }
+
+    if (meta->flagstype == SAI_ENUM_FLAGS_TYPE_STRICT)
+    {
+        return sai_deserialize_flags(s, meta, value);
     }
 
     for (size_t i = 0; i < meta->valuescount; ++i)
