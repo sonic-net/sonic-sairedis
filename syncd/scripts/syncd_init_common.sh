@@ -690,7 +690,15 @@ config_syncd()
     set_start_type
 
     if [ ${ENABLE_SAITHRIFT} == 1 ]; then
-        CMD_ARGS+=" -r -m $HWSKU_DIR/port_config.ini"
+        CMD_ARGS+=" -r"
+        if [ -f $HWSKU_DIR/port_config.ini ]; then
+            CMD_ARGS+=" -m $HWSKU_DIR/port_config.ini"
+        elif [ -f /etc/sonic/config_db.json ]; then
+            CMD_ARGS+=" -m /etc/sonic/config_db.json"
+        else
+            echo "Error: No port_config.ini or config_db.json found for port map"
+            exit 1
+        fi
     fi
 
     [ -r $PLATFORM_DIR/syncd.conf ] && . $PLATFORM_DIR/syncd.conf
