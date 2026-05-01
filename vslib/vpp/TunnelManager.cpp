@@ -1160,14 +1160,17 @@ sai_status_t TunnelManagerIpIp::create_ipip_tunnel_term(
         return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
-    // Map sai_tunnel_term_table_entry_type_t -> VPP IPIP tunnel mode
-    uint8_t vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP;
+    // Map sai_tunnel_term_table_entry_type_t -> VPP IPIP tunnel mode.
+    // SAI P2MP term means "one local endpoint decapsulates traffic from many
+    // remote peers" -- this is decap-only and maps to VPP's MP2P mode, which
+    // (unlike MP / NBMA) does not require per-peer TEIB next-hops.
+    uint8_t vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP2P;
     switch (term_type) {
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2P:
             vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_P2P;
             break;
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2MP:
-            vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP;
+            vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP2P;
             break;
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_MP2P:
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_MP2MP:
@@ -1196,7 +1199,7 @@ sai_status_t TunnelManagerIpIp::create_ipip_tunnel_term(
     if (has_src_ip && vpp_mode == IpIpTunnelVPPData::TUNNEL_API_MODE_P2P) {
         sai_ip_address_t_to_vpp_ip_addr_t(src_ip, req.dst_address);
     } else {
-        // P2MP: dst = 0.0.0.0 (already zeroed)
+        // MP2P (P2MP-style decap): dst = 0.0.0.0 (already zeroed)
         req.dst_address.sa_family = dst_ip.addr_family == SAI_IP_ADDR_FAMILY_IPV4 ? AF_INET : AF_INET6;
     }
 
@@ -1225,7 +1228,7 @@ sai_status_t TunnelManagerIpIp::create_ipip_tunnel_term(
 
     SWSS_LOG_NOTICE("IpIp: created tunnel term %s: sw_if=%u mode=%s",
                     serializedObjectId.c_str(), sw_if_index,
-                    vpp_mode == 0 ? "P2P" : "P2MP");
+                    vpp_mode == IpIpTunnelVPPData::TUNNEL_API_MODE_P2P ? "P2P" : "MP2P");
 
     return SAI_STATUS_SUCCESS;
 }
