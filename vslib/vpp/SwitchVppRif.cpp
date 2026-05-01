@@ -29,6 +29,48 @@ using namespace saivs;
 
 int SwitchVpp::currentMaxInstance = 0;
 
+namespace
+{
+    bool get_linux_intf_carrier_state(
+            _In_ const char *ifname,
+            _Out_ bool &link_up)
+    {
+        SWSS_LOG_ENTER();
+
+        std::string carrier_path = std::string("/sys/class/net/") + ifname + "/carrier";
+        std::ifstream carrier(carrier_path);
+
+        if (carrier.good())
+        {
+            int carrier_value = 0;
+            carrier >> carrier_value;
+
+            if (!carrier.fail())
+            {
+                link_up = carrier_value != 0;
+                return true;
+            }
+        }
+
+        std::string operstate_path = std::string("/sys/class/net/") + ifname + "/operstate";
+        std::ifstream operstate(operstate_path);
+
+        if (operstate.good())
+        {
+            std::string state;
+            operstate >> state;
+
+            if (!operstate.fail())
+            {
+                link_up = state == "up";
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
 // TODO to cpp
 IpVrfInfo::IpVrfInfo(
     _In_ sai_object_id_t obj_id,
@@ -488,6 +530,20 @@ sai_status_t SwitchVpp::asyncIntfStateUpdate(const char *hwif_name, bool link_up
     if (port_oid == SAI_NULL_OBJECT_ID) {
         SWSS_LOG_NOTICE("Failed find port oid for tap interface %s. Ignore the update.", tap);
         return SAI_STATUS_SUCCESS;
+    }
+
+    if (link_up)
+    {
+        bool tap_link_up = false;
+
+        if (get_linux_intf_carrier_state(tap, tap_link_up) && !tap_link_up)
+        {
+            SWSS_LOG_NOTICE(
+                    "VPP interface %s reported UP, but Linux hostif %s carrier is down; reporting DOWN",
+                    hwif_name,
+                    tap);
+            link_up = false;
+        }
     }
 
     auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
