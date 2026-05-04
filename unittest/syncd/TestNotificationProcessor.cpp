@@ -229,8 +229,7 @@ TEST(NotificationProcessor, FdbLearnGoesToProducerStateTable)
         EXPECT_EQ(*val, "SAI_FDB_EVENT_LEARNED");
     }
 
-    dbAsic->del(fdbStateKey(fdbKey));
-    dbAsic->del("FDB_EVENT_STATE_KEY_SET");
+    dbAsic->flushdb();
     translator->eraseRidAndVid(0x21000000000000, 0x210000000000);
     translator->eraseRidAndVid(0x1003a0000004c,  0x3a000000000c00);
     translator->eraseRidAndVid(0x2600000010,     0x26000000000010);
@@ -272,7 +271,7 @@ TEST(NotificationProcessor, FdbAgedDeletesFromProducerStateTable)
     auto val = dbAsic->hget(fdbStateKey(fdbKey), "event_type");
     EXPECT_EQ(val, nullptr) << "AGED event should delete entry from FDB_EVENT_STATE scratch";
 
-    dbAsic->del("FDB_EVENT_STATE_KEY_SET");
+    dbAsic->flushdb();
     translator->eraseRidAndVid(0x21000000000000, 0x210000000000);
     translator->eraseRidAndVid(0x2600000011,     0x26000000000011);
 }
@@ -311,7 +310,7 @@ TEST(NotificationProcessor, FdbFlushDoesNotWriteToProducerStateTable)
     auto val = dbAsic->hget(fdbStateKey(fdbKey), "event_type");
     EXPECT_EQ(val, nullptr) << "FLUSH event must not be written to FDB_EVENT_STATE";
 
-    dbAsic->del("FDB_EVENT_STATE_KEY_SET");
+    dbAsic->flushdb();
     translator->eraseRidAndVid(0x21000000000000, 0x210000000000);
     translator->eraseRidAndVid(0x2600000012,     0x26000000000012);
 }
