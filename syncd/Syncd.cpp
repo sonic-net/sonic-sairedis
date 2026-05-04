@@ -3188,6 +3188,28 @@ sai_status_t Syncd::processFlexCounterEvent(
 
     if (fromAsicChannel && op == SET_COMMAND && (!vidStringVector.empty()))
     {
+        /*
+         * Warm-boot ACL counter fix: during INIT_VIEW mode, SAI object
+         * creation is deferred and VIDTORID is not populated until applyView
+         * runs. If we processed the FlexCounter START_POLL now,
+         * tryTranslateVidToRid() would fail and FlexCounter would cache an
+         * invalid RID forever (introduced by PR #1527, Feb 2025).
+         *
+         * Defer these events; they will be replayed after applyView()
+         * completes successfully, when VIDTORID has been rebuilt.
+         */
+        if (m_asicInitViewMode)
+        {
+            SWSS_LOG_NOTICE("Deferring FlexCounter START_POLL for %s (group %s, %zu VIDs) "
+                            "until applyView completes",
+                            key.c_str(), groupName.c_str(), vidStringVector.size());
+
+            m_pendingFlexCounterRegistrations.emplace_back(key, op, values);
+
+            sendApiResponse(SAI_COMMON_API_SET, SAI_STATUS_SUCCESS);
+            return SAI_STATUS_SUCCESS;
+        }
+
         std::vector<sai_object_id_t> vids;
         std::vector<sai_object_id_t> rids;
         std::vector<std::string> keys;
@@ -3200,16 +3222,23 @@ sai_status_t Syncd::processFlexCounterEvent(
         {
             sai_object_id_t vid, rid;
             sai_deserialize_object_id(strVid, vid);
-            vids.emplace_back(vid);
 
             if (!m_translator->tryTranslateVidToRid(vid, rid))
             {
-                SWSS_LOG_ERROR("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
-                               sai_serialize_object_id(vid).c_str());
+                SWSS_LOG_WARN("VID %s could not be translated to RID; skipping flex counter registration",
+                              sai_serialize_object_id(vid).c_str());
+                continue;
             }
 
+            vids.emplace_back(vid);
             rids.emplace_back(rid);
             keys.emplace_back(groupName + ":" + strVid);
+        }
+
+        if (vids.empty())
+        {
+            sendApiResponse(SAI_COMMON_API_SET, SAI_STATUS_SUCCESS);
+            return SAI_STATUS_SUCCESS;
         }
 
         m_manager->bulkAddCounter(vids, rids, groupName, values);
@@ -4640,6 +4669,41 @@ sai_status_t Syncd::processNotifySyncd(
             m_translator->clearLocalCache();
 
             m_createdInInitView.clear();
+
+            /*
+             * Warm-boot ACL counter fix: replay any FlexCounter START_POLL
+             * events that we deferred during INIT_VIEW mode. VIDTORID has
+             * now been rebuilt by applyView()/updateRedisDatabase(), so
+             * tryTranslateVidToRid() will succeed and FlexCounter will be
+             * registered with the correct hardware RIDs.
+             *
+             * We replay through the slow per-VID path (fromAsicChannel=false)
+             * which has a safety net (effective_op = DEL_COMMAND on
+             * translation failure) so any leftover stale VIDs are skipped
+             * cleanly instead of poisoning FlexCounter with garbage RIDs.
+             */
+            if (!m_pendingFlexCounterRegistrations.empty())
+            {
+                SWSS_LOG_NOTICE("Replaying %zu deferred FlexCounter registration(s) "
+                                "after applyView completed",
+                                m_pendingFlexCounterRegistrations.size());
+
+                auto pending = std::move(m_pendingFlexCounterRegistrations);
+                m_pendingFlexCounterRegistrations.clear();
+
+                for (const auto& entry: pending)
+                {
+                    const std::string& pendingKey = std::get<0>(entry);
+                    const std::string& pendingOp  = std::get<1>(entry);
+                    const std::vector<swss::FieldValueTuple>& pendingValues =
+                            std::get<2>(entry);
+
+                    processFlexCounterEvent(pendingKey,
+                                            pendingOp,
+                                            pendingValues,
+                                            false /* fromAsicChannel */);
+                }
+            }
         }
         else
         {
