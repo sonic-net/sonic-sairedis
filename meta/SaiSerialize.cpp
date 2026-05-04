@@ -2042,7 +2042,17 @@ std::string sai_serialize_acl_field(
             return sai_serialize_oid_list(field.data.objlist, countOnly);
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
-            return sai_serialize_number_list(field.data.u8list, countOnly) + "&mask:" + sai_serialize_number_list(field.mask.u8list, countOnly, true);
+            {
+                std::string result = sai_serialize_number_list(field.data.u8list, countOnly);
+
+                // Only serialize mask if it's properly initialized
+                if (field.mask.u8list.list != NULL && field.mask.u8list.count > 0)
+                {
+                    result += "&mask:" + sai_serialize_number_list(field.mask.u8list, countOnly, true);
+                }
+
+                return result;
+            }
 
         default:
             SWSS_LOG_THROW("sai attr value %s is not implemented, FIXME", sai_serialize_attr_value_type(meta.attrvaluetype).c_str());
