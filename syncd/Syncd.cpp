@@ -165,7 +165,7 @@ Syncd::Syncd(
         m_client = std::make_shared<RedisClient>(m_dbAsic);
     }
 
-    m_processor = std::make_shared<NotificationProcessor>(m_notifications, m_client, std::bind(&Syncd::syncProcessNotification, this, _1));
+    m_processor = std::make_shared<NotificationProcessor>(m_notifications, m_client, std::bind(&Syncd::syncProcessNotification, this, _1), m_dbAsic);
     m_handler = std::make_shared<NotificationHandler>(m_processor);
 
     m_sn.onFdbEvent = std::bind(&NotificationHandler::onFdbEvent, m_handler.get(), _1, _2);
