@@ -12,6 +12,161 @@
 
 using namespace saivs;
 
+/* ======================================================================
+ * L2 classify-based punt infrastructure.
+ *
+ * Shared classify tables and resolved hit-next indices are initialised
+ * lazily on the first BD member add and persist for the lifetime of
+ * the process.
+ *
+ * Scope: LLDP only (always redirect-punt, action=NONE).
+ *
+ * LLDP needs the classifier to work around a VPP behavior: link-local
+ * multicast frames (DA in 01:80:c2:00:00:00..0F) are flooded by the BD
+ * because l2-input strips L2INPUT_FEAT_FWD from the per-buffer feature
+ * bitmap for any frame with the multicast bit set, so the FDB is never
+ * consulted and a static l2fib entry cannot suppress the flood.  Without
+ * the classifier the LLDP frame would be flooded to every BD member
+ * (including the BVI flood-copy, which then punts via linux-cp-punt-xc
+ * to the BVI host tap), causing lldpd to observe the same neighbour on
+ * multiple netdevs and producing inconsistent neighbour discovery
+ * results.  The l2-input-classify arc runs before the multicast
+ * feat-mask strip, so a redirect-punt session here consumes the frame
+ * and delivers it only to the originating member's LCP host tap.
+ *
+ * LACP (0x8809) is intentionally NOT in the classifier: linux-cp
+ * registers linux-cp-punt-xc as the ethernet-input next for 0x8809
+ * (and 0x88cc, 0x0806) via lcp_ethertype_enable() at startup.  For
+ * LACP that dispatch happens in ethernet-input on the parent phy --
+ * before l2-input runs and before any sub-interface dispatch -- so
+ * LACP never reaches the BD and never needs to be classifier-punted.
+ * The same is true for tagged LLDP: ethernet-input dispatches by
+ * outer ethertype, and 0x88cc != 0x8100, so tagged LLDP also bypasses
+ * the BD via the same linux-cp-punt-xc shortcut.  Only untagged LLDP
+ * (which arrives on a parent that IS in the BD) needs the classifier.
+ *
+ * ARP and DHCP are handled by the sonic_ext VPP plugin instead:
+ *   - ARP via the arp arc -> sonic-ext-aggr-tap-redirect on the BVI tap
+ *   - DHCP via l2-flood -> BVI ip4-input -> sonic-ext-bcast-redirect
+ *     -> linux-cp-punt -> sonic-ext-aggr-tap-redirect on the BVI tap
+ * Both deliver the punt to the original member's host tap with the
+ * original L2 / VLAN intact.  See platform/vpp/vppbld/plugins/sonic_ext/.
+ * ====================================================================== */
+
+#define SAIVS_CLASSIFY_ACTION_NONE   0
+
+static bool     s_l2_punt_classify_inited = false;
+static uint32_t s_punt_next_index = ~0;       /* linux-cp-punt */
+
+/* Untagged member tables */
+static uint32_t s_untag_other_table = ~0;     /* LLDP/LACP by ethertype */
+
+/* Tagged member tables */
+static uint32_t s_tag_other_table = ~0;       /* inner ethertype (LLDP/LACP) */
+
+static int l2_punt_classify_init()
+{
+    if (s_l2_punt_classify_inited)
+        return 0;
+
+    /* Resolve hit-next index for the existing linux-cp-punt node.
+     * get_next_index also registers it as a next of l2-input-classify. */
+    if (vpp_add_node_next("l2-input-classify", "linux-cp-punt",
+                                &s_punt_next_index) != 0) {
+        SWSS_LOG_ERROR("l2_punt_classify_init: vpp_add_node_next failed");
+        return -1;
+    }
+    SWSS_LOG_NOTICE("l2_punt_classify_init: punt_next_index=%u", s_punt_next_index);
+
+    /* --- Untagged "other" table: match ethertype at offset 12 ---
+     * LLDP only is redirect-punt (action=NONE).  See file header for
+     * why LACP is not in the classifier.  ARP and DHCP are not
+     * classifier-punted either -- see file header comment. */
+    {
+        uint8_t mask[16] = {0};
+        mask[12] = 0xFF; mask[13] = 0xFF;
+
+        if (vpp_classify_table_create(
+                8 /*nbuckets*/, 64*1024 /*memory_size*/,
+                0 /*skip*/, 1 /*match_n_vectors*/,
+                ~0 /*next_table*/, ~0 /*miss_next=continue*/,
+                mask, 16, &s_untag_other_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: untag_other table create failed");
+            return -1;
+        }
+
+        /* LLDP 0x88CC → redirect-punt (consume) */
+        uint8_t m[16] = {0}; m[12] = 0x88; m[13] = 0xCC;
+        vpp_classify_session_add(s_untag_other_table, s_punt_next_index,
+                                 m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+    }
+
+    /* --- Tagged "other" table: match inner ethertype at offset 16 ---
+     * skip=1, match=1 → covers bytes 16-31.
+     * No chained next table.
+     * VPP session match data must be (skip+match)*16 = 32 bytes.
+     *
+     * In practice ethernet-input dispatches by outer ethertype, and
+     * 0x88cc != 0x8100, so tagged LLDP never reaches the sub-if
+     * classifier -- it is consumed by linux-cp-punt-xc directly off
+     * the parent.  This entry is purely a defensive safety net. */
+    {
+        uint8_t mask[16] = {0};
+        mask[0] = 0xFF; mask[1] = 0xFF;          /* inner ethertype (offset 16-17) */
+
+        if (vpp_classify_table_create(
+                8, 64*1024,
+                1 /*skip*/, 1 /*match*/,
+                ~0 /*next_table_index: no chain*/,
+                ~0 /*miss_next*/,
+                mask, 16, &s_tag_other_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: tag_other table create failed");
+            return -1;
+        }
+
+        /* LLDP inner 0x88CC → redirect-punt (defensive)
+         * match[0..15] = skip padding, match[16..31] = match vector */
+        uint8_t m[32] = {0}; m[16+0] = 0x88; m[16+1] = 0xCC;
+        vpp_classify_session_add(s_tag_other_table, s_punt_next_index,
+                                 m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+    }
+
+    s_l2_punt_classify_inited = true;
+    SWSS_LOG_NOTICE("L2 punt classify tables initialized: "
+                    "untag_other=%u tag_other=%u punt_next=%u",
+                    s_untag_other_table, s_tag_other_table,
+                    s_punt_next_index);
+    return 0;
+}
+
+static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged)
+{
+    if (l2_punt_classify_init() != 0) {
+        SWSS_LOG_ERROR("l2_punt_classify_apply: init failed for %s", hwif_name);
+        return -1;
+    }
+
+    uint32_t other_tbl = is_tagged ? s_tag_other_table : s_untag_other_table;
+
+    int rc = vpp_classify_set_interface_l2_tables(
+        hwif_name, ~0 /*ip4*/, ~0 /*ip6*/, other_tbl, true /*is_input*/);
+    if (rc == 0) {
+        SWSS_LOG_NOTICE("l2_punt_classify_apply: %s tagged=%d other=%u",
+                        hwif_name, is_tagged, other_tbl);
+    } else {
+        SWSS_LOG_ERROR("l2_punt_classify_apply: set_interface_l2_tables failed(%d) for %s",
+                       rc, hwif_name);
+    }
+    return rc;
+}
+
+static int l2_punt_classify_remove(const char *hwif_name)
+{
+    /* Detach all tables from the interface */
+    return vpp_classify_set_interface_l2_tables(
+        hwif_name, ~0, ~0, ~0, true /*is_input*/);
+}
+
 /**
  * @brief FDB_ENTRY FLUSH Modes.
  */
@@ -190,19 +345,36 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         */
         snprintf(host_subifname, sizeof(host_subifname), "%s.%u", hwifname, vlan_id);
 
-        /* The host(tap) subinterface is also created as part of the vpp subinterface creation */
+        /* lcp-auto-subint creates the host tap automatically */
         create_sub_interface(hwifname, vlan_id, vlan_id);
-
-        /* Get new list of physical interfaces from VS */
-        refresh_interfaces_list();
 
         hw_ifname = host_subifname;
 
         //Create bridge and set the l2 port
         set_sw_interface_l2_bridge(hw_ifname,bridge_id, true, VPP_API_PORT_TYPE_NORMAL);
 
+        /* Strip the outer 802.1Q tag on ingress to the BD; VPP pushes
+         * it back on egress symmetrically. Required so the BD/BVI
+         * sees untagged frames and ip4-dvr-reinject does not deliver
+         * tagged frames to the LCP host tap.
+         */
+        {
+            vpp_l2_vtr_op_t vtr_op = L2_VTR_POP_1;
+            vpp_vlan_type_t push_dot1q = VLAN_DOT1Q;
+            uint32_t tag1 = (uint32_t)vlan_id;
+            uint32_t tag2 = ~0;
+            set_l2_interface_vlan_tag_rewrite(hw_ifname, tag1, tag2, push_dot1q, vtr_op);
+        }
+
         //Set interface state up
         interface_set_state(hw_ifname, true);
+
+        /* Enable L2 classify-based punt on the sub-interface so control
+         * protocols (LLDP, LACP, ARP, DHCP) are punted/copied to the
+         * LCP host tap.  Tagged frames still carry the 802.1Q header
+         * when l2-input-classify runs (VTR has not yet stripped it).
+         */
+        l2_punt_classify_apply(hw_ifname, true /*tagged*/);
     }
     else if (tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED)
     {
@@ -211,12 +383,16 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         //Create bridge and set the l2 port
         set_sw_interface_l2_bridge(hw_ifname,bridge_id, true, VPP_API_PORT_TYPE_NORMAL);
 
-        //Set the vlan member to bridge and tags rewrite
-        vpp_l2_vtr_op_t vtr_op = L2_VTR_PUSH_1;
-        vpp_vlan_type_t push_dot1q = VLAN_DOT1Q;
-        uint32_t tag1 = (uint32_t)vlan_id;
-        uint32_t tag2 = ~0;
-        set_l2_interface_vlan_tag_rewrite(hw_ifname, tag1, tag2, push_dot1q, vtr_op);
+        // Untagged BD member: do NOT install an input tag-rewrite on
+        // the phy. The wire frame is untagged and must remain untagged
+        // through l2-input/BD/BVI; otherwise ip4-dvr-reinject will
+        // egress LCP traffic with a stale 802.1Q tag.
+
+        /* Enable L2 classify-based punt on the parent so control
+         * protocols (LLDP, LACP, ARP, DHCP) arriving on the parent
+         * are punted/copied to the LCP host tap.
+         */
+        l2_punt_classify_apply(hw_ifname, false /*untagged*/);
     }
     else {
         SWSS_LOG_ERROR("Tagging Mode %d not implemented", tagging_mode);
@@ -363,31 +539,40 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
     char host_subifname[32];
     if (tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED)
     {
+        /* Disable L2 classify punt before removing the parent
+         * from the BD (mirror of the add path).
+         */
+        l2_punt_classify_remove(hw_ifname);
 
-        //First disable tag-rewrite.
-        vpp_l2_vtr_op_t vtr_op =L2_VTR_DISABLED;
-        vpp_vlan_type_t push_dot1q = VLAN_DOT1Q;
-        uint32_t tag1 = (uint32_t)vlan_id;
-        uint32_t tag2 = ~0;
-        set_l2_interface_vlan_tag_rewrite(hw_ifname, tag1, tag2, push_dot1q, vtr_op);
-
-        //Remove interface from bridge, interface type should be changed to others types like l3.
+        /* Untagged member: parent itself is the BD member. No VTR was
+         * installed on add, so just remove the parent from the BD.
+         */
         set_sw_interface_l2_bridge(hw_ifname, bridge_id, false, VPP_API_PORT_TYPE_NORMAL);
     }
     else if (tagging_mode == SAI_VLAN_TAGGING_MODE_TAGGED)
     {
-
-        // set interface l2 tag-rewrite GigabitEthernet0/8/0.200 disable
+        // Tagged member: subif <parent>.<vid> is the BD member.
+        const char *parent_hwif = hw_ifname;
         snprintf(host_subifname, sizeof(host_subifname), "%s.%u", hw_ifname, vlan_id);
         hw_ifname = host_subifname;
+
+        /* Disable L2 classify punt on subif before teardown */
+        l2_punt_classify_remove(hw_ifname);
+
+        // Disable tag-rewrite before removing the subif from the bridge.
+        {
+            vpp_l2_vtr_op_t vtr_op = L2_VTR_DISABLED;
+            vpp_vlan_type_t push_dot1q = VLAN_DOT1Q;
+            uint32_t tag1 = (uint32_t)vlan_id;
+            uint32_t tag2 = ~0;
+            set_l2_interface_vlan_tag_rewrite(hw_ifname, tag1, tag2, push_dot1q, vtr_op);
+        }
+
         // Remove the l2 port from bridge
         set_sw_interface_l2_bridge(hw_ifname, bridge_id, false, VPP_API_PORT_TYPE_NORMAL);
 
-        // delete subinterface
-        delete_sub_interface(hw_ifname, vlan_id);
-
-        // Get new list of physical interfaces from VS
-        refresh_interfaces_list();
+        // delete subinterface (lcp-auto-subint removes host tap automatically)
+        delete_sub_interface(parent_hwif, vlan_id);
     }
     else {
 
@@ -466,16 +651,32 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     //Set interface state up
     interface_set_state(hw_ifname, true);
 
-    //Set the bvi as access or untagged port of the bridge
-    vpp_l2_vtr_op_t vtr_op = L2_VTR_PUSH_1;
-    vpp_vlan_type_t push_dot1q = VLAN_DOT1Q;
-    uint32_t tag1 = (uint32_t)vlan_id;
-    uint32_t tag2 = ~0;
-    set_l2_interface_vlan_tag_rewrite(hw_ifname, tag1, tag2, push_dot1q, vtr_op);
+    // BVI is the L3 endpoint of the BD and exchanges *untagged* frames
+    // with the BD, matching the Linux model where Vlan<id> is presented
+    // untagged to the IP stack. No vlan tag-rewrite on the BVI itself.
 
-    //Set the arp termination for bridge
-    uint32_t bd_id = (uint32_t) vlan_id;
-    set_bridge_domain_flags(bd_id, VPP_BD_FLAG_ARP_TERM,true);
+    // Create LCP pair between bvi<id> and a Linux tap (tap_Vlan<id>).
+    // The pair is required so that:
+    //   - lcp_itf_pair_add fires the sonic_ext plugin's vft callback,
+    //     which enables sonic-ext-bcast-redirect on the BVI's ip4-unicast
+    //     arc and sonic-ext-aggr-tap-redirect on the BVI tap's
+    //     interface-output arc.
+    //   - linux-cp-punt[-xc] has a host tap to set VLIB_TX to before
+    //     aggr-tap-redirect rewrites it to the originating member tap.
+    // The kernel-visible Vlan<id> netdev is provisioned independently by
+    // SONiC; data-plane punts land on the originating member tap via
+    // aggr-tap-redirect, not on tap_Vlan<id>, so no tc mirror is required.
+    {
+        std::string vpp_ifname = std::string("bvi") + std::to_string(vlan_id);
+        std::string tap_name    = std::string("tap_Vlan") + std::to_string(vlan_id);
+
+        SWSS_LOG_NOTICE("configure_lcp_interface vpp_name:%s tap:%s",
+                        vpp_ifname.c_str(), tap_name.c_str());
+        configure_lcp_interface(vpp_ifname.c_str(), tap_name.c_str(), true);
+
+        refresh_interfaces_list();
+        interface_set_state(tap_name.c_str(), true);
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -529,24 +730,24 @@ sai_status_t SwitchVpp::vpp_delete_bvi_interface(
         return SAI_STATUS_FAILURE;
     }
     auto vlan_id = attr.value.u16;
+    uint32_t bd_id = (uint32_t)vlan_id;
     char hw_bviifname[32];
     const char *hw_ifname;
     snprintf(hw_bviifname, sizeof(hw_bviifname), "bvi%u",vlan_id);
     hw_ifname = hw_bviifname;
 
-    //Disable arp termination for bridge
-    uint32_t bd_id = (uint32_t) vlan_id;
-    set_bridge_domain_flags(bd_id, VPP_BD_FLAG_ARP_TERM, false);
-
-    //First disable tag-rewrite.
-    vpp_l2_vtr_op_t vtr_op = L2_VTR_DISABLED;
-    vpp_vlan_type_t push_dot1q = VLAN_DOT1Q;
-    uint32_t tag1 = (uint32_t)vlan_id;
-    uint32_t tag2 = ~0;
-    set_l2_interface_vlan_tag_rewrite(hw_ifname, tag1, tag2, push_dot1q, vtr_op);
-
     //Remove interface from bridge, interface type should be changed to others types like l3.
     set_sw_interface_l2_bridge(hw_ifname, bd_id, false, VPP_API_PORT_TYPE_BVI);
+
+    // Tear down LCP pair for the BVI tap.  Tap name is deterministic:
+    // tap_Vlan<id>; no per-instance lookup table is needed.
+    {
+        std::string tap_name = std::string("tap_Vlan") + std::to_string(vlan_id);
+
+        SWSS_LOG_NOTICE("configure_lcp_interface remove vpp_name:%s tap:%s",
+                        hw_ifname, tap_name.c_str());
+        configure_lcp_interface(hw_ifname, tap_name.c_str(), false);
+    }
 
     //Remove the bvi interface
     delete_bvi_interface(hw_ifname);

@@ -1930,13 +1930,6 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     /* Get new list of physical interfaces from VS */
     refresh_interfaces_list();
 
-/*
-    char host_subifname[32], hwif_name[32];
-    snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
-    snprintf(hwif_name, sizeof(hwif_name), "%s.%u", tap_to_hwif_name(dev), vlan_id);
-    configure_lcp_interface(tap_to_hwif_name(dev), host_subifname);
-*/
-
     return SAI_STATUS_SUCCESS;
 }
 

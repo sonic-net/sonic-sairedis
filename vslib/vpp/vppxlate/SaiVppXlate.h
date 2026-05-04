@@ -297,6 +297,7 @@ typedef enum {
     extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
     extern int interface_ip_address_del_all(const char *hwif_name);
     extern int interface_set_state (const char *hwif_name, bool is_up);
+    extern int interface_set_promiscuous (const char *hwif_name, bool enable);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address);
@@ -362,6 +363,27 @@ typedef enum {
     extern int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip,
                                            uint32_t vrf_id,
                                            uint32_t *out_sw_if_index);
+
+    /* VPP Classify API for L2 punt */
+    extern int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
+                                         uint32_t skip_n_vectors, uint32_t match_n_vectors,
+                                         uint32_t next_table_index, uint32_t miss_next_index,
+                                         const uint8_t *mask, uint32_t mask_len,
+                                         uint32_t *new_table_index);
+    extern int vpp_classify_table_delete(uint32_t table_index);
+    extern int vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+                                        const uint8_t *match, uint32_t match_len,
+                                        uint32_t opaque_index, int32_t advance,
+                                        uint8_t action);
+    extern int vpp_classify_session_del(uint32_t table_index,
+                                        const uint8_t *match, uint32_t match_len);
+    extern int vpp_classify_set_interface_l2_tables(const char *hwif_name,
+                                                    uint32_t ip4_table_index,
+                                                    uint32_t ip6_table_index,
+                                                    uint32_t other_table_index,
+                                                    bool is_input);
+    extern int vpp_add_node_next(const char *node_name, const char *next_name,
+                                       uint32_t *next_index);
 #ifdef __cplusplus
 }
 #endif
