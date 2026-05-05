@@ -26,7 +26,9 @@ tests_SOURCES = main.cpp \
 				TestWorkaround.cpp \
 				TestSyncd.cpp \
 				TestVendorSai.cpp \
-				TestFlowDump.cpp
+				TestFlowDump.cpp \
+				TestAsan.cpp \
+				$(top_srcdir)/syncd/Asan.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
 tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs
