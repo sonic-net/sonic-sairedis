@@ -4397,7 +4397,7 @@ int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
         PING (NULL, mp_ping);
         S (mp_ping);
 
-        W (ret);
+        WR (ret);
 
         VPP_UNLOCK();
 
