@@ -1043,17 +1043,16 @@ sai_status_t SwitchVpp::create(
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY)
     {
-        CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
-
         // Check if this is an IPINIP tunnel term
         for (uint32_t i = 0; i < attr_count; i++) {
             if (attr_list[i].id == SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE &&
                 attr_list[i].value.s32 == SAI_TUNNEL_TYPE_IPINIP) {
-                return m_tunnel_mgr_ipip.create_ipip_tunnel_term(
-                    serializedObjectId, switch_id, attr_count, attr_list);
+                CHECK_STATUS(m_tunnel_mgr_ipip.create_ipip_tunnel_term(
+                    serializedObjectId, switch_id, attr_count, attr_list));
+                break;
             }
         }
-        return SAI_STATUS_SUCCESS;
+        return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
     }
 
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);

@@ -883,19 +883,6 @@ uint32_t TunnelManagerIpIp::resolve_vrf_from_rif(_In_ sai_object_id_t rif_oid)
  * paths request the same tunnel (e.g. MuxTunnel0 P2P).
  */
 
-static bool sai_ip_address_equal(const sai_ip_address_t &a, const sai_ip_address_t &b)
-{
-    SWSS_LOG_ENTER();
-
-    if (a.addr_family != b.addr_family) {
-        return false;
-    }
-    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
-        return a.addr.ip4 == b.addr.ip4;
-    }
-    return memcmp(a.addr.ip6, b.addr.ip6, sizeof(a.addr.ip6)) == 0;
-}
-
 bool TunnelManagerIpIp::IpIpTunnelKey::operator==(const IpIpTunnelKey &o) const
 {
     SWSS_LOG_ENTER();
