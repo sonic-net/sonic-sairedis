@@ -1,5 +1,7 @@
 #include "RedisRemoteSaiInterface.h"
 #include "ContextConfigContainer.h"
+#include "ContextConfig.h"
+#include "RedisChannel.h"
 #include "sairediscommon.h"
 
 #include <gtest/gtest.h>
@@ -87,4 +89,25 @@ TEST(RedisRemoteSaiInterface, queryStatsStCapability)
               sai.queryStatsStCapability(0,
                                          SAI_OBJECT_TYPE_PORT,
                                          &stats_capability));
+}
+
+TEST(RedisRemoteSaiInterface, zmqSyncFallsBackToRedisSyncWhenJsonDisablesZmq)
+{
+    SWSS_LOG_ENTER();
+
+    auto cc = std::make_shared<ContextConfig>(0, "syncd", "ASIC_DB", "COUNTERS_DB", "FLEX_COUNTER_DB", "STATE_DB");
+    cc->m_loadedFromJson = true;
+    cc->m_zmqEnable = false;
+
+    auto rec = make_shared<Recorder>();
+    RedisRemoteSaiInterface sai(cc, nullptr, rec);
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE;
+    attr.value.s32 = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr));
+
+    EXPECT_NE(dynamic_cast<RedisChannel*>(sai.m_communicationChannel.get()), nullptr);
+    EXPECT_TRUE(sai.m_syncMode);
 }

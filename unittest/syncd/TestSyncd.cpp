@@ -211,6 +211,34 @@ TEST(Syncd, inspectAsic)
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai->apiUninitialize());
 }
 
+TEST(Syncd, zmqSyncWithJsonDisabledFallsBackToRedisSync)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_disabled.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(cmd->m_redisCommunicationMode, SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC);
+    EXPECT_TRUE(syncd->m_enableSyncMode);
+}
+
+TEST(Syncd, zmqSyncWithJsonEnabledUsesZmq)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_enabled.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(cmd->m_redisCommunicationMode, SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC);
+    EXPECT_TRUE(syncd->m_enableSyncMode);
+}
+
 using namespace syncd;
 
 #ifdef MOCK_METHOD

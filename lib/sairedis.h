@@ -78,7 +78,7 @@ typedef enum _sai_redis_communication_mode_t
      * mode with zmq library. This mode requires some additional configuration
      * like main channel string and notification channel string. When using
      * this attribute those channels are set to default values:
-     * "ipc:///tmp/zmq_ep" and "ipc:///tmp/zmq_ntf_ep". To take control of
+     * "tcp://127.0.0.1:5555" and "tcp://127.0.0.1:5556". To take control of
      * those values a context config json file must be provided via
      * SAI_REDIS_KEY_CONTEXT_CONFIG profile argument.
      */
