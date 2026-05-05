@@ -1007,8 +1007,10 @@ namespace saivs
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
 
             friend class TunnelManagerSRv6;
+            friend class TunnelManagerIpIp;
 
             TunnelManagerSRv6 m_tunnel_mgr_srv6;
+            TunnelManagerIpIp m_tunnel_mgr_ipip;
 
         protected: // switch capability related
             virtual sai_status_t queryNextHopGroupTypeCapability(

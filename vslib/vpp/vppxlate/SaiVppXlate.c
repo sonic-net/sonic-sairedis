@@ -71,6 +71,9 @@
 #include <vnet/srv6/sr.api_enum.h>
 #include <vnet/srv6/sr.api_types.h>
 
+#include <vnet/ipip/ipip.api_enum.h>
+#include <vnet/ipip/ipip.api_types.h>
+
 /* l2 API inclusion */
 
 #define vl_typedefs
@@ -278,6 +281,23 @@
 
 #define vl_api_version(n, v) static u32 vxlan_api_version = v;
 #include <vpp_plugins/vxlan/vxlan.api.h>
+#undef vl_api_version
+
+/* ipip API inclusion */
+#define vl_typedefs
+#include <vnet/ipip/ipip.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vnet/ipip/ipip.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vnet/ipip/ipip.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 ipip_api_version = v;
+#include <vnet/ipip/ipip.api.h>
 #undef vl_api_version
 
 /* memclnt API inclusion */
@@ -775,6 +795,21 @@ vl_api_sw_interface_set_table_reply_t_handler (vl_api_sw_interface_set_table_rep
 }
 
 static void
+vl_api_sw_interface_get_table_reply_t_handler (vl_api_sw_interface_get_table_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (msg->context) {
+        uint32_t *vrf_id = (uint32_t *) get_index_ptr(msg->context);
+        *vrf_id = ntohl(msg->vrf_id);
+    }
+
+    SAIVPP_DEBUG("sw interface get table %s(%d) vrf_id=%u",
+                 retval ? "failed" : "successful", retval, ntohl(msg->vrf_id));
+}
+
+static void
 vl_api_sw_interface_add_del_address_reply_t_handler (vl_api_sw_interface_add_del_address_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -799,6 +834,15 @@ vl_api_sw_interface_set_mac_address_reply_t_handler (vl_api_sw_interface_set_mac
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
+
+static void
+vl_api_sw_interface_set_unnumbered_reply_t_handler (vl_api_sw_interface_set_unnumbered_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    SAIVPP_DEBUG("sw interface unnumbered set %s(%d)", retval ? "failed" : "successful", retval);
 }
 static void
 vl_api_hw_interface_set_mtu_reply_t_handler (vl_api_hw_interface_set_mtu_reply_t *msg)
@@ -999,6 +1043,61 @@ vl_api_vxlan_add_del_tunnel_v3_reply_t_handler (
 }
 
 static void
+vl_api_ipip_add_tunnel_reply_t_handler(vl_api_ipip_add_tunnel_reply_t *msg)
+{
+    set_reply_sw_if_index(ntohl(msg->sw_if_index));
+
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+    SAIVPP_DEBUG("ipip_add_tunnel handler: if_idx,%d,status,%d", ntohl(msg->sw_if_index), retval);
+}
+
+static void
+vl_api_ipip_del_tunnel_reply_t_handler(vl_api_ipip_del_tunnel_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+    SAIVPP_DEBUG("ipip_del_tunnel handler: status,%d", retval);
+}
+
+/*
+ * ip_address_dump result accumulator.
+ * The details handler is called once per address in the W() loop.
+ * We pass a pointer to this struct via context.
+ */
+typedef struct {
+    uint32_t  target_sw_if_index;   /* OUT: sw_if_index that owns the IP, ~0 if not found */
+    vpp_ip_addr_t search_ip;        /* IN:  the IP we are looking for */
+} ip_addr_dump_ctx_t;
+
+static void
+vl_api_ip_address_details_t_handler(vl_api_ip_address_details_t *mp)
+{
+    if (!mp->context)
+        return;
+
+    ip_addr_dump_ctx_t *ctx = (ip_addr_dump_ctx_t *) get_index_ptr(mp->context);
+    if (!ctx)
+        return;
+
+    /* Already found? Skip further processing */
+    if (ctx->target_sw_if_index != (uint32_t)~0)
+        return;
+
+    /* Extract the address from the reply */
+    vl_api_address_t *addr = &mp->prefix.address;
+    if (ctx->search_ip.sa_family == AF_INET && addr->af == ADDRESS_IP4) {
+        if (memcmp(&addr->un.ip4, &ctx->search_ip.addr.ip4.sin_addr, 4) == 0) {
+            ctx->target_sw_if_index = ntohl(mp->sw_if_index);
+        }
+    } else if (ctx->search_ip.sa_family == AF_INET6 && addr->af == ADDRESS_IP6) {
+        if (memcmp(&addr->un.ip6, &ctx->search_ip.addr.ip6.sin6_addr, 16) == 0) {
+            ctx->target_sw_if_index = ntohl(mp->sw_if_index);
+        }
+    }
+}
+
+static void
 vl_api_tunterm_acl_add_replace_reply_t_handler(vl_api_tunterm_acl_add_replace_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1102,7 +1201,7 @@ vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *m
     _(MEMCLNT_MSG_ID(CONTROL_PING_REPLY), control_ping_reply)
 
 static u16 interface_msg_id_base, memclnt_msg_id_base, __plugin_msg_base;
-static u16 l2_msg_id_base, vxlan_msg_id_base;
+static u16 l2_msg_id_base, vxlan_msg_id_base, ipip_msg_id_base;
 static u16 tunterm_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
@@ -1150,10 +1249,12 @@ static void vpp_base_vpe_init(void)
     _(INTERFACE_MSG_ID(CREATE_SUBIF_REPLY), create_subif_reply) \
     _(INTERFACE_MSG_ID(DELETE_SUBIF_REPLY), delete_subif_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_TABLE_REPLY), sw_interface_set_table_reply) \
+    _(INTERFACE_MSG_ID(SW_INTERFACE_GET_TABLE_REPLY), sw_interface_get_table_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_ADD_DEL_ADDRESS_REPLY), sw_interface_add_del_address_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_FLAGS_REPLY), sw_interface_set_flags_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MTU_REPLY), sw_interface_set_mtu_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MAC_ADDRESS_REPLY), sw_interface_set_mac_address_reply) \
+    _(INTERFACE_MSG_ID(SW_INTERFACE_SET_UNNUMBERED_REPLY), sw_interface_set_unnumbered_reply) \
     _(INTERFACE_MSG_ID(HW_INTERFACE_SET_MTU_REPLY), hw_interface_set_mtu_reply) \
     _(INTERFACE_MSG_ID(WANT_INTERFACE_EVENTS_REPLY), want_interface_events_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_EVENT), sw_interface_event) \
@@ -1161,6 +1262,7 @@ static void vpp_base_vpe_init(void)
     _(IP_MSG_ID(IP_ROUTE_ADD_DEL_REPLY), ip_route_add_del_reply) \
     _(IP_MSG_ID(SW_INTERFACE_IP6_ENABLE_DISABLE_REPLY), sw_interface_ip6_enable_disable_reply) \
     _(IP_MSG_ID(SET_IP_FLOW_HASH_V2_REPLY), set_ip_flow_hash_v2_reply)        \
+    _(IP_MSG_ID(IP_ADDRESS_DETAILS), ip_address_details) \
     _(IP_NBR_MSG_ID(IP_NEIGHBOR_ADD_DEL_REPLY), ip_neighbor_add_del_reply) \
     _(L2_MSG_ID(BRIDGE_DOMAIN_ADD_DEL_REPLY), bridge_domain_add_del_reply) \
     _(L2_MSG_ID(SW_INTERFACE_SET_L2_BRIDGE_REPLY), sw_interface_set_l2_bridge_reply) \
@@ -1259,6 +1361,9 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
 #define VXLAN_MSG_ID(id) \
     (VL_API_##id + vxlan_msg_id_base)
 
+#define IPIP_MSG_ID(id) \
+    (VL_API_##id + ipip_msg_id_base)
+
 #define SR_MSG_ID(id) \
     (VL_API_##id + sr_msg_id_base)
 
@@ -1277,7 +1382,9 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
     _(SR_MSG_ID(SR_STEERING_ADD_DEL_REPLY), sr_steering_add_del_reply) \
-    _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply)
+    _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply) \
+    _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
+    _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply)
 
 static void vpp_plugin_vpe_init(void)
 {
@@ -1341,6 +1448,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "vxlan_%08x%c", vxlan_api_version, 0);
     vxlan_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(vxlan_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "ipip_%08x%c", ipip_api_version, 0);
+    ipip_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(ipip_msg_id_base != (u16) ~0);
 
     msg_base_lookup_name = format (0, "tunterm_acl_%08x%c", tunterm_api_version, 0);
     tunterm_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
@@ -4124,4 +4235,179 @@ int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src)
     VPP_UNLOCK();
 
     return ret;
+}
+
+int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index)
+{
+    int ret;
+    vat_main_t *vam = &vat_main;
+    vl_api_ipip_add_tunnel_t *mp;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = ipip_msg_id_base;
+
+    M (IPIP_ADD_TUNNEL, mp);
+
+    mp->tunnel.instance = htonl(tunnel->instance);
+    mp->tunnel.mode = tunnel->mode;
+    mp->tunnel.table_id = htonl(tunnel->table_id);
+    mp->tunnel.flags = tunnel->flags;
+    mp->tunnel.dscp = tunnel->dscp;
+
+    if (!vpp_to_vl_api_ip_addr(&mp->tunnel.src, &tunnel->src_address)) {
+        SAIVPP_ERROR("Unknown protocol in ipip tunnel src address");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    if (!vpp_to_vl_api_ip_addr(&mp->tunnel.dst, &tunnel->dst_address)) {
+        SAIVPP_ERROR("Unknown protocol in ipip tunnel dst address");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    S (mp);
+
+    WR (ret);
+
+    // vam->sw_if_index is set in the reply handler for this message
+    *sw_if_index = vam->sw_if_index;
+
+    SAIVPP_DEBUG("ipip_add done: if_idx,%d",vam->sw_if_index);
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_ipip_tunnel_del(uint32_t sw_if_index)
+{
+    int ret;
+    vat_main_t *vam = &vat_main;
+    vl_api_ipip_del_tunnel_t *mp;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = ipip_msg_id_base;
+
+    M (IPIP_DEL_TUNNEL, mp);
+
+    mp->sw_if_index = htonl(sw_if_index);
+    S (mp);
+
+    WR (ret);
+
+    SAIVPP_DEBUG("ipip_del done: if_idx,%d",vam->sw_if_index);
+    VPP_UNLOCK();
+    return ret;
+}
+
+int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
+                                uint32_t ip_sw_if_index, bool is_add)
+{
+    int ret;
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_unnumbered_t *mp;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_SET_UNNUMBERED, mp);
+
+    mp->sw_if_index = htonl(ip_sw_if_index);
+    mp->unnumbered_sw_if_index = htonl(unnumbered_sw_if_index);
+    mp->is_add = is_add;
+
+    S (mp);
+
+    WR (ret);
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+static int __sw_interface_get_table(uint32_t sw_if_index, bool is_ipv6, uint32_t *out_table_id)
+{
+    int ret;
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_get_table_t *mp;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_GET_TABLE, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->is_ipv6 = is_ipv6;
+    mp->context = store_ptr(out_table_id);
+
+    S (mp);
+
+    WR (ret);
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
+                                uint32_t *out_sw_if_index)
+{
+    int ret;
+    vat_main_t *vam = &vat_main;
+
+    if (!search_ip || !out_sw_if_index)
+        return -EINVAL;
+
+    bool is_ipv6 = (search_ip->sa_family == AF_INET6);
+
+    // Iterates all known sw intfs to collect addresses.
+    u32 *sw_if_idxs = NULL;
+    hash_pair_t *p;
+    hash_foreach_pair(p, interface_name_by_sw_index, ({
+        vec_add1(sw_if_idxs, (u32) p->key);
+    }));
+
+    for (unsigned int i = 0; i < vec_len(sw_if_idxs); i++) {
+        /* Pre-filter: skip interfaces not in the target VRF */
+        if (vrf_id != (uint32_t)~0) {
+            uint32_t if_vrf_id = (uint32_t)~0;
+            if (__sw_interface_get_table(sw_if_idxs[i], is_ipv6, &if_vrf_id) != 0 || if_vrf_id != vrf_id)
+                continue;
+        }
+
+        ip_addr_dump_ctx_t ctx;
+        ctx.target_sw_if_index = (uint32_t)~0;
+        ctx.search_ip = *search_ip;
+
+        vl_api_ip_address_dump_t *mp;
+        vl_api_control_ping_t *mp_ping;
+
+        VPP_LOCK();
+
+        __plugin_msg_base = ip_msg_id_base;
+
+        M (IP_ADDRESS_DUMP, mp);
+        mp->sw_if_index = htonl(sw_if_idxs[i]);
+        mp->is_ipv6 = is_ipv6;
+        mp->context = store_ptr(&ctx);
+
+        S (mp);
+
+        __plugin_msg_base = memclnt_msg_id_base;
+        PING (NULL, mp_ping);
+        S (mp_ping);
+
+        WR (ret);
+
+        VPP_UNLOCK();
+
+        if (ret == 0 && ctx.target_sw_if_index != (uint32_t)~0) {
+            *out_sw_if_index = ctx.target_sw_if_index;
+            vec_free(sw_if_idxs);
+            return 0;
+        }
+    }
+
+    vec_free(sw_if_idxs);
+    return -ENOENT;
 }

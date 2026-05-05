@@ -38,6 +38,35 @@ namespace saivs
         sai_ip_address_t dst_ip;
     };
 
+    /**
+     * @brief VPP data associated with an IPIP tunnel.
+     */
+    class IpIpTunnelVPPData {
+    public:
+        enum tunnel_mode : u_int8_t {
+            /** point-to-point */
+            TUNNEL_API_MODE_P2P = 0,
+            /** multi-point */
+            TUNNEL_API_MODE_MP,
+            /** multi-point to point (decap-only) */
+            TUNNEL_API_MODE_MP2P,
+        };
+
+        IpIpTunnelVPPData() {
+            SWSS_LOG_ENTER();
+            memset(&src_ip, 0, sizeof(src_ip));
+            memset(&dst_ip, 0, sizeof(dst_ip));
+        }
+
+        u_int32_t sw_if_index = 0;
+        sai_ip_address_t src_ip;                            // outer src (local endpoint)
+        sai_ip_address_t dst_ip;                            // outer dst (remote endpoint; 0.0.0.0 for P2MP)
+        tunnel_mode mode = TUNNEL_API_MODE_MP2P;            // IPIP tunnel mode
+        u_int8_t flags = 0;                                 // tunnel_encap_decap_flags
+        sai_object_id_t tunnel_oid = SAI_NULL_OBJECT_ID;    // referenced SAI tunnel object
+        uint32_t vrf_id = 0;                                // vrf
+    };
+
     class TunnelManager {
     public:
         TunnelManager(SwitchVpp* switch_db);
@@ -88,17 +117,7 @@ namespace saivs
          */
         sai_status_t get_tunnel_if(
             _In_  sai_object_id_t nexthop_oid,
-            _Out_ u_int32_t &sw_if_index)
-        {
-            SWSS_LOG_ENTER();
-
-            auto it = m_tunnel_encap_nexthop_map.find(nexthop_oid);
-            if (it != m_tunnel_encap_nexthop_map.end()) {
-                sw_if_index = it->second.sw_if_index;
-                return SAI_STATUS_SUCCESS;
-            }
-            return SAI_STATUS_ITEM_NOT_FOUND;
-        }
+            _Out_ u_int32_t &sw_if_index);
         /**
          * @brief Set VxLAN router default MAC address.
          */
@@ -353,5 +372,175 @@ namespace saivs
         sai_status_t fill_bsid_set_src_addr(
                         _In_ sai_object_id_t nexthop_oid,
                         _Out_ vpp_ip_addr_t &bsid);
+    };
+
+    class TunnelManagerIpIp {
+    public:
+        TunnelManagerIpIp(SwitchVpp *switch_db);
+        ~TunnelManagerIpIp() = default;
+
+        /**
+         * @brief Create an IPIP encap tunnel triggered by a TUNNEL_ENCAP nexthop.
+         *
+         * Called from TunnelManager::tunnel_encap_nexthop_action() when the tunnel type is IPINIP.
+         *
+         * @param tunnel_nh_obj The nexthop SAI object.
+         * @param tunnel_obj The referenced SAI tunnel object.
+         * @param action CREATE or DELETE.
+         * @return SAI_STATUS_SUCCESS on success, error status on failure.
+         */
+        sai_status_t ipip_encap_nexthop_action(
+            _In_ const SaiObject *tunnel_nh_obj,
+            _In_ const SaiObject *tunnel_obj,
+            _In_ Action action);
+
+        /**
+         * @brief Get the IPIP tunnel interface index for a given nexthop OID.
+         */
+        sai_status_t get_tunnel_if(
+            _In_ sai_object_id_t nexthop_oid,
+            _Out_ u_int32_t &sw_if_index) {
+            SWSS_LOG_ENTER();
+
+            auto it = m_ipip_encap_nh_map.find(nexthop_oid);
+            if (it != m_ipip_encap_nh_map.end()) {
+                sw_if_index = it->second.sw_if_index;
+                return SAI_STATUS_SUCCESS;
+            }
+            return SAI_STATUS_ITEM_NOT_FOUND;
+        }
+
+        /**
+         * @brief Create an IPIP decap tunnel triggered by a tunnel decap term entry.
+         *
+         * Reads DST_IP, SRC_IP, TYPE from the term entry and TTL/DSCP/ECN modes
+         * from the referenced tunnel object.
+         *
+         * @param serializedObjectId The serialized tunnel decap term entry ID.
+         * @param switch_id The switch ID.
+         * @param attr_count Number of attributes.
+         * @param attr_list Attribute list.
+         * @return SAI_STATUS_SUCCESS on success, error status on failure.
+         */
+        sai_status_t create_ipip_tunnel_term(
+            _In_ const std::string &serializedObjectId,
+            _In_ sai_object_id_t switch_id,
+            _In_ uint32_t attr_count,
+            _In_ const sai_attribute_t *attr_list);
+
+        /**
+         * @brief Remove an IPIP decap tunnel.
+         *
+         * @param serializedObjectId The serialized tunnel decap term entry ID.
+         * @return SAI_STATUS_SUCCESS on success, error status on failure.
+         */
+        sai_status_t remove_ipip_tunnel_term(
+            _In_ const std::string &serializedObjectId);
+
+        /**
+         * @brief Retry pending unnumbered operations matching the given RIF IP.
+         *
+         * Called after a rif address is successfully programmed.
+         * Only processes ipip tunnels whose source IP matches the rif ip.
+         *
+         * @param rif_ip The IP address just programmed on a RIF.
+         */
+        void retry_pending_unnumbered(_In_ const vpp_ip_addr_t &rif_ip);
+
+    private:
+        /**
+         * @brief Map SAI tunnel TTL/DSCP/ECN modes to VPP tunnel_encap_decap_flags.
+         */
+        uint8_t map_sai_to_vpp_flags(const SaiObject *tunnel_obj);
+
+        /**
+         * @brief Resolve a VR OID to a VPP VRF table ID.
+         * @return VRF ID, or 0 if not found / NULL OID.
+         */
+        uint32_t resolve_vrf_id(_In_ sai_object_id_t vr_oid);
+
+        /**
+         * @brief Resolve a RIF OID to a VPP VRF table ID via its virtual router.
+         * @return VRF ID, or 0 if not found.
+         */
+        uint32_t resolve_vrf_from_rif(_In_ sai_object_id_t rif_oid);
+
+        /**
+         * @brief Create a VPP IPIP tunnel, assign VRF, bring it up, and set unnumbered.
+         *
+         * Shared by both decap (tunnel_term) and encap (nexthop) paths.
+         * Sequence: tunnel_add → UP → set_interface_vrf → unnumbered.
+         *
+         * @param req VPP IPIP tunnel request (src, dst, mode, flags filled in by caller).
+         *            req.src_address is also used for the unnumbered IP search.
+         * @param vrf_id VRF to assign the tunnel interface to and scope the unnumbered IP search.
+         * @param sw_if_index Output: VPP sw_if_index of the created tunnel.
+         * @return SAI_STATUS_SUCCESS on success, error on failure (tunnel cleaned up).
+         */
+        sai_status_t create_ipip_vpp_tunnel(
+            _Inout_ vpp_ipip_tunnel_t &req,
+            _In_ uint32_t vrf_id,
+            _Out_ uint32_t &sw_if_index);
+
+        /**
+         * @brief Tear down and delete a VPP IPIP tunnel.
+         *
+         * Sets the interface down and calls vpp_ipip_tunnel_del.
+         *
+         * @param sw_if_index VPP sw_if_index of the tunnel to remove.
+         * @return SAI_STATUS_SUCCESS on success, error on failure.
+         */
+        sai_status_t remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index);
+
+    private:
+
+        /**
+         * @brief Record for a deferred set-unnumbered attempt.
+         */
+        struct PendingUnnumbered {
+            uint32_t sw_if_index;       ///< tunnel sw_if_index
+            vpp_ip_addr_t src_address;  ///< tunnel source IP
+            uint32_t vrf_id;            ///< VRF for the lookup
+        };
+
+
+
+        /**
+         * @brief Key for deduplicating VPP IPIP tunnels.
+         *
+         * Multiple SAI objects (decap term + encap nexthop) may map to the same
+         * underlying VPP tunnel (same src, dst, mode).  We reference-count to
+         * avoid creating duplicates or deleting a tunnel still in use.
+         */
+        struct IpIpTunnelKey {
+            sai_ip_address_t src;
+            sai_ip_address_t dst;
+            uint8_t mode;
+
+            bool operator==(const IpIpTunnelKey &o) const;
+        };
+
+        struct IpIpTunnelKeyHash {
+            std::size_t operator()(const IpIpTunnelKey &k) const;
+        };
+
+        struct IpIpTunnelRef {
+            uint32_t sw_if_index;
+            uint32_t refcount;
+        };
+
+
+        SwitchVpp *m_switch_db;
+
+        // Pending unnumbered tunnels
+        std::unordered_multimap<std::string, PendingUnnumbered> m_pending_unnumbered;
+
+        // Encap: nexthop OID -> IPIP tunnel data
+        std::unordered_map<sai_object_id_t, IpIpTunnelVPPData> m_ipip_encap_nh_map;
+        // Decap: tunnel term OID -> IPIP tunnel data
+        std::unordered_map<sai_object_id_t, IpIpTunnelVPPData> m_ipip_term_map;
+
+        // IPIP tunnel ref count map
+        std::unordered_map<IpIpTunnelKey, IpIpTunnelRef, IpIpTunnelKeyHash> m_ipip_tunnel_refcount;
     };
 }
