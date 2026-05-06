@@ -479,6 +479,14 @@ sai_status_t SwitchVpp::asyncIntfStateUpdate(const char *hwif_name, bool link_up
 {
     SWSS_LOG_ENTER();
 
+    // BVI and vxlan_tunnel interfaces are VPP-internal and have no Linux TAP pairs.
+    // Skip port state notification for these interfaces.
+    if (strncmp(hwif_name, "bvi", 3) == 0 || strncmp(hwif_name, "vxlan_tunnel", 12) == 0)
+    {
+        SWSS_LOG_INFO("Skipping port state update for VPP-internal interface: %s", hwif_name);
+        return SAI_STATUS_SUCCESS;
+    }
+
     std::string tap_str;
     const char *tap;
 
@@ -902,7 +910,8 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
         bool found = vpp_get_intf_name_for_prefix(route_entry.destination, is_v6, full_if_name);
         if (found == false)
         {
-            SWSS_LOG_ERROR("host interface for prefix not found");
+            auto prefix_str = sai_serialize_ip_prefix(route_entry.destination);
+            SWSS_LOG_ERROR("host interface for prefix not found: %s", prefix_str.c_str());
             return SAI_STATUS_FAILURE;
         }
     } else {
@@ -1230,6 +1239,11 @@ sai_status_t SwitchVpp::vpp_add_lpb_intf_ip_addr (
 
     const std::string hostIfname = get_intf_name_for_prefix(route_entry);
     SWSS_LOG_NOTICE("get_intf_name_for_prefix:%s", hostIfname.c_str());
+    if (hostIfname.empty()) {
+        auto prefix_str = sai_serialize_ip_prefix(route_entry.destination);
+        SWSS_LOG_ERROR("host interface for prefix not found: %s", prefix_str.c_str());
+        return SAI_STATUS_FAILURE;
+    }
     lpbHostIfToVppIfMap[hostIfname] = vppIfName;
 
     // create lcp tap between vpp and host
