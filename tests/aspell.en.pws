@@ -15,6 +15,7 @@ ApplyView
 AsicView
 AttrHash
 BCM
+BER
 BFD
 Bool
 CHARDATA
@@ -69,6 +70,7 @@ OIDs
 ObjectAttrHash
 ObjectHash
 PN
+PRBS
 PORTs
 QUEUEs
 REQ
@@ -321,6 +323,7 @@ phy
 plaintext
 pn
 PN
+prbs
 policer
 PORTs
 pre

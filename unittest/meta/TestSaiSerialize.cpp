@@ -244,17 +244,12 @@ TEST(SaiSerialize, sai_serialize_attr_value)
             case SAI_ATTR_VALUE_TYPE_PORT_EYE_VALUES_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_PAM4_EYE_VALUES_LIST:
             case SAI_ATTR_VALUE_TYPE_FABRIC_PORT_REACHABILITY:
-            case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             case SAI_ATTR_VALUE_TYPE_TLV_LIST:
             case SAI_ATTR_VALUE_TYPE_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_FREQUENCY_OFFSET_PPM_LIST:
             case SAI_ATTR_VALUE_TYPE_ACL_CHAIN_LIST:
             case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
-            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
-            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
-            case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
-            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
                 continue;
 
             default:
@@ -1775,6 +1770,402 @@ TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_nul
     sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
 }
 
+TEST(SaiSerialize, sai_serialize_prbs_rx_state_roundtrip)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_PRBS_RX_STATE);
+    ASSERT_NE(meta, nullptr);
+    attr.id = SAI_PORT_ATTR_PRBS_RX_STATE;
+
+    attr.value.rx_state.rx_status = SAI_PORT_PRBS_RX_STATUS_LOCK_WITH_ERRORS;
+    attr.value.rx_state.error_count = 42;
+
+    auto s = sai_serialize_attr_value(*meta, attr, false);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["rx_status"], "SAI_PORT_PRBS_RX_STATUS_LOCK_WITH_ERRORS");
+    EXPECT_EQ(j["error_count"], "42");
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_PORT_ATTR_PRBS_RX_STATE;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.rx_state.rx_status, SAI_PORT_PRBS_RX_STATUS_LOCK_WITH_ERRORS);
+    EXPECT_EQ(attr2.value.rx_state.error_count, 42);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_per_lane_rx_state_list_roundtrip)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATE_LIST);
+    ASSERT_NE(meta, nullptr);
+
+    sai_prbs_per_lane_rx_state_t lanes[2];
+    lanes[0].lane = 0;
+    lanes[0].rx_state.rx_status = SAI_PORT_PRBS_RX_STATUS_OK;
+    lanes[0].rx_state.error_count = 0;
+    lanes[1].lane = 1;
+    lanes[1].rx_state.rx_status = SAI_PORT_PRBS_RX_STATUS_LOCK_WITH_ERRORS;
+    lanes[1].rx_state.error_count = 7;
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATE_LIST;
+    attr.value.prbs_rx_state_list.count = 2;
+    attr.value.prbs_rx_state_list.list = lanes;
+
+    auto s = sai_serialize_attr_value(*meta, attr, false);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["count"], 2);
+    ASSERT_TRUE(j["list"].is_array());
+    EXPECT_EQ(j["list"].size(), 2);
+    EXPECT_EQ(j["list"][0]["lane"], "0");
+    EXPECT_TRUE(j["list"][0]["rx_state"].is_object());
+    EXPECT_EQ(j["list"][1]["lane"], "1");
+    EXPECT_TRUE(j["list"][1]["rx_state"].is_object());
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATE_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.prbs_rx_state_list.count, 2);
+    ASSERT_NE(attr2.value.prbs_rx_state_list.list, nullptr);
+    EXPECT_EQ(attr2.value.prbs_rx_state_list.list[0].lane, 0);
+    EXPECT_EQ(attr2.value.prbs_rx_state_list.list[0].rx_state.rx_status, SAI_PORT_PRBS_RX_STATUS_OK);
+    EXPECT_EQ(attr2.value.prbs_rx_state_list.list[0].rx_state.error_count, 0);
+    EXPECT_EQ(attr2.value.prbs_rx_state_list.list[1].lane, 1);
+    EXPECT_EQ(attr2.value.prbs_rx_state_list.list[1].rx_state.rx_status, SAI_PORT_PRBS_RX_STATUS_LOCK_WITH_ERRORS);
+    EXPECT_EQ(attr2.value.prbs_rx_state_list.list[1].rx_state.error_count, 7);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_per_lane_rx_state_list_countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATE_LIST);
+    ASSERT_NE(meta, nullptr);
+
+    sai_prbs_per_lane_rx_state_t lanes[2];
+    lanes[0].lane = 0;
+    lanes[0].rx_state.rx_status = SAI_PORT_PRBS_RX_STATUS_OK;
+    lanes[0].rx_state.error_count = 0;
+    lanes[1].lane = 1;
+    lanes[1].rx_state.rx_status = SAI_PORT_PRBS_RX_STATUS_NOT_LOCKED;
+    lanes[1].rx_state.error_count = 0;
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATE_LIST;
+    attr.value.prbs_rx_state_list.count = 2;
+    attr.value.prbs_rx_state_list.list = lanes;
+
+    auto s = sai_serialize_attr_value(*meta, attr, true);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["count"], 2);
+    EXPECT_TRUE(j["list"].is_null());
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATE_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, true);
+
+    EXPECT_EQ(attr2.value.prbs_rx_state_list.count, 2);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_per_lane_rx_state_list_null_list)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATE_LIST);
+    ASSERT_NE(meta, nullptr);
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATE_LIST;
+    attr.value.prbs_rx_state_list.count = 0;
+    attr.value.prbs_rx_state_list.list = NULL;
+
+    auto s = sai_serialize_attr_value(*meta, attr, false);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["count"], 0);
+    EXPECT_TRUE(j["list"].is_null());
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATE_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.prbs_rx_state_list.count, 0);
+    EXPECT_EQ(attr2.value.prbs_rx_state_list.list, nullptr);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_per_lane_bit_error_rate_list_roundtrip)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST);
+    ASSERT_NE(meta, nullptr);
+
+    sai_prbs_per_lane_bit_error_rate_t lanes[2];
+    lanes[0].lane = 0;
+    lanes[0].ber.mantissa = 123;
+    lanes[0].ber.exponent = 9;
+    lanes[1].lane = 1;
+    lanes[1].ber.mantissa = 456;
+    lanes[1].ber.exponent = 12;
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST;
+    attr.value.prbs_ber_list.count = 2;
+    attr.value.prbs_ber_list.list = lanes;
+
+    auto s = sai_serialize_attr_value(*meta, attr, false);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["count"], 2);
+    ASSERT_TRUE(j["list"].is_array());
+    EXPECT_EQ(j["list"].size(), 2);
+    EXPECT_EQ(j["list"][0]["lane"], "0");
+    EXPECT_TRUE(j["list"][0]["ber"].is_object());
+    EXPECT_EQ(j["list"][1]["lane"], "1");
+    EXPECT_TRUE(j["list"][1]["ber"].is_object());
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.prbs_ber_list.count, 2);
+    ASSERT_NE(attr2.value.prbs_ber_list.list, nullptr);
+    EXPECT_EQ(attr2.value.prbs_ber_list.list[0].lane, 0);
+    EXPECT_EQ(attr2.value.prbs_ber_list.list[0].ber.mantissa, 123);
+    EXPECT_EQ(attr2.value.prbs_ber_list.list[0].ber.exponent, 9);
+    EXPECT_EQ(attr2.value.prbs_ber_list.list[1].lane, 1);
+    EXPECT_EQ(attr2.value.prbs_ber_list.list[1].ber.mantissa, 456);
+    EXPECT_EQ(attr2.value.prbs_ber_list.list[1].ber.exponent, 12);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_per_lane_bit_error_rate_list_countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST);
+    ASSERT_NE(meta, nullptr);
+
+    sai_prbs_per_lane_bit_error_rate_t lanes[1];
+    lanes[0].lane = 0;
+    lanes[0].ber.mantissa = 99;
+    lanes[0].ber.exponent = 3;
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST;
+    attr.value.prbs_ber_list.count = 1;
+    attr.value.prbs_ber_list.list = lanes;
+
+    auto s = sai_serialize_attr_value(*meta, attr, true);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["count"], 1);
+    EXPECT_TRUE(j["list"].is_null());
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, true);
+
+    EXPECT_EQ(attr2.value.prbs_ber_list.count, 1);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_per_lane_bit_error_rate_list_null_list)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST);
+    ASSERT_NE(meta, nullptr);
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST;
+    attr.value.prbs_ber_list.count = 0;
+    attr.value.prbs_ber_list.list = NULL;
+
+    auto s = sai_serialize_attr_value(*meta, attr, false);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["count"], 0);
+    EXPECT_TRUE(j["list"].is_null());
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_PORT_ATTR_PRBS_PER_LANE_BER_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.prbs_ber_list.count, 0);
+    EXPECT_EQ(attr2.value.prbs_ber_list.list, nullptr);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_per_lane_rx_status_list_roundtrip)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATUS_LIST);
+    ASSERT_NE(meta, nullptr);
+
+    sai_prbs_per_lane_rx_status_t lanes[3];
+    lanes[0].lane = 0;
+    lanes[0].rx_status = SAI_PORT_PRBS_RX_STATUS_OK;
+    lanes[1].lane = 1;
+    lanes[1].rx_status = SAI_PORT_PRBS_RX_STATUS_LOCK_WITH_ERRORS;
+    lanes[2].lane = 2;
+    lanes[2].rx_status = SAI_PORT_PRBS_RX_STATUS_NOT_LOCKED;
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATUS_LIST;
+    attr.value.prbs_rx_status_list.count = 3;
+    attr.value.prbs_rx_status_list.list = lanes;
+
+    auto s = sai_serialize_attr_value(*meta, attr, false);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["count"], 3);
+    ASSERT_TRUE(j["list"].is_array());
+    EXPECT_EQ(j["list"].size(), 3);
+    EXPECT_EQ(j["list"][0]["lane"], "0");
+    EXPECT_EQ(j["list"][0]["rx_status"], "SAI_PORT_PRBS_RX_STATUS_OK");
+    EXPECT_EQ(j["list"][1]["lane"], "1");
+    EXPECT_EQ(j["list"][1]["rx_status"], "SAI_PORT_PRBS_RX_STATUS_LOCK_WITH_ERRORS");
+    EXPECT_EQ(j["list"][2]["lane"], "2");
+    EXPECT_EQ(j["list"][2]["rx_status"], "SAI_PORT_PRBS_RX_STATUS_NOT_LOCKED");
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATUS_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.prbs_rx_status_list.count, 3);
+    ASSERT_NE(attr2.value.prbs_rx_status_list.list, nullptr);
+    EXPECT_EQ(attr2.value.prbs_rx_status_list.list[0].lane, 0);
+    EXPECT_EQ(attr2.value.prbs_rx_status_list.list[0].rx_status, SAI_PORT_PRBS_RX_STATUS_OK);
+    EXPECT_EQ(attr2.value.prbs_rx_status_list.list[1].lane, 1);
+    EXPECT_EQ(attr2.value.prbs_rx_status_list.list[1].rx_status, SAI_PORT_PRBS_RX_STATUS_LOCK_WITH_ERRORS);
+    EXPECT_EQ(attr2.value.prbs_rx_status_list.list[2].lane, 2);
+    EXPECT_EQ(attr2.value.prbs_rx_status_list.list[2].rx_status, SAI_PORT_PRBS_RX_STATUS_NOT_LOCKED);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_per_lane_rx_status_list_countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATUS_LIST);
+    ASSERT_NE(meta, nullptr);
+
+    sai_prbs_per_lane_rx_status_t lanes[2];
+    lanes[0].lane = 0;
+    lanes[0].rx_status = SAI_PORT_PRBS_RX_STATUS_OK;
+    lanes[1].lane = 1;
+    lanes[1].rx_status = SAI_PORT_PRBS_RX_STATUS_OK;
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATUS_LIST;
+    attr.value.prbs_rx_status_list.count = 2;
+    attr.value.prbs_rx_status_list.list = lanes;
+
+    auto s = sai_serialize_attr_value(*meta, attr, true);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["count"], 2);
+    EXPECT_TRUE(j["list"].is_null());
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATUS_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, true);
+
+    EXPECT_EQ(attr2.value.prbs_rx_status_list.count, 2);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_per_lane_rx_status_list_null_list)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATUS_LIST);
+    ASSERT_NE(meta, nullptr);
+
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATUS_LIST;
+    attr.value.prbs_rx_status_list.count = 0;
+    attr.value.prbs_rx_status_list.list = NULL;
+
+    auto s = sai_serialize_attr_value(*meta, attr, false);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["count"], 0);
+    EXPECT_TRUE(j["list"].is_null());
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_PORT_ATTR_PRBS_PER_LANE_RX_STATUS_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.prbs_rx_status_list.count, 0);
+    EXPECT_EQ(attr2.value.prbs_rx_status_list.list, nullptr);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+}
+
 TEST(SaiSerialize, sai_serialize_taps_list)
 {
     // Create test data
@@ -2387,4 +2778,134 @@ TEST(SaiSerialize, serialize_u64_range)
 
     EXPECT_EQ(dst.value.u64range.min, 111);
     EXPECT_EQ(dst.value.u64range.max, 222);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_bit_error_rate_roundtrip)
+{
+    SWSS_LOG_ENTER();
+
+    sai_prbs_bit_error_rate_t ber;
+    ber.mantissa = 123;
+    ber.exponent = 9;
+
+    auto s = sai_serialize_prbs_bit_error_rate(ber);
+
+    json j = json::parse(s);
+    EXPECT_EQ(j["mantissa"], "123");
+    EXPECT_EQ(j["exponent"], "9");
+
+    sai_prbs_bit_error_rate_t ber2;
+    memset(&ber2, 0, sizeof(ber2));
+    sai_deserialize_prbs_bit_error_rate(s, ber2);
+
+    EXPECT_EQ(ber2.mantissa, 123u);
+    EXPECT_EQ(ber2.exponent, 9u);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_rx_status_list_count_overflow_throws)
+{
+    SWSS_LOG_ENTER();
+
+    sai_prbs_per_lane_rx_status_t dummy[1] = {};
+    sai_prbs_per_lane_rx_status_list_t list;
+    list.count = 257;
+    list.list = dummy;
+
+    EXPECT_THROW(sai_serialize_prbs_per_lane_rx_status_list(list, false), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_rx_state_list_count_overflow_throws)
+{
+    SWSS_LOG_ENTER();
+
+    sai_prbs_per_lane_rx_state_t dummy[1] = {};
+    sai_prbs_per_lane_rx_state_list_t list;
+    list.count = 257;
+    list.list = dummy;
+
+    EXPECT_THROW(sai_serialize_prbs_per_lane_rx_state_list(list, false), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_serialize_prbs_ber_list_count_overflow_throws)
+{
+    SWSS_LOG_ENTER();
+
+    sai_prbs_per_lane_bit_error_rate_t dummy[1] = {};
+    sai_prbs_per_lane_bit_error_rate_list_t list;
+    list.count = 257;
+    list.list = dummy;
+
+    EXPECT_THROW(sai_serialize_prbs_per_lane_bit_error_rate_list(list, false), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_deserialize_prbs_rx_status_list_count_mismatch_throws)
+{
+    SWSS_LOG_ENTER();
+
+    // Build JSON with count=2 but only 1 entry in the list to trigger count mismatch
+    json j;
+    j["count"] = 2;
+    json arr = json::array();
+    json item;
+    item["lane"] = "0";
+    item["rx_status"] = "SAI_PORT_PRBS_RX_STATUS_OK";
+    arr.push_back(item);
+    j["list"] = arr;
+
+    std::string s = j.dump();
+
+    sai_prbs_per_lane_rx_status_list_t list;
+    memset(&list, 0, sizeof(list));
+
+    EXPECT_THROW(sai_deserialize_prbs_per_lane_rx_status_list(s, list, false), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_deserialize_prbs_rx_state_list_count_mismatch_throws)
+{
+    SWSS_LOG_ENTER();
+
+    // Build JSON with count=2 but only 1 entry in the list to trigger count mismatch
+    json j;
+    j["count"] = 2;
+    json arr = json::array();
+    json item;
+    item["lane"] = "0";
+    json rx_state;
+    rx_state["rx_status"] = "SAI_PORT_PRBS_RX_STATUS_OK";
+    rx_state["error_count"] = "0";
+    item["rx_state"] = rx_state;
+    arr.push_back(item);
+    j["list"] = arr;
+
+    std::string s = j.dump();
+
+    sai_prbs_per_lane_rx_state_list_t list;
+    memset(&list, 0, sizeof(list));
+
+    EXPECT_THROW(sai_deserialize_prbs_per_lane_rx_state_list(s, list, false), std::runtime_error);
+}
+
+TEST(SaiSerialize, sai_deserialize_prbs_ber_list_count_mismatch_throws)
+{
+    SWSS_LOG_ENTER();
+
+    // Build JSON with count=2 but only 1 entry in the list to trigger count mismatch
+    json j;
+    j["count"] = 2;
+    json arr = json::array();
+    json item;
+    item["lane"] = "0";
+    json ber;
+    ber["mantissa"] = "123";
+    ber["exponent"] = "9";
+    item["ber"] = ber;
+    arr.push_back(item);
+    j["list"] = arr;
+
+    std::string s = j.dump();
+
+    sai_prbs_per_lane_bit_error_rate_list_t list;
+    memset(&list, 0, sizeof(list));
+
+    EXPECT_THROW(sai_deserialize_prbs_per_lane_bit_error_rate_list(s, list, false), std::runtime_error);
 }
