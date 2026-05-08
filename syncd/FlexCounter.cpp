@@ -1828,7 +1828,7 @@ public:
                 continue;
             }
 
-            // Query SAI for lane count (expecting BUFFER_OVERFLOW)
+            // Phase 1: probe SAI for the lane count (expecting BUFFER_OVERFLOW)
             sai_status_t status = Base::m_vendorSai->get(
                     Base::m_objectType,
                     rid,
@@ -1842,6 +1842,78 @@ public:
             }
 
             uint32_t laneCount = extractLaneCount(attr);
+
+            // Phase 2: verify that an actual full-buffer read also succeeds.
+            //
+            // Some BCM SAI implementations succeed at the lane-count probe
+            // (because the lane count is a static port property) but fail the
+            // actual data read with SAI_STATUS_NOT_SUPPORTED /
+            // SAI_STATUS_INVALID_PORT_NUMBER on ports that have no module /
+            // no live signal (observed on Arista 720dt M0/MX). Per the SAI
+            // spec, "no signal" is a valid value (current_status=false on all
+            // lanes), so that vendor mapping is a quirk worth working around.
+            //
+            // To keep probe/poll behavior consistent and avoid spamming syslog
+            // every poll cycle, we test the actual read here and only register
+            // the (rid, attr) pair into m_portLaneCountMap when both phases
+            // succeed. Skipped pairs naturally fall through PR #1861's existing
+            // initAttrData false-return path and collectData skips them.
+            sai_attribute_t verifyAttr;
+            verifyAttr.id = static_cast<sai_port_attr_t>(counter_ids[i]);
+            PortPhyAttributeData verifyData;
+            switch (verifyAttr.id)
+            {
+                case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+                    verifyData.rxSignalDetectData.resize(laneCount);
+                    verifyAttr.value.portlanelatchstatuslist.count = laneCount;
+                    verifyAttr.value.portlanelatchstatuslist.list = verifyData.rxSignalDetectData.data();
+                    break;
+
+                case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                    verifyData.fecAlignmentLockData.resize(laneCount);
+                    verifyAttr.value.portlanelatchstatuslist.count = laneCount;
+                    verifyAttr.value.portlanelatchstatuslist.list = verifyData.fecAlignmentLockData.data();
+                    break;
+
+                case SAI_PORT_ATTR_RX_SNR:
+                    verifyData.rxSnrData.resize(laneCount);
+                    verifyAttr.value.portsnrlist.count = laneCount;
+                    verifyAttr.value.portsnrlist.list = verifyData.rxSnrData.data();
+                    break;
+
+                default:
+                    SWSS_LOG_ERROR("PORT_PHY_ATTR: Unknown attr-id %d during verify-poll setup; skipping registration", verifyAttr.id);
+                    continue;
+            }
+
+            sai_status_t verifyStatus = Base::m_vendorSai->get(
+                    Base::m_objectType,
+                    rid,
+                    1,
+                    &verifyAttr);
+            if (verifyStatus != SAI_STATUS_SUCCESS)
+            {
+                if (verifyStatus == SAI_STATUS_NOT_SUPPORTED ||
+                    verifyStatus == SAI_STATUS_INVALID_PORT_NUMBER)
+                {
+                    SWSS_LOG_NOTICE(
+                            "PORT_PHY_ATTR: SAI does not service attr_id=%d for RID:0x%" PRIx64
+                            " (verify-poll status=%d). Skipping FlexCounter registration; this attr "
+                            "will not be polled for this port until syncd restarts. This is typically "
+                            "expected when the port has no module / no live RX signal.",
+                            verifyAttr.id, rid, verifyStatus);
+                }
+                else
+                {
+                    SWSS_LOG_ERROR(
+                            "PORT_PHY_ATTR: Verify-poll failed for attr_id=%d RID:0x%" PRIx64
+                            " (status=%d). Skipping FlexCounter registration.",
+                            verifyAttr.id, rid, verifyStatus);
+                }
+                continue;
+            }
+
+            // Both phases succeeded; safe to register for FlexCounter polling.
             m_portLaneCountMap[rid][static_cast<sai_port_attr_t>(attr.id)] = laneCount;
             SWSS_LOG_DEBUG("PORT_PHY_ATTR: m_portLaneCountMap[rid:0x%" PRIx64 "][%d] = %u", rid, attr.id, laneCount);
         }
