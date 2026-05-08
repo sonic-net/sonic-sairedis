@@ -363,3 +363,138 @@ TEST_F(TestPortPhyAttr, CollectDataSkipsWhenInitAttrDataFails)
 
     flexCounter->removeCounter(failPortOid);
 }
+
+/**
+ * Test that updatePortLaneCountMap() also verifies the actual data read
+ * succeeds before registering an (rid, attr) pair for FlexCounter polling.
+ *
+ * Simulates the Arista 720dt M0/MX scenario where the BCM SAI driver
+ * returns BUFFER_OVERFLOW + count for the lane-count probe (so the port
+ * appears to support the attr), but then returns NOT_SUPPORTED for the
+ * actual full-buffer read because the front port has no optical module
+ * and the BCM PMD layer rejects the live-signal query.
+ *
+ * Without this verify-poll, every FlexCounter poll cycle (~10s) triggers
+ * a SWSS_LOG_ERROR + a BCM SAI driver ERR for each unplugged port, which
+ * generated 25,000+ ERR lines per nightly run on 720dt and broke
+ * loganalyzer at teardown.
+ *
+ * After the verify-poll, the failure is observed exactly once at
+ * addCounter time; the (rid, attr) is not registered, and PR #1861's
+ * existing initAttrData/collectData skip path takes over for all future
+ * polls (silent, no per-poll cost).
+ *
+ * Mirrors the pattern of CollectDataSkipsWhenInitAttrDataFails (PR #1861)
+ * but exercises the new verify-poll filter.
+ *
+ * See:
+ *   https://github.com/sonic-net/sonic-mgmt/issues/24023
+ *   https://github.com/aristanetworks/sonic-qual.msft/issues/<TBD>
+ */
+TEST_F(TestPortPhyAttr, UpdatePortLaneCountMapSkipsWhenVerifyPollFails)
+{
+    sai_object_id_t failPortOid = 0x10000000000aa;
+    sai_object_id_t failPortRid = 0x10000000000aa;
+
+    int probeCalls = 0;       // probe: attr_count==1, list==nullptr  -> BUFFER_OVERFLOW
+    int verifyCalls = 0;      // verify: attr_count==1, list!=nullptr -> NOT_SUPPORTED
+    int pollCalls = 0;        // collectData poll: attr_count>1       -> should never happen
+
+    // Mock SAI:
+    //   - lane-count probe (count==0, list==nullptr): set count=MAX_LANES_PER_PORT
+    //     and return BUFFER_OVERFLOW (port "appears" to support the attr).
+    //   - verify-poll (count==MAX_LANES_PER_PORT, list!=nullptr): return
+    //     NOT_SUPPORTED (the failure mode this test reproduces).
+    //   - real collectData poll (attr_count>1): record and fail loudly so the
+    //     test catches a regression where collectData runs anyway.
+    sai->mock_get = [&](sai_object_type_t object_type,
+                        sai_object_id_t object_id,
+                        uint32_t attr_count,
+                        sai_attribute_t *attr_list) -> sai_status_t
+    {
+        if (object_type != SAI_OBJECT_TYPE_PORT) {
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        if (attr_count == 1) {
+            const sai_attribute_t &a = attr_list[0];
+            bool isProbe = false;
+            switch (a.id) {
+                case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+                case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                    isProbe = (a.value.portlanelatchstatuslist.list == nullptr);
+                    break;
+                case SAI_PORT_ATTR_RX_SNR:
+                    isProbe = (a.value.portsnrlist.list == nullptr);
+                    break;
+                default:
+                    return SAI_STATUS_NOT_SUPPORTED;
+            }
+
+            if (isProbe) {
+                probeCalls++;
+                switch (a.id) {
+                    case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+                    case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                        attr_list[0].value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+                        break;
+                    case SAI_PORT_ATTR_RX_SNR:
+                        attr_list[0].value.portsnrlist.count = MAX_LANES_PER_PORT;
+                        break;
+                    default:
+                        break;
+                }
+                return SAI_STATUS_BUFFER_OVERFLOW;
+            }
+
+            // verify-poll: real buffer allocated -> simulate "no module" failure
+            verifyCalls++;
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+
+        // attr_count > 1 -> this is collectData's real read. With this fix it
+        // must NOT happen because verify-poll already rejected the (rid, attr).
+        pollCalls++;
+        return SAI_STATUS_NOT_SUPPORTED;
+    };
+
+    vector<swss::FieldValueTuple> portPhyAttrValues;
+    std::string attrIds = "SAI_PORT_ATTR_RX_SIGNAL_DETECT,SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK,SAI_PORT_ATTR_RX_SNR";
+    portPhyAttrValues.emplace_back(PORT_PHY_ATTR_ID_LIST, attrIds);
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+
+    flexCounter->addCounter(failPortOid, failPortRid, portPhyAttrValues);
+
+    // addCounter should have invoked: 3 probes + 3 verify-polls (one of each per attr).
+    EXPECT_EQ(probeCalls, 3) << "Expected one lane-count probe per attr at addCounter time";
+    EXPECT_EQ(verifyCalls, 3) << "Expected one verify-poll per attr at addCounter time";
+    EXPECT_EQ(pollCalls, 0) << "collectData must not have run yet";
+
+    vector<swss::FieldValueTuple> pluginValues;
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "200");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    flexCounter->addCounterPlugin(pluginValues);
+
+    // Wait for several poll cycles. With the fix, m_portLaneCountMap is empty
+    // for failPortRid, initAttrData returns false on every poll (#1861 path),
+    // and collectData never reaches sai_get.
+    usleep(1000 * 800);  // ~4 polls at 200ms
+
+    EXPECT_EQ(pollCalls, 0)
+        << "collectData should never reach sai_get when verify-poll rejected the (rid, attr). "
+        << "Actual pollCalls=" << pollCalls;
+
+    // Nothing should be in COUNTERS_DB.
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, PORT_PHY_ATTR_TABLE, false);
+    std::string expectedKey = toOid(failPortOid);
+    std::string val;
+    EXPECT_FALSE(countersTable.hget(expectedKey, "phy_rx_signal_detect", val));
+    EXPECT_FALSE(countersTable.hget(expectedKey, "pcs_fec_lane_alignment_lock", val));
+    EXPECT_FALSE(countersTable.hget(expectedKey, "rx_snr", val));
+
+    flexCounter->removeCounter(failPortOid);
+}
