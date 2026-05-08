@@ -1,6 +1,7 @@
 #include <inttypes.h>
 #include <unordered_map>
 #include <map>
+#include <set>
 #include <vector>
 #include <string>
 #include <mutex>
@@ -1967,6 +1968,13 @@ public:
                 SWSS_LOG_DEBUG("PORT_PHY_ATTR: Removing RID 0x%" PRIx64 " from m_portLaneCountMap", it->second->rid);
                 m_portLaneCountMap.erase(lane_it);
             }
+
+            auto unsupp_it = m_unsupportedAttrs.find(it->second->rid);
+            if (unsupp_it != m_unsupportedAttrs.end())
+            {
+                SWSS_LOG_DEBUG("PORT_PHY_ATTR: Removing RID 0x%" PRIx64 " from m_unsupportedAttrs", it->second->rid);
+                m_unsupportedAttrs.erase(unsupp_it);
+            }
         }
 
         // Clean up lane metadata for this VID
@@ -2002,6 +2010,28 @@ public:
             SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
 
+            // Skip silently if every attribute in this batch was previously marked
+            // permanently unsupported by the SAI driver for this port (e.g. ports
+            // without optical modules on Arista 720dt). See post-failure caching below.
+            auto unsupp_it = m_unsupportedAttrs.find(rid);
+            if (unsupp_it != m_unsupportedAttrs.end())
+            {
+                bool allSkipped = true;
+                for (const auto &attrId : attrIds)
+                {
+                    if (unsupp_it->second.find(attrId) == unsupp_it->second.end())
+                    {
+                        allSkipped = false;
+                        break;
+                    }
+                }
+                if (allSkipped)
+                {
+                    SWSS_LOG_DEBUG("PORT_PHY_ATTR: All attrs for RID:0x%" PRIx64 " marked unsupported, skipping poll", rid);
+                    continue;
+                }
+            }
+
             bool attrDataInitialized = true;
             for (size_t i = 0; i < attrIds.size(); i++)
             {
@@ -2029,8 +2059,28 @@ public:
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("Failed to get port attr for VID 0x%" PRIx64 ", RID:0x%" PRIx64 ": %d",
-                        vid, rid, status);
+                if (status == SAI_STATUS_NOT_SUPPORTED || status == SAI_STATUS_INVALID_PORT_NUMBER)
+                {
+                    // SAI driver permanently does not support these attrs on this port
+                    // (e.g. unplugged front ports). Cache so we skip future polls and
+                    // avoid spamming syslog every poll interval.
+                    bool firstTime = (m_unsupportedAttrs.find(rid) == m_unsupportedAttrs.end());
+                    for (const auto &attrId : attrIds)
+                    {
+                        m_unsupportedAttrs[rid].insert(attrId);
+                    }
+                    if (firstTime)
+                    {
+                        SWSS_LOG_NOTICE("PORT_PHY_ATTR: SAI does not support attrs for VID 0x%" PRIx64 ", RID:0x%" PRIx64 " (status %d). "
+                                        "Marking as permanently unsupported; skipping in future polls.",
+                                        vid, rid, status);
+                    }
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("Failed to get port attr for VID 0x%" PRIx64 ", RID:0x%" PRIx64 ": %d",
+                            vid, rid, status);
+                }
                 continue;
             }
 
@@ -2190,6 +2240,9 @@ private:
     std::map<sai_object_id_t, std::map<sai_port_attr_t, uint32_t>> m_portLaneCountMap;
     // Map: [VID][attr_id][lane_number] -> metadata
     std::map<sai_object_id_t, std::map<sai_port_attr_t, std::map<uint32_t, LaneMetadata>>> m_laneMetadata;
+    // [RID] -> set of attr IDs the SAI driver permanently doesn't support for that port.
+    // Populated on first sai_get failure with NOT_SUPPORTED / INVALID_PORT_NUMBER.
+    std::map<sai_object_id_t, std::set<sai_port_attr_t>> m_unsupportedAttrs;
 };
 
 const std::unordered_map<sai_port_attr_t, std::string> PortPhyAttrContext::m_attrAliases = {
@@ -2512,6 +2565,14 @@ public:
                 SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Removing port_serdes RID:0x%" PRIx64 " from m_portSerdesTapsCountMap", port_serdes_rid);
                 m_portSerdesTapsCountMap.erase(count_it);
             }
+
+            // Clean up m_unsupportedAttrs
+            auto unsupp_it = m_unsupportedAttrs.find(port_serdes_rid);
+            if (unsupp_it != m_unsupportedAttrs.end())
+            {
+                SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Removing port_serdes RID:0x%" PRIx64 " from m_unsupportedAttrs", port_serdes_rid);
+                m_unsupportedAttrs.erase(unsupp_it);
+            }
         }
 
         // Call base class to remove from m_objectIdsMap
@@ -2540,6 +2601,27 @@ public:
             SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
 
+            // Skip silently if every attribute in this batch was previously marked
+            // permanently unsupported by the SAI driver for this port_serdes.
+            auto unsupp_it = m_unsupportedAttrs.find(rid);
+            if (unsupp_it != m_unsupportedAttrs.end())
+            {
+                bool allSkipped = true;
+                for (const auto &attrId : attrIds)
+                {
+                    if (unsupp_it->second.find(attrId) == unsupp_it->second.end())
+                    {
+                        allSkipped = false;
+                        break;
+                    }
+                }
+                if (allSkipped)
+                {
+                    SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: All attrs for RID:0x%" PRIx64 " marked unsupported, skipping poll", rid);
+                    continue;
+                }
+            }
+
             // Initialize all attributes - if any fail, skip this object
             bool attrDataInitialized = true;
             for (size_t i = 0; i < attrIds.size(); i++)
@@ -2567,8 +2649,27 @@ public:
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes attr for VID 0x%" PRIx64 ", status: %d",
-                        vid, status);
+                if (status == SAI_STATUS_NOT_SUPPORTED || status == SAI_STATUS_INVALID_PORT_NUMBER)
+                {
+                    // SAI driver permanently does not support these attrs on this port_serdes.
+                    // Cache so we skip future polls and avoid spamming syslog.
+                    bool firstTime = (m_unsupportedAttrs.find(rid) == m_unsupportedAttrs.end());
+                    for (const auto &attrId : attrIds)
+                    {
+                        m_unsupportedAttrs[rid].insert(attrId);
+                    }
+                    if (firstTime)
+                    {
+                        SWSS_LOG_NOTICE("PORT_PHY_SERDES_ATTR: SAI does not support attrs for VID 0x%" PRIx64 ", RID:0x%" PRIx64 " (status %d). "
+                                        "Marking as permanently unsupported; skipping in future polls.",
+                                        vid, rid, status);
+                    }
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes attr for VID 0x%" PRIx64 ", status: %d",
+                            vid, status);
+                }
                 continue;
             }
 
@@ -2633,6 +2734,9 @@ private:
     std::map<sai_object_id_t, PortIdInfo> m_portSerdesIdToPortIdMap;
     std::map<sai_object_id_t, uint32_t> m_portSerdesIdToLaneCountMap;
     std::map<sai_object_id_t, std::map<sai_port_serdes_attr_t, uint32_t>> m_portSerdesTapsCountMap;
+    // [RID] -> set of attr IDs the SAI driver permanently doesn't support for that port_serdes.
+    // Populated on first sai_get failure with NOT_SUPPORTED / INVALID_PORT_NUMBER.
+    std::map<sai_object_id_t, std::set<sai_port_serdes_attr_t>> m_unsupportedAttrs;
 };
 
 const std::unordered_map<sai_port_serdes_attr_t, std::string> PortPhySerdesAttrContext::m_attrAliases = {

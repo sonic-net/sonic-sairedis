@@ -363,3 +363,118 @@ TEST_F(TestPortPhyAttr, CollectDataSkipsWhenInitAttrDataFails)
 
     flexCounter->removeCounter(failPortOid);
 }
+
+
+/**
+ * Test that collectData() caches "permanently unsupported" attrs after the
+ * first sai_get failure with NOT_SUPPORTED (-2) or INVALID_PORT_NUMBER (-9),
+ * so subsequent poll cycles skip the SAI call entirely.
+ *
+ * This simulates the Arista 720dt scenario where m_portLaneCountMap *does*
+ * have lane-count entries (so initAttrData succeeds), but the actual sai_get
+ * call fails because the front port has no module / no signal. Without this
+ * fix, every poll interval (~10s) emits ERR-level syslog spam from both the
+ * BCM SAI driver and the syncd FlexCounter wrapper, generating tens of
+ * thousands of ERR lines per nightly run and breaking loganalyzer.
+ *
+ * Verifies:
+ *   - collectData calls sai_get exactly ONCE (first poll).
+ *   - On subsequent polls, sai_get is NOT called for the cached RID.
+ *   - No data is written to COUNTERS_DB for the unsupported RID.
+ *
+ * Mirrors the pattern introduced by PR #1861 (CollectDataSkipsWhenInitAttrDataFails).
+ *
+ * See: https://github.com/sonic-net/sonic-mgmt/issues/24023
+ */
+TEST_F(TestPortPhyAttr, CollectDataSkipsAfterUnsupportedStatus)
+{
+    sai_object_id_t failPortOid = 0x10000000000aa;
+    sai_object_id_t failPortRid = 0x10000000000aa;
+
+    int laneCountQueries = 0;
+    int multiAttrGets = 0;
+
+    // Mock SAI:
+    //   - For the lane-count probes (attr_count == 1 with list == nullptr) emit
+    //     BUFFER_OVERFLOW with count = MAX_LANES_PER_PORT so updatePortLaneCountMap
+    //     succeeds and m_portLaneCountMap gets populated for each attr.
+    //   - For the actual collectData sai_get (attr_count > 1, lists allocated)
+    //     emit NOT_SUPPORTED. The fix should cache and skip.
+    sai->mock_get = [&](sai_object_type_t object_type,
+                        sai_object_id_t object_id,
+                        uint32_t attr_count,
+                        sai_attribute_t *attr_list) -> sai_status_t
+    {
+        if (object_type != SAI_OBJECT_TYPE_PORT) {
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        if (attr_count == 1) {
+            // Lane-count probe phase from updatePortLaneCountMap: emit
+            // BUFFER_OVERFLOW + count so the map gets populated.
+            laneCountQueries++;
+            switch (attr_list[0].id) {
+                case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+                case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                    attr_list[0].value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+                    return SAI_STATUS_BUFFER_OVERFLOW;
+                case SAI_PORT_ATTR_RX_SNR:
+                    attr_list[0].value.portsnrlist.count = MAX_LANES_PER_PORT;
+                    return SAI_STATUS_BUFFER_OVERFLOW;
+                default:
+                    return SAI_STATUS_NOT_SUPPORTED;
+            }
+        }
+
+        // attr_count > 1 -> this is the real collectData sai_get.
+        // Return NOT_SUPPORTED to simulate unplugged-port behavior.
+        multiAttrGets++;
+        return SAI_STATUS_NOT_SUPPORTED;
+    };
+
+    vector<swss::FieldValueTuple> portPhyAttrValues;
+    std::string attrIds = "SAI_PORT_ATTR_RX_SIGNAL_DETECT,SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK,SAI_PORT_ATTR_RX_SNR";
+    portPhyAttrValues.emplace_back(PORT_PHY_ATTR_ID_LIST, attrIds);
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+
+    flexCounter->addCounter(failPortOid, failPortRid, portPhyAttrValues);
+
+    // Lane-count probes happen during addCounter (one per attr).
+    EXPECT_GE(laneCountQueries, 3)
+        << "addCounter should have probed lane count for each attr";
+    EXPECT_EQ(multiAttrGets, 0)
+        << "collectData should not have run yet";
+
+    vector<swss::FieldValueTuple> pluginValues;
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "200");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    flexCounter->addCounterPlugin(pluginValues);
+
+    // Wait long enough for at least 3 poll cycles. Without the fix,
+    // multiAttrGets would grow ~once per cycle. With the fix, it should
+    // increment to exactly 1 (the first poll) and stay there.
+    usleep(1000 * 800); // 800ms ~ 4 polls at 200ms
+
+    EXPECT_EQ(multiAttrGets, 1)
+        << "collectData should call sai_get exactly once for an unsupported RID; "
+        << "subsequent polls must use the m_unsupportedAttrs cache to skip. "
+        << "Actual multiAttrGets=" << multiAttrGets;
+
+    // Nothing should have been written to COUNTERS_DB.
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, PORT_PHY_ATTR_TABLE, false);
+    std::string expectedKey = toOid(failPortOid);
+
+    std::string val;
+    EXPECT_FALSE(countersTable.hget(expectedKey, "phy_rx_signal_detect", val))
+        << "phy_rx_signal_detect should NOT be in COUNTERS_DB when SAI rejects the attr";
+    EXPECT_FALSE(countersTable.hget(expectedKey, "pcs_fec_lane_alignment_lock", val))
+        << "pcs_fec_lane_alignment_lock should NOT be in COUNTERS_DB when SAI rejects the attr";
+    EXPECT_FALSE(countersTable.hget(expectedKey, "rx_snr", val))
+        << "rx_snr should NOT be in COUNTERS_DB when SAI rejects the attr";
+
+    flexCounter->removeCounter(failPortOid);
+}
