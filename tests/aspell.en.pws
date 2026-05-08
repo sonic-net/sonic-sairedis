@@ -1,4 +1,4 @@
-personal_ws-1.1 en 0
+personal_ws-1.1 en 6
 acl
 ACL
 ACLs
@@ -495,3 +495,9 @@ SNR
 tparam
 SIGSEGV
 CX
+Arista
+dt
+loganalyzer
+MX
+PMD
+teardown
