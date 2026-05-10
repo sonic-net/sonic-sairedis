@@ -1586,6 +1586,16 @@ TEST(FlexCounter, bulkChunksize)
                     }
                     continue;
                 }
+                // Skip re-probe polls (single-object capability probes
+                // that happen after the merge-back, with object_count==1).
+                // The per-counter assertions below check steady-state
+                // per-prefix chunk sizes, which only apply when
+                // object_count > 1. This matches the documented intent
+                // in the comment above and the unified-path guard.
+                if (object_count == 1)
+                {
+                    continue;
+                }
                 switch (counter_ids[j])
                 {
                 case SAI_PORT_STAT_IF_IN_OCTETS:
