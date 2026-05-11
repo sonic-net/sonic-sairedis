@@ -233,7 +233,8 @@ void testAddRemoveCounter(
         bool bulkChunkSizeAfterPort = true,
         const std::string pluginName = "",
         bool immediatelyRemoveBulkChunkSizePerCounter = false,
-        bool forceSingleCreate = false)
+        bool forceSingleCreate = false,
+        bool enableAfterSetup = false)
 {
     SWSS_LOG_ENTER();
 
@@ -246,7 +247,7 @@ void testAddRemoveCounter(
 
     std::vector<swss::FieldValueTuple> values;
     values.emplace_back(POLL_INTERVAL_FIELD, "1000");
-    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, enableAfterSetup ? "disable" : "enable");
     values.emplace_back(STATS_MODE_FIELD, statsMode);
     std::vector<swss::FieldValueTuple> fcValues = values;
     auto &bulkChunkSizeValues = bulkChunkSizeAfterPort ? fcValues : values;
@@ -296,6 +297,11 @@ void testAddRemoveCounter(
             bulkChunkSizeValues.emplace_back(BULK_CHUNK_SIZE_PER_PREFIX_FIELD, "");
             fc.addCounterPlugin(bulkChunkSizeValues);
         }
+    }
+
+    if (enableAfterSetup)
+    {
+        fc.addCounterPlugin({ swss::FieldValueTuple(FLEX_COUNTER_STATUS_FIELD, "enable") });
     }
 
     EXPECT_EQ(fc.isEmpty(), false);
@@ -1507,7 +1513,7 @@ TEST(FlexCounter, bulkChunksize)
     // non zero unifiedBulkChunkSize indicates all counter IDs share the same bulk chunk size
     uint32_t unifiedBulkChunkSize = 0;
     int32_t initialCheckCount;
-    int32_t partialSupportingBulkObjectFactor;
+    int32_t partialSupportingBulkObjectFactor = 0;
     sai->mock_bulkGetStats = [&](sai_object_id_t,
                                 sai_object_type_t,
                                 uint32_t object_count,
@@ -1640,7 +1646,12 @@ TEST(FlexCounter, bulkChunksize)
         STATS_MODE_READ,
         false,
         "3",
-        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        true,
+        "",
+        false,
+        false,
+        true);
     EXPECT_TRUE(allObjectIds.empty());
 
     // set bulk chunk size + per counter bulk chunk size first and then create ports
@@ -1660,6 +1671,7 @@ TEST(FlexCounter, bulkChunksize)
         false,
         PORT_PLUGIN_FIELD,
         false,
+        true,
         true);
     EXPECT_TRUE(allObjectIds.empty());
 
@@ -1682,6 +1694,8 @@ TEST(FlexCounter, bulkChunksize)
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         true,
         "",
+        true,
+        false,
         true);
     EXPECT_TRUE(allObjectIds.empty());
     unifiedBulkChunkSize = 0;
@@ -1699,7 +1713,12 @@ TEST(FlexCounter, bulkChunksize)
         STATS_MODE_READ,
         true,
         "3",
-        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        true,
+        "",
+        false,
+        false,
+        true);
     EXPECT_TRUE(allObjectIds.empty());
 
     // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode
@@ -1717,7 +1736,10 @@ TEST(FlexCounter, bulkChunksize)
         "3",
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         false,
-        PORT_PLUGIN_FIELD);
+        PORT_PLUGIN_FIELD,
+        false,
+        false,
+        true);
     EXPECT_TRUE(allObjectIds.empty());
 
     // add ports counters in bulk mode with some bulk-unsupported counters first and then set bulk chunk size + per counter bulk chunk size
@@ -1740,7 +1762,12 @@ TEST(FlexCounter, bulkChunksize)
         STATS_MODE_READ,
         true,
         "3",
-        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        true,
+        "",
+        false,
+        false,
+        true);
     EXPECT_TRUE(allObjectIds.empty());
     forceSingleCall = false;
 
@@ -1763,6 +1790,13 @@ TEST(FlexCounter, bulkChunksize)
         counterVerifyFunc,
         false,
         STATS_MODE_READ,
+        true,
+        "",
+        "",
+        true,
+        "",
+        false,
+        false,
         true);
     EXPECT_TRUE(allObjectIds.empty());
     bulkUnsupportedCounters.clear();
@@ -1787,7 +1821,10 @@ TEST(FlexCounter, bulkChunksize)
         "3",
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         false,
-        PORT_PLUGIN_FIELD);
+        PORT_PLUGIN_FIELD,
+        false,
+        false,
+        true);
     EXPECT_TRUE(allObjectIds.empty());
 
     // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode with some bulk-unsupported counters
@@ -1809,7 +1846,10 @@ TEST(FlexCounter, bulkChunksize)
         "3",
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         false,
-        PORT_PLUGIN_FIELD);
+        PORT_PLUGIN_FIELD,
+        false,
+        false,
+        true);
     EXPECT_TRUE(allObjectIds.empty());
 }
 
