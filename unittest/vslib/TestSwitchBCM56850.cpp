@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <memory>
 
 using namespace saivs;
@@ -687,6 +688,84 @@ TEST(SwitchBCM56850, test_refresh_port_oper_speed_down_port)
     // Set configured speed to 40000 (should be ignored for down ports)
     attr.id = SAI_PORT_ATTR_SPEED;
     attr.value.u32 = 40000;
+    ASSERT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, sport, &attr), SAI_STATUS_SUCCESS);
+
+    ASSERT_EQ(sw.refresh_port_oper_speed(port_id), SAI_STATUS_SUCCESS);
+
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+    ASSERT_EQ(sw.get(SAI_OBJECT_TYPE_PORT, sport, 1, &attr), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(attr.value.u32, (uint32_t)0);
+}
+
+TEST(SwitchBCM56850, test_refresh_port_oper_speed_invalid_sysfs_speed)
+{
+    /*
+     * Test that refresh_port_oper_speed handles a sysfs speed file that opens
+     * but does not yield a positive speed (for example, virtio/virtual devices
+     * can report invalid speed values) without wrapping to UINT_MAX.
+     */
+
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = std::make_shared<LaneMap>(0);
+    ASSERT_TRUE(sc->m_laneMap->add("lo", {29, 30, 31, 32}));
+    sc->m_eventQueue = eventQueue;
+    sc->m_useConfiguredSpeedAsOperSpeed = false;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    ASSERT_EQ(sw.initialize_default_objects(1, &attr), SAI_STATUS_SUCCESS);
+
+    sai_object_id_t port_list[64];
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = 64;
+    attr.value.objlist.list = port_list;
+
+    ASSERT_EQ(sw.get(SAI_OBJECT_TYPE_SWITCH, "oid:0x2100000000", 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_GT(attr.value.objlist.count, (uint32_t)0);
+
+    auto port_id = port_list[0];
+    auto sport = sai_serialize_object_id(port_id);
+
+    sai_object_id_t hostif_id;
+    sai_attribute_t attrs[3];
+
+    attrs[0].id = SAI_HOSTIF_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TYPE_NETDEV;
+
+    attrs[1].id = SAI_HOSTIF_ATTR_OBJ_ID;
+    attrs[1].value.oid = port_id;
+
+    attrs[2].id = SAI_HOSTIF_ATTR_NAME;
+    strncpy(attrs[2].value.chardata, "Ethernet0", sizeof(attrs[2].value.chardata));
+
+    ASSERT_EQ(sw.create(SAI_OBJECT_TYPE_HOSTIF, &hostif_id, 0x2100000000, 3, attrs), SAI_STATUS_SUCCESS);
+
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+    attr.value.s32 = SAI_PORT_OPER_STATUS_UP;
+    ASSERT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, sport, &attr), SAI_STATUS_SUCCESS);
+
+    attr.id = SAI_PORT_ATTR_SPEED;
+    attr.value.u32 = 100000;
     ASSERT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, sport, &attr), SAI_STATUS_SUCCESS);
 
     ASSERT_EQ(sw.refresh_port_oper_speed(port_id), SAI_STATUS_SUCCESS);
