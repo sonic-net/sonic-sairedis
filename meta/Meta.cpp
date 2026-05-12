@@ -3622,6 +3622,7 @@ sai_status_t Meta::meta_generic_validation_create(
                     break;
                 }
 
+            // Used by UDF-backed ACL match fields (byte pattern + mask).
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
                 if (value.aclfield.enable)
                 {
