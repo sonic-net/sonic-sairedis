@@ -95,6 +95,8 @@
 /**
  * @brief Table which will be used to send API response from syncd.
  */
+#define REDIS_TABLE_FDB_EVENT_STATE "FDB_EVENT_STATE"
+
 #define REDIS_TABLE_GETRESPONSE     "GETRESPONSE"
 
 // REDIS default database defines

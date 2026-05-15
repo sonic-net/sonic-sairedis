@@ -7,6 +7,7 @@
 #include "FlowDump.h"
 
 #include "swss/notificationproducer.h"
+#include "swss/producerstatetable.h"
 
 #include <thread>
 #include <memory>
@@ -22,7 +23,8 @@ namespace syncd
             NotificationProcessor(
                     _In_ std::shared_ptr<NotificationProducerBase> producer,
                     _In_ std::shared_ptr<BaseRedisClient> client,
-                    _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer);
+                    _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer,
+                    _In_ std::shared_ptr<swss::DBConnector> dbAsic = nullptr);
 
             virtual ~NotificationProcessor();
 
@@ -214,5 +216,7 @@ namespace syncd
             std::shared_ptr<BaseRedisClient> m_client;
 
             std::shared_ptr<NotificationProducerBase> m_notifications;
+
+            std::shared_ptr<swss::ProducerStateTable> m_fdbEventStateProducer;
     };
 }
