@@ -4461,6 +4461,32 @@ sai_status_t SwitchStateBase::queryAttributeCapability(
        return queryMacsecPostCapability(object_type, attr_capability);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_PORT_LLR_PROFILE)
+    {
+        switch (attr_id)
+        {
+            // SAI Create-only and simulate set not implemented attribs.
+            case SAI_PORT_LLR_PROFILE_ATTR_OUTSTANDING_FRAMES_MAX:
+            case SAI_PORT_LLR_PROFILE_ATTR_OUTSTANDING_BYTES_MAX:
+            case SAI_PORT_LLR_PROFILE_ATTR_REPLAY_COUNT_MAX:
+            case SAI_PORT_LLR_PROFILE_ATTR_PCS_LOST_TIMEOUT:
+                attr_capability->create_implemented = true;
+                attr_capability->set_implemented    = false;
+                attr_capability->get_implemented    = true;
+                return SAI_STATUS_SUCCESS;
+
+            // Simulate attributes not implemented at all.
+            case SAI_PORT_LLR_PROFILE_ATTR_DATA_AGE_TIMEOUT:
+                attr_capability->create_implemented = false;
+                attr_capability->set_implemented    = false;
+                attr_capability->get_implemented    = false;
+                return SAI_STATUS_SUCCESS;
+
+            default:
+                break;
+        }
+    }
+
     attr_capability->create_implemented = true;
     attr_capability->set_implemented    = true;
     attr_capability->get_implemented    = true;
@@ -4606,7 +4632,29 @@ sai_status_t SwitchStateBase::queryPortStatsCapability(
         SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS,
         SAI_PORT_STAT_TRIM_PACKETS,
         SAI_PORT_STAT_DROPPED_TRIM_PACKETS,
-        SAI_PORT_STAT_TX_TRIM_PACKETS
+        SAI_PORT_STAT_TX_TRIM_PACKETS,
+        SAI_PORT_STAT_LLR_TX_INIT_CTL_OS,
+        SAI_PORT_STAT_LLR_TX_INIT_ECHO_CTL_OS,
+        SAI_PORT_STAT_LLR_TX_ACK_CTL_OS,
+        SAI_PORT_STAT_LLR_TX_NACK_CTL_OS,
+        SAI_PORT_STAT_LLR_TX_DISCARD,
+        SAI_PORT_STAT_LLR_TX_OK,
+        SAI_PORT_STAT_LLR_TX_POISONED,
+        SAI_PORT_STAT_LLR_TX_REPLAY,
+        SAI_PORT_STAT_LLR_RX_INIT_CTL_OS,
+        SAI_PORT_STAT_LLR_RX_INIT_ECHO_CTL_OS,
+        SAI_PORT_STAT_LLR_RX_ACK_CTL_OS,
+        SAI_PORT_STAT_LLR_RX_NACK_CTL_OS,
+        SAI_PORT_STAT_LLR_RX_ACK_NACK_SEQ_ERROR,
+        SAI_PORT_STAT_LLR_RX_OK,
+        SAI_PORT_STAT_LLR_RX_POISONED,
+        SAI_PORT_STAT_LLR_RX_BAD,
+        SAI_PORT_STAT_LLR_RX_EXPECTED_SEQ_GOOD,
+        SAI_PORT_STAT_LLR_RX_EXPECTED_SEQ_POISONED,
+        SAI_PORT_STAT_LLR_RX_EXPECTED_SEQ_BAD,
+        SAI_PORT_STAT_LLR_RX_MISSING_SEQ,
+        SAI_PORT_STAT_LLR_RX_DUPLICATE_SEQ,
+        SAI_PORT_STAT_LLR_RX_REPLAY
     };
 
     if (stats_capability->count < portStatList.size())
