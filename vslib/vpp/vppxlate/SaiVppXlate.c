@@ -2670,6 +2670,24 @@ int interface_ip_address_add_del (const char *hwif_name, vpp_ip_route_t *prefix,
 
     WR (ret);
 
+    /*
+     * Idempotency on add: VPP returns VNET_API_ERROR_ADDRESS_IN_USE (-105)
+     * when the same prefix is already configured on this interface. This
+     * happens benignly during sub-port creation: orchagent emits two
+     * IpRouteAddRemove events for the same connected-route prefix (one with
+     * next_hop=PORT going through vpp_add_del_intf_ip_addr_norif, and one
+     * with next_hop=SUB_PORT RIF going through vpp_add_del_intf_ip_addr).
+     * Both target the same VPP interface with the same prefix. Treating the
+     * second add as success prevents orchagent from rolling back the route
+     * entry (and the RIF), which used to leave sub-ports without IPs in
+     * batched sub-port creation (e.g. PTF test_packet_routed_with_valid_vlan).
+     */
+    if (is_add && ret == VNET_API_ERROR_ADDRESS_IN_USE) {
+        SAIVPP_INFO("%s: %s prefix_len %u already configured (idempotent add)",
+                    __func__, hwif_name, prefix->prefix_len);
+        ret = 0;
+    }
+
     ret = vpp_normalize_ret(ret, !is_add, __func__);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s prefix_len %u is_add %d", __func__, ret, hwif_name, prefix->prefix_len, is_add); }
