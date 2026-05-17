@@ -147,7 +147,23 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
     if (SAI_OBJECT_TYPE_ROUTER_INTERFACE == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
-        // vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, is_add);
+        sai_attribute_t rif_attr;
+        rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+        status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, next_hop_oid, 1, &rif_attr);
+        if (status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to read RIF type for %s, status %d",
+                           sai_serialize_object_id(next_hop_oid).c_str(), status);
+            return status;
+        }
+
+        if (rif_attr.value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT) {
+            status = vpp_add_del_intf_ip_addr_norif(serializedObjectId, route_entry, is_add);
+            if (status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to program sub-port interface IP for route %s, status %d",
+                               serializedObjectId.c_str(), status);
+                return status;
+            }
+        }
     }
     else if (SAI_OBJECT_TYPE_PORT == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
