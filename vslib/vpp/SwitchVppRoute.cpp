@@ -157,11 +157,30 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         }
 
         if (rif_attr.value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT) {
-            status = vpp_add_del_intf_ip_addr_norif(serializedObjectId, route_entry, is_add);
-            if (status != SAI_STATUS_SUCCESS) {
-                SWSS_LOG_ERROR("Failed to program sub-port interface IP for route %s, status %d",
-                               serializedObjectId.c_str(), status);
-                return status;
+            /* Use vpp_add_del_intf_ip_addr (RIF-based) instead of _norif here,
+             * because _norif resolves the interface by shelling out to
+             * `ip addr show` against host kernel which has a race condition:
+             * orchagent often issues the SAI_OBJECT_TYPE_ROUTE_ENTRY create
+             * before IntfMgr has assigned the IP to the host sub-port netdev,
+             * leading to a "host interface for prefix not found" failure.
+             *
+             * Only act on is_add=true. orchagent emits transient
+             * ROUTE_ENTRY remove+create cycles for the same connected prefix
+             * during bulk batch processing (observed during sub_port PTF
+             * tests: bulk C, R, C, R for the same /30 within ~60 ms while
+             * the RIF stays alive the whole time). On VPP the IP and the
+             * connected route are inseparable -- removing the IP here on a
+             * transient R would leave the sub-port unable to answer ARP
+             * after the final R. The IP is correctly torn down when the
+             * RIF itself is removed via vpp_remove_router_interface ->
+             * delete_sub_interface. */
+            if (is_add) {
+                status = vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, true);
+                if (status != SAI_STATUS_SUCCESS) {
+                    SWSS_LOG_ERROR("Failed to program sub-port interface IP for route %s, status %d",
+                                   serializedObjectId.c_str(), status);
+                    return status;
+                }
             }
         }
     }
