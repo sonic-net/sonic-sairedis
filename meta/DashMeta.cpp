@@ -36,7 +36,8 @@ bool saimeta::isDashObjectType(sai_object_type_t ot)
     {
         if (t == ot)
         {
-            SWSS_LOG_DEBUG("DASH policy active for object type %d", (int)ot);
+            SWSS_LOG_DEBUG("DASH policy active for object type %s",
+                    sai_serialize_object_type(ot).c_str());
             return true;
         }
     }
@@ -46,8 +47,7 @@ bool saimeta::isDashObjectType(sai_object_type_t ot)
 DashCacheMode saimeta::getDashCacheMode()
 {
     static const DashCacheMode mode = []() {
-        SWSS_LOG_DEBUG("Meta DASH cache policy: EXISTENCE_REFCOUNT");
-        return DashCacheMode::EXISTENCE_REFCOUNT;
+       return DashCacheMode::EXISTENCE_REFCOUNT;
     }();
     return mode;
 }
