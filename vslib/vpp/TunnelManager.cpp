@@ -1,3 +1,6 @@
+#include <algorithm>
+#include <functional>
+
 #include "SwitchVppUtils.h"
 #include "SwitchVpp.h"
 #include "SaiObjectDB.h"
@@ -53,6 +56,24 @@ TunnelManager::set_vxlan_port(const sai_attribute_t* attr)
 
     m_vxlan_port = attr->value.u16;
 }
+
+sai_status_t
+TunnelManager::get_tunnel_if(
+    _In_  sai_object_id_t nexthop_oid,
+    _Out_ u_int32_t &sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_tunnel_encap_nexthop_map.find(nexthop_oid);
+    if (it != m_tunnel_encap_nexthop_map.end()) {
+        sw_if_index = it->second.sw_if_index;
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // Fall through to IPIP encap nexthop map
+    return m_switch_db->m_tunnel_mgr_ipip.get_tunnel_if(nexthop_oid, sw_if_index);
+}
+
 /**
  * VxLAN tunnel is created in response to the creation of a tunnel encap nexthop entry. This assumes VxLAN tunnel is bidirectional and symmetric.
  * The local VTEP sends packet through the tunnel to the remote VTEP. The remote VTEP sends packet back to the local VTEP through the same tunnel with the same VNI.
@@ -111,6 +132,10 @@ TunnelManager::tunnel_encap_nexthop_action(
     }
     attr.id = SAI_TUNNEL_ATTR_TYPE;
     CHECK_STATUS_W_MSG(tunnel_obj->get_attr(attr), "Missing SAI_TUNNEL_ATTR_TYPE in tunnel obj");
+
+    if (attr.value.s32 == SAI_TUNNEL_TYPE_IPINIP) {
+        return m_switch_db->m_tunnel_mgr_ipip.ipip_encap_nexthop_action(tunnel_nh_obj, tunnel_obj.get(), action);
+    }
 
     if (attr.value.s32 != SAI_TUNNEL_TYPE_VXLAN) {
         SWSS_LOG_ERROR("Unsupported tunnel encap type %d in %s", attr.value.s32,
@@ -738,6 +763,611 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry_removal(
         vni, tunnel_data.sw_if_index, tunnel_data.vlan_id);
 
     m_l2_tunnel_map.erase(it);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+TunnelManagerIpIp::TunnelManagerIpIp(SwitchVpp *switch_db) : m_switch_db(switch_db) {}
+
+uint8_t
+TunnelManagerIpIp::map_sai_to_vpp_flags(const SaiObject* tunnel_obj)
+{
+    SWSS_LOG_ENTER();
+
+    uint8_t vpp_flags = 0;
+    sai_attribute_t attr;
+
+    // Decap ECN mode
+    attr.id = SAI_TUNNEL_ATTR_DECAP_ECN_MODE;
+    if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+        if (attr.value.s32 == SAI_TUNNEL_DECAP_ECN_MODE_COPY_FROM_OUTER) {
+            vpp_flags |= 0x10; // TUNNEL_API_ENCAP_DECAP_FLAG_DECAP_COPY_ECN
+        }
+    }
+
+    // Decap TTL mode (uniform = copy from outer)
+    attr.id = SAI_TUNNEL_ATTR_DECAP_TTL_MODE;
+    if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+        if (attr.value.s32 == SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL) {
+            vpp_flags |= 0x40; // TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_HOP_LIMIT
+        }
+    }
+
+    // Decap DSCP mode (uniform = copy from outer)
+    attr.id = SAI_TUNNEL_ATTR_DECAP_DSCP_MODE;
+    if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+        if (attr.value.s32 == SAI_TUNNEL_DSCP_MODE_UNIFORM_MODEL) {
+            vpp_flags |= 0x04; // TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_DSCP
+        }
+    }
+
+    // Encap TTL mode (uniform = copy from inner)
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_TTL_MODE;
+    if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+        if (attr.value.s32 == SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL) {
+            vpp_flags |= 0x40; // TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_HOP_LIMIT
+        }
+    }
+
+    // Encap DSCP mode (uniform = copy from inner)
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_DSCP_MODE;
+    if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+        if (attr.value.s32 == SAI_TUNNEL_DSCP_MODE_UNIFORM_MODEL) {
+            vpp_flags |= 0x04; // TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_DSCP
+        }
+    }
+
+    // Encap ECN mode (copy_from_outer)
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_ECN_MODE;
+    if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+        if (attr.value.s32 == SAI_TUNNEL_ENCAP_ECN_MODE_USER_DEFINED) {
+            vpp_flags |= 0x08; // TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_ECN
+        }
+    }
+
+    return vpp_flags;
+}
+
+uint32_t TunnelManagerIpIp::resolve_vrf_id(_In_ sai_object_id_t vr_oid)
+{
+    SWSS_LOG_ENTER();
+
+    if (vr_oid == SAI_NULL_OBJECT_ID) {
+        return 0;
+    }
+    auto vrf = m_switch_db->vpp_get_ip_vrf(vr_oid);
+    if (vrf) {
+        SWSS_LOG_INFO("IpIp: VR %s -> VRF %u",
+                      sai_serialize_object_id(vr_oid).c_str(), vrf->m_vrf_id);
+        return vrf->m_vrf_id;
+    }
+    SWSS_LOG_WARN("IpIp: vr %s not found, using default vrf",
+                  sai_serialize_object_id(vr_oid).c_str());
+    return 0;
+}
+
+uint32_t TunnelManagerIpIp::resolve_vrf_from_rif(_In_ sai_object_id_t rif_oid)
+{
+    SWSS_LOG_ENTER();
+
+    auto rif_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                                               sai_serialize_object_id(rif_oid));
+    if (rif_obj) {
+        sai_attribute_t rif_attr;
+        rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+        if (rif_obj->get_attr(rif_attr) == SAI_STATUS_SUCCESS) {
+            return resolve_vrf_id(rif_attr.value.oid);
+        }
+    }
+    SWSS_LOG_WARN("IpIp: could not resolve vrf from rif %s",
+                  sai_serialize_object_id(rif_oid).c_str());
+    return 0;
+}
+
+/*
+ * Shared helpers for IPIP tunnel create/remove.
+ *
+ * create_ipip_vpp_tunnel:
+ *   1. vpp_ipip_tunnel_add
+ *   2. refresh_interfaces_list + interface_set_state UP
+ *   3. set_interface_vrf (overlay VRF assignment)
+ *   4. vpp_sw_interface_find_by_ip + sw_interface_set_unnumbered
+ *   Cleans up (deletes tunnel) on partial failure.
+ *
+ * remove_ipip_vpp_tunnel:
+ *   1. interface_set_state DOWN
+ *   2. vpp_ipip_tunnel_del
+ *
+ * Both use a refcount map keyed by {src, dst, mode} to avoid creating
+ * duplicate VPP tunnels when both decap (tunnel_term) and encap (nexthop)
+ * paths request the same tunnel (e.g. MuxTunnel0 P2P).
+ */
+
+bool TunnelManagerIpIp::IpIpTunnelKey::operator==(const IpIpTunnelKey &o) const
+{
+    SWSS_LOG_ENTER();
+
+    return (mode == o.mode &&
+            sai_ip_address_equal(src, o.src) &&
+            sai_ip_address_equal(dst, o.dst));
+}
+
+std::size_t TunnelManagerIpIp::IpIpTunnelKeyHash::operator()(const IpIpTunnelKey &k) const
+{
+    SWSS_LOG_ENTER();
+
+    std::size_t h = std::hash<uint8_t>()(k.mode);
+    uint64_t tmp;
+    if (k.src.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
+        h ^= std::hash<uint32_t>()(k.src.addr.ip4) << 1;
+    }
+    else {
+        memcpy(&tmp, k.src.addr.ip6, sizeof(tmp));
+        h ^= std::hash<uint64_t>()(tmp) << 1;
+    }
+    if (k.dst.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
+        h ^= std::hash<uint32_t>()(k.dst.addr.ip4) << 2;
+    }
+    else {
+        memcpy(&tmp, k.dst.addr.ip6, sizeof(tmp));
+        h ^= std::hash<uint64_t>()(tmp) << 2;
+    }
+    return h;
+}
+
+sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
+    _Inout_ vpp_ipip_tunnel_t &req,
+    _In_ uint32_t vrf_id,
+    _Out_ uint32_t &sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    sw_if_index = 0;
+
+    // Check if a VPP tunnel with the same {src, dst, mode} already exists
+    IpIpTunnelKey key;
+    memset(&key, 0, sizeof(key));
+    vpp_ip_addr_t_to_sai_ip_address_t(req.src_address, key.src);
+    vpp_ip_addr_t_to_sai_ip_address_t(req.dst_address, key.dst);
+    key.mode = req.mode;
+
+    auto ref_it = m_ipip_tunnel_refcount.find(key);
+    if (ref_it != m_ipip_tunnel_refcount.end()) {
+        // Tunnel already exists
+        ref_it->second.refcount++;
+        sw_if_index = ref_it->second.sw_if_index;
+        SWSS_LOG_NOTICE("IpIp: reusing existing vpp ipip tunnel sw_if=%u (refcount=%u)",
+                        sw_if_index, ref_it->second.refcount);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // Create the IPIP tunnel
+    int ret = vpp_ipip_tunnel_add(&req, &sw_if_index);
+    if (ret < 0) {
+        SWSS_LOG_ERROR("IpIp: vpp_ipip_tunnel_add failed: ret=%d", ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    // Set the tunnel interface up
+    refresh_interfaces_list();
+    const char *ifname = vpp_get_swif_name(sw_if_index);
+    if (!ifname) {
+        SWSS_LOG_ERROR("IpIp: could not get interface name for sw_if_index=%u", sw_if_index);
+        return SAI_STATUS_FAILURE;
+    }
+
+    ret = interface_set_state(ifname, true);
+    if (ret < 0) {
+        SWSS_LOG_ERROR("IpIp: failed to set interface up for %s ret=%d", ifname, ret);
+        return SAI_STATUS_FAILURE;
+    }
+    SWSS_LOG_NOTICE("IpIp: tunnel %s (sw_if=%u) set UP", ifname, sw_if_index);
+
+    // Assign the tunnel interface to the overlay vrf
+    bool is_ipv6 = (req.src_address.sa_family == AF_INET6);
+    ret = set_interface_vrf(ifname, 0, vrf_id, is_ipv6);
+    if (ret < 0) {
+        SWSS_LOG_ERROR("IpIp: failed to set interface vrf for %s vrf=%u is_ipv6=%d ret=%d",
+                       ifname, vrf_id, is_ipv6, ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    // Set unnumbered — borrow IP from the interface that owns req.src_address
+    uint32_t owner_sw_if_index = 0;
+    if (vpp_sw_interface_find_by_ip(&req.src_address, vrf_id, &owner_sw_if_index) == 0) {
+        ret = sw_interface_set_unnumbered(sw_if_index, owner_sw_if_index, true);
+        if (ret < 0) {
+            SWSS_LOG_ERROR("IpIp: failed to set interface unnumbered sw_if=%u use sw_if=%u ret=%d",
+                           sw_if_index, owner_sw_if_index, ret);
+            return SAI_STATUS_FAILURE;
+        } else {
+            const char *owner_ifname = vpp_get_swif_name(owner_sw_if_index);
+            SWSS_LOG_NOTICE("IpIp: sw_if=%u set unnumbered using %s (sw_if=%u)",
+                            sw_if_index, owner_ifname ? owner_ifname : "?", owner_sw_if_index);
+        }
+    }
+    else {
+        char ip_str[INET6_ADDRSTRLEN];
+        vpp_ip_addr_t_to_string(&req.src_address, ip_str, sizeof(ip_str));
+        SWSS_LOG_WARN("IpIp: no interface found for IP %s in vrf %u yet, deferring unnumbered for sw_if=%u",
+                      ip_str, vrf_id, sw_if_index);
+        PendingUnnumbered pending;
+        pending.sw_if_index = sw_if_index;
+        pending.src_address = req.src_address;
+        pending.vrf_id = vrf_id;
+        m_pending_unnumbered.emplace(std::string(ip_str), pending);
+    }
+
+    IpIpTunnelRef ref_data;
+    ref_data.sw_if_index = sw_if_index;
+    ref_data.refcount = 1;
+    m_ipip_tunnel_refcount[key] = ref_data;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t TunnelManagerIpIp::remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = std::find_if(m_ipip_tunnel_refcount.begin(), m_ipip_tunnel_refcount.end(),
+                           [sw_if_index](const auto &entry)
+                           { return entry.second.sw_if_index == sw_if_index; });
+    if (it != m_ipip_tunnel_refcount.end()) {
+        if (--it->second.refcount > 0) {
+            SWSS_LOG_NOTICE("IpIp: tunnel sw_if=%u still in use (refcount=%u), skipping delete",
+                            sw_if_index, it->second.refcount);
+            return SAI_STATUS_SUCCESS;
+        }
+        m_ipip_tunnel_refcount.erase(it);
+    }
+
+    // Remove any pending unnumbered entries for this tunnel
+    for (auto pending_it = m_pending_unnumbered.begin(); pending_it != m_pending_unnumbered.end(); ) {
+        if (pending_it->second.sw_if_index == sw_if_index) {
+            pending_it = m_pending_unnumbered.erase(pending_it);
+        } else {
+            ++pending_it;
+        }
+    }
+
+    const char *ifname = vpp_get_swif_name(sw_if_index);
+    if (ifname) {
+        interface_set_state(ifname, false);
+    }
+
+    int ret = vpp_ipip_tunnel_del(sw_if_index);
+    if (ret < 0) {
+        SWSS_LOG_ERROR("IpIp: vpp_ipip_tunnel_del failed for sw_if=%u: ret=%d", sw_if_index, ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+void TunnelManagerIpIp::retry_pending_unnumbered(_In_ const vpp_ip_addr_t &rif_ip)
+{
+    SWSS_LOG_ENTER();
+
+    if (m_pending_unnumbered.empty()) {
+        return;
+    }
+
+    vpp_ip_addr_t *rif_ip_ptr = const_cast<vpp_ip_addr_t *>(&rif_ip);
+
+    char ip_str[INET6_ADDRSTRLEN];
+    vpp_ip_addr_t_to_string(rif_ip_ptr, ip_str, sizeof(ip_str));
+
+    auto range = m_pending_unnumbered.equal_range(std::string(ip_str));
+    if (range.first == range.second) {
+        return;
+    }
+
+    SWSS_LOG_NOTICE("IpIp: retrying %zu pending unnumbered for IP %s",
+                    (size_t)std::distance(range.first, range.second), ip_str);
+
+    // Find the owner interface for this IP
+    uint32_t owner_sw_if_index = 0;
+    if (vpp_sw_interface_find_by_ip(rif_ip_ptr, range.first->second.vrf_id, &owner_sw_if_index) != 0) {
+        SWSS_LOG_WARN("IpIp: still no owner interface for IP %s", ip_str);
+        return;
+    }
+
+    const char *owner_ifname = vpp_get_swif_name(owner_sw_if_index);
+    for (auto it = range.first; it != range.second; ) {
+        int ret = sw_interface_set_unnumbered(it->second.sw_if_index, owner_sw_if_index, true);
+        if (ret < 0) {
+            SWSS_LOG_ERROR("IpIp: deferred unnumbered failed sw_if=%u use sw_if=%u ret=%d",
+                           it->second.sw_if_index, owner_sw_if_index, ret);
+            ++it;
+            continue;
+        }
+        SWSS_LOG_NOTICE("IpIp: deferred unnumbered succeeded sw_if=%u using %s (sw_if=%u)",
+                        it->second.sw_if_index, owner_ifname ? owner_ifname : "?", owner_sw_if_index);
+        it = m_pending_unnumbered.erase(it);
+    }
+}
+
+sai_status_t TunnelManagerIpIp::create_ipip_tunnel_term(
+    _In_ const std::string &serializedObjectId,
+    _In_ sai_object_id_t switch_id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t term_oid;
+    sai_deserialize_object_id(serializedObjectId, term_oid);
+
+    // Parse attributes from the tunnel term table entry
+    sai_ip_address_t dst_ip;   // our local IP (packet destination = tunnel src)
+    sai_ip_address_t src_ip;   // remote peer IP (packet source = tunnel dst)
+    sai_object_id_t tunnel_oid = SAI_NULL_OBJECT_ID;
+    sai_object_id_t vr_oid = SAI_NULL_OBJECT_ID;
+    int32_t term_type = SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2MP;
+    bool has_src_ip = false;
+
+    memset(&dst_ip, 0, sizeof(dst_ip));
+    memset(&src_ip, 0, sizeof(src_ip));
+
+    for (uint32_t i = 0; i < attr_count; i++) {
+        switch (attr_list[i].id) {
+            case SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP:
+                dst_ip = attr_list[i].value.ipaddr;
+                break;
+            case SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_SRC_IP:
+                src_ip = attr_list[i].value.ipaddr;
+                has_src_ip = true;
+                break;
+            case SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_ACTION_TUNNEL_ID:
+                tunnel_oid = attr_list[i].value.oid;
+                break;
+            case SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TYPE:
+                term_type = attr_list[i].value.s32;
+                break;
+            case SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_VR_ID:
+                vr_oid = attr_list[i].value.oid;
+                break;
+            default:
+                break;
+        }
+    }
+
+    if (tunnel_oid == SAI_NULL_OBJECT_ID) {
+        SWSS_LOG_ERROR("IpIp: missing tunnel id in tunnel term %s", serializedObjectId.c_str());
+        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
+    }
+
+    // Look up the referenced tunnel object from SaiObjectDB to read TTL/DSCP/ECN modes
+    auto tunnel_db_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL,
+                                                     sai_serialize_object_id(tunnel_oid));
+    if (!tunnel_db_obj) {
+        SWSS_LOG_ERROR("IpIp: tunnel object %s not found in object DB",
+                       sai_serialize_object_id(tunnel_oid).c_str());
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    // Map sai_tunnel_term_table_entry_type_t -> VPP IPIP tunnel mode.
+    // SAI P2MP term means "one local endpoint decapsulates traffic from many
+    // remote peers" -- this is decap-only and maps to VPP's MP2P mode, which
+    // (unlike MP / NBMA) does not require per-peer TEIB next-hops.
+    uint8_t vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP2P;
+    switch (term_type) {
+        case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2P:
+            vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_P2P;
+            break;
+        case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2MP:
+            vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP2P;
+            break;
+        case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_MP2P:
+        case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_MP2MP:
+        default:
+            SWSS_LOG_ERROR("IpIp Tunnel: Unsupported tunnel term type %d", term_type);
+            return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    // Map SAI TTL/DSCP/ECN modes to VPP flags
+    uint8_t vpp_flags = map_sai_to_vpp_flags(tunnel_db_obj.get());
+
+    // Build VPP IPIP tunnel request
+    // SAI term DST_IP = our local IP = VPP tunnel src
+    // SAI term SRC_IP = remote peer = VPP tunnel dst (0.0.0.0 for P2MP)
+    vpp_ipip_tunnel_t req;
+    memset(&req, 0, sizeof(req));
+    req.instance = ~0;
+    req.mode = vpp_mode;
+    req.flags = vpp_flags;
+    // ENCAP_INNER_HASH: hash on inner 5-tuple for ECMP for P2P ipip tunnel
+    if (vpp_mode == IpIpTunnelVPPData::TUNNEL_API_MODE_P2P) {
+        req.flags |= 0x20;
+    }
+
+    sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.src_address);
+    if (has_src_ip && vpp_mode == IpIpTunnelVPPData::TUNNEL_API_MODE_P2P) {
+        sai_ip_address_t_to_vpp_ip_addr_t(src_ip, req.dst_address);
+    } else {
+        // MP2P (P2MP-style decap): dst = 0.0.0.0 (already zeroed)
+        req.dst_address.sa_family = dst_ip.addr_family == SAI_IP_ADDR_FAMILY_IPV4 ? AF_INET : AF_INET6;
+    }
+
+    // Resolve overlay VRF for the tunnel interface
+    uint32_t overlay_vrf_id = resolve_vrf_id(vr_oid);
+
+    // Create tunnel, assign VRF, bring up, set unnumbered
+    uint32_t sw_if_index = 0;
+    sai_status_t status = create_ipip_vpp_tunnel(req, overlay_vrf_id, sw_if_index);
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("IpIp: vpp ipip tunnel creation failed for term %s",
+                       serializedObjectId.c_str());
+        return status;
+    }
+
+    // Bookkeeping
+    IpIpTunnelVPPData data;
+    data.sw_if_index = sw_if_index;
+    data.src_ip = dst_ip;        // local endpoint
+    data.dst_ip = src_ip;        // remote endpoint
+    data.mode = static_cast<IpIpTunnelVPPData::tunnel_mode>(vpp_mode);
+    data.flags = vpp_flags;
+    data.tunnel_oid = tunnel_oid;
+    data.vrf_id = overlay_vrf_id;
+    m_ipip_term_map[term_oid] = data;
+
+    SWSS_LOG_NOTICE("IpIp: created tunnel term %s: sw_if=%u mode=%s",
+                    serializedObjectId.c_str(), sw_if_index,
+                    vpp_mode == IpIpTunnelVPPData::TUNNEL_API_MODE_P2P ? "P2P" : "MP2P");
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t TunnelManagerIpIp::remove_ipip_tunnel_term(
+    _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t term_oid;
+    sai_deserialize_object_id(serializedObjectId, term_oid);
+
+    auto it = m_ipip_term_map.find(term_oid);
+    if (it == m_ipip_term_map.end()) {
+        SWSS_LOG_WARN("IPIP: tunnel term %s not found in map, skipping",
+                        serializedObjectId.c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
+    uint32_t sw_if_index = it->second.sw_if_index;
+    sai_status_t status = remove_ipip_vpp_tunnel(sw_if_index);
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("IpIp: remove_ipip_vpp_tunnel failed for term %s sw_if=%u",
+                        serializedObjectId.c_str(), sw_if_index);
+        return status;
+    }
+
+    SWSS_LOG_NOTICE("IpIp: removed IPIP tunnel term %s (sw_if=%u)",
+                    serializedObjectId.c_str(), sw_if_index);
+
+    m_ipip_term_map.erase(it);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
+    _In_ const SaiObject *tunnel_nh_obj,
+    _In_ const SaiObject *tunnel_obj,
+    _In_ Action action)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t nh_oid;
+    sai_deserialize_object_id(tunnel_nh_obj->get_id(), nh_oid);
+
+    sai_attribute_t attr;
+
+    // Verify the tunnel type is IPINIP
+    attr.id = SAI_TUNNEL_ATTR_TYPE;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("IpIp Encap: missing SAI_TUNNEL_ATTR_TYPE in tunnel %s",
+                        tunnel_obj->get_id().c_str());
+        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
+    }
+    if (attr.value.s32 != SAI_TUNNEL_TYPE_IPINIP) {
+        SWSS_LOG_ERROR("IpIp Encap: tunnel %s type %d is not IPINIP",
+                        tunnel_obj->get_id().c_str(), attr.value.s32);
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    // Get ENCAP_SRC_IP from the tunnel object (our local endpoint)
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("IpIp Encap: missing SAI_TUNNEL_ATTR_ENCAP_SRC_IP in tunnel %s",
+                        tunnel_obj->get_id().c_str());
+        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
+    }
+    sai_ip_address_t src_ip = attr.value.ipaddr;
+
+    // Get the destination IP from the nexthop object (remote peer)
+    attr.id = SAI_NEXT_HOP_ATTR_IP;
+    if (tunnel_nh_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("IpIp Encap: missing SAI_NEXT_HOP_ATTR_IP in nexthop %s",
+                        tunnel_nh_obj->get_id().c_str());
+        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
+    }
+    sai_ip_address_t dst_ip = attr.value.ipaddr;
+
+    // Get the tunnel overlay interface
+    attr.id = SAI_TUNNEL_ATTR_OVERLAY_INTERFACE;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("IpIp Encap: missing SAI_TUNNEL_ATTR_OVERLAY_INTERFACE in tunnel %s",
+                       tunnel_obj->get_id().c_str());
+        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
+    }
+    sai_object_id_t tunnel_overlay_if_oid = attr.value.oid;
+
+    if (action == Action::CREATE) {
+        uint8_t vpp_flags = map_sai_to_vpp_flags(tunnel_obj);
+
+        vpp_ipip_tunnel_t req;
+        memset(&req, 0, sizeof(req));
+        req.instance = ~0;
+        req.mode = IpIpTunnelVPPData::TUNNEL_API_MODE_P2P;
+        // ENCAP_INNER_HASH: hash on inner 5-tuple for ECMP for P2P ipip tunnel
+        req.flags = vpp_flags | 0x20;
+
+        sai_ip_address_t_to_vpp_ip_addr_t(src_ip, req.src_address);
+        sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.dst_address);
+
+        uint32_t sw_if_index = 0;
+        // Resolve VRF from the overlay RIF's virtual router
+        uint32_t vrf_id = resolve_vrf_from_rif(tunnel_overlay_if_oid);
+        sai_status_t status = create_ipip_vpp_tunnel(req, vrf_id, sw_if_index);
+        if (status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("IpIp Encap: create_ipip_vpp_tunnel failed for nexthop %s",
+                            tunnel_nh_obj->get_id().c_str());
+            return status;
+        }
+
+        // Bookkeeping
+        IpIpTunnelVPPData data;
+        data.sw_if_index = sw_if_index;
+        data.src_ip = src_ip;
+        data.dst_ip = dst_ip;
+        data.mode = IpIpTunnelVPPData::TUNNEL_API_MODE_P2P;
+        data.flags = vpp_flags;
+        data.vrf_id = vrf_id;
+
+        sai_object_id_t tunnel_oid;
+        sai_deserialize_object_id(tunnel_obj->get_id(), tunnel_oid);
+        data.tunnel_oid = tunnel_oid;
+
+        m_ipip_encap_nh_map[nh_oid] = data;
+
+        char src_str[INET6_ADDRSTRLEN], dst_str[INET6_ADDRSTRLEN];
+        vpp_ip_addr_t_to_string(&req.src_address, src_str, sizeof(src_str));
+        vpp_ip_addr_t_to_string(&req.dst_address, dst_str, sizeof(dst_str));
+        SWSS_LOG_NOTICE("IpIp Encap: created P2P tunnel nexthop %s: src=%s dst=%s sw_if=%u",
+                        tunnel_nh_obj->get_id().c_str(), src_str, dst_str, sw_if_index);
+
+    } else if (action == Action::DELETE) {
+        auto it = m_ipip_encap_nh_map.find(nh_oid);
+        if (it == m_ipip_encap_nh_map.end()) {
+            SWSS_LOG_WARN("IpIp Encap: ipip tunnel encap nexthop %s not found, skipping",
+                          tunnel_nh_obj->get_id().c_str());
+            return SAI_STATUS_SUCCESS;
+        }
+
+        uint32_t sw_if_index = it->second.sw_if_index;
+        sai_status_t status = remove_ipip_vpp_tunnel(sw_if_index);
+        if (status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("IpIp Encap: remove_ipip_vpp_tunnel failed for nexthop %s sw_if=%u",
+                            tunnel_nh_obj->get_id().c_str(), sw_if_index);
+            return status;
+        }
+
+        SWSS_LOG_NOTICE("IpIp Encap: removed ipip tunnel encap nexthop %s (sw_if=%u)",
+                        tunnel_nh_obj->get_id().c_str(), sw_if_index);
+
+        m_ipip_encap_nh_map.erase(it);
+    }
 
     return SAI_STATUS_SUCCESS;
 }

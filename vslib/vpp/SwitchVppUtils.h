@@ -48,4 +48,6 @@ namespace saivs
 
     /* Utility function for IP addr translation from VS to SAI */
     void vpp_ip_addr_t_to_sai_ip_address_t(vpp_ip_addr_t& src, sai_ip_address_t& dst);
+
+    bool sai_ip_address_equal(const sai_ip_address_t &a, const sai_ip_address_t &b);
 }
