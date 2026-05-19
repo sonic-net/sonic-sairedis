@@ -5,6 +5,7 @@
 #include "swss/logger.h"
 
 #include "vppxlate/SaiIntfStats.h"
+#include "vppxlate/SaiRouteStats.h"
 
 #include "SwitchVppUtils.h"
 
@@ -12,6 +13,11 @@
 #include <string>
 
 using namespace saivs;
+
+namespace
+{
+    constexpr uint64_t ROUTE_COUNTER_RESET_DELTA_THRESHOLD = 1ULL << 60;
+}
 
 // TODO init vpp
 
@@ -744,6 +750,183 @@ void SwitchVpp::setPortStats(
     debugSetStats(oid, stats);
 }
 
+sai_status_t SwitchVpp::getRouteCounterStats(
+        _In_ sai_object_id_t oid,
+        _Out_ std::map<sai_stat_id_t, uint64_t>& stats)
+{
+    SWSS_LOG_ENTER();
+
+    auto routeIt = m_counterToRouteMap.find(oid);
+    if (routeIt == m_counterToRouteMap.end())
+    {
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    auto statsIt = m_routeStatsIndexMap.find(routeIt->second);
+    if (statsIt == m_routeStatsIndexMap.end())
+    {
+        SWSS_LOG_ERROR("missing VPP stats index for route counter %s route %s",
+                sai_serialize_object_id(oid).c_str(),
+                routeIt->second.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    vpp_route_stats_t route_stats;
+    if (vpp_route_stats_query(statsIt->second, &route_stats) != 0)
+    {
+        SWSS_LOG_ERROR("failed to read VPP route stats for counter %s route %s stats index %u",
+                sai_serialize_object_id(oid).c_str(),
+                routeIt->second.c_str(),
+                statsIt->second);
+        return SAI_STATUS_FAILURE;
+    }
+
+    stats[SAI_COUNTER_STAT_PACKETS] = route_stats.packets;
+    stats[SAI_COUNTER_STAT_BYTES] = route_stats.bytes;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+uint64_t SwitchVpp::getRouteCounterDelta(
+        _In_ sai_object_id_t oid,
+        _In_ sai_stat_id_t id,
+        _In_ uint64_t current,
+        _In_ uint64_t base)
+{
+    SWSS_LOG_ENTER();
+
+    uint64_t delta = current - base;
+    if (current < base && delta > ROUTE_COUNTER_RESET_DELTA_THRESHOLD)
+    {
+        SWSS_LOG_WARN("route counter %s stat %d reset detected: current %llu base %llu",
+                sai_serialize_object_id(oid).c_str(),
+                id,
+                static_cast<unsigned long long>(current),
+                static_cast<unsigned long long>(base));
+        return 0;
+    }
+
+    return delta;
+}
+
+void SwitchVpp::carryRouteCounterStatsDelta(
+        _In_ sai_object_id_t oid,
+        _In_ const std::map<sai_stat_id_t, uint64_t>& stats)
+{
+    SWSS_LOG_ENTER();
+
+    auto baseMapIt = m_routeCounterStatsBaseMap.find(oid);
+    if (baseMapIt == m_routeCounterStatsBaseMap.end())
+    {
+        return;
+    }
+
+    auto& carry = m_routeCounterStatsCarryMap[oid];
+    for (const auto& stat : stats)
+    {
+        uint64_t base = 0;
+        auto baseIt = baseMapIt->second.find(stat.first);
+        if (baseIt != baseMapIt->second.end())
+        {
+            base = baseIt->second;
+        }
+
+        uint64_t delta = getRouteCounterDelta(oid, stat.first, stat.second, base);
+        if (delta != 0 || carry.find(stat.first) != carry.end())
+        {
+            carry[stat.first] += delta;
+        }
+    }
+
+    if (carry.empty())
+    {
+        m_routeCounterStatsCarryMap.erase(oid);
+    }
+}
+
+sai_status_t SwitchVpp::getRouteStatsExt(
+        _In_ sai_object_id_t oid,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters)
+{
+    SWSS_LOG_ENTER();
+
+    std::map<sai_stat_id_t, uint64_t> stats;
+
+    sai_status_t status = getRouteCounterStats(oid, stats);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    auto& base = m_routeCounterStatsBaseMap[oid];
+    auto carryMapIt = m_routeCounterStatsCarryMap.find(oid);
+    bool clear = mode == SAI_STATS_MODE_READ_AND_CLEAR ||
+        mode == SAI_STATS_MODE_BULK_READ_AND_CLEAR ||
+        mode == SAI_STATS_MODE_BULK_CLEAR;
+
+    for (uint32_t i = 0; i < number_of_counters; ++i)
+    {
+        sai_stat_id_t id = counter_ids[i];
+        uint64_t current = 0;
+
+        auto statsIt = stats.find(id);
+        if (statsIt != stats.end())
+        {
+            current = statsIt->second;
+        }
+
+        uint64_t carried = 0;
+        if (carryMapIt != m_routeCounterStatsCarryMap.end())
+        {
+            auto carryIt = carryMapIt->second.find(id);
+            if (carryIt != carryMapIt->second.end())
+            {
+                carried = carryIt->second;
+            }
+        }
+
+        auto baseIt = base.find(id);
+        if (baseIt == base.end())
+        {
+            base[id] = current;
+            counters[i] = carried;
+            if (clear && carryMapIt != m_routeCounterStatsCarryMap.end())
+            {
+                carryMapIt->second.erase(id);
+            }
+            continue;
+        }
+
+        uint64_t baseValue = baseIt->second;
+        uint64_t delta = getRouteCounterDelta(oid, id, current, baseValue);
+        if (current < baseValue && delta == 0)
+        {
+            base[id] = current;
+        }
+
+        counters[i] = carried + delta;
+
+        if (clear)
+        {
+            base[id] = current;
+            if (carryMapIt != m_routeCounterStatsCarryMap.end())
+            {
+                carryMapIt->second.erase(id);
+            }
+        }
+    }
+
+    if (carryMapIt != m_routeCounterStatsCarryMap.end() && carryMapIt->second.empty())
+    {
+        m_routeCounterStatsCarryMap.erase(oid);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::queryAttributeCapability(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type,
@@ -805,6 +988,16 @@ sai_status_t SwitchVpp::getStatsExt(
     if (object_type == SAI_OBJECT_TYPE_PORT)
     {
         setPortStats(object_id);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_COUNTER &&
+             m_counterToRouteMap.find(object_id) != m_counterToRouteMap.end())
+    {
+        return getRouteStatsExt(
+                object_id,
+                number_of_counters,
+                counter_ids,
+                mode,
+                counters);
     }
 
     return SwitchStateBase::getStatsExt(
@@ -1196,6 +1389,21 @@ sai_status_t SwitchVpp::remove(
             m_crmTracker.onRouteRemoved(wasIPv4);
         }
         return status;
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_COUNTER)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+
+        auto routeIt = m_counterToRouteMap.find(objectId);
+        if (routeIt != m_counterToRouteMap.end())
+        {
+            std::string route = routeIt->second;
+            removeRouteCounterBinding(route);
+        }
+        m_routeCounterStatsBaseMap.erase(objectId);
+        m_routeCounterStatsCarryMap.erase(objectId);
     }
 
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
