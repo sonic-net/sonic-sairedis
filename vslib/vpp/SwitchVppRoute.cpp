@@ -147,7 +147,17 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
     if (SAI_OBJECT_TYPE_ROUTER_INTERFACE == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
-        // vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, is_add);
+        /* For SUB_PORT RIFs, program the IP directly since LCP doesn't sync sub-interface IPs.
+         * Use _norif variant which handles both PORT and LAG sub-interface name resolution. */
+        sai_attribute_t rif_attr;
+        rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+        sai_status_t rif_status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, next_hop_oid, 1, &rif_attr);
+
+        if (rif_status == SAI_STATUS_SUCCESS &&
+            rif_attr.value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+        {
+            vpp_add_del_intf_ip_addr_norif(serializedObjectId, route_entry, is_add);
+        }
     }
     else if (SAI_OBJECT_TYPE_PORT == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
