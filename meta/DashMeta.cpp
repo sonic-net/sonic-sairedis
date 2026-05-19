@@ -1,0 +1,54 @@
+#include "DashMeta.h"
+
+#include "swss/logger.h"
+
+extern "C" {
+#include "saiextensions.h"
+}
+
+using namespace saimeta;
+
+/*
+ * Hard-coded allow-list of DASH object types this policy applies to.
+ *
+ * Scoped to the three high-volume DASH entry types that dominate
+ * orchagent's meta-cache footprint at smart-switch scale (see
+ * sonic-buildimage issue #26683):
+ *
+ *   - OUTBOUND_CA_TO_PA_ENTRY
+ *   - OUTBOUND_ROUTING_ENTRY
+ *   - INBOUND_ROUTING_ENTRY
+ *
+ * All other object types (DASH or not) are unaffected and always behave
+ * as DashCacheMode::FULL.
+ */
+static const sai_object_type_t kDashTypes[] =
+{
+    (sai_object_type_t) SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY,
+    (sai_object_type_t) SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY,
+    (sai_object_type_t) SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY,
+};
+
+bool saimeta::isDashObjectType(sai_object_type_t ot)
+{
+    for (auto t : kDashTypes)
+    {
+        if (t == ot)
+        {
+            SWSS_LOG_NOTICE("DASH policy active for object type %d", (int)ot);
+            return true;
+        }
+    }
+    return false;
+}
+
+DashCacheMode saimeta::getDashCacheMode()
+{
+    static const DashCacheMode mode = []() {
+        SWSS_LOG_NOTICE(
+            "Meta DASH cache policy: NONE "
+            "(hardcoded, no caching or validation for DASH objects)");
+        return DashCacheMode::NONE;
+    }();
+    return mode;
+}
