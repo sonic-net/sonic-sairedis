@@ -383,10 +383,13 @@ do {                                                            \
     }                                                            \
 } while(0);
 
-#define VPP_MAX_CTX 2
+#define VPP_MAX_CTX 16
+#define VPP_CTX_INDEX_MASK 0xff
+#define VPP_CTX_GENERATION_SHIFT 8
 typedef struct _vpp_index_map_ {
-    uint8_t index_map;
+    uint32_t index_map;
     uintptr_t ptr[VPP_MAX_CTX];
+    uint32_t generation[VPP_MAX_CTX];
 } vpp_index_map_t;
 
 static vpp_index_map_t idx_map;
@@ -462,25 +465,53 @@ void vpp_mutex_unlock ()
  */
 static uint32_t alloc_index ()
 {
-    return 1;
+    for (uint32_t idx = 1; idx < VPP_MAX_CTX; idx++) {
+        uint32_t mask = (uint32_t)(1 << idx);
+        if ((idx_map.index_map & mask) == 0) {
+            idx_map.index_map |= mask;
+            return idx;
+        }
+    }
+
+    return 0;
 }
 
 static uint32_t store_ptr (void *ptr)
 {
     uint32_t idx = alloc_index();
 
+    if (idx == 0) {
+        return 0;
+    }
+
     idx_map.ptr[idx] = (uintptr_t) ptr;
 
-    return idx;
+    return (idx_map.generation[idx] << VPP_CTX_GENERATION_SHIFT) | idx;
 }
 
-static void release_index (uint32_t idx)
+static void release_index (uint32_t context)
 {
+    uint32_t idx = context & VPP_CTX_INDEX_MASK;
+
+    if (idx == 0 || idx >= VPP_MAX_CTX) {
+        return;
+    }
+
+    idx_map.ptr[idx] = (uintptr_t) NULL;
+    idx_map.index_map &= ~((uint32_t)(1 << idx));
+    idx_map.generation[idx]++;
 }
 
-static uintptr_t get_index_ptr (uint32_t idx)
+static uintptr_t get_index_ptr (uint32_t context)
 {
-    if (idx > VPP_MAX_CTX) {
+    uint32_t idx = context & VPP_CTX_INDEX_MASK;
+    uint32_t generation = context >> VPP_CTX_GENERATION_SHIFT;
+
+    if (idx == 0 || idx >= VPP_MAX_CTX) {
+        return (uintptr_t) NULL;
+    }
+
+    if (generation != idx_map.generation[idx]) {
         return (uintptr_t) NULL;
     }
 
@@ -696,7 +727,11 @@ vl_api_sw_interface_details_t_handler (vl_api_sw_interface_details_t *mp)
 {
   if (mp->context) {
       bool *link_up = (bool *) get_index_ptr(mp->context);
+      if (!link_up) {
+          return;
+      }
       *link_up = ntohl(mp->flags) & IF_STATUS_API_FLAG_LINK_UP ? true : false;
+      release_index(mp->context);
       return;
   }
   vat_main_t *vam = &vat_main;
@@ -818,7 +853,20 @@ static void
 vl_api_ip_route_add_del_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+
+    if (msg->context) {
+        uint32_t *stats_index = (uint32_t *) get_index_ptr(msg->context);
+        if (!stats_index) {
+            return;
+        }
+        set_reply_status(retval);
+        if (stats_index && retval == 0) {
+            *stats_index = ntohl(msg->stats_index);
+        }
+        release_index(msg->context);
+    } else {
+        set_reply_status(retval);
+    }
 }
 
 static void
@@ -981,8 +1029,12 @@ vl_api_bridge_domain_details_t_handler (vl_api_bridge_domain_details_t *mp)
 
   if (mp->context) {
       u32 *member_count = (u32 *) get_index_ptr(mp->context);
+      if (!member_count) {
+          return;
+      }
       *member_count = ntohl(mp->n_sw_ifs);
       SAIVPP_INFO("bridge member count: %d", ntohl(mp->n_sw_ifs));
+      release_index(mp->context);
       return;
   }
   return;
@@ -1002,9 +1054,12 @@ static void
 vl_api_tunterm_acl_add_replace_reply_t_handler(vl_api_tunterm_acl_add_replace_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
 
     uint32_t *tunterm_index = (uint32_t *) get_index_ptr(msg->context);
+    if (!tunterm_index) {
+        return;
+    }
+    set_reply_status(retval);
     *tunterm_index = ntohl(msg->tunterm_acl_index);
 
     release_index(msg->context);
@@ -1028,11 +1083,17 @@ static void
 vl_api_bond_create_reply_t_handler (vl_api_bond_create_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
 
     if (msg->context) {
       u32 *swif_idx = (u32 *) get_index_ptr(msg->context);
+      if (!swif_idx) {
+          return;
+      }
+      set_reply_status(retval);
       *swif_idx = ntohl(msg->sw_if_index);
+      release_index(msg->context);
+    } else {
+      set_reply_status(retval);
     }
 }
 
@@ -1219,9 +1280,12 @@ static void vl_api_lcp_ethertype_enable_reply_t_handler(vl_api_lcp_ethertype_ena
 static void vl_api_acl_add_replace_reply_t_handler(vl_api_acl_add_replace_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
 
     uint32_t *acl_index = (uint32_t *) get_index_ptr(msg->context);
+    if (!acl_index) {
+        return;
+    }
+    set_reply_status(retval);
     *acl_index = ntohl(msg->acl_index);
 
     release_index(msg->context);
@@ -1969,7 +2033,7 @@ int ip6_nbr_add_del (const char *hwif_name, uint32_t sw_if_index, struct sockadd
     return ip_nbr_add_del(hwif_name, sw_if_index, (struct sockaddr *) addr, is_static, no_fib_entry, mac, is_add);
 }
 
-int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
+int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *stats_index)
 {
     u32 idx, path_count = 1;
     vat_main_t *vam = &vat_main;
@@ -1981,7 +2045,34 @@ int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
 
     VPP_LOCK();
 
+    if (stats_index) {
+        *stats_index = UINT32_MAX;
+    }
+
     path_count = prefix->nexthop_cnt;
+
+    if (prefix->prefix_addr.sa_family != AF_INET &&
+        prefix->prefix_addr.sa_family != AF_INET6) {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    for (unsigned int i = 0; i < path_count; i++) {
+        if (prefix->nexthop[i].addr.sa_family != AF_INET &&
+            prefix->nexthop[i].addr.sa_family != AF_INET6) {
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    }
+
+    uint32_t context = 0;
+    if (stats_index) {
+        context = store_ptr(stats_index);
+        if (context == 0) {
+            VPP_UNLOCK();
+            return -ENOMEM;
+        }
+    }
 
     __plugin_msg_base = ip_msg_id_base;
 
@@ -1999,9 +2090,6 @@ int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
         struct sockaddr_in6 *ip6 =  &addr->addr.ip6;
         api_addr->af = ADDRESS_IP6;
         memcpy(api_addr->un.ip6, &ip6->sin6_addr.s6_addr, sizeof(api_addr->un.ip6));
-    } else {
-        VPP_UNLOCK();
-        return -EINVAL;
     }
     ip_route->prefix.len = (u8)prefix->prefix_len;
     ip_route->n_paths = (u8)path_count;
@@ -2035,9 +2123,6 @@ int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
             struct sockaddr_in6 *ip6 =  &addr->addr.ip6;
             memcpy(nh_addr->ip6, &ip6->sin6_addr.s6_addr, sizeof(nh_addr->ip6));
             fib_path->proto = htonl(FIB_API_PATH_NH_PROTO_IP6);
-        } else {
-            VPP_UNLOCK();
-            return -EINVAL;
         }
         if (nexthop->type == VPP_NEXTHOP_NORMAL) {
             fib_path->type = htonl(FIB_API_PATH_TYPE_NORMAL);
@@ -2054,10 +2139,17 @@ int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
 
     mp->is_add = is_add;
     mp->is_multipath = prefix->is_multipath;
+    if (context) {
+        mp->context = context;
+    }
 
     S (mp);
 
     WR (ret);
+
+    if (context && get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
 
     ret = vpp_normalize_ret(ret, !is_add, __func__);
 
@@ -2067,6 +2159,11 @@ int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
     VPP_UNLOCK();
 
     return ret;
+}
+
+int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
+{
+    return ip_route_add_del_get_stats(prefix, is_add, NULL);
 }
 
 static unsigned int ipv4_mask_len (uint32_t mask)
@@ -2196,11 +2293,20 @@ int vpp_acl_add_replace (vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace
                      vpp_rule->tcp_flags_value,
                      vpp_rule->is_permit ? "permit" : "deny");
     }
-    mp->context = store_ptr(acl_index);
+    uint32_t context = store_ptr(acl_index);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
     WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) acl_index %u is_replace %d", __func__, ret, *acl_index, is_replace); }
     else { SAIVPP_INFO("%s acl_index %u is_replace %d", __func__, *acl_index, is_replace); }
@@ -2373,11 +2479,20 @@ int vpp_tunterm_acl_add_replace (uint32_t *tunterm_index, uint32_t count, vpp_tu
             return -EINVAL;
         }
     }
-    mp->context = store_ptr(tunterm_index);
+    uint32_t context = store_ptr(tunterm_index);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
     WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) count %u", __func__, ret, count); }
     else { SAIVPP_INFO("%s tunterm_index %u count %u", __func__, *tunterm_index, count); }
@@ -2682,7 +2797,12 @@ int interface_get_state (const char *hwif_name, bool *link_is_up)
         VPP_UNLOCK();
         return -EINVAL;
     }
-    mp->context = store_ptr(link_is_up);
+    uint32_t context = store_ptr(link_is_up);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
@@ -2693,6 +2813,10 @@ int interface_get_state (const char *hwif_name, bool *link_is_up)
     S (mp_ping);
 
     WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
 
     VPP_UNLOCK();
 
@@ -3067,7 +3191,12 @@ int bridge_domain_get_member_count (uint32_t bd_id, uint32_t *member_count)
 
     mp->bd_id = htonl(bd_id);
     mp->sw_if_index = htonl((uint32_t)~0);
-    mp->context = store_ptr(member_count);
+    uint32_t context = store_ptr(member_count);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
@@ -3078,6 +3207,10 @@ int bridge_domain_get_member_count (uint32_t bd_id, uint32_t *member_count)
     S (mp_ping);
 
     WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
 
     VPP_UNLOCK();
 
@@ -3681,11 +3814,20 @@ int create_bond_interface(uint32_t bond_id, uint32_t mode, uint32_t lb, uint32_t
     mp->lb = htonl(lb);
     mp->numa_only = false;
     mp->use_custom_mac = false;
-    mp->context = store_ptr(swif_idx);
+    uint32_t context = store_ptr(swif_idx);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
     WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) bond_id %u mode %u", __func__, ret, bond_id, mode); }
     else { SAIVPP_INFO("%s bond_id %u mode %u", __func__, bond_id, mode); }
