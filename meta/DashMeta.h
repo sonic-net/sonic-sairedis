@@ -18,10 +18,9 @@ namespace saimeta
      *                       (parents can't be removed while DASH children
      *                       reference them) but non-OID attribute payloads
      *                       are not deep-copied.
-     * NONE                - Meta is a passthrough for DASH objects: no
-     *                       pre-validation, no post bookkeeping, no caching.
+     * NONE                - Meta is a passthrough for DASH objects
      *
-    * Policy is currently hardcoded to NONE.
+     * Policy is currently hardcoded to EXISTENCE_REFCOUNT.
      */
     enum class DashCacheMode
     {

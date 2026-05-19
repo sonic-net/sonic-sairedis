@@ -1,6 +1,7 @@
 #include "DashMeta.h"
 
 #include "swss/logger.h"
+#include "sai_serialize.h"
 
 extern "C" {
 #include "saiextensions.h"
@@ -35,7 +36,7 @@ bool saimeta::isDashObjectType(sai_object_type_t ot)
     {
         if (t == ot)
         {
-            SWSS_LOG_NOTICE("DASH policy active for object type %d", (int)ot);
+            SWSS_LOG_DEBUG("DASH policy active for object type %d", (int)ot);
             return true;
         }
     }
@@ -45,10 +46,8 @@ bool saimeta::isDashObjectType(sai_object_type_t ot)
 DashCacheMode saimeta::getDashCacheMode()
 {
     static const DashCacheMode mode = []() {
-        SWSS_LOG_NOTICE(
-            "Meta DASH cache policy: NONE "
-            "(hardcoded, no caching or validation for DASH objects)");
-        return DashCacheMode::NONE;
+        SWSS_LOG_DEBUG("Meta DASH cache policy: EXISTENCE_REFCOUNT");
+        return DashCacheMode::EXISTENCE_REFCOUNT;
     }();
     return mode;
 }
