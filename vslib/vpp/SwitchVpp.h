@@ -934,6 +934,13 @@ namespace saivs
                     _Out_ uint32_t *vpp_rule_base_index,
                     _Out_ uint32_t *num_rules);
 
+            const char* vpp_resolve_parent_hwif(
+                    _In_ sai_object_type_t ot,
+                    _In_ uint32_t bond_id,
+                    _In_ const char *tap_name,
+                    _Out_ char *buf,
+                    _In_ size_t buflen);
+
             bool vpp_get_hwif_name (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
