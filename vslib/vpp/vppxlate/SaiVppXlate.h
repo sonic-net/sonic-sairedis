@@ -105,6 +105,8 @@ extern "C" {
         VPP_IP_API_FLOW_HASH_REVERSE = 32,
         VPP_IP_API_FLOW_HASH_SYMETRIC = 64,
         VPP_IP_API_FLOW_HASH_FLOW_LABEL = 128,
+        VPP_IP_API_FLOW_HASH_GTPV1_TEID = 256,
+        VPP_IP_API_FLOW_HASH_PEEK_INNER = 512,
     } vpp_ip_flow_hash_mask_e;
 
     typedef enum {
