@@ -13,6 +13,7 @@
 #include "vppxlate/SaiVppXlate.h"
 
 #include <list>
+#include <map>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -87,6 +88,34 @@ namespace saivs
 
             void setPortStats(
                     _In_ sai_object_id_t oid);
+
+            sai_status_t getRouteStatsExt(
+                    _In_ sai_object_id_t oid,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Out_ uint64_t *counters);
+
+            sai_status_t getRouteCounterStats(
+                    _In_ sai_object_id_t oid,
+                    _Out_ std::map<sai_stat_id_t, uint64_t>& stats);
+
+            uint64_t getRouteCounterDelta(
+                    _In_ sai_object_id_t oid,
+                    _In_ sai_stat_id_t id,
+                    _In_ uint64_t current,
+                    _In_ uint64_t base);
+
+            void carryRouteCounterStatsDelta(
+                    _In_ sai_object_id_t oid,
+                    _In_ const std::map<sai_stat_id_t, uint64_t>& stats);
+
+            sai_status_t setRouteCounterBinding(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_object_id_t counter_oid);
+
+            void removeRouteCounterBinding(
+                    _In_ const std::string &serializedObjectId);
 
             bool port_to_hostif_list(
                     _In_ sai_object_id_t oid,
@@ -636,12 +665,14 @@ namespace saivs
 
             sai_status_t IpRouteAddRemove(
                     _In_ const SaiObject* route_obj,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _Out_ uint32_t *stats_index = nullptr);
 
             sai_status_t IpRoutePathAddRemove(
                     _In_ const SaiObject* route_obj,
                     _In_ nexthop_grp_member_t *member,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _Out_ uint32_t *stats_index = nullptr);
 
             sai_status_t updateIpRoute(
                     _In_ const std::string &serializedObjectId,
@@ -677,6 +708,11 @@ namespace saivs
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_mbr_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
+            std::map<sai_object_id_t, std::string> m_counterToRouteMap;
+            std::map<std::string, sai_object_id_t> m_routeToCounterMap;
+            std::map<std::string, uint32_t> m_routeStatsIndexMap;
+            std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsBaseMap;
+            std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsCarryMap;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
