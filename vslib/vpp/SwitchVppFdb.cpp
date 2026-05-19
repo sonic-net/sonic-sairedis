@@ -679,7 +679,9 @@ sai_status_t SwitchVpp::vpp_create_lag(
         return SAI_STATUS_FAILURE;
     }
 
-    // Set mode and lb. SONiC config does not have provision to pass mode and load balancing algorithm
+    // Set mode and lb. SONiC config does not have provision to pass mode and load balancing algorithm.
+    // Hash function "hash-eth-l34" is enhanced in VPP to peek into IPinIP / GRE / NVGRE inner headers
+    // when an inner flow exists, so LAG distribution stays balanced for tunneled traffic.
     mode = VPP_BOND_API_MODE_XOR;
     lb = VPP_BOND_API_LB_ALGO_L34;
 
