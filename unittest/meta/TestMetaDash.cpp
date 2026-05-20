@@ -1377,3 +1377,76 @@ TEST(Meta, bulk_dash_outbound_ca_to_pa_entry)
     remove_counter(m, counter0);
     remove_counter(m, counter1);
 }
+
+
+// ---------------------------------------------------------------------------
+// DashMeta helper unit tests (isDashObjectType / getDashCacheMode /
+// bypassValidation / shouldCacheAttribute).
+// ---------------------------------------------------------------------------
+
+#include "DashMeta.h"
+
+TEST(DashMeta, isDashObjectType_AllowList)
+{
+    EXPECT_TRUE(isDashObjectType((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY));
+    EXPECT_TRUE(isDashObjectType((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY));
+    EXPECT_TRUE(isDashObjectType((sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY));
+}
+
+TEST(DashMeta, isDashObjectType_NonDashTypes)
+{
+    EXPECT_FALSE(isDashObjectType(SAI_OBJECT_TYPE_NULL));
+    EXPECT_FALSE(isDashObjectType(SAI_OBJECT_TYPE_SWITCH));
+    EXPECT_FALSE(isDashObjectType(SAI_OBJECT_TYPE_PORT));
+    EXPECT_FALSE(isDashObjectType((sai_object_type_t)SAI_OBJECT_TYPE_VNET));
+    EXPECT_FALSE(isDashObjectType((sai_object_type_t)SAI_OBJECT_TYPE_ENI));
+}
+
+TEST(DashMeta, getDashCacheMode_IsExistenceRefcount)
+{
+    // Pin the current policy. If this fails, the default was changed
+    // intentionally; update this test and any callers that rely on it.
+    EXPECT_EQ(getDashCacheMode(), DashCacheMode::EXISTENCE_REFCOUNT);
+}
+
+TEST(DashMeta, bypassValidation_FalseForAllUnderExistenceRefcount)
+{
+    EXPECT_FALSE(bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY));
+    EXPECT_FALSE(bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY));
+    EXPECT_FALSE(bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY));
+    EXPECT_FALSE(bypassValidation(SAI_OBJECT_TYPE_SWITCH));
+    EXPECT_FALSE(bypassValidation(SAI_OBJECT_TYPE_PORT));
+}
+
+TEST(DashMeta, shouldCacheAttribute_NonDashAlwaysCached)
+{
+    sai_attr_metadata_t oidAttr{};
+    oidAttr.isoidattribute = true;
+
+    sai_attr_metadata_t nonOidAttr{};
+    nonOidAttr.isoidattribute = false;
+
+    EXPECT_TRUE(shouldCacheAttribute(SAI_OBJECT_TYPE_SWITCH, oidAttr));
+    EXPECT_TRUE(shouldCacheAttribute(SAI_OBJECT_TYPE_SWITCH, nonOidAttr));
+    EXPECT_TRUE(shouldCacheAttribute(SAI_OBJECT_TYPE_PORT, nonOidAttr));
+}
+
+TEST(DashMeta, shouldCacheAttribute_DashOnlyOidAttrs)
+{
+    sai_attr_metadata_t oidAttr{};
+    oidAttr.isoidattribute = true;
+
+    sai_attr_metadata_t nonOidAttr{};
+    nonOidAttr.isoidattribute = false;
+
+    for (auto ot : {
+            (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY,
+            (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY,
+            (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY })
+    {
+        EXPECT_TRUE(shouldCacheAttribute(ot, oidAttr))
+                << "OID attrs must be cached for DASH type " << (int)ot;
+        EXPECT_FALSE(shouldCacheAttribute(ot, nonOidAttr))
+                << "Non-OID attrs must NOT be cached for DASH type " << (int)ot;
+    }
+}
