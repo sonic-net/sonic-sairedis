@@ -1,4 +1,3 @@
-
 <!--
 Please make sure you've read and understood our contributing guidelines;
 https://github.com/Azure/SONiC/blob/gh-pages/CONTRIBUTING.md
@@ -31,9 +30,6 @@ Fixes # (issue)
 
 ### Approach
 #### What is the motivation for this PR?
-
-##### Work item tracking
-- Microsoft ADO **(number only)**:
 
 #### How did you do it?
 
