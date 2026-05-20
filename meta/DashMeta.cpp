@@ -13,8 +13,7 @@ using namespace saimeta;
  * Hard-coded allow-list of DASH object types this policy applies to.
  *
  * Scoped to the three high-volume DASH entry types that dominate
- * orchagent's meta-cache footprint at smart-switch scale (see
- * sonic-buildimage issue #26683):
+ * orchagent's meta-cache footprint at smart-switch scale (issue #26683):
  *
  *   - OUTBOUND_CA_TO_PA_ENTRY
  *   - OUTBOUND_ROUTING_ENTRY
@@ -32,6 +31,8 @@ static const sai_object_type_t kDashTypes[] =
 
 bool saimeta::isDashObjectType(sai_object_type_t ot)
 {
+    SWSS_LOG_ENTER();
+
     for (auto t : kDashTypes)
     {
         if (t == ot)
@@ -46,6 +47,8 @@ bool saimeta::isDashObjectType(sai_object_type_t ot)
 
 DashCacheMode saimeta::getDashCacheMode()
 {
+    SWSS_LOG_ENTER();
+
     static const DashCacheMode mode = []() {
        return DashCacheMode::EXISTENCE_REFCOUNT;
     }();

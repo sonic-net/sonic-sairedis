@@ -18,7 +18,7 @@ namespace saimeta
      *                       (parents can't be removed while DASH children
      *                       reference them) but non-OID attribute payloads
      *                       are not deep-copied.
-     * NONE                - Meta is a passthrough for DASH objects
+     * NONE                - Meta is a pass-through for DASH objects
      *
      * Policy is currently hardcoded to EXISTENCE_REFCOUNT.
      */
@@ -42,6 +42,7 @@ namespace saimeta
      */
     inline bool bypassValidation(sai_object_type_t ot)
     {
+        // SWSS_LOG_ENTER omitted (hot path, trivial inline helper)
         return isDashObjectType(ot)
             && getDashCacheMode() == DashCacheMode::NONE;
     }
@@ -61,6 +62,7 @@ namespace saimeta
             sai_object_type_t ot,
             const sai_attr_metadata_t& md)
     {
+        // SWSS_LOG_ENTER omitted (hot path, trivial inline helper)
         if (!isDashObjectType(ot))
         {
             return true;
