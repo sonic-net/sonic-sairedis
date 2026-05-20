@@ -18,6 +18,7 @@ VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
 # Retrieve vars from sonic-cfggen
 SYNCD_VARS=$(sonic-cfggen -d -y /etc/sonic/sonic_version.yml -t $VARS_FILE) || exit 1
 SONIC_ASIC_TYPE=$(echo $SYNCD_VARS | jq -r '.asic_type')
+SONIC_ASIC_SUBTYPE=$(echo $SYNCD_VARS | jq -r '.asic_subtype // empty')
 
 if [ -x $CMD_DSSERVE ]; then
     CMD=$CMD_DSSERVE
@@ -337,7 +338,14 @@ config_syncd_bcm()
         CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
     fi
 
-    CMD_ARGS+=" -l"
+    case "$SONIC_ASIC_SUBTYPE" in
+        broadcom)
+            CMD_ARGS+=" -l"
+            ;;
+        *)
+            echo "Skipping syncd bulk mode (-l) for ASIC subtype: ${SONIC_ASIC_SUBTYPE:-<empty>}"
+            ;;
+    esac
 
     if [ -f "$HWSKU_DIR/context_config.json" ]; then
         CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
