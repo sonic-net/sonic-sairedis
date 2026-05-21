@@ -40,7 +40,11 @@ jobs:
   - script: |
       set -ex
       cd sonic-swss
-      git checkout $(BUILD_BRANCH)
+      # Temporarily pin sonic-swss to the flake-fix branch to validate
+      # https://github.com/lolyu/sonic-swss/pull/1 via the PR checker.
+      # TODO: revert to `git checkout $(BUILD_BRANCH)` once that fix is merged
+      # into sonic-net/sonic-swss.
+      git checkout fix-vs-test-flakes
     displayName: Set up sonic-swss branch
   - task: DownloadPipelineArtifact@2
     inputs:

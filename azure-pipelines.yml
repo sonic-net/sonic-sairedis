@@ -31,7 +31,8 @@ resources:
   repositories:
   - repository: sonic-swss
     type: github
-    name: sonic-net/sonic-swss
+    name: lolyu/sonic-swss
+    ref: refs/heads/fix-vs-test-flakes
     endpoint: sonic-net
 
 parameters:
