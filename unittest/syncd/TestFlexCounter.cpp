@@ -2494,6 +2494,8 @@ TEST(FlexCounter, dynamicCounterGroups)
     countersTable.getKeys(keys);
     removeTimeStamp(keys, countersTable);
     ASSERT_TRUE(keys.empty());
+}
+
 class FlexCounterTcpFallback : public ::testing::Test
 {
 protected:
