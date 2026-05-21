@@ -1032,6 +1032,13 @@ sai_status_t SwitchVpp::create(
         return status;
     }
 
+    if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
+    {
+        CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
+        m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry(serializedObjectId, attr_count, attr_list);
+        return SAI_STATUS_SUCCESS;
+    }
+
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
 }
 
@@ -1334,17 +1341,9 @@ sai_status_t SwitchVpp::remove(
         return status;
     }
 
-    if (object_type == SAI_OBJECT_TYPE_TUNNEL)
+    if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
-        sai_object_id_t object_id;
-        sai_deserialize_object_id(serializedObjectId, object_id);
-
-        sai_status_t status = m_tunnel_mgr.remove_l2_vxlan_tunnel(object_id);
-        if (status != SAI_STATUS_SUCCESS) {
-            SWSS_LOG_ERROR("Failed to remove L2 VXLAN tunnel resources");
-        }
-
-        // still need to clean up internal SAI state
+        m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry_removal(serializedObjectId);
         return remove_internal(object_type, serializedObjectId);
     }
 
@@ -2209,4 +2208,47 @@ sai_status_t SwitchVpp::refresh_read_only(
 
     // For all other cases, delegate to the base class implementation
     return SwitchStateBase::refresh_read_only(meta, object_id);
+}
+
+sai_status_t SwitchVpp::refresh_port_oper_speed(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+
+    CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+
+    if (attr.value.s32 == SAI_PORT_OPER_STATUS_DOWN)
+    {
+        attr.value.u32 = 0;
+    }
+    else
+    {
+        std::string hwif_name;
+        uint32_t vpp_speed_kbps = 0;
+
+        if (vpp_get_hwif_name(port_id, 0, hwif_name) &&
+            vpp_get_interface_speed(hwif_name.c_str(), &vpp_speed_kbps) == 0 &&
+            vpp_speed_kbps > 0)
+        {
+            /* VPP reports link_speed in Kbps, SAI uses Mbps */
+            attr.value.u32 = vpp_speed_kbps / 1000;
+        }
+        else
+        {
+            /* Fall back to configured SAI_PORT_ATTR_SPEED */
+            attr.id = SAI_PORT_ATTR_SPEED;
+
+            CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+        }
+    }
+
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
 }

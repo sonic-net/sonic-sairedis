@@ -218,6 +218,41 @@ bool SwitchVpp::hostif_create_tap_veth_forwarding(
     return true;
 }
 
+bool SwitchVpp::register_hostif_info(
+        _In_ const std::string &tapname,
+        _In_ int tapfd,
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    // VPP uses the TAP directly through Linux CP. No packet socket or veth
+    // forwarding is needed here; syncOnLinkMsg() only needs this ifindex
+    // to accept runtime RTM_NEWLINK events for this hostif.
+    int ifindex = if_nametoindex(tapname.c_str());
+    if (ifindex == 0)
+    {
+        SWSS_LOG_ERROR("failed to get interface index for %s", tapname.c_str());
+
+        return false;
+    }
+
+    m_hostif_info_map[tapname] =
+        std::make_shared<HostInterfaceInfo>(
+                ifindex,
+                -1,
+                tapfd,
+                tapname,
+                port_id,
+                m_switchConfig->m_eventQueue);
+
+    SWSS_LOG_INFO(
+            "registered hostif info for %s, ifindex %d",
+            tapname.c_str(),
+            ifindex);
+
+    return true;
+}
+
 sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -389,6 +424,14 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
         return SAI_STATUS_FAILURE;
     }
 
+    if (!register_hostif_info(name, tapfd, obj_id))
+    {
+        SWSS_LOG_ERROR("failed to register hostif info for %s", name.c_str());
+        close(tapfd);
+
+        return SAI_STATUS_FAILURE;
+    }
+
     setIfNameToPortId(name, obj_id);
     setPortIdToTapName(obj_id, name);
 
@@ -485,9 +528,22 @@ sai_status_t SwitchVpp::vs_remove_hostif_tap_interface(
     // std::string vname = vpp_get_veth_name(name, info->m_portId);
 
     sai_object_id_t port_id = getPortIdFromIfName(name);
+    auto it = m_hostif_info_map.find(name);
+
+    if (it != m_hostif_info_map.end())
+    {
+        SWSS_LOG_INFO("attempting to remove host info entry for tap device: %s", name.c_str());
+
+        port_id = it->second->m_portId;
+        m_hostif_info_map.erase(it);
+    }
 
     removeIfNameToPortId(name);
-    removePortIdToTapName(port_id);
+
+    if (port_id != SAI_NULL_OBJECT_ID)
+    {
+        removePortIdToTapName(port_id);
+    }
 
     SWSS_LOG_NOTICE("successfully removed hostif tap device: %s", name.c_str());
 

@@ -9,6 +9,7 @@
 #include <vector>
 #include <climits>
 #include <algorithm>
+#include <cmath>
 #include <unordered_map>
 
 #include <arpa/inet.h>
@@ -297,10 +298,10 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.s8list, dst_attr.value.s8list, countOnly));
             break;
 
-//        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
-//            RETURN_ON_ERROR(transfer_list(src_attr.value.u16list, dst_attr.value.u16list, countOnly));
-//            break;
-//
+        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.u16list, dst_attr.value.u16list, countOnly));
+            break;
+
 //        case SAI_ATTR_VALUE_TYPE_INT16_LIST:
 //            RETURN_ON_ERROR(transfer_list(src_attr.value.s16list, dst_attr.value.s16list, countOnly));
 //            break;
@@ -327,6 +328,14 @@ sai_status_t transfer_attribute(
 
         case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.u16rangelist, dst_attr.value.u16rangelist, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
+            transfer_primitive(src_attr.value.u64range, dst_attr.value.u64range);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.u64rangelist, dst_attr.value.u64rangelist, countOnly));
             break;
 
         case SAI_ATTR_VALUE_TYPE_TIMESPEC:
@@ -821,6 +830,46 @@ std::string sai_serialize_number(
     return std::to_string(number);
 }
 
+// internal
+static std::string sai_serialize_flags(
+        _In_ int32_t value,
+        _In_ const sai_enum_metadata_t* meta)
+{
+    SWSS_LOG_ENTER();
+
+    if (value == 0)
+        return meta->values[0] ? "0x0" : meta->valuesnames[0];
+
+    std::string s;
+
+    s.reserve(1024);
+
+    for (size_t i = 0; i < meta->valuescount; ++i)
+    {
+        if (value & meta->values[i])
+        {
+            if (s.size())
+                s.append("|");
+
+            s += meta->valuesnames[i];
+
+            value &= ~meta->values[i];
+        }
+    }
+
+    if (value)
+    {
+        SWSS_LOG_WARN("unrecognized flags: 0x%x in enum %s", value, meta->name);
+
+        if (s.size())
+            s.append("|");
+
+        s += sai_serialize_number<uint32_t>(value, true);
+    }
+
+    return s;
+}
+
 std::string sai_serialize_enum(
         _In_ const int32_t value,
         _In_ const sai_enum_metadata_t* meta)
@@ -830,6 +879,11 @@ std::string sai_serialize_enum(
     if (meta == NULL)
     {
         return sai_serialize_number(value);
+    }
+
+    if (meta->flagstype == SAI_ENUM_FLAGS_TYPE_STRICT)
+    {
+        return sai_serialize_flags(value, meta);
     }
 
     for (size_t i = 0; i < meta->valuescount; ++i)
@@ -1820,11 +1874,13 @@ std::string sai_serialize_port_snr_list(
         return j.dump();
     }
 
-    // Create dictionary format: {"0": 3712, "1": 3840, ...}
+    // Convert raw U16 SNR (in 1/256 dB units) to dB value per SAI definition
+    // e.g., raw value 5248 represents 5248/256 = 20.50 dB (Two decimal precision)
     for (uint32_t i = 0; i < snr_list.count; ++i)
     {
         std::string lane_key = std::to_string(snr_list.list[i].lane);
-        j[lane_key] = snr_list.list[i].snr;
+        double dB = static_cast<double>(snr_list.list[i].snr) / 256.0;
+        j[lane_key] = std::round(dB * 100.0) / 100.0;
     }
 
     return j.dump();
@@ -1906,6 +1962,15 @@ std::string sai_serialize_u16_range_list(
     SWSS_LOG_ENTER();
 
     return sai_serialize_list(list, countOnly, [&](sai_u16_range_t item) { return sai_serialize_range(item);} );
+}
+
+std::string sai_serialize_u64_range_list(
+        _In_ const sai_u64_range_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_list(list, countOnly, [&](sai_u64_range_t item) { return sai_serialize_range(item);} );
 }
 
 std::string sai_serialize_acl_action(
@@ -2404,9 +2469,9 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
             return sai_serialize_taps_list(attr.value.portserdestaps, countOnly);
 
-//        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
-//            return sai_serialize_number_list(attr.value.u16list, countOnly);
-//
+        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
+            return sai_serialize_number_list(attr.value.u16list, countOnly);
+
 //        case SAI_ATTR_VALUE_TYPE_INT16_LIST:
 //            return sai_serialize_number_list(attr.value.s16list, countOnly);
 
@@ -2427,6 +2492,12 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
             return sai_serialize_u16_range_list(attr.value.u16rangelist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
+            return sai_serialize_range(attr.value.u64range);
+
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
+            return sai_serialize_u64_range_list(attr.value.u64rangelist, countOnly);
 
         case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
             return sai_serialize_number_list(attr.value.vlanlist, countOnly);
@@ -3666,6 +3737,47 @@ void sai_deserialize_number(
     sai_deserialize_number<uint32_t>(s, number, hex);
 }
 
+
+// internal
+static void sai_deserialize_flags(
+        _In_ const std::string& s,
+        _In_ const sai_enum_metadata_t *meta,
+        _Out_ int32_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    value = 0;
+
+    const auto tokens = swss::tokenize(s, '|');
+
+    for (auto& v: tokens)
+    {
+        if (v[0] == '0')
+        {
+            uint32_t val;
+            sai_deserialize_number(v, val, true);
+
+            value |= val;
+            continue;
+        }
+
+        size_t i;
+        for (i = 0; i < meta->valuescount; ++i)
+        {
+            if (v == meta->valuesnames[i])
+            {
+                value |= meta->values[i];
+                break;
+            }
+        }
+        if (i == meta->valuescount)
+        {
+            // v is empty or doesn't match any enum
+            SWSS_LOG_WARN("%s in %s has invalid enum for %s", v.c_str(), s.c_str(), meta->name);
+        }
+    }
+}
+
 void sai_deserialize_enum(
         _In_ const std::string& s,
         _In_ const sai_enum_metadata_t *meta,
@@ -3676,6 +3788,11 @@ void sai_deserialize_enum(
     if (meta == NULL)
     {
         return sai_deserialize_number(s, value);
+    }
+
+    if (meta->flagstype == SAI_ENUM_FLAGS_TYPE_STRICT)
+    {
+        return sai_deserialize_flags(s, meta, value);
     }
 
     for (size_t i = 0; i < meta->valuescount; ++i)
@@ -4275,6 +4392,56 @@ void sai_deserialize_u16_range_list(
     }
 }
 
+void sai_deserialize_u64_range_list(
+        _In_ const std::string& s,
+        _Out_ sai_u64_range_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    if (countOnly)
+    {
+        sai_deserialize_number(s, list.count);
+        return;
+    }
+
+    auto pos = s.find(":");
+
+    if (pos == std::string::npos)
+    {
+        SWSS_LOG_THROW("invalid list %s", s.c_str());
+    }
+
+    std::string scount = s.substr(0, pos);
+
+    sai_deserialize_number(scount, list.count);
+
+    std::string slist = s.substr(pos + 1);
+
+    if (slist == "null")
+    {
+        list.list = NULL;
+        return;
+    }
+
+    auto tokens = swss::tokenize(slist, ',');
+
+    if (tokens.size() != list.count * 2)
+    {
+        SWSS_LOG_THROW("invalid u64_range_list count %lu != %u", tokens.size(), list.count * 2);
+    }
+
+    list.list = sai_alloc_n_of_ptr_type(list.count, list.list);
+
+    for (uint32_t i = 0; i < list.count * 2; i+=2)
+    {
+        std::ostringstream range;
+        range << tokens[i] << "," << tokens[i+1];
+
+        sai_deserialize_range(range.str(), list.list[i/2]);
+    }
+}
+
 void sai_deserialize_acl_field(
         _In_ const std::string& s,
         _In_ const sai_attr_metadata_t& meta,
@@ -4670,14 +4837,15 @@ void sai_deserialize_port_snr_list(
         uint32_t idx = 0;
         for (auto it = j.begin(); it != j.end(); ++it, ++idx)
         {
-            if (!it.value().is_number_unsigned())
+            if (!it.value().is_number())
             {
                 SWSS_LOG_ERROR("Invalid SNR value type for lane %s", it.key().c_str());
                 continue;
             }
 
+            // Convert dB value back to raw U16 (in 1/256 dB units) per SAI definition
             snr_list.list[idx].lane = static_cast<uint32_t>(std::stoul(it.key()));
-            snr_list.list[idx].snr = it.value().get<sai_uint16_t>();
+            snr_list.list[idx].snr = static_cast<sai_uint16_t>(std::round(it.value().get<double>() * 256.0));
         }
     }
     catch (const json::parse_error& e)
@@ -4944,9 +5112,9 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
             return sai_deserialize_taps_list(s, attr.value.portserdestaps, countOnly);
 
-//        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
-//            return sai_deserialize_number_list(s, attr.value.u16list, countOnly);
-//
+        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
+            return sai_deserialize_number_list(s, attr.value.u16list, countOnly);
+
 //        case SAI_ATTR_VALUE_TYPE_INT16_LIST:
 //            return sai_deserialize_number_list(s, attr.value.s16list, countOnly);
 
@@ -4967,6 +5135,12 @@ void sai_deserialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
             return sai_deserialize_u16_range_list(s, attr.value.u16rangelist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
+            return sai_deserialize_range(s, attr.value.u64range);
+
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
+            return sai_deserialize_u64_range_list(s, attr.value.u64rangelist, countOnly);
 
         case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
             return sai_deserialize_number_list(s, attr.value.vlanlist, countOnly);
@@ -6339,10 +6513,10 @@ void sai_deserialize_free_attribute_value(
             sai_free_list(attr.value.s8list);
             break;
 
-//        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
-//            sai_free_list(attr.value.u16list);
-//            break;
-//
+        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
+            sai_free_list(attr.value.u16list);
+            break;
+
 //        case SAI_ATTR_VALUE_TYPE_INT16_LIST:
 //            sai_free_list(attr.value.s16list);
 //            break;
@@ -6358,10 +6532,15 @@ void sai_deserialize_free_attribute_value(
         case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
             break;
 
         case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
             sai_free_list(attr.value.u16rangelist);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
+            sai_free_list(attr.value.u64rangelist);
             break;
 
         case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
