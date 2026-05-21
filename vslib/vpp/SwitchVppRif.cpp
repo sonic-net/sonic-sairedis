@@ -25,8 +25,14 @@
 #include <regex>
 #include <fstream>
 #include <unistd.h>
+#include <thread>
+#include <chrono>
 
 using namespace saivs;
+
+/* Forward declarations for static helpers defined later in this file. */
+static void vpp_warm_arp_for_subnet_peers(const std::string &netdev,
+                                          const swss::IpPrefix &ip_prefix);
 
 int SwitchVpp::currentMaxInstance = 0;
 
@@ -837,6 +843,15 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
 
     if (ret == 0)
     {
+        if (is_add)
+        {
+            /*
+             * Trigger kernel ARP resolution toward peer hosts in this
+             * /29..31 subnet so the first PTF probe doesn't get dropped
+             * in VPP's ip4-glean. See helper above for full rationale.
+             */
+            vpp_warm_arp_for_subnet_peers(std::string(linux_ifname), intf_ip_prefix);
+        }
         return SAI_STATUS_SUCCESS;
     }
     else {
@@ -1078,8 +1093,13 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     if (ret == 0)
     {
-        if (is_add) {
+        if (is_add)
+        {
             m_tunnel_mgr_ipip.retry_pending_unnumbered(vpp_ip_prefix.prefix_addr);
+            /* See vpp_warm_arp_for_subnet_peers() for rationale. Mirrors
+             * the warm-up done in vpp_add_del_intf_ip_addr() so SVI and
+             * other non-PORT RIFs also pre-resolve their /29..31 peers. */
+            vpp_warm_arp_for_subnet_peers(std::string(linux_ifname), intf_ip_prefix);
         }
         return SAI_STATUS_SUCCESS;
     }
@@ -1603,6 +1623,119 @@ static bool vpp_set_sub_port_arp_accept(const char *netdev)
                    "VPP-initiated ARP for this sub-port will not be learned",
                    netdev, path.c_str());
     return false;
+}
+
+/*
+ * Pre-warm VPP's neighbor table on a router interface by triggering kernel
+ * ARP resolution for the small set of peer IPs that share the same connected
+ * /29 .. /31 subnet as the local interface IP.
+ *
+ * Why this is needed
+ * ------------------
+ * VPP's ip4-glean node *drops* the first packet that hits an unresolved
+ * neighbor on a connected route. It sends an ARP request for the
+ * destination but the original IP packet is not buffered. Vendor ASIC SDKs
+ * typically queue the packet until ARP resolves, so SONiC PTF tests that
+ * send a single probe frame and expect it to be delivered work fine on
+ * Broadcom / Mellanox, but on the VPP virtual switch the first frame is
+ * dropped and the test fails.
+ *
+ * Fix: when SAI installs a connected route on a small subnet (/29..31),
+ * proactively send a UDP probe from the kernel netdev to each non-self
+ * host IP in the subnet. The packet itself is harmless (port 9 / discard,
+ * 1 byte payload) and almost always undelivered, but it forces the local
+ * kernel to ARP-resolve the peer. That ARP exchange:
+ *   - learns the peer MAC into VPP via the arp-input feature on the
+ *     sub-interface, OR
+ *   - lcp-sync mirrors the kernel ARP entry into the VPP neighbor table
+ *     (combined with the arp_accept=1 helper above for sub-ports).
+ *
+ * The probe runs on a detached background thread so it never blocks the
+ * SAI processing thread, and it sleeps briefly to let IntfMgr finish
+ * adding the IP on the kernel netdev. It is intentionally limited to
+ * small subnets to avoid broadcast-style probing on production /24's.
+ */
+static void vpp_warm_arp_for_subnet_peers(const std::string &netdev,
+                                          const swss::IpPrefix &ip_prefix)
+{
+    if (netdev.empty())
+    {
+        return;
+    }
+
+    swss::IpAddress local_ip = ip_prefix.getIp();
+    if (local_ip.getIp().family != AF_INET)
+    {
+        /* IPv6 handled separately via ND; sub-port v4 is the failing case. */
+        return;
+    }
+
+    int prefix_len = ip_prefix.getMaskLength();
+    if (prefix_len < 29 || prefix_len > 31)
+    {
+        /* Only do this for tiny subnets to avoid spraying the network. */
+        return;
+    }
+
+    uint32_t self_h = ntohl(local_ip.getV4Addr());
+    uint32_t mask_h = (prefix_len == 32)
+                      ? 0xFFFFFFFFu
+                      : ~((1u << (32 - prefix_len)) - 1);
+    uint32_t network_h = self_h & mask_h;
+    uint32_t broadcast_h = network_h | ~mask_h;
+
+    std::thread([self_h, network_h, broadcast_h, prefix_len, netdev]() {
+        /* Wait briefly for IntfMgr to add the IP on the kernel netdev. */
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+        /* /31 has no network/broadcast convention; iterate both hosts.
+         * /30 and /29 reserve network + broadcast; skip them. */
+        uint32_t start_h = (prefix_len == 31) ? network_h : network_h + 1;
+        uint32_t end_h   = (prefix_len == 31) ? broadcast_h : broadcast_h - 1;
+
+        int probed = 0;
+        for (uint32_t ipv_h = start_h; ipv_h <= end_h; ++ipv_h)
+        {
+            if (ipv_h == self_h)
+            {
+                continue;
+            }
+
+            int s = socket(AF_INET, SOCK_DGRAM, 0);
+            if (s < 0)
+            {
+                continue;
+            }
+
+            /* Bind socket to the specific kernel netdev so the kernel uses
+             * its IP/route/ARP cache rather than the global one. Requires
+             * CAP_NET_RAW which syncd has by virtue of running as root. */
+            if (setsockopt(s, SOL_SOCKET, SO_BINDTODEVICE,
+                           netdev.c_str(), (socklen_t)(netdev.size() + 1)) != 0)
+            {
+                close(s);
+                continue;
+            }
+
+            struct sockaddr_in peer = {};
+            peer.sin_family = AF_INET;
+            peer.sin_port = htons(9); /* discard service */
+            peer.sin_addr.s_addr = htonl(ipv_h);
+
+            const char buf[1] = {0};
+            (void) sendto(s, buf, 1, MSG_DONTWAIT,
+                          (struct sockaddr *)&peer, sizeof(peer));
+            close(s);
+            ++probed;
+        }
+
+        char self_str[INET_ADDRSTRLEN] = {0};
+        uint32_t self_n = htonl(self_h);
+        inet_ntop(AF_INET, &self_n, self_str, sizeof(self_str));
+        SWSS_LOG_NOTICE("vpp_warm_arp_for_subnet_peers: sent %d UDP probes "
+                        "from %s/%d on %s to pre-warm VPP neighbors",
+                        probed, self_str, prefix_len, netdev.c_str());
+    }).detach();
 }
 
 sai_status_t SwitchVpp::vpp_create_router_interface(
