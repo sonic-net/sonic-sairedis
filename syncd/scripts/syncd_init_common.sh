@@ -345,14 +345,9 @@ config_syncd_bcm()
         CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
     fi
 
-    case "$SONIC_ASIC_SUBTYPE" in
-        broadcom)
-            CMD_ARGS+=" -l"
-            ;;
-        *)
-            echo "Skipping syncd bulk mode (-l) for ASIC subtype: ${SONIC_ASIC_SUBTYPE:-<empty>}"
-            ;;
-    esac
+    if [ "$SONIC_ASIC_SUBTYPE" = "broadcom" ]; then
+        CMD_ARGS+=" -l"
+    fi
 
     if [ -f "$HWSKU_DIR/context_config.json" ]; then
         CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
