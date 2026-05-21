@@ -270,6 +270,48 @@ TEST_F(SwitchStateBaseTest, bufferProfilePacketAdmissionFailActionCapabilitiesGe
     ASSERT_EQ(paSet1, paSet2);
 }
 
+TEST_F(SwitchStateBaseTest, tamTransportTypeCapabilitiesGet)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_TAM_TRANSPORT, SAI_TAM_TRANSPORT_ATTR_TRANSPORT_TYPE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+    ASSERT_EQ(data.count, 1U);
+
+    std::vector<sai_int32_t> values(data.count);
+    data.list = values.data();
+
+    status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_TAM_TRANSPORT, SAI_TAM_TRANSPORT_ATTR_TRANSPORT_TYPE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    ASSERT_EQ(data.count, 1U);
+    ASSERT_EQ(static_cast<sai_tam_transport_type_t>(values[0]), SAI_TAM_TRANSPORT_TYPE_NONE);
+}
+
+TEST_F(SwitchStateBaseTest, tamBindPointTypeCapabilitiesGet)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_TAM, SAI_TAM_ATTR_TAM_BIND_POINT_TYPE_LIST, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+    ASSERT_EQ(data.count, 1U);
+
+    std::vector<sai_int32_t> values(data.count);
+    data.list = values.data();
+
+    status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_TAM, SAI_TAM_ATTR_TAM_BIND_POINT_TYPE_LIST, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    ASSERT_EQ(data.count, 1U);
+    ASSERT_EQ(static_cast<sai_tam_bind_point_type_t>(values[0]), SAI_TAM_BIND_POINT_TYPE_SWITCH);
+}
+
 TEST_F(SwitchStateBaseTest, switchQoSMaxNumOfTrafficClasses)
 {
     ASSERT_EQ(m_ss->set_maximum_number_of_traffic_classes(), SAI_STATUS_SUCCESS);

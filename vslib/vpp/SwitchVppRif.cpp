@@ -597,7 +597,7 @@ sai_status_t SwitchVpp::UpdatePort(
 
             attr.id = SAI_PORT_ATTR_EGRESS_ACL;
             if (get(SAI_OBJECT_TYPE_PORT, object_id, 1, &attr) != SAI_STATUS_SUCCESS) {
-                aclBindUnbindPort(object_id, attr.value.oid, true, false);
+                aclBindUnbindPort(object_id, attr.value.oid, false, false);
             }
         } else {
             aclBindUnbindPort(object_id, attr_type->value.oid, false, true);

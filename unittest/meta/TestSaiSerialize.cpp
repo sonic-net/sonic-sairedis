@@ -71,7 +71,6 @@ TEST(SaiSerialize, sai_serialize_object_meta_key)
 TEST(SaiSerialize, sai_serialize_port_lane_latch_status_list)
 {
     sai_attribute_t attr;
-
     memset(&attr, 0, sizeof(attr));
 
     for (size_t idx = 0 ; idx < sai_metadata_attr_sorted_by_id_name_count; ++idx)
@@ -91,19 +90,140 @@ TEST(SaiSerialize, sai_serialize_port_lane_latch_status_list)
                 attr.value.aclfield.enable = true;
             }
 
-            sai_port_lane_latch_status_t list[1];
-            list[0].lane = 1;
-            list[0].value.changed=true;
-            list[0].value.current_status=true;
+            sai_port_lane_latch_status_t list[4];
 
-            attr.value.portlanelatchstatuslist.count=1;
+            // Lane 0: changed=true, current_status=true -> "T*"
+            list[0].lane = 0;
+            list[0].value.changed = true;
+            list[0].value.current_status = true;
+
+            // Lane 1: changed=false, current_status=true -> "T"
+            list[1].lane = 1;
+            list[1].value.changed = false;
+            list[1].value.current_status = true;
+
+            // Lane 2: changed=true, current_status=false -> "F*"
+            list[2].lane = 2;
+            list[2].value.changed = true;
+            list[2].value.current_status = false;
+
+            // Lane 3: changed=false, current_status=false -> "F"
+            list[3].lane = 3;
+            list[3].value.changed = false;
+            list[3].value.current_status = false;
+
+            attr.value.portlanelatchstatuslist.count = 4;
             attr.value.portlanelatchstatuslist.list = list;
 
             auto s = sai_serialize_attr_value(*meta, attr, false);
 
+            std::string expected = "{\"0\":\"T*\",\"1\":\"T\",\"2\":\"F*\",\"3\":\"F\"}";
+            EXPECT_EQ(s, expected);
+
             sai_deserialize_attr_value(s, *meta, attr, false);
         }
     }
+}
+
+TEST(SaiSerialize, sai_deserialize_port_lane_latch_status_list)
+{
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_RX_SIGNAL_DETECT);
+    attr.id = SAI_PORT_ATTR_RX_SIGNAL_DETECT;
+
+    std::string json_str = R"({"0":"T*","1":"F","2":"T"})";
+
+    sai_deserialize_attr_value(json_str, *meta, attr, false);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.count, 3);
+    ASSERT_NE(attr.value.portlanelatchstatuslist.list, nullptr);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[0].lane, 0);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[0].value.changed, true);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[0].value.current_status, true);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[1].lane, 1);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[1].value.changed, false);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[1].value.current_status, false);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[2].lane, 2);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[2].value.changed, false);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[2].value.current_status, true);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+
+    std::string empty_json_str = R"({})";
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_RX_SIGNAL_DETECT;
+
+    sai_deserialize_attr_value(empty_json_str, *meta, attr, false);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.count, 0);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list, nullptr);
+}
+
+TEST(SaiSerialize, sai_serialize_port_snr_list)
+{
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+
+    for (size_t idx = 0 ; idx < sai_metadata_attr_sorted_by_id_name_count; ++idx)
+    {
+        auto meta = sai_metadata_attr_sorted_by_id_name[idx];
+        if(meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST)
+        {
+            attr.id = meta->attrid;
+
+            sai_port_snr_values_t list[3];
+
+            list[0].lane = 0;
+            list[0].snr = 3712;
+
+            list[1].lane = 1;
+            list[1].snr = 3840;
+
+            list[2].lane = 2;
+            list[2].snr = 4160;
+
+            attr.value.portsnrlist.count = 3;
+            attr.value.portsnrlist.list = list;
+
+            auto s = sai_serialize_attr_value(*meta, attr, false);
+
+            std::string expected = "{\"0\":14.5,\"1\":15.0,\"2\":16.25}";
+            EXPECT_EQ(s, expected);
+
+        }
+    }
+}
+
+TEST(SaiSerialize, sai_deserialize_port_snr_list)
+{
+    std::string json_str = R"({"0":14.5,"1":15.75})";
+
+    sai_port_snr_list_t snr_list;
+    memset(&snr_list, 0, sizeof(snr_list));
+
+    sai_deserialize_port_snr_list(json_str, snr_list, false);
+
+    EXPECT_EQ(snr_list.count, 2);
+    ASSERT_NE(snr_list.list, nullptr);
+
+    EXPECT_EQ(snr_list.list[0].lane, 0);
+    EXPECT_EQ(snr_list.list[0].snr, 3712);
+
+    EXPECT_EQ(snr_list.list[1].lane, 1);
+    EXPECT_EQ(snr_list.list[1].snr, 4032);
+
+    delete[] snr_list.list;
+
+    std::string empty_json_str = R"({})";
+    memset(&snr_list, 0, sizeof(snr_list));
+    sai_deserialize_port_snr_list(empty_json_str, snr_list, false);
+    EXPECT_EQ(snr_list.count, 0);
+    EXPECT_EQ(snr_list.list, nullptr);
 }
 
 TEST(SaiSerialize, sai_serialize_attr_value)
@@ -129,7 +249,6 @@ TEST(SaiSerialize, sai_serialize_attr_value)
             case SAI_ATTR_VALUE_TYPE_TLV_LIST:
             case SAI_ATTR_VALUE_TYPE_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_FREQUENCY_OFFSET_PPM_LIST:
-            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             case SAI_ATTR_VALUE_TYPE_ACL_CHAIN_LIST:
             case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
             case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
@@ -1516,3 +1635,221 @@ TEST(SaiSerialize, serialize_stat_st_capability_list)
     EXPECT_EQ(stats_capability.list[1].minimal_polling_interval, 200);
 }
 
+
+TEST(SaiSerialize, sai_serialize_taps_list)
+{
+    // Create test data
+    sai_taps_list_t taps_list;
+    sai_s32_list_t taps[3];
+
+    int32_t tap0_values[] = {10, 20, 30, 40};
+    taps[0].count = 4;
+    taps[0].list = tap0_values;
+
+    int32_t tap1_values[] = {50, 60, 70, 80};
+    taps[1].count = 4;
+    taps[1].list = tap1_values;
+
+    int32_t tap2_values[] = {90, 100, 110, 120};
+    taps[2].count = 4;
+    taps[2].list = tap2_values;
+
+    taps_list.count = 3;
+    taps_list.list = taps;
+
+    // Test normal serialization
+    auto s = sai_serialize_taps_list(taps_list, false);
+
+    std::string expected = "{\"0\":[{\"tap0\":10},{\"tap1\":50},{\"tap2\":90}],"
+        "\"1\":[{\"tap0\":20},{\"tap1\":60},{\"tap2\":100}],"
+        "\"2\":[{\"tap0\":30},{\"tap1\":70},{\"tap2\":110}],"
+        "\"3\":[{\"tap0\":40},{\"tap1\":80},{\"tap2\":120}]}";
+
+    EXPECT_EQ(s, expected);
+
+    // Test empty taps list (count = 0)
+    taps_list.count = 0;
+    taps_list.list = NULL;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{}");
+
+    // Test NULL list
+    taps_list.count = 3;
+    taps_list.list = NULL;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{}");
+
+    // Test first tap with NULL list
+    taps_list.count = 3;
+    taps_list.list = taps;
+    taps[0].list = NULL;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{}");
+    taps[0].list = tap0_values; // restore
+
+    // Test first tap with count = 0
+    taps[0].count = 0;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{}");
+    taps[0].count = 4; // restore
+
+    // Test single lane, single tap
+    sai_s32_list_t single_tap;
+    int32_t single_value[] = {42};
+    single_tap.count = 1;
+    single_tap.list = single_value;
+    taps_list.count = 1;
+    taps_list.list = &single_tap;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{\"0\":[{\"tap0\":42}]}");
+
+    // Test countOnly mode
+    taps_list.count = 3;
+    taps_list.list = taps;
+    s = sai_serialize_taps_list(taps_list, true);
+    EXPECT_EQ(s, "3");
+}
+
+TEST(SaiSerialize, sai_deserialize_taps_list)
+{
+    // Create test string
+    std::string json_str = "{\"0\":[{\"tap0\":10},{\"tap1\":50},{\"tap2\":90}],"
+        "\"1\":[{\"tap0\":20},{\"tap1\":60},{\"tap2\":100}],"
+        "\"2\":[{\"tap0\":30},{\"tap1\":70},{\"tap2\":110}],"
+        "\"3\":[{\"tap0\":40},{\"tap1\":80},{\"tap2\":120}]}";
+
+    sai_taps_list_t taps_list;
+    memset(&taps_list, 0, sizeof(taps_list));
+
+    // deserialize string
+    sai_deserialize_taps_list(json_str, taps_list, false);
+
+    EXPECT_EQ(taps_list.count, 3);
+    ASSERT_NE(taps_list.list, nullptr);
+
+    // Verify tap 0 (all lane's tap0 values): 4 lanes [10, 20, 30, 40]
+    EXPECT_EQ(taps_list.list[0].count, 4);
+    ASSERT_NE(taps_list.list[0].list, nullptr);
+    EXPECT_EQ(taps_list.list[0].list[0], 10);
+    EXPECT_EQ(taps_list.list[0].list[1], 20);
+    EXPECT_EQ(taps_list.list[0].list[2], 30);
+    EXPECT_EQ(taps_list.list[0].list[3], 40);
+
+    // Verify tap 1 (all lane's tap1 values): 4 lanes [50, 60, 70, 80]
+    EXPECT_EQ(taps_list.list[1].count, 4);
+    ASSERT_NE(taps_list.list[1].list, nullptr);
+    EXPECT_EQ(taps_list.list[1].list[0], 50);
+    EXPECT_EQ(taps_list.list[1].list[1], 60);
+    EXPECT_EQ(taps_list.list[1].list[2], 70);
+    EXPECT_EQ(taps_list.list[1].list[3], 80);
+
+    // Verify tap 2 (all lane's tap2 values): 4 lanes [90, 100, 110, 120]
+    EXPECT_EQ(taps_list.list[2].count, 4);
+    ASSERT_NE(taps_list.list[2].list, nullptr);
+    EXPECT_EQ(taps_list.list[2].list[0], 90);
+    EXPECT_EQ(taps_list.list[2].list[1], 100);
+    EXPECT_EQ(taps_list.list[2].list[2], 110);
+    EXPECT_EQ(taps_list.list[2].list[3], 120);
+
+    // Clean up
+    for (uint32_t i = 0; i < taps_list.count; i++)
+    {
+        delete[] taps_list.list[i].list;
+    }
+    delete[] taps_list.list;
+
+    // Test empty object
+    std::string empty_json_str = "{}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(empty_json_str, taps_list, false);
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test missing lane "0"
+    std::string missing_lane0 = "{\"1\":[{\"tap0\":10}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(missing_lane0, taps_list, false);
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test lane "0" with empty array
+    std::string empty_array = "{\"0\":[]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(empty_array, taps_list, false);
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test lane "0" is not an array
+    std::string not_array = "{\"0\":\"invalid\"}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(not_array, taps_list, false);
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test single lane with all taps
+    std::string single_lane = "{\"0\":[{\"tap0\":100},{\"tap1\":200},{\"tap2\":300}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(single_lane, taps_list, false);
+    EXPECT_EQ(taps_list.count, 3);
+    ASSERT_NE(taps_list.list, nullptr);
+    EXPECT_EQ(taps_list.list[0].count, 1);
+    EXPECT_EQ(taps_list.list[0].list[0], 100);
+    EXPECT_EQ(taps_list.list[1].count, 1);
+    EXPECT_EQ(taps_list.list[1].list[0], 200);
+    EXPECT_EQ(taps_list.list[2].count, 1);
+    EXPECT_EQ(taps_list.list[2].list[0], 300);
+
+    // Clean up
+    for (uint32_t i = 0; i < taps_list.count; i++)
+    {
+        delete[] taps_list.list[i].list;
+    }
+    delete[] taps_list.list;
+
+    // Test single tap, single lane
+    std::string single_single = "{\"0\":[{\"tap0\":42}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(single_single, taps_list, false);
+    EXPECT_EQ(taps_list.count, 1);
+    ASSERT_NE(taps_list.list, nullptr);
+    EXPECT_EQ(taps_list.list[0].count, 1);
+    EXPECT_EQ(taps_list.list[0].list[0], 42);
+
+    // Clean up
+    delete[] taps_list.list[0].list;
+    delete[] taps_list.list;
+
+    // Test invalid JSON (parse error)
+    std::string invalid_json = "{invalid json";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(invalid_json, taps_list, false);
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test non-contiguous lane indices (missing lane "1")
+    // This should trigger an exception when .at() tries to access missing key
+    std::string non_contiguous = "{\"0\":[{\"tap0\":10},{\"tap1\":50}],"
+        "\"2\":[{\"tap0\":30},{\"tap1\":70}],"
+        "\"3\":[{\"tap0\":40},{\"tap1\":80}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(non_contiguous, taps_list, false);
+    // Should catch exception and set to error state
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test empty tap object (missing tap key)
+    // This should trigger an exception when tap_obj doesn't contain expected tap key
+    std::string empty_tap_obj = "{\"0\":[{\"tap0\":10},{},{\"tap2\":30}],"
+        "\"1\":[{\"tap0\":20},{},{\"tap2\":40}]}";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(empty_tap_obj, taps_list, false);
+    // Should catch exception and set to error state
+    EXPECT_EQ(taps_list.count, 0);
+    EXPECT_EQ(taps_list.list, nullptr);
+
+    // Test countOnly mode
+    std::string count_str = "5";
+    memset(&taps_list, 0, sizeof(taps_list));
+    sai_deserialize_taps_list(count_str, taps_list, true);
+    EXPECT_EQ(taps_list.count, 5);
+}
