@@ -24,6 +24,7 @@
 #include <cstring>
 #include <regex>
 #include <fstream>
+#include <unistd.h>
 
 using namespace saivs;
 
@@ -1546,6 +1547,64 @@ int SwitchVpp::vpp_get_vrf_id (const char *linux_ifname, uint32_t *vrf_id)
     return 0;
 }
 
+/*
+ * Enable kernel arp_accept on a VPP-managed sub-port netdev so that
+ * unsolicited ARP replies (sent by a remote peer in response to a
+ * VPP-originated glean ARP request on the sub-interface) are accepted
+ * by the kernel ARP table.
+ *
+ * Without this, VPP itself never learns the sub-port neighbor: the
+ * vlan-tagged ARP reply enters the parent port and linux-cp punts it
+ * to the LCP host tap before VPP's arp-reply / neighbor-learning path
+ * has a chance to install the neighbor. The kernel then drops it as
+ * an unsolicited reply (arp_accept=0 default), so lcp-sync has no
+ * kernel entry to mirror to VPP, and subsequent packets keep hitting
+ * ip4-glean and getting dropped.
+ *
+ * Setting arp_accept=1 makes the kernel accept the reply, populate
+ * its ARP table, and lcp-sync mirrors it to the VPP neighbor table on
+ * the sub-interface, enabling cross-port forwarding such as L3 plain
+ * port -> sub-port and unaffected-by-removal scenarios.
+ *
+ * The kernel netdev may appear slightly after configure_lcp_interface
+ * returns, so we briefly retry opening the sysctl path.
+ */
+static bool vpp_set_sub_port_arp_accept(const char *netdev)
+{
+    SWSS_LOG_ENTER();
+
+    if (netdev == nullptr || netdev[0] == '\0')
+    {
+        SWSS_LOG_WARN("vpp_set_sub_port_arp_accept: empty netdev name");
+        return false;
+    }
+
+    std::string path = std::string("/proc/sys/net/ipv4/conf/") + netdev + "/arp_accept";
+
+    for (int attempt = 0; attempt < 10; ++attempt)
+    {
+        std::ofstream ofs(path);
+        if (ofs.is_open())
+        {
+            ofs << "1";
+            ofs.flush();
+            if (ofs.good())
+            {
+                SWSS_LOG_NOTICE("Enabled arp_accept on sub-port netdev %s", netdev);
+                return true;
+            }
+            SWSS_LOG_DEBUG("arp_accept write failed on %s (attempt %d), retrying",
+                           path.c_str(), attempt);
+        }
+        usleep(50000); /* 50ms */
+    }
+
+    SWSS_LOG_ERROR("Failed to enable arp_accept on sub-port netdev %s (path=%s); "
+                   "VPP-initiated ARP for this sub-port will not be learned",
+                   netdev, path.c_str());
+    return false;
+}
+
 sai_status_t SwitchVpp::vpp_create_router_interface(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -1737,6 +1796,25 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
                 SWSS_LOG_WARN("add_tc_filter_redirect_egress %s -> %s failed",
                               host_subifname, lcp_host);
             }
+        }
+
+        /*
+         * Enable kernel arp_accept on the sub-port netdev(s) so the kernel
+         * accepts unsolicited ARP replies that arrive in response to a
+         * VPP-originated glean ARP request. This is required for cross-port
+         * forwarding (e.g. L3 plain port -> sub-port) where VPP - not the
+         * kernel - initiates ARP resolution. See helper above for full
+         * rationale.
+         *
+         * For non-LAG sub-ports lcp_host == host_subifname, so the second
+         * call is a harmless no-op. For LAG sub-ports we also set it on the
+         * teamd vlan child PortChannel<id>.<vlan> where IntfMgr writes the
+         * IP and where the kernel ARP table is consulted by lcp-sync.
+         */
+        vpp_set_sub_port_arp_accept(lcp_host);
+        if (ot == SAI_OBJECT_TYPE_LAG)
+        {
+            vpp_set_sub_port_arp_accept(host_subifname);
         }
 
         /*
