@@ -27,9 +27,67 @@
 #include "swss/notificationconsumer.h"
 
 #include <memory>
+#include <chrono>
+#include <ctime>
 
 namespace syncd
 {
+    /**
+     * @brief Link event damping configuration and state per port
+     */
+    struct LinkEventDampingPortState
+    {
+        // Configuration parameters
+        sai_redis_link_event_damping_algorithm_t algorithm;
+        sai_redis_link_event_damping_algo_aied_config_t aied_config;
+
+        // Runtime state for AIED algorithm
+        uint32_t current_penalty;           // Current penalty value
+        uint64_t last_transition_time_ms;   // Timestamp of last transition (milliseconds)
+        uint64_t last_decay_time_ms;        // Timestamp of last decay calculation (milliseconds)
+        uint64_t damping_start_time_ms;     // When damping state started (milliseconds)
+        bool is_damping_active;             // Whether link is currently in damped state
+        sai_port_oper_status_t physical_status;  // Physical port status
+        sai_port_oper_status_t advertised_status; // Last advertised status (may differ due to damping)
+        sai_port_oper_status_t last_suppressed_status; // Last event suppressed while damping
+        bool pending_state_sync;            // Flag to indicate state mismatch needs propagation
+
+        // Counters for observability
+        uint64_t pre_damping_link_transitions;
+        uint64_t pre_damping_up_events;
+        uint64_t pre_damping_down_events;
+        uint64_t post_damping_up_events;
+        uint64_t post_damping_down_events;
+        uint64_t post_damping_link_transitions;
+
+        // Constructor with defaults
+        LinkEventDampingPortState()
+            : algorithm(SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED),
+              current_penalty(0),
+              last_transition_time_ms(0),
+              last_decay_time_ms(0),
+              damping_start_time_ms(0),
+              is_damping_active(false),
+              physical_status(SAI_PORT_OPER_STATUS_UNKNOWN),
+              advertised_status(SAI_PORT_OPER_STATUS_UNKNOWN),
+              last_suppressed_status(SAI_PORT_OPER_STATUS_UNKNOWN),
+              pending_state_sync(false),
+              pre_damping_link_transitions(0),
+              pre_damping_up_events(0),
+              pre_damping_down_events(0),
+              post_damping_up_events(0),
+              post_damping_down_events(0),
+              post_damping_link_transitions(0)
+        {
+            // Initialize AIED config with defaults
+            aied_config.max_suppress_time = 0;
+            aied_config.suppress_threshold = 0;
+            aied_config.reuse_threshold = 0;
+            aied_config.decay_half_life = 0;
+            aied_config.flap_penalty = 0;
+        }
+    };
+
     class Syncd
     {
         private:
@@ -219,6 +277,97 @@ namespace syncd
                     _In_ const std::vector<swss::FieldValueTuple> &values,
                     _In_ bool fromAsicChannel=true);
 
+            sai_status_t processLinkEventDampingConfigSet(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
+        private: // link event damping helpers
+
+            /**
+             * @brief Apply link event damping algorithm to a port state change
+             * @param portVid Virtual object ID of the port
+             * @param newStatus New operational status of the port
+             * @return true if notification should be suppressed, false if it should be propagated
+             */
+            bool applyLinkEventDamping(
+                    _In_ sai_object_id_t portVid,
+                    _In_ sai_port_oper_status_t newStatus);
+
+            /**
+             * @brief Apply AIED damping algorithm
+             * @param state Port damping state
+             * @param newStatus New operational status
+             * @param currentTimeMs Current time in milliseconds
+             * @return true if should suppress, false if should propagate
+             */
+            bool applyAiedAlgorithm(
+		    _In_ sai_object_id_t portVid,
+                    _In_ LinkEventDampingPortState& state,
+                    _In_ sai_port_oper_status_t newStatus,
+                    _In_ uint64_t currentTimeMs);
+
+            /**
+             * @brief Decay penalty based on time elapsed
+             * @param state Port damping state
+             * @param currentTimeMs Current time in milliseconds
+             */
+            void decayPenalty(
+                    _In_ LinkEventDampingPortState& state,
+                    _In_ uint64_t currentTimeMs);
+
+            /**
+             * @brief Get current time in milliseconds
+             * @return Current time in milliseconds since epoch
+             */
+            uint64_t getCurrentTimeMs();
+
+            /**
+             * @brief Proactively check all damped ports and enforce max_suppress_time
+             * Called periodically by timer thread to ensure ports don't exceed max_suppress_time
+             * even when no new port events arrive
+             */
+            void checkDampedPortsTimeout();
+
+            /**
+             * @brief Timer thread function for proactive damping timeout enforcement
+             * Runs periodically to check if any damped ports have exceeded max_suppress_time
+             */
+            void dampingTimerThreadFunc();
+
+            /**
+             * @brief Start the damping timer thread
+             */
+            void startDampingTimerThread();
+
+            /**
+             * @brief Stop the damping timer thread
+             */
+            void stopDampingTimerThread();
+
+            /**
+             * @brief Write damping counters to STATE_DB for a specific port
+             * @param portVid Virtual object ID of the port
+             * @param state Port damping state containing counters
+             */
+            void writeDampingCountersToStateDb(
+                    _In_ sai_object_id_t portVid,
+                    _In_ const LinkEventDampingPortState& state);
+
+            /**
+             * @brief Clear/reset damping counters for a specific port
+             * @param portVid Virtual object ID of the port
+             * @return SAI_STATUS_SUCCESS on success
+             */
+            sai_status_t clearDampingCounters(
+                    _In_ sai_object_id_t portVid);
+
+            /**
+             * @brief Process damping counter clear command
+             * @param kco Key-operation-fields tuple from Redis
+             * @return SAI_STATUS_SUCCESS on success
+             */
+            sai_status_t processLinkEventDampingCounterClear(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
         private: // process quad oid
 
             sai_status_t processOidCreate(
@@ -395,6 +544,9 @@ namespace syncd
             void sendNotifyResponse(
                     _In_ sai_status_t status);
 
+            void sendLinkEventDampingConfigResponse(
+                    _In_ sai_status_t status);
+
         private: // snoop get response oids
 
             void snoopGetResponse(
@@ -547,5 +699,46 @@ namespace syncd
             TimerWatchdog m_timerWatchdog;
 
             std::set<sai_object_id_t> m_createdInInitView;
+
+           /**
+             * @brief Link event damping configuration per port
+             * Key: Port VID, Value: Damping state and configuration
+             */
+            std::map<sai_object_id_t, LinkEventDampingPortState> m_portLinkEventDampingStates;
+
+            /**
+             * @brief Mutex to protect link event damping state
+             */
+            std::mutex m_linkEventDampingMutex;
+
+            /**
+             * @brief STATE_DB connection for writing damping counters
+             */
+            std::shared_ptr<swss::DBConnector> m_dbState;
+
+            /**
+             * @brief STATE_DB table for damping counters
+             */
+            std::shared_ptr<swss::Table> m_dampingCounterTable;
+
+            /**
+             * @brief Timer thread for proactive damping timeout enforcement
+             */
+            std::shared_ptr<std::thread> m_dampingTimerThread;
+
+            /**
+             * @brief Flag to control damping timer thread execution
+             */
+            bool m_runDampingTimerThread;
+
+            /**
+             * @brief Condition variable for damping timer thread
+             */
+            std::condition_variable m_dampingTimerCv;
+
+            /**
+             * @brief Mutex for damping timer thread synchronization
+             */
+            std::mutex m_dampingTimerMutex;
     };
 }
