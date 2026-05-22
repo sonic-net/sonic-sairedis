@@ -22,8 +22,7 @@ namespace syncd
             NotificationProcessor(
                     _In_ std::shared_ptr<NotificationProducerBase> producer,
                     _In_ std::shared_ptr<BaseRedisClient> client,
-                    _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer,
-                    _In_ std::function<bool(sai_object_id_t, sai_port_oper_status_t)> linkEventDampingApplier = nullptr);
+                    _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer);
 
             virtual ~NotificationProcessor();
 
@@ -211,12 +210,6 @@ namespace syncd
             bool m_runThread;
 
             std::function<void(const swss::KeyOpFieldsValuesTuple&)> m_synchronizer;
-
-            /**
-             * @brief Callback function to apply link event damping to port state changes
-             * Returns true if notification should be suppressed, false if it should be propagated
-             */
-            std::function<bool(sai_object_id_t, sai_port_oper_status_t)> m_linkEventDampingApplier;
 
             std::shared_ptr<BaseRedisClient> m_client;
 
