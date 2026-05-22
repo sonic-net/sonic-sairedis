@@ -189,12 +189,37 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
     nxt_grp_member->sw_if_index = ~0;
 
     switch (next_hop_type) {
-    case SAI_NEXT_HOP_TYPE_IP:
+    case SAI_NEXT_HOP_TYPE_IP: {
+        uint32_t rif_type;
+        sai_object_id_t port_oid;
+        uint16_t vlan_id = 0;
         attr.id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
-        if (get(SAI_OBJECT_TYPE_NEXT_HOP, next_hop_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
+        if (nh_obj->get_attr(attr) == SAI_STATUS_SUCCESS)
+        {
             nxt_grp_member->rif_oid = attr.value.oid;
         }
+        auto rif_obj = nh_obj->get_linked_object(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID);
+
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+        CHECK_STATUS_QUIET(rif_obj->get_mandatory_attr(attr));
+        port_oid = attr.value.oid;
+
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+        CHECK_STATUS_QUIET(rif_obj->get_mandatory_attr(attr));
+        rif_type = attr.value.u16;
+        if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT) {
+            attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+            CHECK_STATUS_QUIET(rif_obj->get_mandatory_attr(attr));
+            vlan_id = attr.value.u16;
+        }
+        std::string if_name;
+        if (vpp_get_hwif_name(port_oid, vlan_id, if_name)) {
+            strncpy(nxt_grp_member->if_name, if_name.c_str(), sizeof(nxt_grp_member->if_name) - 1);
+        } else {
+            nxt_grp_member->if_name[0] = 0;
+        }
         break;
+    }
     case SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP: {
         u_int32_t sw_if_index;
         if (m_tunnel_mgr.get_tunnel_if(next_hop_oid, sw_if_index) == SAI_STATUS_SUCCESS) {
@@ -229,7 +254,7 @@ SwitchVpp::createNexthop(
 
     CHECK_STATUS(find_attrib_in_list(attr_count, attr_list, SAI_NEXT_HOP_ATTR_TYPE,
                                  &next_hop_type, &attr_index));
-    if (next_hop_type->s32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
+    if (next_hop_type->u32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
         //Deligate the creation of tunnel encap nexthop to tunnel manager
         CHECK_STATUS(m_tunnel_mgr.create_tunnel_encap_nexthop(serializedObjectId, switch_id, attr_count, attr_list));
     }
@@ -254,7 +279,7 @@ sai_status_t SwitchVpp::removeNexthop(
         if(status != SAI_STATUS_SUCCESS) {
             SWSS_LOG_ERROR("Missing SAI_NEXT_HOP_ATTR_TYPE in %s", serializedObjectId.c_str());
         }
-        else if (attr.value.s32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
+        else if (attr.value.u32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
             CHECK_STATUS(m_tunnel_mgr.remove_tunnel_encap_nexthop(serializedObjectId));
         }
     }
