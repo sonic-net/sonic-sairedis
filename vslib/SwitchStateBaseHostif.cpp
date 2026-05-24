@@ -906,8 +906,14 @@ bool SwitchStateBase::vs_get_oper_speed(
         return false;
     }
 
-    ifs >> speed;
+    int32_t speed_value = 0;
+
+    ifs >> speed_value;
     ifs.close();
+
+    if (speed_value <= 0) { speed = 0; return false; }
+
+    speed = static_cast<uint32_t>(speed_value);
 
     return true;
 }
