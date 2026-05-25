@@ -46,6 +46,8 @@ static void vpp_warm_arp_for_subnet_peers(const std::string &netdev,
 static inline void format_bond_hwif(char *buf, size_t len,
                                     uint32_t bond_id, uint32_t vlan_id)
 {
+    SWSS_LOG_ENTER();
+
     if (vlan_id)
     {
         snprintf(buf, len, "%s%u.%u", BONDETHERNET_PREFIX, bond_id, vlan_id);
@@ -59,6 +61,8 @@ static inline void format_bond_hwif(char *buf, size_t len,
 static inline void format_be_lcp(char *buf, size_t len,
                                  uint32_t bond_id, uint32_t vlan_id)
 {
+    SWSS_LOG_ENTER();
+
     if (vlan_id)
     {
         snprintf(buf, len, "be%u.%u", bond_id, vlan_id);
@@ -1707,6 +1711,8 @@ static bool vpp_set_sub_port_arp_accept(const char *netdev)
 static void vpp_warm_arp_for_subnet_peers(const std::string &netdev,
                                           const swss::IpPrefix &ip_prefix)
 {
+    SWSS_LOG_ENTER();
+
     if (netdev.empty())
     {
         return;
