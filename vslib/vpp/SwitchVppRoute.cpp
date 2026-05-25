@@ -157,23 +157,34 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         }
 
         if (rif_attr.value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT) {
-            /* Use vpp_add_del_intf_ip_addr (RIF-based) instead of _norif here,
-             * because _norif resolves the interface by shelling out to
-             * `ip addr show` against host kernel which has a race condition:
-             * orchagent often issues the SAI_OBJECT_TYPE_ROUTE_ENTRY create
-             * before IntfMgr has assigned the IP to the host sub-port netdev,
-             * leading to a "host interface for prefix not found" failure.
+            /*
+             * Two helpers exist for programming sub-port IPs:
+             *   - vpp_add_del_intf_ip_addr_norif: looks up the host netdev
+             *     by reading `ip addr show` for any interface that carries
+             *     the prefix. Used by the PORT-next_hop branch below.
+             *   - vpp_add_del_intf_ip_addr: resolves the host netdev from
+             *     the RIF OID directly (RIF -> port/lag OID -> hwif/host
+             *     name). No cross-RIF prefix collisions.
              *
-             * Only act on is_add=true. orchagent emits transient
-             * ROUTE_ENTRY remove+create cycles for the same connected prefix
-             * during bulk batch processing (observed during sub_port PTF
-             * tests: bulk C, R, C, R for the same /30 within ~60 ms while
-             * the RIF stays alive the whole time). On VPP the IP and the
-             * connected route are inseparable -- removing the IP here on a
-             * transient R would leave the sub-port unable to answer ARP
-             * after the final R. The IP is correctly torn down when the
-             * RIF itself is removed via vpp_remove_router_interface ->
-             * delete_sub_interface. */
+             * Use the RIF-based helper here because the SUB_PORT next_hop
+             * gives us the RIF OID for free, and OID-based resolution is
+             * less ambiguous than prefix-based lookup against the host
+             * kernel (both still shell out to `ip addr show` for IP-list
+             * sanity checks - the difference is selection precision, not
+             * the underlying race against IntfMgr).
+             *
+             * The transient remove+create cycle protection is the
+             * "if (is_add)" gate below, not the helper choice. orchagent
+             * emits transient ROUTE_ENTRY remove+create cycles for the
+             * same connected prefix during bulk batch processing (observed
+             * during sub_port PTF tests: bulk C, R, C, R for the same /30
+             * within ~60 ms while the RIF stays alive the whole time). On
+             * VPP the IP and the connected route are inseparable - removing
+             * the IP here on a transient R would leave the sub-port unable
+             * to answer ARP after the final R. The IP is correctly torn
+             * down when the RIF itself is removed via
+             * vpp_remove_router_interface -> delete_sub_interface.
+             */
             if (is_add) {
                 status = vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, true);
                 if (status != SAI_STATUS_SUCCESS) {
@@ -190,7 +201,26 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         status = route_obj->get_attr(attr);
 
         if (status == SAI_STATUS_SUCCESS && SAI_PACKET_ACTION_FORWARD == attr.value.s32) {
-            vpp_add_del_intf_ip_addr_norif(serializedObjectId, route_entry, is_add);
+            /*
+             * orchagent emits two ROUTE_ENTRY events per sub-port connected
+             * route: one with next_hop=PORT (this branch) and one with
+             * next_hop=ROUTER_INTERFACE (the SUB_PORT branch above). Both
+             * land on the same VPP interface with the same prefix.
+             *
+             * Apply the same is_add gate as the SUB_PORT branch so the IP
+             * is not removed during transient ROUTE_ENTRY remove+create
+             * cycles. The IP is torn down when the parent port RIF is
+             * removed; tearing it down on a transient R here would leave
+             * the port unable to answer ARP after the final R.
+             *
+             * Note: vpp_add_del_intf_ip_addr_norif is kept here (rather
+             * than the RIF-based helper) because the next_hop is a PORT
+             * OID, not a RIF OID; prefix-based netdev resolution is the
+             * right tool when no RIF identifier is available.
+             */
+            if (is_add) {
+                vpp_add_del_intf_ip_addr_norif(serializedObjectId, route_entry, true);
+            }
         }
     }
     else if (SAI_OBJECT_TYPE_NEXT_HOP == RealObjectIdManager::objectTypeQuery(next_hop_oid))

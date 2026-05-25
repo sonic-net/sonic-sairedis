@@ -2656,6 +2656,7 @@ int interface_ip_address_add_del (const char *hwif_name, vpp_ip_route_t *prefix,
             mp->sw_if_index = htonl(idx);
         } else {
             SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
             return -EINVAL;
         }
     } else {
