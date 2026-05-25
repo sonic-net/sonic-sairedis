@@ -671,9 +671,9 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         return SAI_STATUS_SUCCESS;
     }
 
-    if (ot != SAI_OBJECT_TYPE_PORT)
+    if (ot != SAI_OBJECT_TYPE_PORT && ot != SAI_OBJECT_TYPE_LAG)
     {
-        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                 sai_serialize_object_id(obj_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
 
@@ -696,8 +696,25 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         vlan_id = attr.value.u16;
     }
 
+    /* Resolve host kernel interface name. For LAG, the team device is
+     * "PortChannel<bond_id>" and the VPP-created host vlan sub-interface
+     * (via lcp-auto-subint) is "PortChannel<bond_id>.<vlan_id>", which is
+     * exactly where IntfMgr writes the IP. */
     std::string if_name;
-    bool found = getTapNameFromPortId(obj_id, if_name);
+    bool found = false;
+    platform_bond_info_t bond_info;
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        sai_status_t lag_status = get_lag_bond_info(obj_id, bond_info);
+        if (lag_status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("get_lag_bond_info failed for LAG %s",
+                           sai_serialize_object_id(obj_id).c_str());
+            return SAI_STATUS_FAILURE;
+        }
+        if_name = std::string(PORTCHANNEL_PREFIX) + std::to_string(bond_info.id);
+        found = true;
+    } else {
+        found = getTapNameFromPortId(obj_id, if_name);
+    }
     if (found == false)
     {
         SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(obj_id).c_str());
@@ -789,15 +806,30 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         }
     }
 
-    const char *hwifname = tap_to_hwif_name(if_name.c_str());
+    /* Resolve VPP hw interface name. For LAG sub-port, the parent in VPP is
+     * BondEthernet<bond_id> (not the tap), so tap_to_hwif_name() does not
+     * apply; we build BondEthernet<bond_id>[.<vlan>] directly from bond_info. */
     char hw_subifname[32];
+    char hw_bondifname[32];
     const char *hw_ifname;
 
-    if (vlan_id) {
-        snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
-        hw_ifname = hw_subifname;
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        if (vlan_id) {
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d.%u",
+                     BONDETHERNET_PREFIX, bond_info.id, vlan_id);
+        } else {
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d",
+                     BONDETHERNET_PREFIX, bond_info.id);
+        }
+        hw_ifname = hw_bondifname;
     } else {
-        hw_ifname = hwifname;
+        const char *hwifname = tap_to_hwif_name(if_name.c_str());
+        if (vlan_id) {
+            snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
+            hw_ifname = hw_subifname;
+        } else {
+            hw_ifname = hwifname;
+        }
     }
 
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);
@@ -1015,8 +1047,20 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
        snprintf(hw_bviifname, sizeof(hw_bviifname), "%s%d","bvi",vlan_id);
        hw_ifname = hw_bviifname;
     } else if (full_if_name.compare(0, strlen(PORTCHANNEL_PREFIX), PORTCHANNEL_PREFIX) == 0) {
-        uint32_t bond_id = std::stoi(full_if_name.substr(strlen(PORTCHANNEL_PREFIX)));
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_id);
+        /* "PortChannel<bond_id>" or "PortChannel<bond_id>.<vlan>" -> BondEthernet<bond_id>[.<vlan>]
+         * Without the sub-id suffix below, LAG sub-port IPs end up on the
+         * parent BondEthernet instead of on BondEthernet<id>.<vlan>, breaking
+         * routed traffic for LAG sub-interfaces (PTF
+         * test_packet_routed_with_valid_vlan[port_in_lag]). */
+        std::string pc_suffix = full_if_name.substr(strlen(PORTCHANNEL_PREFIX));
+        size_t dot_pos = pc_suffix.find('.');
+        std::string bond_id_str = (dot_pos == std::string::npos) ? pc_suffix : pc_suffix.substr(0, dot_pos);
+        uint32_t bond_id = std::stoi(bond_id_str);
+        if (vlan_id) {
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d.%u", BONDETHERNET_PREFIX, bond_id, vlan_id);
+        } else {
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_id);
+        }
         hw_ifname = hw_bondifname;
     } else {
        hwifname = tap_to_hwif_name(if_name.c_str());
@@ -1590,25 +1634,119 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     const char *dev = if_name.c_str();
     const char *linux_ifname;
     char host_subifname[32];
+    char lcp_host_subifname[32];
 
     if (attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
-        snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
-
-        /* The host(tap) subinterface is also created as part of the vpp subinterface creation */
         const char *parent_hwif;
         char hw_subif_parent[32];
+        char hw_subifname[64];
+        snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
         if (ot == SAI_OBJECT_TYPE_LAG) {
             snprintf(hw_subif_parent, sizeof(hw_subif_parent), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
             parent_hwif = hw_subif_parent;
         } else {
             parent_hwif = tap_to_hwif_name(dev);
         }
-        create_sub_interface(parent_hwif, vlan_id, vlan_id);
+        snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", parent_hwif, vlan_id);
+
+        /*
+         * For LAG sub-ports the kernel-facing LCP host has to be the VPP-
+         * created tap "be<bond_id>.<vlan>" (a vlan child on the parent tap
+         * "be<bond_id>"), NOT the teamd vlan child "PortChannel<id>.<vlan>".
+         *
+         * Reason: pairing with PortChannel<id>.<vlan> wires the LCP punt to
+         * a netdev that is not a VPP tap, so the kernel->VPP path cannot
+         * use the linux-cp-xc-ip4/6 fast path. Kernel-originated replies
+         * (e.g. ARP for a sub-port nexthop) then fall back to going through
+         * teamd -> physical bond member -> bobm<N>, where ethernet-input
+         * drops the vlan-tagged frame as "unknown vlan" because there is
+         * no SAI sub-interface on the physical member port.
+         *
+         * Pairing with be<id>.<vlan> makes the kernel write packets into a
+         * vlan netdev whose parent is a VPP tap; VPP ingests them via
+         * tap-input -> ethernet-input -> tap<N>.<vlan> -> linux-cp-xc which
+         * forwards directly to BondEthernet<id>.<vlan>. For PORT sub-ports
+         * the existing host name dev.<vlan> already points at a vlan child
+         * of a VPP tap, so behavior is unchanged.
+         */
+        const char *lcp_host;
+        if (ot == SAI_OBJECT_TYPE_LAG) {
+            snprintf(lcp_host_subifname, sizeof(lcp_host_subifname), "be%d.%u",
+                     bond_info.id, vlan_id);
+            lcp_host = lcp_host_subifname;
+        } else {
+            lcp_host = host_subifname;
+        }
+
+        SWSS_LOG_NOTICE("Creating VPP sub interface host_if=%s hw_if=%s vlan=%u lcp_host=%s",
+                        host_subifname, hw_subifname, vlan_id, lcp_host);
+        int ret = create_sub_interface(parent_hwif, vlan_id, vlan_id);
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("Failed to create VPP sub interface host_if=%s hw_if=%s vlan=%u, ret=%d",
+                           host_subifname, hw_subifname, vlan_id, ret);
+            return SAI_STATUS_FAILURE;
+        }
 
         /* Get new list of physical interfaces from VS */
         refresh_interfaces_list();
 
+        /*
+         * VPP no longer guarantees implicit LCP creation for sub-interfaces on all builds.
+         * Explicitly configure host<->VPP pair so host interface state tracks VPP subif state.
+         */
+        SWSS_LOG_NOTICE("Configuring LCP pair for VPP sub interface lcp_host=%s hw_if=%s",
+                        lcp_host, hw_subifname);
+        ret = configure_lcp_interface(hw_subifname, lcp_host, true);
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("Failed to configure LCP pair for sub interface lcp_host=%s hw_if=%s, ret=%d",
+                           lcp_host, hw_subifname, ret);
+            return SAI_STATUS_FAILURE;
+        }
+
+        /*
+         * For LAG sub-ports also bridge the LCP tap "be<id>.<vlan>" with the
+         * teamd vlan child "PortChannel<id>.<vlan>" (where SONiC IntfMgr
+         * writes the L3 IP). Bidirectional tc mirred redirect:
+         *   - be<id>.<vlan> ingress -> PortChannel<id>.<vlan>: VPP-punted
+         *     frames (e.g. ICMP destined to the sub-port IP) reach the
+         *     SONiC-managed netdev that has the IP, so kernel handles
+         *     ARP/ICMP/etc. normally and any daemon bound to PortChannel
+         *     can see the traffic.
+         *   - PortChannel<id>.<vlan> egress -> be<id>.<vlan>: kernel
+         *     replies/originated frames bypass teamd's physical bond member
+         *     path (which drops vlan frames) and instead enter VPP via the
+         *     LCP tap, where the linux-cp-xc-ip4/6 fast path forwards them
+         *     to BondEthernet<id>.<vlan>.
+         * Mirrors the parent BondEthernet<id> <-> PortChannel<id> bridging
+         * in SwitchVppFdb.cpp:addLagMember, but with both directions because
+         * the vlan dispatch issue only affects sub-ports.
+         */
+        if (ot == SAI_OBJECT_TYPE_LAG) {
+            sai_status_t tc_status = add_tc_filter_redirect(
+                    std::string(lcp_host), std::string(host_subifname));
+            if (tc_status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_WARN("add_tc_filter_redirect ingress %s -> %s failed",
+                              lcp_host, host_subifname);
+            }
+            tc_status = add_tc_filter_redirect_egress(
+                    std::string(host_subifname), std::string(lcp_host));
+            if (tc_status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_WARN("add_tc_filter_redirect_egress %s -> %s failed",
+                              host_subifname, lcp_host);
+            }
+        }
+
+        /*
+         * Keep linux_ifname pointing at PortChannel<id>.<vlan> for LAG
+         * sub-ports so downstream vpp_get_vrf_id() (and any future
+         * vpp_get_intf_ip_address() lookups) hit the SONiC-managed netdev
+         * that IntfMgr actually writes VRF/IP attributes to. lcp-sync
+         * mirrors the address to be<id>.<vlan>, but VRF/policy attributes
+         * are not mirrored.
+         */
         linux_ifname = host_subifname;
     } else {
         linux_ifname = dev;
@@ -1889,6 +2027,10 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     }
     uint16_t vlan_id = attr.value.u16;
 
+    /* Resolve parent hw interface name. Mirrors createRouterif (PORT/LAG
+     * handling). For LAG sub-port the VPP parent is BondEthernet<bond_id>,
+     * not a tap. tap_to_hwif_name() would return "Unknown" for the team
+     * device, so the bond name must be built directly from bond_info. */
     std::string if_name;
     platform_bond_info_t bond_info;
     bool found;
@@ -1909,7 +2051,6 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     }
 
     const char *dev = if_name.c_str();
-
     const char *parent_hwif;
     char hw_del_parent[32];
     if (ot == SAI_OBJECT_TYPE_LAG) {
@@ -1918,6 +2059,46 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     } else {
         parent_hwif = tap_to_hwif_name(dev);
     }
+
+    char host_subifname[32], hw_subifname[64];
+    char lcp_host_subifname[32];
+    snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
+    snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", parent_hwif, vlan_id);
+
+    /*
+     * Compute the LCP host name that matched vpp_create_router_interface:
+     * for LAG sub-ports we pair with the VPP-created tap be<id>.<vlan>;
+     * for PORT sub-ports it is just dev.<vlan> (host_subifname).
+     */
+    const char *lcp_host;
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        snprintf(lcp_host_subifname, sizeof(lcp_host_subifname), "be%d.%u",
+                 bond_info.id, vlan_id);
+        lcp_host = lcp_host_subifname;
+
+        /*
+         * Tear down the bidirectional tc redirect first, before removing
+         * the LCP pair (otherwise be<id>.<vlan> disappears and the qdisc
+         * cleanup would silently no-op while the PortChannel<id>.<vlan>
+         * clsact survives and could affect future runs).
+         */
+        SWSS_LOG_NOTICE("Removing tc filter bridge for LAG sub-port: %s <-> %s",
+                        lcp_host, host_subifname);
+        del_tc_filter_redirect_egress(std::string(host_subifname));
+        del_tc_filter_redirect(std::string(lcp_host));
+    } else {
+        lcp_host = host_subifname;
+    }
+
+    SWSS_LOG_NOTICE("Removing LCP pair for VPP sub interface lcp_host=%s hw_if=%s",
+                    lcp_host, hw_subifname);
+    int lcp_ret = configure_lcp_interface(hw_subifname, lcp_host, false);
+    if (lcp_ret != 0)
+    {
+        SWSS_LOG_WARN("Failed to remove LCP pair for sub interface lcp_host=%s hw_if=%s, ret=%d",
+                      lcp_host, hw_subifname, lcp_ret);
+    }
+
     delete_sub_interface(parent_hwif, vlan_id);
     /* Get new list of physical interfaces from VS */
     refresh_interfaces_list();
