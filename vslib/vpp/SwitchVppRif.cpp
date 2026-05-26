@@ -353,7 +353,7 @@ bool SwitchVpp::vpp_get_hwif_name (
         {
             return false;
         }
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_info.id);
+        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
         hwifname = hw_bondifname;
     } else {
         std::string if_name;
@@ -1590,7 +1590,7 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         const char *parent_hwif;
         char hw_subif_parent[32];
         if (ot == SAI_OBJECT_TYPE_LAG) {
-            snprintf(hw_subif_parent, sizeof(hw_subif_parent), "%s%d", BONDETHERNET_PREFIX, bond_info.id);
+            snprintf(hw_subif_parent, sizeof(hw_subif_parent), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
             parent_hwif = hw_subif_parent;
         } else {
             parent_hwif = tap_to_hwif_name(dev);
@@ -1904,7 +1904,7 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     const char *parent_hwif;
     char hw_del_parent[32];
     if (ot == SAI_OBJECT_TYPE_LAG) {
-        snprintf(hw_del_parent, sizeof(hw_del_parent), "%s%d", BONDETHERNET_PREFIX, bond_info.id);
+        snprintf(hw_del_parent, sizeof(hw_del_parent), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
         parent_hwif = hw_del_parent;
     } else {
         parent_hwif = tap_to_hwif_name(dev);
