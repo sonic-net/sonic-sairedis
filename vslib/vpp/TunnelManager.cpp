@@ -1265,11 +1265,7 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
 
     // Verify the tunnel type is IPINIP
     attr.id = SAI_TUNNEL_ATTR_TYPE;
-    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_ERROR("IpIp Encap: missing SAI_TUNNEL_ATTR_TYPE in tunnel %s",
-                        tunnel_obj->get_id().c_str());
-        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
-    }
+    CHECK_STATUS_QUIET(tunnel_obj->get_mandatory_attr(attr));
     if (attr.value.s32 != SAI_TUNNEL_TYPE_IPINIP) {
         SWSS_LOG_ERROR("IpIp Encap: tunnel %s type %d is not IPINIP",
                         tunnel_obj->get_id().c_str(), attr.value.s32);
@@ -1278,29 +1274,17 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
 
     // Get ENCAP_SRC_IP from the tunnel object (our local endpoint)
     attr.id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
-    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_ERROR("IpIp Encap: missing SAI_TUNNEL_ATTR_ENCAP_SRC_IP in tunnel %s",
-                        tunnel_obj->get_id().c_str());
-        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
-    }
+    CHECK_STATUS_QUIET(tunnel_obj->get_mandatory_attr(attr));
     sai_ip_address_t src_ip = attr.value.ipaddr;
 
     // Get the destination IP from the nexthop object (remote peer)
     attr.id = SAI_NEXT_HOP_ATTR_IP;
-    if (tunnel_nh_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_ERROR("IpIp Encap: missing SAI_NEXT_HOP_ATTR_IP in nexthop %s",
-                        tunnel_nh_obj->get_id().c_str());
-        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
-    }
+    CHECK_STATUS_QUIET(tunnel_nh_obj->get_mandatory_attr(attr));
     sai_ip_address_t dst_ip = attr.value.ipaddr;
 
     // Get the tunnel overlay interface
     attr.id = SAI_TUNNEL_ATTR_OVERLAY_INTERFACE;
-    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_ERROR("IpIp Encap: missing SAI_TUNNEL_ATTR_OVERLAY_INTERFACE in tunnel %s",
-                       tunnel_obj->get_id().c_str());
-        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
-    }
+    CHECK_STATUS_QUIET(tunnel_obj->get_mandatory_attr(attr));
     sai_object_id_t tunnel_overlay_if_oid = attr.value.oid;
 
     if (action == Action::CREATE) {
