@@ -73,6 +73,8 @@ jobs:
         target/debs/${{ parameters.debian_version }}/libnl-route*.deb
         target/debs/${{ parameters.debian_version }}/libnl-nf*.deb
         target/debs/${{ parameters.debian_version }}/libyang3_*.deb
+        target/debs/${{ parameters.debian_version }}/libnexthopgroup_*.deb
+        target/debs/${{ parameters.debian_version }}/libnexthopgroup-dev_*.deb
         target/debs/${{ parameters.debian_version }}/libprotobuf*.deb
         target/debs/${{ parameters.debian_version }}/libprotoc*.deb
         target/debs/${{ parameters.debian_version }}/protobuf-compiler*.deb
