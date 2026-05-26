@@ -1121,7 +1121,19 @@ void NotificationProcessor::ntf_process_function()
 
         while (m_notificationQueue->tryDequeue(item))
         {
-            processNotification(item);
+            // processNotification publishes to redis via RedisChannel. If the
+            // database (redis) becomes unreachable, the underlying RedisPipeline
+            // throws swss::RedisError; without a catch here the unhandled
+            // exception terminates syncd via std::terminate(). Log and continue
+            // so the thread recovers naturally when redis comes back.
+            try
+            {
+                processNotification(item);
+            }
+            catch (const std::exception &e)
+            {
+                SWSS_LOG_ERROR("exception while processing notification: %s", e.what());
+            }
         }
     }
 }

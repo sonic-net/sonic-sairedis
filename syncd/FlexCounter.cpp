@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <mutex>
+#include <memory>
 
 #include "FlexCounter.h"
 #include "VidManager.h"
@@ -3527,9 +3528,16 @@ void FlexCounter::flexCounterThreadRunFunction()
 {
     SWSS_LOG_ENTER();
 
-    swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
-    swss::RedisPipeline pipeline(&db);
-    swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
+    // Counter collection writes to COUNTERS_DB via RedisPipeline. If redis
+    // becomes unreachable (e.g. database container restart), RedisPipeline::pop()
+    // throws swss::RedisError. Without a catch here the unhandled exception
+    // terminates syncd via std::terminate(). Catch, recreate the redis objects
+    // (a partially-drained pipeline leaves m_remaining nonzero and would loop
+    // on the same error forever), and let the thread keep polling so it
+    // recovers naturally when redis comes back.
+    auto db = std::make_unique<swss::DBConnector>(m_dbCounters, 0, m_isTcpConn);
+    auto pipeline = std::make_unique<swss::RedisPipeline>(db.get());
+    auto countersTable = std::make_unique<swss::Table>(pipeline.get(), COUNTERS_TABLE, true);
 
     while (m_runFlexCounterThread)
     {
@@ -3539,9 +3547,32 @@ void FlexCounter::flexCounterThreadRunFunction()
         {
             auto start = std::chrono::steady_clock::now();
 
-            collectCounters(countersTable);
+            try
+            {
+                collectCounters(*countersTable);
 
-            runPlugins(db);
+                runPlugins(*db);
+            }
+            catch (const std::exception &e)
+            {
+                SWSS_LOG_ERROR("FlexCounter %s: exception during counter collection: %s, recreating redis pipeline",
+                               m_instanceId.c_str(), e.what());
+
+                try
+                {
+                    countersTable.reset();
+                    pipeline.reset();
+                    db.reset();
+                    db = std::make_unique<swss::DBConnector>(m_dbCounters, 0, m_isTcpConn);
+                    pipeline = std::make_unique<swss::RedisPipeline>(db.get());
+                    countersTable = std::make_unique<swss::Table>(pipeline.get(), COUNTERS_TABLE, true);
+                }
+                catch (const std::exception &re)
+                {
+                    SWSS_LOG_ERROR("FlexCounter %s: failed to recreate redis pipeline: %s",
+                                   m_instanceId.c_str(), re.what());
+                }
+            }
 
             auto finish = std::chrono::steady_clock::now();
 
