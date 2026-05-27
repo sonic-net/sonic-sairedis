@@ -27,7 +27,7 @@ namespace
         NONE,
     };
 
-    constexpr DashCacheMode kDashCacheMode = DashCacheMode::EXISTENCE_REFCOUNT;
+    constexpr DashCacheMode kDashCacheMode = DashCacheMode::NONE;
 
     /*
      * Hard-coded allow-list of DASH object types this policy applies to.
