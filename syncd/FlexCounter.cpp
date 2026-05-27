@@ -3535,9 +3535,32 @@ void FlexCounter::flexCounterThreadRunFunction()
     // (a partially-drained pipeline leaves m_remaining nonzero and would loop
     // on the same error forever), and let the thread keep polling so it
     // recovers naturally when redis comes back.
-    auto db = std::make_unique<swss::DBConnector>(m_dbCounters, 0, m_isTcpConn);
-    auto pipeline = std::make_unique<swss::RedisPipeline>(db.get());
-    auto countersTable = std::make_unique<swss::Table>(pipeline.get(), COUNTERS_TABLE, true);
+    std::unique_ptr<swss::DBConnector> db;
+    std::unique_ptr<swss::RedisPipeline> pipeline;
+    std::unique_ptr<swss::Table> countersTable;
+
+    auto recreateRedisObjects = [&]() -> bool {
+        try
+        {
+            countersTable.reset();
+            pipeline.reset();
+            db.reset();
+            db = std::make_unique<swss::DBConnector>(m_dbCounters, 0, m_isTcpConn);
+            pipeline = std::make_unique<swss::RedisPipeline>(db.get());
+            countersTable = std::make_unique<swss::Table>(pipeline.get(), COUNTERS_TABLE, true);
+            return true;
+        }
+        catch (const std::exception &re)
+        {
+            SWSS_LOG_ERROR("FlexCounter %s: failed to (re)create redis pipeline: %s",
+                           m_instanceId.c_str(), re.what());
+            return false;
+        }
+    };
+
+    // Initial creation. If it fails (e.g. database not yet up), the loop will
+    // keep retrying via recreateRedisObjects() before each collection cycle.
+    recreateRedisObjects();
 
     while (m_runFlexCounterThread)
     {
@@ -3547,6 +3570,24 @@ void FlexCounter::flexCounterThreadRunFunction()
         {
             auto start = std::chrono::steady_clock::now();
 
+            // Ensure redis objects are live before use. A previous iteration's
+            // exception handler tore them down; if recreate still fails (redis
+            // is still down), skip this poll and try again next iteration.
+            // Never call collectCounters/runPlugins with a null countersTable
+            // or null db - dereferencing a null unique_ptr is undefined
+            // behaviour and segfaults inside the callee.
+            if ((!db || !pipeline || !countersTable) && !recreateRedisObjects())
+            {
+                // Snapshot poll interval under the mutex before sleeping; the
+                // setter is guarded by m_mtx, so reading it here keeps the
+                // wait synchronized.
+                uint32_t sleepMs = m_pollInterval;
+                MUTEX_UNLOCK; // explicit unlock before sleeping
+                std::unique_lock<std::mutex> lk(m_mtxSleep);
+                m_cvSleep.wait_for(lk, std::chrono::milliseconds(sleepMs));
+                continue;
+            }
+
             try
             {
                 collectCounters(*countersTable);
@@ -3555,23 +3596,15 @@ void FlexCounter::flexCounterThreadRunFunction()
             }
             catch (const std::exception &e)
             {
-                SWSS_LOG_ERROR("FlexCounter %s: exception during counter collection: %s, recreating redis pipeline",
+                SWSS_LOG_ERROR("FlexCounter %s: exception during counter collection: %s, will recreate redis pipeline",
                                m_instanceId.c_str(), e.what());
 
-                try
-                {
-                    countersTable.reset();
-                    pipeline.reset();
-                    db.reset();
-                    db = std::make_unique<swss::DBConnector>(m_dbCounters, 0, m_isTcpConn);
-                    pipeline = std::make_unique<swss::RedisPipeline>(db.get());
-                    countersTable = std::make_unique<swss::Table>(pipeline.get(), COUNTERS_TABLE, true);
-                }
-                catch (const std::exception &re)
-                {
-                    SWSS_LOG_ERROR("FlexCounter %s: failed to recreate redis pipeline: %s",
-                                   m_instanceId.c_str(), re.what());
-                }
+                // Tear down only. Recreate happens at the top of the next
+                // iteration so a failed recreate does not leave us with a
+                // half-initialised state that segfaults on the next poll.
+                countersTable.reset();
+                pipeline.reset();
+                db.reset();
             }
 
             auto finish = std::chrono::steady_clock::now();
