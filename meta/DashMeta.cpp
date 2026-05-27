@@ -49,6 +49,7 @@ namespace
 
 bool saimeta::isDashObjectType(sai_object_type_t ot)
 {
+    // SWSS_LOG_ENTER() is disabled for performance reasons
     for (auto t : kDashTypes)
     {
         if (t == ot)
@@ -61,6 +62,7 @@ bool saimeta::isDashObjectType(sai_object_type_t ot)
 
 bool saimeta::bypassValidation(sai_object_type_t ot)
 {
+    // SWSS_LOG_ENTER() is disabled for performance reasons
     if (!isDashObjectType(ot))
     {
         return false;
@@ -77,6 +79,7 @@ bool saimeta::shouldCacheAttribute(
         sai_object_type_t ot,
         const sai_attr_metadata_t& md)
 {
+    // SWSS_LOG_ENTER() is disabled for performance reasons
     if (!isDashObjectType(ot))
     {
         return true;
@@ -93,6 +96,7 @@ bool saimeta::shouldCacheAttribute(
 
 const char* saimeta::dashCacheModeName()
 {
+    // SWSS_LOG_ENTER() is disabled for performance reasons
     switch (kDashCacheMode)
     {
         case DashCacheMode::FULL:               return "FULL";
