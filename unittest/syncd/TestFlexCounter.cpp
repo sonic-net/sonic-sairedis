@@ -2447,3 +2447,318 @@ TEST_F(FlexCounterTcpFallback, tcpFallbackWhenNoUnixSocket)
 
     countersTable.del(key);
 }
+
+/*
+ * ICMP echo session counters use the native FlexCounter path with
+ * use_sai_stats_ext=true and always_check_supported_counters=true. The context
+ * is exercised when the platform does not support SAI selective counters for
+ * ICMP echo. The following tests exercise the supported / unsupported / clear
+ * paths exclusively via getStatsExt (clearStats must never be called).
+ */
+TEST(FlexCounter, addRemoveCounterForIcmpEchoSession)
+{
+    // Track whether getStats / clearStats are called: the ICMP echo path uses
+    // getStatsExt exclusively because use_sai_stats_ext=true.
+    bool getStatsCalled = false;
+    bool clearStatsCalled = false;
+
+    sai->mock_getStatsExt = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters,
+                               const sai_stat_id_t *ids, sai_stats_mode_t, uint64_t *counters) {
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            if (ids[i] == SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS)
+            {
+                counters[i] = 1234;
+            }
+            else if (ids[i] == SAI_ICMP_ECHO_SESSION_STAT_OUT_PACKETS)
+            {
+                counters[i] = 5678;
+            }
+            else
+            {
+                return SAI_STATUS_FAILURE;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStats = [&](sai_object_type_t, sai_object_id_t, uint32_t, const sai_stat_id_t *, uint64_t *) {
+        getStatsCalled = true;
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_clearStats = [&](sai_object_type_t, sai_object_id_t, uint32_t, const sai_stat_id_t *) {
+        clearStatsCalled = true;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *,
+                                uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    auto counterVerifyFunc = [] (swss::Table &countersTable, const std::string& key,
+                                 const std::vector<std::string>& counterIdNames,
+                                 const std::vector<std::string>& expectedValues)
+    {
+        std::string value;
+        for (size_t i = 0; i < counterIdNames.size(); i++)
+        {
+            countersTable.hget(key, counterIdNames[i], value);
+            EXPECT_EQ(value, expectedValues[i]);
+        }
+    };
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_ICMP_ECHO_SESSION,
+        ICMP_ECHO_SESSION_COUNTER_ID_LIST,
+        {"SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS", "SAI_ICMP_ECHO_SESSION_STAT_OUT_PACKETS"},
+        {"1234", "5678"},
+        counterVerifyFunc,
+        false);
+
+    // use_sai_stats_ext=true means stats are always collected via getStatsExt;
+    // the non-ext getStats / clearStats SAI APIs must not be invoked for ICMP.
+    EXPECT_FALSE(getStatsCalled);
+    EXPECT_FALSE(clearStatsCalled);
+}
+
+TEST(FlexCounter, icmpEchoSessionReadAndClearUsesGetStatsExt)
+{
+    // STATS_MODE_READ_AND_CLEAR must be carried into getStatsExt rather than
+    // being implemented as a separate clearStats() call, because the ICMP
+    // counter context sets use_sai_stats_ext = true.
+    bool sawReadAndClearMode = false;
+    bool clearStatsCalled = false;
+
+    sai->mock_getStatsExt = [&](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters,
+                                const sai_stat_id_t *ids, sai_stats_mode_t mode, uint64_t *counters) {
+        if (mode == SAI_STATS_MODE_READ_AND_CLEAR)
+        {
+            sawReadAndClearMode = true;
+        }
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            if (ids[i] == SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS)
+            {
+                counters[i] = 100;
+            }
+            else if (ids[i] == SAI_ICMP_ECHO_SESSION_STAT_OUT_PACKETS)
+            {
+                counters[i] = 200;
+            }
+            else
+            {
+                return SAI_STATUS_FAILURE;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t, const sai_stat_id_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_clearStats = [&](sai_object_type_t, sai_object_id_t, uint32_t, const sai_stat_id_t *) {
+        clearStatsCalled = true;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *,
+                                uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    auto counterVerifyFunc = [] (swss::Table &countersTable, const std::string& key,
+                                 const std::vector<std::string>& counterIdNames,
+                                 const std::vector<std::string>& expectedValues)
+    {
+        std::string value;
+        for (size_t i = 0; i < counterIdNames.size(); i++)
+        {
+            countersTable.hget(key, counterIdNames[i], value);
+            EXPECT_EQ(value, expectedValues[i]);
+        }
+    };
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_ICMP_ECHO_SESSION,
+        ICMP_ECHO_SESSION_COUNTER_ID_LIST,
+        {"SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS", "SAI_ICMP_ECHO_SESSION_STAT_OUT_PACKETS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ_AND_CLEAR);
+
+    EXPECT_TRUE(sawReadAndClearMode);
+    EXPECT_FALSE(clearStatsCalled);
+}
+
+TEST(FlexCounter, icmpEchoSessionWithQueryStatsCapability)
+{
+    // When queryStatsCapability is available, FlexCounter should rely on it to
+    // determine supported counters (avoiding the per-counter probe via
+    // getStatsExt). Unsupported counters must not appear in COUNTERS_DB.
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t object_type,
+                                        sai_stat_capability_list_t *stats_capability) {
+        EXPECT_EQ(object_type, SAI_OBJECT_TYPE_ICMP_ECHO_SESSION);
+        if (stats_capability->count == 0)
+        {
+            stats_capability->count = 1;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        stats_capability->list[0].stat_enum = SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS;
+        stats_capability->list[0].stat_modes = SAI_STATS_MODE_READ | SAI_STATS_MODE_READ_AND_CLEAR;
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai->mock_getStatsExt = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters,
+                               const sai_stat_id_t *ids, sai_stats_mode_t, uint64_t *counters) {
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            if (ids[i] == SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS)
+            {
+                counters[i] = 4242;
+            }
+            else
+            {
+                return SAI_STATUS_FAILURE;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t, const sai_stat_id_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_clearStats = [](sai_object_type_t, sai_object_id_t, uint32_t, const sai_stat_id_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *,
+                                uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    auto counterVerifyFunc = [] (swss::Table &countersTable, const std::string& key,
+                                 const std::vector<std::string>&,
+                                 const std::vector<std::string>&)
+    {
+        std::string value;
+        countersTable.hget(key, "SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS", value);
+        EXPECT_EQ(value, "4242");
+        // OUT_PACKETS is not advertised as supported and must not be polled.
+        bool present = countersTable.hget(key, "SAI_ICMP_ECHO_SESSION_STAT_OUT_PACKETS", value);
+        EXPECT_FALSE(present);
+    };
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_ICMP_ECHO_SESSION,
+        ICMP_ECHO_SESSION_COUNTER_ID_LIST,
+        {"SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS", "SAI_ICMP_ECHO_SESSION_STAT_OUT_PACKETS"},
+        {},
+        counterVerifyFunc,
+        false);
+}
+
+TEST(FlexCounter, noSupportedIcmpEchoSessionCounters)
+{
+    // If neither queryStatsCapability nor the per-counter getStatsExt probe
+    // reports any supported counter, the ICMP echo session object must not be
+    // tracked at all (FlexCounter remains empty).
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_getStatsExt = [](sai_object_type_t, sai_object_id_t, uint32_t, const sai_stat_id_t *,
+                               sai_stats_mode_t, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t, const sai_stat_id_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *,
+                                uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    FlexCounter fc("test_icmp_unsupported", sai, "COUNTERS_DB");
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_ICMP_ECHO_SESSION);
+
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(ICMP_ECHO_SESSION_COUNTER_ID_LIST,
+                        "SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS,SAI_ICMP_ECHO_SESSION_STAT_OUT_PACKETS");
+
+    auto object_ids = generateOids(1, SAI_OBJECT_TYPE_ICMP_ECHO_SESSION);
+    fc.addCounter(object_ids[0], object_ids[0], values);
+    EXPECT_TRUE(fc.isEmpty());
+
+    // Bulk add path should also reject unsupported counters.
+    fc.bulkAddCounter(SAI_OBJECT_TYPE_ICMP_ECHO_SESSION, object_ids, object_ids, values);
+    EXPECT_TRUE(fc.isEmpty());
+}
+
+TEST(FlexCounter, removeIcmpEchoSessionCounter)
+{
+    // Verify that removeCounter() for an ICMP_ECHO_SESSION VID drops the
+    // associated object from the polling map (covers the dispatch added to
+    // FlexCounter::removeCounter for SAI_OBJECT_TYPE_ICMP_ECHO_SESSION).
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_getStatsExt = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters,
+                               const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            counters[i] = (i + 1) * 11;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t, const sai_stat_id_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *,
+                                uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    FlexCounter fc("test_icmp_remove", sai, "COUNTERS_DB");
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_ICMP_ECHO_SESSION);
+
+    std::vector<swss::FieldValueTuple> pluginValues;
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(pluginValues);
+
+    std::vector<swss::FieldValueTuple> counterValues;
+    counterValues.emplace_back(ICMP_ECHO_SESSION_COUNTER_ID_LIST,
+                               "SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS,"
+                               "SAI_ICMP_ECHO_SESSION_STAT_OUT_PACKETS");
+
+    auto object_ids = generateOids(2, SAI_OBJECT_TYPE_ICMP_ECHO_SESSION);
+    for (auto oid : object_ids)
+    {
+        fc.addCounter(oid, oid, counterValues);
+    }
+    EXPECT_FALSE(fc.isEmpty());
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+    waitForCounterKeys(countersTable, object_ids.size());
+
+    // Removing both sessions should drain the FlexCounter; explicit DB cleanup
+    // is required because the ICMP path does not auto-remove COUNTERS_DB rows.
+    for (auto oid : object_ids)
+    {
+        fc.removeCounter(oid);
+        countersTable.del(toOid(oid));
+    }
+    EXPECT_TRUE(fc.isEmpty());
+
+    std::vector<std::string> keys;
+    countersTable.getKeys(keys);
+    removeTimeStamp(keys, countersTable);
+    ASSERT_TRUE(keys.empty());
+}
