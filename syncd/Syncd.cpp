@@ -40,6 +40,7 @@
 
 #include <iterator>
 #include <algorithm>
+#include <cmath>
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 #define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
@@ -893,9 +894,9 @@ sai_status_t Syncd::processLinkEventDampingConfigSet(
     sai_deserialize_object_id(strObjectId, portVid);
 
     // Validate that the port exists by translating VID to RID
-    sai_object_id_t portRid = m_translator->translateVidToRid(portVid);
+    sai_object_id_t portRid;
 
-    if (portRid == SAI_NULL_OBJECT_ID)
+    if (!m_translator->tryTranslateVidToRid(portVid, portRid))
     {
         SWSS_LOG_ERROR("failed to translate port VID to RID");
         sendLinkEventDampingConfigResponse(SAI_STATUS_INVALID_PARAMETER);
@@ -950,25 +951,21 @@ sai_status_t Syncd::processLinkEventDampingConfigSet(
             case SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG:
             {
                 // Allocate temporary memory for the config structure
-                sai_redis_link_event_damping_algo_aied_config_t *config =
-                        new sai_redis_link_event_damping_algo_aied_config_t();
+                sai_redis_link_event_damping_algo_aied_config_t config{};
 
-                sai_deserialize_redis_link_event_damping_aied_config(strAttrValue, *config);
+                sai_deserialize_redis_link_event_damping_aied_config(strAttrValue, config);
 
 		SWSS_LOG_INFO("setting link event damping AIED config on port %s: "
                         "max_suppress_time=%u, suppress_threshold=%u, "
                         "reuse_threshold=%u, decay_half_life=%u, flap_penalty=%u",
-                        strObjectId.c_str(), config->max_suppress_time,
-			config->suppress_threshold, config->reuse_threshold,
-			config->decay_half_life, config->flap_penalty);
+                        strObjectId.c_str(), config.max_suppress_time,
+			config.suppress_threshold, config.reuse_threshold,
+			config.decay_half_life, config.flap_penalty);
 
 		// Link event damping is a software-only feature as of now
                 // Store the configuration locally for use in notification
                 // processing.
-		dampingState.aied_config = *config;
-
-                // Free the temporary allocated memory
-                delete config;
+		dampingState.aied_config = config;
 
 		status = SAI_STATUS_SUCCESS;
                 break;
@@ -1018,7 +1015,7 @@ void Syncd::sendLinkEventDampingConfigResponse(
 
 uint64_t Syncd::getCurrentTimeMs()
 {
-    auto now = std::chrono::system_clock::now();
+    auto now = std::chrono::steady_clock::now();
     auto duration = now.time_since_epoch();
     return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 }
@@ -1088,10 +1085,12 @@ bool Syncd::applyAiedAlgorithm(
     std::string portVidStr = sai_serialize_object_id(portVid);
 
     // Validate configuration
-    if (state.aied_config.decay_half_life > state.aied_config.max_suppress_time)
+    if (state.aied_config.decay_half_life != 0 ||
+        state.aied_config.max_suppress_time != 0 ||
+	state.aied_config.decay_half_life > state.aied_config.max_suppress_time)
     {
         SWSS_LOG_WARN("Port VID %s invalid damping configuration: "
-             "decay_half_life (%u ms) > max_suppress_time (%u ms). Damping disabled.",
+             "decay_half_life (%u ms) max_suppress_time (%u ms). Damping disabled.",
              portVidStr.c_str(), state.aied_config.decay_half_life,
              state.aied_config.max_suppress_time);
         return false;  // Damping disabled for invalid config
@@ -1164,7 +1163,6 @@ bool Syncd::applyAiedAlgorithm(
         if (state.current_penalty >= state.aied_config.suppress_threshold &&
             !state.is_damping_active)
         {
-            std::string portVidStr = sai_serialize_object_id(portVid);
             SWSS_LOG_NOTICE("Port VID %s entering damped state: penalty (%u) >= "
                    "suppress_threshold (%u) at time %lu ms. Current event will be "
                    "PROPAGATED, future events will be suppressed.",
@@ -1375,6 +1373,10 @@ bool Syncd::applyLinkEventDamping(
     {
         case SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED:
             return applyAiedAlgorithm(portVid, state, newStatus, currentTimeMs);
+
+        case SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED:
+	    SWSS_LOG_INFO("Damping algorithm disabled: %d", state.algorithm);
+            return false;
 
         default:
             SWSS_LOG_WARN("Unknown damping algorithm: %d", state.algorithm);
@@ -1660,86 +1662,6 @@ void Syncd::writeDampingCountersToStateDb(
     m_dampingCounterTable->set(portVidStr, fields);
 
     SWSS_LOG_DEBUG("Wrote damping counters to STATE_DB for port %s", portVidStr.c_str());
-}
-
-sai_status_t Syncd::clearDampingCounters(
-        _In_ sai_object_id_t portVid)
-{
-    SWSS_LOG_ENTER();
-
-    std::lock_guard<std::mutex> lock(m_linkEventDampingMutex);
-
-    auto it = m_portLinkEventDampingStates.find(portVid);
-    if (it == m_portLinkEventDampingStates.end())
-    {
-        SWSS_LOG_WARN("Port VID %s not found in damping states", sai_serialize_object_id(portVid).c_str());
-        return SAI_STATUS_ITEM_NOT_FOUND;
-    }
-
-    // Reset all counters to zero
-    it->second.pre_damping_link_transitions = 0;
-    it->second.pre_damping_up_events = 0;
-    it->second.pre_damping_down_events = 0;
-    it->second.post_damping_up_events = 0;
-    it->second.post_damping_down_events = 0;
-    it->second.post_damping_link_transitions = 0;
-
-    // Write updated (zeroed) counters to STATE_DB
-    writeDampingCountersToStateDb(portVid, it->second);
-
-    SWSS_LOG_NOTICE("Cleared damping counters for port %s", sai_serialize_object_id(portVid).c_str());
-
-    return SAI_STATUS_SUCCESS;
-}
-
-sai_status_t Syncd::processLinkEventDampingCounterClear(
-        _In_ const swss::KeyOpFieldsValuesTuple &kco)
-{
-    SWSS_LOG_ENTER();
-
-    const std::string& key = kfvKey(kco);
-    const std::string& op = kfvOp(kco);
-
-    SWSS_LOG_INFO("Processing link event damping counter clear: key=%s, op=%s", key.c_str(), op.c_str());
-
-    // Parse the key format: "OBJECT_TYPE:OBJECT_ID"
-    size_t colonPos = key.find(':');
-    if (colonPos == std::string::npos)
-    {
-        SWSS_LOG_ERROR("invalid key format for counter clear: %s", key.c_str());
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    std::string strObjectType = key.substr(0, colonPos);
-    std::string strObjectId = key.substr(colonPos + 1);
-
-    sai_object_type_t objectType;
-    sai_deserialize_object_type(strObjectType, objectType);
-
-    if (objectType != SAI_OBJECT_TYPE_PORT)
-    {
-        SWSS_LOG_ERROR("invalid object type for counter clear: %s", strObjectType.c_str());
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    // Get port VID
-    sai_object_id_t portVid;
-    sai_deserialize_object_id(strObjectId, portVid);
-
-    // Clear counters
-    sai_status_t status = clearDampingCounters(portVid);
-
-    // Send response back (similar to config set response)
-    std::string responseKey = "REDIS_ASIC_STATE_COMMAND_COUNTER_CLEAR_RESPONSE";
-    std::vector<swss::FieldValueTuple> responseFields;
-    responseFields.emplace_back("status", sai_serialize_status(status));
-    responseFields.emplace_back("key", key);
-
-    m_selectableChannel->set(responseKey, responseFields, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
-
-    SWSS_LOG_INFO("sending link event damping counter clear response: %s", sai_serialize_status(status).c_str());
-
-    return status;
 }
 
 sai_status_t Syncd::processFdbFlush(

@@ -2289,7 +2289,7 @@ bool RedisRemoteSaiInterface::isRedisPortAttribute(
 {
     SWSS_LOG_ENTER();
 
-    if ((objectType != SAI_OBJECT_TYPE_PORT) || (attr == nullptr) || (attr->id < SAI_PORT_ATTR_CUSTOM_RANGE_START))
+    if ((objectType != SAI_OBJECT_TYPE_PORT) || (attr == nullptr) || (attr->id < SAI_PORT_ATTR_CUSTOM_RANGE_START) || (attr->id >= SAI_PORT_ATTR_EXTENSIONS_RANGE_BASE))
     {
         return false;
     }
