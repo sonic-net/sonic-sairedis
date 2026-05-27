@@ -19,17 +19,6 @@
 
 #define CHECK_STATUS_SUCCESS(s) { if ((s) != SAI_STATUS_SUCCESS) return (s); }
 
-// Like CHECK_STATUS_SUCCESS, but on failure updates object_statuses[idx] before return.
-#define CHECK_STATUS_SUCCESS_AND_UPDATE(s, object_statuses, idx)                 \
-    do {                                                                         \
-        sai_status_t _object_st = (s);                                           \
-        if (_object_st != SAI_STATUS_SUCCESS)                                    \
-        {                                                                        \
-            (object_statuses)[(idx)] = _object_st;                               \
-            return _object_st;                                                   \
-        }                                                                        \
-    } while (0)
-
 #define VALIDATION_LIST(md,vlist)                                               \
 {                                                                               \
     auto _status = meta_genetic_validation_list(md,vlist.count,vlist.list);     \
@@ -637,14 +626,14 @@ sai_status_t Meta::bulkCreate(                                                  
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], true);                                                 \
-        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
              };                                                                                                         \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_create(meta_key, ot[idx].switch_id, attr_count[idx], attr_list[idx]);          \
-        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
     }                                                                                                                   \
     auto status = m_implementation->bulkCreate(object_count, ot, attr_count, attr_list, mode, object_statuses);         \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -681,14 +670,14 @@ sai_status_t Meta::bulkRemove(                                                  
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
             };                                                                                                          \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_remove(meta_key);                                                              \
-        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
     }                                                                                                                   \
     auto status = m_implementation->bulkRemove(object_count, ot, mode, object_statuses);                                \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -727,14 +716,14 @@ sai_status_t Meta::bulkSet(                                                     
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
              };                                                                                                         \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_set(meta_key, &attr_list[idx]);                                                \
-        CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
     }                                                                                                                   \
     auto status = m_implementation->bulkSet(object_count, ot, attr_list, mode, object_statuses);                        \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -2010,11 +1999,9 @@ void Meta::meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
-            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
-            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
             case SAI_ATTR_VALUE_TYPE_JSON:
                 // no special action required
                 break;
@@ -2938,7 +2925,7 @@ sai_status_t Meta::meta_sai_validate_direction_lookup_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_direction_lookup_entry).c_str());
 
-        return SAI_STATUS_ITEM_NOT_FOUND;
+        return SAI_STATUS_INVALID_PARAMETER;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -2984,7 +2971,7 @@ sai_status_t Meta::meta_sai_validate_eni_ether_address_map_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_eni_ether_address_map_entry).c_str());
 
-        return SAI_STATUS_ITEM_NOT_FOUND;
+        return SAI_STATUS_INVALID_PARAMETER;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3030,7 +3017,7 @@ sai_status_t Meta::meta_sai_validate_vip_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_vip_entry).c_str());
 
-        return SAI_STATUS_ITEM_NOT_FOUND;
+        return SAI_STATUS_INVALID_PARAMETER;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3081,7 +3068,7 @@ sai_status_t Meta::meta_sai_validate_inbound_routing_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_inbound_routing_entry).c_str());
 
-        return SAI_STATUS_ITEM_NOT_FOUND;
+        return SAI_STATUS_INVALID_PARAMETER;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3127,7 +3114,7 @@ sai_status_t Meta::meta_sai_validate_pa_validation_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_pa_validation_entry).c_str());
 
-        return SAI_STATUS_ITEM_NOT_FOUND;
+        return SAI_STATUS_INVALID_PARAMETER;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3178,7 +3165,7 @@ sai_status_t Meta::meta_sai_validate_outbound_routing_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_outbound_routing_entry).c_str());
 
-        return SAI_STATUS_ITEM_NOT_FOUND;
+        return SAI_STATUS_INVALID_PARAMETER;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3229,7 +3216,7 @@ sai_status_t Meta::meta_sai_validate_outbound_ca_to_pa_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_outbound_ca_to_pa_entry).c_str());
 
-        return SAI_STATUS_ITEM_NOT_FOUND;
+        return SAI_STATUS_INVALID_PARAMETER;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3748,17 +3735,6 @@ sai_status_t Meta::meta_generic_validation_create(
                 }
                 break;
 
-            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
-                VALIDATION_LIST(md, value.u64rangelist);
-                for (uint32_t i = 0; i < value.u64rangelist.count; i++) {
-                    if (value.u64rangelist.list[i].min > value.u64rangelist.list[i].max)
-                    {
-                        META_LOG_ERROR(md, "invalid range %" PRIu64 " .. %" PRIu64, value.u64rangelist.list[i].min, value.u64rangelist.list[i].max);
-                        return SAI_STATUS_INVALID_PARAMETER;
-                    }
-                }
-                break;
-
             case SAI_ATTR_VALUE_TYPE_JSON:
                 VALIDATION_LIST(md, value.json.json);
                 break;
@@ -3784,7 +3760,6 @@ sai_status_t Meta::meta_generic_validation_create(
                 }
 
                 break;
-
 
             case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
 
@@ -3940,13 +3915,6 @@ sai_status_t Meta::meta_generic_validation_create(
         if (md.isconditional)
         {
             // skip conditional attributes for now
-            continue;
-        }
-
-        if (md.isdeprecated)
-        {
-            // skip deprecated attributes
-            META_LOG_NOTICE(md, "attribute is mandatory but deprecated, skipping validation");
             continue;
         }
 
@@ -4405,17 +4373,6 @@ sai_status_t Meta::meta_generic_validation_set(
             }
             break;
 
-        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
-            VALIDATION_LIST(md, value.u64rangelist);
-            for (uint32_t i = 0; i < value.u64rangelist.count; i++) {
-                if (value.u64rangelist.list[i].min > value.u64rangelist.list[i].max)
-                {
-                    META_LOG_ERROR(md, "invalid range %" PRIu64 " .. %" PRIu64, value.u64rangelist.list[i].min, value.u64rangelist.list[i].max);
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-            }
-            break;
-
         case SAI_ATTR_VALUE_TYPE_JSON:
             VALIDATION_LIST(md, value.json.json);
             break;
@@ -4856,10 +4813,6 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.u16rangelist);
                 break;
 
-            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
-                VALIDATION_LIST(md, value.u64rangelist);
-                break;
-
             case SAI_ATTR_VALUE_TYPE_JSON:
                 VALIDATION_LIST(md, value.json.json);
                 break;
@@ -4867,7 +4820,6 @@ sai_status_t Meta::meta_generic_validation_get(
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
-            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
                 // primitives
                 break;
 
@@ -5143,16 +5095,6 @@ void Meta::meta_generic_validation_post_get(
                 }
                 break;
 
-            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
-                VALIDATION_LIST_GET(md, value.u64rangelist);
-                for (uint32_t i = 0; i < value.u64rangelist.count; i++) {
-                    if (value.u64rangelist.list[i].min > value.u64rangelist.list[i].max)
-                    {
-                        META_LOG_ERROR(md, "invalid range %" PRIu64 " .. %" PRIu64, value.u64rangelist.list[i].min, value.u64rangelist.list[i].max);
-                    }
-                }
-                break;
-
             case SAI_ATTR_VALUE_TYPE_JSON:
                 VALIDATION_LIST_GET(md, value.json.json);
                 break;
@@ -5180,15 +5122,6 @@ void Meta::meta_generic_validation_post_get(
                 if (value.s32range.min > value.s32range.max)
                 {
                     META_LOG_ERROR(md, "invalid range %u .. %u", value.s32range.min, value.s32range.max);
-                }
-
-                break;
-
-            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
-
-                if (value.u64range.min > value.u64range.max)
-                {
-                    META_LOG_ERROR(md, "invalid range %" PRIu64 " .. %" PRIu64, value.u64range.min, value.u64range.max);
                 }
 
                 break;
@@ -6093,11 +6026,9 @@ void Meta::meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
-            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
-            case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
             case SAI_ATTR_VALUE_TYPE_JSON:
                 // no special action required
                 break;
@@ -6352,12 +6283,10 @@ void Meta::meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
-        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE:
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
         case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
         case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
-        case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
         case SAI_ATTR_VALUE_TYPE_JSON:
             // no special action required
             break;
@@ -7388,48 +7317,6 @@ void Meta::meta_sai_on_twamp_session_event(
     for (uint32_t i = 0; i < count; ++i)
     {
         meta_sai_on_twamp_session_event_single(data[i]);
-    }
-}
-
-void Meta::meta_sai_on_flow_bulk_get_session_event(
-        _In_ sai_object_id_t flow_bulk_session_id,
-        _In_ uint32_t count,
-        _In_ const sai_flow_bulk_get_session_event_data_t *data)
-{
-    SWSS_LOG_ENTER();
-
-    if (count && data == NULL)
-    {
-        SWSS_LOG_ERROR("sai_flow_bulk_get_session_event_data_t pointer is NULL but count is %u", count);
-        return;
-    }
-
-    if (flow_bulk_session_id != SAI_NULL_OBJECT_ID)
-    {
-        auto ot = objectTypeQuery(flow_bulk_session_id);
-
-        if (ot != (sai_object_type_t)SAI_OBJECT_TYPE_FLOW_ENTRY_BULK_GET_SESSION)
-        {
-            SWSS_LOG_ERROR("flow_bulk_session_id %s has unexpected type: %s",
-                    sai_serialize_object_id(flow_bulk_session_id).c_str(),
-                    sai_serialize_object_type(ot).c_str());
-            return ;
-        }
-
-        if (!m_oids.objectReferenceExists(flow_bulk_session_id))
-        {
-            SWSS_LOG_NOTICE("flow_bulk_session_id new object spotted %s not present in local DB (snoop!)",
-                    sai_serialize_object_id(flow_bulk_session_id).c_str());
-
-            sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = flow_bulk_session_id } } };
-
-            m_oids.objectReferenceInsert(flow_bulk_session_id);
-
-            if (!m_saiObjectCollection.objectExists(key))
-            {
-                m_saiObjectCollection.createObject(key);
-            }
-        }
     }
 }
 
