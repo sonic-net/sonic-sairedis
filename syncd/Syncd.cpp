@@ -1085,9 +1085,9 @@ bool Syncd::applyAiedAlgorithm(
     std::string portVidStr = sai_serialize_object_id(portVid);
 
     // Validate configuration
-    if (state.aied_config.decay_half_life != 0 ||
-        state.aied_config.max_suppress_time != 0 ||
-	state.aied_config.decay_half_life > state.aied_config.max_suppress_time)
+    if ((state.aied_config.decay_half_life == 0) ||
+        (state.aied_config.max_suppress_time == 0) ||
+	(state.aied_config.decay_half_life > state.aied_config.max_suppress_time))
     {
         SWSS_LOG_WARN("Port VID %s invalid damping configuration: "
              "decay_half_life (%u ms) max_suppress_time (%u ms). Damping disabled.",
