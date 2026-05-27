@@ -1532,7 +1532,20 @@ public:
             std::vector<uint64_t> stats(statIds.size(), 0);
             if (!collectData(rid, statIds, effective_stats_mode, true, stats))
             {
-                SWSS_LOG_ERROR("counter read failed on RID 0x%" PRIx64 " on intf 0x%" PRIx64, rid, vid);
+                if (m_failedPolls.find({rid, vid}) == m_failedPolls.end())
+                {
+                    m_failedPolls[{rid, vid}] = 1;
+                    SWSS_LOG_DEBUG("counter read failed 1 time on RID 0x%" PRIx64 " on intf 0x%" PRIx64, rid, vid);
+                }
+                else if (m_failedPolls[{rid, vid}] < 3)
+                {
+                    m_failedPolls[{rid, vid}] += 1;
+                    SWSS_LOG_DEBUG("counter read failed %d times on RID 0x%" PRIx64 " on intf 0x%" PRIx64, m_failedPolls[{rid, vid}], rid, vid);
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("counter read failed more than 3 times on RID 0x%" PRIx64 " on intf 0x%" PRIx64, rid, vid);
+                }
                 continue;
             }
 

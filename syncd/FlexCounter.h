@@ -78,6 +78,7 @@ namespace syncd
         std::string m_instanceId;
         std::set<std::string> m_plugins;
         std::string m_bulkChunkSizePerPrefix;
+        std::map<std::pair<sai_object_id_t, sai_object_id_t>, uint32_t> m_failedPolls;
 
     public:
         bool always_check_supported_counters = false;
