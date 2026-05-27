@@ -936,13 +936,13 @@ sai_status_t Syncd::processLinkEventDampingConfigSet(
                 sai_redis_link_event_damping_algorithm_t algo;
                 sai_deserialize_redis_link_event_damping_algorithm(strAttrValue, algo);
 
-		SWSS_LOG_INFO("setting link event damping algorithm on port %s: %d",
+                SWSS_LOG_INFO("setting link event damping algorithm on port %s: %d",
                         strObjectId.c_str(), algo);
 
-		// Link event damping is a software-only feature as of now
+                // Link event damping is a software-only feature as of now
                 // Store the configuration locally for use in notification
                 // processing.
-		dampingState.algorithm = algo;
+                dampingState.algorithm = algo;
 
                 status = SAI_STATUS_SUCCESS;
                 break;
@@ -955,19 +955,19 @@ sai_status_t Syncd::processLinkEventDampingConfigSet(
 
                 sai_deserialize_redis_link_event_damping_aied_config(strAttrValue, config);
 
-		SWSS_LOG_INFO("setting link event damping AIED config on port %s: "
+                SWSS_LOG_INFO("setting link event damping AIED config on port %s: "
                         "max_suppress_time=%u, suppress_threshold=%u, "
                         "reuse_threshold=%u, decay_half_life=%u, flap_penalty=%u",
                         strObjectId.c_str(), config.max_suppress_time,
-			config.suppress_threshold, config.reuse_threshold,
-			config.decay_half_life, config.flap_penalty);
+                        config.suppress_threshold, config.reuse_threshold,
+                        config.decay_half_life, config.flap_penalty);
 
-		// Link event damping is a software-only feature as of now
+                // Link event damping is a software-only feature as of now
                 // Store the configuration locally for use in notification
                 // processing.
-		dampingState.aied_config = config;
+                dampingState.aied_config = config;
 
-		status = SAI_STATUS_SUCCESS;
+                status = SAI_STATUS_SUCCESS;
                 break;
             }
 
@@ -1087,7 +1087,7 @@ bool Syncd::applyAiedAlgorithm(
     // Validate configuration
     if ((state.aied_config.decay_half_life == 0) ||
         (state.aied_config.max_suppress_time == 0) ||
-	(state.aied_config.decay_half_life > state.aied_config.max_suppress_time))
+        (state.aied_config.decay_half_life > state.aied_config.max_suppress_time))
     {
         SWSS_LOG_WARN("Port VID %s invalid damping configuration: "
              "decay_half_life (%u ms) max_suppress_time (%u ms). Damping disabled.",
@@ -1375,7 +1375,7 @@ bool Syncd::applyLinkEventDamping(
             return applyAiedAlgorithm(portVid, state, newStatus, currentTimeMs);
 
         case SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED:
-	    SWSS_LOG_INFO("Damping algorithm disabled: %d", state.algorithm);
+            SWSS_LOG_INFO("Damping algorithm disabled: %d", state.algorithm);
             return false;
 
         default:

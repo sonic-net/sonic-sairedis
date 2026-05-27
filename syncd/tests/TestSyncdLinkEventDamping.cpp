@@ -182,7 +182,7 @@ public:
     {
         SWSS_LOG_ENTER();
 
-	// uninitialize SAI redis
+        // uninitialize SAI redis
 
         auto status = m_sairedis->apiUninitialize();
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
