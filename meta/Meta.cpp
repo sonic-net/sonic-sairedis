@@ -155,6 +155,8 @@ Meta::Meta(
     // then warm boot must be per each switch
 
     m_warmBoot = false;
+
+    SWSS_LOG_NOTICE("DASH meta-cache policy: %s", saimeta::dashCacheModeName());
 }
 
 sai_status_t Meta::apiInitialize(
