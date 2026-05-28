@@ -1,5 +1,6 @@
 #include "Meta.h"
 
+#include "DashMeta.h"
 #include "swss/logger.h"
 #include "sai_serialize.h"
 
@@ -165,6 +166,8 @@ Meta::Meta(
     // then warm boot must be per each switch
 
     m_warmBoot = false;
+
+    SWSS_LOG_NOTICE("DASH meta-cache policy: %s", saimeta::dashCacheModeName());
 }
 
 sai_status_t Meta::apiInitialize(
@@ -1572,6 +1575,11 @@ sai_status_t Meta::meta_generic_validation_remove(
 {
     SWSS_LOG_ENTER();
 
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     if (!m_saiObjectCollection.objectExists(meta_key))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
@@ -1868,6 +1876,11 @@ void Meta::meta_generic_validation_post_remove(
         _In_ const sai_object_meta_key_t& meta_key)
 {
     SWSS_LOG_ENTER();
+
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return;
+    }
 
     if (meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
     {
@@ -3037,6 +3050,11 @@ sai_status_t Meta::meta_sai_validate_inbound_routing_entry(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    if (saimeta::bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     sai_object_meta_key_t meta_key_inbound_routing_entry = {
         .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY,
         .objectkey = {
@@ -3129,6 +3147,11 @@ sai_status_t Meta::meta_sai_validate_outbound_routing_entry(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    if (saimeta::bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     sai_object_meta_key_t meta_key_outbound_routing_entry = {
         .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY,
         .objectkey = {
@@ -3173,6 +3196,11 @@ sai_status_t Meta::meta_sai_validate_outbound_ca_to_pa_entry(
         SWSS_LOG_ERROR("outbound_ca_to_pa_entry pointer is NULL");
 
         return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (saimeta::bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY))
+    {
+        return SAI_STATUS_SUCCESS;
     }
 
     sai_object_meta_key_t meta_key_outbound_ca_to_pa_entry = {
@@ -3328,6 +3356,11 @@ sai_status_t Meta::meta_generic_validation_create(
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
 
     if (attr_count > MAX_LIST_COUNT)
     {
@@ -4068,6 +4101,11 @@ sai_status_t Meta::meta_generic_validation_set(
 {
     SWSS_LOG_ENTER();
 
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     if (attr == NULL)
     {
         SWSS_LOG_ERROR("attribute pointer is NULL");
@@ -4576,6 +4614,11 @@ sai_status_t Meta::meta_generic_validation_get(
 {
     SWSS_LOG_ENTER();
 
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     if (attr_count < 1)
     {
         SWSS_LOG_ERROR("expected at least 1 attribute when calling get, zero given");
@@ -4916,6 +4959,11 @@ void Meta::meta_generic_validation_post_get(
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return;
+    }
 
     switch_id = meta_extract_switch_id(meta_key, switch_id);
 
@@ -5766,6 +5814,11 @@ void Meta::meta_generic_validation_post_create(
 {
     SWSS_LOG_ENTER();
 
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return;
+    }
+
     bool connectToSwitch = false;
 
     if (meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
@@ -6070,7 +6123,10 @@ void Meta::meta_generic_validation_post_create(
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
 
-        m_saiObjectCollection.setObjectAttr(meta_key, md, attr);
+        if (saimeta::shouldCacheAttribute(meta_key.objecttype, md))
+        {
+            m_saiObjectCollection.setObjectAttr(meta_key, md, attr);
+        }
     }
 
     if (haskeys)
@@ -6088,6 +6144,11 @@ void Meta::meta_generic_validation_post_set(
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
+
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return;
+    }
 
     auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 
@@ -6314,7 +6375,10 @@ void Meta::meta_generic_validation_post_set(
     // only on create we need to increase entry object types members
     // save actual attributes and values to local db
 
-    m_saiObjectCollection.setObjectAttr(meta_key, md, attr);
+    if (saimeta::shouldCacheAttribute(meta_key.objecttype, md))
+    {
+        m_saiObjectCollection.setObjectAttr(meta_key, md, attr);
+    }
 }
 
 bool Meta::meta_unittests_get_and_erase_set_readonly_flag(

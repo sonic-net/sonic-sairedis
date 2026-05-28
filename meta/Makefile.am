@@ -55,6 +55,7 @@ libsaimeta_la_SOURCES = \
 				SaiInterface.cpp \
 				SaiObject.cpp \
 				SaiObjectCollection.cpp \
+				DashMeta.cpp \
 				SaiSerialize.cpp \
 				SelectableChannel.cpp \
 				DummySaiInterface.cpp \
