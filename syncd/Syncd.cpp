@@ -891,11 +891,19 @@ sai_status_t Syncd::processLinkEventDampingConfigSet(
     }
 
     sai_object_id_t portVid;
-    sai_deserialize_object_id(strObjectId, portVid);
-
-    // Validate that the port exists by translating VID to RID
     sai_object_id_t portRid;
 
+    sai_deserialize_object_id(strObjectId, portVid);
+
+    // Reject NULL object ID explicitly
+    if (portVid == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("invalid port VID: NULL object id");
+        sendLinkEventDampingConfigResponse(SAI_STATUS_INVALID_PARAMETER);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // Validate that the port exists by translating VID to RID
     if (!m_translator->tryTranslateVidToRid(portVid, portRid))
     {
         SWSS_LOG_ERROR("failed to translate port VID to RID");
