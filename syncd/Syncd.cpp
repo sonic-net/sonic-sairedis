@@ -1023,6 +1023,8 @@ void Syncd::sendLinkEventDampingConfigResponse(
 
 uint64_t Syncd::getCurrentTimeMs()
 {
+    SWSS_LOG_ENTER();
+
     auto now = std::chrono::steady_clock::now();
     auto duration = now.time_since_epoch();
     return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
@@ -1298,7 +1300,7 @@ bool Syncd::applyAiedAlgorithm(
                     "duration >= max_suppress_time", portVidStr.c_str());
         }
     }
-    else 
+    else
     {
         // Damping is NOT active OR this is the threshold-crossing event - propagate the notification
         should_suppress = false;
