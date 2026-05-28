@@ -12,13 +12,12 @@ using namespace saimeta;
 namespace
 {
     /*
-     * Meta-cache policy for DASH SAI entry types only. Non-DASH object
-     * types are unaffected and always behave as FULL.
-     *
-     *   FULL                cache every attribute (upstream default)
-     *   EXISTENCE_REFCOUNT  cache key + OID attrs only (OidRefCounter
-     *                       still works; non-OID payloads not deep-copied)
-     *   NONE                pass-through, skip all meta bookkeeping
+     * Meta-cache policy for DASH object types only. Non-DASH objects
+     * always behave as FULL.
+     * 
+     *   FULL                cache every attribute
+     *   EXISTENCE_REFCOUNT  cache key + OID attrs only
+     *   NONE                pass-through, no caching
      */
     enum class DashCacheMode
     {
@@ -27,17 +26,11 @@ namespace
         NONE,
     };
 
-    constexpr DashCacheMode kDashCacheMode = DashCacheMode::NONE;
+    constexpr DashCacheMode kDashCacheMode = DashCacheMode::EXISTENCE_REFCOUNT;
 
     /*
-     * Hard-coded allow-list of DASH object types this policy applies to.
-     *
-     * Scoped to the three high-volume DASH entry types that dominate
-     * orchagent's meta-cache footprint at smart-switch scale (issue #26683):
-     *
-     *   - OUTBOUND_CA_TO_PA_ENTRY
-     *   - OUTBOUND_ROUTING_ENTRY
-     *   - INBOUND_ROUTING_ENTRY
+     * Hard-coded list of DASH object types that cache policies apply to.
+     * Currently scoped to the high-volume DASH entry types identified in Issue #26683
      */
     constexpr sai_object_type_t kDashTypes[] =
     {
