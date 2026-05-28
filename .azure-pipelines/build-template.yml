@@ -140,7 +140,7 @@ jobs:
       path: $(Build.ArtifactStagingDirectory)/download
       artifact: common-lib
       patterns: |
-        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libyang3_*.deb
     displayName: "Download libyang from amd64 common lib"
   - task: DownloadPipelineArtifact@2
     condition: and(ne('${{ parameters.debian_version }}', 'trixie'), ne('${{ parameters.arch }}', 'amd64'))
@@ -153,7 +153,7 @@ jobs:
       path: $(Build.ArtifactStagingDirectory)/download
       artifact: common-lib.${{ parameters.arch }}
       patterns: |
-        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libyang3_*.deb
   - task: DownloadPipelineArtifact@2
     condition: and(eq('${{ parameters.debian_version }}', 'trixie'), eq('${{ parameters.arch }}', 'amd64'))
     inputs:
@@ -165,7 +165,7 @@ jobs:
       path: $(Build.ArtifactStagingDirectory)/download
       artifact: common-lib
       patterns: |
-        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libyang3_*.deb
         target/debs/${{ parameters.debian_version }}/libpcre3_*.deb
     displayName: "Download libyang from amd64 common lib"
   - task: DownloadPipelineArtifact@2
@@ -179,7 +179,7 @@ jobs:
       path: $(Build.ArtifactStagingDirectory)/download
       artifact: common-lib.${{ parameters.arch }}
       patterns: |
-        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libyang3_*.deb
         target/debs/${{ parameters.debian_version }}/libpcre3_*.deb
     displayName: "Download libyang from common lib"
   - script: |
