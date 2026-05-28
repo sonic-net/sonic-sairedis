@@ -175,7 +175,7 @@ jobs:
       sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i $(find ./download -name libyang_*.deb)
       sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i $(find ./download -name *.deb)
       rm -rf download || true
-      cat /etc/apt/sources.list
+      sudo cat /etc/apt/sources.list
       dpkg --list |grep libnl
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install libnl3, sonic swss common, and sairedis"

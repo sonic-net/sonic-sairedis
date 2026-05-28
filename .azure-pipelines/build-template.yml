@@ -112,7 +112,7 @@ jobs:
       sudo apt-get install -y rsyslog
       sudo rsyslogd
 
-      cat /etc/apt/sources.list
+      sudo cat /etc/apt/sources.list
       dpkg --list | grep libnl
 
     displayName: "Install dependencies"
