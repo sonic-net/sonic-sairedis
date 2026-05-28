@@ -227,8 +227,9 @@ jobs:
     displayName: "Download sonic swss common deb packages"
   - script: |
       set -ex
-      sudo dpkg -i download/libswsscommon_1.0.0_${{ parameters.arch }}.deb
-      sudo dpkg -i download/libswsscommon-dev_1.0.0_${{ parameters.arch }}.deb
+      sudo apt-get update
+      sudo apt-get install -y ./download/libswsscommon_1.0.0_${{ parameters.arch }}.deb \
+      ./download/libswsscommon-dev_1.0.0_${{ parameters.arch }}.deb
       rm -rf download
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install sonic swss Common"
