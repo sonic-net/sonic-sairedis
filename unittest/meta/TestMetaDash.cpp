@@ -1501,7 +1501,7 @@ TEST(DashMeta, dashEntryRemove_MissingResultMatchesPolicy)
 
     const sai_status_t expected = dashBypassActive()
         ? SAI_STATUS_SUCCESS
-        : SAI_STATUS_ITEM_NOT_FOUND;
+        : SAI_STATUS_INVALID_PARAMETER;
 
     EXPECT_EQ(expected, m.remove(&entry))
             << "policy=" << dashCacheModeName();
