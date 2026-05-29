@@ -52,7 +52,7 @@ namespace syncd
         sai_port_oper_status_t last_suppressed_status; // Last event suppressed while damping
         bool pending_state_sync;            // Flag to indicate state mismatch needs propagation
 
-        // Counters for observability
+        // Counters for monitoring
         uint64_t pre_damping_link_transitions;
         uint64_t pre_damping_up_events;
         uint64_t pre_damping_down_events;

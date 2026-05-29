@@ -1466,7 +1466,7 @@ void Syncd::checkDampedPortsTimeout()
             // Write updated state to STATE_DB after exiting damping
             writeDampingCountersToStateDb(portVid, state);
 
-            // Skip to next port since we've already handled this one
+            // Skip to next port since we have already handled this one
             continue;
         }
 
@@ -1575,7 +1575,7 @@ void Syncd::dampingTimerThreadFunc()
                 break;
             }
 
-            // Check if still running (in case of spurious wakeup)
+            // Check if still running (in case of spurious wake up)
             if (!m_runDampingTimerThread)
             {
                 break;
