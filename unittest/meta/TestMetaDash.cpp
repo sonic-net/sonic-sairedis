@@ -1485,6 +1485,8 @@ TEST(DashMeta, dashEntryRemove_MissingResultMatchesPolicy)
     Meta m(std::make_shared<MetaTestSaiInterface>());
 
     sai_object_id_t switchid = create_switch(m);
+    sai_object_id_t vnet = create_vnet(m, switchid, 99);
+    sai_object_id_t eni = create_eni(m, switchid, vnet);
 
     sai_ip_address_t sip, sip_mask;
     sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
@@ -1493,7 +1495,7 @@ TEST(DashMeta, dashEntryRemove_MissingResultMatchesPolicy)
     inet_pton(AF_INET, "255.255.255.255", &sip_mask.addr.ip4);
 
     sai_inbound_routing_entry_t entry = {
-        .switch_id = switchid, .eni_id = SAI_NULL_OBJECT_ID, .vni = 99,
+        .switch_id = switchid, .eni_id = eni, .vni = 99,
         .sip = sip, .sip_mask = sip_mask, .priority = 1
     };
 
@@ -1503,6 +1505,9 @@ TEST(DashMeta, dashEntryRemove_MissingResultMatchesPolicy)
 
     EXPECT_EQ(expected, m.remove(&entry))
             << "policy=" << dashCacheModeName();
+
+    remove_eni(m, eni);
+    remove_vnet(m, vnet);
 }
 
 TEST(DashMeta, dashEntryCreate_DuplicateResultMatchesPolicy)
