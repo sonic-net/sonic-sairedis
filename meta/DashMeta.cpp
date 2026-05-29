@@ -14,7 +14,7 @@ namespace
     /*
      * Meta-cache policy for DASH object types only. Non-DASH objects
      * always behave as FULL.
-     * 
+     *
      *   FULL                cache every attribute
      *   EXISTENCE_REFCOUNT  cache key + OID attrs only
      *   NONE                pass-through, no caching
