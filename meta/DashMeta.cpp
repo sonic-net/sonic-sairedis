@@ -68,10 +68,6 @@ bool saimeta::bypassValidation(sai_object_type_t ot)
         return false;
     }
 
-    SWSS_LOG_DEBUG("DASH policy active for object type %s (mode=%s)",
-            sai_serialize_object_type(ot).c_str(),
-            dashCacheModeName());
-
     return kDashCacheMode == DashCacheMode::NONE;
 }
 
@@ -104,4 +100,19 @@ const char* saimeta::dashCacheModeName()
         case DashCacheMode::NONE:               return "NONE";
     }
     return "UNKNOWN";
+}
+
+void saimeta::logDashPolicy()
+{
+    SWSS_LOG_ENTER();
+
+    std::string types;
+    for (auto t : kDashTypes)
+    {
+        types += sai_serialize_object_type(t) + " ";
+    }
+
+    SWSS_LOG_NOTICE("DASH meta-cache policy: mode=%s, object_types=[ %s]",
+            dashCacheModeName(),
+            types.c_str());
 }

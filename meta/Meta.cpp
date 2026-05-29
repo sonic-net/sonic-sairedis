@@ -167,7 +167,7 @@ Meta::Meta(
 
     m_warmBoot = false;
 
-    SWSS_LOG_NOTICE("DASH meta-cache policy: %s", saimeta::dashCacheModeName());
+    saimeta::logDashPolicy();
 }
 
 sai_status_t Meta::apiInitialize(

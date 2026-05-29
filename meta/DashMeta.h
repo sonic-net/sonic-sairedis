@@ -31,4 +31,6 @@ namespace saimeta
      *        meta-cache mode (e.g. "FULL", "EXISTENCE_REFCOUNT", "NONE").
      */
     const char* dashCacheModeName();
+
+    void logDashPolicy();
 }
