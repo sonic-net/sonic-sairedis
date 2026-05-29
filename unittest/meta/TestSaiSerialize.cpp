@@ -1640,7 +1640,19 @@ TEST(SaiSerialize, sai_serialize_flow_bulk_get_session_event_ntf_null_data)
 {
     SWSS_LOG_ENTER();
 
-    EXPECT_THROW(sai_serialize_flow_bulk_get_session_event_ntf(0x123456789abcdef, 1, nullptr), std::runtime_error);
+    const sai_object_id_t flow_bulk_session_id = 0x123456789abcdef;
+    std::string serialized = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, 1, nullptr);
+
+    sai_object_id_t deserialized_session_id;
+    uint32_t deserialized_count;
+    sai_flow_bulk_get_session_event_data_t* deserialized_data;
+
+    sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
+
+    EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
+    EXPECT_EQ(deserialized_count, 0u);
+
+    sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
 }
 
 TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_single_finished)
@@ -1704,19 +1716,38 @@ TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_mul
     sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
 
     EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
-    EXPECT_EQ(deserialized_count, count);
+    EXPECT_EQ(deserialized_count, 1u);
 
-    EXPECT_EQ(deserialized_data[0].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY);
+    EXPECT_EQ(deserialized_data[0].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED);
     EXPECT_EQ(deserialized_data[0].attr_count, 0);
     EXPECT_EQ(deserialized_data[0].attr, nullptr);
 
-    EXPECT_EQ(deserialized_data[1].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED);
-    EXPECT_EQ(deserialized_data[1].attr_count, 0);
-    EXPECT_EQ(deserialized_data[1].attr, nullptr);
+    sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
+}
 
-    EXPECT_EQ(deserialized_data[2].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY);
-    EXPECT_EQ(deserialized_data[2].attr_count, 0);
-    EXPECT_EQ(deserialized_data[2].attr, nullptr);
+TEST(SaiSerialize, sai_serialize_flow_bulk_get_session_event_ntf_flow_entry_only_empty_data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t flow_bulk_session_id = 0xabcdef1234567890;
+    uint32_t count = 2;
+    sai_flow_bulk_get_session_event_data_t event_data[2];
+
+    memset(event_data, 0, sizeof(event_data));
+
+    event_data[0].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY;
+    event_data[1].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY;
+
+    std::string serialized = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, count, event_data);
+
+    sai_object_id_t deserialized_session_id;
+    uint32_t deserialized_count;
+    sai_flow_bulk_get_session_event_data_t* deserialized_data;
+
+    sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
+
+    EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
+    EXPECT_EQ(deserialized_count, 0u);
 
     sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
 }
@@ -1743,7 +1774,7 @@ TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_emp
     sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
 
     EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
-    EXPECT_EQ(deserialized_count, 0);
+    EXPECT_EQ(deserialized_count, 0u);
 
     sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
 }
