@@ -105,6 +105,8 @@ extern "C" {
         VPP_IP_API_FLOW_HASH_REVERSE = 32,
         VPP_IP_API_FLOW_HASH_SYMETRIC = 64,
         VPP_IP_API_FLOW_HASH_FLOW_LABEL = 128,
+        VPP_IP_API_FLOW_HASH_GTPV1_TEID = 256,
+        VPP_IP_API_FLOW_HASH_PEEK_INNER = 512,
     } vpp_ip_flow_hash_mask_e;
 
     typedef enum {
@@ -246,6 +248,15 @@ typedef enum {
   VPP_BOND_API_LB_ALGO_RR = 3,
   VPP_BOND_API_LB_ALGO_BC = 4,
   VPP_BOND_API_LB_ALGO_AB = 5,
+  /*
+   * VPP's inner-aware LAG hash algorithm (added in
+   * sonic-platform-vpp patch 0010-sonic-inner-aware-flow-hash).
+   * Mirrors BOND_API_LB_ALGO_L34_INNER in src/vnet/bonding/bond.api,
+   * which is annotated [backwards_compatible] so adding this value
+   * does not change the CRC of any bond_create* /
+   * sw_interface_bond_details / sw_bond_interface_details message.
+   */
+  VPP_BOND_API_LB_ALGO_L34_INNER = 6,
 }  vpp_bond_lb_algo;
 
     typedef struct  _vpp_vxlan_tunnel {
