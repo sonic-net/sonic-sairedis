@@ -1,9 +1,38 @@
 #pragma once
 
+#include <cstdint>
+
 #include "SwitchConfigContainer.h"
 
 namespace sairedis
 {
+    /**
+     * @brief Per-context ZMQ enablement intent expressed in context_config.json.
+     *
+     * Three states are required because a context can set zmq_enable to true,
+     * set it to false, or omit the key entirely. The omitted case must remain
+     * distinguishable from an explicit false so reconciliation can defer to
+     * the command-line mode (-z zmq_sync) instead of overriding it.
+     */
+    typedef enum _context_config_zmq_state_t : uint8_t {
+
+        /**
+         * @brief Key absent in JSON. Defer to the command-line mode.
+         */
+        CONTEXT_CONFIG_ZMQ_EMPTY,
+
+        /**
+         * @brief zmq_enable: true. Lock to ZMQ; the command line cannot downgrade.
+         */
+        CONTEXT_CONFIG_ZMQ_ENABLED,
+
+        /**
+         * @brief zmq_enable: false. Lock to Redis; the command line cannot upgrade.
+         */
+        CONTEXT_CONFIG_ZMQ_DISABLED,
+
+    } context_config_zmq_state_t;
+
     class ContextConfig
     {
         public:
@@ -40,9 +69,7 @@ namespace sairedis
 
             std::string m_dbState;
 
-            bool m_zmqEnable;
-
-            bool m_loadedFromJson;
+            context_config_zmq_state_t m_zmqEnable;
 
             std::string m_zmqEndpoint;
 

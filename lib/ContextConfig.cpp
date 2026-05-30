@@ -17,8 +17,7 @@ ContextConfig::ContextConfig(
     m_dbCounters(dbCounters),
     m_dbFlex(dbFlex),
     m_dbState(dbState),
-    m_zmqEnable(false),
-    m_loadedFromJson(false),
+    m_zmqEnable(CONTEXT_CONFIG_ZMQ_EMPTY),
     m_zmqEndpoint("tcp://127.0.0.1:5555"),
     m_zmqNtfEndpoint("tcp://127.0.0.1:5556")
 {
@@ -79,16 +78,46 @@ bool ContextConfig::hasConflict(
 
     // state database can be shared
 
+    // When both contexts have CONTEXT_CONFIG_ZMQ_EMPTY, neither one has
+    // expressed an opinion about ZMQ in the config file. Matching
+    // endpoints are usually the shared constructor defaults from an
+    // ordinary non-ZMQ multi-context layout that omits the optional
+    // zmq_endpoint fields, so the loader must not reject the file. The
+    // match is still worth flagging in the log: if a cmdline override
+    // later promotes both contexts to ZMQ they will collide at bind
+    // time, and an operator scanning startup logs gets a hint at why.
+    bool bothZmqEmpty =
+            m_zmqEnable == CONTEXT_CONFIG_ZMQ_EMPTY
+            && ctx->m_zmqEnable == CONTEXT_CONFIG_ZMQ_EMPTY;
+
     if (m_zmqEndpoint == ctx->m_zmqEndpoint)
     {
-        SWSS_LOG_ERROR("zmqEndpoint %s conflict", m_zmqEndpoint.c_str());
-        return true;
+        if (bothZmqEmpty)
+        {
+            SWSS_LOG_WARN("zmqEndpoint %s matches between EMPTY contexts; "
+                    "cmdline ZMQ promotion would collide at bind",
+                    m_zmqEndpoint.c_str());
+        }
+        else
+        {
+            SWSS_LOG_ERROR("zmqEndpoint %s conflict", m_zmqEndpoint.c_str());
+            return true;
+        }
     }
 
     if (m_zmqNtfEndpoint == ctx->m_zmqNtfEndpoint)
     {
-        SWSS_LOG_ERROR("zmqNtfEndpoint %s conflict", m_zmqNtfEndpoint.c_str());
-        return true;
+        if (bothZmqEmpty)
+        {
+            SWSS_LOG_WARN("zmqNtfEndpoint %s matches between EMPTY contexts; "
+                    "cmdline ZMQ promotion would collide at bind",
+                    m_zmqNtfEndpoint.c_str());
+        }
+        else
+        {
+            SWSS_LOG_ERROR("zmqNtfEndpoint %s conflict", m_zmqNtfEndpoint.c_str());
+            return true;
+        }
     }
 
     return false;

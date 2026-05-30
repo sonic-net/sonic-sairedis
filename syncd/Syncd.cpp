@@ -84,14 +84,20 @@ Syncd::Syncd(
         SWSS_LOG_THROW("no context config defined at global context %u", m_commandLineOptions->m_globalContext);
     }
 
-    if (m_commandLineOptions->m_enableSyncMode
-            && !(m_contextConfig->m_loadedFromJson && m_contextConfig->m_zmqEnable))
+    // Resolved per-process transport decision. Derived from the file's
+    // opinion (m_zmqEnable) and then adjusted by the deprecated -s and
+    // the -z command-line reconciles below. m_zmqEnable itself stays at
+    // the parsed value so any future code that needs the file's intent
+    // can still ask for it.
+    bool zmqActive = (m_contextConfig->m_zmqEnable == sairedis::CONTEXT_CONFIG_ZMQ_ENABLED);
+
+    if (m_commandLineOptions->m_enableSyncMode && m_contextConfig->m_zmqEnable != sairedis::CONTEXT_CONFIG_ZMQ_ENABLED)
     {
         SWSS_LOG_WARN("enable sync mode is deprecated, please use communication mode, FORCING redis sync mode");
 
         m_enableSyncMode = true;
 
-        m_contextConfig->m_zmqEnable = false;
+        zmqActive = false;
 
         m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
     }
@@ -100,12 +106,14 @@ Syncd::Syncd(
     {
         // If context_config.json explicitly set zmq_enable=false,
         // respect it and fall back to Redis sync
-        if (m_contextConfig->m_loadedFromJson && !m_contextConfig->m_zmqEnable)
+        if (m_contextConfig->m_zmqEnable == sairedis::CONTEXT_CONFIG_ZMQ_DISABLED)
         {
             SWSS_LOG_NOTICE("context %u: zmq_enable=false in context config, falling back to Redis sync",
                     m_contextConfig->m_guid);
 
             m_enableSyncMode = true;
+
+            zmqActive = false;
 
             m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
         }
@@ -113,7 +121,7 @@ Syncd::Syncd(
         {
             SWSS_LOG_NOTICE("zmq sync mode enabled via cmd line for context %u", m_contextConfig->m_guid);
 
-            m_contextConfig->m_zmqEnable = true;
+            zmqActive = true;
 
             m_enableSyncMode = true;
         }
@@ -136,7 +144,7 @@ Syncd::Syncd(
     m_dbAsic = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
     m_mdioIpcServer = std::make_shared<MdioIpcServer>(m_vendorSai, m_commandLineOptions->m_globalContext);
 
-    if (m_contextConfig->m_zmqEnable)
+    if (zmqActive)
     {
         m_notifications = std::make_shared<ZeroMQNotificationProducer>(m_contextConfig->m_zmqNtfEndpoint);
 
@@ -170,8 +178,9 @@ Syncd::Syncd(
 
     bool isDpuSwitch = switchType == "dpu";
 
-    if (m_contextConfig->m_zmqEnable && isDpuSwitch && !isVirtualSwitch)
+    if (zmqActive && isDpuSwitch && !isVirtualSwitch)
     {
+        // For DPU switches, disable Redis writes to maintain backwards compatibility with PR #1694
         m_client = std::make_shared<DisabledRedisClient>();
     }
     else
