@@ -218,9 +218,6 @@ namespace saivs
                     _In_ const char *dev,
                     _In_ const sai_mac_t& mac);
 
-            static int promisc(
-                    _In_ const char *dev);
-
             static sai_status_t add_tc_filter_redirect(
                     _In_ const std::string& tap,
                     _In_ const std::string& hostIfname);

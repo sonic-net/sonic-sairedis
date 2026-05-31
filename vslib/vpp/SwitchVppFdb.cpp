@@ -843,6 +843,12 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
         return SAI_STATUS_FAILURE;
     }
 
+    // Enslaving a port into the bond clears its promiscuous flag in VPP, so
+    // re-apply it here. L3 traffic forwarded over the PortChannel arrives with
+    // the common SONiC router MAC (different from the member's hardware MAC),
+    // which the member can only receive in promiscuous mode.
+    interface_set_promiscuous(hwifname, true);
+
     if (!bond_info.lcp_created) {
         // create tap and lcp for the Bond intf after first member is added to ensure tap mac = member mac = bond mac
         std::ostringstream tap_stream;

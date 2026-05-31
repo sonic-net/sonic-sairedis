@@ -96,14 +96,6 @@ int SwitchVpp::vs_set_dev_mac_address(
     return err;
 }
 
-int SwitchVpp::promisc(
-        _In_ const char *dev)
-{
-    SWSS_LOG_ENTER();
-
-    return 0;
-}
-
 sai_status_t SwitchVpp::add_tc_filter_redirect(
         _In_ const std::string& tap,
         _In_ const std::string& hostIfname)
@@ -433,6 +425,8 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
     const char *hwif_name = tap_to_hwif_name(dev);
 
     configure_lcp_interface(hwif_name, dev, true);
+
+    interface_set_promiscuous(hwif_name, true);
 
     {
         bool link_up = false;
