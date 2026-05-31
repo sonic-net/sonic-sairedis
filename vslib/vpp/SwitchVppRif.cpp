@@ -888,16 +888,20 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
 
     if (ret == 0)
     {
-        /*
-         * Note: warm-arp is intentionally NOT called here. orchagent emits
-         * two ROUTE_ENTRY events per sub-port connected route (next_hop=PORT
-         * and next_hop=SUB_PORT RIF, both targeting this VPP interface and
-         * prefix). Calling warm-arp from both helpers would double the
-         * probe load. The PORT-next_hop branch in
-         * SwitchVppRoute::IpRouteAddRemove routes through
-         * vpp_add_del_intf_ip_addr_norif and fires warm-arp once there,
-         * covering both plain L3 ports and sub-ports.
-         */
+        if (is_add)
+        {
+            /*
+             * Warm-arp here as well as in the PORT-next_hop branch
+             * (vpp_add_del_intf_ip_addr_norif): on sub-port recreate
+             * orchagent only re-emits the SUB_PORT-next_hop ROUTE_ENTRY,
+             * so without this the kernel ARP cache stays empty and
+             * DUT-originated traffic on the recreated sub-port is dropped.
+             * The helper is idempotent/detached, so the extra probe on
+             * initial create is harmless.
+             */
+            vpp_warm_arp_for_subnet_peers(std::string(linux_ifname),
+                                          intf_ip_prefix);
+        }
         return SAI_STATUS_SUCCESS;
     }
     else {
@@ -1144,13 +1148,9 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
              * /29..31 subnet so the first PTF probe doesn't get dropped
              * in VPP's ip4-glean. See helper above for full rationale.
              *
-             * Single warm-arp call site: this helper is reached from the
-             * PORT-next_hop branch in SwitchVppRoute::IpRouteAddRemove,
-             * which fires for both plain L3 ports AND sub-ports (orchagent
-             * emits a PORT-next_hop ROUTE_ENTRY per sub-port in addition to
-             * the SUB_PORT-next_hop event). The SUB_PORT branch routes
-             * through vpp_add_del_intf_ip_addr() which deliberately does
-             * NOT fire warm-arp, to avoid duplicate probes.
+             * Also fired from vpp_add_del_intf_ip_addr() for the
+             * SUB_PORT-next_hop recreate case; the duplicate probe on
+             * initial create is at most one extra UDP packet per peer.
              */
             vpp_warm_arp_for_subnet_peers(std::string(linux_ifname), intf_ip_prefix);
         }
