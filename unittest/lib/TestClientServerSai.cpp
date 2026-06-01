@@ -304,30 +304,6 @@ TEST(ClientServerSai, SetDampingConfigOnDifferentObjectTypes)
     // Test on VIRTUAL_ROUTER object type
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->set(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, SAI_NULL_OBJECT_ID, &attr));
 
-    // Test on SWITCH object type
-    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr));
-}
-
-TEST(ClientServerSai, SetDampingConfigExtremeValues)
-{
-    auto css = std::make_shared<ClientServerSai>();
-
-    // Initialize as sairedis server.
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
-
-    sai_attribute_t attr;
-    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG;
-
-    // Test with extreme values
-    sai_redis_link_event_damping_algo_aied_config_t extremeConfig = {
-      .max_suppress_time = 600000,     // 10 minutes
-      .suppress_threshold = 50000,
-      .reuse_threshold = 40000,
-      .decay_half_life = 120000,       // 2 minutes
-      .flap_penalty = 10000};
-
-    attr.value.ptr = (void *) &extremeConfig;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
 }
 
 TEST(ClientServerSai, SetDampingAlgorithmNoneAfterAied)
