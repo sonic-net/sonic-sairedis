@@ -305,7 +305,7 @@ TEST(ClientServerSai, SetDampingConfigOnDifferentObjectTypes)
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->set(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, SAI_NULL_OBJECT_ID, &attr));
 
     // Test on SWITCH object type
-    EXPECT_EQ(SAI_STATUS_FAILURE, css->set(SAI_STATUS_INVALID_PARAMETER, SAI_NULL_OBJECT_ID, &attr));
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr));
 }
 
 TEST(ClientServerSai, SetDampingConfigExtremeValues)
