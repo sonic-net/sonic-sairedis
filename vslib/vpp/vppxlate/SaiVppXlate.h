@@ -328,6 +328,12 @@ typedef enum {
     extern int vpp_sidlist_del(vpp_ip_addr_t *bsid);
     extern int vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del);
     extern int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src);
+
+/* SPAN (port mirroring) */
+extern int vpp_span_enable_disable(uint32_t sw_if_index_from,
+                                   uint32_t sw_if_index_to, 
+                                   uint8_t state, /* 0 = disable */
+                                   bool is_l2);
 #ifdef __cplusplus
 }
 #endif
