@@ -200,6 +200,193 @@ TEST(ClientServerSai, SetLinkEventDampingConfig)
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
 }
 
+TEST(ClientServerSai, SetLinkEventDampingConfigVariousValues)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis server.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG;
+
+    // Test with small suppress time
+    sai_redis_link_event_damping_algo_aied_config_t config1 = {
+      .max_suppress_time = 1000,
+      .suppress_threshold = 100,
+      .reuse_threshold = 50,
+      .decay_half_life = 500,
+      .flap_penalty = 10};
+    attr.value.ptr = (void *) &config1;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+
+    // Test with large suppress time
+    sai_redis_link_event_damping_algo_aied_config_t config2 = {
+      .max_suppress_time = 60000,
+      .suppress_threshold = 2000,
+      .reuse_threshold = 1500,
+      .decay_half_life = 30000,
+      .flap_penalty = 2000};
+    attr.value.ptr = (void *) &config2;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+
+    // Test with zero penalties
+    sai_redis_link_event_damping_algo_aied_config_t config3 = {
+      .max_suppress_time = 10000,
+      .suppress_threshold = 0,
+      .reuse_threshold = 0,
+      .decay_half_life = 5000,
+      .flap_penalty = 0};
+    attr.value.ptr = (void *) &config3;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+}
+
+TEST(ClientServerSai, SetLinkEventDampingAlgorithmVariousTypes)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis server.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM;
+
+    // Test disabled algorithm
+    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+
+    // Test AIED algorithm
+    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+}
+
+TEST(ClientServerSai, ClientModeRejectsDampingAttributes)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis client.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_client_services));
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM;
+    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED;
+
+    // Client mode should reject damping attributes
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+
+    // Also test config attribute
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG;
+    sai_redis_link_event_damping_algo_aied_config_t config = {
+      .max_suppress_time = 5000,
+      .suppress_threshold = 1500,
+      .reuse_threshold = 1200,
+      .decay_half_life = 3000,
+      .flap_penalty = 1000};
+    attr.value.ptr = (void *) &config;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+}
+
+TEST(ClientServerSai, SetDampingConfigOnDifferentObjectTypes)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis server.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
+
+    sai_attribute_t attr;
+
+    // Test on QUEUE object type (not PORT)
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM;
+    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED;
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->set(SAI_OBJECT_TYPE_QUEUE, SAI_NULL_OBJECT_ID, &attr));
+
+    // Test on VIRTUAL_ROUTER object type
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->set(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, SAI_NULL_OBJECT_ID, &attr));
+
+    // Test on SWITCH object type
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr));
+}
+
+TEST(ClientServerSai, SetDampingConfigExtremeValues)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis server.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG;
+
+    // Test with extreme values
+    sai_redis_link_event_damping_algo_aied_config_t extremeConfig = {
+      .max_suppress_time = 600000,     // 10 minutes
+      .suppress_threshold = 50000,
+      .reuse_threshold = 40000,
+      .decay_half_life = 120000,       // 2 minutes
+      .flap_penalty = 10000};
+
+    attr.value.ptr = (void *) &extremeConfig;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+}
+
+TEST(ClientServerSai, SetDampingAlgorithmNoneAfterAied)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis server.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM;
+
+    // Set AIED algorithm
+    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+
+    // Disable damping by setting to disabled
+    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+}
+
+TEST(ClientServerSai, MultiplePortsDampingConfig)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis server.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM;
+    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED;
+
+    // Configure damping on multiple different object IDs
+    // (In real code, these would be different port VIDs)
+    sai_object_id_t port_ids[] = {0x1000000000000001, 0x1000000000000002, 0x1000000000000003};
+
+    for (size_t i = 0; i < sizeof(port_ids) / sizeof(port_ids[0]); ++i)
+    {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, port_ids[i], &attr));
+    }
+
+    // Verify all ports can be configured with different settings
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG;
+    sai_redis_link_event_damping_algo_aied_config_t configs[] = {
+        {.max_suppress_time = 5000, .suppress_threshold = 1500, .reuse_threshold = 1200,
+         .decay_half_life = 2500, .flap_penalty = 500},
+        {.max_suppress_time = 10000, .suppress_threshold = 2000, .reuse_threshold = 1500,
+         .decay_half_life = 5000, .flap_penalty = 1000},
+        {.max_suppress_time = 15000, .suppress_threshold = 2500, .reuse_threshold = 2000,
+         .decay_half_life = 7500, .flap_penalty = 1500},
+    };
+
+    for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); ++i)
+    {
+        attr.value.ptr = (void *) &configs[i];
+        EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, port_ids[i], &attr));
+    }
+}
+
 TEST(ClientServerSai, SetInvalidSaiRedisPortAttribute)
 {
     auto css = std::make_shared<ClientServerSai>();
