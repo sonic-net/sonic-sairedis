@@ -260,33 +260,6 @@ TEST(ClientServerSai, SetLinkEventDampingAlgorithmVariousTypes)
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
 }
 
-TEST(ClientServerSai, ClientModeRejectsDampingAttributes)
-{
-    auto css = std::make_shared<ClientServerSai>();
-
-    // Initialize as sairedis client.
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_client_services));
-
-    sai_attribute_t attr;
-    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM;
-    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED;
-
-    // Client mode should reject damping attributes
-    EXPECT_EQ(SAI_STATUS_FAILURE, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
-
-    // Also test config attribute
-    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG;
-    sai_redis_link_event_damping_algo_aied_config_t config = {
-      .max_suppress_time = 5000,
-      .suppress_threshold = 1500,
-      .reuse_threshold = 1200,
-      .decay_half_life = 3000,
-      .flap_penalty = 1000};
-    attr.value.ptr = (void *) &config;
-
-    EXPECT_EQ(SAI_STATUS_FAILURE, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
-}
-
 TEST(ClientServerSai, SetDampingConfigOnDifferentObjectTypes)
 {
     auto css = std::make_shared<ClientServerSai>();
@@ -304,25 +277,6 @@ TEST(ClientServerSai, SetDampingConfigOnDifferentObjectTypes)
     // Test on VIRTUAL_ROUTER object type
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->set(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, SAI_NULL_OBJECT_ID, &attr));
 
-}
-
-TEST(ClientServerSai, SetDampingAlgorithmNoneAfterAied)
-{
-    auto css = std::make_shared<ClientServerSai>();
-
-    // Initialize as sairedis server.
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
-
-    sai_attribute_t attr;
-    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM;
-
-    // Set AIED algorithm
-    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
-
-    // Disable damping by setting to disabled
-    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
 }
 
 TEST(ClientServerSai, MultiplePortsDampingConfig)

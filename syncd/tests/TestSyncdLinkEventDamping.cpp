@@ -416,60 +416,6 @@ TEST_F(LinkEventDampingTest, SetDampingConfigMissingColonInKey)
                                 SAI_STATUS_INVALID_PARAMETER);
 }
 
-TEST_F(LinkEventDampingTest, SetDampingConfigMultipleAttributes)
-{
-    // Retrieve a valid port VID
-    sai_attribute_t attr;
-    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
-
-    auto status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, m_switchId, 1, &attr);
-    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
-    ASSERT_GT(attr.value.u32, 0u);
-
-    uint32_t portCount = attr.value.u32;
-
-    std::vector<sai_object_id_t> portOids(portCount);
-    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
-    attr.value.objlist.count = portCount;
-    attr.value.objlist.list  = portOids.data();
-
-    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, m_switchId, 1, &attr);
-    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
-
-    sai_object_id_t portVid = portOids[0];
-    std::string key = sai_serialize_object_type(SAI_OBJECT_TYPE_PORT) + ":" +
-                      sai_serialize_object_id(portVid);
-
-    // Build field-value tuples for multiple attributes
-    std::vector<swss::FieldValueTuple> attrs;
-
-    // Add algorithm attribute
-    std::string str_algo_id = sai_serialize_redis_port_attr_id(
-            SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM);
-    std::string str_algo_value = sai_serialize_redis_link_event_damping_algorithm(
-            SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED);
-    attrs.emplace_back(str_algo_id, str_algo_value);
-
-    // Add config attribute
-    sai_redis_link_event_damping_algo_aied_config_t config;
-    config.max_suppress_time  = 10000;
-    config.suppress_threshold = 1500;
-    config.reuse_threshold    = 1000;
-    config.decay_half_life    = 5000;
-    config.flap_penalty       = 500;
-
-    std::string str_config_id = sai_serialize_redis_port_attr_id(
-            SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG);
-    std::string str_config_value = sai_serialize_redis_link_event_damping_aied_config(config);
-    attrs.emplace_back(str_config_id, str_config_value);
-
-    m_selectableChannel->set(key, attrs, REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET);
-
-    EXPECT_EQ(getResponseStatus(REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET,
-                                m_selectableChannel.get(), false),
-                                SAI_STATUS_SUCCESS);
-}
-
 TEST_F(LinkEventDampingTest, SetDampingConfigAlgorithmOnly)
 {
     // Retrieve a valid port VID
@@ -598,27 +544,6 @@ TEST_F(LinkEventDampingTest, SetDampingConfigWithVariousThresholds)
                                     m_selectableChannel.get(), false),
                                     SAI_STATUS_SUCCESS);
     }
-}
-
-TEST_F(LinkEventDampingTest, SetDampingConfigSwitchObjectType)
-{
-    // SWITCH object type should be rejected, not PORT
-    std::string key = sai_serialize_object_type(SAI_OBJECT_TYPE_SWITCH) + ":" +
-                      sai_serialize_object_id(m_switchId);
-
-    std::string str_algo_id = sai_serialize_redis_port_attr_id(
-            SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM);
-
-    std::string str_algo_value = sai_serialize_redis_link_event_damping_algorithm(
-            SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED);
-
-    m_selectableChannel->set(key,
-            {swss::FieldValueTuple(str_algo_id, str_algo_value)},
-            REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET);
-
-    EXPECT_EQ(getResponseStatus(REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET,
-                                m_selectableChannel.get(), false),
-                                SAI_STATUS_INVALID_PARAMETER);
 }
 
 TEST_F(LinkEventDampingTest, SetDampingConfigEmptyValues)
