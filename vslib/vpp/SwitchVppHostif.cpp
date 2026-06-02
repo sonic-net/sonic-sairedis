@@ -424,6 +424,34 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
     const char *dev = name.c_str();
     const char *hwif_name = tap_to_hwif_name(dev);
 
+    sai_attribute_t attr;
+
+    memset(&attr, 0, sizeof(attr));
+
+    attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+
+    sai_status_t status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get SAI_SWITCH_ATTR_SRC_MAC_ADDRESS on switch %s: %s",
+                sai_serialize_object_id(m_switch_id).c_str(),
+                sai_serialize_status(status).c_str());
+    }
+
+    int err = sw_interface_set_mac(hwif_name, attr.value.mac);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("failed to set MAC address %s for %s",
+                sai_serialize_mac(attr.value.mac).c_str(),
+                hwif_name);
+
+        close(tapfd);
+
+        return SAI_STATUS_FAILURE;
+    }
+
     configure_lcp_interface(hwif_name, dev, true);
 
     interface_set_promiscuous(hwif_name, true);
@@ -441,41 +469,13 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
                 (link_up ? "UP" : "DOWN"));
     }
 
-    sai_attribute_t attr;
-
-    memset(&attr, 0, sizeof(attr));
-
-    attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
-
-    sai_status_t status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("failed to get SAI_SWITCH_ATTR_SRC_MAC_ADDRESS on switch %s: %s",
-                sai_serialize_object_id(m_switch_id).c_str(),
-                sai_serialize_status(status).c_str());
-    }
-
-    int err = vs_set_dev_mac_address(name.c_str(), attr.value.mac);
+    err = vs_set_dev_mac_address(name.c_str(), attr.value.mac);
 
     if (err < 0)
     {
         SWSS_LOG_ERROR("failed to set MAC address %s for %s",
                 sai_serialize_mac(attr.value.mac).c_str(),
                 name.c_str());
-
-        close(tapfd);
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    err = sw_interface_set_mac(hwif_name, attr.value.mac);
-
-    if (err < 0)
-    {
-        SWSS_LOG_ERROR("failed to set MAC address %s for %s",
-                sai_serialize_mac(attr.value.mac).c_str(),
-                hwif_name);
 
         close(tapfd);
 
