@@ -1028,6 +1028,9 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     if (ret == 0)
     {
+        if (is_add) {
+            m_tunnel_mgr_ipip.retry_pending_unnumbered(vpp_ip_prefix.prefix_addr);
+        }
         return SAI_STATUS_SUCCESS;
     }
     else {
@@ -1187,6 +1190,8 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
     int ret = interface_ip_address_add_del(vppIfname, &ip_route, is_add);
     if (ret != 0) {
         SWSS_LOG_ERROR("interface_ip_address_add returned error");
+    } else if (is_add) {
+        m_tunnel_mgr_ipip.retry_pending_unnumbered(ip_route.prefix_addr);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1408,10 +1413,13 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
 
         uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
             VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
-            VPP_IP_API_FLOW_HASH_PROTO;
+            VPP_IP_API_FLOW_HASH_PROTO | VPP_IP_API_FLOW_HASH_PEEK_INNER;
 
         int ret = vpp_ip_flow_hash_set(vrf_id, hash_mask, AF_INET);
         SWSS_LOG_NOTICE("ip flow hash set for VRF %s with vrf_id %u in VS, status %d",
+                        sai_serialize_object_id(objectId).c_str(), vrf_id, ret);
+        ret = vpp_ip_flow_hash_set(vrf_id, hash_mask, AF_INET6);
+        SWSS_LOG_NOTICE("ip6 flow hash set for VRF %s with vrf_id %u in VS, status %d",
                         sai_serialize_object_id(objectId).c_str(), vrf_id, ret);
     }
 

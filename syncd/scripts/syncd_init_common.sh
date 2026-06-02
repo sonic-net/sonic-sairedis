@@ -101,6 +101,17 @@ function check_warm_boot()
 }
 
 
+function cleanup_stale_flow_dump_files()
+{
+    # Flows are to a file based on their VID.
+    # Clean up all files in the directory to avoid updates to stale files.
+    local flow_dump_dir=/var/dump/flows
+    if [ -d "$flow_dump_dir" ]; then
+        rm -f "$flow_dump_dir"/*gz 2>/dev/null || true
+    fi
+}
+
+
 function set_start_type()
 {
     if [ x"$WARM_BOOT" == x"true" ]; then
@@ -651,6 +662,7 @@ config_syncd()
 {
     check_warm_boot
 
+    cleanup_stale_flow_dump_files
 
     if [ "$SONIC_ASIC_TYPE" == "cisco-8000" ]; then
         config_syncd_cisco_8000

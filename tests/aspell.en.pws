@@ -57,6 +57,7 @@ IPv
 Inseg
 KEYs
 LLC
+LLR
 LOGLEVEL
 LOOPBACK
 MACsec
@@ -139,6 +140,7 @@ ATTR
 AttrHash
 attrid
 attridname
+attribs
 attrs
 attrvalue
 BCM
@@ -501,3 +503,19 @@ ICMP
 UDP
 SIGSEGV
 CX
+PCID
+ZeroMQChannel
+arg
+ctor
+dedup
+LRU
+LruDedup
+pri
+saimeta
+RedisChannel
+NotificationConsumer
+NotificationQueuePolicy
+setOpAllowList
+setStatsLabel
+HWM
+allowlist

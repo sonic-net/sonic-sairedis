@@ -3215,32 +3215,34 @@ std::string sai_serialize_flow_bulk_get_session_event_ntf(
 {
     SWSS_LOG_ENTER();
 
-    if (data == NULL)
-    {
-        SWSS_LOG_THROW("flow_bulk_get_session_event_data_t pointer is null");
-    }
-
     /*
-     * NOTE: Only event_type is serialized here. The flow_entry, attr_count, and attr
-     * fields are NOT serialized as they are only populated for Flow Dump
-     * Due to performance reasons, they are not serialized and are not sent to orchagent.
+     * Only SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED is placed
+     * in data for the SaiRedis client; FLOW_ENTRY handled in syncd. data may be empty.
      */
+
+    json arr = json::array();
+
+    if (data != nullptr && count > 0)
+    {
+        for (int i = static_cast<int>(count) - 1; i >= 0; --i)
+        {
+            if (data[static_cast<uint32_t>(i)].event_type == SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED)
+            {
+                json item;
+
+                item["event_type"] = sai_serialize_flow_bulk_get_session_event(
+                        data[static_cast<uint32_t>(i)].event_type);
+
+                arr.push_back(item);
+
+                break;
+            }
+        }
+    }
 
     json j;
 
     j["bulk_session_id"] = sai_serialize_object_id(flow_bulk_session_id);
-
-    json arr = json::array();
-
-    for (uint32_t i = 0; i < count; ++i)
-    {
-        json item;
-
-        item["event_type"] = sai_serialize_flow_bulk_get_session_event(data[i].event_type);
-
-        arr.push_back(item);
-    }
-
     j["data"] = arr;
 
     return j.dump();
