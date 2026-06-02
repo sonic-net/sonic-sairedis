@@ -42,7 +42,7 @@ mkdir -p /var/log/sai_failure_dump/
 # Otherwise, set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
 SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
-SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.orch_southbound_zmq_enabled')
+SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.swss_zmq')
 if [ "$SWITCH_TYPE" == "dpu" ]; then
     CMD_ARGS+=" -z zmq_sync -x $CONTEXT_CONFIG_FILE"
 elif [ "$SOUTHBOUND_ZMQ" == "true" ]; then
