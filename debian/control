@@ -18,8 +18,10 @@ Package: syncd-asan
 Architecture: any
 Build-Profiles: <syncd asan !vs !rpc>
 Depends: ${misc:Pre-Depends}
+Provides: syncd
 Recommends: ${shlibs:Depends}
 Conflicts: syncd, syncd-rpc, syncd-vs
+Replaces: syncd
 Description: This package contains ASAN-instrumented sync daemon for SONiC project.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
 
