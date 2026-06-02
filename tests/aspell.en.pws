@@ -343,6 +343,8 @@ Redis
 refactor
 refactored
 refactoring
+refcount
+refcounts
 reimplement
 reinit
 removedVidToRid
@@ -466,6 +468,8 @@ VIDTORID
 vlan
 vlans
 VLANS
+vnet
+VNET
 VOQ
 vr
 vslib
