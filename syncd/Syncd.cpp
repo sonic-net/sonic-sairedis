@@ -1401,7 +1401,6 @@ void Syncd::checkDampedPortsTimeout()
     std::lock_guard<std::mutex> lock(m_linkEventDampingMutex);
 
     uint64_t currentTimeMs = getCurrentTimeMs();
-    std::vector<std::pair<sai_object_id_t, sai_port_oper_status_t>> portsToSync;
 
     // Iterate through all ports with damping configured
     for (auto& kv : m_portLinkEventDampingStates)
@@ -1444,23 +1443,17 @@ void Syncd::checkDampedPortsTimeout()
             // Check if there's a state mismatch that needs to be propagated
             if (state.advertised_status != state.physical_status)
             {
-                SWSS_LOG_NOTICE("Proactive timeout check: Port VID %s state mismatch "
-                        "detected on damping exit (decay): "
-                        "physical=%s, advertised=%s. Will send notification.",
+                state.pending_state_sync = true;
+
+               SWSS_LOG_NOTICE("Marked pending sync (decay) for Port VID %s: "
+                       "physical=%s advertised=%s",
                         portVidStr.c_str(), physicalStatusStr.c_str(),
                         advertisedStatusStr.c_str());
-
-                // Update advertised status to match physical
-                state.advertised_status = state.physical_status;
-                state.pending_state_sync = false;
-
-                // Collect port info for notification
-                portsToSync.push_back(std::make_pair(portVid, state.physical_status));
             }
             else
             {
-                SWSS_LOG_INFO("Proactive timeout check: Port VID %s exited damping "
-                        "with no state mismatch.", portVidStr.c_str());
+                SWSS_LOG_INFO("Exited damping with no state mismatch for Port VID %s: ",
+                        portVidStr.c_str());
             }
 
             // Write updated state to STATE_DB after exiting damping
@@ -1476,12 +1469,11 @@ void Syncd::checkDampedPortsTimeout()
         // Check if max_suppress_time has been exceeded
         if (damping_duration_ms >= state.aied_config.max_suppress_time)
         {
-            SWSS_LOG_NOTICE("Proactive timeout check: Port VID %s exiting damped "
-                    "state: max suppress time (%u ms) exceeded. "
-                    "Duration: %lu ms. Physical state: %s, Advertised state: %s",
-                    portVidStr.c_str(), state.aied_config.max_suppress_time,
-                    damping_duration_ms, physicalStatusStr.c_str(),
-                    advertisedStatusStr.c_str());
+            SWSS_LOG_NOTICE("Damping exit (timeout): Port VID %s "
+                    "Duration=%lu >= max=%u, Physical %s, Advertised %s",
+                    portVidStr.c_str(), damping_duration_ms,
+                    state.aied_config.max_suppress_time,
+                    physicalStatusStr.c_str(), advertisedStatusStr.c_str());
 
             // Exit damping state
             state.is_damping_active = false;
@@ -1490,22 +1482,17 @@ void Syncd::checkDampedPortsTimeout()
             // Check if there's a state mismatch that needs to be propagated
             if (state.advertised_status != state.physical_status)
             {
-                SWSS_LOG_NOTICE("Proactive timeout check: Port VID %s state mismatch detected on damping exit: "
-                        "physical=%s, advertised=%s. Will send notification.",
+                state.pending_state_sync = true;
+
+                SWSS_LOG_NOTICE("Marked pending sync (timeout) for Port VID %s: "
+                        "physical=%s, advertised=%s.",
                         portVidStr.c_str(), physicalStatusStr.c_str(),
                         advertisedStatusStr.c_str());
-
-                // Update advertised status to match physical
-                state.advertised_status = state.physical_status;
-                state.pending_state_sync = false;
-
-                // Collect port info for notification
-                portsToSync.push_back(std::make_pair(portVid, state.physical_status));
             }
             else
             {
-                SWSS_LOG_INFO("Proactive timeout check: Port VID %s exited damping "
-                        "with no state mismatch.", portVidStr.c_str());
+                SWSS_LOG_INFO("Exited damping with no state mismatch for Port VID %s",
+                        portVidStr.c_str());
             }
 
             // Write updated state to STATE_DB after exiting damping
@@ -1522,38 +1509,45 @@ void Syncd::checkDampedPortsTimeout()
                     state.current_penalty, damping_duration_ms);
         }
     }
+}
 
-    // Release the lock before sending notifications
-    // Note: We make a copy of the port list above to avoid holding the lock during notification send
-    // Send notifications for ports that need state synchronization
-    if (!portsToSync.empty())
+void Syncd::processPendingDampingSync()
+{
+    std::vector<sai_port_oper_status_notification_t> notifications;
+
     {
-        SWSS_LOG_NOTICE("Proactive timeout check: Sending %zu port state notifications "
-                "after damping timeout", portsToSync.size());
+        std::lock_guard<std::mutex> lock(m_linkEventDampingMutex);
 
-        // Send each port notification through the notification system
-        for (const auto& kv : portsToSync)
+        for (auto &kv : m_portLinkEventDampingStates)
         {
-            const auto& portVid = kv.first;
-            const auto& status  = kv.second;
+            auto port = kv.first;
+            auto &state = kv.second;
 
-            std::string portVidStr = sai_serialize_object_id(portVid);
-            std::string statusStr = sai_serialize_port_oper_status(status);
+            if (state.pending_state_sync &&
+                state.advertised_status != state.physical_status)
+            {
+                state.pending_state_sync = false;
 
-            // Build notification data
-            sai_port_oper_status_notification_t notification;
-            notification.port_id = portVid;
-            notification.port_state = status;
+                state.advertised_status = state.physical_status;
 
-            std::string serialized = sai_serialize_port_oper_status_ntf(1, &notification);
+                sai_port_oper_status_notification_t n;
+                n.port_id = port;
+                n.port_state = state.physical_status;
 
-            // Send directly through the notification producer
-            std::vector<swss::FieldValueTuple> entry;
-            m_notifications->send(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE,
-                    serialized, entry);
-            SWSS_LOG_NOTICE("Proactive timeout check: Sent notification for Port VID %s -> %s",
-                    portVidStr.c_str(), statusStr.c_str());
+                notifications.push_back(n);
+                writeDampingCountersToStateDb(port, state);
+            }
         }
+    }
+
+    // ALWAYS send from main thread (safe)
+    if (!notifications.empty())
+    {
+        std::string s = sai_serialize_port_oper_status_ntf(
+            (uint32_t)notifications.size(),
+            notifications.data());
+        std::vector<swss::FieldValueTuple> entry;
+        m_notifications->send(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, s, entry);
     }
 }
 
@@ -6716,7 +6710,7 @@ void Syncd::run()
         {
             swss::Selectable *sel = NULL;
 
-            int result = s->select(&sel);
+            int result = s->select(&sel, 1000);
 
             if (sel == m_restartQuery.get())
             {
@@ -6832,6 +6826,9 @@ void Syncd::run()
             {
                 SWSS_LOG_ERROR("select failed: %d", result);
             }
+
+            // Process if any pending state sync due to link event damping
+            processPendingDampingSync();
         }
         catch(const std::exception &e)
         {
