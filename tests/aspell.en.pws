@@ -21,6 +21,7 @@ CHARDATA
 COLDVIDS
 CONST
 CRM
+CSIG
 CSP
 CreateObject
 DEI
@@ -55,6 +56,7 @@ IPv
 Inseg
 KEYs
 LLC
+LLR
 LOGLEVEL
 LOOPBACK
 MACsec
@@ -136,6 +138,7 @@ ATTR
 AttrHash
 attrid
 attridname
+attribs
 attrs
 attrvalue
 BCM
@@ -225,6 +228,7 @@ HSV
 htonl
 http
 https
+hset
 hw
 hwinfo
 ICV
@@ -315,6 +319,7 @@ params
 performTransition
 pfc
 PHY
+phy
 plaintext
 pn
 PN
@@ -444,6 +449,7 @@ updatable
 upgradable
 util
 utils
+usleep
 validonly
 versa
 veth
@@ -488,3 +494,25 @@ VxLAN
 IPFIX
 IPFix
 ipfix
+SNR
+tparam
+ICMP
+UDP
+SIGSEGV
+CX
+PCID
+ZeroMQChannel
+arg
+ctor
+dedup
+LRU
+LruDedup
+pri
+saimeta
+RedisChannel
+NotificationConsumer
+NotificationQueuePolicy
+setOpAllowList
+setStatsLabel
+HWM
+allowlist

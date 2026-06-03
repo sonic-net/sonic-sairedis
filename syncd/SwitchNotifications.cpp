@@ -119,6 +119,17 @@ void SwitchNotifications::SlotBase::onHaScopeEvent(
     return m_slots.at(context)->m_handler->onHaScopeEvent(count, data);
 }
 
+void SwitchNotifications::SlotBase::onFlowBulkGetSessionEvent(
+        _In_ int context,
+        _In_ sai_object_id_t flow_bulk_session_id,
+        _In_ uint32_t count,
+        _In_ const sai_flow_bulk_get_session_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onFlowBulkGetSessionEvent(flow_bulk_session_id, count, data);
+}
+
 void SwitchNotifications::SlotBase::onQueuePfcDeadlock(
         _In_ int context,
         _In_ uint32_t count,

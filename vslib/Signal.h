@@ -26,5 +26,7 @@ namespace saivs
             std::condition_variable m_cv;
 
             std::mutex m_mutex;
+
+            bool m_signaled = false;
     };
 }

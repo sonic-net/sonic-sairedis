@@ -18,7 +18,7 @@ NotificationQueue::NotificationQueue(
 {
     SWSS_LOG_ENTER();
 
-    m_queue = std::make_shared<std::queue<swss::KeyOpFieldsValuesTuple>>();
+    m_queue = std::make_shared<std::queue<NotificationItem>>();
 }
 
 NotificationQueue::~NotificationQueue()
@@ -30,6 +30,14 @@ NotificationQueue::~NotificationQueue()
 
 bool NotificationQueue::enqueue(
         _In_ const swss::KeyOpFieldsValuesTuple& item)
+{
+    SWSS_LOG_ENTER();
+    return enqueue(item, nullptr);
+}
+
+bool NotificationQueue::enqueue(
+        _In_ const swss::KeyOpFieldsValuesTuple& item,
+        _In_ FlowDumpDataPtr auxiliary_data)
 {
     MUTEX;
 
@@ -88,7 +96,7 @@ bool NotificationQueue::enqueue(
 
     if (!candidateToDrop)
     {
-        m_queue->push(item);
+        m_queue->push(NotificationItem(item, auxiliary_data));
 
         return true;
     }
@@ -108,6 +116,19 @@ bool NotificationQueue::enqueue(
 
 bool NotificationQueue::tryDequeue(
         _Out_ swss::KeyOpFieldsValuesTuple& item)
+{
+    SWSS_LOG_ENTER();
+    NotificationItem ntf_item;
+    if (tryDequeue(ntf_item))
+    {
+        item = ntf_item.notification;
+        return true;
+    }
+    return false;
+}
+
+bool NotificationQueue::tryDequeue(
+        _Out_ NotificationItem& item)
 {
     MUTEX;
 
@@ -143,7 +164,7 @@ bool NotificationQueue::tryDequeue(
          */
         m_queue = nullptr;
 
-        m_queue = std::make_shared<std::queue<swss::KeyOpFieldsValuesTuple>>();
+        m_queue = std::make_shared<std::queue<NotificationItem>>();
     }
 
     return true;

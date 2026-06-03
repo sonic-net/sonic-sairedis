@@ -282,7 +282,7 @@ SaiObjectDB::get(
     // check if the object exists
     status = m_switch_db->get(object_type, id, 0, &attr);
     if (status != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_WARN("Object is not found in SwitchVpp %s:%s", sai_serialize_object_type(object_type).c_str(), id.c_str());
+        SWSS_LOG_NOTICE("Object is not found in SwitchVpp %s:%s", sai_serialize_object_type(object_type).c_str(), id.c_str());
         return std::shared_ptr<SaiDBObject>();
     }
     /*
@@ -306,9 +306,16 @@ SaiObject::get_linked_object(
     attr.id = link_attr_id;
     status = get_attr(attr);
     if (status != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_ERROR("Failed to get attribute %d from object %s", link_attr_id, m_id.c_str());
+        SWSS_LOG_NOTICE("Attribute %d not found in object %s", link_attr_id, m_id.c_str());
         return std::shared_ptr<SaiDBObject>();
     }
+
+    if (RealObjectIdManager::objectTypeQuery(attr.value.oid) != linked_object_type) {
+        SWSS_LOG_INFO("Linked object type mismatch: expected %d, got %d. Will return empty object.",
+                       linked_object_type, RealObjectIdManager::objectTypeQuery(attr.value.oid));
+        return std::shared_ptr<SaiDBObject>();
+    }
+
     linked_obj_id = sai_serialize_object_id(attr.value.oid);
 
     return m_switch_db->get_sai_object(linked_object_type, linked_obj_id);

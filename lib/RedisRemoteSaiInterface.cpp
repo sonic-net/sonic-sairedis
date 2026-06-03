@@ -20,7 +20,7 @@
 
 #include <inttypes.h>
 
-#define SAI_ZMQ_DEFAULT_RESPONSE_BUFFER_SIZE (64*1024*1024)
+#define SAI_ZMQ_DEFAULT_RESPONSE_BUFFER_SIZE (128*1024*1024)
 
 using namespace sairedis;
 using namespace saimeta;
@@ -81,16 +81,19 @@ sai_status_t RedisRemoteSaiInterface::apiInitialize(
     m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC;
     m_zmqResponseBufferSize = SAI_ZMQ_DEFAULT_RESPONSE_BUFFER_SIZE;
 
-    if (m_contextConfig->m_zmqEnable)
+    if (m_contextConfig->m_loadedFromJson && m_contextConfig->m_zmqEnable)
     {
+        // context_config.json is authoritative: lock this context to ZMQ at init
+        SWSS_LOG_NOTICE("context %u: JSON zmq_enable=true, creating ZMQ channel at init",
+                m_contextConfig->m_guid);
+
         m_communicationChannel = std::make_shared<ZeroMQChannel>(
                 m_contextConfig->m_zmqEndpoint,
                 m_contextConfig->m_zmqNtfEndpoint,
                 std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3),
                 m_zmqResponseBufferSize);
 
-        SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
-
+        m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
         m_syncMode = true;
     }
     else
@@ -369,14 +372,24 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
         case SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE:
 
-            m_redisCommunicationMode = (sai_redis_communication_mode_t)attr->value.s32;
-
-            if (m_contextConfig->m_zmqEnable)
+            // JSON zmq_enable=true: transport locked to ZMQ at init; ignore attr
+            if (m_contextConfig->m_loadedFromJson && m_contextConfig->m_zmqEnable)
             {
-                SWSS_LOG_NOTICE("zmq enabled via context config");
+                if (attr->value.s32 == SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC)
+                {
+                    SWSS_LOG_NOTICE("context %u: JSON zmq_enable=true, comm-mode attr ZMQ_SYNC matches; ignoring redundant request",
+                            m_contextConfig->m_guid);
+                }
+                else
+                {
+                    SWSS_LOG_WARN("context %u: JSON zmq_enable=true enforces ZMQ_SYNC but caller requested comm-mode %d; ignoring",
+                            m_contextConfig->m_guid, attr->value.s32);
+                }
 
-                m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+                return SAI_STATUS_SUCCESS;
             }
+
+            m_redisCommunicationMode = (sai_redis_communication_mode_t)attr->value.s32;
 
             m_communicationChannel = nullptr;
 
@@ -415,11 +428,32 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                     return SAI_STATUS_SUCCESS;
 
                 case SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC:
+                    // If context_config.json explicitly set zmq_enable=false,
+                    // respect it and fall back to RedisChannel
+                    if (m_contextConfig->m_loadedFromJson && !m_contextConfig->m_zmqEnable)
+                    {
+                        SWSS_LOG_NOTICE("context %u: zmq_enable=false in context config, falling back to Redis sync",
+                                m_contextConfig->m_guid);
+
+                        // Keep m_redisCommunicationMode aligned with the actual channel
+                        m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+
+                        m_syncMode = true;
+
+                        m_communicationChannel = std::make_shared<RedisChannel>(
+                                m_contextConfig->m_dbAsic,
+                                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+
+                        m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
+
+                        m_communicationChannel->setBuffered(false);
+
+                        return SAI_STATUS_SUCCESS;
+                    }
+
+                    SWSS_LOG_NOTICE("ZMQ sync mode enabled for context %u", m_contextConfig->m_guid);
 
                     m_contextConfig->m_zmqEnable = true;
-
-                    // main communication channel was created at initialize method
-                    // so this command will replace it with zmq channel
 
                     m_communicationChannel = std::make_shared<ZeroMQChannel>(
                             m_contextConfig->m_zmqEndpoint,
@@ -428,8 +462,6 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                             m_zmqResponseBufferSize);
 
                     m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
-
-                    SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
 
                     m_syncMode = true;
 

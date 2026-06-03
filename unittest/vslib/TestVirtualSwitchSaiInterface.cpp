@@ -225,6 +225,13 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
                 m_swid,
                 SAI_OBJECT_TYPE_PORT,
                 &stats_capability));
+
+    /* Invalid switch id */
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_vssai->queryStatsCapability(
+                SAI_NULL_OBJECT_ID,
+                SAI_OBJECT_TYPE_SWITCH,
+                &stats_capability));
 }
 
 TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsStCapability)
@@ -289,6 +296,13 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsStCapability)
                   SAI_OBJECT_TYPE_PORT,
                   &stats_capability));
     EXPECT_EQ(stats_capability.list[0].minimal_polling_interval, static_cast<uint64_t>(1e6 * 100));
+
+    /* Invalid switch id */
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+              m_vssai->queryStatsStCapability(
+                  SAI_NULL_OBJECT_ID,
+                  SAI_OBJECT_TYPE_SWITCH,
+                  &stats_capability));
 }
 
 TEST_F(VirtualSwitchSaiInterfaceTest, switchHostifTrapCapabilityGet)

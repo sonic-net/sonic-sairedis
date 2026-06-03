@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <map>
 
 using namespace saivs;
 
@@ -89,6 +90,29 @@ sai_status_t Sai::apiInitialize(
     }
 
     memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
+
+    // Iterate all profile key-value pairs and store them for later use
+    std::map<std::string, std::string> profileMap;
+    {
+        const char *variable = NULL;
+        const char *value = NULL;
+
+        // Reset iterator
+        service_method_table->profile_get_next_value(0, &variable, NULL);
+
+        variable = NULL;
+        while (service_method_table->profile_get_next_value(0, &variable, &value) == 0)
+        {
+            if (variable != NULL && value != NULL)
+            {
+                profileMap[variable] = value;
+            }
+            variable = NULL;
+            value = NULL;
+        }
+
+        SWSS_LOG_NOTICE("loaded %zu profile entries", profileMap.size());
+    }
 
     auto switch_type = service_method_table->profile_get_value(0, SAI_KEY_VS_SWITCH_TYPE);
 
@@ -246,6 +270,7 @@ sai_status_t Sai::apiInitialize(
         sc->m_eventQueue = m_eventQueue;
         sc->m_resourceLimiter = m_resourceLimiterContainer->getResourceLimiter(sc->m_switchIndex);
         sc->m_corePortIndexMap = m_corePortIndexMapContainer->getCorePortIndexMap(sc->m_switchIndex);
+        sc->m_profileMap = profileMap;
     }
 
     // most important

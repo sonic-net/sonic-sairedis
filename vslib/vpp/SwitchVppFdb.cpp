@@ -22,6 +22,37 @@ using namespace saivs;
      FLUSH_ALL = 4,          /* Flushing all DYNAMIC FDB_ENTRY on all */
  } fdb_flush_mode;
 
+// utility function to check whether a bridge port is of type TUNNEL
+bool SwitchVpp::is_tunnel_bridge_port(
+        _In_ sai_object_id_t br_port_id)
+{
+    SWSS_LOG_ENTER();
+
+    try
+    {
+        auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT)
+                                         .at(sai_serialize_object_id(br_port_id));
+
+        auto meta = sai_metadata_get_attr_metadata(
+                        SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_TYPE);
+
+        auto it = br_port_attrs.find(meta->attridname);
+
+        if (it != br_port_attrs.end() &&
+            it->second->getAttr()->value.s32 == SAI_BRIDGE_PORT_TYPE_TUNNEL)
+        {
+            return true;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        SWSS_LOG_WARN("is_tunnel_bridge_port: exception for %s: %s",
+                sai_serialize_object_id(br_port_id).c_str(), e.what());
+    }
+
+    return false;
+}
+
 sai_status_t SwitchVpp::createVlanMember(
         _In_ sai_object_id_t object_id,
         _In_ sai_object_id_t switch_id,
@@ -66,6 +97,14 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
                 sai_serialize_object_type(obj_type).c_str());
 
         return SAI_STATUS_FAILURE;
+    }
+
+    // Skip VPP operations for tunnel bridge ports -- they have no physical port
+    if (is_tunnel_bridge_port(br_port_id))
+    {
+        SWSS_LOG_NOTICE("Skipping VLAN member VPP create for tunnel bridge port %s",
+                sai_serialize_object_id(br_port_id).c_str());
+        return SAI_STATUS_SUCCESS;
     }
 
     const char *hwifname = nullptr;
@@ -262,8 +301,17 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
+    // Skip VPP operations for tunnel bridge ports -- they have no physical port
+    if (is_tunnel_bridge_port(br_port_oid))
+    {
+        SWSS_LOG_NOTICE("Skipping vlan member remove for TUNNEL bridge port %s",
+                sai_serialize_object_id(br_port_oid).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
     const char *hw_ifname = nullptr;
     auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_oid));
+
     auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
     auto bp_attr = br_port_attrs[meta->attridname];
     auto port_id = bp_attr->getAttr()->value.oid;
@@ -631,9 +679,18 @@ sai_status_t SwitchVpp::vpp_create_lag(
         return SAI_STATUS_FAILURE;
     }
 
-    // Set mode and lb. SONiC config does not have provision to pass mode and load balancing algorithm
+    // Set mode and lb. SONiC config does not have provision to pass mode and load balancing algorithm.
+    // Select VPP's new opt-in inner-aware LAG hash algorithm (BOND_API_LB_ALGO_L34_INNER, value 6,
+    // CLI keyword "l34-inner") so that LAG distribution stays balanced for IPinIP / 6in4 / 4in6 /
+    // 6in6 / GRE / NVGRE transit tunnel traffic.  The existing BOND_API_LB_ALGO_L34 (= 1) and the
+    // registered hash function "hash-eth-l34" are byte-for-byte unchanged on the VPP side, so a
+    // libsaivs that selects value 1 keeps the legacy outer-only hashing behaviour; libsaivs that
+    // selects value 6 (this code) gets the inner-aware hash function "hash-eth-l34-inner".
+    // ABI compatibility with stock libvppinfra is preserved because the new enum value carries the
+    // [backwards_compatible] annotation in src/vnet/bonding/bond.api -- vppapigen excludes it from
+    // the CRC of every bond_create* / sw_interface_bond_details / sw_bond_interface_details message.
     mode = VPP_BOND_API_MODE_XOR;
-    lb = VPP_BOND_API_LB_ALGO_L34;
+    lb = VPP_BOND_API_LB_ALGO_L34_INNER;
 
     create_bond_interface(bond_id, mode, lb, &swif_idx);
     if (swif_idx == static_cast<uint32_t>(~0))
@@ -974,6 +1031,15 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
         return SAI_STATUS_FAILURE;
     }
 
+    // Skip VPP FDB add for tunnel bridge ports -- L2 VXLAN FDB is handled
+    // separately via the EVPN remote-MAC path, not the per-port FDB path
+    if (is_tunnel_bridge_port(br_port_id))
+    {
+        SWSS_LOG_NOTICE("Skipping FDB add for tunnel bridge port %s",
+                sai_serialize_object_id(br_port_id).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
     auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
     auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
     auto bp_attr = br_port_attrs[meta->attridname];
@@ -1079,6 +1145,14 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
                 sai_serialize_object_type(obj_type).c_str());
 
         return SAI_STATUS_FAILURE;
+    }
+
+    // Skip VPP FDB delete for tunnel bridge ports
+    if (is_tunnel_bridge_port(br_port_id))
+    {
+        SWSS_LOG_NOTICE("Skipping FDB delete for tunnel bridge port %s",
+                sai_serialize_object_id(br_port_id).c_str());
+        return SAI_STATUS_SUCCESS;
     }
 
     auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
@@ -1201,6 +1275,16 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
         case FLUSH_BY_INTERFACE:
         case FLUSH_BY_INTERFACE | FLUSH_ALL:/*flush by interface*/
             {
+                // Tunnel bridge ports have no physical port -- fall back to flush all
+                if (is_tunnel_bridge_port(br_port_id))
+                {
+                    SWSS_LOG_NOTICE("Tunnel bridge port %s: falling back to flush all",
+                            sai_serialize_object_id(br_port_id).c_str());
+                    auto ret = l2fib_flush_all();
+                    SWSS_LOG_NOTICE("Flush ALL (tunnel bridge port fallback) ret_val: %d", ret);
+                    break;
+                }
+
                 auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
                 auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
                 auto bp_attr = br_port_attrs[meta->attridname];

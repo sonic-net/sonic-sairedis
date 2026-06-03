@@ -48,6 +48,7 @@ vpp_stats_dump (char *query_path, vpp_stat_one one, vpp_stat_two two, void *data
     {
       SAIVPP_STAT_ERR("Couldn't connect to vpp, does %s exist?\n",
 		      STAT_SEGMENT_SOCKET_FILE);
+      vec_free (patterns);
       return -1;
     }
 
@@ -56,13 +57,19 @@ vpp_stats_dump (char *query_path, vpp_stat_one one, vpp_stat_two two, void *data
   stat_segment_data_t *res;
 
   dir = stat_segment_ls_r (patterns, &vpp_stat_client_main);
-  if (!dir)
+  vec_free (patterns);
+  if (!dir || vec_len (dir) == 0)
     {
+      if (dir)
+        vec_free (dir);
+      stat_segment_disconnect_r (&vpp_stat_client_main);
       return -1;
     }
   res = stat_segment_dump_r (dir, &vpp_stat_client_main);
+  vec_free (dir);
   if (!res)
     {
+      stat_segment_disconnect_r (&vpp_stat_client_main);
       return -1;
     }
 

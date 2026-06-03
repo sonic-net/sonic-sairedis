@@ -22,6 +22,8 @@
 #include "swss/tokenize.h"
 #include "swss/notificationproducer.h"
 #include "swss/exec.h"
+#include "swss/dbconnector.h"
+#include "swss/table.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/ZeroMQSelectableChannel.h"
@@ -41,7 +43,7 @@
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 #define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
-#define SYNCD_ZMQ_RESPONSE_BUFFER_SIZE (64*1024*1024)
+#define SYNCD_ZMQ_RESPONSE_BUFFER_SIZE (128*1024*1024)
 
 using namespace syncd;
 using namespace saimeta;
@@ -82,16 +84,8 @@ Syncd::Syncd(
         SWSS_LOG_THROW("no context config defined at global context %u", m_commandLineOptions->m_globalContext);
     }
 
-    if (m_contextConfig->m_zmqEnable && m_commandLineOptions->m_enableSyncMode)
-    {
-        SWSS_LOG_NOTICE("disabling command line sync mode, since context zmq enabled");
-
-        m_commandLineOptions->m_enableSyncMode = false;
-
-        m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
-    }
-
-    if (m_commandLineOptions->m_enableSyncMode)
+    if (m_commandLineOptions->m_enableSyncMode
+            && !(m_contextConfig->m_loadedFromJson && m_contextConfig->m_zmqEnable))
     {
         SWSS_LOG_WARN("enable sync mode is deprecated, please use communication mode, FORCING redis sync mode");
 
@@ -104,11 +98,25 @@ Syncd::Syncd(
 
     if (m_commandLineOptions->m_redisCommunicationMode == SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC)
     {
-        SWSS_LOG_NOTICE("zmq sync mode enabled via cmd line");
+        // If context_config.json explicitly set zmq_enable=false,
+        // respect it and fall back to Redis sync
+        if (m_contextConfig->m_loadedFromJson && !m_contextConfig->m_zmqEnable)
+        {
+            SWSS_LOG_NOTICE("context %u: zmq_enable=false in context config, falling back to Redis sync",
+                    m_contextConfig->m_guid);
 
-        m_contextConfig->m_zmqEnable = true;
+            m_enableSyncMode = true;
 
-        m_enableSyncMode = true;
+            m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+        }
+        else
+        {
+            SWSS_LOG_NOTICE("zmq sync mode enabled via cmd line for context %u", m_contextConfig->m_guid);
+
+            m_contextConfig->m_zmqEnable = true;
+
+            m_enableSyncMode = true;
+        }
     }
 
     auto vso = std::make_shared<VendorSaiOptions>();
@@ -155,8 +163,14 @@ Syncd::Syncd(
     }
 
     bool isVirtualSwitch = m_profileMap.find(SAI_KEY_VS_SWITCH_TYPE) != m_profileMap.end();
+    swss::DBConnector configDb("CONFIG_DB", 0);
+    swss::Table deviceMetadataTable(&configDb, "DEVICE_METADATA");
+    std::string switchType;
+    deviceMetadataTable.hget("localhost", "switch_type", switchType);
 
-    if (m_contextConfig->m_zmqEnable && !isVirtualSwitch)
+    bool isDpuSwitch = switchType == "dpu";
+
+    if (m_contextConfig->m_zmqEnable && isDpuSwitch && !isVirtualSwitch)
     {
         m_client = std::make_shared<DisabledRedisClient>();
     }
@@ -184,6 +198,7 @@ Syncd::Syncd(
     m_sn.onMacsecPostStatus = std::bind(&NotificationHandler::onMacsecPostStatus, m_handler.get(), _1, _2);
     m_sn.onHaSetEvent = std::bind(&NotificationHandler::onHaSetEvent, m_handler.get(), _1, _2);
     m_sn.onHaScopeEvent = std::bind(&NotificationHandler::onHaScopeEvent, m_handler.get(), _1, _2);
+    m_sn.onFlowBulkGetSessionEvent = std::bind(&NotificationHandler::onFlowBulkGetSessionEvent, m_handler.get(), _1, _2, _3);
 
     m_handler->setSwitchNotifications(m_sn.getSwitchNotifications());
 
@@ -4533,6 +4548,13 @@ sai_status_t Syncd::processNotifySyncd(
             // we need to clear current temp view to make space for new one
 
             clearTempView();
+
+            /*
+            * Transition to longer watchdog timeout in INIT_VIEW on Chassis Switch
+            * Wait for create:SAI_OBJECT_TYPE_SWITCH
+            * Then transition back in APPLY_VIEW
+            */
+            transitionToInitWatchdogTimeout();
         }
         else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW)
         {
@@ -4555,12 +4577,18 @@ sai_status_t Syncd::processNotifySyncd(
             }
 
             SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", key.c_str());
+
+            transitionToNormalWatchdogTimeout();
         }
         else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC)
         {
             SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
 
+            transitionToInitWatchdogTimeout();
+
             inspectAsic();
+
+            transitionToNormalWatchdogTimeout();
 
             sendNotifyResponse(SAI_STATUS_SUCCESS);
         }
@@ -4591,6 +4619,13 @@ sai_status_t Syncd::processNotifySyncd(
 
         SWSS_LOG_WARN("syncd switched to INIT VIEW mode, all op will be saved to TEMP view");
 
+        /*
+        * Transition to longer watchdog timeout in INIT_VIEW on Chassis Switch
+        * Wait for create:SAI_OBJECT_TYPE_SWITCH
+        * Then transition back in APPLY_VIEW
+        */
+        transitionToInitWatchdogTimeout();
+
         sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
     else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW)
@@ -4600,7 +4635,6 @@ sai_status_t Syncd::processNotifySyncd(
         // NOTE: Currently as WARN to be easier to spot, later should be NOTICE.
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
-
 
         try
         {
@@ -4619,6 +4653,8 @@ sai_status_t Syncd::processNotifySyncd(
 
             throw;
         }
+
+        transitionToNormalWatchdogTimeout();
 
         sendNotifyResponse(status);
 
@@ -4656,7 +4692,11 @@ sai_status_t Syncd::processNotifySyncd(
     {
         SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
 
+        transitionToInitWatchdogTimeout();
+
         inspectAsic();
+
+        transitionToNormalWatchdogTimeout();
 
         sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
@@ -4684,6 +4724,24 @@ void Syncd::sendNotifyResponse(
     SWSS_LOG_INFO("sending response: %s", strStatus.c_str());
 
     m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_NOTIFY);
+}
+
+void Syncd::transitionToNormalWatchdogTimeout()
+{
+    SWSS_LOG_ENTER();
+
+    int64_t normalTimeout = m_commandLineOptions->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR;
+
+    m_timerWatchdog.setWarnTimespan(normalTimeout);
+}
+
+void Syncd::transitionToInitWatchdogTimeout()
+{
+    SWSS_LOG_ENTER();
+
+    int64_t initTimeout = m_commandLineOptions->m_watchdogInitTimeSpan * WD_DELAY_FACTOR;
+
+    m_timerWatchdog.setWarnTimespan(initTimeout);
 }
 
 void Syncd::clearTempView()

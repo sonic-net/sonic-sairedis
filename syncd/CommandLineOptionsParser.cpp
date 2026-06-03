@@ -18,10 +18,14 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
     auto options = std::make_shared<CommandLineOptions>();
 
+    optind = 1;
+
+    bool initTimeSpanSeen = false;
+
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lrm:h";
+    const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lh";
+    const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lh";
 #endif // SAITHRIFT
 
     while (true)
@@ -42,6 +46,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "contextContig",           required_argument, 0, 'x' },
             { "breakConfig",             required_argument, 0, 'b' },
             { "watchdogWarnTimeSpan",    optional_argument, 0, 'w' },
+            { "watchdogInitTimeSpan",    optional_argument, 0, 'W' },
             { "supportingBulkCounters",  required_argument, 0, 'B' },
             { "enableAttrVersionCheck",  no_argument,       0, 'a' },
 #ifdef SAITHRIFT
@@ -126,6 +131,11 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 options->m_watchdogWarnTimeSpan = (int64_t)std::stoll(optarg);
                 break;
 
+            case 'W':
+                options->m_watchdogInitTimeSpan = (int64_t)std::stoll(optarg);
+                initTimeSpanSeen = true;
+                break;
+
 #ifdef SAITHRIFT
             case 'r':
                 options->m_runRPCServer = true;
@@ -156,6 +166,12 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 SWSS_LOG_ERROR("getopt_long failure");
                 exit(EXIT_FAILURE);
         }
+    }
+
+    // If -W not specified, default to same as -w
+    if (!initTimeSpanSeen)
+    {
+        options->m_watchdogInitTimeSpan = options->m_watchdogWarnTimeSpan;
     }
 
     return options;
@@ -198,7 +214,9 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "    -b --breakConfig" << std::endl;
     std::cout << "        Comparison logic 'break before make' configuration file" << std::endl;
     std::cout << "    -w --watchdogWarnTimeSpan" << std::endl;
-    std::cout << "        Watchdog time span (in microseconds) to watch for execution" << std::endl;
+    std::cout << "        Watchdog time span (in microseconds) for normal operations" << std::endl;
+    std::cout << "    -W --watchdogInitTimeSpan" << std::endl;
+    std::cout << "        Watchdog time span (in microseconds) for init phase (default: same as -w)" << std::endl;
     std::cout << "    -B --supportingBulkCounters" << std::endl;
     std::cout << "        Counter groups those support bulk polling" << std::endl;
     std::cout << "    -a --enableAttrVersionCheck" << std::endl;

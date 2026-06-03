@@ -8,18 +8,25 @@
 #include "FlexCounter.h"
 #include "VidManager.h"
 
+#include <chrono>
+#include <nlohmann/json.hpp>
 #include "meta/sai_serialize.h"
 
 #include "swss/redisapi.h"
 #include "swss/tokenize.h"
+#include "swss/dbconnector.h"
 
 using namespace syncd;
 using namespace std;
+using json = nlohmann::json;
+
 
 #define MUTEX std::unique_lock<std::mutex> _lock(m_mtx);
 #define MUTEX_UNLOCK _lock.unlock();
 
 static const std::string COUNTER_TYPE_PORT = "Port Counter";
+static const std::string ATTR_TYPE_PORT_PHY_ATTR = "Port Phy Attributes";
+static const std::string ATTR_TYPE_PORT_PHY_SERDES_ATTR = "Port Phy Serdes Attributes";
 static const std::string COUNTER_TYPE_PORT_DEBUG = "Port Debug Counter";
 static const std::string COUNTER_TYPE_QUEUE = "Queue Counter";
 static const std::string COUNTER_TYPE_PG = "Priority Group Counter";
@@ -31,6 +38,7 @@ static const std::string COUNTER_TYPE_FLOW = "Flow Counter";
 static const std::string COUNTER_TYPE_TUNNEL = "Tunnel Counter";
 static const std::string COUNTER_TYPE_BUFFER_POOL = "Buffer Pool Counter";
 static const std::string COUNTER_TYPE_ENI = "DASH ENI Counter";
+static const std::string COUNTER_TYPE_HA_SET = "DASH HA Set Counter";
 static const std::string COUNTER_TYPE_METER_BUCKET = "DASH Meter Bucket Counter";
 static const std::string COUNTER_TYPE_POLICER = "Policer Counter";
 static const std::string COUNTER_TYPE_SRV6 = "SRv6 Counter";
@@ -67,6 +75,8 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
 
 const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
     {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
+    {{SAI_OBJECT_TYPE_PORT, PORT_PHY_ATTR_ID_LIST}, ATTR_TYPE_PORT_PHY_ATTR},
+    {{SAI_OBJECT_TYPE_PORT_SERDES, PORT_PHY_SERDES_ATTR_ID_LIST}, ATTR_TYPE_PORT_PHY_SERDES_ATTR},
     {{SAI_OBJECT_TYPE_PORT, PORT_DEBUG_COUNTER_ID_LIST}, COUNTER_TYPE_PORT_DEBUG},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_COUNTER_ID_LIST}, COUNTER_TYPE_QUEUE},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_ATTR_ID_LIST}, ATTR_TYPE_QUEUE},
@@ -82,6 +92,7 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{SAI_OBJECT_TYPE_POLICER, POLICER_COUNTER_ID_LIST}, COUNTER_TYPE_POLICER},
     {{SAI_OBJECT_TYPE_TUNNEL, TUNNEL_COUNTER_ID_LIST}, COUNTER_TYPE_TUNNEL},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, ENI_COUNTER_ID_LIST}, COUNTER_TYPE_ENI},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, HA_SET_COUNTER_ID_LIST}, COUNTER_TYPE_HA_SET},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
     {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
     {{SAI_OBJECT_TYPE_SWITCH, SWITCH_COUNTER_ID_LIST}, COUNTER_TYPE_SWITCH},
@@ -108,7 +119,7 @@ void BaseCounterContext::addPlugins(
         }
         else
         {
-            SWSS_LOG_ERROR("Plugin %s already registered", sha.c_str());
+            SWSS_LOG_NOTICE("Plugin %s already registered, skipping", sha.c_str());
         }
     }
 }
@@ -324,6 +335,14 @@ std::string serializeStat(
     return sai_serialize_meter_bucket_entry_stat(stat);
 }
 
+template <>
+std::string serializeStat(
+        _In_ const sai_ha_set_stat_t stat)
+{
+    SWSS_LOG_ENTER();
+    return sai_serialize_ha_set_stat(stat);
+}
+
 template <typename StatType>
 void deserializeStat(
         _In_ const char* name,
@@ -450,6 +469,14 @@ void deserializeStat(
     sai_deserialize_meter_bucket_entry_stat(name, stat);
 }
 
+template <>
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_ha_set_stat_t *stat)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_ha_set_stat(name, stat);
+}
 template <typename AttrType>
 void deserializeAttr(
         _In_ const std::string& name,
@@ -493,6 +520,15 @@ void deserializeAttr(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_acl_counter_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_port_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_port_attr(name, attr);
 }
 
 template <typename StatType>
@@ -2207,7 +2243,14 @@ protected:
     std::map<std::vector<StatType>, std::shared_ptr<BulkContextType>> m_bulkContexts;
 };
 
-template <typename AttrType>
+/**
+ * @brief Generic attribute context supporting both simple and complex attribute types
+ *
+ * @tparam AttrType     SAI attribute enum type (e.g., sai_port_attr_t, sai_queue_attr_t)
+ * @tparam AttrDataType Optional data storage type for attributes requiring memory allocation.
+ *                      Default is NoAttrData for simple attributes not needing special data storage.
+ */
+template <typename AttrType, typename AttrDataType = NoAttrData>
 class AttrContext : public CounterContext<AttrType>
 {
 public:
@@ -2332,6 +2375,882 @@ public:
     }
 };
 
+// Specialized context for PORT_PHY_ATTR that writes to dedicated table with port name as key
+class PortPhyAttrContext : public AttrContext<sai_port_attr_t, PortPhyAttributeData>
+{
+public:
+    using Base = AttrContext<sai_port_attr_t, PortPhyAttributeData>;
+
+    typedef CounterIds<sai_port_attr_t> AttrIdsType;
+
+    static const std::unordered_map<sai_port_attr_t, std::string> m_attrAliases;
+
+    PortPhyAttrContext(
+            _In_ const std::string &name,
+            _In_ const std::string &instance,
+            _In_ sai_object_type_t object_type,
+            _In_ sairedis::SaiInterface *vendor_sai,
+            _In_ sai_stats_mode_t &stats_mode,
+            _In_ const std::string &dbCounters,
+            _In_ bool isTcpConn):
+        Base(name, instance, object_type, vendor_sai, stats_mode),
+        m_dbCounters(dbCounters),
+        m_isTcpConn(isTcpConn)
+    {
+        SWSS_LOG_ENTER();
+    }
+
+    bool initAttrForLaneCountQuery(sai_attribute_t& attr)
+    {
+        SWSS_LOG_ENTER();
+
+        switch (attr.id) {
+            case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+            case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                attr.value.portlanelatchstatuslist.count = 0;
+                attr.value.portlanelatchstatuslist.list = nullptr;
+                return true;
+
+            case SAI_PORT_ATTR_RX_SNR:
+                attr.value.portsnrlist.count = 0;
+                attr.value.portsnrlist.list = nullptr;
+                return true;
+
+            default:
+                return false;  // Not a PORT attribute
+        }
+    }
+
+    uint32_t extractLaneCount(const sai_attribute_t& attr)
+    {
+        SWSS_LOG_ENTER();
+
+        switch (attr.id) {
+            case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+            case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                return attr.value.portlanelatchstatuslist.count;
+
+            case SAI_PORT_ATTR_RX_SNR:
+                return attr.value.portsnrlist.count;
+
+            default:
+                return 0;
+        }
+    }
+
+    void updatePortLaneCountMap(const std::shared_ptr<AttrIdsType>& attrIdsPtr)
+    {
+        SWSS_LOG_ENTER();
+
+        auto counter_ids = attrIdsPtr->counter_ids;
+        auto rid = attrIdsPtr->rid;
+
+        for (size_t i = 0; i < counter_ids.size(); i++)
+        {
+            sai_attribute_t attr;
+            attr.id = static_cast<sai_port_attr_t>(counter_ids[i]);
+
+            if (!initAttrForLaneCountQuery(attr))
+            {
+                SWSS_LOG_DEBUG("PORT_PHY_ATTR: initAttrForLaneCountQuery failed for attribute %d", attr.id);
+                continue;
+            }
+
+            // Query SAI for lane count (expecting BUFFER_OVERFLOW)
+            sai_status_t status = Base::m_vendorSai->get(
+                    Base::m_objectType,
+                    rid,
+                    1,
+                    &attr);
+            if (status != SAI_STATUS_BUFFER_OVERFLOW)
+            {
+                SWSS_LOG_ERROR("PORT_PHY_ATTR: Failed to get supported lane count for attr_id=%d Rid:0x%" PRIx64 ", status=%d",
+                        attr.id, rid, status);
+                continue;
+            }
+
+            uint32_t laneCount = extractLaneCount(attr);
+            m_portLaneCountMap[rid][static_cast<sai_port_attr_t>(attr.id)] = laneCount;
+            SWSS_LOG_DEBUG("PORT_PHY_ATTR: m_portLaneCountMap[rid:0x%" PRIx64 "][%d] = %u", rid, attr.id, laneCount);
+        }
+    }
+
+    bool initAttrData(
+        sai_object_id_t rid,
+        sai_attribute_t *attr,
+        PortPhyAttributeData* data)
+    {
+        SWSS_LOG_ENTER();
+
+        if (!attr || !data)
+        {
+            SWSS_LOG_ERROR("PORT_PHY_ATTR: Invalid input params : attr : %p, data : %p", attr, data);
+            return false;
+        }
+
+        auto outer_it = m_portLaneCountMap.find(rid);
+        if (outer_it == m_portLaneCountMap.end())
+        {
+          SWSS_LOG_ERROR("PORT_PHY_ATTR: Rid:0x%" PRIx64 " not found in m_portLaneCountMap, attr->id : %d",
+                         rid, attr->id);
+          return false;
+        }
+
+        const auto &attrLaneCountMap = outer_it->second;
+        auto inner_it = attrLaneCountMap.find(static_cast<sai_port_attr_t>(attr->id));
+        if (inner_it == attrLaneCountMap.end())
+        {
+          SWSS_LOG_ERROR("PORT_PHY_ATTR: Attr Id(%d) not found in m_portLaneCountMap[Rid:0x%" PRIx64 "]",
+                         attr->id, rid);
+          return false;
+        }
+
+        auto portLaneCount = inner_it->second;
+        SWSS_LOG_DEBUG("PORT_PHY_ATTR: Found m_portLaneCountMap[Rid:0x%" PRIx64 "][attr->id:%d] = %d",
+                     rid, attr->id, portLaneCount);
+
+        switch (attr->id) {
+            case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+                data->rxSignalDetectData.resize(portLaneCount);
+                attr->value.portlanelatchstatuslist.count = portLaneCount;
+                attr->value.portlanelatchstatuslist.list = data->rxSignalDetectData.data();
+                return true;
+
+            case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                data->fecAlignmentLockData.resize(portLaneCount);
+                attr->value.portlanelatchstatuslist.count = portLaneCount;
+                attr->value.portlanelatchstatuslist.list = data->fecAlignmentLockData.data();
+                return true;
+
+            case SAI_PORT_ATTR_RX_SNR:
+                data->rxSnrData.resize(portLaneCount);
+                attr->value.portsnrlist.count = portLaneCount;
+                attr->value.portsnrlist.list = data->rxSnrData.data();
+                return true;
+
+            default:
+                SWSS_LOG_ERROR("PORT_PHY_ATTR: initAttrData: Unsupported attr-id : %d", attr->id);
+                return false;
+        }
+    }
+
+    void addObject(
+            _In_ sai_object_id_t vid,
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<std::string> &idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+        SWSS_LOG_ENTER();
+
+        std::vector<sai_port_attr_t> attrIds;
+
+        for (const auto &str : idStrings)
+        {
+            sai_port_attr_t attr;
+            sai_deserialize_port_attr(str, attr);
+            attrIds.push_back(attr);
+        }
+
+        auto attr_ids = std::make_shared<AttrIdsType>(rid, attrIds);
+        auto it = Base::m_objectIdsMap.find(vid);
+        if (it != Base::m_objectIdsMap.end())
+        {
+            it->second->counter_ids = attrIds;
+        }
+        else
+        {
+            Base::m_objectIdsMap.emplace(vid, attr_ids);
+        }
+        updatePortLaneCountMap(attr_ids);
+    }
+
+    void removeObject(_In_ sai_object_id_t vid) override
+    {
+        SWSS_LOG_ENTER();
+
+        auto it = Base::m_objectIdsMap.find(vid);
+        if (it != Base::m_objectIdsMap.end())
+        {
+            auto lane_it = m_portLaneCountMap.find(it->second->rid);
+            if (lane_it != m_portLaneCountMap.end())
+            {
+                SWSS_LOG_DEBUG("PORT_PHY_ATTR: Removing RID 0x%" PRIx64 " from m_portLaneCountMap", it->second->rid);
+                m_portLaneCountMap.erase(lane_it);
+            }
+        }
+
+        // Clean up lane metadata for this VID
+        auto metadata_it = m_laneMetadata.find(vid);
+        if (metadata_it != m_laneMetadata.end())
+        {
+            SWSS_LOG_DEBUG("PORT_PHY_ATTR: Removing VID 0x%" PRIx64 " from m_laneMetadata", vid);
+            m_laneMetadata.erase(metadata_it);
+        }
+
+        // Call base class to remove from m_objectIdsMap
+        Base::removeObject(vid);
+    }
+
+    void collectData(_In_ swss::Table &countersTable) override
+    {
+        SWSS_LOG_ENTER();
+
+        // Create dedicated PORT_PHY_ATTR table
+        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
+        swss::RedisPipeline pipeline(&db);
+        swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
+
+        for (const auto &kv : Base::m_objectIdsMap)
+        {
+            const auto &vid = kv.first;
+            const auto &rid = kv.second->rid;
+            const auto &attrIds = kv.second->counter_ids;
+
+            std::vector<sai_attribute_t> attrs(attrIds.size());
+            PortPhyAttributeData attrData;
+
+            SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
+                           attrIds.size(), vid, rid);
+
+            bool attrDataInitialized = true;
+            for (size_t i = 0; i < attrIds.size(); i++)
+            {
+                attrs[i].id = attrIds[i];
+                if (!initAttrData(rid, &attrs[i], &attrData))
+                {
+                    SWSS_LOG_WARN("PORT_PHY_ATTR: Failed to initialize attribute %d for RID:0x%" PRIx64 ", skipping object",
+                                  attrIds[i], rid);
+                    attrDataInitialized = false;
+                    break;
+                }
+            }
+
+            if (!attrDataInitialized)
+            {
+                continue;
+            }
+
+            // Collect attributes from SAI
+            sai_status_t status = Base::m_vendorSai->get(
+                    Base::m_objectType,
+                    rid,
+                    static_cast<uint32_t>(attrIds.size()),
+                    attrs.data());
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to get port attr for VID 0x%" PRIx64 ", RID:0x%" PRIx64 ": %d",
+                        vid, rid, status);
+                continue;
+            }
+
+            // Store in PORT_PHY_ATTR table using VID as key
+            std::string vid_str = sai_serialize_object_id(vid);
+
+            for (size_t i = 0; i != attrIds.size(); i++)
+            {
+                auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
+                if (!meta)
+                {
+                    SWSS_LOG_ERROR("Failed to get metadata for port attr");
+                    continue;
+                }
+
+                auto it = m_attrAliases.find(attrIds[i]);
+                if (it == m_attrAliases.end())
+                {
+                    SWSS_LOG_ERROR("Unsupported PORT_PHY_ATTR: %d", attrIds[i]);
+                    continue;
+                }
+
+                std::string attr_value;
+
+                // Latch attributes: Track changes, add timestamp/count per lane
+                if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST)
+                {
+                    // Compare current lane values with previous and update metadata
+                    updateLatchedLaneMetadata(vid, attrIds[i], attrs[i]);
+
+                    // Serialize with timestamp and count per lane
+                    attr_value = buildLatchStatusWithMetadata(vid, attrIds[i], attrs[i]);
+                }
+                else
+                {
+                    // Standard serialization for SNR and any other attributes
+                    attr_value = sai_serialize_attr_value(*meta, attrs[i]);
+                }
+                // Use hset to set each field individually to avoid race conditions
+                // with PortSerdesAttrContext writing to the same table
+                portPhyAttrTable.hset(vid_str, it->second, attr_value, "");
+            }
+        }
+
+        portPhyAttrTable.flush();
+    }
+
+private:
+    /**
+     * @brief Update metadata when SAI reports lane latch status change
+     *
+     * Updates timestamp and count when SAI indicates the latch status changed
+     * via the 'changed' flag in sai_latch_status_t.
+     * Only applicable for discrete latch attributes (signal detect, FEC lock).
+     *
+     * @param vid Virtual object ID
+     * @param attr_id Attribute ID (must be latch type)
+     * @param attr Current attribute containing lane latch status list
+     */
+    void updateLatchedLaneMetadata(
+        _In_ sai_object_id_t vid,
+        _In_ sai_port_attr_t attr_id,
+        _In_ const sai_attribute_t& attr)
+    {
+        SWSS_LOG_ENTER();
+
+        auto& list = attr.value.portlanelatchstatuslist;
+
+        // Get current timestamp in milliseconds since epoch
+        auto current_time = std::chrono::system_clock::now();
+        uint64_t timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            current_time.time_since_epoch()).count();
+
+        for (uint32_t i = 0; i < list.count; ++i)
+        {
+            uint32_t lane = list.list[i].lane;
+            auto& current_latch = list.list[i].value;
+
+            // Get or initialize metadata for this lane
+            auto& metadata = m_laneMetadata[vid][attr_id][lane];
+
+            // Check if SAI reports status changed
+            if (current_latch.changed)
+            {
+                // SAI reported change - update timestamp and counter
+                metadata.timestamp_ms = timestamp_ms;
+                metadata.count++;
+
+                SWSS_LOG_DEBUG("PORT_PHY_ATTR: VID 0x%" PRIx64 " attr %d lane %u changed to %s%s, count=%lu",
+                              vid, attr_id, lane,
+                              current_latch.current_status ? "T" : "F",
+                              current_latch.changed ? "*" : "",
+                              metadata.count);
+            }
+            // else: keep existing timestamp/count unchanged
+        }
+    }
+
+    /**
+     * @brief Serialize lane latch status with timestamp and count metadata
+     *
+     * Builds JSON format: {"0":["F*",<timestamp>,<count>], "1":["T*",<timestamp>,<count>], ...}
+     *
+     * @param vid Virtual object ID
+     * @param attr_id Attribute ID
+     * @param attr Current attribute containing lane latch status list
+     * @return JSON string with enhanced format
+     */
+    std::string buildLatchStatusWithMetadata(
+        _In_ sai_object_id_t vid,
+        _In_ sai_port_attr_t attr_id,
+        _In_ const sai_attribute_t& attr)
+    {
+        SWSS_LOG_ENTER();
+
+        json j = json::object();
+
+        auto& list = attr.value.portlanelatchstatuslist;
+
+        for (uint32_t i = 0; i < list.count; ++i)
+        {
+            uint32_t lane = list.list[i].lane;
+            auto& latch_value = list.list[i].value;
+
+            // Serialize to "T*"/"F*"/"T"/"F" (same logic as sai_serialize_port_lane_latch_status_list)
+            std::string status_str = latch_value.current_status ? "T" : "F";
+            if (latch_value.changed)
+            {
+                status_str += "*";
+            }
+
+            // Get metadata for this lane
+            auto& metadata = m_laneMetadata[vid][attr_id][lane];
+
+            // Build JSON array: ["status", timestamp, count]
+            json lane_data = json::array();
+            lane_data.push_back(status_str);
+            lane_data.push_back(metadata.timestamp_ms);
+            lane_data.push_back(metadata.count);
+
+            j[std::to_string(lane)] = lane_data;
+        }
+
+        return j.dump();
+    }
+
+    struct LaneMetadata
+    {
+        uint64_t timestamp_ms;
+        uint64_t count;
+
+        LaneMetadata() : timestamp_ms(0), count(0) {}
+    };
+
+    std::string m_dbCounters;
+    bool m_isTcpConn;
+    std::map<sai_object_id_t, std::map<sai_port_attr_t, uint32_t>> m_portLaneCountMap;
+    // Map: [VID][attr_id][lane_number] -> metadata
+    std::map<sai_object_id_t, std::map<sai_port_attr_t, std::map<uint32_t, LaneMetadata>>> m_laneMetadata;
+};
+
+const std::unordered_map<sai_port_attr_t, std::string> PortPhyAttrContext::m_attrAliases = {
+    {SAI_PORT_ATTR_RX_SNR, "rx_snr"},
+    {SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK, "pcs_fec_lane_alignment_lock"},
+    {SAI_PORT_ATTR_RX_SIGNAL_DETECT, "phy_rx_signal_detect"}
+};
+
+
+
+// Specialized context for PORT_SERDES_ATTR that writes to PORT_PHY_ATTR_TABLE table
+class PortPhySerdesAttrContext : public AttrContext<sai_port_serdes_attr_t, PortPhySerdesAttributeData>
+{
+public:
+    using Base = AttrContext<sai_port_serdes_attr_t, PortPhySerdesAttributeData>;
+
+    typedef CounterIds<sai_port_serdes_attr_t> AttrIdsType;
+
+    PortPhySerdesAttrContext(
+            _In_ const std::string &name,
+            _In_ const std::string &instance,
+            _In_ sai_object_type_t object_type,
+            _In_ sairedis::SaiInterface *vendor_sai,
+            _In_ sai_stats_mode_t &stats_mode,
+            _In_ const std::string &dbCounters,
+            _In_ bool isTcpConn):
+        Base(name, instance, object_type, vendor_sai, stats_mode),
+        m_dbCounters(dbCounters),
+        m_isTcpConn(isTcpConn)
+    {
+        SWSS_LOG_ENTER();
+    }
+
+    bool getPortRidFromPortSerdesRid(sai_object_id_t port_serdes_rid, sai_object_id_t &port_rid)
+    {
+        SWSS_LOG_ENTER();
+
+        sai_attribute_t attr;
+        attr.id = SAI_PORT_SERDES_ATTR_PORT_ID;
+        sai_status_t status = Base::m_vendorSai->get(Base::m_objectType, port_serdes_rid, 1, &attr);
+
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            port_rid = attr.value.oid;
+            return true;
+        }
+
+        SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port RID for port serdes RID:0x%" PRIx64 ", status:%d",
+                      port_serdes_rid, status);
+        return false;
+    }
+
+    bool getPortVidFromPortSerdesVid(sai_object_id_t port_serdes_vid, sai_object_id_t &port_vid)
+    {
+        SWSS_LOG_ENTER();
+
+        try
+        {
+            swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
+            swss::Table portSerdesIdToPortIdTable(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
+
+            std::string port_serdes_vid_str = sai_serialize_object_id(port_serdes_vid);
+            std::string port_vid_str;
+
+            if (portSerdesIdToPortIdTable.hget("", port_serdes_vid_str, port_vid_str))
+            {
+                sai_deserialize_object_id(port_vid_str, port_vid);
+                return true;
+            }
+
+            SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: port_serdes_vid:0x%" PRIx64 " not found in COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP",
+                         port_serdes_vid);
+        }
+        catch (const std::exception& e)
+        {
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Exception while querying COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP: %s", e.what());
+        }
+
+        return false;
+    }
+
+    void updatePortSerdesIdToPortIdMap(sai_object_id_t port_serdes_rid, sai_object_id_t port_serdes_vid)
+    {
+        SWSS_LOG_ENTER();
+
+        sai_object_id_t port_rid = SAI_NULL_OBJECT_ID;
+        sai_object_id_t port_vid = SAI_NULL_OBJECT_ID;
+
+        if (getPortRidFromPortSerdesRid(port_serdes_rid, port_rid) &&
+            getPortVidFromPortSerdesVid(port_serdes_vid, port_vid))
+        {
+            m_portSerdesIdToPortIdMap[port_serdes_rid] = PortIdInfo(port_rid, port_vid);
+            SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Mapped port_serdes_rid:0x%" PRIx64 " -> port_rid:0x%" PRIx64 ", port_vid:0x%" PRIx64,
+                          port_serdes_rid, port_rid, port_vid);
+        }
+        else
+        {
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to map port_serdes_rid:0x%" PRIx64 " - could not retrieve port RID or VID", port_serdes_rid);
+            m_portSerdesIdToPortIdMap.erase(port_serdes_rid);
+        }
+    }
+
+    void updatePortSerdesIdToLaneCountMap(sai_object_id_t port_serdes_rid)
+    {
+        SWSS_LOG_ENTER();
+
+        sai_object_id_t port_rid;
+        uint32_t laneCount;
+        sai_attribute_t attr;
+
+        auto it = m_portSerdesIdToPortIdMap.find(port_serdes_rid);
+        if (it == m_portSerdesIdToPortIdMap.end())
+        {
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Port serdes RID:0x%" PRIx64 " has no associated port rid/vid mapping", port_serdes_rid);
+            return;
+        }
+        port_rid = it->second.port_rid;
+
+        attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+        attr.value.u32list.count = 0;        // Query with count=0 to get the actual lane count
+        attr.value.u32list.list = nullptr;
+        sai_status_t status = Base::m_vendorSai->get(SAI_OBJECT_TYPE_PORT, port_rid, 1, &attr);
+
+        if (status != SAI_STATUS_BUFFER_OVERFLOW)
+        {
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get hardware lane count for port RID:0x%" PRIx64 ", status:%d",
+                          port_rid, status);
+            return;
+        }
+
+        laneCount = attr.value.u32list.count;
+
+        // Store the lane count in the map
+        m_portSerdesIdToLaneCountMap[port_serdes_rid] = laneCount;
+        SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Stored lane count for port_serdes_rid:0x%" PRIx64 " = %u lanes",
+                      port_serdes_rid, laneCount);
+    }
+
+    void updatePortSerdesTapsCountMap(sai_object_id_t port_serdes_rid)
+    {
+        SWSS_LOG_ENTER();
+
+        std::vector<sai_port_serdes_attr_t> countAttrs = {
+            SAI_PORT_SERDES_ATTR_TX_FIR_COUNT
+            // enable the below attrs when implemented.
+            //SAI_PORT_SERDES_ATTR_RX_FFE_COUNT,
+            //SAI_PORT_SERDES_ATTR_RX_DFE_COUNT
+        };
+
+        for (const auto& attrId : countAttrs)
+        {
+            uint32_t count;
+            sai_attribute_t attr;
+            attr.id = attrId;
+
+            sai_status_t status = Base::m_vendorSai->get(
+                Base::m_objectType,
+                port_serdes_rid,
+                1,
+                &attr);
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes count attr %s for port_serdes RID:0x%" PRIx64 ", status:%d",
+                              sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, status);
+                continue;
+            }
+
+            count = attr.value.u32;
+
+            m_portSerdesTapsCountMap[port_serdes_rid][attrId] = count;
+            SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Stored %s for port_serdes_rid:0x%" PRIx64 " = %u",
+                          sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, count);
+        }
+    }
+
+    bool initAttrData(
+        sai_object_id_t rid,
+        sai_attribute_t *attr,
+        PortPhySerdesAttributeData* data)
+    {
+        SWSS_LOG_ENTER();
+
+        if (!attr || !data)
+        {
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Invalid input params : attr : %p, data : %p", attr, data);
+            return false;
+        }
+
+        // Look up lane count from m_portSerdesIdToLaneCountMap
+        auto it = m_portSerdesIdToLaneCountMap.find(rid);
+        if (it == m_portSerdesIdToLaneCountMap.end())
+        {
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no lane count information", rid);
+            return false;
+        }
+
+        uint32_t laneCount = it->second;
+        SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Found lane count for port_serdes_rid:0x%" PRIx64 " = %u", rid, laneCount);
+
+        switch (attr->id) {
+            case SAI_PORT_SERDES_ATTR_RX_VGA:
+                data->rxVgaData.resize(laneCount);
+                attr->value.u32list.count = laneCount;
+                attr->value.u32list.list = data->rxVgaData.data();
+                return true;
+
+            case SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST:
+            {
+                // Find the TX Fir TAPS count from the map
+                auto count_it = m_portSerdesTapsCountMap.find(rid);
+                if (count_it == m_portSerdesTapsCountMap.end())
+                {
+                 SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no serdes count attribute information", rid);
+                 return false;
+                }
+                auto& attrCountMap = count_it->second;
+                auto tap_it = attrCountMap.find(SAI_PORT_SERDES_ATTR_TX_FIR_COUNT);
+                if (tap_it == attrCountMap.end())
+                {
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: TX_FIR_COUNT not found for port_serdes_rid:0x%" PRIx64, rid);
+                    return false;
+                }
+                uint32_t tapCount = tap_it->second;
+
+                // Resize the memory as per the taps and lane count.
+                // Structure: outer dimension = tapCount, inner dimension = laneCount
+                // sai_taps_list_t.count = number of taps
+                // sai_taps_list_t.list[i] = sai_s32_list_t for tap i
+                // sai_s32_list_t.count = number of lanes
+                // sai_s32_list_t.list[j] = value for lane j
+                data->txFirTapsData.resize(tapCount);
+                data->txFirTapsList.resize(tapCount);
+
+                for (uint32_t i = 0; i < tapCount; i++)
+                {
+                    data->txFirTapsData[i].resize(laneCount);
+                    data->txFirTapsList[i].count = laneCount;
+                    data->txFirTapsList[i].list = data->txFirTapsData[i].data();
+                }
+
+                // Set up the top-level attribute pointer
+                attr->value.portserdestaps.count = tapCount;
+                attr->value.portserdestaps.list = data->txFirTapsList.data();
+                return true;
+            }
+
+            default:
+                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: initAttrData: Unsupported attr-id : %d", attr->id);
+                return false;
+        }
+    }
+
+    void addObject(
+            _In_ sai_object_id_t vid,
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<std::string> &idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+        SWSS_LOG_ENTER();
+
+        SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Adding port serdes object VID 0x%" PRIx64 ", RID 0x%" PRIx64 " with %zu attributes",
+                       vid, rid, idStrings.size());
+
+        std::vector<sai_port_serdes_attr_t> attrIds;
+
+        for (const auto &str : idStrings)
+        {
+            sai_port_serdes_attr_t attr;
+            sai_deserialize_port_serdes_attr(str, attr);
+            attrIds.push_back(attr);
+        }
+
+        auto attr_ids = std::make_shared<AttrIdsType>(rid, attrIds);
+        auto it = Base::m_objectIdsMap.find(vid);
+        if (it != Base::m_objectIdsMap.end())
+        {
+            it->second->counter_ids = attrIds;
+        }
+        else
+        {
+            Base::m_objectIdsMap.emplace(vid, attr_ids);
+        }
+
+        // update member maps
+        updatePortSerdesIdToPortIdMap(rid, vid);
+        updatePortSerdesIdToLaneCountMap(rid);
+        updatePortSerdesTapsCountMap(rid);
+    }
+
+    void removeObject(_In_ sai_object_id_t vid) override
+    {
+        SWSS_LOG_ENTER();
+
+        auto it = Base::m_objectIdsMap.find(vid);
+        if (it != Base::m_objectIdsMap.end())
+        {
+            sai_object_id_t port_serdes_rid = it->second->rid;
+
+            // Clean up m_portSerdesIdToLaneCountMap
+            auto lane_it = m_portSerdesIdToLaneCountMap.find(port_serdes_rid);
+            if (lane_it != m_portSerdesIdToLaneCountMap.end())
+            {
+                SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Removing port_serdes RID:0x%" PRIx64 " from m_portSerdesIdToLaneCountMap", port_serdes_rid);
+                m_portSerdesIdToLaneCountMap.erase(lane_it);
+            }
+
+            // Clean up m_portSerdesIdToPortIdMap
+            auto serdes_it = m_portSerdesIdToPortIdMap.find(port_serdes_rid);
+            if (serdes_it != m_portSerdesIdToPortIdMap.end())
+            {
+                SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Removing port_serdes RID:0x%" PRIx64 " from m_portSerdesIdToPortIdMap", port_serdes_rid);
+                m_portSerdesIdToPortIdMap.erase(serdes_it);
+            }
+
+            // Clean up m_portSerdesTapsCountMap
+            auto count_it = m_portSerdesTapsCountMap.find(port_serdes_rid);
+            if (count_it != m_portSerdesTapsCountMap.end())
+            {
+                SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Removing port_serdes RID:0x%" PRIx64 " from m_portSerdesTapsCountMap", port_serdes_rid);
+                m_portSerdesTapsCountMap.erase(count_it);
+            }
+        }
+
+        // Call base class to remove from m_objectIdsMap
+        Base::removeObject(vid);
+    }
+
+    void collectData(_In_ swss::Table &countersTable) override
+    {
+        SWSS_LOG_ENTER();
+
+        // Collected port phy serdes attrs data will be written to PORT_PHY_ATTR_TABLE (shared with port phy attrs)
+        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
+        swss::RedisPipeline pipeline(&db);
+        swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
+
+        for (const auto &kv : Base::m_objectIdsMap)
+        {
+            const auto &vid = kv.first;
+            const auto &rid = kv.second->rid;
+            const auto &attrIds = kv.second->counter_ids;
+
+
+            std::vector<sai_attribute_t> attrs(attrIds.size());
+            PortPhySerdesAttributeData attrData;
+
+            SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
+                           attrIds.size(), vid, rid);
+
+            // Initialize all attributes - if any fail, skip this object
+            bool attrDataInitialized = true;
+            for (size_t i = 0; i < attrIds.size(); i++)
+            {
+                attrs[i].id = attrIds[i];
+                if (!initAttrData(rid, &attrs[i], &attrData))
+                {
+                    SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Failed to initialize attribute %s for RID:0x%" PRIx64 ", skipping object",
+                                  sai_serialize_port_serdes_attr(attrIds[i]).c_str(), rid);
+                    attrDataInitialized = false;
+                    break;
+                }
+            }
+
+            if (!attrDataInitialized)
+            {
+                continue;
+            }
+
+            sai_status_t status = Base::m_vendorSai->get(
+                    Base::m_objectType,
+                    rid,
+                    static_cast<uint32_t>(attrIds.size()),
+                    attrs.data());
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes attr for VID 0x%" PRIx64 ", status: %d",
+                        vid, status);
+                continue;
+            }
+
+            // Get port_vid from the map using port_serdes_rid
+            auto port_it = m_portSerdesIdToPortIdMap.find(rid);
+            if (port_it == m_portSerdesIdToPortIdMap.end())
+            {
+                SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Port serdes VID 0x%" PRIx64 " has no associated port mapping", vid);
+                continue;
+            }
+
+            std::string port_vid_str = sai_serialize_object_id(port_it->second.port_vid);
+
+            for (size_t i = 0; i != attrIds.size(); i++)
+            {
+                auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
+                if (!meta)
+                {
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get metadata for port serdes attr");
+                    continue;
+                }
+
+                auto it = m_attrAliases.find(attrIds[i]);
+                if (it == m_attrAliases.end())
+                {
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Unsupported PORT_SERDES_ATTR: %d", attrIds[i]);
+                    continue;
+                }
+
+                std::string attr_value = sai_serialize_attr_value(*meta, attrs[i]);
+
+                // Special formatting for RX_VGA
+                if (attrs[i].id == SAI_PORT_SERDES_ATTR_RX_VGA)
+                {
+                    attr_value = sai_serialize_uint32_list_to_json_dict(attr_value);
+                }
+
+                // Use hset to set each field individually to avoid race conditions
+                // with PortPhyAttrContext writing to the same table
+                portPhyAttrTable.hset(port_vid_str, it->second, attr_value, "");
+            }
+        }
+
+        portPhyAttrTable.flush();
+    }
+
+private:
+    // Struct to hold both RID and VID for a port
+    struct PortIdInfo
+    {
+        sai_object_id_t port_rid;
+        sai_object_id_t port_vid;
+
+        PortIdInfo() : port_rid(SAI_NULL_OBJECT_ID), port_vid(SAI_NULL_OBJECT_ID) {}
+        PortIdInfo(sai_object_id_t rid, sai_object_id_t vid) : port_rid(rid), port_vid(vid) {}
+    };
+
+    static const std::unordered_map<sai_port_serdes_attr_t, std::string> m_attrAliases;
+
+    std::string m_dbCounters;
+    bool m_isTcpConn;
+    std::map<sai_object_id_t, PortIdInfo> m_portSerdesIdToPortIdMap;
+    std::map<sai_object_id_t, uint32_t> m_portSerdesIdToLaneCountMap;
+    std::map<sai_object_id_t, std::map<sai_port_serdes_attr_t, uint32_t>> m_portSerdesTapsCountMap;
+};
+
+const std::unordered_map<sai_port_serdes_attr_t, std::string> PortPhySerdesAttrContext::m_attrAliases = {
+    {SAI_PORT_SERDES_ATTR_RX_VGA, "rx_vga"},
+    {SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST, "tx_fir_taps_list"}
+};
+
+
 class DashMeterCounterContext : public BaseCounterContext
 {
 public:
@@ -2339,8 +3258,9 @@ public:
             _In_ const std::string &name,
             _In_ const std::string &instance,
             _In_ sairedis::SaiInterface *vendor_sai,
-            _In_ std::string dbCounters):
-    BaseCounterContext(name, instance), m_dbCounters(dbCounters), m_vendorSai(vendor_sai)
+            _In_ std::string dbCounters,
+            _In_ bool isTcpConn):
+    BaseCounterContext(name, instance), m_dbCounters(dbCounters), m_isTcpConn(isTcpConn), m_vendorSai(vendor_sai)
     {
         SWSS_LOG_ENTER();
     }
@@ -2424,7 +3344,7 @@ public:
             return;
         }
         // delete all meter bucket stats for this object from counters DB
-        swss::DBConnector db(m_dbCounters, 0);
+        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
         swss::RedisPipeline pipeline(&db);
         swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
         for (const auto& object_key: it->second.object_keys) {
@@ -2729,6 +3649,7 @@ private:
     std::vector<sai_meter_bucket_entry_stat_t> m_supportedMeterCounters;
     sai_object_type_t m_objectType = (sai_object_type_t) SAI_OBJECT_TYPE_METER_BUCKET_ENTRY;
     std::string m_dbCounters;
+    bool m_isTcpConn;
     sairedis::SaiInterface *m_vendorSai;
     sai_stats_mode_t m_groupStatsMode = SAI_STATS_MODE_READ;
     sai_object_id_t m_switchId = 0UL;
@@ -2753,6 +3674,8 @@ FlexCounter::FlexCounter(
 
     m_enable = false;
     m_isDiscarded = false;
+
+    m_isTcpConn = swss::SonicDBConfig::getDbSock(dbCounters).empty();
 
     startFlexCounterThread();
 }
@@ -2825,7 +3748,7 @@ void FlexCounter::removeDataFromCountersDB(
         _In_ const std::string &ratePrefix)
 {
     SWSS_LOG_ENTER();
-    swss::DBConnector db(m_dbCounters, 0);
+    swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
 
@@ -3095,9 +4018,23 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->always_check_supported_counters = true;
         return context;
     }
+    else if (context_name == COUNTER_TYPE_HA_SET)
+    {
+        auto context = std::make_shared<CounterContext<sai_ha_set_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
+        return context;
+    }
     else if (context_name == COUNTER_TYPE_METER_BUCKET)
     {
-        return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters);
+        return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters, m_isTcpConn);
+    }
+    else if (context_name == ATTR_TYPE_PORT_PHY_ATTR)
+    {
+        return std::make_shared<PortPhyAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn);
+    }
+    else if (context_name == ATTR_TYPE_PORT_PHY_SERDES_ATTR)
+    {
+        return std::make_shared<PortPhySerdesAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT_SERDES, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn);
     }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
@@ -3128,6 +4065,9 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = true;
+        // BROADCOM_LEGACY_SAI_COMPAT: sai_get_stats_ext crashes on some legacy ASICs for switch objects;
+        // platform can set SAI_STATS_EXT_SWITCH_SUPPORTED=0 in sai.profile to disable.
+        context->use_sai_stats_ext = m_vendorSai->isSwitchStatsExtSupported();
         return context;
     }
 
@@ -3217,7 +4157,7 @@ void FlexCounter::flexCounterThreadRunFunction()
 {
     SWSS_LOG_ENTER();
 
-    swss::DBConnector db(m_dbCounters, 0);
+    swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
 
@@ -3323,6 +4263,10 @@ void FlexCounter::removeCounter(
         {
             getCounterContext(COUNTER_TYPE_WRED_ECN_PORT)->removeObject(vid);
         }
+        if (hasCounterContext(ATTR_TYPE_PORT_PHY_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_PORT_PHY_ATTR)->removeObject(vid);
+        }
     }
     else if (objectType == SAI_OBJECT_TYPE_QUEUE)
     {
@@ -3413,11 +4357,19 @@ void FlexCounter::removeCounter(
     {
         if (hasCounterContext(COUNTER_TYPE_ENI))
         {
+            removeDataFromCountersDB(vid, "");
             getCounterContext(COUNTER_TYPE_ENI)->removeObject(vid);
         }
         if (hasCounterContext(COUNTER_TYPE_METER_BUCKET))
         {
             getCounterContext(COUNTER_TYPE_METER_BUCKET)->removeObject(vid);
+        }
+    }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET)
+    {
+        if (hasCounterContext(COUNTER_TYPE_HA_SET))
+        {
+            getCounterContext(COUNTER_TYPE_HA_SET)->removeObject(vid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_COUNTER)
@@ -3438,6 +4390,13 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(COUNTER_TYPE_POLICER))
         {
             getCounterContext(COUNTER_TYPE_POLICER)->removeObject(vid);
+        }
+    }
+    else if (objectType == SAI_OBJECT_TYPE_PORT_SERDES)
+    {
+        if (hasCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR)->removeObject(vid);
         }
     }
     else

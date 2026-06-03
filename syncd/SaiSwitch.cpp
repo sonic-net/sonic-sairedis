@@ -13,8 +13,6 @@ using namespace syncd;
 
 #define MAX_OBJLIST_LEN 128
 
-#define MAX_LANES_PER_PORT 8
-
 /*
  * NOTE: If real ID will change during hard restarts, then we need to remap all
  * VID/RID, but we can only do that if we will save entire tree with all

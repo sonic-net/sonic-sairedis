@@ -11,6 +11,7 @@ ENABLE_SAITHRIFT=0
 TEMPLATES_DIR=/usr/share/sonic/templates
 PLATFORM_DIR=/usr/share/sonic/platform
 HWSKU_DIR=/usr/share/sonic/hwsku
+CONTEXT_CONFIG_FILE=$HWSKU_DIR/context_config.json
 SAI_PROFILE_DIR=/etc/sai.d
 
 VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
@@ -18,6 +19,7 @@ VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
 # Retrieve vars from sonic-cfggen
 SYNCD_VARS=$(sonic-cfggen -d -y /etc/sonic/sonic_version.yml -t $VARS_FILE) || exit 1
 SONIC_ASIC_TYPE=$(echo $SYNCD_VARS | jq -r '.asic_type')
+SONIC_ASIC_SUBTYPE=$(echo $SYNCD_VARS | jq -r '.asic_subtype // empty')
 
 if [ -x $CMD_DSSERVE ]; then
     CMD=$CMD_DSSERVE
@@ -41,8 +43,14 @@ mkdir -p /var/log/sai_failure_dump/
 # Otherwise, set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
 SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
+SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.orch_southbound_zmq_enabled')
 if [ "$SWITCH_TYPE" == "dpu" ]; then
-    CMD_ARGS+=" -z zmq_sync -x /usr/share/sonic/hwsku/context_config.json"
+    CMD_ARGS+=" -z zmq_sync -x $CONTEXT_CONFIG_FILE"
+elif [ "$SOUTHBOUND_ZMQ" == "true" ]; then
+    CMD_ARGS+=" -z zmq_sync"
+    if [ -f "$CONTEXT_CONFIG_FILE" ]; then
+        CMD_ARGS+=" -x $CONTEXT_CONFIG_FILE"
+    fi
 elif [ "$SYNC_MODE" == "enable" ]; then
     CMD_ARGS+=" -s"
 fi
@@ -94,6 +102,17 @@ function check_warm_boot()
 }
 
 
+function cleanup_stale_flow_dump_files()
+{
+    # Flows are to a file based on their VID.
+    # Clean up all files in the directory to avoid updates to stale files.
+    local flow_dump_dir=/var/dump/flows
+    if [ -d "$flow_dump_dir" ]; then
+        rm -f "$flow_dump_dir"/*gz 2>/dev/null || true
+    fi
+}
+
+
 function set_start_type()
 {
     if [ x"$WARM_BOOT" == x"true" ]; then
@@ -104,6 +123,32 @@ function set_start_type()
         CMD_ARGS+=" -t fastfast"
     elif [ x"$EXPRESS_REBOOT" == x"yes" ]; then
         CMD_ARGS+=" -t express"
+    fi
+}
+
+function set_watchdog_timeout()
+{
+    # For chassis platforms, extend init timeout to avoid false-alarm "WD exceeded" errors.
+    # Multipliers (5x, 10x) match sonic-swss orchagent.
+    if [[ "$CMD_ARGS" =~ "-w " ]]; then
+        return
+    fi
+
+    local NORMAL_TIMEOUT=30000000
+    local INIT_MULTIPLIER=1
+
+    if [ "$SWITCH_TYPE" == "voq" ] || [ "$SWITCH_TYPE" == "chassis-packet" ] || [ "$SWITCH_TYPE" == "dpu" ]; then
+        INIT_MULTIPLIER=5
+    elif [ "$SWITCH_TYPE" == "fabric" ]; then
+        INIT_MULTIPLIER=10
+    fi
+
+    local INIT_TIMEOUT=$((NORMAL_TIMEOUT * INIT_MULTIPLIER))
+
+    CMD_ARGS+=" -w $NORMAL_TIMEOUT"
+
+    if [ "$INIT_MULTIPLIER" -gt 1 ]; then
+        CMD_ARGS+=" -W $INIT_TIMEOUT"
     fi
 }
 
@@ -311,6 +356,10 @@ config_syncd_bcm()
         CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
     fi
 
+    if [ "$SONIC_ASIC_SUBTYPE" = "broadcom" ]; then
+        CMD_ARGS+=" -l"
+    fi
+
     if [ -f "$HWSKU_DIR/context_config.json" ]; then
         CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
     fi
@@ -503,7 +552,7 @@ vpp_api_check()
 
 config_syncd_vpp()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai_vpp.profile"
+    CMD_ARGS+=" -l -p $HWSKU_DIR/sai_vpp.profile"
     vpp_api_check "/run/vpp/api.sock"
     source /etc/sonic/vpp/syncd_vpp_env
     export NO_LINUX_NL
@@ -618,6 +667,7 @@ config_syncd()
 {
     check_warm_boot
 
+    cleanup_stale_flow_dump_files
 
     if [ "$SONIC_ASIC_TYPE" == "cisco-8000" ]; then
         config_syncd_cisco_8000
@@ -636,6 +686,8 @@ config_syncd()
     elif [ "$SONIC_ASIC_TYPE" == "nephos" ]; then
         config_syncd_nephos
     elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
+        config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "nokia-vs" ]; then
         config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "vpp" ]; then
         config_syncd_vpp
@@ -658,6 +710,7 @@ config_syncd()
         exit 1
     fi
 
+    set_watchdog_timeout
     set_start_type
 
     if [ ${ENABLE_SAITHRIFT} == 1 ]; then

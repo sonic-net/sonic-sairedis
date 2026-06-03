@@ -20,6 +20,30 @@ TEST(ContextConfigContainer, loadFromFile)
     EXPECT_NE(ccc.loadFromFile("files/ccc_bad.txt"), nullptr);
 }
 
+TEST(ContextConfigContainer, loadFromFileSetLoadedFromJson)
+{
+    auto ccc = ContextConfigContainer::loadFromFile("files/context_config_container_ok.json");
+
+    ASSERT_NE(ccc, nullptr);
+
+    auto cc = ccc->get(0);
+
+    ASSERT_NE(cc, nullptr);
+    EXPECT_TRUE(cc->m_loadedFromJson);
+}
+
+TEST(ContextConfigContainer, defaultDoesNotSetLoadedFromJson)
+{
+    auto ccc = ContextConfigContainer::loadFromFile(nullptr);
+
+    ASSERT_NE(ccc, nullptr);
+
+    auto cc = ccc->get(0);
+
+    ASSERT_NE(cc, nullptr);
+    EXPECT_FALSE(cc->m_loadedFromJson);
+}
+
 TEST(ContextConfigContainer, insert)
 {
     ContextConfigContainer ccc;

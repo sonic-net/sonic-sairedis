@@ -32,6 +32,11 @@ namespace syncd
             void setCallback(
                     _In_ std::function<void(uint64_t)> callback);
 
+            void setWarnTimespan(
+                    _In_ int64_t timespan);
+
+            int64_t getWarnTimespan() const;
+
             /**
              * @brief Gets timestamp since epoch.
              *

@@ -15,6 +15,29 @@ extern "C" {
 #include <memory>
 #include <type_traits>
 
+// Placeholder type for attributes not requiring data allocation
+// Used as default template parameter for simple attributes
+struct NoAttrData {
+    // Empty struct - minimal footprint, compiler optimizes away
+};
+
+// Holds data storage for SAI PORT attribute API calls
+struct PortPhyAttributeData {
+    std::vector<sai_port_lane_latch_status_t> rxSignalDetectData;
+    std::vector<sai_port_lane_latch_status_t> fecAlignmentLockData;
+    std::vector<sai_port_snr_values_t> rxSnrData;
+};
+
+// Holds data storage for SAI PORT_SERDES attribute API calls
+struct PortPhySerdesAttributeData {
+    // For SAI_PORT_SERDES_ATTR_RX_VGA
+    std::vector<uint32_t> rxVgaData;
+
+    // For SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST
+    std::vector<std::vector<int32_t>> txFirTapsData;
+    std::vector<sai_s32_list_t> txFirTapsList;
+};
+
 namespace syncd
 {
     class BaseCounterContext
@@ -205,6 +228,8 @@ namespace syncd
             std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
 
             std::string m_dbCounters;
+
+            bool m_isTcpConn;
 
             bool m_isDiscarded;
 

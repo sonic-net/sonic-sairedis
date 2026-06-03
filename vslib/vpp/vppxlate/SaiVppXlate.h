@@ -105,6 +105,8 @@ extern "C" {
         VPP_IP_API_FLOW_HASH_REVERSE = 32,
         VPP_IP_API_FLOW_HASH_SYMETRIC = 64,
         VPP_IP_API_FLOW_HASH_FLOW_LABEL = 128,
+        VPP_IP_API_FLOW_HASH_GTPV1_TEID = 256,
+        VPP_IP_API_FLOW_HASH_PEEK_INNER = 512,
     } vpp_ip_flow_hash_mask_e;
 
     typedef enum {
@@ -145,6 +147,10 @@ extern "C" {
         uint32_t vlan_index;
         uint32_t fib_table;
         vpp_ip_addr_t nh_addr;
+        uint8_t locator_block_len;
+        uint8_t locator_node_len;
+        uint8_t function_len;
+        uint8_t args_len;
     } vpp_my_sid_entry_t;
 
     typedef struct vpp_sid_list_ {
@@ -242,6 +248,15 @@ typedef enum {
   VPP_BOND_API_LB_ALGO_RR = 3,
   VPP_BOND_API_LB_ALGO_BC = 4,
   VPP_BOND_API_LB_ALGO_AB = 5,
+  /*
+   * VPP's inner-aware LAG hash algorithm (added in
+   * sonic-platform-vpp patch 0010-sonic-inner-aware-flow-hash).
+   * Mirrors BOND_API_LB_ALGO_L34_INNER in src/vnet/bonding/bond.api,
+   * which is annotated [backwards_compatible] so adding this value
+   * does not change the CRC of any bond_create* /
+   * sw_interface_bond_details / sw_bond_interface_details message.
+   */
+  VPP_BOND_API_LB_ALGO_L34_INNER = 6,
 }  vpp_bond_lb_algo;
 
     typedef struct  _vpp_vxlan_tunnel {
@@ -257,6 +272,16 @@ typedef enum {
         bool          is_l3;
      } vpp_vxlan_tunnel_t;
 
+    typedef struct _vpp_ipip_tunnel {
+        vpp_ip_addr_t src_address;
+        vpp_ip_addr_t dst_address;
+        uint32_t      table_id;         // underlay VRF
+        uint8_t       flags;            // tunnel_encap_decap_flags
+        uint8_t       mode;             // 0=P2P, 1=MP
+        uint8_t       dscp;             // fixed DSCP value
+        uint32_t      instance;         // ~0 for auto
+    } vpp_ipip_tunnel_t;
+
     extern vpp_event_info_t * vpp_ev_dequeue();
     extern void vpp_ev_free(vpp_event_info_t *evp);
 
@@ -270,6 +295,7 @@ typedef enum {
     extern int delete_sub_interface(const char *hwif_name, uint32_t sub_id);
     extern int set_interface_vrf(const char *hwif_name, uint32_t sub_id, uint32_t vrf_id, bool is_ipv6);
     extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
+    extern int interface_ip_address_del_all(const char *hwif_name);
     extern int interface_set_state (const char *hwif_name, bool is_up);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
@@ -296,6 +322,7 @@ typedef enum {
     extern int vpp_tunterm_acl_interface_add_del (uint32_t tunterm_index,
                                            bool is_bind, const char *hwif_name);
     extern int interface_get_state(const char *hwif_name, bool *link_is_up);
+    extern int vpp_get_interface_speed(const char *hwif_name, uint32_t *speed);
     extern int vpp_sync_for_events();
     extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
     extern int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
@@ -327,6 +354,13 @@ typedef enum {
     extern int vpp_sidlist_del(vpp_ip_addr_t *bsid);
     extern int vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del);
     extern int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src);
+    extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
+    extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
+    extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
+                                           uint32_t ip_sw_if_index, bool is_add);
+    extern int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip,
+                                           uint32_t vrf_id,
+                                           uint32_t *out_sw_if_index);
 #ifdef __cplusplus
 }
 #endif

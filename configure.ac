@@ -205,17 +205,6 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([])],
     [AC_MSG_RESULT([no])])
 CXXFLAGS="$SAVED_FLAGS"
 
-AC_SUBST(NO_CAST_FUNCTION_TYPE)
-
-SAVED_FLAGS="$CXXFLAGS"
-CXXFLAGS="-Wno-cast-function-type"
-AC_MSG_CHECKING([whether CXX supports -Wno-cast-function-type])
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([])],
-    [AC_MSG_RESULT([yes])]
-    [AC_SUBST([NO_CAST_FUNCTION_TYPE], ["-Wno-cast-function-type"])],
-    [AC_MSG_RESULT([no])])
-CXXFLAGS="$SAVED_FLAGS"
-
 AC_SUBST(CXXFLAGS_COMMON)
 
 # -lvlibapi -lvapiclient -lvppapiclient -lvlibmemoryclient -lsvm -lvppinfra -lvlib -lvatplugin

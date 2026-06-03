@@ -1146,6 +1146,10 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
+    attr.id = SAI_SWITCH_ATTR_FLOW_BULK_GET_SESSION_EVENT_NOTIFY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
     attr.id = SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
@@ -4277,6 +4281,64 @@ sai_status_t SwitchStateBase::queryBufferProfilePacketAdmissionFailActionCapabil
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryTamTransportTypeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    /* SAI_TAM_TRANSPORT_TYPE_NONE. */
+    constexpr uint32_t value_count = 1;
+
+    if (enum_values_capability->count < value_count)
+    {
+        enum_values_capability->count = value_count;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = value_count;
+    enum_values_capability->list[0] = SAI_TAM_TRANSPORT_TYPE_NONE;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryTamBindPointTypeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    /* SAI_TAM_BIND_POINT_TYPE_SWITCH. */
+    constexpr uint32_t value_count = 1;
+
+    if (enum_values_capability->count < value_count)
+    {
+        enum_values_capability->count = value_count;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = value_count;
+    enum_values_capability->list[0] = SAI_TAM_BIND_POINT_TYPE_SWITCH;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryIcmpEchoSessionStatsCountModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 2)
+    {
+        enum_values_capability->count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 2;
+    enum_values_capability->list[0] = SAI_STATS_COUNT_MODE_PACKET_AND_BYTE;
+    enum_values_capability->list[1] = SAI_STATS_COUNT_MODE_PACKET;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
@@ -4319,6 +4381,18 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
     else if (object_type == SAI_OBJECT_TYPE_BUFFER_PROFILE && attr_id == SAI_BUFFER_PROFILE_ATTR_PACKET_ADMISSION_FAIL_ACTION)
     {
         return queryBufferProfilePacketAdmissionFailActionCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_TAM_TRANSPORT && attr_id == SAI_TAM_TRANSPORT_ATTR_TRANSPORT_TYPE)
+    {
+        return queryTamTransportTypeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_TAM && attr_id == SAI_TAM_ATTR_TAM_BIND_POINT_TYPE_LIST)
+    {
+        return queryTamBindPointTypeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_ICMP_ECHO_SESSION && attr_id == SAI_ICMP_ECHO_SESSION_ATTR_STATS_COUNT_MODE)
+    {
+        return queryIcmpEchoSessionStatsCountModeCapability(enum_values_capability);
     }
 
     return SAI_STATUS_NOT_SUPPORTED;
@@ -4385,6 +4459,32 @@ sai_status_t SwitchStateBase::queryAttributeCapability(
         (object_type == SAI_OBJECT_TYPE_MACSEC && attr_id == SAI_MACSEC_ATTR_ENABLE_POST))
     {
        return queryMacsecPostCapability(object_type, attr_capability);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_PORT_LLR_PROFILE)
+    {
+        switch (attr_id)
+        {
+            // SAI Create-only and simulate set not implemented attribs.
+            case SAI_PORT_LLR_PROFILE_ATTR_OUTSTANDING_FRAMES_MAX:
+            case SAI_PORT_LLR_PROFILE_ATTR_OUTSTANDING_BYTES_MAX:
+            case SAI_PORT_LLR_PROFILE_ATTR_REPLAY_COUNT_MAX:
+            case SAI_PORT_LLR_PROFILE_ATTR_PCS_LOST_TIMEOUT:
+                attr_capability->create_implemented = true;
+                attr_capability->set_implemented    = false;
+                attr_capability->get_implemented    = true;
+                return SAI_STATUS_SUCCESS;
+
+            // Simulate attributes not implemented at all.
+            case SAI_PORT_LLR_PROFILE_ATTR_DATA_AGE_TIMEOUT:
+                attr_capability->create_implemented = false;
+                attr_capability->set_implemented    = false;
+                attr_capability->get_implemented    = false;
+                return SAI_STATUS_SUCCESS;
+
+            default:
+                break;
+        }
     }
 
     attr_capability->create_implemented = true;
@@ -4532,7 +4632,29 @@ sai_status_t SwitchStateBase::queryPortStatsCapability(
         SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS,
         SAI_PORT_STAT_TRIM_PACKETS,
         SAI_PORT_STAT_DROPPED_TRIM_PACKETS,
-        SAI_PORT_STAT_TX_TRIM_PACKETS
+        SAI_PORT_STAT_TX_TRIM_PACKETS,
+        SAI_PORT_STAT_LLR_TX_INIT_CTL_OS,
+        SAI_PORT_STAT_LLR_TX_INIT_ECHO_CTL_OS,
+        SAI_PORT_STAT_LLR_TX_ACK_CTL_OS,
+        SAI_PORT_STAT_LLR_TX_NACK_CTL_OS,
+        SAI_PORT_STAT_LLR_TX_DISCARD,
+        SAI_PORT_STAT_LLR_TX_OK,
+        SAI_PORT_STAT_LLR_TX_POISONED,
+        SAI_PORT_STAT_LLR_TX_REPLAY,
+        SAI_PORT_STAT_LLR_RX_INIT_CTL_OS,
+        SAI_PORT_STAT_LLR_RX_INIT_ECHO_CTL_OS,
+        SAI_PORT_STAT_LLR_RX_ACK_CTL_OS,
+        SAI_PORT_STAT_LLR_RX_NACK_CTL_OS,
+        SAI_PORT_STAT_LLR_RX_ACK_NACK_SEQ_ERROR,
+        SAI_PORT_STAT_LLR_RX_OK,
+        SAI_PORT_STAT_LLR_RX_POISONED,
+        SAI_PORT_STAT_LLR_RX_BAD,
+        SAI_PORT_STAT_LLR_RX_EXPECTED_SEQ_GOOD,
+        SAI_PORT_STAT_LLR_RX_EXPECTED_SEQ_POISONED,
+        SAI_PORT_STAT_LLR_RX_EXPECTED_SEQ_BAD,
+        SAI_PORT_STAT_LLR_RX_MISSING_SEQ,
+        SAI_PORT_STAT_LLR_RX_DUPLICATE_SEQ,
+        SAI_PORT_STAT_LLR_RX_REPLAY
     };
 
     if (stats_capability->count < portStatList.size())
@@ -4637,11 +4759,19 @@ sai_status_t SwitchStateBase::queryStatsStCapability(
     {
         for (uint32_t i = 0; i < stats_capability.count; i++)
         {
+            stats_st_capability->count = stats_capability.count;
             stats_st_capability->list[i].capability.stat_enum = stats_capability.list[i].stat_enum;
             stats_st_capability->list[i].capability.stat_modes = stats_capability.list[i].stat_modes;
             stats_st_capability->list[i].minimal_polling_interval = static_cast<uint64_t>(1e6 * 100);
             ; // 100ms
         }
+    }
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        stats_st_capability->count = stats_capability.count;
+        SWSS_LOG_WARN("Buffer overflow for object type %s, count: %u",
+                      sai_serialize_object_type(objectType).c_str(),
+                      stats_st_capability->count);
     }
     else
     {

@@ -15,6 +15,6 @@ tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/proxylib/libSaiProxy.a \
 			  $(top_srcdir)/syncd/libSyncd.a \
 			  -lhiredis -lswsscommon -lpthread \
 			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
-			  -lzmq $(CODE_COVERAGE_LIBS)
+			  -lzmq -lz $(CODE_COVERAGE_LIBS)
 
 TESTS = tests
