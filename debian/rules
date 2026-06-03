@@ -26,13 +26,13 @@ ifeq ($(ENABLE_ASAN), y)
 	configure_opts += --enable-asan
 endif
 
-# Enable the VPP backend in libsaivs / syncd when VPP development headers are
-# available on the build host (this preserves the SONiC build, which installs
-# the sonic-platform-vpp packages before building sairedis). When VPP is not
-# installed (e.g. downstream consumers building sairedis without VPP), the
-# default --disable-vpp keeps libsaivs.so free of VPP DT_NEEDED entries so it
-# does not break link of dependents that lack the matching VPP runtime.
-ifneq ($(wildcard /usr/include/vpp_plugins/. /usr/include/vlib/. /usr/include/vppinfra/.),)
+# Enable the VPP backend in libsaivs / syncd when the 'vpp' build profile is
+# requested (matches the existing syncd/vs/dashsai/rpc/nopython2 idiom below).
+# sonic-buildimage passes DEB_BUILD_PROFILES=...,vpp for the VPP/DPU image
+# build paths where libsaivs needs the VPP backend; other consumers leave the
+# profile unset and the resulting libsaivs.so stays free of VPP DT_NEEDED
+# entries so it does not break link of dependents that lack the VPP runtime.
+ifneq ($(filter vpp,$(DEB_BUILD_PROFILES)),)
 configure_opts += --enable-vpp
 endif
 
