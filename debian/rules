@@ -26,6 +26,11 @@ ifeq ($(ENABLE_ASAN), y)
 	configure_opts += --enable-asan
 endif
 
+# Test purpose
+ifneq ($(filter vpp,$(DEB_BUILD_PROFILES)),)
+configure_opts += --enable-vpp
+endif
+
 # For Debian jessie, stretch, and buster, and Ubuntu bionic and focal, build
 # Python 2 bindings. This is controlled by the build profile being used.
 ifeq (,$(filter nopython2,$(DEB_BUILD_PROFILES)))
