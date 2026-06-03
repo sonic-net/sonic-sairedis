@@ -617,7 +617,11 @@ sai_status_t SwitchVpp::UpdatePort(
 
     if (attr_type != NULL)
     {
-        vpp_set_interface_state(object_id, 0, attr_type->value.booldata);
+        // A LAG member port that is egress-disabled must stay down regardless of
+        // the requested admin state. Effective state = admin_state && !egress_disable.
+        bool admin_up = attr_type->value.booldata;
+        bool egress_disabled = m_egress_disabled_lag_member_ports.count(object_id) > 0;
+        vpp_set_interface_state(object_id, 0, getLagMemberEffectiveAdminUp(admin_up, egress_disabled));
     }
 
     attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_MTU, attr_count, attr_list);

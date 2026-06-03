@@ -286,6 +286,25 @@ namespace saivs
             virtual sai_status_t setLag(
                     _In_ sai_object_id_t lagId,
                     _In_ const sai_attribute_t* attr);
+            virtual sai_status_t setLagMember(
+                    _In_ sai_object_id_t lagMemberId,
+                    _In_ const sai_attribute_t* attr);
+
+            enum class LagMemberEgressDisableAction
+            {
+                NONE,
+                DISABLE,
+                ENABLE,
+            };
+
+            static LagMemberEgressDisableAction getLagMemberEgressDisableAction(
+                    _In_ bool requested_egress_disable,
+                    _In_ bool current_attr_found,
+                    _In_ bool current_egress_disable);
+
+            static bool getLagMemberEffectiveAdminUp(
+                    _In_ bool admin_up,
+                    _In_ bool egress_disable);
 
             sai_status_t vpp_create_lag(
                     _In_ sai_object_id_t lag_id,
@@ -307,6 +326,21 @@ namespace saivs
                     _In_ sai_object_id_t lag_member_oid);
 	    sai_status_t vpp_remove_lag_member(
                     _In_ sai_object_id_t lag_member_oid);
+	    sai_status_t vpp_ensure_lag_lcp(
+                    _In_ sai_object_id_t lag_oid);
+	    sai_status_t vpp_set_lag_member_egress_disable(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _In_ bool egress_disable);
+	    sai_status_t vpp_clear_lag_member_egress_disable(
+                    _In_ sai_object_id_t lag_member_oid);
+	    sai_status_t get_lag_member_port(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _Out_ sai_object_id_t& port_oid);
+	    bool get_port_admin_state(
+                    _In_ sai_object_id_t port_oid);
+	    sai_status_t vpp_apply_member_port_state(
+                    _In_ sai_object_id_t port_oid,
+                    _In_ bool egress_disable);
 
             /* FDB Entry and Flush SAI Objects */
             sai_status_t FdbEntryadd(
@@ -978,6 +1012,7 @@ namespace saivs
         private: // VPP
 	    std::map<sai_object_id_t, platform_bond_info_t> m_lag_bond_map;
 	    std::mutex LagMapMutex;
+	    std::set<sai_object_id_t> m_egress_disabled_lag_member_ports;
 
             static int currentMaxInstance;
 
