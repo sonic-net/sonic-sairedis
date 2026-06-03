@@ -766,6 +766,16 @@ sai_status_t SwitchVpp::createLagMember(
     auto sid = sai_serialize_object_id(object_id);
 
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, switch_id, attr_count, attr_list));
+
+    auto egress_disable = sai_metadata_get_attr_by_id(SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE, attr_count, attr_list);
+    if (egress_disable != NULL && egress_disable->value.booldata)
+    {
+        // Keep LCP creation deferred until the first enabled member is added.
+        // Creating it on an empty bond can leave the tap with a stale generated MAC.
+        SWSS_LOG_NOTICE("LAG member %s created with egress disabled, defer VPP bond member add", sid.c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
     return vpp_create_lag_member(attr_count, attr_list);
 }
 
@@ -779,7 +789,6 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
     bool is_passive = false;
     int ret;
     uint32_t bond_if_idx;
-    uint32_t bond_id;
     sai_object_id_t lag_oid, lag_port_oid;
 
     //Get the bond interface index from attr SAI_LAG_MEMBER_ATTR_LAG_ID
@@ -843,28 +852,159 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
         return SAI_STATUS_FAILURE;
     }
 
-    if (!bond_info.lcp_created) {
-        // create tap and lcp for the Bond intf after first member is added to ensure tap mac = member mac = bond mac
-        std::ostringstream tap_stream;
-        bond_id = bond_info.id;
-        tap_stream << "be" << bond_id;
-        std::string tap = tap_stream.str();
-
-        const char *hw_ifname;
-        hw_ifname = vpp_get_swif_name(bond_if_idx);
-        configure_lcp_interface(hw_ifname, tap.c_str(), true);
-
-        // add tc filter to redirect traffic from tap to PortChannel
-        std::string portchannel = std::string("PortChannel") + std::to_string(bond_id);
-        std::string be = std::string("be") + std::to_string(bond_id);
-        CHECK_STATUS(add_tc_filter_redirect(be, portchannel));
-
-        // update the lag to bond map
-        bond_info.lcp_created = true;
-        m_lag_bond_map[lag_oid] = bond_info;
-    }
+    CHECK_STATUS(vpp_ensure_lag_lcp(lag_oid));
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::vpp_ensure_lag_lcp(
+        _In_ sai_object_id_t lag_oid)
+{
+    SWSS_LOG_ENTER();
+
+    platform_bond_info_t bond_info;
+    CHECK_STATUS(get_lag_bond_info(lag_oid, bond_info));
+
+    if (bond_info.lcp_created)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    uint32_t bond_id = bond_info.id;
+    std::ostringstream tap_stream;
+    tap_stream << "be" << bond_id;
+    std::string tap = tap_stream.str();
+
+    const char *hw_ifname = vpp_get_swif_name(bond_info.sw_if_index);
+    if (hw_ifname == NULL)
+    {
+        SWSS_LOG_ERROR("failed to get VPP bond interface name for %s", sai_serialize_object_id(lag_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    configure_lcp_interface(hw_ifname, tap.c_str(), true);
+
+    std::string portchannel = std::string("PortChannel") + std::to_string(bond_id);
+    std::string be = std::string("be") + std::to_string(bond_id);
+    CHECK_STATUS(add_tc_filter_redirect(be, portchannel));
+
+    bond_info.lcp_created = true;
+    m_lag_bond_map[lag_oid] = bond_info;
+
+    SWSS_LOG_NOTICE("Created LCP and tc redirect for LAG %s", sai_serialize_object_id(lag_oid).c_str());
+
+    return SAI_STATUS_SUCCESS;
+}
+
+SwitchVpp::LagMemberEgressDisableAction SwitchVpp::getLagMemberEgressDisableAction(
+        _In_ bool requested_egress_disable,
+        _In_ bool current_attr_found,
+        _In_ bool current_egress_disable)
+{
+    if (current_attr_found && current_egress_disable == requested_egress_disable)
+    {
+        return LagMemberEgressDisableAction::NONE;
+    }
+
+    if (!current_attr_found && !requested_egress_disable)
+    {
+        return LagMemberEgressDisableAction::NONE;
+    }
+
+    return requested_egress_disable ? LagMemberEgressDisableAction::DETACH : LagMemberEgressDisableAction::ADD;
+}
+
+sai_status_t SwitchVpp::setLagMember(
+        _In_ sai_object_id_t lagMemberId,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (attr == nullptr)
+    {
+        SWSS_LOG_ERROR("LAG member set attribute is null");
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    auto sid = sai_serialize_object_id(lagMemberId);
+
+    auto &objectHash = m_objectHash.at(SAI_OBJECT_TYPE_LAG_MEMBER);
+    if (objectHash.find(sid) == objectHash.end())
+    {
+        SWSS_LOG_ERROR("not found %s:%s",
+                sai_serialize_object_type(SAI_OBJECT_TYPE_LAG_MEMBER).c_str(),
+                sid.c_str());
+
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    if (attr->id != SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE)
+    {
+        return set_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, attr);
+    }
+
+    sai_attribute_t current_attr = {};
+    current_attr.id = SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE;
+    sai_status_t status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lagMemberId, 1, &current_attr);
+
+    // Missing EGRESS_DISABLE means the SAI default is false. Object existence
+    // was checked above, so get failure here is treated as missing attr.
+    auto action = getLagMemberEgressDisableAction(
+            attr->value.booldata,
+            status == SAI_STATUS_SUCCESS,
+            current_attr.value.booldata);
+
+    if (action == LagMemberEgressDisableAction::NONE)
+    {
+        return set_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, attr);
+    }
+
+    if (action == LagMemberEgressDisableAction::DETACH)
+    {
+        SWSS_LOG_NOTICE("Disable egress on LAG member %s, detach VPP bond member", sid.c_str());
+        CHECK_STATUS(vpp_set_lag_member_egress_disable(lagMemberId, true));
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("Enable egress on LAG member %s, add VPP bond member", sid.c_str());
+        CHECK_STATUS(vpp_set_lag_member_egress_disable(lagMemberId, false));
+    }
+
+    return set_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, attr);
+}
+
+sai_status_t SwitchVpp::vpp_set_lag_member_egress_disable(
+        _In_ sai_object_id_t lag_member_oid,
+        _In_ bool egress_disable)
+{
+    SWSS_LOG_ENTER();
+
+    if (egress_disable)
+    {
+        return vpp_remove_lag_member(lag_member_oid);
+    }
+
+    sai_attribute_t attr_list[2];
+
+    attr_list[0].id = SAI_LAG_MEMBER_ATTR_LAG_ID;
+    sai_status_t status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 1, &attr_list[0]);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("attr SAI_LAG_MEMBER_ATTR_LAG_ID is not present");
+        return SAI_STATUS_FAILURE;
+    }
+
+    attr_list[1].id = SAI_LAG_MEMBER_ATTR_PORT_ID;
+    status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 1, &attr_list[1]);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("attr SAI_LAG_MEMBER_ATTR_PORT_ID is not present");
+        return SAI_STATUS_FAILURE;
+    }
+
+    return vpp_create_lag_member(2, attr_list);
 }
 
 sai_status_t SwitchVpp::removeLagMember(
