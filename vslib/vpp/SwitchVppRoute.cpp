@@ -207,20 +207,15 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
              * next_hop=ROUTER_INTERFACE (the SUB_PORT branch above). Both
              * land on the same VPP interface with the same prefix.
              *
-             * Apply the same is_add gate as the SUB_PORT branch so the IP
-             * is not removed during transient ROUTE_ENTRY remove+create
-             * cycles. The IP is torn down when the parent port RIF is
-             * removed; tearing it down on a transient R here would leave
-             * the port unable to answer ARP after the final R.
-             *
              * Note: vpp_add_del_intf_ip_addr_norif is kept here (rather
              * than the RIF-based helper) because the next_hop is a PORT
              * OID, not a RIF OID; prefix-based netdev resolution is the
-             * right tool when no RIF identifier is available.
+             * right tool when no RIF identifier is available. Its remove
+             * path skips sub-interfaces so transient sub-port route deletes
+             * do not tear down VPP sub-interface IPs, while regular
+             * Ethernet/PortChannel routes still remove stale VPP IPs.
              */
-            if (is_add) {
-                vpp_add_del_intf_ip_addr_norif(serializedObjectId, route_entry, true);
-            }
+            vpp_add_del_intf_ip_addr_norif(serializedObjectId, route_entry, is_add);
         }
     }
     else if (SAI_OBJECT_TYPE_NEXT_HOP == RealObjectIdManager::objectTypeQuery(next_hop_oid))

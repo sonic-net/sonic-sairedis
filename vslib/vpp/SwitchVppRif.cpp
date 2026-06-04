@@ -1017,6 +1017,11 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
             return SAI_STATUS_SUCCESS;
         }
         vpp_deserialize_intf_data(intf_data, full_if_name, ip_prefix_str);
+        if (full_if_name.find('.') != std::string::npos)
+        {
+            SWSS_LOG_NOTICE("Skipping connected-route IP removal for sub-interface %s", full_if_name.c_str());
+            return SAI_STATUS_SUCCESS;
+        }
     }
 
     const char *linux_ifname;

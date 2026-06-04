@@ -766,7 +766,90 @@ sai_status_t SwitchVpp::createLagMember(
     auto sid = sai_serialize_object_id(object_id);
 
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, switch_id, attr_count, attr_list));
-    return vpp_create_lag_member(attr_count, attr_list);
+    return updateLagMemberVppState(object_id);
+}
+
+sai_status_t SwitchVpp::setLagMember(
+        _In_ sai_object_id_t lag_member_oid,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(lag_member_oid);
+
+    CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, attr));
+
+    if (attr->id != SAI_LAG_MEMBER_ATTR_INGRESS_DISABLE &&
+        attr->id != SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    return updateLagMemberVppState(lag_member_oid);
+}
+
+sai_status_t SwitchVpp::updateLagMemberVppState(
+        _In_ sai_object_id_t lag_member_oid)
+{
+    SWSS_LOG_ENTER();
+
+    bool ingress_disabled = false;
+    bool egress_disabled = false;
+
+    sai_attribute_t attr;
+    attr.id = SAI_LAG_MEMBER_ATTR_INGRESS_DISABLE;
+    sai_status_t status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 1, &attr);
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        ingress_disabled = attr.value.booldata;
+    }
+    else if (status != SAI_STATUS_ITEM_NOT_FOUND)
+    {
+        SWSS_LOG_ERROR("failed to get ingress disable state for LAG member %s: %s",
+                sai_serialize_object_id(lag_member_oid).c_str(),
+                sai_serialize_status(status).c_str());
+        return status;
+    }
+
+    attr.id = SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE;
+    status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 1, &attr);
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        egress_disabled = attr.value.booldata;
+    }
+    else if (status != SAI_STATUS_ITEM_NOT_FOUND)
+    {
+        SWSS_LOG_ERROR("failed to get egress disable state for LAG member %s: %s",
+                sai_serialize_object_id(lag_member_oid).c_str(),
+                sai_serialize_status(status).c_str());
+        return status;
+    }
+
+    bool should_be_active = !ingress_disabled && !egress_disabled;
+    bool is_active = m_lag_members_in_vpp.find(lag_member_oid) != m_lag_members_in_vpp.end();
+
+    if (should_be_active == is_active)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (should_be_active)
+    {
+        sai_attribute_t member_attrs[2];
+        member_attrs[0].id = SAI_LAG_MEMBER_ATTR_LAG_ID;
+        member_attrs[1].id = SAI_LAG_MEMBER_ATTR_PORT_ID;
+
+        CHECK_STATUS(get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 2, member_attrs));
+        CHECK_STATUS(vpp_create_lag_member(2, member_attrs));
+        m_lag_members_in_vpp.insert(lag_member_oid);
+    }
+    else
+    {
+        CHECK_STATUS(vpp_remove_lag_member(lag_member_oid));
+        m_lag_members_in_vpp.erase(lag_member_oid);
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::vpp_create_lag_member(
@@ -878,13 +961,23 @@ sai_status_t SwitchVpp::removeLagMember(
 {
     SWSS_LOG_ENTER();
 
-    CHECK_STATUS_QUIET(vpp_remove_lag_member(lag_member_oid));
+    sai_status_t vpp_status = SAI_STATUS_SUCCESS;
+
+    if (m_lag_members_in_vpp.find(lag_member_oid) != m_lag_members_in_vpp.end())
+    {
+        vpp_status = vpp_remove_lag_member(lag_member_oid);
+        if (vpp_status == SAI_STATUS_SUCCESS)
+        {
+            m_lag_members_in_vpp.erase(lag_member_oid);
+        }
+    }
+    m_lag_members_in_vpp.erase(lag_member_oid);
 
     auto sid = sai_serialize_object_id(lag_member_oid);
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid));
 
-    return SAI_STATUS_SUCCESS;
+    return vpp_status;
 }
 
 sai_status_t SwitchVpp::vpp_remove_lag_member(
