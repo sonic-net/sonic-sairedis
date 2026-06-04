@@ -1513,6 +1513,8 @@ void Syncd::checkDampedPortsTimeout()
 
 void Syncd::processPendingDampingSync()
 {
+    SWSS_LOG_ENTER();
+
     std::vector<sai_port_oper_status_notification_t> notifications;
 
     {
