@@ -344,6 +344,11 @@ namespace syncd
             void stopDampingTimerThread();
 
             /**
+             * @brief link status sync notification after damping exit
+             */
+            void processPendingDampingSync();
+
+            /**
              * @brief Write damping counters to STATE_DB for a specific port
              * @param portVid Virtual object ID of the port
              * @param state Port damping state containing counters
