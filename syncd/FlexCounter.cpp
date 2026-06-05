@@ -657,6 +657,11 @@ public:
         }
 
         // Perform a remove and re-add to simplify the logic here
+        // This remove function removes the counter from m_objectIdsMap and clears counter group mappings:
+        // - There is special handling logic for m_objectIdsMap below.
+        // - Counter group mappings are no longer needed for this vid since it is already stored in supportedIds.
+        // - This vid will also not have the same counter_ids for discovery later on, except from intentional discoveries
+        //   via addObject, which we would want to rediscover anyways.
         removeObject(vid, false);
 
         bool supportBulk;
@@ -2042,7 +2047,7 @@ private:
                 // Vectors need to be sorted for set_difference for defined behavior - counter_ids are already sorted
                 std::sort(countersToPoll.begin(), countersToPoll.end());
                 std::set_difference(counter_ids.begin(), counter_ids.end(), countersToPoll.begin(), countersToPoll.end(),
-                                    std::inserter(extraCounters, extraCounters.begin()));
+                                    std::back_inserter(extraCounters));
                 for (const StatType &counter : extraCounters)
                 {
                     std::vector<StatType> singleCounter {counter};
