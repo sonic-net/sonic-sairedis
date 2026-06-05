@@ -124,6 +124,16 @@ namespace saivs
 
         public:
 
+            struct VppFdbKey {
+                uint8_t mac[6]; // mac address
+                uint32_t bd_id; // vpp bridge domain id
+                bool operator<(const VppFdbKey &o) const {
+                    int r = memcmp(mac, o.mac, 6);
+                    if (r != 0) return r < 0;
+                    return bd_id < o.bd_id;
+                }
+            };
+
             virtual sai_status_t create(
                     _In_ sai_object_type_t object_type,
                     _In_ const std::string &serializedObjectId,
@@ -990,6 +1000,18 @@ namespace saivs
             BitResourcePool dynamic_bd_id_pool = BitResourcePool(dynamic_bd_id_pool_size, dynamic_bd_id_base);
 
             std::set<FdbInfo> m_fdb_info_set;
+
+            // Snapshot of VPP's L2FIB from the last poll cycle: {mac, bd_id} -> sw_if_index.
+            // Diffed against the current VPP dump each second to detect learned/aged/moved MACs.
+            std::map<VppFdbKey, uint32_t> m_vpp_fdb_entries;
+
+            void generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
+            void generateFdbAgedEvent(const VppFdbKey &key);
+            sai_object_id_t getPortIdFromSwIfIndex(uint32_t sw_if_index);
+
+            void vpp_fdb_entries_invalidate_all();
+            void vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id);
+            void vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id);
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 

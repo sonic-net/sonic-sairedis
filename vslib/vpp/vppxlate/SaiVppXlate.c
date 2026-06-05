@@ -953,6 +953,28 @@ vl_api_l2fib_flush_bd_reply_t_handler (vl_api_l2fib_flush_bd_reply_t *msg)
 }
 
 static void
+vl_api_l2_fib_table_details_t_handler (vl_api_l2_fib_table_details_t *mp)
+{
+    if (!mp->context)
+        return;
+
+    vpp_l2fib_dump_ctx_t *ctx = (vpp_l2fib_dump_ctx_t *) get_index_ptr(mp->context);
+    if (!ctx || !ctx->cb)
+        return;
+
+    vpp_l2fib_entry_t entry;
+    memset(&entry, 0, sizeof(entry));
+    memcpy(entry.mac, mp->mac, 6);
+    entry.sw_if_index = ntohl(mp->sw_if_index);
+    entry.bd_id = ntohl(mp->bd_id);
+    entry.is_static = mp->static_mac;
+    entry.is_filter = mp->filter_mac;
+    entry.is_bvi = mp->bvi_mac;
+
+    ctx->cb(&entry, ctx->user_ctx);
+}
+
+static void
 vl_api_bfd_udp_add_reply_t_handler (vl_api_bfd_udp_add_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1019,17 +1041,39 @@ vl_api_bfd_udp_session_event_t_handler (vl_api_bfd_udp_session_event_t *msg)
                  multihop, htonl(msg->sw_if_index), htonl(msg->state));
 }
 
+typedef struct {
+    uint32_t magic;     // must be VPP_BD_DUMP_CTX_MAGIC to distinguish from legacy u32 *member_count context
+    vpp_bd_id_cb_fn cb; // callback invoked for each bridge domain ID returned by VPP
+    void *user_ctx;     // user-defined caller context passed through to cb
+} vpp_bd_id_dump_ctx_t;
+
+#define VPP_BD_DUMP_CTX_MAGIC 0xBD1D0000u
+
 static void
 vl_api_bridge_domain_details_t_handler (vl_api_bridge_domain_details_t *mp)
 {
+    if (!mp->context)
+        return;
 
-  if (mp->context) {
-      u32 *member_count = (u32 *) get_index_ptr(mp->context);
-      *member_count = ntohl(mp->n_sw_ifs);
-      SAIVPP_INFO("bridge member count: %d", ntohl(mp->n_sw_ifs));
-      return;
-  }
-  return;
+    void *ptr = (void *) get_index_ptr(mp->context);
+    if (!ptr)
+        return;
+
+    /* Distinguish bd_id dump context from legacy member_count context by magic */
+    vpp_bd_id_dump_ctx_t *bd_ctx = (vpp_bd_id_dump_ctx_t *) ptr;
+    if (bd_ctx->magic == VPP_BD_DUMP_CTX_MAGIC) {
+        uint32_t bd_id = ntohl(mp->bd_id);
+        // Skip bd_id 0 (reserved) and bd_id 1 (VPP built-in default BD).
+        // SAI-created bridge domains use VLAN IDs (e.g. 1000) as bd_id.
+        if (bd_id > 1 && bd_ctx->cb)
+            bd_ctx->cb(bd_id, bd_ctx->user_ctx);
+        return;
+    }
+
+    /* Legacy: treat context as u32 *member_count */
+    u32 *member_count = (u32 *) ptr;
+    *member_count = ntohl(mp->n_sw_ifs);
+    SAIVPP_INFO("bridge member count: %d", ntohl(mp->n_sw_ifs));
 }
 
 static void
@@ -1279,6 +1323,7 @@ static void vpp_base_vpe_init(void)
     _(L2_MSG_ID(L2FIB_FLUSH_ALL_REPLY), l2fib_flush_all_reply) \
     _(L2_MSG_ID(L2FIB_FLUSH_INT_REPLY), l2fib_flush_int_reply) \
     _(L2_MSG_ID(L2FIB_FLUSH_BD_REPLY), l2fib_flush_bd_reply) \
+    _(L2_MSG_ID(L2_FIB_TABLE_DETAILS), l2_fib_table_details) \
     _(BFD_MSG_ID(BFD_UDP_ADD_REPLY), bfd_udp_add_reply) \
     _(BFD_MSG_ID(BFD_UDP_DEL_REPLY), bfd_udp_del_reply) \
     _(BFD_MSG_ID(BFD_UDP_SESSION_EVENT), bfd_udp_session_event) \
@@ -3164,6 +3209,8 @@ int bridge_domain_get_member_count (uint32_t bd_id, uint32_t *member_count)
     vl_api_control_ping_t *mp_ping;
     int ret;
 
+    *member_count = 0;
+
     VPP_LOCK();
 
     __plugin_msg_base = l2_msg_id_base;
@@ -3194,6 +3241,39 @@ int bridge_domain_get_member_count (uint32_t bd_id, uint32_t *member_count)
 
     return ret;
 }
+
+int vpp_bridge_domain_dump_all(vpp_bd_id_cb_fn cb, void *user_ctx)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_bridge_domain_dump_t *mp;
+    vl_api_control_ping_t *mp_ping;
+    vpp_bd_id_dump_ctx_t ctx = { VPP_BD_DUMP_CTX_MAGIC, cb, user_ctx };
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M (BRIDGE_DOMAIN_DUMP, mp);
+
+    /* bd_id=~0 means dump all bridge domains (bd_id=0 returns early in VPP) */
+    mp->bd_id = htonl(~0u);
+    mp->sw_if_index = htonl((uint32_t)~0);
+    mp->context = store_ptr(&ctx);
+
+    S (mp);
+
+    __plugin_msg_base = memclnt_msg_id_base;
+    PING (NULL, mp_ping);
+    S (mp_ping);
+
+    WR (ret);
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
 int create_bvi_interface(uint8_t *mac_address, u32 instance)
 {
     vat_main_t *vam = &vat_main;
@@ -3554,6 +3634,35 @@ int l2fib_flush_bd(uint32_t bd_id)
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) bd_id %u", __func__, ret, bd_id); }
     else { SAIVPP_INFO("%s bd_id %u", __func__, bd_id); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_l2fib_table_dump(uint32_t bd_id, vpp_l2fib_cb_fn cb, void *user_ctx)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2_fib_table_dump_t *mp;
+    vl_api_control_ping_t *mp_ping;
+    vpp_l2fib_dump_ctx_t ctx = {cb, user_ctx};
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M (L2_FIB_TABLE_DUMP, mp);
+    mp->bd_id = htonl(bd_id);
+    mp->context = store_ptr(&ctx);
+
+    S (mp);
+
+    __plugin_msg_base = memclnt_msg_id_base;
+    PING (NULL, mp_ping);
+    S (mp_ping);
+
+    WR (ret);
 
     VPP_UNLOCK();
 

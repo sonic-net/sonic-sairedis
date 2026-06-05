@@ -818,11 +818,117 @@ sai_status_t SwitchVpp::getStatsExt(
             counters);
 }
 
+static void fdbBdIdDumpCb(uint32_t bd_id, void *ctx)
+{
+    auto *ids = static_cast<std::vector<uint32_t>*>(ctx);
+    ids->push_back(bd_id);
+}
+
+static void fdbEntryDumpCb(const vpp_l2fib_entry_t *e, void *ctx)
+{
+    // Skip static, filter (drop), and BVI (bridge's own MAC) entries —
+    // only dynamically learned remote host MACs should generate FDB events.
+    if (e->is_static || e->is_filter || e->is_bvi)
+    {
+        return;
+    }
+
+    auto *entries = static_cast<std::map<SwitchVpp::VppFdbKey, uint32_t> *>(ctx);
+    SwitchVpp::VppFdbKey key;
+    memcpy(key.mac, e->mac, 6);
+    key.bd_id = e->bd_id;
+    (*entries)[key] = e->sw_if_index;
+}
+
 void SwitchVpp::processFdbEntriesForAging()
 {
     SWSS_LOG_ENTER();
 
-    return;
+    // Skip FDB poll until host tap interfaces are fully initialized.
+    bool taps_ready = false;
+    if (m_objectHash.find(SAI_OBJECT_TYPE_PORT) != m_objectHash.end())
+    {
+        for (auto &kv : m_objectHash.at(SAI_OBJECT_TYPE_PORT))
+        {
+            sai_object_id_t pid;
+            sai_deserialize_object_id(kv.first, pid);
+            std::string dummy;
+            if (getTapNameFromPortId(pid, dummy))
+            {
+                taps_ready = true;
+                break;
+            }
+        }
+    }
+    if (!taps_ready)
+    {
+        SWSS_LOG_INFO("FDB: tap interfaces not yet ready, skipping poll");
+        return;
+    }
+
+    std::map<VppFdbKey, uint32_t> current_entries;
+
+    // Collect all active VPP bridge domain IDs from VPP
+    std::vector<uint32_t> bd_ids;
+    vpp_bridge_domain_dump_all(fdbBdIdDumpCb, &bd_ids);
+
+    SWSS_LOG_INFO("FDB: found %zu VPP bridge domains, m_vpp_fdb_entries size=%zu",
+                  bd_ids.size(), m_vpp_fdb_entries.size());
+
+    for (uint32_t bd_id : bd_ids)
+    {
+        size_t before = current_entries.size();
+
+        int rc = vpp_l2fib_table_dump(bd_id, fdbEntryDumpCb, &current_entries);
+
+        SWSS_LOG_INFO("FDB: bd_id=%u dump rc=%d entries_added=%zu",
+                      bd_id, rc, current_entries.size() - before);
+    }
+
+    SWSS_LOG_INFO("FDB: total current=%zu known=%zu",
+                  current_entries.size(), m_vpp_fdb_entries.size());
+
+    // Fire AGED events first so consumers see the old entry removed before the new one appears.
+    for (auto &kv : m_vpp_fdb_entries)
+    {
+        if (current_entries.find(kv.first) == current_entries.end())
+        {
+            SWSS_LOG_DEBUG("FDB: AGED mac=%02x:%02x:%02x:%02x:%02x:%02x bd=%u "
+                            "m_vpp_fdb_entries=%zu m_fdb_info_set=%zu",
+                            kv.first.mac[0], kv.first.mac[1], kv.first.mac[2],
+                            kv.first.mac[3], kv.first.mac[4], kv.first.mac[5],
+                            kv.first.bd_id, m_vpp_fdb_entries.size(), m_fdb_info_set.size());
+            generateFdbAgedEvent(kv.first);
+        }
+    }
+
+    for (auto &kv : current_entries)
+    {
+        auto it = m_vpp_fdb_entries.find(kv.first);
+        if (it == m_vpp_fdb_entries.end())
+        {
+            SWSS_LOG_DEBUG("FDB: LEARNED mac=%02x:%02x:%02x:%02x:%02x:%02x bd=%u sw_if=%u "
+                            "m_vpp_fdb_entries=%zu m_fdb_info_set=%zu",
+                            kv.first.mac[0], kv.first.mac[1], kv.first.mac[2],
+                            kv.first.mac[3], kv.first.mac[4], kv.first.mac[5],
+                            kv.first.bd_id, kv.second,
+                            m_vpp_fdb_entries.size(), m_fdb_info_set.size());
+            generateFdbLearnedOrMoveEvent(kv.first, kv.second, SAI_FDB_EVENT_LEARNED);
+        }
+        else if (it->second != kv.second)
+        {
+            // MAC moved to a different port within the same bridge domain
+            SWSS_LOG_DEBUG("FDB: MOVE mac=%02x:%02x:%02x:%02x:%02x:%02x bd=%u sw_if=%u->%u "
+                            "m_vpp_fdb_entries=%zu m_fdb_info_set=%zu",
+                            kv.first.mac[0], kv.first.mac[1], kv.first.mac[2],
+                            kv.first.mac[3], kv.first.mac[4], kv.first.mac[5],
+                            kv.first.bd_id, it->second, kv.second,
+                            m_vpp_fdb_entries.size(), m_fdb_info_set.size());
+            generateFdbLearnedOrMoveEvent(kv.first, kv.second, SAI_FDB_EVENT_MOVE);
+        }
+    }
+
+    m_vpp_fdb_entries = current_entries;
 }
 
 sai_status_t SwitchVpp::create(

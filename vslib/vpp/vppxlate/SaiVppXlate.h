@@ -337,6 +337,26 @@ typedef enum {
     extern int create_bond_member(uint32_t bond_sw_if_index, const char *hwif_name, bool is_passive, bool is_long_timeout);
     extern int delete_bond_member(const char * hwif_name);
     extern const char * vpp_get_swif_name(const uint32_t swif_idx);
+
+    typedef struct vpp_l2fib_entry_ {
+        uint8_t mac[6];
+        uint32_t sw_if_index;
+        uint32_t bd_id;
+        bool is_static;
+        bool is_filter;
+        bool is_bvi;
+    } vpp_l2fib_entry_t;
+
+    typedef void (*vpp_l2fib_cb_fn)(const vpp_l2fib_entry_t *entry, void *ctx);
+
+    typedef struct vpp_l2fib_dump_ctx_ {
+        vpp_l2fib_cb_fn cb;
+        void *user_ctx;
+    } vpp_l2fib_dump_ctx_t;
+
+    extern int vpp_l2fib_table_dump(uint32_t bd_id, vpp_l2fib_cb_fn cb, void *user_ctx);
+    typedef void (*vpp_bd_id_cb_fn)(uint32_t bd_id, void *ctx);
+    extern int vpp_bridge_domain_dump_all(vpp_bd_id_cb_fn cb, void *user_ctx);
     extern int l2fib_add_del(const char *hwif_name, const uint8_t *mac, uint32_t bd_id, bool is_add, bool is_static_mac);
     extern int l2fib_flush_all();
     extern int l2fib_flush_int(const char *hwif_name);
