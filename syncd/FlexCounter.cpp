@@ -638,9 +638,6 @@ public:
             }
         }
 
-        // Perform a remove and re-add to simplify the logic here
-        removeObject(vid, false);
-
         bool supportBulk;
         // TODO: use if const expression when cpp17 is supported
         if (HasStatsMode<CounterIdsType>::value)
@@ -2024,7 +2021,7 @@ private:
                 // Vectors need to be sorted for set_difference for defined behavior - counter_ids are already sorted
                 std::sort(countersToPoll.begin(), countersToPoll.end());
                 std::set_difference(counter_ids.begin(), counter_ids.end(), countersToPoll.begin(), countersToPoll.end(),
-                                    std::inserter(extraCounters, extraCounters.begin()));
+                                    std::back_inserter(extraCounters));
                 for (const StatType &counter : extraCounters)
                 {
                     std::vector<StatType> singleCounter {counter};
