@@ -901,6 +901,8 @@ SwitchVpp::LagMemberEgressDisableAction SwitchVpp::getLagMemberEgressDisableActi
         _In_ bool current_attr_found,
         _In_ bool current_egress_disable)
 {
+    SWSS_LOG_ENTER();
+
     if (current_attr_found && current_egress_disable == requested_egress_disable)
     {
         return LagMemberEgressDisableAction::NONE;
