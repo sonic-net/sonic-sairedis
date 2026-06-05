@@ -638,6 +638,14 @@ public:
             }
         }
 
+        // Perform a remove and re-add to simplify the logic here
+        // This remove function removes the counter from m_objectIdsMap and clears counter group mappings:
+        // - There is special handling logic for m_objectIdsMap below.
+        // - Counter group mappings are no longer needed for this vid since it is already stored in supportedIds.
+        // - This vid will also not have the same counter_ids for discovery later on, except from intentional discoveries
+        //   via addObject, which we would want to rediscover anyways.
+        removeObject(vid, false);
+
         bool supportBulk;
         // TODO: use if const expression when cpp17 is supported
         if (HasStatsMode<CounterIdsType>::value)
