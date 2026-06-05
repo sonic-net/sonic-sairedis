@@ -2539,7 +2539,7 @@ TEST(FlexCounter, dynamicCounterGroups)
 
     // Force non-bulk path so per-port counter groups are polled individually.
     // (per-port counter group discovery cannot be validated by the bulk-path,
-    //     // it has different counter discovery logic.)
+    // it has different counter discovery logic.)
     sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t,
                                 const sai_object_key_t *, uint32_t,
                                 const sai_stat_id_t *, sai_stats_mode_t,
