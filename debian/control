@@ -60,6 +60,14 @@ Priority: extra
 Depends: syncd-asan (= ${binary:Version})
 Description: debugging symbols for syncd-asan
 
+Package: syncd-rpc-dbgsym
+Architecture: any
+Build-Profiles: <syncd rpc !vs !asan>
+Section: debug
+Priority: extra
+Depends: syncd-rpc (= ${binary:Version})
+Description: debugging symbols for syncd-rpc
+
 Package: libsairedis
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
