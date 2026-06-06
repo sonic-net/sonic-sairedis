@@ -156,6 +156,7 @@ config
 const
 CONST
 consts
+copyable
 counterName
 countOnly
 cout
