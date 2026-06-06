@@ -343,7 +343,7 @@ bool SwitchVpp::vpp_get_hwif_name (
 {
     SWSS_LOG_ENTER();
 
-    const char *hwifname;
+    const char *hwifname = nullptr;
     char hw_bondifname[32];
 
     if (objectTypeQuery(object_id) == SAI_OBJECT_TYPE_LAG) {
@@ -367,6 +367,7 @@ bool SwitchVpp::vpp_get_hwif_name (
         hwifname = tap_to_hwif_name(if_name.c_str());
     }
 
+    if (!hwifname) return false;
 
     char hw_subifname[64];
     const char *hw_ifname;
@@ -1888,7 +1889,7 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
         if (status != SAI_STATUS_SUCCESS) {
             return status;
         }
-        if_name = std::string(PORTCHANNEL_PREFIX) + std::to_string(bond_info.id);
+        if_name = std::string(BONDETHERNET_PREFIX) + std::to_string(bond_info.id);
         found = true;
     } else {
         found = getTapNameFromPortId(obj_id, if_name);
