@@ -44,30 +44,6 @@ Conflicts: syncd-rpc, syncd
 Description: This package contains sync daemon for SONiC project linked with virtual switch.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
 
-Package: syncd-dbgsym
-Architecture: any
-Build-Profiles: <syncd !vs !asan>
-Section: debug
-Priority: extra
-Depends: syncd (= ${binary:Version})
-Description: debugging symbols for syncd
-
-Package: syncd-asan-dbgsym
-Architecture: any
-Build-Profiles: <syncd asan !vs !rpc>
-Section: debug
-Priority: extra
-Depends: syncd-asan (= ${binary:Version})
-Description: debugging symbols for syncd-asan
-
-Package: syncd-rpc-dbgsym
-Architecture: any
-Build-Profiles: <syncd rpc !vs !asan>
-Section: debug
-Priority: extra
-Depends: syncd-rpc (= ${binary:Version})
-Description: debugging symbols for syncd-rpc
-
 Package: libsairedis
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
