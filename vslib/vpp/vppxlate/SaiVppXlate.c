@@ -1005,6 +1005,64 @@ vl_api_l2fib_flush_bd_reply_t_handler (vl_api_l2fib_flush_bd_reply_t *msg)
     set_reply_status(retval);
 }
 
+/* ----- WANT_L2_MACS_EVENTS2: push-based MAC learn/age/move notifications ----- */
+
+static vpp_mac_event_cb_fn g_mac_event_cb = NULL;
+static void *g_mac_event_ctx = NULL;
+
+#define VPP_MAC_EVENT_BATCH_MAX 128
+static vpp_mac_event_t g_mac_event_batch[VPP_MAC_EVENT_BATCH_MAX];
+
+static void
+vl_api_want_l2_macs_events2_reply_t_handler (vl_api_want_l2_macs_events2_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_l2fib_set_scan_delay_reply_t_handler (vl_api_l2fib_set_scan_delay_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+/*
+ * Handler for unsolicited L2_MACS_EVENT notifications pushed by VPP.
+ * Called on VPP's API receive thread — MUST NOT acquire the saivpp main
+ * mutex.  Callers register a callback that enqueues the event for safe
+ * processing on a thread that holds the mutex.
+ */
+static void
+vl_api_l2_macs_event_t_handler (vl_api_l2_macs_event_t *mp)
+{
+    if (!g_mac_event_cb)
+        return;
+
+    u32 n = ntohl(mp->n_macs);
+    if (n == 0) return;
+    if (n > VPP_MAC_EVENT_BATCH_MAX)
+    {
+        SAIVPP_ERROR("Got %d MACs in event, truncating to %d",
+                     n, VPP_MAC_EVENT_BATCH_MAX);
+        n = VPP_MAC_EVENT_BATCH_MAX;
+    }
+
+    for (u32 i = 0; i < n; i++) {
+        vl_api_mac_entry_t *e = &mp->mac[i];
+        memcpy(g_mac_event_batch[i].mac, e->mac_addr, 6);
+        g_mac_event_batch[i].sw_if_index = ntohl(e->sw_if_index);
+        g_mac_event_batch[i].action = (uint8_t)e->action;
+    }
+    g_mac_event_cb(g_mac_event_batch, n, g_mac_event_ctx);
+}
+
+/* ----- end WANT_L2_MACS_EVENTS2 handlers (implementations below) ----- */
+
+/* Magic value to distinguish vpp_swif_bdid_dump_ctx_t from legacy u32 *member_count context.
+ * The typedef is at the bottom of this file (must be after l2_msg_id_base declaration). */
+#define VPP_SWIF_BDID_CTX_MAGIC 0xBD2D0000u
+
 static void
 vl_api_bfd_udp_add_reply_t_handler (vl_api_bfd_udp_add_reply_t *msg)
 {
@@ -1075,18 +1133,38 @@ vl_api_bfd_udp_session_event_t_handler (vl_api_bfd_udp_session_event_t *msg)
 static void
 vl_api_bridge_domain_details_t_handler (vl_api_bridge_domain_details_t *mp)
 {
+    if (!mp->context)
+    {
+        return;
+    }
 
-  if (mp->context) {
-      u32 *member_count = (u32 *) get_index_ptr(mp->context);
-      if (!member_count) {
-          return;
-      }
-      *member_count = ntohl(mp->n_sw_ifs);
-      SAIVPP_INFO("bridge member count: %d", ntohl(mp->n_sw_ifs));
-      release_index(mp->context);
-      return;
-  }
-  return;
+    void *ptr = (void *) get_index_ptr(mp->context);
+    if (!ptr)
+    {
+        return;
+    }
+
+    /* Check for swif→bdid dump context by magic value */
+    uint32_t *magic = (uint32_t *) ptr;
+    if (*magic == VPP_SWIF_BDID_CTX_MAGIC) {
+        /* vpp_swif_bdid_dump_ctx_t layout: {magic, cb, user_ctx} */
+        void **fields = (void **) ptr;
+        vpp_swif_bdid_cb_fn cb = (vpp_swif_bdid_cb_fn) fields[1];
+        void *user_ctx = fields[2];
+        uint32_t bd_id = ntohl(mp->bd_id);
+        uint32_t n = ntohl(mp->n_sw_ifs);
+        vl_api_bridge_domain_sw_if_t *sw_ifs = mp->sw_if_details;
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t sw_if_index = ntohl(sw_ifs[i].sw_if_index);
+            cb(sw_if_index, bd_id, user_ctx);
+        }
+        return;
+    }
+
+    /* Legacy: treat context as u32 *member_count */
+    u32 *member_count = (u32 *) ptr;
+    *member_count = ntohl(mp->n_sw_ifs);
+    SAIVPP_INFO("bridge member count: %d", ntohl(mp->n_sw_ifs));
 }
 
 static void
@@ -1345,6 +1423,9 @@ static void vpp_base_vpe_init(void)
     _(L2_MSG_ID(L2FIB_FLUSH_ALL_REPLY), l2fib_flush_all_reply) \
     _(L2_MSG_ID(L2FIB_FLUSH_INT_REPLY), l2fib_flush_int_reply) \
     _(L2_MSG_ID(L2FIB_FLUSH_BD_REPLY), l2fib_flush_bd_reply) \
+    _(L2_MSG_ID(WANT_L2_MACS_EVENTS2_REPLY), want_l2_macs_events2_reply) \
+    _(L2_MSG_ID(L2_MACS_EVENT), l2_macs_event) \
+    _(L2_MSG_ID(L2FIB_SET_SCAN_DELAY_REPLY), l2fib_set_scan_delay_reply) \
     _(BFD_MSG_ID(BFD_UDP_ADD_REPLY), bfd_udp_add_reply) \
     _(BFD_MSG_ID(BFD_UDP_DEL_REPLY), bfd_udp_del_reply) \
     _(BFD_MSG_ID(BFD_UDP_SESSION_EVENT), bfd_udp_session_event) \
@@ -4578,4 +4659,94 @@ int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
 
     vec_free(sw_if_idxs);
     return -ENOENT;
+}
+
+/* =========================================================================
+ * WANT_L2_MACS_EVENTS2 implementation functions
+ * These must appear after l2_msg_id_base and __plugin_msg_base declarations.
+ * ========================================================================= */
+
+typedef struct {
+    uint32_t magic;
+    vpp_swif_bdid_cb_fn cb;
+    void *user_ctx;
+} vpp_swif_bdid_dump_ctx_t;
+
+int
+vpp_want_l2_macs_events2 (bool enable, vpp_mac_event_cb_fn cb, void *ctx)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_want_l2_macs_events2_t *mp;
+    int ret;
+
+    g_mac_event_cb = enable ? cb : NULL;
+    g_mac_event_ctx = enable ? ctx : NULL;
+
+    VPP_LOCK();
+    __plugin_msg_base = l2_msg_id_base;
+
+    M(WANT_L2_MACS_EVENTS2, mp);
+    mp->enable_disable = enable ? 1 : 0;
+    // Set the maximum number of MAC entries in each event to 10
+    // Each entry can contain up to 10 MACs, so 100 MACs per event
+    mp->max_macs_in_event = 10;
+    mp->pid = htonl((uint32_t)getpid());
+    S(mp);
+    WR(ret);
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int
+vpp_l2fib_set_scan_delay (uint16_t delay_10ms)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2fib_set_scan_delay_t *mp;
+    int ret;
+
+    VPP_LOCK();
+    __plugin_msg_base = l2_msg_id_base;
+
+    M(L2FIB_SET_SCAN_DELAY, mp);
+    mp->scan_delay = htons(delay_10ms);
+    S(mp);
+    WR(ret);
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+uint32_t
+vpp_get_swif_idx_by_name (const char *hwif_name)
+{
+    vat_main_t *vam = &vat_main;
+    u32 idx = get_swif_idx(vam, hwif_name);
+    return (idx == (u32)~0) ? (uint32_t)~0u : (uint32_t)idx;
+}
+
+int
+vpp_bridge_domain_dump_swif_bdid (vpp_swif_bdid_cb_fn cb, void *user_ctx)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_bridge_domain_dump_t *mp;
+    vl_api_control_ping_t *mp_ping;
+    vpp_swif_bdid_dump_ctx_t ctx = { VPP_SWIF_BDID_CTX_MAGIC, cb, user_ctx };
+    int ret;
+
+    VPP_LOCK();
+    __plugin_msg_base = l2_msg_id_base;
+
+    M(BRIDGE_DOMAIN_DUMP, mp);
+    mp->bd_id = htonl((uint32_t)~0u);
+    mp->sw_if_index = htonl((uint32_t)~0u);
+    mp->context = store_ptr(&ctx);
+    S(mp);
+
+    M(CONTROL_PING, mp_ping);
+    S(mp_ping);
+    WR(ret);
+
+    VPP_UNLOCK();
+    return ret;
 }

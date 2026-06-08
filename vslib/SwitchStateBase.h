@@ -12,6 +12,7 @@
 #include <set>
 #include <unordered_set>
 #include <vector>
+#include <functional>
 
 #define SAI_VS_FDB_INFO "SAI_VS_FDB_INFO"
 
@@ -377,6 +378,10 @@ namespace saivs
 
             virtual void processFdbEntriesForAging();
 
+            // Called by Switch instance to pass a wake function that signals the FDB aging
+            // thread immediately when MAC events arrive. Default is a no-op;
+            virtual void setFdbAgingWakeFunction(std::function<void()> /*fn*/) {}
+
         private: // fdb related
 
             void updateLocalDB(
@@ -387,18 +392,20 @@ namespace saivs
                     _In_ const FdbInfo &fi,
                     _In_ sai_fdb_event_t fdb_event);
 
-            void findBridgeVlanForPortVlan(
-                    _In_ sai_object_id_t port_id,
-                    _In_ sai_vlan_id_t vlan_id,
-                    _Inout_ sai_object_id_t &bv_id,
-                    _Inout_ sai_object_id_t &bridge_port_id);
-
             bool getLagFromPort(
                     _In_ sai_object_id_t port_id,
                     _Inout_ sai_object_id_t& lag_id);
 
             bool isLagOrPortRifBased(
                     _In_ sai_object_id_t lag_or_port_id);
+
+        protected:
+
+            void findBridgeVlanForPortVlan(
+                    _In_ sai_object_id_t port_id,
+                    _In_ sai_vlan_id_t vlan_id,
+                    _Inout_ sai_object_id_t &bv_id,
+                    _Inout_ sai_object_id_t &bridge_port_id);
 
         public:
 

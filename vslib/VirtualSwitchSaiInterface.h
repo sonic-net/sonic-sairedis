@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <functional>
 
 namespace saivs
 {
@@ -323,6 +324,10 @@ namespace saivs
                     _In_ const char* warmBootFile);
 
             void ageFdbs();
+
+            // Set the wake function used to signal the FDB
+            // aging thread immediately on MAC events.
+            void setFdbAgingWakeFunction(std::function<void()> fn);
 
             void debugSetStats(
                     _In_ sai_object_id_t oid,
