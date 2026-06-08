@@ -249,6 +249,13 @@ sai_status_t Sai::set(
         return success ? SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
     }
 
+    if (RedisRemoteSaiInterface::isRedisPortAttribute(objectType, attr))
+    {
+        REDIS_CHECK_CONTEXT(objectId);
+
+        return context->m_redisSai->set(objectType, objectId, attr);
+    }
+
     REDIS_CHECK_CONTEXT(objectId);
 
     return context->m_meta->set(objectType, objectId, attr);

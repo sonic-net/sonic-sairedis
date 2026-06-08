@@ -247,6 +247,13 @@ sai_status_t ClientSai::set(
         return SAI_STATUS_FAILURE;
     }
 
+    if (RedisRemoteSaiInterface::isRedisPortAttribute(objectType, attr))
+    {
+        SWSS_LOG_ERROR("redis port extension attributes are not supported in CLIENT mode");
+
+        return SAI_STATUS_FAILURE;
+    }
+
     auto status = set(
             objectType,
             sai_serialize_object_id(objectId),

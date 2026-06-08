@@ -227,6 +227,10 @@ namespace sairedis
                     _In_ sai_object_id_t obejctType,
                     _In_ const sai_attribute_t* attr);
 
+            static bool isRedisPortAttribute(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const sai_attribute_t* attr);
+
             sai_status_t setRedisAttribute(
                     _In_ sai_object_id_t switchId,
                     _In_ const sai_attribute_t* attr);
@@ -400,6 +404,17 @@ namespace sairedis
                     _In_ sai_object_type_t objectType,
                     _In_ sai_object_id_t objectId,
                     _In_ const sai_attribute_t *attr);
+
+            sai_status_t setRedisPortExtensionAttribute(
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_object_id_t objectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t setLinkEventDampingConfig(
+                    _In_ sai_object_id_t objectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t waitForLinkEventDampingConfigResponse();
 
             bool isSaiS8ListValidString(
                     _In_ const sai_s8_list_t &s8list);

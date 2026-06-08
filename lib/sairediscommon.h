@@ -64,6 +64,9 @@
 #define REDIS_ASIC_STATE_COMMAND_STATS_ST_CAPABILITY_QUERY "stats_st_capability_query"
 #define REDIS_ASIC_STATE_COMMAND_STATS_ST_CAPABILITY_RESPONSE "stats_st_capability_response"
 
+#define REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET          "link_event_damping_config_set"
+#define REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_RESPONSE     "link_event_damping_config_response"
+
 /**
  * @brief Redis virtual object id counter key name.
  *
