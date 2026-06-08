@@ -341,6 +341,36 @@ typedef enum {
     extern int l2fib_flush_all();
     extern int l2fib_flush_int(const char *hwif_name);
     extern int l2fib_flush_bd(uint32_t bd_id);
+
+    /* MAC event callback types for push-based FDB notification via WANT_L2_MACS_EVENTS2 */
+    typedef struct {
+        uint8_t  mac[6];
+        uint32_t sw_if_index;
+        uint8_t  action; /* 0=ADD(learn), 1=DELETE(age), 2=MOVE */
+    } vpp_mac_event_t;
+
+    /* Batch callback: invoked once per l2_macs_event message with all entries.
+     * Called on the VPP API receive thread — must NOT acquire m_apimutex. */
+    typedef void (*vpp_mac_event_cb_fn)(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
+
+    /* Register/deregister for push-based MAC learn/age/move events from VPP.
+     * cb is invoked on the VPP API receive thread — implementations MUST NOT
+     * acquire the saivpp main mutex (m_apimutex) directly; enqueue the event
+     * and process it from a thread that safely holds the mutex. */
+    extern int vpp_want_l2_macs_events2(bool enable, vpp_mac_event_cb_fn cb, void *ctx);
+
+    /* Set the L2 FIB scan delay (in units of 10ms, default=10 → 100ms).
+     * Reduces the interval between VPP scanning for aged/moved MACs. */
+    extern int vpp_l2fib_set_scan_delay(uint16_t delay_10ms);
+
+    /* Reverse-lookup: return the VPP sw_if_index for a given hw interface name,
+     * or ~0u if not found. */
+    extern uint32_t vpp_get_swif_idx_by_name(const char *hwif_name);
+
+    /* Dump all VPP bridge domains and return a map of sw_if_index → bd_id
+     * via per-entry callback. Used for startup sync of m_swif_to_bdid. */
+    typedef void (*vpp_swif_bdid_cb_fn)(uint32_t sw_if_index, uint32_t bd_id, void *ctx);
+    extern int vpp_bridge_domain_dump_swif_bdid(vpp_swif_bdid_cb_fn cb, void *ctx);
     extern int bfd_udp_add(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr, uint8_t detect_mult,
                            uint32_t desired_min_tx, uint32_t required_min_rx);

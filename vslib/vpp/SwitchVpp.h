@@ -13,6 +13,9 @@
 #include "vppxlate/SaiVppXlate.h"
 
 #include <list>
+#include <functional>
+#include <mutex>
+#include <queue>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -121,6 +124,23 @@ namespace saivs
                     _Out_ uint64_t *counters) override;
 
             virtual void processFdbEntriesForAging() override;
+
+        public:
+
+            // Key for the m_vpp_fdb_entries snapshot map.
+            // Uniquely identifies an L2FIB entry within VPP: a MAC address
+            // learned on a specific bridge domain (bd_id == SAI VLAN ID).
+            // Used to detect LEARNED/AGED/MOVE events by diffing VPP push
+            // notifications against the previously-known state.
+            struct VppFdbKey {
+                uint8_t mac[6];   // source MAC address
+                uint32_t bd_id;   // VPP bridge domain ID (equals SAI VLAN ID)
+                bool operator<(const VppFdbKey &o) const {
+                    int r = memcmp(mac, o.mac, 6);
+                    if (r != 0) return r < 0;
+                    return bd_id < o.bd_id;
+                }
+            };
 
         public:
 
@@ -945,6 +965,9 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) override;
 
+            // Set the callback to wake the FDB aging thread immediately on MAC events.
+            void setFdbAgingWakeFunction(std::function<void()> fn) override { m_fdbAgingWakeFn = fn; }
+
         protected: // VPP
             typedef struct platform_bond_info_ {
                 uint32_t sw_if_index;
@@ -990,6 +1013,66 @@ namespace saivs
             BitResourcePool dynamic_bd_id_pool = BitResourcePool(dynamic_bd_id_pool_size, dynamic_bd_id_base);
 
             std::set<FdbInfo> m_fdb_info_set;
+
+            // Snapshot of VPP L2FIB: {mac, bd_id} -> sw_if_index.
+            // Kept in sync with MAC events from VPP to support flush operations
+            // and de-duplication of events.
+            std::map<VppFdbKey, uint32_t> m_vpp_fdb_entries;
+
+            // Maps VPP sw_if_index -> bridge domain ID.
+            // Maintained when ports are added/removed from bridge domains.
+            // Required because l2_macs_event carries sw_if_index but not bd_id.
+            std::map<uint32_t, uint32_t> m_swif_to_bdid;
+
+            // MAC event queue — thread boundary between VPP and saivpp.
+            //
+            // Producer: VPP API receive thread via staticMacEventCb()
+            //   -> vl_api_l2_macs_event_t_handler (holds VPP_LOCK, not m_apimutex)
+            //   -> onVppMacEvent() pushes to queue and signals m_fdbAgingWakeEvent
+            //
+            // Consumer: FDB aging thread via processFdbEntriesForAging()
+            //   -> woken by m_fdbAgingWakeEvent (~10ms after VPP event)
+            //   -> drains queue under m_apimutex
+            //   -> calls generateFdbLearnedOrMoveEvent / generateFdbAgedEvent
+            //
+            // Protected by m_mac_event_queue_mutex (separate from m_apimutex).
+            struct VppMacEvent {
+                uint8_t  mac[6];
+                uint32_t sw_if_index;
+                uint8_t  action; // 0=ADD(learn), 1=DELETE(age), 2=MOVE
+            };
+            std::mutex              m_mac_event_queue_mutex;
+            std::queue<VppMacEvent> m_mac_event_queue;
+
+            // Called from VPP API receive thread via vpp_want_l2_macs_events2 callback.
+            // Enqueues events for safe processing under m_apimutex.
+
+            // Static trampoline registered as vpp_mac_event_cb_fn.
+            // Receives the entire batch from a single l2_macs_event message.
+            static void staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
+
+            // Whether m_swif_to_bdid has been seeded from the bridge topology.
+            // Seeding is deferred to the first processFdbEntriesForAging() call
+            // because bridge members are configured after switch init.
+            bool m_swif_bdid_seeded = false;
+
+            // Optional callback to wake the FDB aging thread immediately when
+            // MAC events are enqueued (set by Sai after starting aging thread).
+            std::function<void()> m_fdbAgingWakeFn;
+
+            void generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
+            void generateFdbAgedEvent(const VppFdbKey &key);
+            sai_object_id_t getPortIdFromSwIfIndex(uint32_t sw_if_index);
+
+            void vpp_fdb_entries_invalidate_all();
+            void vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id);
+            void vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id);
+
+            // Track/untrack sw_if_index→bd_id when ports join/leave bridge domains.
+            void swif_bdid_track(const char *hwif_name, uint32_t bd_id);
+            void swif_bdid_untrack(const char *hwif_name);
+            // Direct insert by sw_if_index (used when sw_if_index is already known).
+            void swif_bdid_track_by_swif(uint32_t sw_if_index, uint32_t bd_id) { m_swif_to_bdid[sw_if_index] = bd_id; }
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
