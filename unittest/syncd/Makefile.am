@@ -21,6 +21,7 @@ tests_SOURCES = main.cpp \
 				TestNotificationProcessor.cpp \
 				TestNotificationHandler.cpp \
 				TestMdioIpcServer.cpp \
+				TestPortLinkEventDamper.cpp \
 				TestPortStateChangeHandler.cpp \
 				TestSelectablesTracker.cpp \
 				TestWorkaround.cpp \
