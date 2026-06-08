@@ -1,6 +1,7 @@
 #include "PortLinkEventDamper.h"
 
 #include <algorithm>
+#include <cinttypes>
 #include <cmath>
 
 #include "Utils.h"
@@ -290,8 +291,24 @@ void PortLinkEventDamper::handlePortStateChange(
         {
             cancelTimer();
             updatePenalty();
-            resetTimer(sairedis::Utils::timeToReachTargetValueUsingHalfLife(
-                       m_decayHalfLifeUsec, m_accumulatedPenalty, m_reuseThreshold));
+
+            if (m_accumulatedPenalty <= m_reuseThreshold)
+            {
+                m_dampingActive = false;
+
+                SWSS_LOG_NOTICE(
+                        "LED_UNSUPPRESS: port vid: %s undampened during flap "
+                        "(penalty=%u <= reuse=%u)",
+                        sai_serialize_object_id(m_vid).c_str(),
+                        m_accumulatedPenalty, m_reuseThreshold);
+
+                advertisePortState(m_actualState);
+            }
+            else
+            {
+                resetTimer(sairedis::Utils::timeToReachTargetValueUsingHalfLife(
+                           m_decayHalfLifeUsec, m_accumulatedPenalty, m_reuseThreshold));
+            }
         }
     }
 }

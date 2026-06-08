@@ -629,7 +629,7 @@ std::string PortLinkEventDamperDisabledConfigTestCaseName(
 
     std::stringstream ss;
     if (info.param.max_suppress_time == 0) {
-        ss << "MaxSuppresssTimeIsZero";
+        ss << "MaxSuppressTimeIsZero";
     }
 
     if (info.param.suppress_threshold == 0) {
