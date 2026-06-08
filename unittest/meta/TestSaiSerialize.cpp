@@ -192,7 +192,7 @@ TEST(SaiSerialize, sai_serialize_port_snr_list)
 
             auto s = sai_serialize_attr_value(*meta, attr, false);
 
-            std::string expected = "{\"0\":3712,\"1\":3840,\"2\":4160}";
+            std::string expected = "{\"0\":14.5,\"1\":15.0,\"2\":16.25}";
             EXPECT_EQ(s, expected);
 
         }
@@ -201,7 +201,7 @@ TEST(SaiSerialize, sai_serialize_port_snr_list)
 
 TEST(SaiSerialize, sai_deserialize_port_snr_list)
 {
-    std::string json_str = R"({"0":3712,"1":4032})";
+    std::string json_str = R"({"0":14.5,"1":15.75})";
 
     sai_port_snr_list_t snr_list;
     memset(&snr_list, 0, sizeof(snr_list));
@@ -1488,7 +1488,7 @@ TEST(SaiSerialize, serialize_stat_capability_list)
 {
     SWSS_LOG_ENTER();
 
-    extern const sai_enum_metadata_t sai_metadata_enum_sai_stats_mode_t;
+    auto meta = sai_metadata_get_object_type_info(SAI_OBJECT_TYPE_QUEUE);
     sai_stat_capability_list_t queue_stats_capability;
     sai_stat_capability_t stat_initializer;
     stat_initializer.stat_enum = 0;
@@ -1501,13 +1501,13 @@ TEST(SaiSerialize, serialize_stat_capability_list)
     queue_stats_capability.list[1].stat_enum = SAI_QUEUE_STAT_PACKETS;
     queue_stats_capability.list[1].stat_modes = SAI_STATS_MODE_READ;
 
-    std::string capab_count = sai_serialize_stats_capability_list(queue_stats_capability, &sai_metadata_enum_sai_stats_mode_t, true);
-    std::string capab_str = sai_serialize_stats_capability_list(queue_stats_capability, &sai_metadata_enum_sai_stats_mode_t, false);
+    std::string capab_count = sai_serialize_stats_capability_list(queue_stats_capability, meta->statenum, true);
+    std::string capab_str = sai_serialize_stats_capability_list(queue_stats_capability, meta->statenum, false);
 
     std::string exp_count_str = "{\"count\":2,\"list\":null}";
     EXPECT_EQ(capab_count, exp_count_str);
 
-    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"stat_enum\":\"34\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"stat_enum\":\"0\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
+    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"stat_enum\":\"SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"stat_enum\":\"SAI_QUEUE_STAT_PACKETS\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
     EXPECT_EQ(capab_str, exp_capab_str);
 
     std::vector<std::string> vec_stat_enum;
@@ -1557,7 +1557,8 @@ TEST(SaiSerialize, serialize_stat_st_capability_list)
 {
     SWSS_LOG_ENTER();
 
-    extern const sai_enum_metadata_t sai_metadata_enum_sai_stats_mode_t;
+    auto meta = sai_metadata_get_object_type_info(SAI_OBJECT_TYPE_QUEUE);
+
     sai_stat_st_capability_list_t queue_stats_capability;
     sai_stat_st_capability_t stat_initializer;
     stat_initializer.capability.stat_enum = 0;
@@ -1574,13 +1575,13 @@ TEST(SaiSerialize, serialize_stat_st_capability_list)
     queue_stats_capability.list[1].capability.stat_modes = SAI_STATS_MODE_READ;
     queue_stats_capability.list[1].minimal_polling_interval = 200;
 
-    std::string capab_count = sai_serialize_stats_st_capability_list(queue_stats_capability, &sai_metadata_enum_sai_stats_mode_t, true);
-    std::string capab_str = sai_serialize_stats_st_capability_list(queue_stats_capability, &sai_metadata_enum_sai_stats_mode_t, false);
+    std::string capab_count = sai_serialize_stats_st_capability_list(queue_stats_capability, meta->statenum, true);
+    std::string capab_str = sai_serialize_stats_st_capability_list(queue_stats_capability, meta->statenum, false);
 
     std::string exp_count_str = "{\"count\":2,\"list\":null}";
     EXPECT_EQ(capab_count, exp_count_str);
 
-    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"minimal_polling_interval\":\"100\",\"stat_enum\":\"34\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"minimal_polling_interval\":\"200\",\"stat_enum\":\"0\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
+    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"minimal_polling_interval\":\"100\",\"stat_enum\":\"SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"minimal_polling_interval\":\"200\",\"stat_enum\":\"SAI_QUEUE_STAT_PACKETS\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
     EXPECT_EQ(capab_str, exp_capab_str);
 
     std::vector<std::string> vec_stat_enum;
@@ -1639,7 +1640,19 @@ TEST(SaiSerialize, sai_serialize_flow_bulk_get_session_event_ntf_null_data)
 {
     SWSS_LOG_ENTER();
 
-    EXPECT_THROW(sai_serialize_flow_bulk_get_session_event_ntf(0x123456789abcdef, 1, nullptr), std::runtime_error);
+    const sai_object_id_t flow_bulk_session_id = 0x123456789abcdef;
+    std::string serialized = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, 1, nullptr);
+
+    sai_object_id_t deserialized_session_id;
+    uint32_t deserialized_count;
+    sai_flow_bulk_get_session_event_data_t* deserialized_data;
+
+    sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
+
+    EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
+    EXPECT_EQ(deserialized_count, 0u);
+
+    sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
 }
 
 TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_single_finished)
@@ -1703,19 +1716,38 @@ TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_mul
     sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
 
     EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
-    EXPECT_EQ(deserialized_count, count);
+    EXPECT_EQ(deserialized_count, 1u);
 
-    EXPECT_EQ(deserialized_data[0].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY);
+    EXPECT_EQ(deserialized_data[0].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED);
     EXPECT_EQ(deserialized_data[0].attr_count, 0);
     EXPECT_EQ(deserialized_data[0].attr, nullptr);
 
-    EXPECT_EQ(deserialized_data[1].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED);
-    EXPECT_EQ(deserialized_data[1].attr_count, 0);
-    EXPECT_EQ(deserialized_data[1].attr, nullptr);
+    sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
+}
 
-    EXPECT_EQ(deserialized_data[2].event_type, SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY);
-    EXPECT_EQ(deserialized_data[2].attr_count, 0);
-    EXPECT_EQ(deserialized_data[2].attr, nullptr);
+TEST(SaiSerialize, sai_serialize_flow_bulk_get_session_event_ntf_flow_entry_only_empty_data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t flow_bulk_session_id = 0xabcdef1234567890;
+    uint32_t count = 2;
+    sai_flow_bulk_get_session_event_data_t event_data[2];
+
+    memset(event_data, 0, sizeof(event_data));
+
+    event_data[0].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY;
+    event_data[1].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY;
+
+    std::string serialized = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, count, event_data);
+
+    sai_object_id_t deserialized_session_id;
+    uint32_t deserialized_count;
+    sai_flow_bulk_get_session_event_data_t* deserialized_data;
+
+    sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
+
+    EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
+    EXPECT_EQ(deserialized_count, 0u);
 
     sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
 }
@@ -1742,7 +1774,7 @@ TEST(SaiSerialize, sai_serialize_deserialize_flow_bulk_get_session_event_ntf_emp
     sai_deserialize_flow_bulk_get_session_event_ntf(serialized, deserialized_session_id, deserialized_count, &deserialized_data);
 
     EXPECT_EQ(deserialized_session_id, flow_bulk_session_id);
-    EXPECT_EQ(deserialized_count, 0);
+    EXPECT_EQ(deserialized_count, 0u);
 
     sai_deserialize_free_flow_bulk_get_session_event_ntf(deserialized_count, deserialized_data);
 }
@@ -1991,4 +2023,507 @@ TEST(SaiSerialize, sai_deserialize_taps_list)
     memset(&taps_list, 0, sizeof(taps_list));
     sai_deserialize_taps_list(count_str, taps_list, true);
     EXPECT_EQ(taps_list.count, 5);
+}
+
+TEST(SaiSerialize, serialize_u64_range_list)
+{
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    sai_u64_range_t ranges[] = {{100, 200}, {300, 400}, {500, 600}};
+
+    attr.value.u64rangelist.count = 3;
+    attr.value.u64rangelist.list = NULL;
+
+    meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_TAM_INT, attr.id);
+
+    ASSERT_NE(meta, nullptr);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "3:null");
+
+    attr.value.u64rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "3:100,200,300,400,500,600");
+
+    attr.value.u64rangelist.count = 0;
+    attr.value.u64rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "0:null");
+
+    attr.value.u64rangelist.count = 0;
+    attr.value.u64rangelist.list = NULL;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "0:null");
+
+    // countOnly
+    attr.value.u64rangelist.count = 3;
+    attr.value.u64rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr, true);
+
+    EXPECT_EQ(s, "3");
+
+    // deserialize with actual data
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    sai_deserialize_attr_value("3:100,200,300,400,500,600", *meta, attr, false);
+
+    EXPECT_EQ(attr.value.u64rangelist.count, 3);
+    ASSERT_NE(attr.value.u64rangelist.list, nullptr);
+    EXPECT_EQ(attr.value.u64rangelist.list[0].min, 100);
+    EXPECT_EQ(attr.value.u64rangelist.list[0].max, 200);
+    EXPECT_EQ(attr.value.u64rangelist.list[1].min, 300);
+    EXPECT_EQ(attr.value.u64rangelist.list[1].max, 400);
+    EXPECT_EQ(attr.value.u64rangelist.list[2].min, 500);
+    EXPECT_EQ(attr.value.u64rangelist.list[2].max, 600);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+
+    // deserialize null list
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    sai_deserialize_attr_value("2:null", *meta, attr, false);
+
+    EXPECT_EQ(attr.value.u64rangelist.count, 2);
+    EXPECT_EQ(attr.value.u64rangelist.list, nullptr);
+
+    // deserialize countOnly
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    sai_deserialize_attr_value("5", *meta, attr, true);
+
+    EXPECT_EQ(attr.value.u64rangelist.count, 5);
+
+    // round-trip serialize -> deserialize
+    attr.value.u64rangelist.count = 3;
+    attr.value.u64rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.u64rangelist.count, 3);
+    EXPECT_EQ(attr2.value.u64rangelist.list[0].min, 100);
+    EXPECT_EQ(attr2.value.u64rangelist.list[0].max, 200);
+    EXPECT_EQ(attr2.value.u64rangelist.list[2].min, 500);
+    EXPECT_EQ(attr2.value.u64rangelist.list[2].max, 600);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+
+    // transfer_attributes for u64_range_list
+    sai_attribute_t src, dst;
+    memset(&src, 0, sizeof(src));
+    memset(&dst, 0, sizeof(dst));
+
+    src.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+    dst.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    src.value.u64rangelist.count = 3;
+    src.value.u64rangelist.list = ranges;
+
+    sai_u64_range_t dst_ranges[3];
+    dst.value.u64rangelist.count = 3;
+    dst.value.u64rangelist.list = dst_ranges;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes(SAI_OBJECT_TYPE_TAM_INT, 1, &src, &dst, false));
+
+    EXPECT_EQ(dst.value.u64rangelist.count, 3);
+    EXPECT_EQ(dst.value.u64rangelist.list[0].min, 100);
+    EXPECT_EQ(dst.value.u64rangelist.list[0].max, 200);
+    EXPECT_EQ(dst.value.u64rangelist.list[1].min, 300);
+    EXPECT_EQ(dst.value.u64rangelist.list[1].max, 400);
+
+    // transfer countOnly
+    memset(&dst, 0, sizeof(dst));
+    dst.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes(SAI_OBJECT_TYPE_TAM_INT, 1, &src, &dst, true));
+
+    EXPECT_EQ(dst.value.u64rangelist.count, 3);
+}
+
+TEST(SaiSerialize, serialize_u16_range)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_SWITCH_ATTR_FAST_LINKUP_GUARD_TIMEOUT_RANGE;
+    attr.value.u16range.min = 10;
+    attr.value.u16range.max = 100;
+
+    meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    ASSERT_NE(meta, nullptr);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "10,100");
+
+    // deserialize
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_SWITCH_ATTR_FAST_LINKUP_GUARD_TIMEOUT_RANGE;
+
+    sai_deserialize_attr_value("10,100", *meta, attr, false);
+
+    EXPECT_EQ(attr.value.u16range.min, 10);
+    EXPECT_EQ(attr.value.u16range.max, 100);
+
+    // round-trip serialize -> deserialize
+    attr.value.u16range.min = 10;
+    attr.value.u16range.max = 100;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_SWITCH_ATTR_FAST_LINKUP_GUARD_TIMEOUT_RANGE;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.u16range.min, 10);
+    EXPECT_EQ(attr2.value.u16range.max, 100);
+
+    // transfer_attributes for u16_range
+    sai_attribute_t src, dst;
+    memset(&src, 0, sizeof(src));
+    memset(&dst, 0, sizeof(dst));
+
+    src.id = SAI_SWITCH_ATTR_FAST_LINKUP_GUARD_TIMEOUT_RANGE;
+    dst.id = SAI_SWITCH_ATTR_FAST_LINKUP_GUARD_TIMEOUT_RANGE;
+
+    src.value.u16range.min = 10;
+    src.value.u16range.max = 100;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes(SAI_OBJECT_TYPE_SWITCH, 1, &src, &dst, false));
+
+    EXPECT_EQ(dst.value.u16range.min, 10);
+    EXPECT_EQ(dst.value.u16range.max, 100);
+}
+
+TEST(SaiSerialize, serialize_u16_range_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_DASH_ACL_RULE_ATTR_SRC_PORT;
+
+    sai_u16_range_t ranges[] = {{100, 200}, {300, 400}, {500, 600}};
+
+    attr.value.u16rangelist.count = 3;
+    attr.value.u16rangelist.list = NULL;
+
+    meta = sai_metadata_get_attr_metadata((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, attr.id);
+
+    ASSERT_NE(meta, nullptr);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "3:null");
+
+    attr.value.u16rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "3:100,200,300,400,500,600");
+
+    attr.value.u16rangelist.count = 0;
+    attr.value.u16rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "0:null");
+
+    attr.value.u16rangelist.count = 0;
+    attr.value.u16rangelist.list = NULL;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "0:null");
+
+    // countOnly
+    attr.value.u16rangelist.count = 3;
+    attr.value.u16rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr, true);
+
+    EXPECT_EQ(s, "3");
+
+    // deserialize with actual data
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_DASH_ACL_RULE_ATTR_SRC_PORT;
+
+    sai_deserialize_attr_value("3:100,200,300,400,500,600", *meta, attr, false);
+
+    EXPECT_EQ(attr.value.u16rangelist.count, 3);
+    ASSERT_NE(attr.value.u16rangelist.list, nullptr);
+    EXPECT_EQ(attr.value.u16rangelist.list[0].min, 100);
+    EXPECT_EQ(attr.value.u16rangelist.list[0].max, 200);
+    EXPECT_EQ(attr.value.u16rangelist.list[1].min, 300);
+    EXPECT_EQ(attr.value.u16rangelist.list[1].max, 400);
+    EXPECT_EQ(attr.value.u16rangelist.list[2].min, 500);
+    EXPECT_EQ(attr.value.u16rangelist.list[2].max, 600);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+
+    // deserialize null list
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_DASH_ACL_RULE_ATTR_SRC_PORT;
+
+    sai_deserialize_attr_value("2:null", *meta, attr, false);
+
+    EXPECT_EQ(attr.value.u16rangelist.count, 2);
+    EXPECT_EQ(attr.value.u16rangelist.list, nullptr);
+
+    // deserialize countOnly
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_DASH_ACL_RULE_ATTR_SRC_PORT;
+
+    sai_deserialize_attr_value("5", *meta, attr, true);
+
+    EXPECT_EQ(attr.value.u16rangelist.count, 5);
+
+    // round-trip serialize -> deserialize
+    attr.value.u16rangelist.count = 3;
+    attr.value.u16rangelist.list = ranges;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+    attr2.id = SAI_DASH_ACL_RULE_ATTR_SRC_PORT;
+
+    sai_deserialize_attr_value(s, *meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.u16rangelist.count, 3);
+    EXPECT_EQ(attr2.value.u16rangelist.list[0].min, 100);
+    EXPECT_EQ(attr2.value.u16rangelist.list[0].max, 200);
+    EXPECT_EQ(attr2.value.u16rangelist.list[2].min, 500);
+    EXPECT_EQ(attr2.value.u16rangelist.list[2].max, 600);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr2);
+
+    // transfer_attributes for u16_range_list
+    sai_attribute_t src, dst;
+    memset(&src, 0, sizeof(src));
+    memset(&dst, 0, sizeof(dst));
+
+    src.id = SAI_DASH_ACL_RULE_ATTR_SRC_PORT;
+    dst.id = SAI_DASH_ACL_RULE_ATTR_SRC_PORT;
+
+    src.value.u16rangelist.count = 3;
+    src.value.u16rangelist.list = ranges;
+
+    sai_u16_range_t dst_ranges[3];
+    dst.value.u16rangelist.count = 3;
+    dst.value.u16rangelist.list = dst_ranges;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, 1, &src, &dst, false));
+
+    EXPECT_EQ(dst.value.u16rangelist.count, 3);
+    EXPECT_EQ(dst.value.u16rangelist.list[0].min, 100);
+    EXPECT_EQ(dst.value.u16rangelist.list[0].max, 200);
+    EXPECT_EQ(dst.value.u16rangelist.list[1].min, 300);
+    EXPECT_EQ(dst.value.u16rangelist.list[1].max, 400);
+
+    // transfer countOnly
+    memset(&dst, 0, sizeof(dst));
+    dst.id = SAI_DASH_ACL_RULE_ATTR_SRC_PORT;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, 1, &src, &dst, true));
+
+    EXPECT_EQ(dst.value.u16rangelist.count, 3);
+}
+
+// Forward declaration: transfer_attribute is non-static in meta/SaiSerialize.cpp
+// but not exposed via the header. Declare it here so the test can exercise the
+// SAI_ATTR_VALUE_TYPE_UINT64_RANGE branch directly (no SAI attribute uses this
+// value type, so we cannot reach it via transfer_attributes() with a real attr id).
+extern sai_status_t transfer_attribute(
+        _In_ sai_attr_value_type_t serialization_type,
+        _In_ const sai_attribute_t &src_attr,
+        _In_ sai_attribute_t &dst_attr,
+        _In_ bool countOnly);
+
+TEST(SaiSerialize, serialize_u64_range)
+{
+    sai_attribute_t attr;
+    sai_attr_metadata_t meta = {};
+    std::string s;
+
+    meta.attrvaluetype = SAI_ATTR_VALUE_TYPE_UINT64_RANGE;
+
+    attr.value.u64range.min = 100;
+    attr.value.u64range.max = 200;
+
+    s = sai_serialize_attr_value(meta, attr);
+
+    EXPECT_EQ(s, "100,200");
+
+    // deserialize
+    sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
+
+    sai_deserialize_attr_value("100,200", meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.u64range.min, 100);
+    EXPECT_EQ(attr2.value.u64range.max, 200);
+
+    // round-trip
+    attr.value.u64range.min = 12345;
+    attr.value.u64range.max = 67890;
+
+    s = sai_serialize_attr_value(meta, attr);
+
+    memset(&attr2, 0, sizeof(attr2));
+    sai_deserialize_attr_value(s, meta, attr2, false);
+
+    EXPECT_EQ(attr2.value.u64range.min, 12345);
+    EXPECT_EQ(attr2.value.u64range.max, 67890);
+
+    // free (no-op for primitive range)
+    sai_deserialize_free_attribute_value(meta.attrvaluetype, attr2);
+
+    // transfer_attribute for u64range
+    sai_attribute_t src, dst;
+    memset(&src, 0, sizeof(src));
+    memset(&dst, 0, sizeof(dst));
+
+    src.value.u64range.min = 111;
+    src.value.u64range.max = 222;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attribute(SAI_ATTR_VALUE_TYPE_UINT64_RANGE, src, dst, false));
+
+    EXPECT_EQ(dst.value.u64range.min, 111);
+    EXPECT_EQ(dst.value.u64range.max, 222);
+}
+
+TEST(SaiSerialize, sai_serialize_enum)
+{
+    auto *emd = &sai_metadata_enum_sai_port_error_status_t;
+
+    int flags = 0;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_CLEAR");
+
+    flags = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT");
+
+    flags = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE");
+
+    flags = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE | 0x80000;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0x80000");
+
+    flags = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE | 0xe0000;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0xe0000");
+
+    flags = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| 0x67100 | 0xff000000;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|"
+            "SAI_PORT_ERROR_STATUS_NO_RX_REACHABILITY|SAI_PORT_ERROR_STATUS_LLR_TX_FLUSH|0xff064000");
+
+    flags = 0xff000000;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "0xff000000");
+
+    emd = &sai_metadata_enum_sai_stats_mode_t;
+
+    flags = 0;
+
+    // has zero flag
+    if (emd->values[0] == 0)
+        EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_STATS_MODE_NONE");
+    else
+        EXPECT_EQ(sai_serialize_enum(flags, emd), "0x0");
+
+    flags = SAI_STATS_MODE_READ;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_STATS_MODE_READ");
+
+    flags = SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR");
+
+    flags = SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR|0xff00;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR|0xff00");
+
+    flags = 0xf1230000;
+    EXPECT_EQ(sai_serialize_enum(flags, emd), "0xf1230000");
+}
+
+TEST(SaiDeserialize, sai_deserialize_enum)
+{
+    auto *emd = &sai_metadata_enum_sai_port_error_status_t;
+
+    int32_t value;
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_CLEAR", emd, value);
+    EXPECT_EQ(value, 0);
+
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT", emd, value);
+    EXPECT_EQ(value, SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT);
+
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE", emd, value);
+    EXPECT_EQ(value, SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE);
+
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_MAC_REMOTE_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0x80000", emd, value);
+    EXPECT_EQ(value, SAI_PORT_ERROR_STATUS_MAC_REMOTE_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0x80000);
+
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0xe0000", emd, value);
+    EXPECT_EQ(value, SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT| SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|0xe0000);
+
+    sai_deserialize_enum("SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|"
+            "SAI_PORT_ERROR_STATUS_NO_RX_REACHABILITY|SAI_PORT_ERROR_STATUS_LLR_TX_FLUSH|0xff064000", emd, value);
+    EXPECT_EQ(value, SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT|SAI_PORT_ERROR_STATUS_DATA_UNIT_SIZE|
+                     SAI_PORT_ERROR_STATUS_NO_RX_REACHABILITY|SAI_PORT_ERROR_STATUS_LLR_TX_FLUSH|0xff064000);
+
+    sai_deserialize_enum("0xff000000", emd, value);
+    EXPECT_EQ(value, 0xff000000);
+
+    emd = &sai_metadata_enum_sai_stats_mode_t;
+
+
+    // has zero flag
+    if (emd->values[0] == 0)
+       sai_deserialize_enum("SAI_STATS_MODE_NONE", emd, value);
+    else
+       sai_deserialize_enum("0x0", emd, value);
+    EXPECT_EQ(value, 0);
+
+    sai_deserialize_enum("SAI_STATS_MODE_READ", emd, value);
+    EXPECT_EQ(value, SAI_STATS_MODE_READ);
+
+    sai_deserialize_enum("SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR", emd, value);
+    EXPECT_EQ(value, SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR);
+
+    sai_deserialize_enum("SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR|0xff00", emd, value);
+    EXPECT_EQ(value, SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_CLEAR|0xff00);
+
+    sai_deserialize_enum("0xf1230000", emd, value);
+    EXPECT_EQ(value, 0xf1230000);
+
+    sai_deserialize_enum("SAI_STATS_MODE_READ|", emd, value);
+    EXPECT_EQ(value, SAI_STATS_MODE_READ);
+
+    // Not checking the syslog warning
+    sai_deserialize_enum("SAI_STATS_MODE_READ|SAI_STATS_MODE_WRITE", emd, value);
+    EXPECT_EQ(value, SAI_STATS_MODE_READ);
 }

@@ -80,6 +80,9 @@ namespace saivs
                     _In_ const sai_attr_metadata_t *meta,
                     _In_ sai_object_id_t object_id) override;
 
+            virtual sai_status_t refresh_port_oper_speed(
+                    _In_ sai_object_id_t port_id) override;
+
         private: // from vpp VirtualSwitchSaiInterface
 
             void setPortStats(
@@ -227,6 +230,11 @@ namespace saivs
                     _In_ int tapfd,
                     _In_ sai_object_id_t port_id) override;
 
+            bool register_hostif_info(
+                    _In_ const std::string &tapname,
+                    _In_ int tapfd,
+                    _In_ sai_object_id_t port_id);
+
             virtual sai_status_t vs_create_hostif_tap_interface(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) override;
@@ -337,7 +345,6 @@ namespace saivs
             bool is_tunnel_bridge_port(
                     _In_ sai_object_id_t br_port_id);
 
-
             /* BFD Session */
             sai_status_t bfd_session_add(
                     _In_ const std::string &serializedObjectId,
@@ -440,7 +447,10 @@ namespace saivs
 
             std::map<sai_object_id_t, std::shared_ptr<IpVrfInfo>> vrf_objMap;
             bool nbr_env_read = false;
-            bool nbr_active = false;
+            // nbr_active is true by default, can be set to false by env var NO_LINUX_NL = n.
+            // If false, it will rely on linux_nl_plugin to sync ip to VPP.
+            // no neighbor entries will be added to vpp from SAI
+            bool nbr_active = true;
             std::map<std::string, std::string> m_intf_prefix_map;
             std::unordered_map<std::string, uint32_t> lpbInstMap;
             std::unordered_map<std::string, std::string> lpbIpToHostIfMap;
@@ -997,8 +1007,10 @@ namespace saivs
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
 
             friend class TunnelManagerSRv6;
+            friend class TunnelManagerIpIp;
 
             TunnelManagerSRv6 m_tunnel_mgr_srv6;
+            TunnelManagerIpIp m_tunnel_mgr_ipip;
 
         protected: // switch capability related
             virtual sai_status_t queryNextHopGroupTypeCapability(

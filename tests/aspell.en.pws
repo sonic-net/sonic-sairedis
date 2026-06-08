@@ -21,6 +21,7 @@ CHARDATA
 COLDVIDS
 CONST
 CRM
+CSIG
 CSP
 CreateObject
 DEI
@@ -55,6 +56,7 @@ IPv
 Inseg
 KEYs
 LLC
+LLR
 LOGLEVEL
 LOOPBACK
 MACsec
@@ -136,6 +138,7 @@ ATTR
 AttrHash
 attrid
 attridname
+attribs
 attrs
 attrvalue
 BCM
@@ -153,6 +156,7 @@ config
 const
 CONST
 consts
+copyable
 counterName
 countOnly
 cout
@@ -496,3 +500,20 @@ tparam
 ICMP
 UDP
 SIGSEGV
+CX
+PCID
+ZeroMQChannel
+arg
+ctor
+dedup
+LRU
+LruDedup
+pri
+saimeta
+RedisChannel
+NotificationConsumer
+NotificationQueuePolicy
+setOpAllowList
+setStatsLabel
+HWM
+allowlist

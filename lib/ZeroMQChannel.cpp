@@ -280,10 +280,24 @@ sai_status_t ZeroMQChannel::wait(
 
         if (rc == 0)
         {
-            SWSS_LOG_ERROR("zmq_poll timed out for: %s", command.c_str());
+            // REQ socket is now stuck in WAITING FOR REPLY state because
+            // zmq_send was done but zmq_recv did not complete. Close and
+            // recreate the socket to reset the state machine (Issue #26300).
 
-            // notice, at this point we could throw, since in REP/REQ pattern
-            // we are forced to use send/recv in that specific order
+            SWSS_LOG_ERROR("zmq_poll timed out for: %s, resetting REQ socket", command.c_str());
+
+            zmq_close(m_socket);
+
+            m_socket = zmq_socket(m_context, ZMQ_REQ);
+
+            int connect_rc = zmq_connect(m_socket, m_endpoint.c_str());
+
+            if (connect_rc != 0)
+            {
+                SWSS_LOG_THROW("failed to reconnect zmq endpoint %s after timeout, zmqerrno: %d",
+                        m_endpoint.c_str(),
+                        zmq_errno());
+            }
 
             return SAI_STATUS_FAILURE;
         }
