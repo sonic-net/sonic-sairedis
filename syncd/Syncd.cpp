@@ -1106,6 +1106,17 @@ bool Syncd::applyAiedAlgorithm(
         return false;  // Damping disabled for invalid config
     }
 
+    if ((state.aied_config.suppress_threshold == 0) ||
+        (state.aied_config.reuse_threshold == 0) ||
+        (state.aied_config.suppress_threshold <= state.aied_config.reuse_threshold))
+    {
+        SWSS_LOG_WARN("Port VID %s invalid damping configuration: "
+             "suppress_threshold (%u) reuse_threshold (%u). Damping disabled.",
+             portVidStr.c_str(), state.aied_config.suppress_threshold,
+             state.aied_config.reuse_threshold);
+        return false;  // Damping disabled for invalid config
+    }
+
     // First, apply penalty decay
     decayPenalty(state, currentTimeMs);
 
