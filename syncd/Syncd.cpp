@@ -850,7 +850,7 @@ sai_status_t Syncd::processLinkEventDampingConfigSet(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_NOTICE("processLinkEventDampingConfigSet: stub, returning NOT_IMPLEMENTED");
+    SWSS_LOG_NOTICE("link event damping config set not yet wired to SAI");
 
     sendLinkEventDampingConfigResponse(SAI_STATUS_NOT_IMPLEMENTED);
 
