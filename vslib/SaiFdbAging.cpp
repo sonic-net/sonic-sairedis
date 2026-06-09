@@ -20,8 +20,8 @@ void Sai::startFdbAgingThread()
     m_fdbAgingThreadEvent = std::make_shared<swss::SelectableEvent>();
     m_fdbAgingWakeEvent = std::make_shared<swss::SelectableEvent>();
 
-    // This is used by VPP switch to wake up the aging thread immediately
-    // after the MAC events are received from VPP (avoids 1s timer latency)
+    // This is used by the platform switch to wake up the aging thread immediately
+    // after the MAC events are received (avoids 1s timer latency)
     auto wakeEvent = m_fdbAgingWakeEvent;
     m_vsSai->initFdbEventHandling([wakeEvent]() { wakeEvent->notify(); });
 
