@@ -925,7 +925,20 @@ namespace saivs
                     _In_ sai_object_id_t ace_cntr_oid,
                     _In_ uint32_t attr_count,
                     _Out_ sai_attribute_t *attr_list);
+        
+            sai_status_t samplePacketCreate(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
 
+            sai_status_t samplePacketRemove(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t samplePacketSet(
+                    _In_ sai_object_id_t entry_id,
+                    _In_ const sai_attribute_t *attr);
+                
         public: // VPP
 
             sai_status_t aclGetVppIndices(
