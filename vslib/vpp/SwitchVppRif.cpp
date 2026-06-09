@@ -1841,6 +1841,14 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     }
     rif_type = attr.value.s32;
 
+    if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT &&
+        rif_type != SAI_ROUTER_INTERFACE_TYPE_PORT)
+    {
+        SWSS_LOG_NOTICE("Skipping router interface remove for attr type %d", rif_type);
+
+        return SAI_STATUS_SUCCESS;
+    }
+
     attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
     status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr);
 
