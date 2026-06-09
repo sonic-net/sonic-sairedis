@@ -91,6 +91,8 @@ SwitchVpp::~SwitchVpp()
 
 void SwitchVpp::deinitFdbEventHandling()
 {
+    SWSS_LOG_ENTER();
+
     // Deregister MAC event callback before destroying state.
     // Without this, VPP may deliver a batch after destruction and
     // staticMacEventCb will dereference a dangling `this`.
@@ -1305,6 +1307,8 @@ void SwitchVpp::processFdbEntriesForAging()
  */
 void SwitchVpp::staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx)
 {
+    SWSS_LOG_ENTER();
+
     auto *self = static_cast<SwitchVpp *>(ctx);
     {
         std::lock_guard<std::mutex> lock(self->m_mac_event_queue_mutex);

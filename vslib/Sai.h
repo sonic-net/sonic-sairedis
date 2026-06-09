@@ -282,7 +282,7 @@ namespace saivs
 
             std::shared_ptr<swss::SelectableEvent> m_fdbAgingThreadEvent;
 
-            // Signaled by VPP MAC event callback to wake the aging thread
+            // Signaled by the platform MAC event callback to wake the aging thread
             // immediately instead of waiting for the 1s timeout.
             std::shared_ptr<swss::SelectableEvent> m_fdbAgingWakeEvent;
 

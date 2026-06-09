@@ -380,7 +380,7 @@ namespace saivs
 
             // Called by Switch instance to pass a wake function that signals the FDB aging
             // thread immediately when MAC events arrive. Default is a no-op;
-            virtual void initFdbEventHandling(std::function<void()> /*fn*/) {}
+            virtual void initFdbEventHandling(std::function<void()> /*wakeFn*/) {}
             virtual void deinitFdbEventHandling() {}
 
         private: // fdb related
