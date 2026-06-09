@@ -94,7 +94,7 @@ TEST(Sai, bulkGet)
 TEST(Sai, fdbAgingWakeEvent)
 {
     // Verify the FDB aging thread wakes when a switch is created and shuts
-    // down cleanly. The wake event path (SaiFdbAging.cpp sel==wakeEvent) is
+    // down cleanly. The wake event path (SaiFdbAging.cpp: selectable==wakeEvent) is
     // exercised by the fact that apiInitialize + create(SWITCH) starts the
     // thread and installs the wake functor, and remove(SWITCH) triggers a
     // clean join without hanging.

@@ -501,7 +501,7 @@ TEST_F(VirtualSwitchSaiInterfaceTest, objectTypeGetAvailability_MySidEntry_Inval
 TEST_F(VirtualSwitchSaiInterfaceTest, initFdbEventHandling)
 {
     // Verify the wake functor is forwarded to all switch instances.
-    // For the base (non-VPP) SwitchStateBase the virtual is a no-op, so the
+    // For the base (non-platform) SwitchStateBase the virtual is a no-op, so the
     // functor is never called — but the call chain itself must not crash.
     bool called = false;
     m_vssai->initFdbEventHandling([&called]() { called = true; });
