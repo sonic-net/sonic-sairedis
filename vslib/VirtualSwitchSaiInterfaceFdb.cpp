@@ -1,5 +1,6 @@
 #include "VirtualSwitchSaiInterface.h"
 #include "SwitchStateBase.h"
+#include "vpp/SwitchVpp.h"
 
 #include "meta/sai_serialize.h"
 
@@ -324,8 +325,18 @@ void VirtualSwitchSaiInterface::ageFdbs()
     }
 }
 
-void VirtualSwitchSaiInterface::setFdbAgingWakeFunction(std::function<void()> fn)
+void VirtualSwitchSaiInterface::initFdbEventHandling(std::function<void()> fn)
 {
     for (auto &kv : m_switchStateMap)
-        kv.second->setFdbAgingWakeFunction(fn);
+    {
+        kv.second->initFdbEventHandling(fn);
+    }       
+}
+
+void VirtualSwitchSaiInterface::deinitFdbEventHandling()
+{
+    for (auto &kv : m_switchStateMap)
+    {
+        kv.second->deinitFdbEventHandling();
+    }
 }

@@ -371,6 +371,17 @@ typedef enum {
      * via per-entry callback. Used for startup sync of m_swif_to_bdid. */
     typedef void (*vpp_swif_bdid_cb_fn)(uint32_t sw_if_index, uint32_t bd_id, void *ctx);
     extern int vpp_bridge_domain_dump_swif_bdid(vpp_swif_bdid_cb_fn cb, void *ctx);
+
+    /* Dump all dynamic L2FIB entries for a bridge domain (bd_id == ~0 → all BDs).
+     * Callback receives {mac[6], sw_if_index, bd_id} for each dynamic entry.
+     * Used for initial seeding of m_vpp_fdb_entries on startup. */
+    typedef struct {
+        uint8_t  mac[6];
+        uint32_t sw_if_index;
+        uint32_t bd_id;
+    } vpp_l2fib_entry_t;
+    typedef void (*vpp_l2fib_cb_fn)(const vpp_l2fib_entry_t *entry, void *ctx);
+    extern int vpp_l2fib_table_dump(uint32_t bd_id, vpp_l2fib_cb_fn cb, void *ctx);
     extern int bfd_udp_add(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr, uint8_t detect_mult,
                            uint32_t desired_min_tx, uint32_t required_min_rx);

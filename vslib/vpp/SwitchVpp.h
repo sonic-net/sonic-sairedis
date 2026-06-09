@@ -966,7 +966,8 @@ namespace saivs
                     _In_ const sai_attribute_t *attr_list) override;
 
             // Set the callback to wake the FDB aging thread immediately on MAC events.
-            void setFdbAgingWakeFunction(std::function<void()> fn) override { m_fdbAgingWakeFn = fn; }
+            void initFdbEventHandling(std::function<void()> fn) override;
+            void deinitFdbEventHandling() override;
 
         protected: // VPP
             typedef struct platform_bond_info_ {
