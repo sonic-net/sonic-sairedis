@@ -1361,6 +1361,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
  */
 sai_object_id_t SwitchVpp::getPortIdFromSwIfIndex(uint32_t sw_if_index)
 {
+    SWSS_LOG_ENTER();
     const char *hwifname = vpp_get_swif_name(sw_if_index);
     if (!hwifname)
     {
@@ -1516,6 +1517,7 @@ void SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
 
 void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)
 {
+    SWSS_LOG_ENTER();
     uint32_t swif = vpp_get_swif_idx_by_name(hwif_name);
     if (swif != (uint32_t)~0u)
     {
@@ -1525,6 +1527,7 @@ void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)
 
 void SwitchVpp::swif_bdid_untrack(const char *hwif_name)
 {
+    SWSS_LOG_ENTER();
     uint32_t swif = vpp_get_swif_idx_by_name(hwif_name);
     if (swif != (uint32_t)~0u)
     {
@@ -1534,12 +1537,14 @@ void SwitchVpp::swif_bdid_untrack(const char *hwif_name)
 
 void SwitchVpp::vpp_fdb_entries_invalidate_all()
 {
+    SWSS_LOG_ENTER();
     SWSS_LOG_INFO("FDB: invalidating all %zu m_vpp_fdb_entries", m_vpp_fdb_entries.size());
     m_vpp_fdb_entries.clear();
 }
 
 void SwitchVpp::vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id)
 {
+    SWSS_LOG_ENTER();
     size_t before = m_vpp_fdb_entries.size();
     for (auto it = m_vpp_fdb_entries.begin(); it != m_vpp_fdb_entries.end(); )
     {
@@ -1554,6 +1559,7 @@ void SwitchVpp::vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id)
 
 void SwitchVpp::vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id)
 {
+    SWSS_LOG_ENTER();
     /* O(N) scan: resolves sw_if_index -> port OID via VPP API for each entry.
      * This is acceptable since flush-by-interface is infrequent.
      * TODO: Improve this by storing the sw_if_index -> port OID mapping somewhere. */
