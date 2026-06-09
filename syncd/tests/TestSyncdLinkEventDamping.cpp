@@ -248,6 +248,8 @@ void sendPortEvent(
     sai_object_id_t port,
     sai_port_oper_status_t status)
 {
+    SWSS_LOG_ENTER();
+
     sai_port_oper_status_notification_t n;
     n.port_id = port;
     n.port_state = status;
@@ -263,6 +265,8 @@ sai_object_id_t getFirstPort(
     std::shared_ptr<sairedis::Sai> sai,
     sai_object_id_t switchId)
 {
+    SWSS_LOG_ENTER();
+
     sai_attribute_t attr;
 
     attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
@@ -285,6 +289,8 @@ sai_object_id_t getFirstPort(
 
 std::string getPortKey(sai_object_id_t portVid)
 {
+    SWSS_LOG_ENTER();
+
     return sai_serialize_object_type(SAI_OBJECT_TYPE_PORT) + ":" +
            sai_serialize_object_id(portVid);
 }
@@ -294,6 +300,8 @@ void setAlgorithm(
     const std::string& key,
     sai_redis_link_event_damping_algorithm_t algo)
 {
+    SWSS_LOG_ENTER();
+
     std::string id = sai_serialize_redis_port_attr_id(
         SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM);
 
@@ -309,6 +317,8 @@ void setAiedConfig(
     const std::string& key,
     const sai_redis_link_event_damping_algo_aied_config_t& config)
 {
+    SWSS_LOG_ENTER();
+
     std::string id = sai_serialize_redis_port_attr_id(
         SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG);
 
