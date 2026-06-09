@@ -327,14 +327,18 @@ void VirtualSwitchSaiInterface::ageFdbs()
 
 void VirtualSwitchSaiInterface::initFdbEventHandling(std::function<void()> fn)
 {
+    SWSS_LOG_ENTER();
+
     for (auto &kv : m_switchStateMap)
     {
         kv.second->initFdbEventHandling(fn);
-    }       
+    }
 }
 
 void VirtualSwitchSaiInterface::deinitFdbEventHandling()
 {
+    SWSS_LOG_ENTER();
+
     for (auto &kv : m_switchStateMap)
     {
         kv.second->deinitFdbEventHandling();
