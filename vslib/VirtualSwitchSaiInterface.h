@@ -327,7 +327,8 @@ namespace saivs
 
             // Set the wake function used to signal the FDB
             // aging thread immediately on MAC events.
-            void setFdbAgingWakeFunction(std::function<void()> fn);
+            void initFdbEventHandling(std::function<void()> fn);
+            void deinitFdbEventHandling();
 
             void debugSetStats(
                     _In_ sai_object_id_t oid,

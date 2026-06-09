@@ -23,7 +23,7 @@ void Sai::startFdbAgingThread()
     // This is used by VPP switch to wake up the aging thread immediately
     // after the MAC events are received from VPP (avoids 1s timer latency)
     auto wakeEvent = m_fdbAgingWakeEvent;
-    m_vsSai->setFdbAgingWakeFunction([wakeEvent]() { wakeEvent->notify(); });
+    m_vsSai->initFdbEventHandling([wakeEvent]() { wakeEvent->notify(); });
 
     m_fdbAgingThreadRun = true;
 
