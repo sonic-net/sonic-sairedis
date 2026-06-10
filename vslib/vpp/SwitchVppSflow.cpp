@@ -48,3 +48,37 @@ sai_status_t SwitchVpp::samplePacketSet(
 
     return status;
 }
+
+sai_status_t SwitchVpp::sflow_enable_disable(
+    _In_ sai_object_id_t port_id,
+    _In_ bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    std::string if_name;
+
+    if(!port_to_hwifname(port_id, if_name))
+    {
+        SWSS_LOG_ERROR("failed to get hwif name for port %s", sai_serialize_object_id(port_id).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    // TODO: Call VPP enable_disable API 
+
+    SWSS_LOG_NOTICE("Changed port %s to %d",sai_serialize_object_id(port_id).c_str(), enable);
+
+    return SAI_STATUS_SUCCESS;
+
+}
+
+sai_status_t SwitchVpp::sflow_sampling_rate_set(
+    _In_ uint32_t rate)
+{
+    SWSS_LOG_ENTER();
+
+    // TODO: Call VPP sampling rate API
+
+    SWSS_LOG_NOTICE("New rate set of 1 in %d packets", rate);
+
+    return SAI_STATUS_SUCCESS;
+}
