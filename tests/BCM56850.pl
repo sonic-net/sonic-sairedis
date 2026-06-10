@@ -883,6 +883,34 @@ sub test_port_bulk_get
     play "port_bulk_get.rec";
 }
 
+sub test_brcm_warm_boot_my_sid_create
+{
+    fresh_start;
+
+    play "wb_my_sid_create.rec";
+
+    request_warm_shutdown;
+    start_syncd_warm;
+
+    play "wb_my_sid_create.rec";
+
+    request_warm_shutdown;
+}
+
+sub test_brcm_warm_boot_my_sid_create_psp_usd
+{
+    fresh_start;
+
+    play "wb_my_sid_create_psp_usd.rec";
+
+    request_warm_shutdown;
+    start_syncd_warm;
+
+    play "wb_my_sid_create_psp_usd.rec";
+
+    request_warm_shutdown;
+}
+
 # RUN TESTS
 
 test_port_bulk_get
@@ -964,5 +992,4 @@ test_brcm_full_to_empty_no_queue_no_ipg_no_buffer_profile;
 test_brcm_query_attr_enum_values_capability;
 test_brcm_query_object_type_get_availability;
 test_voq_switch_create;
-
-kill_syncd;
+test_brcm_warm_boot_my_sid_create;
