@@ -938,6 +938,13 @@ namespace saivs
             sai_status_t samplePacketSet(
                     _In_ sai_object_id_t entry_id,
                     _In_ const sai_attribute_t *attr);
+
+            sai_status_t sflow_enable_disable(
+                    _In_ sai_object_id_t port_id,
+                    _In_ bool enable);
+
+            sai_status_t sflow_sampling_rate_set(
+                    _In_ uint32_t rate);
                 
         public: // VPP
 
