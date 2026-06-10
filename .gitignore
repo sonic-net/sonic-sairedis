@@ -18,6 +18,7 @@ debian/autoreconf.after
 debian/autoreconf.before
 debian/debhelper-build-stamp
 debian/files
+.azure-pipelines/docker-sai-test-vpp/debs/
 
 debian/python-pysairedis/
 debian/python3-pysairedis/
