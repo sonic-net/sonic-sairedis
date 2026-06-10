@@ -237,7 +237,7 @@ namespace sairedis
              * This function should only be used on port_api set function.
              */
             static bool isRedisPortAttribute(
-                    _In_ sai_object_id_t objectType,
+                    _In_ sai_object_type_t objectType,
                     _In_ const sai_attribute_t* attr);
 
             void setMeta(

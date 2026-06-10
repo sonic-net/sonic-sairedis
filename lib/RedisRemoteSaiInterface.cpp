@@ -2284,7 +2284,7 @@ bool RedisRemoteSaiInterface::isRedisAttribute(
 }
 
 bool RedisRemoteSaiInterface::isRedisPortAttribute(
-        _In_ sai_object_id_t objectType,
+        _In_ sai_object_type_t objectType,
         _In_ const sai_attribute_t* attr)
 {
     SWSS_LOG_ENTER();
