@@ -357,22 +357,6 @@ namespace syncd
                     _In_ sai_object_id_t portVid,
                     _In_ const LinkEventDampingPortState& state);
 
-            /**
-             * @brief Clear/reset damping counters for a specific port
-             * @param portVid Virtual object ID of the port
-             * @return SAI_STATUS_SUCCESS on success
-             */
-            sai_status_t clearDampingCounters(
-                    _In_ sai_object_id_t portVid);
-
-            /**
-             * @brief Process damping counter clear command
-             * @param kco Key-operation-fields tuple from Redis
-             * @return SAI_STATUS_SUCCESS on success
-             */
-            sai_status_t processLinkEventDampingCounterClear(
-                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
-
         private: // process quad oid
 
             sai_status_t processOidCreate(

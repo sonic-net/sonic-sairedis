@@ -1381,19 +1381,14 @@ bool Syncd::applyLinkEventDamping(
 
     LinkEventDampingPortState& state = it->second;
 
-    // Check if damping algorithm is enabled
-    if (state.algorithm == SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED)
-    {
-        return false;  // Damping disabled
-    }
-
-    uint64_t currentTimeMs = getCurrentTimeMs();
-
     // Apply the appropriate damping algorithm
     switch (state.algorithm)
     {
         case SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED:
+        {
+            uint64_t currentTimeMs = getCurrentTimeMs();
             return applyAiedAlgorithm(portVid, state, newStatus, currentTimeMs);
+        }
 
         case SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED:
             SWSS_LOG_INFO("Damping algorithm disabled: %d", state.algorithm);
@@ -1511,10 +1506,8 @@ void Syncd::checkDampedPortsTimeout()
         }
         else
         {
-            // Port is still in damped state - write updated stats to STATE_DB
-            // to reflect the decayed penalty value in real-time
-            writeDampingCountersToStateDb(portVid, state);
-
+            // Port is still in damped state
+            // Updating penalty decay to STATE DB may not be useful.
             SWSS_LOG_DEBUG("Proactive timeout check: Port VID %s still damped: "
                     "penalty=%u, duration=%lu ms", portVidStr.c_str(),
                     state.current_penalty, damping_duration_ms);
