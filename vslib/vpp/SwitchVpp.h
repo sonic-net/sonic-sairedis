@@ -1052,11 +1052,6 @@ namespace saivs
             // Receives the entire batch from a single l2_macs_event message.
             static void staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
 
-            // Whether m_swif_to_bdid has been seeded from the bridge topology.
-            // Seeding is deferred to the first processFdbEntriesForAging() call
-            // because bridge members are configured after switch init.
-            bool m_swif_bdid_seeded = false;
-
             // Optional callback to wake the FDB aging thread immediately when
             // MAC events are enqueued (set by Sai after starting aging thread).
             std::function<void()> m_fdbAgingWakeFn;
@@ -1072,8 +1067,6 @@ namespace saivs
             // Track/untrack sw_if_index→bd_id when ports join/leave bridge domains.
             void swif_bdid_track(const char *hwif_name, uint32_t bd_id);
             void swif_bdid_untrack(const char *hwif_name);
-            // Direct insert by sw_if_index (used when sw_if_index is already known).
-            void swif_bdid_track_by_swif(uint32_t sw_if_index, uint32_t bd_id) { m_swif_to_bdid[sw_if_index] = bd_id; }
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
