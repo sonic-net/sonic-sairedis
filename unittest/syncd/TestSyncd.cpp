@@ -806,6 +806,8 @@ protected:
 
     void SetUp() override
     {
+        SWSS_LOG_ENTER();
+
         SyncdTest::SetUp();
 
         m_syncd->m_translator->insertRidAndVid(PORT_RID, PORT_VID);
@@ -816,6 +818,8 @@ protected:
     void setDampingConfig(
             const sai_redis_link_event_damping_algo_aied_config_t& config)
     {
+        SWSS_LOG_ENTER();
+
         std::string key = sai_serialize_object_type(SAI_OBJECT_TYPE_PORT)
                         + ":" + sai_serialize_object_id(PORT_VID);
 
@@ -841,6 +845,8 @@ protected:
     void sendPortStateChange(
             sai_port_oper_status_t status)
     {
+        SWSS_LOG_ENTER();
+
         sai_port_oper_status_notification_t n;
 
         memset(&n, 0, sizeof(n));
@@ -861,6 +867,8 @@ protected:
     std::string getDampingField(
             const std::string& field)
     {
+        SWSS_LOG_ENTER();
+
         swss::DBConnector db("STATE_DB", 0);
         swss::Table table(&db, "LINK_EVENT_DAMPING_STATS");
 
@@ -980,7 +988,7 @@ TEST_F(SyncdLinkEventDampingTest, noDampingConfiguredPropagates)
     sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
     sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
 
-    // no STATE_DB entry is written for unconfigured ports
+    // no STATE_DB entry is written for non-configured ports
     EXPECT_EQ(getDampingField("is_damping_active"), "");
 }
 #endif
