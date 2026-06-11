@@ -21,6 +21,11 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include <chrono>
+#include <thread>
+
+#include "swss/table.h"
+
 using namespace syncd;
 using namespace saivs;
 using namespace testing;
@@ -771,5 +776,211 @@ TEST_F(SyncdTest, processEventInShutdownWaitMode_NonNotifyCommand)
         .Times(0);
 
     m_syncd->processEventInShutdownWaitMode(*channel);
+}
+
+// ----------------------------------------------------------------------------
+// Link event damping tests
+//
+// These tests exercise the real damping call chain:
+//
+//   NotificationProcessor::syncProcessNotification
+//     -> handle_port_state_change
+//     -> process_on_port_state_change
+//     -> m_linkEventDampingApplier (bound to Syncd::applyLinkEventDamping)
+//     -> applyAiedAlgorithm / decayPenalty / writeDampingCountersToStateDb
+//
+// Notes:
+// - Notifications must carry the port RID (the processor translates RID->VID).
+// - Damping config is applied through Syncd::processEvent with op
+//   REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET, which covers
+//   processLinkEventDampingConfigSet as well.
+// - Results are asserted via the LINK_EVENT_DAMPING_STATS table in STATE_DB,
+//   which is written by writeDampingCountersToStateDb.
+// ----------------------------------------------------------------------------
+
+class SyncdLinkEventDampingTest : public SyncdTest
+{
+protected:
+    static constexpr sai_object_id_t PORT_VID = 0x10000000000002;
+    static constexpr sai_object_id_t PORT_RID = 0x11000000000002;
+
+    void SetUp() override
+    {
+        SyncdTest::SetUp();
+
+        m_syncd->m_translator->insertRidAndVid(PORT_RID, PORT_VID);
+    }
+
+    // Apply damping config via the regular command path
+    // (covers Syncd::processLinkEventDampingConfigSet).
+    void setDampingConfig(
+            const sai_redis_link_event_damping_algo_aied_config_t& config)
+    {
+        std::string key = sai_serialize_object_type(SAI_OBJECT_TYPE_PORT)
+                        + ":" + sai_serialize_object_id(PORT_VID);
+
+        std::vector<swss::FieldValueTuple> values = {
+            { sai_serialize_redis_port_attr_id(SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM),
+              sai_serialize_redis_link_event_damping_algorithm(SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED) },
+            { sai_serialize_redis_port_attr_id(SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG),
+              sai_serialize_redis_link_event_damping_aied_config(config) },
+        };
+
+        swss::KeyOpFieldsValuesTuple kco(key, REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET, values);
+
+        MockSelectableChannel consumer;
+        EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+        EXPECT_CALL(consumer, pop(testing::_, testing::_))
+            .WillOnce(testing::SetArgReferee<0>(kco));
+
+        m_syncd->processEvent(consumer);
+    }
+
+    // Inject a port state change notification the same way the vendor SAI
+    // callback path would deliver it (using the port RID).
+    void sendPortStateChange(
+            sai_port_oper_status_t status)
+    {
+        sai_port_oper_status_notification_t n;
+
+        memset(&n, 0, sizeof(n));
+
+        n.port_id = PORT_RID; // notification carries RID, processor translates to VID
+        n.port_state = status;
+
+        std::string data = sai_serialize_port_oper_status_ntf(1, &n);
+
+        std::vector<swss::FieldValueTuple> entry;
+        swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, data, entry);
+
+        m_syncd->m_processor->syncProcessNotification(item);
+    }
+
+    // Read a damping counter field from STATE_DB written by
+    // writeDampingCountersToStateDb.
+    std::string getDampingField(
+            const std::string& field)
+    {
+        swss::DBConnector db("STATE_DB", 0);
+        swss::Table table(&db, "LINK_EVENT_DAMPING_STATS");
+
+        std::string value;
+        bool found = table.hget(sai_serialize_object_id(PORT_VID), field, value);
+
+        return found ? value : "";
+    }
+};
+
+TEST_F(SyncdLinkEventDampingTest, flapsEnterDampingAndSuppress)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 10000;
+    config.suppress_threshold = 1500;
+    config.reuse_threshold    = 1000;
+    config.decay_half_life    = 5000;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // UNKNOWN -> DOWN: no penalty (penalty only on UP -> DOWN), propagated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    // DOWN -> UP: propagated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    // UP -> DOWN: penalty = 1000 < 1500, propagated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    // UP -> DOWN: penalty ~2000 >= 1500 -> damping activated,
+    // threshold-crossing event itself is propagated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    // damping active -> this UP must be suppressed
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    EXPECT_EQ(getDampingField("is_damping_active"), "true");
+
+    // physical status followed the flaps, advertised stayed at last
+    // propagated state (DOWN), proving the UP was suppressed
+    EXPECT_EQ(getDampingField("physical_status"), "SAI_PORT_OPER_STATUS_UP");
+    EXPECT_EQ(getDampingField("advertised_status"), "SAI_PORT_OPER_STATUS_DOWN");
+
+    // pre-damping counters see all transitions, post-damping counters
+    // miss the suppressed UP
+    EXPECT_EQ(getDampingField("pre_damping_down_events"), "3");
+    EXPECT_EQ(getDampingField("pre_damping_up_events"), "3");
+    EXPECT_EQ(getDampingField("post_damping_down_events"), "3");
+    EXPECT_EQ(getDampingField("post_damping_up_events"), "2");
+}
+
+TEST_F(SyncdLinkEventDampingTest, maxSuppressTimeoutExitsDamping)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 200;  // short timeout for the test
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 100;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    // UP -> DOWN: penalty 1000 >= 100 -> damping activated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    // suppressed, physical becomes UP while advertised stays DOWN
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    ASSERT_EQ(getDampingField("is_damping_active"), "true");
+
+    // wait past max_suppress_time
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    // same-state event (no DOWN, so damping timer is not reset):
+    // timeout branch in applyAiedAlgorithm exits damping and the event
+    // is propagated, synchronizing advertised with physical state
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    EXPECT_EQ(getDampingField("is_damping_active"), "false");
+    EXPECT_EQ(getDampingField("physical_status"), "SAI_PORT_OPER_STATUS_UP");
+    EXPECT_EQ(getDampingField("advertised_status"), "SAI_PORT_OPER_STATUS_UP");
+}
+
+TEST_F(SyncdLinkEventDampingTest, penaltyDecayExitsDamping)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 10000; // large, so decay exit wins
+    config.suppress_threshold = 1000;
+    config.reuse_threshold    = 600;
+    config.decay_half_life    = 100;   // fast decay
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    // UP -> DOWN: penalty 1000 >= 1000 -> damping activated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    // suppressed
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    ASSERT_EQ(getDampingField("is_damping_active"), "true");
+
+    // wait ~3 half lives: penalty 1000 -> ~125 < reuse_threshold (600)
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    // same-state event triggers decayPenalty + reuse-threshold exit branch
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    EXPECT_EQ(getDampingField("is_damping_active"), "false");
+    EXPECT_EQ(getDampingField("advertised_status"), "SAI_PORT_OPER_STATUS_UP");
+}
+
+TEST_F(SyncdLinkEventDampingTest, noDampingConfiguredPropagates)
+{
+    // No damping config applied: applyLinkEventDamping returns early
+    // (port not in m_portLinkEventDampingStates) and events propagate
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    // no STATE_DB entry is written for unconfigured ports
+    EXPECT_EQ(getDampingField("is_damping_active"), "");
 }
 #endif
