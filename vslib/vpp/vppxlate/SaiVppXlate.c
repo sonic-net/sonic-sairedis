@@ -1111,6 +1111,20 @@ vl_api_bfd_udp_enable_multihop_reply_t_handler (vl_api_bfd_udp_enable_multihop_r
 }
 
 static void
+vl_api_sflow_enable_disable_reply_t_handler(vl_api_sflow_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sflow_sampling_rate_set_reply_t_handler(vl_api_sflow_sampling_rate_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_bfd_udp_set_tos_reply_t_handler (vl_api_bfd_udp_set_tos_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1395,6 +1409,9 @@ static void vpp_base_vpe_init(void)
 #define BFD_MSG_ID(id) \
     (VL_API_##id + bfd_msg_id_base)
 
+#define SFLOW_MSG_ID(id) \
+    (VL_API_##id + sflow_msg_id_base)
+
 #define foreach_vpe_ext_api_reply_msg                                   \
     _(INTERFACE_MSG_ID(SW_INTERFACE_DETAILS), sw_interface_details)     \
     _(INTERFACE_MSG_ID(CREATE_LOOPBACK_INSTANCE_REPLY), create_loopback_instance_reply) \
@@ -1441,8 +1458,6 @@ static void vpp_base_vpe_init(void)
     _(BFD_MSG_ID(WANT_BFD_EVENTS_REPLY), want_bfd_events_reply) \
     _(BFD_MSG_ID(BFD_UDP_ENABLE_MULTIHOP_REPLY), bfd_udp_enable_multihop_reply) \
     _(BFD_MSG_ID(BFD_UDP_SET_TOS_REPLY), bfd_udp_set_tos_reply) \
-    _(SFLOW_MSG_ID(SFLOW_ENABLE_DISABLE_REPLY), sflow_enable_disable_reply) \
-    _(SFLOW_MSG_ID(SFLOW_SAMPLING_RATE_SET_REPLY), sflow_sampling_rate_set_reply) \
 
 
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
@@ -1506,34 +1521,18 @@ vl_api_acl_stats_intf_counters_enable_reply_t_handler (vl_api_acl_stats_intf_cou
 }
 
 static void
-vl_api_acl_interface_add_del_reply_t_handler(vl_api_sflow_enable_disable_reply_t *msg)
+vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 }
 
-static void
-vl_api_sflow_enable_disable_reply_t_handler(vl_api_sflow_enable_disable_reply_t *msg)
-{
-    int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
-}
-
-static void
-vl_api_sflow_sampling_rate_set_reply_t_handler(vl_api_sflow_sampling_rate_set_reply_t *msg)
-{
-    int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
-}
 
 #define LCP_MSG_ID(id) \
     (VL_API_##id + lcp_msg_id_base)
 
 #define ACL_MSG_ID(id) \
     (VL_API_##id + acl_msg_id_base)
-
-#define SFLOW_MSG_ID(id) \
-    (VL_API_##id + sflow_msg_id_base)
 
 #define TUNTERM_MSG_ID(id) \
     (VL_API_##id + tunterm_msg_id_base)
@@ -1562,9 +1561,7 @@ vl_api_sflow_sampling_rate_set_reply_t_handler(vl_api_sflow_sampling_rate_set_re
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
     _(SR_MSG_ID(SR_STEERING_ADD_DEL_REPLY), sr_steering_add_del_reply) \
-    _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply) \
-    _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
-    _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply)
+    _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply)
 
 static void vpp_plugin_vpe_init(void)
 {
@@ -2863,6 +2860,7 @@ int vpp_sflow_enable_disable(const char *hwif_name, bool enable)
 
 int vpp_sflow_sampling_rate_set(uint32_t sampling_n)
 {
+    vat_main_t *vam = &vat_main;
     vl_api_sflow_sampling_rate_set_t *mp;
     int ret;
 

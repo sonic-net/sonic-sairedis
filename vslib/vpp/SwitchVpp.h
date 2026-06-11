@@ -793,9 +793,11 @@ namespace saivs
             std::chrono::steady_clock::time_point m_routeStatsCacheTime;
             bool m_routeStatsCacheValid = false;
             std::mutex m_routeStatsCacheMutex;
+            std::map<sai_object_id_t, sai_object_id_t> m_sflow_port_to_samplepacket;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
+            uint32_t m_sflow_sample_rate = 0;
 
         protected: // VPP
 
