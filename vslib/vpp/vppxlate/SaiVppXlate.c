@@ -1059,34 +1059,6 @@ vl_api_l2_macs_event_t_handler (vl_api_l2_macs_event_t *mp)
 
 /* ----- end WANT_L2_MACS_EVENTS2 handlers (implementations below) ----- */
 
-/* Context passed through mp->context for vpp_l2fib_table_dump(). */
-typedef struct {
-    vpp_l2fib_cb_fn  cb;
-    void            *user_ctx;
-} vpp_l2fib_dump_ctx_t;
-
-static void
-vl_api_l2_fib_table_details_t_handler (vl_api_l2_fib_table_details_t *mp)
-{
-    uintptr_t p = get_index_ptr(ntohl(mp->context));
-    if (!p) return;
-    vpp_l2fib_dump_ctx_t *ctx = (vpp_l2fib_dump_ctx_t *)(void *)p;
-
-    /* Skip static, filter, and BVI entries — only dynamic MACs are relevant. */
-    if (mp->static_mac || mp->filter_mac || mp->bvi_mac)
-        return;
-
-    vpp_l2fib_entry_t e;
-    memcpy(e.mac, mp->mac, 6);
-    e.sw_if_index = ntohl(mp->sw_if_index);
-    e.bd_id       = ntohl(mp->bd_id);
-    ctx->cb(&e, ctx->user_ctx);
-}
-
-/* Magic value to distinguish vpp_swif_bdid_dump_ctx_t from legacy u32 *member_count context.
- * The typedef is at the bottom of this file (must be after l2_msg_id_base declaration). */
-#define VPP_SWIF_BDID_CTX_MAGIC 0xBD2D0000u
-
 static void
 vl_api_bfd_udp_add_reply_t_handler (vl_api_bfd_udp_add_reply_t *msg)
 {
@@ -1165,23 +1137,6 @@ vl_api_bridge_domain_details_t_handler (vl_api_bridge_domain_details_t *mp)
     void *ptr = (void *) get_index_ptr(mp->context);
     if (!ptr)
     {
-        return;
-    }
-
-    /* Check for swif→bdid dump context by magic value */
-    uint32_t *magic = (uint32_t *) ptr;
-    if (*magic == VPP_SWIF_BDID_CTX_MAGIC) {
-        /* vpp_swif_bdid_dump_ctx_t layout: {magic, cb, user_ctx} */
-        void **fields = (void **) ptr;
-        vpp_swif_bdid_cb_fn cb = (vpp_swif_bdid_cb_fn) fields[1];
-        void *user_ctx = fields[2];
-        uint32_t bd_id = ntohl(mp->bd_id);
-        uint32_t n = ntohl(mp->n_sw_ifs);
-        vl_api_bridge_domain_sw_if_t *sw_ifs = mp->sw_if_details;
-        for (uint32_t i = 0; i < n; i++) {
-            uint32_t sw_if_index = ntohl(sw_ifs[i].sw_if_index);
-            cb(sw_if_index, bd_id, user_ctx);
-        }
         return;
     }
 
@@ -1450,7 +1405,6 @@ static void vpp_base_vpe_init(void)
     _(L2_MSG_ID(WANT_L2_MACS_EVENTS2_REPLY), want_l2_macs_events2_reply) \
     _(L2_MSG_ID(L2_MACS_EVENT), l2_macs_event) \
     _(L2_MSG_ID(L2FIB_SET_SCAN_DELAY_REPLY), l2fib_set_scan_delay_reply) \
-    _(L2_MSG_ID(L2_FIB_TABLE_DETAILS), l2_fib_table_details) \
     _(BFD_MSG_ID(BFD_UDP_ADD_REPLY), bfd_udp_add_reply) \
     _(BFD_MSG_ID(BFD_UDP_DEL_REPLY), bfd_udp_del_reply) \
     _(BFD_MSG_ID(BFD_UDP_SESSION_EVENT), bfd_udp_session_event) \
@@ -4691,12 +4645,6 @@ int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
  * These must appear after l2_msg_id_base and __plugin_msg_base declarations.
  * ========================================================================= */
 
-typedef struct {
-    uint32_t magic;
-    vpp_swif_bdid_cb_fn cb;
-    void *user_ctx;
-} vpp_swif_bdid_dump_ctx_t;
-
 int
 vpp_want_l2_macs_events2 (bool enable, vpp_mac_event_cb_fn cb, void *ctx)
 {
@@ -4748,55 +4696,4 @@ vpp_get_swif_idx_by_name (const char *hwif_name)
     vat_main_t *vam = &vat_main;
     u32 idx = get_swif_idx(vam, hwif_name);
     return (idx == (u32)~0) ? (uint32_t)~0u : (uint32_t)idx;
-}
-
-int
-vpp_bridge_domain_dump_swif_bdid (vpp_swif_bdid_cb_fn cb, void *user_ctx)
-{
-    vat_main_t *vam = &vat_main;
-    vl_api_bridge_domain_dump_t *mp;
-    vl_api_control_ping_t *mp_ping;
-    vpp_swif_bdid_dump_ctx_t ctx = { VPP_SWIF_BDID_CTX_MAGIC, cb, user_ctx };
-    int ret;
-
-    VPP_LOCK();
-    __plugin_msg_base = l2_msg_id_base;
-
-    M(BRIDGE_DOMAIN_DUMP, mp);
-    mp->bd_id = htonl((uint32_t)~0u);
-    mp->sw_if_index = htonl((uint32_t)~0u);
-    mp->context = store_ptr(&ctx);
-    S(mp);
-
-    M(CONTROL_PING, mp_ping);
-    S(mp_ping);
-    WR(ret);
-
-    VPP_UNLOCK();
-    return ret;
-}
-
-int
-vpp_l2fib_table_dump (uint32_t bd_id, vpp_l2fib_cb_fn cb, void *user_ctx)
-{
-    vat_main_t *vam = &vat_main;
-    vl_api_l2_fib_table_dump_t *mp;
-    vl_api_control_ping_t *mp_ping;
-    vpp_l2fib_dump_ctx_t ctx = { cb, user_ctx };
-    int ret;
-
-    VPP_LOCK();
-    __plugin_msg_base = l2_msg_id_base;
-
-    M(L2_FIB_TABLE_DUMP, mp);
-    mp->bd_id   = htonl(bd_id);
-    mp->context = store_ptr(&ctx);
-    S(mp);
-
-    M(CONTROL_PING, mp_ping);
-    S(mp_ping);
-    WR(ret);
-
-    VPP_UNLOCK();
-    return ret;
 }

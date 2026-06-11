@@ -2,7 +2,7 @@
 
 #include <mutex>
 #include <queue>
-#include <set>
+
 #include "meta/sai_serialize.h"
 
 #include "swss/logger.h"
@@ -111,57 +111,9 @@ void SwitchVpp::initFdbEventHandling(std::function<void()> fn)
     int ret = vpp_want_l2_macs_events2(true, &SwitchVpp::staticMacEventCb, this);
     if (ret == 0)
         SWSS_LOG_NOTICE("FDB: registered for VPP L2 MAC push events");
-    else {
+    else
         SWSS_LOG_ERROR("FDB: vpp_want_l2_macs_events2 failed (%d), "
                        "FDB event generation will be inactive", ret);
-        return;
-    }
-
-    /*
-     * Seed m_swif_to_bdid and synthesize ADD events for any MACs that were
-     * already present in VPP's L2FIB before we registered — push mode only
-     * delivers future events, so we need a one-time dump to catch the rest.
-     */
-    vpp_bridge_domain_dump_swif_bdid(
-        [](uint32_t sw_if_index, uint32_t bd_id, void *ctx) {
-            static_cast<SwitchVpp *>(ctx)->swif_bdid_track_by_swif(sw_if_index, bd_id);
-        },
-        this);
-    m_swif_bdid_seeded = true;
-    SWSS_LOG_NOTICE("FDB: seeded %zu sw_if → bd_id mappings from bridge dump", m_swif_to_bdid.size());
-
-    /* For each bridge domain, dump existing L2FIB entries and enqueue synthetic
-     * ADD events so the aging thread can learn MACs that existed before
-     * registration. Use a local set to deduplicate bd_ids since m_swif_to_bdid
-     * may have multiple sw_if_index entries per bd. */
-    std::set<uint32_t> seen_bds;
-    for (auto &kv : m_swif_to_bdid)
-    {
-        seen_bds.insert(kv.second);
-    }
-
-
-    struct SeedCtx { SwitchVpp *self; };
-    SeedCtx sctx { this };
-    for (uint32_t bd_id : seen_bds) {
-        vpp_l2fib_table_dump(bd_id,
-            [](const vpp_l2fib_entry_t *e, void *ctx) {
-                SeedCtx *sc = static_cast<SeedCtx *>(ctx);
-                VppMacEvent mev;
-                memcpy(mev.mac, e->mac, 6);
-                mev.sw_if_index = e->sw_if_index;
-                mev.action = 0; /* ADD */
-                std::lock_guard<std::mutex> lock(sc->self->m_mac_event_queue_mutex);
-                sc->self->m_mac_event_queue.push(mev);
-            },
-            &sctx);
-    }
-
-    /* Wake the aging thread to process any seeded events. */
-    if (m_fdbAgingWakeFn)
-    {
-        m_fdbAgingWakeFn();
-    }
 }
 
 sai_status_t SwitchVpp::create_qos_queues_per_port(
