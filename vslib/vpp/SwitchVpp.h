@@ -677,9 +677,11 @@ namespace saivs
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_mbr_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
+            std::map<sai_object_id_t, sai_object_id_t> m_sflow_port_to_samplepacket;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
+            uint32_t m_sflow_sample_rate = 0;
 
         protected: // VPP
 
