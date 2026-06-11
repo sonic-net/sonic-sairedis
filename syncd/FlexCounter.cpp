@@ -1131,6 +1131,8 @@ public:
             m_objectIdsMap.erase(iter);
         }
 
+        m_prevFecHistogramValues.erase(vid);
+
         // An object can be in both m_objectIdsMap and the bulk context
         // when bulk polling is supported by some counter prefixes but unsupported by some others
         if (!removeBulkStatsContext(vid) && log)
@@ -1146,6 +1148,10 @@ public:
     {
         SWSS_LOG_ENTER();
         sai_stats_mode_t effective_stats_mode = m_groupStatsMode;
+        // Wall-clock timestamp for FEC histogram counters (distinct from steady_clock used for framework collection timing)
+        auto fec_timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
         for (const auto &kv : m_objectIdsMap)
         {
             const auto &vid = kv.first;
@@ -1170,6 +1176,25 @@ public:
             {
                 values.emplace_back(serializeStat(statIds[i]), std::to_string(stats[i]));
             }
+
+            // Add timestamps for FEC histogram counters only when value has changed
+            for (size_t i = 0; i != statIds.size(); i++)
+            {
+                auto stat_id = static_cast<int>(statIds[i]);
+                if (stat_id >= SAI_PORT_STAT_IF_IN_FEC_CODEWORD_ERRORS_S0 &&
+                    stat_id <= SAI_PORT_STAT_IF_IN_FEC_CODEWORD_ERRORS_S15)
+                {
+                    auto &prevValues = m_prevFecHistogramValues[vid];
+                    auto prevIt = prevValues.find(stat_id);
+                    uint64_t currentVal = stats[i];
+                    if (prevIt == prevValues.end() || prevIt->second != currentVal)
+                    {
+                        values.emplace_back(serializeStat(statIds[i]) + "_TIMESTAMP", std::to_string(fec_timestamp));
+                        prevValues[stat_id] = currentVal;
+                    }
+                }
+            }
+
             countersTable.set(sai_serialize_object_id(vid), values, "");
         }
 
@@ -1355,6 +1380,10 @@ private:
 
         auto time_stamp = std::chrono::steady_clock::now().time_since_epoch().count();
 
+        // Wall-clock timestamp for FEC histogram counters (distinct from steady_clock above used for framework collection timing)
+        auto fec_timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
         std::vector<swss::FieldValueTuple> values;
         for (size_t i = 0; i < ctx.object_keys.size(); i++)
         {
@@ -1368,6 +1397,24 @@ private:
             for (size_t j = 0; j < ctx.counter_ids.size(); j++)
             {
                 values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
+            }
+
+            // Add timestamps for FEC histogram counters only when value has changed
+            for (size_t j = 0; j < ctx.counter_ids.size(); j++)
+            {
+                auto stat_id = static_cast<int>(ctx.counter_ids[j]);
+                if (stat_id >= SAI_PORT_STAT_IF_IN_FEC_CODEWORD_ERRORS_S0 &&
+                    stat_id <= SAI_PORT_STAT_IF_IN_FEC_CODEWORD_ERRORS_S15)
+                {
+                    auto &prevValues = m_prevFecHistogramValues[vid];
+                    auto prevIt = prevValues.find(stat_id);
+                    uint64_t currentVal = ctx.counters[i * ctx.counter_ids.size() + j];
+                    if (prevIt == prevValues.end() || prevIt->second != currentVal)
+                    {
+                        values.emplace_back(serializeStat(ctx.counter_ids[j]) + "_TIMESTAMP", std::to_string(fec_timestamp));
+                        prevValues[stat_id] = currentVal;
+                    }
+                }
             }
 
             countersTable.set(sai_serialize_object_id(vid), values, "");
@@ -1651,6 +1698,9 @@ protected:
     std::set<StatType> m_supportedBulkCounters;
     std::map<sai_object_id_t, std::shared_ptr<CounterIdsType>> m_objectIdsMap;
     std::map<std::vector<StatType>, std::shared_ptr<BulkContextType>> m_bulkContexts;
+
+    // Track previous FEC histogram counter values per VID+stat to only update timestamps on change
+    std::map<sai_object_id_t, std::map<int, uint64_t>> m_prevFecHistogramValues;
 };
 
 /**
