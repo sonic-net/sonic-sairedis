@@ -11,7 +11,7 @@ COPY ["debs", "/debs"]
 # same, even though contents have changed) are checked between the previous and current layer.
 RUN dpkg --remove --force-all libswsscommon
 RUN apt --fix-broken install -y
-RUN dpkg --purge python3-swsscommon sonic-db-cli libsaimetadata libsairedis libsaivs syncd-vs swss sonic-eventd libdashapi
+RUN dpkg --purge python3-swsscommon sonic-db-cli libsaimetadata libsairedis libsaivs syncd-vs swss sonic-eventd libdashapi libnexthopgroup
 
 RUN apt-get update
 
@@ -44,6 +44,7 @@ RUN apt install -y /debs/libdashapi_1.0.0_amd64.deb \
             /debs/libsairedis_1.0.0_amd64.deb \
             /debs/libsaivs_1.0.0_amd64.deb \
             /debs/syncd-vs_1.0.0_amd64.deb \
+            /debs/libnexthopgroup_1.0.0_amd64.deb \
             /debs/swss_1.0.0_amd64.deb
 
 RUN if [ "$need_dbg" = "y" ] ; then dpkg -i /debs/libsairedis-dbgsym_1.0.0_amd64.deb ; fi

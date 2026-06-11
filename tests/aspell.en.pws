@@ -56,6 +56,7 @@ IPv
 Inseg
 KEYs
 LLC
+LLR
 LOGLEVEL
 LOOPBACK
 MACsec
@@ -137,6 +138,7 @@ ATTR
 AttrHash
 attrid
 attridname
+attribs
 attrs
 attrvalue
 BCM
@@ -154,6 +156,7 @@ config
 const
 CONST
 consts
+copyable
 counterName
 countOnly
 cout
@@ -340,6 +343,8 @@ Redis
 refactor
 refactored
 refactoring
+refcount
+refcounts
 reimplement
 reinit
 removedVidToRid
@@ -463,6 +468,8 @@ VIDTORID
 vlan
 vlans
 VLANS
+vnet
+VNET
 VOQ
 vr
 vslib
@@ -498,3 +505,19 @@ ICMP
 UDP
 SIGSEGV
 CX
+PCID
+ZeroMQChannel
+arg
+ctor
+dedup
+LRU
+LruDedup
+pri
+saimeta
+RedisChannel
+NotificationConsumer
+NotificationQueuePolicy
+setOpAllowList
+setStatsLabel
+HWM
+allowlist
