@@ -1,7 +1,10 @@
 #include "SwitchVppSflow.h"
 #include "SwitchVpp.h"
+
+
 #include "meta/sai_serialize.h"
 #include "swss/logger.h"
+#include "vppxlate/SaiVppXlate.h"
 
 using namespace saivs;
 
@@ -63,7 +66,12 @@ sai_status_t SwitchVpp::sflow_enable_disable(
         return SAI_STATUS_FAILURE;
     }
 
-    // TODO: Call VPP enable_disable API 
+    int ret = vpp_sflow_enable_disable(if_name.c_str(), enable);
+    if(ret != 0){
+        SWSS_LOG_ERROR("sflow enable_disable failed for port %s, status %d",
+                   sai_serialize_object_id(port_id).c_str(), ret);
+        return SAI_STATUS_FAILURE;
+    }
 
     SWSS_LOG_NOTICE("Changed port %s to %d",sai_serialize_object_id(port_id).c_str(), enable);
 
@@ -76,7 +84,11 @@ sai_status_t SwitchVpp::sflow_sampling_rate_set(
 {
     SWSS_LOG_ENTER();
 
-    // TODO: Call VPP sampling rate API
+    int ret = vpp_sflow_sampling_rate_set(rate);
+    if (ret != 0 ){
+        SWSS_LOG_ERROR("sflow sampling_rate_set failed, status %d", ret);
+        return SAI_STATUS_FAILURE;
+    }
 
     SWSS_LOG_NOTICE("New rate set of 1 in %d packets", rate);
 
