@@ -968,6 +968,7 @@ TEST_F(SyncdLinkEventDampingTest, penaltyDecayExitsDamping)
     sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
     // suppressed
     sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
 
     ASSERT_EQ(getDampingField("is_damping_active"), "true");
 
