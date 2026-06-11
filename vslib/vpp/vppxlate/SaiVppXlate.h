@@ -333,6 +333,8 @@ typedef enum {
     extern int vpp_sidlist_del(vpp_ip_addr_t *bsid);
     extern int vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del);
     extern int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src);
+    extern int vpp_sflow_enable_disable(const char *hwif_name, bool enable);
+    extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
 #ifdef __cplusplus
 }
 #endif

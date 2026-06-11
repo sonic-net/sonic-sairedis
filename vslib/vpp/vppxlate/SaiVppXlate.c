@@ -1272,13 +1272,14 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_sflow_enable_disable_reply_t
 }
 
 static void
-vl_api_sflow_enable_disable_reply_t_handler(vl_api_sflow_sampling_rate_set_reply_t *msg)
+vl_api_sflow_enable_disable_reply_t_handler(vl_api_sflow_enable_disable_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 }
 
-static void vl_api_sflow_sampling_rate_set_reply_t_handler(vl_api_acl_interface_add_del_reply_t *msg)
+static void
+vl_api_sflow_sampling_rate_set_reply_t_handler(vl_api_sflow_sampling_rate_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
@@ -2515,6 +2516,73 @@ int vpp_acl_interface_unbind (const char *hwif_name, uint32_t acl_index,
                               bool is_input)
 {
     return __vpp_acl_interface_bind_unbind(hwif_name, acl_index, is_input, false);
+}
+
+int vpp_sflow_enable_disable(const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_enable_disable_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_ENABLE_DISABLE, mp);
+
+    if(hwif_name){
+        u32 idx;
+        idx = get_swif_idx(vam, hwif_name);
+        if(idx != (u32) - 1){
+            mp->hw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    
+    mp->enable_disable = enable;
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable);
+    } else {
+        SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+
+}
+
+int vpp_sflow_sampling_rate_set(uint32_t sampling_n)
+{
+    vl_api_sflow_sampling_rate_set_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_SAMPLING_RATE_SET, mp);
+
+    mp->sampling_N = htonl(sampling_n);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) sampling_N %u", __func__, ret, sampling_n);
+    } else {
+        SAIVPP_INFO("%s sampling_N %u", __func__, sampling_n);
+    }
+
+    VPP_UNLOCK();
+    return ret;
 }
 
 int vpp_ip_flow_hash_set (uint32_t vrf_id, uint32_t hash_mask, int addr_family)
