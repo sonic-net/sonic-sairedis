@@ -348,6 +348,29 @@
 #include <vnet/bfd/bfd.api.h>
 #undef vl_api_version
 
+/* SPAN API inclusion */
+#include <vnet/span/span.api_enum.h>
+#include <vnet/span/span.api_types.h>
+
+#define vl_typedefs
+#include <vnet/span/span.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vnet/span/span.api.h>
+#undef vl_endianfun
+
+#define vl_printfun
+#include <vnet/span/span.api.h>
+#undef vl_printfun
+
+#define vl_calcsizefun
+#include <vnet/span/span.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 span_api_version = v;
+#include <vnet/span/span.api.h>
+#undef vl_api_version
 
 void classify_get_trace_chain(void ){}
 void os_exit(int code) {}
@@ -1191,6 +1214,16 @@ vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *m
     set_reply_status(retval);
 }
 
+static void
+vl_api_sw_interface_span_enable_disable_reply_t_handler(vl_api_sw_interface_span_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (retval) { SAIVPP_ERROR("span enable/disable failed(%d)", retval); }
+    else { SAIVPP_INFO("span enable/disable successful"); }
+}
+
 #define vl_api_get_first_msg_id_reply_t_handler vl_noop_handler
 #define vl_api_get_first_msg_id_reply_t_handler_json vl_noop_handler
 
@@ -1206,6 +1239,7 @@ static u16 tunterm_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
 static u16 bond_msg_id_base;
+static u16 span_msg_id_base;
 
 static void vpp_base_vpe_init(void)
 {
@@ -1241,6 +1275,10 @@ static void vpp_base_vpe_init(void)
 
 #define BFD_MSG_ID(id) \
     (VL_API_##id + bfd_msg_id_base)
+
+#define SPAN_MSG_ID(id) \
+    (VL_API_##id + span_msg_id_base)
+    
 
 #define foreach_vpe_ext_api_reply_msg                                   \
     _(INTERFACE_MSG_ID(SW_INTERFACE_DETAILS), sw_interface_details)     \
@@ -1284,7 +1322,7 @@ static void vpp_base_vpe_init(void)
     _(BFD_MSG_ID(BFD_UDP_SESSION_EVENT), bfd_udp_session_event) \
     _(BFD_MSG_ID(WANT_BFD_EVENTS_REPLY), want_bfd_events_reply) \
     _(BFD_MSG_ID(BFD_UDP_ENABLE_MULTIHOP_REPLY), bfd_udp_enable_multihop_reply) \
-
+    _(SPAN_MSG_ID(SW_INTERFACE_SPAN_ENABLE_DISABLE_REPLY), sw_interface_span_enable_disable_reply) \
 
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
 static u16 acl_msg_id_base;
@@ -1304,6 +1342,8 @@ static void vpp_ext_vpe_init(void)
 
     foreach_vpe_ext_api_reply_msg;
 #undef _
+
+
 }
 
 static void vl_api_lcp_itf_pair_add_del_reply_t_handler(vl_api_lcp_itf_pair_add_del_reply_t *msg)
@@ -1456,6 +1496,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "tunterm_acl_%08x%c", tunterm_api_version, 0);
     tunterm_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(tunterm_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "span_%08x%c", span_api_version, 0);
+    span_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(span_msg_id_base != (u16) ~0);
 }
 
 #define API_SOCKET_FILE "/run/vpp/api.sock"
@@ -3898,6 +3942,17 @@ const char * vpp_get_swif_name (const u32 swif_idx)
     return get_swif_name(vam, swif_idx);
 }
 
+int get_sw_if_idx(const char *ifname)
+{
+    vat_main_t *vam = &vat_main;
+
+    VPP_LOCK();
+    u32 idx = get_swif_idx(vam, ifname);
+    VPP_UNLOCK();
+
+    return (int)idx;
+}
+
 
 int delete_bond_member(const char * hwif_name)
 {
@@ -4236,6 +4291,32 @@ int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src)
 
     return ret;
 }
+
+int vpp_span_enable_disable(uint32_t sw_if_index_from, uint32_t sw_if_index_to, uint8_t state, bool is_l2)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_span_enable_disable_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = span_msg_id_base;
+
+    M (SW_INTERFACE_SPAN_ENABLE_DISABLE, mp);
+
+    mp->sw_if_index_from = htonl(sw_if_index_from);
+    mp->sw_if_index_to = htonl(sw_if_index_to);
+    mp->state = htonl((uint32_t)state);
+    mp->is_l2 = is_l2;
+
+    S (mp);
+    WR (ret);
+
+    SAIVPP_INFO("span enable/disable: from=%d to=%d state=%d is_l2=%d ret=%d", sw_if_index_from, sw_if_index_to, state, is_l2, ret);
+
+    VPP_UNLOCK();
+
+    return ret;
 
 int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index)
 {
