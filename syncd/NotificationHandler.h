@@ -42,6 +42,10 @@ namespace syncd
 
             sai_api_version_t getApiVersion() const;
 
+            virtual void onPortStateChangePostLinkEventDamping(
+                    _In_ uint32_t count,
+                    _In_ const sai_port_oper_status_notification_t *data);
+
         public: // members reflecting SAI callbacks
 
             void onFdbEvent(
