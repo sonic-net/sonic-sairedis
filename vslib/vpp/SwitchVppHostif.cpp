@@ -96,14 +96,6 @@ int SwitchVpp::vs_set_dev_mac_address(
     return err;
 }
 
-int SwitchVpp::promisc(
-        _In_ const char *dev)
-{
-    SWSS_LOG_ENTER();
-
-    return 0;
-}
-
 sai_status_t SwitchVpp::add_tc_filter_redirect(
         _In_ const std::string& tap,
         _In_ const std::string& hostIfname)
@@ -129,6 +121,82 @@ sai_status_t SwitchVpp::add_tc_filter_redirect(
     if (ret) {
         SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
         return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::del_tc_filter_redirect(
+        _In_ const std::string& tap)
+{
+    SWSS_LOG_ENTER();
+
+    int ret;
+    std::stringstream cmd;
+    std::string res;
+
+    // Best-effort cleanup: tear down the ingress qdisc which removes any
+    // attached filter as well. Warn (but don't fail) if it's already gone.
+    cmd << "tc qdisc del dev " << tap << " ingress";
+    ret = swss::exec(cmd.str(), res);
+    if (ret) {
+        SWSS_LOG_WARN("Command '%s' failed with rc %d (qdisc may already be removed)",
+                      cmd.str().c_str(), ret);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::add_tc_filter_redirect_egress(
+        _In_ const std::string& src,
+        _In_ const std::string& dst)
+{
+    SWSS_LOG_ENTER();
+
+    int ret;
+    std::stringstream cmd;
+    std::string res;
+
+    // clsact is a dummy classful qdisc that exposes both ingress and egress
+    // hooks (parent ffff:fff2 for ingress, ffff:fff3 for egress). Use it so
+    // we can attach an egress filter alongside any existing ingress qdisc.
+    cmd << "tc qdisc add dev " << src << " clsact";
+    ret = swss::exec(cmd.str(), res);
+    if (ret) {
+        SWSS_LOG_WARN("Command '%s' failed with rc %d (qdisc may already exist)",
+                      cmd.str().c_str(), ret);
+        // Not returning here, as clsact may already exist
+    }
+
+    cmd.str("");
+    cmd.clear();
+    cmd << "tc filter add dev " << src << " egress protocol all prio 2 u32 match u32 0 0 flowid 1:1"
+        << " action mirred egress redirect dev " << dst;
+    ret = swss::exec(cmd.str(), res);
+    if (ret) {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::del_tc_filter_redirect_egress(
+        _In_ const std::string& src)
+{
+    SWSS_LOG_ENTER();
+
+    int ret;
+    std::stringstream cmd;
+    std::string res;
+
+    // Best-effort cleanup: tear down the clsact qdisc which removes any
+    // attached egress (and ingress) filter together.
+    cmd << "tc qdisc del dev " << src << " clsact";
+    ret = swss::exec(cmd.str(), res);
+    if (ret) {
+        SWSS_LOG_WARN("Command '%s' failed with rc %d (qdisc may already be removed)",
+                      cmd.str().c_str(), ret);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -356,21 +424,6 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
     const char *dev = name.c_str();
     const char *hwif_name = tap_to_hwif_name(dev);
 
-    configure_lcp_interface(hwif_name, dev, true);
-
-    {
-        bool link_up = false;
-
-        interface_get_state(hwif_name, &link_up);
-
-        auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
-
-        send_port_oper_status_notification(obj_id, state, true);
-
-        SWSS_LOG_NOTICE("VPP interface %s(%s) oper state %s", hwif_name, dev,
-                (link_up ? "UP" : "DOWN"));
-    }
-
     sai_attribute_t attr;
 
     memset(&attr, 0, sizeof(attr));
@@ -386,26 +439,43 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
                 sai_serialize_status(status).c_str());
     }
 
-    int err = vs_set_dev_mac_address(name.c_str(), attr.value.mac);
-
-    if (err < 0)
-    {
-        SWSS_LOG_ERROR("failed to set MAC address %s for %s",
-                sai_serialize_mac(attr.value.mac).c_str(),
-                name.c_str());
-
-        close(tapfd);
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    err = sw_interface_set_mac(hwif_name, attr.value.mac);
+    int err = sw_interface_set_mac(hwif_name, attr.value.mac);
 
     if (err < 0)
     {
         SWSS_LOG_ERROR("failed to set MAC address %s for %s",
                 sai_serialize_mac(attr.value.mac).c_str(),
                 hwif_name);
+
+        close(tapfd);
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    configure_lcp_interface(hwif_name, dev, true);
+
+    interface_set_promiscuous(hwif_name, true);
+
+    {
+        bool link_up = false;
+
+        interface_get_state(hwif_name, &link_up);
+
+        auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
+
+        send_port_oper_status_notification(obj_id, state, true);
+
+        SWSS_LOG_NOTICE("VPP interface %s(%s) oper state %s", hwif_name, dev,
+                (link_up ? "UP" : "DOWN"));
+    }
+
+    err = vs_set_dev_mac_address(name.c_str(), attr.value.mac);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("failed to set MAC address %s for %s",
+                sai_serialize_mac(attr.value.mac).c_str(),
+                name.c_str());
 
         close(tapfd);
 

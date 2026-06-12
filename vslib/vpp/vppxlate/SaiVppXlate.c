@@ -824,6 +824,13 @@ vl_api_sw_interface_set_flags_reply_t_handler (vl_api_sw_interface_set_flags_rep
 }
 
 static void
+vl_api_sw_interface_set_promisc_reply_t_handler (vl_api_sw_interface_set_promisc_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_sw_interface_set_mtu_reply_t_handler (vl_api_sw_interface_set_mtu_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1252,6 +1259,7 @@ static void vpp_base_vpe_init(void)
     _(INTERFACE_MSG_ID(SW_INTERFACE_GET_TABLE_REPLY), sw_interface_get_table_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_ADD_DEL_ADDRESS_REPLY), sw_interface_add_del_address_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_FLAGS_REPLY), sw_interface_set_flags_reply) \
+    _(INTERFACE_MSG_ID(SW_INTERFACE_SET_PROMISC_REPLY), sw_interface_set_promisc_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MTU_REPLY), sw_interface_set_mtu_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MAC_ADDRESS_REPLY), sw_interface_set_mac_address_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_UNNUMBERED_REPLY), sw_interface_set_unnumbered_reply) \
@@ -2656,6 +2664,7 @@ int interface_ip_address_add_del (const char *hwif_name, vpp_ip_route_t *prefix,
             mp->sw_if_index = htonl(idx);
         } else {
             SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
             return -EINVAL;
         }
     } else {
@@ -2669,6 +2678,24 @@ int interface_ip_address_add_del (const char *hwif_name, vpp_ip_route_t *prefix,
     S (mp);
 
     WR (ret);
+
+    /*
+     * Idempotency on add: VPP returns VNET_API_ERROR_ADDRESS_IN_USE (-105)
+     * when the same prefix is already configured on this interface. This
+     * happens benignly during sub-port creation: orchagent emits two
+     * IpRouteAddRemove events for the same connected-route prefix (one with
+     * next_hop=PORT going through vpp_add_del_intf_ip_addr_norif, and one
+     * with next_hop=SUB_PORT RIF going through vpp_add_del_intf_ip_addr).
+     * Both target the same VPP interface with the same prefix. Treating the
+     * second add as success prevents orchagent from rolling back the route
+     * entry (and the RIF), which used to leave sub-ports without IPs in
+     * batched sub-port creation (e.g. PTF test_packet_routed_with_valid_vlan).
+     */
+    if (is_add && ret == VNET_API_ERROR_ADDRESS_IN_USE) {
+        SAIVPP_INFO("%s: %s prefix_len %u already configured (idempotent add)",
+                    __func__, hwif_name, prefix->prefix_len);
+        ret = 0;
+    }
 
     ret = vpp_normalize_ret(ret, !is_add, __func__);
 
@@ -2759,6 +2786,46 @@ int interface_set_state (const char *hwif_name, bool is_up)
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s is_up %d", __func__, ret, hwif_name, is_up); }
     else { SAIVPP_INFO("%s %s is_up %d", __func__, hwif_name, is_up); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int interface_set_promiscuous (const char *hwif_name, bool promisc_on)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_promisc_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_SET_PROMISC, mp);
+    if (hwif_name) {
+        u32 idx;
+
+        idx = get_swif_idx(vam, hwif_name);
+        if (idx != (u32) -1) {
+            mp->sw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    mp->promisc_on = promisc_on;
+
+    S (mp);
+
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s promisc_on %d", __func__, ret, hwif_name, promisc_on); }
+    else { SAIVPP_INFO("%s %s promisc_on %d", __func__, hwif_name, promisc_on); }
 
     VPP_UNLOCK();
 

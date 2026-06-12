@@ -22,10 +22,67 @@
 
 #include <iostream>
 #include <cstring>
+#include <cerrno>
 #include <regex>
 #include <fstream>
+#include <unistd.h>
+#include <thread>
+#include <chrono>
 
 using namespace saivs;
+
+/* Forward declarations for static helpers defined later in this file. */
+static void vpp_warm_arp_for_subnet_peers(const std::string &netdev,
+                                          const swss::IpPrefix &ip_prefix);
+
+/*
+ * Naming helpers for LAG sub-port code. The VPP / LCP-tap / SONiC-teamd
+ * trio of names ("BondEthernet<id>[.<vlan>]" / "be<id>[.<vlan>]" /
+ * "PortChannel<id>[.<vlan>]") was previously open-coded via snprintf at
+ * 5+ call sites. Centralize the format strings here so future changes
+ * (e.g. larger bond ids, name prefix updates) only need to touch one
+ * place. vlan_id == 0 means "no sub-interface suffix".
+ */
+static inline void format_bond_hwif(char *buf, size_t len,
+                                    uint32_t bond_id, uint32_t vlan_id)
+{
+    SWSS_LOG_ENTER();
+
+    if (vlan_id)
+    {
+        snprintf(buf, len, "%s%u.%u", BONDETHERNET_PREFIX, bond_id, vlan_id);
+    }
+    else
+    {
+        snprintf(buf, len, "%s%u", BONDETHERNET_PREFIX, bond_id);
+    }
+}
+
+static inline void format_be_lcp(char *buf, size_t len,
+                                 uint32_t bond_id, uint32_t vlan_id)
+{
+    SWSS_LOG_ENTER();
+
+    if (vlan_id)
+    {
+        snprintf(buf, len, "be%u.%u", bond_id, vlan_id);
+    }
+    else
+    {
+        snprintf(buf, len, "be%u", bond_id);
+    }
+}
+
+static inline std::string format_portchannel_name(uint32_t bond_id,
+                                                  uint32_t vlan_id = 0)
+{
+    std::string s = std::string(PORTCHANNEL_PREFIX) + std::to_string(bond_id);
+    if (vlan_id)
+    {
+        s += "." + std::to_string(vlan_id);
+    }
+    return s;
+}
 
 int SwitchVpp::currentMaxInstance = 0;
 
@@ -353,7 +410,7 @@ bool SwitchVpp::vpp_get_hwif_name (
         {
             return false;
         }
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
+        format_bond_hwif(hw_bondifname, sizeof(hw_bondifname), bond_info.id, 0);
         hwifname = hw_bondifname;
     } else {
         std::string if_name;
@@ -671,9 +728,9 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         return SAI_STATUS_SUCCESS;
     }
 
-    if (ot != SAI_OBJECT_TYPE_PORT)
+    if (ot != SAI_OBJECT_TYPE_PORT && ot != SAI_OBJECT_TYPE_LAG)
     {
-        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                 sai_serialize_object_id(obj_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
 
@@ -696,8 +753,25 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         vlan_id = attr.value.u16;
     }
 
+    /* Resolve host kernel interface name. For LAG, the team device is
+     * "PortChannel<bond_id>" and the VPP-created host vlan sub-interface
+     * (via lcp-auto-subint) is "PortChannel<bond_id>.<vlan_id>", which is
+     * exactly where IntfMgr writes the IP. */
     std::string if_name;
-    bool found = getTapNameFromPortId(obj_id, if_name);
+    bool found = false;
+    platform_bond_info_t bond_info;
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        sai_status_t lag_status = get_lag_bond_info(obj_id, bond_info);
+        if (lag_status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("get_lag_bond_info failed for LAG %s",
+                           sai_serialize_object_id(obj_id).c_str());
+            return SAI_STATUS_FAILURE;
+        }
+        if_name = format_portchannel_name(bond_info.id);
+        found = true;
+    } else {
+        found = getTapNameFromPortId(obj_id, if_name);
+    }
     if (found == false)
     {
         SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(obj_id).c_str());
@@ -789,21 +863,45 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         }
     }
 
-    const char *hwifname = tap_to_hwif_name(if_name.c_str());
+    /* Resolve VPP hw interface name. For LAG sub-port, the parent in VPP is
+     * BondEthernet<bond_id> (not the tap), so tap_to_hwif_name() does not
+     * apply; we build BondEthernet<bond_id>[.<vlan>] directly from bond_info. */
     char hw_subifname[32];
+    char hw_bondifname[32];
     const char *hw_ifname;
 
-    if (vlan_id) {
-        snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
-        hw_ifname = hw_subifname;
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        format_bond_hwif(hw_bondifname, sizeof(hw_bondifname),
+                         bond_info.id, vlan_id);
+        hw_ifname = hw_bondifname;
     } else {
-        hw_ifname = hwifname;
+        const char *hwifname = tap_to_hwif_name(if_name.c_str());
+        if (vlan_id) {
+            snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
+            hw_ifname = hw_subifname;
+        } else {
+            hw_ifname = hwifname;
+        }
     }
 
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);
 
     if (ret == 0)
     {
+        if (is_add)
+        {
+            /*
+             * Warm-arp here as well as in the PORT-next_hop branch
+             * (vpp_add_del_intf_ip_addr_norif): on sub-port recreate
+             * orchagent only re-emits the SUB_PORT-next_hop ROUTE_ENTRY,
+             * so without this the kernel ARP cache stays empty and
+             * DUT-originated traffic on the recreated sub-port is dropped.
+             * The helper is idempotent/detached, so the extra probe on
+             * initial create is harmless.
+             */
+            vpp_warm_arp_for_subnet_peers(std::string(linux_ifname),
+                                          intf_ip_prefix);
+        }
         return SAI_STATUS_SUCCESS;
     }
     else {
@@ -919,6 +1017,11 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
             return SAI_STATUS_SUCCESS;
         }
         vpp_deserialize_intf_data(intf_data, full_if_name, ip_prefix_str);
+        if (full_if_name.find('.') != std::string::npos)
+        {
+            SWSS_LOG_NOTICE("Skipping connected-route IP removal for sub-interface %s", full_if_name.c_str());
+            return SAI_STATUS_SUCCESS;
+        }
     }
 
     const char *linux_ifname;
@@ -1015,8 +1118,17 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
        snprintf(hw_bviifname, sizeof(hw_bviifname), "%s%d","bvi",vlan_id);
        hw_ifname = hw_bviifname;
     } else if (full_if_name.compare(0, strlen(PORTCHANNEL_PREFIX), PORTCHANNEL_PREFIX) == 0) {
-        uint32_t bond_id = std::stoi(full_if_name.substr(strlen(PORTCHANNEL_PREFIX)));
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_id);
+        /* "PortChannel<bond_id>" or "PortChannel<bond_id>.<vlan>" -> BondEthernet<bond_id>[.<vlan>]
+         * Without the sub-id suffix below, LAG sub-port IPs end up on the
+         * parent BondEthernet instead of on BondEthernet<id>.<vlan>, breaking
+         * routed traffic for LAG sub-interfaces (PTF
+         * test_packet_routed_with_valid_vlan[port_in_lag]). */
+        std::string pc_suffix = full_if_name.substr(strlen(PORTCHANNEL_PREFIX));
+        size_t dot_pos = pc_suffix.find('.');
+        std::string bond_id_str = (dot_pos == std::string::npos) ? pc_suffix : pc_suffix.substr(0, dot_pos);
+        uint32_t bond_id = std::stoi(bond_id_str);
+        format_bond_hwif(hw_bondifname, sizeof(hw_bondifname),
+                         bond_id, static_cast<uint32_t>(vlan_id));
         hw_ifname = hw_bondifname;
     } else {
        hwifname = tap_to_hwif_name(if_name.c_str());
@@ -1033,8 +1145,19 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     if (ret == 0)
     {
-        if (is_add) {
+        if (is_add)
+        {
             m_tunnel_mgr_ipip.retry_pending_unnumbered(vpp_ip_prefix.prefix_addr);
+            /*
+             * Trigger kernel ARP resolution toward peer hosts in this
+             * /29..31 subnet so the first PTF probe doesn't get dropped
+             * in VPP's ip4-glean. See helper above for full rationale.
+             *
+             * Also fired from vpp_add_del_intf_ip_addr() for the
+             * SUB_PORT-next_hop recreate case; the duplicate probe on
+             * initial create is at most one extra UDP packet per peer.
+             */
+            vpp_warm_arp_for_subnet_peers(std::string(linux_ifname), intf_ip_prefix);
         }
         return SAI_STATUS_SUCCESS;
     }
@@ -1502,6 +1625,250 @@ int SwitchVpp::vpp_get_vrf_id (const char *linux_ifname, uint32_t *vrf_id)
     return 0;
 }
 
+/*
+ * Enable kernel arp_accept on a VPP-managed sub-port netdev so that
+ * unsolicited ARP replies (sent by a remote peer in response to a
+ * VPP-originated glean ARP request on the sub-interface) are accepted
+ * by the kernel ARP table.
+ *
+ * Without this, VPP itself never learns the sub-port neighbor: the
+ * vlan-tagged ARP reply enters the parent port and linux-cp punts it
+ * to the LCP host tap before VPP's arp-reply / neighbor-learning path
+ * has a chance to install the neighbor. The kernel then drops it as
+ * an unsolicited reply (arp_accept=0 default), so lcp-sync has no
+ * kernel entry to mirror to VPP, and subsequent packets keep hitting
+ * ip4-glean and getting dropped.
+ *
+ * Setting arp_accept=1 makes the kernel accept the reply, populate
+ * its ARP table, and lcp-sync mirrors it to the VPP neighbor table on
+ * the sub-interface, enabling cross-port forwarding such as L3 plain
+ * port -> sub-port and unaffected-by-removal scenarios.
+ *
+ * The kernel netdev may appear slightly after configure_lcp_interface
+ * returns, so we briefly retry opening the sysctl path.
+ */
+static bool vpp_set_sub_port_arp_accept(const char *netdev)
+{
+    SWSS_LOG_ENTER();
+
+    if (netdev == nullptr || netdev[0] == '\0')
+    {
+        SWSS_LOG_WARN("vpp_set_sub_port_arp_accept: empty netdev name");
+        return false;
+    }
+
+    std::string path = std::string("/proc/sys/net/ipv4/conf/") + netdev + "/arp_accept";
+
+    for (int attempt = 0; attempt < 10; ++attempt)
+    {
+        std::ofstream ofs(path);
+        if (ofs.is_open())
+        {
+            ofs << "1";
+            ofs.flush();
+            if (ofs.good())
+            {
+                SWSS_LOG_NOTICE("Enabled arp_accept on sub-port netdev %s", netdev);
+                return true;
+            }
+            SWSS_LOG_DEBUG("arp_accept write failed on %s (attempt %d), retrying",
+                           path.c_str(), attempt);
+        }
+        usleep(50000); /* 50ms */
+    }
+
+    SWSS_LOG_ERROR("Failed to enable arp_accept on sub-port netdev %s (path=%s); "
+                   "VPP-initiated ARP for this sub-port will not be learned",
+                   netdev, path.c_str());
+    return false;
+}
+
+/*
+ * Pre-warm VPP's neighbor table on a router interface by triggering kernel
+ * ARP resolution for the small set of peer IPs that share the same connected
+ * /29 .. /31 subnet as the local interface IP.
+ *
+ * Why this is needed
+ * ------------------
+ * VPP's ip4-glean node *drops* the first packet that hits an unresolved
+ * neighbor on a connected route. It sends an ARP request for the
+ * destination but the original IP packet is not buffered. Vendor ASIC SDKs
+ * typically queue the packet until ARP resolves, so SONiC PTF tests that
+ * send a single probe frame and expect it to be delivered work fine on
+ * Broadcom / Mellanox, but on the VPP virtual switch the first frame is
+ * dropped and the test fails.
+ *
+ * Fix: when SAI installs a connected route on a small subnet (/29..31),
+ * proactively send a UDP probe from the kernel netdev to each non-self
+ * host IP in the subnet. The packet itself is harmless (port 9 / discard,
+ * 1 byte payload) and almost always undelivered, but it forces the local
+ * kernel to ARP-resolve the peer. That ARP exchange:
+ *   - learns the peer MAC into VPP via the arp-input feature on the
+ *     sub-interface, OR
+ *   - lcp-sync mirrors the kernel ARP entry into the VPP neighbor table
+ *     (combined with the arp_accept=1 helper above for sub-ports).
+ *
+ * The probe runs on a detached background thread so it never blocks the
+ * SAI processing thread, and it sleeps briefly to let IntfMgr finish
+ * adding the IP on the kernel netdev. It is intentionally limited to
+ * small subnets to avoid broadcast-style probing on production /24's.
+ */
+static void vpp_warm_arp_for_subnet_peers(const std::string &netdev,
+                                          const swss::IpPrefix &ip_prefix)
+{
+    SWSS_LOG_ENTER();
+
+    if (netdev.empty())
+    {
+        return;
+    }
+
+    swss::IpAddress local_ip = ip_prefix.getIp();
+    if (local_ip.getIp().family != AF_INET)
+    {
+        /* IPv6 handled separately via ND; sub-port v4 is the failing case. */
+        return;
+    }
+
+    int prefix_len = ip_prefix.getMaskLength();
+    if (prefix_len < 29 || prefix_len > 31)
+    {
+        /* Only do this for tiny subnets to avoid spraying the network. */
+        return;
+    }
+
+    uint32_t self_h = ntohl(local_ip.getV4Addr());
+    uint32_t mask_h = (prefix_len == 32)
+                      ? 0xFFFFFFFFu
+                      : ~((1u << (32 - prefix_len)) - 1);
+    uint32_t network_h = self_h & mask_h;
+    uint32_t broadcast_h = network_h | ~mask_h;
+
+    std::thread([self_h, network_h, broadcast_h, prefix_len, netdev]() {
+        /*
+         * Wait for IntfMgr to write the IP on the kernel netdev before
+         * any probe. Per-peer sendto would otherwise fail silently with
+         * EADDRNOTAVAIL on a slow kernel/IntfMgr, leaving the first PTF
+         * packet exposed to ip4-glean drop.
+         *
+         * Strategy: an initial 150ms sleep covers the common case where
+         * IntfMgr is already done. Then probe readiness by binding a
+         * dummy socket to the local IP; bind() returns EADDRNOTAVAIL
+         * until the kernel has the address. Retry up to 10x at 50ms
+         * intervals (500ms additional budget on slow systems).
+         */
+        static constexpr int kReadyMaxRetries = 10;
+        static constexpr auto kReadyRetrySleep = std::chrono::milliseconds(50);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+        bool ip_ready = false;
+        for (int retry = 0; retry < kReadyMaxRetries; ++retry)
+        {
+            int tst = socket(AF_INET, SOCK_DGRAM, 0);
+            if (tst < 0)
+            {
+                std::this_thread::sleep_for(kReadyRetrySleep);
+                continue;
+            }
+            struct sockaddr_in src = {};
+            src.sin_family = AF_INET;
+            src.sin_addr.s_addr = htonl(self_h);
+            int rv = bind(tst, (struct sockaddr *)&src, sizeof(src));
+            int err = errno;
+            close(tst);
+            if (rv == 0)
+            {
+                ip_ready = true;
+                break;
+            }
+            if (err != EADDRNOTAVAIL)
+            {
+                /* Anything else (EACCES, EAFNOSUPPORT, ...) will not
+                 * clear with a retry. */
+                break;
+            }
+            std::this_thread::sleep_for(kReadyRetrySleep);
+        }
+
+        char self_str[INET_ADDRSTRLEN] = {0};
+        uint32_t self_n = htonl(self_h);
+        inet_ntop(AF_INET, &self_n, self_str, sizeof(self_str));
+
+        if (!ip_ready)
+        {
+            SWSS_LOG_WARN("vpp_warm_arp_for_subnet_peers: kernel IP %s/%d "
+                          "not available on %s after ~650ms; skipping "
+                          "warm-arp - first PTF packet may drop in VPP "
+                          "ip4-glean",
+                          self_str, prefix_len, netdev.c_str());
+            return;
+        }
+
+        /* /31 has no network/broadcast convention; iterate both hosts.
+         * /30 and /29 reserve network + broadcast; skip them. */
+        uint32_t start_h = (prefix_len == 31) ? network_h : network_h + 1;
+        uint32_t end_h   = (prefix_len == 31) ? broadcast_h : broadcast_h - 1;
+
+        int attempts = 0;
+        int sent = 0;
+        for (uint32_t ipv_h = start_h; ipv_h <= end_h; ++ipv_h)
+        {
+            if (ipv_h == self_h)
+            {
+                continue;
+            }
+
+            int s = socket(AF_INET, SOCK_DGRAM, 0);
+            if (s < 0)
+            {
+                continue;
+            }
+
+            /* Bind socket to the specific kernel netdev so the kernel uses
+             * its IP/route/ARP cache rather than the global one. Requires
+             * CAP_NET_RAW which syncd has by virtue of running as root. */
+            if (setsockopt(s, SOL_SOCKET, SO_BINDTODEVICE,
+                           netdev.c_str(), (socklen_t)(netdev.size() + 1)) != 0)
+            {
+                close(s);
+                continue;
+            }
+
+            struct sockaddr_in peer = {};
+            peer.sin_family = AF_INET;
+            peer.sin_port = htons(9); /* discard service */
+            peer.sin_addr.s_addr = htonl(ipv_h);
+
+            const char buf[1] = {0};
+            ++attempts;
+            ssize_t rv = sendto(s, buf, 1, MSG_DONTWAIT,
+                                (struct sockaddr *)&peer, sizeof(peer));
+            if (rv >= 0)
+            {
+                ++sent;
+            }
+            close(s);
+        }
+
+        if (sent < attempts)
+        {
+            SWSS_LOG_WARN("vpp_warm_arp_for_subnet_peers: only %d/%d UDP "
+                          "probes succeeded from %s/%d on %s; first PTF "
+                          "packet may still drop in VPP ip4-glean",
+                          sent, attempts, self_str, prefix_len,
+                          netdev.c_str());
+        }
+        else
+        {
+            SWSS_LOG_NOTICE("vpp_warm_arp_for_subnet_peers: sent %d UDP "
+                            "probes from %s/%d on %s to pre-warm VPP "
+                            "neighbors",
+                            sent, self_str, prefix_len, netdev.c_str());
+        }
+    }).detach();
+}
+
 sai_status_t SwitchVpp::vpp_create_router_interface(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -1575,7 +1942,7 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     platform_bond_info_t bond_info;
     if (ot == SAI_OBJECT_TYPE_LAG) {
         CHECK_STATUS(get_lag_bond_info(obj_id, bond_info));
-        if_name = std::string(PORTCHANNEL_PREFIX) + std::to_string(bond_info.id);
+        if_name = format_portchannel_name(bond_info.id);
         found = true;
     } else {
         found = getTapNameFromPortId(obj_id, if_name);
@@ -1590,25 +1957,181 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     const char *dev = if_name.c_str();
     const char *linux_ifname;
     char host_subifname[32];
+    char lcp_host_subifname[32];
 
     if (attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
-        snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
-
-        /* The host(tap) subinterface is also created as part of the vpp subinterface creation */
         const char *parent_hwif;
         char hw_subif_parent[32];
+        char hw_subifname[64];
+        snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
         if (ot == SAI_OBJECT_TYPE_LAG) {
-            snprintf(hw_subif_parent, sizeof(hw_subif_parent), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
+            format_bond_hwif(hw_subif_parent, sizeof(hw_subif_parent),
+                             bond_info.id, 0);
             parent_hwif = hw_subif_parent;
         } else {
             parent_hwif = tap_to_hwif_name(dev);
         }
-        create_sub_interface(parent_hwif, vlan_id, vlan_id);
+        snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", parent_hwif, vlan_id);
+
+        /*
+         * For LAG sub-ports the kernel-facing LCP host has to be the VPP-
+         * created tap "be<bond_id>.<vlan>" (a vlan child on the parent tap
+         * "be<bond_id>"), NOT the teamd vlan child "PortChannel<id>.<vlan>".
+         *
+         * Reason: pairing with PortChannel<id>.<vlan> wires the LCP punt to
+         * a netdev that is not a VPP tap, so the kernel->VPP path cannot
+         * use the linux-cp-xc-ip4/6 fast path. Kernel-originated replies
+         * (e.g. ARP for a sub-port nexthop) then fall back to going through
+         * teamd -> physical bond member -> bobm<N>, where ethernet-input
+         * drops the vlan-tagged frame as "unknown vlan" because there is
+         * no SAI sub-interface on the physical member port.
+         *
+         * Pairing with be<id>.<vlan> makes the kernel write packets into a
+         * vlan netdev whose parent is a VPP tap; VPP ingests them via
+         * tap-input -> ethernet-input -> tap<N>.<vlan> -> linux-cp-xc which
+         * forwards directly to BondEthernet<id>.<vlan>. For PORT sub-ports
+         * the existing host name dev.<vlan> already points at a vlan child
+         * of a VPP tap, so behavior is unchanged.
+         */
+        const char *lcp_host;
+        if (ot == SAI_OBJECT_TYPE_LAG) {
+            format_be_lcp(lcp_host_subifname, sizeof(lcp_host_subifname),
+                          bond_info.id, vlan_id);
+            lcp_host = lcp_host_subifname;
+        } else {
+            lcp_host = host_subifname;
+        }
+
+        SWSS_LOG_NOTICE("Creating VPP sub interface host_if=%s hw_if=%s vlan=%u lcp_host=%s",
+                        host_subifname, hw_subifname, vlan_id, lcp_host);
+        int ret = create_sub_interface(parent_hwif, vlan_id, vlan_id);
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("Failed to create VPP sub interface host_if=%s hw_if=%s vlan=%u, ret=%d",
+                           host_subifname, hw_subifname, vlan_id, ret);
+            return SAI_STATUS_FAILURE;
+        }
 
         /* Get new list of physical interfaces from VS */
         refresh_interfaces_list();
 
+        /*
+         * VPP no longer guarantees implicit LCP creation for sub-interfaces on all builds.
+         * Explicitly configure host<->VPP pair so host interface state tracks VPP subif state.
+         */
+        SWSS_LOG_NOTICE("Configuring LCP pair for VPP sub interface lcp_host=%s hw_if=%s",
+                        lcp_host, hw_subifname);
+        ret = configure_lcp_interface(hw_subifname, lcp_host, true);
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("Failed to configure LCP pair for sub interface lcp_host=%s hw_if=%s, ret=%d; "
+                           "rolling back VPP sub-interface",
+                           lcp_host, hw_subifname, ret);
+            /*
+             * vpp_create_router_interface's return value is discarded by the
+             * caller (see createRouterif: vslib/vpp/SwitchVppRif.cpp:2335).
+             * Without an explicit rollback here the VPP sub-interface would
+             * persist while the SAI RIF object is still created at the SAI
+             * layer, producing a half-configured sub-port that responds to
+             * SAI APIs but cannot punt/inject traffic.
+             */
+            delete_sub_interface(parent_hwif, vlan_id);
+            return SAI_STATUS_FAILURE;
+        }
+
+        /*
+         * For LAG sub-ports also bridge the LCP tap "be<id>.<vlan>" with the
+         * teamd vlan child "PortChannel<id>.<vlan>" (where SONiC IntfMgr
+         * writes the L3 IP). Bidirectional tc mirred redirect:
+         *   - be<id>.<vlan> ingress -> PortChannel<id>.<vlan>: VPP-punted
+         *     frames (e.g. ICMP destined to the sub-port IP) reach the
+         *     SONiC-managed netdev that has the IP, so kernel handles
+         *     ARP/ICMP/etc. normally and any daemon bound to PortChannel
+         *     can see the traffic.
+         *   - PortChannel<id>.<vlan> egress -> be<id>.<vlan>: kernel
+         *     replies/originated frames bypass teamd's physical bond member
+         *     path (which drops vlan frames) and instead enter VPP via the
+         *     LCP tap, where the linux-cp-xc-ip4/6 fast path forwards them
+         *     to BondEthernet<id>.<vlan>.
+         * Mirrors the parent BondEthernet<id> <-> PortChannel<id> bridging
+         * in SwitchVppFdb.cpp:addLagMember, but with both directions because
+         * the vlan dispatch issue only affects sub-ports.
+         *
+         * Both redirects are mandatory: a one-direction-only bridge silently
+         * breaks LAG sub-port ping. On failure of either direction roll back
+         * all VPP state so the SAI RIF create fails cleanly.
+         */
+        if (ot == SAI_OBJECT_TYPE_LAG) {
+            sai_status_t tc_status = add_tc_filter_redirect(
+                    std::string(lcp_host), std::string(host_subifname));
+            if (tc_status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("add_tc_filter_redirect ingress %s -> %s failed; "
+                               "rolling back LCP pair and VPP sub-interface",
+                               lcp_host, host_subifname);
+                configure_lcp_interface(hw_subifname, lcp_host, false);
+                delete_sub_interface(parent_hwif, vlan_id);
+                return SAI_STATUS_FAILURE;
+            }
+            tc_status = add_tc_filter_redirect_egress(
+                    std::string(host_subifname), std::string(lcp_host));
+            if (tc_status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("add_tc_filter_redirect_egress %s -> %s failed; "
+                               "rolling back ingress redirect, LCP pair, and VPP sub-interface",
+                               host_subifname, lcp_host);
+                del_tc_filter_redirect(std::string(lcp_host));
+                configure_lcp_interface(hw_subifname, lcp_host, false);
+                delete_sub_interface(parent_hwif, vlan_id);
+                return SAI_STATUS_FAILURE;
+            }
+        }
+
+        /*
+         * Enable kernel arp_accept on the sub-port netdev(s) so the kernel
+         * accepts unsolicited ARP replies that arrive in response to a
+         * VPP-originated glean ARP request. This is required for cross-port
+         * forwarding (e.g. L3 plain port -> sub-port) where VPP - not the
+         * kernel - initiates ARP resolution. See helper above for full
+         * rationale.
+         *
+         * For non-LAG sub-ports lcp_host == host_subifname, so the second
+         * call is a harmless no-op. For LAG sub-ports we also set it on the
+         * teamd vlan child PortChannel<id>.<vlan> where IntfMgr writes the
+         * IP and where the kernel ARP table is consulted by lcp-sync.
+         *
+         * Failure is non-fatal to the RIF create (the sub-port still
+         * carries traffic when both peers can ARP each other) but does
+         * silently break cross-port-forward scenarios because VPP itself
+         * never learns the peer. Surface the failure at WARN so the
+         * operator has a hint when those flows misbehave.
+         */
+        if (!vpp_set_sub_port_arp_accept(lcp_host))
+        {
+            SWSS_LOG_WARN("Sub-port %s created WITHOUT kernel arp_accept=1; "
+                          "VPP-initiated ARP (cross-port-forward to this "
+                          "sub-port) will not be learned. Check "
+                          "/proc/sys/net/ipv4/conf/%s/arp_accept permissions.",
+                          lcp_host, lcp_host);
+        }
+        if (ot == SAI_OBJECT_TYPE_LAG)
+        {
+            if (!vpp_set_sub_port_arp_accept(host_subifname))
+            {
+                SWSS_LOG_WARN("LAG sub-port teamd child %s created WITHOUT "
+                              "kernel arp_accept=1; lcp-sync ARP mirroring "
+                              "will not populate the VPP neighbor table.",
+                              host_subifname);
+            }
+        }
+
+        /*
+         * Keep linux_ifname pointing at PortChannel<id>.<vlan> for LAG
+         * sub-ports so downstream vpp_get_vrf_id() (and any future
+         * vpp_get_intf_ip_address() lookups) hit the SONiC-managed netdev
+         * that IntfMgr actually writes VRF/IP attributes to. lcp-sync
+         * mirrors the address to be<id>.<vlan>, but VRF/policy attributes
+         * are not mirrored.
+         */
         linux_ifname = host_subifname;
     } else {
         linux_ifname = dev;
@@ -1635,7 +2158,8 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 	const char *hwif_name;
 	char hw_bondifname[32];
 	if (ot == SAI_OBJECT_TYPE_LAG) {
-	    snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_info.id);
+	    format_bond_hwif(hw_bondifname, sizeof(hw_bondifname),
+	                     bond_info.id, 0);
 	    hwif_name = hw_bondifname;
 	} else {
 	    hwif_name = tap_to_hwif_name(dev);
@@ -1780,7 +2304,7 @@ sai_status_t SwitchVpp::vpp_router_interface_remove_vrf(
     platform_bond_info_t bond_info;
     if (objectTypeQuery(obj_id) == SAI_OBJECT_TYPE_LAG) {
         CHECK_STATUS(get_lag_bond_info(obj_id, bond_info));
-        if_name = std::string(PORTCHANNEL_PREFIX) + std::to_string(bond_info.id);
+        if_name = format_portchannel_name(bond_info.id);
         found = true;
     } else {
         found = getTapNameFromPortId(obj_id, if_name);
@@ -1798,7 +2322,8 @@ sai_status_t SwitchVpp::vpp_router_interface_remove_vrf(
     const char *hwif_name;
     char hw_bondifname[32];
     if (objectTypeQuery(obj_id) == SAI_OBJECT_TYPE_LAG) {
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_info.id);
+        format_bond_hwif(hw_bondifname, sizeof(hw_bondifname),
+                         bond_info.id, 0);
         hwif_name = hw_bondifname;
     } else {
         hwif_name = tap_to_hwif_name(if_name.c_str());
@@ -1897,6 +2422,10 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     }
     uint16_t vlan_id = attr.value.u16;
 
+    /* Resolve parent hw interface name. Mirrors createRouterif (PORT/LAG
+     * handling). For LAG sub-port the VPP parent is BondEthernet<bond_id>,
+     * not a tap. tap_to_hwif_name() would return "Unknown" for the team
+     * device, so the bond name must be built directly from bond_info. */
     std::string if_name;
     platform_bond_info_t bond_info;
     bool found;
@@ -1905,7 +2434,7 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
         if (status != SAI_STATUS_SUCCESS) {
             return status;
         }
-        if_name = std::string(BONDETHERNET_PREFIX) + std::to_string(bond_info.id);
+        if_name = format_portchannel_name(bond_info.id);
         found = true;
     } else {
         found = getTapNameFromPortId(obj_id, if_name);
@@ -1917,15 +2446,55 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     }
 
     const char *dev = if_name.c_str();
-
     const char *parent_hwif;
     char hw_del_parent[32];
     if (ot == SAI_OBJECT_TYPE_LAG) {
-        snprintf(hw_del_parent, sizeof(hw_del_parent), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
+        format_bond_hwif(hw_del_parent, sizeof(hw_del_parent),
+                         bond_info.id, 0);
         parent_hwif = hw_del_parent;
     } else {
         parent_hwif = tap_to_hwif_name(dev);
     }
+
+    char host_subifname[32], hw_subifname[64];
+    char lcp_host_subifname[32];
+    snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
+    snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", parent_hwif, vlan_id);
+
+    /*
+     * Compute the LCP host name that matched vpp_create_router_interface:
+     * for LAG sub-ports we pair with the VPP-created tap be<id>.<vlan>;
+     * for PORT sub-ports it is just dev.<vlan> (host_subifname).
+     */
+    const char *lcp_host;
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        format_be_lcp(lcp_host_subifname, sizeof(lcp_host_subifname),
+                      bond_info.id, vlan_id);
+        lcp_host = lcp_host_subifname;
+
+        /*
+         * Tear down the bidirectional tc redirect first, before removing
+         * the LCP pair (otherwise be<id>.<vlan> disappears and the qdisc
+         * cleanup would silently no-op while the PortChannel<id>.<vlan>
+         * clsact survives and could affect future runs).
+         */
+        SWSS_LOG_NOTICE("Removing tc filter bridge for LAG sub-port: %s <-> %s",
+                        lcp_host, host_subifname);
+        del_tc_filter_redirect_egress(std::string(host_subifname));
+        del_tc_filter_redirect(std::string(lcp_host));
+    } else {
+        lcp_host = host_subifname;
+    }
+
+    SWSS_LOG_NOTICE("Removing LCP pair for VPP sub interface lcp_host=%s hw_if=%s",
+                    lcp_host, hw_subifname);
+    int lcp_ret = configure_lcp_interface(hw_subifname, lcp_host, false);
+    if (lcp_ret != 0)
+    {
+        SWSS_LOG_WARN("Failed to remove LCP pair for sub interface lcp_host=%s hw_if=%s, ret=%d",
+                      lcp_host, hw_subifname, lcp_ret);
+    }
+
     delete_sub_interface(parent_hwif, vlan_id);
     /* Get new list of physical interfaces from VS */
     refresh_interfaces_list();
