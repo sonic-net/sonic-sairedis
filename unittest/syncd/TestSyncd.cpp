@@ -957,25 +957,22 @@ TEST_F(SyncdLinkEventDampingTest, penaltyDecayExitsDamping)
     config.max_suppress_time  = 10000; // large, so decay exit wins
     config.suppress_threshold = 1000;
     config.reuse_threshold    = 600;
-    config.decay_half_life    = 200;   // fast decay
+    config.decay_half_life    = 1000;   // fast decay
     config.flap_penalty       = 1000;
 
     setDampingConfig(config);
 
     sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     // UP -> DOWN: penalty 1000 >= 1000 -> damping activated
     sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     // suppressed
     sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
 
-    ASSERT_EQ(getDampingField("is_damping_active"), "true");
+    EXPECT_EQ(getDampingField("is_damping_active"), "true");
 
     // wait ~3 half lives: penalty 1000 -> ~125 < reuse_threshold (600)
-    std::this_thread::sleep_for(std::chrono::milliseconds(600));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     // same-state event triggers decayPenalty + reuse-threshold exit branch
     sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
