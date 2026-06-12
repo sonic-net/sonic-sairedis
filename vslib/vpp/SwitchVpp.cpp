@@ -1424,6 +1424,13 @@ sai_status_t SwitchVpp::create(
         return samplePacketCreate(object_id, switch_id, attr_count, attr_list);
     }
 
+    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return sflow_hostif_trap_samplepacket_create(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
     {
         sai_object_id_t object_id;
@@ -1768,6 +1775,11 @@ sai_status_t SwitchVpp::remove(
     if (object_type == SAI_OBJECT_TYPE_SAMPLEPACKET)
     {
         return samplePacketRemove(serializedObjectId);
+    }
+
+    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        return sflow_hostif_trap_samplepacket_remove(serializedObjectId);
     }
 
     if (object_type == SAI_OBJECT_TYPE_ACL_ENTRY)
