@@ -7,16 +7,27 @@ Standards-Version: 1.0.0
 
 Package: syncd
 Architecture: any
-Build-Profiles: <syncd !vs>
+Build-Profiles: <syncd !vs !asan>
 Depends: ${misc:Pre-Depends}
 Recommends: ${shlibs:Depends}
-Conflicts: syncd-rpc, syncd-vs
+Conflicts: syncd-rpc, syncd-vs, syncd-asan
 Description: This package contains sync daemon for SONiC project.
+  This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
+
+Package: syncd-asan
+Architecture: any
+Build-Profiles: <syncd asan !vs !rpc>
+Depends: ${misc:Pre-Depends}
+Provides: syncd
+Recommends: ${shlibs:Depends}
+Conflicts: syncd, syncd-rpc, syncd-vs
+Replaces: syncd
+Description: This package contains ASAN-instrumented sync daemon for SONiC project.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
 
 Package: syncd-rpc
 Architecture: any
-Build-Profiles: <syncd rpc !vs>
+Build-Profiles: <syncd rpc !vs !asan>
 Depends: ${misc:Pre-Depends}
 Recommends: ${shlibs:Depends}
 Conflicts: syncd, syncd-vs

@@ -67,7 +67,11 @@ ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
 	make install DESTDIR=$(shell pwd)/debian/tmp
 	dh_install -N syncd
 else
-	dh_install
+ifneq ($(filter asan,$(DEB_BUILD_PROFILES)),)
+	dh_install -N syncd
+else
+	dh_install -N syncd-asan
+endif
 endif
 ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
 	sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
