@@ -19,6 +19,7 @@ VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
 # Retrieve vars from sonic-cfggen
 SYNCD_VARS=$(sonic-cfggen -d -y /etc/sonic/sonic_version.yml -t $VARS_FILE) || exit 1
 SONIC_ASIC_TYPE=$(echo $SYNCD_VARS | jq -r '.asic_type')
+SONIC_ASIC_SUBTYPE=$(echo $SYNCD_VARS | jq -r '.asic_subtype // empty')
 
 if [ -x $CMD_DSSERVE ]; then
     CMD=$CMD_DSSERVE
@@ -42,7 +43,7 @@ mkdir -p /var/log/sai_failure_dump/
 # Otherwise, set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
 SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
-SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.orch_southbound_zmq_enabled')
+SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.swss_zmq')
 if [ "$SWITCH_TYPE" == "dpu" ]; then
     CMD_ARGS+=" -z zmq_sync -x $CONTEXT_CONFIG_FILE"
 elif [ "$SOUTHBOUND_ZMQ" == "true" ]; then
@@ -98,6 +99,17 @@ function check_warm_boot()
     # else
         WARM_BOOT="false"
     # fi
+}
+
+
+function cleanup_stale_flow_dump_files()
+{
+    # Flows are to a file based on their VID.
+    # Clean up all files in the directory to avoid updates to stale files.
+    local flow_dump_dir=/var/dump/flows
+    if [ -d "$flow_dump_dir" ]; then
+        rm -f "$flow_dump_dir"/*gz 2>/dev/null || true
+    fi
 }
 
 
@@ -342,6 +354,10 @@ config_syncd_bcm()
         CMD_ARGS+=" -p /etc/sai.d/sai.profile"
     else
         CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    fi
+
+    if [ "$SONIC_ASIC_SUBTYPE" = "broadcom" ]; then
+        CMD_ARGS+=" -l"
     fi
 
     if [ -f "$HWSKU_DIR/context_config.json" ]; then
@@ -597,7 +613,7 @@ config_syncd_nvidia_bluefield()
         mkdir -p "$SDK_DUMP_PATH"
     fi
 
-    echo 11700 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    echo 16000 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
     mkdir -p /mnt/huge
     mount -t hugetlbfs pagesize=1GB /mnt/huge
 
@@ -651,6 +667,7 @@ config_syncd()
 {
     check_warm_boot
 
+    cleanup_stale_flow_dump_files
 
     if [ "$SONIC_ASIC_TYPE" == "cisco-8000" ]; then
         config_syncd_cisco_8000

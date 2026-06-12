@@ -679,9 +679,18 @@ sai_status_t SwitchVpp::vpp_create_lag(
         return SAI_STATUS_FAILURE;
     }
 
-    // Set mode and lb. SONiC config does not have provision to pass mode and load balancing algorithm
+    // Set mode and lb. SONiC config does not have provision to pass mode and load balancing algorithm.
+    // Select VPP's new opt-in inner-aware LAG hash algorithm (BOND_API_LB_ALGO_L34_INNER, value 6,
+    // CLI keyword "l34-inner") so that LAG distribution stays balanced for IPinIP / 6in4 / 4in6 /
+    // 6in6 / GRE / NVGRE transit tunnel traffic.  The existing BOND_API_LB_ALGO_L34 (= 1) and the
+    // registered hash function "hash-eth-l34" are byte-for-byte unchanged on the VPP side, so a
+    // libsaivs that selects value 1 keeps the legacy outer-only hashing behaviour; libsaivs that
+    // selects value 6 (this code) gets the inner-aware hash function "hash-eth-l34-inner".
+    // ABI compatibility with stock libvppinfra is preserved because the new enum value carries the
+    // [backwards_compatible] annotation in src/vnet/bonding/bond.api -- vppapigen excludes it from
+    // the CRC of every bond_create* / sw_interface_bond_details / sw_bond_interface_details message.
     mode = VPP_BOND_API_MODE_XOR;
-    lb = VPP_BOND_API_LB_ALGO_L34;
+    lb = VPP_BOND_API_LB_ALGO_L34_INNER;
 
     create_bond_interface(bond_id, mode, lb, &swif_idx);
     if (swif_idx == static_cast<uint32_t>(~0))
