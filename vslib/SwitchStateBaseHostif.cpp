@@ -950,8 +950,17 @@ void SwitchStateBase::syncOnLinkMsg(
         return;
     }
 
+    auto portId = getPortIdFromIfName(ifname);
+
+    /*
+     * Runtime link events can arrive for a Linux hostif name that is absent
+     * from the lane map. Some switch models keep the lane map keyed by
+     * hardware names, while Linux reports events for the hostif name. Once the
+     * index and hostif name are registered, accept the event without requiring
+     * the hostif name to also appear in the lane map.
+     */
     if (strncmp(ifname.c_str(), SAI_VS_VETH_PREFIX, sizeof(SAI_VS_VETH_PREFIX) - 1) != 0 &&
-            !map->hasInterface(ifname))
+            portId == SAI_NULL_OBJECT_ID && !map->hasInterface(ifname))
     {
         SWSS_LOG_ERROR("skipping newlink for %s, name not found in map", ifname.c_str());
         return;
@@ -964,7 +973,11 @@ void SwitchStateBase::syncOnLinkMsg(
 
     auto state = (ifflags & IFF_LOWER_UP) ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
 
-    auto portId = getPortIdFromIfName(ifname);
+    if (portId == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("skipping newlink for %s, port id not found", ifname.c_str());
+        return;
+    }
 
     send_port_oper_status_notification(portId, state, false);
 }

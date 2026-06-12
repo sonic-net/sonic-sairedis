@@ -236,6 +236,9 @@ bool SwitchVpp::register_hostif_info(
         return false;
     }
 
+    setIfNameToPortId(tapname, port_id);
+    setPortIdToTapName(port_id, tapname);
+
     m_hostif_info_map[tapname] =
         std::make_shared<HostInterfaceInfo>(
                 ifindex,
@@ -245,7 +248,7 @@ bool SwitchVpp::register_hostif_info(
                 port_id,
                 m_switchConfig->m_eventQueue);
 
-    SWSS_LOG_INFO(
+    SWSS_LOG_NOTICE(
             "registered hostif info for %s, ifindex %d",
             tapname.c_str(),
             ifindex);
@@ -431,9 +434,6 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
 
         return SAI_STATUS_FAILURE;
     }
-
-    setIfNameToPortId(name, obj_id);
-    setPortIdToTapName(obj_id, name);
 
     SWSS_LOG_INFO("created tap interface %s", name.c_str());
 
