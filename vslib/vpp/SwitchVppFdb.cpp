@@ -201,6 +201,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         //Create bridge and set the l2 port
         set_sw_interface_l2_bridge(hw_ifname,bridge_id, true, VPP_API_PORT_TYPE_NORMAL);
 
+        swif_bdid_track(hw_ifname, bridge_id);
+
         //Set interface state up
         interface_set_state(hw_ifname, true);
     }
@@ -210,6 +212,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
 
         //Create bridge and set the l2 port
         set_sw_interface_l2_bridge(hw_ifname,bridge_id, true, VPP_API_PORT_TYPE_NORMAL);
+
+        swif_bdid_track(hw_ifname, bridge_id);
 
         //Set the vlan member to bridge and tags rewrite
         vpp_l2_vtr_op_t vtr_op = L2_VTR_PUSH_1;
@@ -373,6 +377,7 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
 
         //Remove interface from bridge, interface type should be changed to others types like l3.
         set_sw_interface_l2_bridge(hw_ifname, bridge_id, false, VPP_API_PORT_TYPE_NORMAL);
+        swif_bdid_untrack(hw_ifname);
     }
     else if (tagging_mode == SAI_VLAN_TAGGING_MODE_TAGGED)
     {
@@ -382,6 +387,7 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         hw_ifname = host_subifname;
         // Remove the l2 port from bridge
         set_sw_interface_l2_bridge(hw_ifname, bridge_id, false, VPP_API_PORT_TYPE_NORMAL);
+        swif_bdid_untrack(hw_ifname);
 
         // delete subinterface
         delete_sub_interface(hw_ifname, vlan_id);
@@ -1282,6 +1288,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
                             sai_serialize_object_id(br_port_id).c_str());
                     auto ret = l2fib_flush_all();
                     SWSS_LOG_NOTICE("Flush ALL (tunnel bridge port fallback) ret_val: %d", ret);
+                    vpp_fdb_entries_invalidate_all();
                     break;
                 }
 
@@ -1304,6 +1311,10 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
                     const char *hwif_name = ifname.c_str();
                     auto ret = l2fib_flush_int(hwif_name);
                     SWSS_LOG_NOTICE(" Flush by interface on hwif_name %s  Successful ret_val: %d", hwif_name, ret);
+                    if (is_tunnel_bridge_port(br_port_id))
+                        vpp_fdb_entries_invalidate_all();
+                    else
+                        vpp_fdb_entries_invalidate_by_port(port_id);
                 }
                 else
                 {
@@ -1319,6 +1330,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
             {
                 auto ret = l2fib_flush_bd(bd_id);
                 SWSS_LOG_NOTICE(" Flush on bd_id %d Successfull ret_val: %d",bd_id, ret);
+                vpp_fdb_entries_invalidate_by_bd(bd_id);
             }
             break;
 
@@ -1328,6 +1340,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
             {
                 auto ret = l2fib_flush_all();
                 SWSS_LOG_NOTICE(" Flush ALL fdb entry ret_val: %d", ret);
+                vpp_fdb_entries_invalidate_all();
             }
             break;
 
@@ -1339,4 +1352,226 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+/*
+ * Resolve a VPP sw_if_index to a SAI port OID via the 3-step lookup chain:
+ * sw_if_index -> VPP hw interface name -> Linux tap/SONiC port name -> SAI port OID.
+ * Returns SAI_NULL_OBJECT_ID on any lookup failure.
+ */
+sai_object_id_t SwitchVpp::getPortIdFromSwIfIndex(uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+    const char *hwifname = vpp_get_swif_name(sw_if_index);
+    if (!hwifname)
+    {
+        SWSS_LOG_WARN("FDB: cannot get hwif name for sw_if_index %u", sw_if_index);
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    const char *tapname = hwif_to_tap_name(hwifname);
+    if (!tapname)
+    {
+        SWSS_LOG_WARN("FDB: cannot get tap name for hwif %s", hwifname);
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    return getPortIdFromIfName(std::string(tapname));
+}
+
+void SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type)
+{
+    SWSS_LOG_ENTER();
+
+    bool is_move = (event_type == SAI_FDB_EVENT_MOVE);
+
+    sai_object_id_t port_id = getPortIdFromSwIfIndex(sw_if_index);
+    if (port_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("FDB: cannot resolve port OID for sw_if_index %u", sw_if_index);
+        return;
+    }
+
+    sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
+
+    findBridgeVlanForPortVlan(port_id, (sai_vlan_id_t)key.bd_id, bv_id, bridge_port_id);
+
+    if (bv_id == SAI_NULL_OBJECT_ID || bridge_port_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("FDB: bv_id or bridge_port not found for sw_if_index %u bd %u",
+                       sw_if_index, key.bd_id);
+        return;
+    }
+
+    std::set<FdbInfo>::iterator existing_it = m_fdb_info_set.end();
+    FdbInfo fi;
+
+    if (is_move)
+    {
+        FdbInfo fi_search;
+        fi_search.setVlanId((sai_vlan_id_t)key.bd_id);
+        memcpy(fi_search.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+
+        existing_it = m_fdb_info_set.find(fi_search);
+        if (existing_it == m_fdb_info_set.end())
+        {
+            SWSS_LOG_WARN("FDB: entry not found in m_fdb_info_set for bd %u, treating as learn",
+                          key.bd_id);
+            generateFdbLearnedOrMoveEvent(key, sw_if_index, SAI_FDB_EVENT_LEARNED);
+            return;
+        }
+        fi = *existing_it;
+    }
+    else
+    {
+        fi.m_fdbEntry.switch_id = m_switch_id;
+        fi.m_fdbEntry.bv_id = bv_id;
+        memcpy(fi.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+    }
+
+    fi.setBridgePortId(bridge_port_id);
+    fi.setPortId(port_id);
+    fi.setVlanId((sai_vlan_id_t)key.bd_id);
+    fi.setTimestamp((uint32_t)time(NULL));
+
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = bridge_port_id;
+
+    sai_fdb_event_notification_data_t data;
+    data.event_type = event_type;
+    data.fdb_entry = fi.getFdbEntry();
+    data.attr_count = 2;
+    data.attr = attrs;
+
+    auto sid = sai_serialize_fdb_entry(data.fdb_entry);
+    sai_status_t status;
+
+    if (is_move)
+        status = set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, sid, &attrs[1]);
+    else
+        status = create_internal(SAI_OBJECT_TYPE_FDB_ENTRY, sid, m_switch_id, 2, attrs);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("FDB: %s failed for %s: %s",
+                       is_move ? "set_internal" : "create_internal",
+                       sid.c_str(), sai_serialize_status(status).c_str());
+        return;
+    }
+
+    if (is_move)
+        m_fdb_info_set.erase(existing_it);
+    m_fdb_info_set.insert(fi);
+
+    send_fdb_event_notification(data);
+
+    SWSS_LOG_NOTICE("FDB: notified %s for MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u",
+                    is_move ? "MOVE" : "LEARNED",
+                    key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                    key.bd_id, sw_if_index);
+}
+
+void SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
+{
+    SWSS_LOG_ENTER();
+
+    FdbInfo fi_search;
+    fi_search.setVlanId((sai_vlan_id_t)key.bd_id);
+    memcpy(fi_search.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+
+    auto it = m_fdb_info_set.find(fi_search);
+    if (it == m_fdb_info_set.end())
+    {
+        SWSS_LOG_ERROR("FDB: entry not found in m_fdb_info_set for bd %u", key.bd_id);
+        return;
+    }
+
+    FdbInfo fi = *it;
+
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = fi.getBridgePortId();
+
+    sai_fdb_event_notification_data_t data;
+    data.event_type = SAI_FDB_EVENT_AGED;
+    data.fdb_entry = fi.getFdbEntry();
+    data.attr_count = 2;
+    data.attr = attrs;
+
+    auto sid = sai_serialize_fdb_entry(data.fdb_entry);
+    remove_internal(SAI_OBJECT_TYPE_FDB_ENTRY, sid);
+
+    m_fdb_info_set.erase(it);
+
+    send_fdb_event_notification(data);
+
+    SWSS_LOG_NOTICE("FDB: notified AGED for MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u",
+                    key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+}
+
+void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)
+{
+    SWSS_LOG_ENTER();
+    uint32_t swif = vpp_get_swif_idx_by_name(hwif_name);
+    if (swif != (uint32_t)~0u)
+    {
+        m_swif_to_bdid[swif] = bd_id;
+    }
+}
+
+void SwitchVpp::swif_bdid_untrack(const char *hwif_name)
+{
+    SWSS_LOG_ENTER();
+    uint32_t swif = vpp_get_swif_idx_by_name(hwif_name);
+    if (swif != (uint32_t)~0u)
+    {
+        m_swif_to_bdid.erase(swif);
+    }
+}
+
+void SwitchVpp::vpp_fdb_entries_invalidate_all()
+{
+    SWSS_LOG_ENTER();
+    SWSS_LOG_INFO("FDB: invalidating all %zu m_vpp_fdb_entries", m_vpp_fdb_entries.size());
+    m_vpp_fdb_entries.clear();
+}
+
+void SwitchVpp::vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id)
+{
+    SWSS_LOG_ENTER();
+    size_t before = m_vpp_fdb_entries.size();
+    for (auto it = m_vpp_fdb_entries.begin(); it != m_vpp_fdb_entries.end(); )
+    {
+        if (it->first.bd_id == bd_id)
+            it = m_vpp_fdb_entries.erase(it);
+        else
+            ++it;
+    }
+    SWSS_LOG_INFO("FDB: invalidated by bd_id=%u, removed %zu entries, %zu remain",
+                  bd_id, before - m_vpp_fdb_entries.size(), m_vpp_fdb_entries.size());
+}
+
+void SwitchVpp::vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+    /* O(N) scan: resolves sw_if_index -> port OID via VPP API for each entry.
+     * This is acceptable since flush-by-interface is infrequent.
+     * TODO: Improve this by storing the sw_if_index -> port OID mapping somewhere. */
+    size_t before = m_vpp_fdb_entries.size();
+    for (auto it = m_vpp_fdb_entries.begin(); it != m_vpp_fdb_entries.end(); )
+    {
+        if (getPortIdFromSwIfIndex(it->second) == port_id)
+            it = m_vpp_fdb_entries.erase(it);
+        else
+            ++it;
+    }
+    SWSS_LOG_INFO("FDB: invalidated by port_id=%s, removed %zu entries, %zu remain",
+                  sai_serialize_object_id(port_id).c_str(),
+                  before - m_vpp_fdb_entries.size(), m_vpp_fdb_entries.size());
 }

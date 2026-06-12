@@ -1,5 +1,8 @@
 #include "SwitchVpp.h"
 
+#include <mutex>
+#include <queue>
+
 #include "meta/sai_serialize.h"
 
 #include "swss/logger.h"
@@ -58,7 +61,36 @@ SwitchVpp::~SwitchVpp()
         m_vpp_thread->join();
     }
 
+    deinitFdbEventHandling();
+
     SWSS_LOG_NOTICE("SwitchVpp destructor completed");
+}
+
+void SwitchVpp::deinitFdbEventHandling()
+{
+    SWSS_LOG_ENTER();
+
+    // Deregister MAC event callback before destroying state.
+    // Without this, VPP may deliver a batch after destruction and
+    // staticMacEventCb will dereference a dangling `this`.
+    vpp_want_l2_macs_events2(false, nullptr, nullptr);
+    m_fdbAgingWakeFn = nullptr;
+}
+
+void SwitchVpp::initFdbEventHandling(std::function<void()> fn)
+{
+    // Store the functor first — staticMacEventCb may fire immediately after
+    // vpp_want_l2_macs_events2() returns, so m_fdbAgingWakeFn must be set
+    // before we register with VPP.
+    m_fdbAgingWakeFn = std::move(fn);
+
+    vpp_l2fib_set_scan_delay(1);  /* scan interval = 1 unit = 10ms */
+    int ret = vpp_want_l2_macs_events2(true, &SwitchVpp::staticMacEventCb, this);
+    if (ret == 0)
+        SWSS_LOG_NOTICE("FDB: registered for VPP L2 MAC push events");
+    else
+        SWSS_LOG_ERROR("FDB: vpp_want_l2_macs_events2 failed (%d), "
+                       "FDB event generation will be inactive", ret);
 }
 
 sai_status_t SwitchVpp::create_qos_queues_per_port(
@@ -822,7 +854,93 @@ void SwitchVpp::processFdbEntriesForAging()
 {
     SWSS_LOG_ENTER();
 
-    return;
+    /*
+     * Drain the MAC event queue populated by the VPP API receive thread.
+     * We hold MUTEX() here (called from Sai::processFdbEntriesForAging which
+     * acquires m_apimutex before calling into vslib), so it is safe to call
+     * the generate* helpers.
+     */
+    std::queue<VppMacEvent> events;
+    {
+        std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
+        std::swap(events, m_mac_event_queue);
+    }
+
+    if (events.empty())
+    {
+        SWSS_LOG_DEBUG("FDB: no MAC events from VPP");
+        return;
+    }
+
+    SWSS_LOG_DEBUG("FDB: draining %zu queued MAC events", events.size());
+
+    while (!events.empty()) {
+        const VppMacEvent &ev = events.front();
+
+        auto bd_it = m_swif_to_bdid.find(ev.sw_if_index);
+        if (bd_it == m_swif_to_bdid.end()) {
+            SWSS_LOG_DEBUG("FDB: unknown sw_if_index %u in MAC event, skipping",
+                           ev.sw_if_index);
+            events.pop();
+            continue;
+        }
+
+        VppFdbKey key;
+        memcpy(key.mac, ev.mac, 6);
+        key.bd_id = bd_it->second;
+
+        switch (ev.action) {
+        case 0: /* ADD — newly learned */
+            if (m_vpp_fdb_entries.find(key) == m_vpp_fdb_entries.end()) {
+                generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_LEARNED);
+            }
+            m_vpp_fdb_entries[key] = ev.sw_if_index;
+            break;
+
+        case 1: /* DELETE — aged out */
+            if (m_vpp_fdb_entries.count(key)) {
+                generateFdbAgedEvent(key);
+                m_vpp_fdb_entries.erase(key);
+            }
+            break;
+
+        case 2: /* MOVE — port changed */
+            generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_MOVE);
+            m_vpp_fdb_entries[key] = ev.sw_if_index;
+            break;
+
+        default:
+            SWSS_LOG_WARN("FDB: unknown MAC event action %u", ev.action);
+            break;
+        }
+
+        events.pop();
+    }
+}
+
+/*
+ * Static trampoline: called on the VPP API receive thread when VPP pushes a
+ * batch of MAC learn/age/move events.  Must NOT acquire m_apimutex — just
+ * enqueue for safe dispatch by processFdbEntriesForAging() under the mutex.
+ */
+void SwitchVpp::staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx)
+{
+    SWSS_LOG_ENTER();
+
+    auto *self = static_cast<SwitchVpp *>(ctx);
+    {
+        std::lock_guard<std::mutex> lock(self->m_mac_event_queue_mutex);
+        for (uint32_t i = 0; i < n; i++) {
+            VppMacEvent mev;
+            memcpy(mev.mac, evs[i].mac, 6);
+            mev.sw_if_index = evs[i].sw_if_index;
+            mev.action = evs[i].action;
+            self->m_mac_event_queue.push(mev);
+        }
+    }
+    // Wake the FDB aging thread once for the entire batch
+    if (self->m_fdbAgingWakeFn)
+        self->m_fdbAgingWakeFn();
 }
 
 sai_status_t SwitchVpp::create(
