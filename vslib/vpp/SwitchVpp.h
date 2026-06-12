@@ -947,6 +947,16 @@ namespace saivs
 
             sai_status_t sflow_sampling_rate_set(
                     _In_ uint32_t rate);
+
+            sai_status_t sflow_hostif_trap_samplepacket_create(
+                     _In_ sai_object_id_t object_id,
+                     _In_ sai_object_id_t switch_id,
+                     _In_ uint32_t attr_count,
+                     _In_ const sai_attribute_t *attr_list);
+        
+            sai_status_t sflow_hostif_trap_samplepacket_remove(
+                     _In_ const std::string &serializedObjectId);
+            
                 
         public: // VPP
 
