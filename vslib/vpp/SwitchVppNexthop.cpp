@@ -317,11 +317,45 @@ SwitchVpp::createNexthopGroupMember(
 
     // Add the specific path to each route using this NHG
     for (auto route : *routes) {
+        uint32_t stats_index = UINT32_MAX;
+        auto counterIt = m_routeToCounterMap.find(route.first);
+        std::map<sai_stat_id_t, uint64_t> old_counter_stats;
+        bool has_old_counter_stats = false;
+        if (counterIt != m_routeToCounterMap.end()) {
+            status = getRouteCounterStats(counterIt->second, old_counter_stats);
+            if (status == SAI_STATUS_SUCCESS) {
+                has_old_counter_stats = true;
+            } else {
+                SWSS_LOG_WARN("Failed to read route counter stats before adding path to route %s, status %d",
+                        route.first.c_str(), status);
+            }
+        }
+
         SWSS_LOG_INFO("NHG member added. Adding path to route %s", route.first.c_str());
-        status = IpRoutePathAddRemove(route.second.get(), &member, true);
+        status = IpRoutePathAddRemove(route.second.get(), &member, true, &stats_index);
         if (status != SAI_STATUS_SUCCESS) {
             SWSS_LOG_ERROR("Failed to add path to route %s, status %d", route.first.c_str(), status);
             // Continue with other routes
+        } else if (stats_index != UINT32_MAX) {
+            if (counterIt == m_routeToCounterMap.end()) {
+                m_routeStatsIndexMap[route.first] = stats_index;
+            } else {
+                m_routeStatsIndexMap[route.first] = stats_index;
+                std::map<sai_stat_id_t, uint64_t> new_counter_base;
+                status = getRouteCounterStats(counterIt->second, new_counter_base);
+                if (status != SAI_STATUS_SUCCESS) {
+                    SWSS_LOG_ERROR("Failed to reset route counter base for route %s, status %d", route.first.c_str(), status);
+                    if (has_old_counter_stats) {
+                        carryRouteCounterStatsDelta(counterIt->second, old_counter_stats);
+                    }
+                    m_routeCounterStatsBaseMap.erase(counterIt->second);
+                } else {
+                    if (has_old_counter_stats) {
+                        carryRouteCounterStatsDelta(counterIt->second, old_counter_stats);
+                    }
+                    m_routeCounterStatsBaseMap[counterIt->second] = new_counter_base;
+                }
+            }
         }
     }
     return SAI_STATUS_SUCCESS;
@@ -386,11 +420,45 @@ SwitchVpp::removeNexthopGroupMember(
     // Remove the specific path from each route using this NHG
     // VPP will handle the case of removing the last path
     for (auto route : *routes) {
+        uint32_t stats_index = UINT32_MAX;
+        auto counterIt = m_routeToCounterMap.find(route.first);
+        std::map<sai_stat_id_t, uint64_t> old_counter_stats;
+        bool has_old_counter_stats = false;
+        if (counterIt != m_routeToCounterMap.end()) {
+            status = getRouteCounterStats(counterIt->second, old_counter_stats);
+            if (status == SAI_STATUS_SUCCESS) {
+                has_old_counter_stats = true;
+            } else {
+                SWSS_LOG_WARN("Failed to read route counter stats before removing path from route %s, status %d",
+                        route.first.c_str(), status);
+            }
+        }
+
         SWSS_LOG_INFO("NHG member removed. Removing path from route %s", route.first.c_str());
-        status = IpRoutePathAddRemove(route.second.get(), &member, false);
+        status = IpRoutePathAddRemove(route.second.get(), &member, false, &stats_index);
         if (status != SAI_STATUS_SUCCESS) {
             SWSS_LOG_ERROR("Failed to remove path from route %s, status %d", route.first.c_str(), status);
             // Continue with other routes
+        } else if (stats_index != UINT32_MAX) {
+            if (counterIt == m_routeToCounterMap.end()) {
+                m_routeStatsIndexMap[route.first] = stats_index;
+            } else {
+                m_routeStatsIndexMap[route.first] = stats_index;
+                std::map<sai_stat_id_t, uint64_t> new_counter_base;
+                status = getRouteCounterStats(counterIt->second, new_counter_base);
+                if (status != SAI_STATUS_SUCCESS) {
+                    SWSS_LOG_ERROR("Failed to reset route counter base for route %s, status %d", route.first.c_str(), status);
+                    if (has_old_counter_stats) {
+                        carryRouteCounterStatsDelta(counterIt->second, old_counter_stats);
+                    }
+                    m_routeCounterStatsBaseMap.erase(counterIt->second);
+                } else {
+                    if (has_old_counter_stats) {
+                        carryRouteCounterStatsDelta(counterIt->second, old_counter_stats);
+                    }
+                    m_routeCounterStatsBaseMap[counterIt->second] = new_counter_base;
+                }
+            }
         }
     }
     return SAI_STATUS_SUCCESS;
