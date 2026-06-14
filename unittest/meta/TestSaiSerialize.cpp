@@ -508,6 +508,14 @@ TEST(SaiSerialize, sai_serialize_tunnel_stat)
     EXPECT_EQ(sai_serialize_tunnel_stat(SAI_TUNNEL_STAT_IN_OCTETS), "SAI_TUNNEL_STAT_IN_OCTETS");
 }
 
+TEST(SaiSerialize, sai_serialize_icmp_echo_session_stat)
+{
+    EXPECT_EQ(sai_serialize_icmp_echo_session_stat(SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS),
+            "SAI_ICMP_ECHO_SESSION_STAT_IN_PACKETS");
+    EXPECT_EQ(sai_serialize_icmp_echo_session_stat(SAI_ICMP_ECHO_SESSION_STAT_OUT_PACKETS),
+            "SAI_ICMP_ECHO_SESSION_STAT_OUT_PACKETS");
+}
+
 TEST(SaiSerialize, sai_serialize_counter_stat)
 {
     EXPECT_EQ(sai_serialize_counter_stat(SAI_COUNTER_STAT_PACKETS), "SAI_COUNTER_STAT_PACKETS");
