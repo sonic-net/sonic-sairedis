@@ -2041,50 +2041,15 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         }
 
         /*
-         * For LAG sub-ports also bridge the LCP tap "be<id>.<vlan>" with the
-         * teamd vlan child "PortChannel<id>.<vlan>" (where SONiC IntfMgr
-         * writes the L3 IP). Bidirectional tc mirred redirect:
-         *   - be<id>.<vlan> ingress -> PortChannel<id>.<vlan>: VPP-punted
-         *     frames (e.g. ICMP destined to the sub-port IP) reach the
-         *     SONiC-managed netdev that has the IP, so kernel handles
-         *     ARP/ICMP/etc. normally and any daemon bound to PortChannel
-         *     can see the traffic.
-         *   - PortChannel<id>.<vlan> egress -> be<id>.<vlan>: kernel
-         *     replies/originated frames bypass teamd's physical bond member
-         *     path (which drops vlan frames) and instead enter VPP via the
-         *     LCP tap, where the linux-cp-xc-ip4/6 fast path forwards them
-         *     to BondEthernet<id>.<vlan>.
-         * Mirrors the parent BondEthernet<id> <-> PortChannel<id> bridging
-         * in SwitchVppFdb.cpp:addLagMember, but with both directions because
-         * the vlan dispatch issue only affects sub-ports.
-         *
-         * Both redirects are mandatory: a one-direction-only bridge silently
-         * breaks LAG sub-port ping. On failure of either direction roll back
-         * all VPP state so the SAI RIF create fails cleanly.
+         * NOTE: the LAG sub-port host/CP punt bridge (be<id>.<vlan> <->
+         * PortChannel<id>.<vlan>) is intentionally NOT set up here. The
+         * previous bidirectional tc-mirred redirect was a workaround for the
+         * VPP vlan-dispatch gap on bond members; it is dropped pending the
+         * VPP direct-TX node (sonic-platform-vpp#237). The VPP sub-interface
+         * and LCP pair created above are kept so the proper punt/inject path
+         * can attach once that node lands. LAG sub-port forwarding tests are
+         * skipped in sonic-mgmt until then.
          */
-        if (ot == SAI_OBJECT_TYPE_LAG) {
-            sai_status_t tc_status = add_tc_filter_redirect(
-                    std::string(lcp_host), std::string(host_subifname));
-            if (tc_status != SAI_STATUS_SUCCESS) {
-                SWSS_LOG_ERROR("add_tc_filter_redirect ingress %s -> %s failed; "
-                               "rolling back LCP pair and VPP sub-interface",
-                               lcp_host, host_subifname);
-                configure_lcp_interface(hw_subifname, lcp_host, false);
-                delete_sub_interface(parent_hwif, vlan_id);
-                return SAI_STATUS_FAILURE;
-            }
-            tc_status = add_tc_filter_redirect_egress(
-                    std::string(host_subifname), std::string(lcp_host));
-            if (tc_status != SAI_STATUS_SUCCESS) {
-                SWSS_LOG_ERROR("add_tc_filter_redirect_egress %s -> %s failed; "
-                               "rolling back ingress redirect, LCP pair, and VPP sub-interface",
-                               host_subifname, lcp_host);
-                del_tc_filter_redirect(std::string(lcp_host));
-                configure_lcp_interface(hw_subifname, lcp_host, false);
-                delete_sub_interface(parent_hwif, vlan_id);
-                return SAI_STATUS_FAILURE;
-            }
-        }
 
         /*
          * Enable kernel arp_accept on the sub-port netdev(s) so the kernel
@@ -2463,17 +2428,6 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
         format_be_lcp(lcp_host_subifname, sizeof(lcp_host_subifname),
                       bond_info.id, vlan_id);
         lcp_host = lcp_host_subifname;
-
-        /*
-         * Tear down the bidirectional tc redirect first, before removing
-         * the LCP pair (otherwise be<id>.<vlan> disappears and the qdisc
-         * cleanup would silently no-op while the PortChannel<id>.<vlan>
-         * clsact survives and could affect future runs).
-         */
-        SWSS_LOG_NOTICE("Removing tc filter bridge for LAG sub-port: %s <-> %s",
-                        lcp_host, host_subifname);
-        del_tc_filter_redirect_egress(std::string(host_subifname));
-        del_tc_filter_redirect(std::string(lcp_host));
     } else {
         lcp_host = host_subifname;
     }

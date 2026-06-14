@@ -223,24 +223,6 @@ namespace saivs
                     _In_ const std::string& tap,
                     _In_ const std::string& hostIfname);
 
-            static sai_status_t del_tc_filter_redirect(
-                    _In_ const std::string& tap);
-
-            /*
-             * Egress redirect: clsact qdisc + egress filter that diverts
-             * packets leaving `src` to `dst` (typically a VPP tap). Used to
-             * bypass the teamd VLAN child egress path for LAG sub-ports so
-             * that kernel-originated frames enter VPP via the linux-cp tap
-             * rather than the bond member's physical tap (which has no
-             * VLAN sub-interface for the dot1q dispatch).
-             */
-            static sai_status_t add_tc_filter_redirect_egress(
-                    _In_ const std::string& src,
-                    _In_ const std::string& dst);
-
-            static sai_status_t del_tc_filter_redirect_egress(
-                    _In_ const std::string& src);
-
             virtual bool hostif_create_tap_veth_forwarding(
                     _In_ const std::string &tapname,
                     _In_ int tapfd,
