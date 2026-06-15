@@ -353,5 +353,7 @@ namespace saivs
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
 
             SwitchStateBase::SwitchStateMap m_switchStateMap;
+
+            std::function<void()> m_fdbEventFn;
     };
 }

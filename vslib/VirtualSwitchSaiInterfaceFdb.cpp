@@ -329,6 +329,8 @@ void VirtualSwitchSaiInterface::initFdbEventHandling(std::function<void()> fn)
 {
     SWSS_LOG_ENTER();
 
+    m_fdbEventFn = fn;
+
     for (auto &kv : m_switchStateMap)
     {
         kv.second->initFdbEventHandling(fn);
