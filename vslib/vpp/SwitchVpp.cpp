@@ -1228,21 +1228,32 @@ void SwitchVpp::processFdbEntriesForAging()
         switch (ev.action) {
         case 0: /* ADD — newly learned */
             if (m_vpp_fdb_entries.find(key) == m_vpp_fdb_entries.end()) {
-                generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_LEARNED);
+                if (generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_LEARNED)) {
+                    m_vpp_fdb_entries[key] = ev.sw_if_index;
+                }
+            } else {
+                SWSS_LOG_INFO("FDB: ADD for already-known MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u, skipping",
+                              key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                              key.bd_id, ev.sw_if_index);
             }
-            m_vpp_fdb_entries[key] = ev.sw_if_index;
             break;
 
         case 1: /* DELETE — aged out */
-            if (m_vpp_fdb_entries.count(key)) {
-                generateFdbAgedEvent(key);
-                m_vpp_fdb_entries.erase(key);
+            if (m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end()) {
+                if (generateFdbAgedEvent(key)) {
+                    m_vpp_fdb_entries.erase(key);
+                }
+            } else {
+                SWSS_LOG_INFO("FDB: DELETE for unknown MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u, skipping",
+                              key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                              key.bd_id);
             }
             break;
 
         case 2: /* MOVE — port changed */
-            generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_MOVE);
-            m_vpp_fdb_entries[key] = ev.sw_if_index;
+            if (generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_MOVE)) {
+                m_vpp_fdb_entries[key] = ev.sw_if_index;
+            }
             break;
 
         default:

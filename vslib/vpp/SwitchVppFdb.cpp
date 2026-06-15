@@ -1379,7 +1379,7 @@ sai_object_id_t SwitchVpp::getPortIdFromSwIfIndex(uint32_t sw_if_index)
     return getPortIdFromIfName(std::string(tapname));
 }
 
-void SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type)
+bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type)
 {
     SWSS_LOG_ENTER();
 
@@ -1389,7 +1389,7 @@ void SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
     if (port_id == SAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_ERROR("FDB: cannot resolve port OID for sw_if_index %u", sw_if_index);
-        return;
+        return false;
     }
 
     sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
@@ -1401,7 +1401,7 @@ void SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
     {
         SWSS_LOG_ERROR("FDB: bv_id or bridge_port not found for sw_if_index %u bd %u",
                        sw_if_index, key.bd_id);
-        return;
+        return false;
     }
 
     std::set<FdbInfo>::iterator existing_it = m_fdb_info_set.end();
@@ -1418,8 +1418,7 @@ void SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
         {
             SWSS_LOG_WARN("FDB: entry not found in m_fdb_info_set for bd %u, treating as learn",
                           key.bd_id);
-            generateFdbLearnedOrMoveEvent(key, sw_if_index, SAI_FDB_EVENT_LEARNED);
-            return;
+            return generateFdbLearnedOrMoveEvent(key, sw_if_index, SAI_FDB_EVENT_LEARNED);
         }
         fi = *existing_it;
     }
@@ -1460,7 +1459,7 @@ void SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
         SWSS_LOG_ERROR("FDB: %s failed for %s: %s",
                        is_move ? "set_internal" : "create_internal",
                        sid.c_str(), sai_serialize_status(status).c_str());
-        return;
+        return false;
     }
 
     if (is_move)
@@ -1473,9 +1472,10 @@ void SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
                     is_move ? "MOVE" : "LEARNED",
                     key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
                     key.bd_id, sw_if_index);
+    return true;
 }
 
-void SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
+bool SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
 {
     SWSS_LOG_ENTER();
 
@@ -1487,7 +1487,7 @@ void SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
     if (it == m_fdb_info_set.end())
     {
         SWSS_LOG_ERROR("FDB: entry not found in m_fdb_info_set for bd %u", key.bd_id);
-        return;
+        return false;
     }
 
     FdbInfo fi = *it;
@@ -1513,6 +1513,7 @@ void SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
 
     SWSS_LOG_NOTICE("FDB: notified AGED for MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u",
                     key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+    return true;
 }
 
 void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)

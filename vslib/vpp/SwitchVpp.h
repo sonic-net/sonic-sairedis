@@ -1152,8 +1152,8 @@ namespace saivs
             // MAC events are enqueued (set by Sai after starting aging thread).
             std::function<void()> m_fdbAgingWakeFn;
 
-            void generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
-            void generateFdbAgedEvent(const VppFdbKey &key);
+            bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
+            bool generateFdbAgedEvent(const VppFdbKey &key);
             sai_object_id_t getPortIdFromSwIfIndex(uint32_t sw_if_index);
 
             void vpp_fdb_entries_invalidate_all();
