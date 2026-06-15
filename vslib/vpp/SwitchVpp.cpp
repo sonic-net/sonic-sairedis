@@ -76,6 +76,10 @@ SwitchVpp::~SwitchVpp()
 {
     SWSS_LOG_ENTER();
 
+    // Deregister VPP MAC events before stopping the thread so no callback
+    // fires against a partially-destroyed object during join().
+    deinitFdbEventHandling();
+
     // Signal the vpp events thread to stop
     m_run_vpp_events_thread = false;
 
@@ -83,8 +87,6 @@ SwitchVpp::~SwitchVpp()
     if (m_vpp_thread && m_vpp_thread->joinable()) {
         m_vpp_thread->join();
     }
-
-    deinitFdbEventHandling();
 
     SWSS_LOG_NOTICE("SwitchVpp destructor completed");
 }
