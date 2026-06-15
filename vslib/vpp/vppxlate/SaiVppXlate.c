@@ -389,18 +389,92 @@ do {                                                            \
  */
 #define WR(ret)                                                 \
 do {                                                            \
-    f64 timeout = vat_time_now (vam) + 1.0;                     \
+    f64 start_time = vat_time_now (vam);                        \
+    f64 hard_deadline = start_time + 10.0;                      \
+    f64 idle_deadline = start_time + 1.0;                       \
     socket_client_main_t *scm = vam->socket_client_main;        \
     ret = -99;                                                  \
-    while (vat_time_now (vam) < timeout) {                      \
-        if (scm && scm->socket_enable)                          \
-            vl_socket_client_read (5);                          \
+    while (1) {                                                 \
+        f64 now = vat_time_now (vam);                           \
+        if (now >= hard_deadline || now >= idle_deadline)       \
+            break;                                              \
+        if (scm && scm->socket_enable) {                        \
+            vl_socket_client_read (1);                          \
+        }                                                       \
         if (vam->result_ready == 1) {                           \
             ret = vam->retval;                                  \
             break;                                              \
         }                                                       \
         vat_suspend (vam->vlib_main, 1e-5);                     \
     }                                                            \
+} while(0);
+
+/*
+ * Event-connection variants of M / S / PING / WR.
+ *
+ * The asynchronous VPP event stream is carried on a dedicated binary-API
+ * socket (event_socket_client_main / vat_event_main) that is independent of
+ * the synchronous request/reply socket used by the command path. These macros
+ * therefore operate on the explicit "scm" passed via vam->socket_client_main
+ * using the vl_socket_client_*2() APIs instead of the global-socket helpers.
+ */
+#define M_EV(T, mp)                                             \
+do {                                                            \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    vam->result_ready = 0;                                      \
+    if (scm && scm->socket_enable)                              \
+        mp = vl_socket_client_msg_alloc2 (scm, (int)sizeof(*mp)); \
+    else                                                        \
+        mp = vl_msg_api_alloc_as_if_client((int)sizeof(*mp));   \
+    clib_memset (mp, 0, sizeof (*mp));                          \
+    mp->_vl_msg_id = ntohs (VL_API_##T+__plugin_msg_base);      \
+    mp->client_index = vam->my_client_index;                    \
+} while(0);
+
+#define PING_EV(mp_ping)                                        \
+do {                                                            \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    if (scm && scm->socket_enable)                              \
+        mp_ping = vl_socket_client_msg_alloc2 (scm, (int)sizeof (*mp_ping)); \
+    else                                                        \
+        mp_ping = vl_msg_api_alloc_as_if_client ((int)sizeof (*mp_ping)); \
+    clib_memset (mp_ping, 0, sizeof (*mp_ping));                \
+    mp_ping->_vl_msg_id = htons (VL_API_CONTROL_PING + 1);      \
+    mp_ping->client_index = vam->my_client_index;               \
+    vam->result_ready = 0;                                      \
+    if (scm)                                                    \
+        scm->control_pings_outstanding++;                       \
+} while(0);
+
+#define S_EV(mp)                                                \
+do {                                                            \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    if (scm && scm->socket_enable)                              \
+        vl_socket_client_write2 (scm);                          \
+    else                                                        \
+        vl_msg_api_send_shmem (vam->vl_input_queue, (u8 *)&mp); \
+} while (0);
+
+#define WR_EV(ret)                                              \
+do {                                                            \
+    f64 start_time = vat_time_now (vam);                        \
+    f64 hard_deadline = start_time + 10.0;                      \
+    f64 idle_deadline = start_time + 1.0;                       \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    ret = -99;                                                  \
+    while (1) {                                                 \
+        f64 now = vat_time_now (vam);                           \
+        if (now >= hard_deadline || now >= idle_deadline)       \
+            break;                                              \
+        if (scm && scm->socket_enable) {                        \
+            vl_socket_client_read2 (scm, 1);                    \
+        }                                                       \
+        if (vam->result_ready == 1) {                           \
+            ret = vam->retval;                                  \
+            break;                                              \
+        }                                                       \
+        vat_suspend (vam->vlib_main, 1e-5);                     \
+    }                                                           \
 } while(0);
 
 #define VPP_MAX_CTX 16
@@ -481,6 +555,31 @@ void vpp_mutex_unlock ()
 #define VPP_UNLOCK() vpp_mutex_unlock()
 
 /*
+ * Dedicated lock for the asynchronous event connection (vat_event_main /
+ * event_socket_client_main). Kept separate from vpp_mutex so the background
+ * event-polling thread never serializes against the synchronous command path.
+ */
+static pthread_mutex_t vpp_event_mutex;
+
+void vpp_event_mutex_lock_init ()
+{
+    pthread_mutex_init(&vpp_event_mutex, NULL);
+}
+
+void vpp_event_mutex_lock ()
+{
+    pthread_mutex_lock(&vpp_event_mutex);
+}
+
+void vpp_event_mutex_unlock ()
+{
+    pthread_mutex_unlock(&vpp_event_mutex);
+}
+
+#define EVENT_LOCK() vpp_event_mutex_lock()
+#define EVENT_UNLOCK() vpp_event_mutex_unlock()
+
+/*
  * Right now configuration is done synchronously in a single thread.
  * When the need arises for multiple requests in pipeline we can move to a pool to
  * allocate index.
@@ -544,6 +643,29 @@ static uintptr_t get_index_ptr (uint32_t context)
 vat_main_t vat_main;
 uword *interface_name_by_sw_index = NULL;
 uword *link_speed_by_sw_index = NULL;
+
+/*
+ * Dedicated binary-API connection for the asynchronous VPP event stream
+ * (sw_interface_event / bfd events). Owned by the background event-polling
+ * thread and isolated from the synchronous request/reply connection so the
+ * unsolicited event flood cannot starve or deadlock the command path.
+ */
+static socket_client_main_t event_socket_client_main;
+vat_main_t vat_event_main;
+
+/*
+ * Per-thread "current" vat_main. Reply handlers run in the context of whatever
+ * thread is reading its connection's socket; they use cur_vam() so that a reply
+ * read on a given connection updates only that connection's result state.
+ * Defaults to the command connection (&vat_main) when unset.
+ */
+static __thread vat_main_t *tl_cur_vam;
+
+static inline vat_main_t *cur_vam (void)
+{
+    return tl_cur_vam ? tl_cur_vam : &vat_main;
+}
+
 
 f64
 vat_time_now (vat_main_t * vam)
@@ -666,7 +788,7 @@ vl_noop_handler (void *mp)
 
 static void set_reply_status (int retval)
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = cur_vam();
 
     if (vam->async_mode)
     {
@@ -681,14 +803,14 @@ static void set_reply_status (int retval)
 
 static void set_reply_sw_if_index (vl_api_interface_index_t sw_if_index)
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = cur_vam();
     vam->sw_if_index = sw_if_index;
 }
 
 static void
 vl_api_control_ping_reply_t_handler (vl_api_control_ping_reply_t *mp)
 {
-  vat_main_t *vam = &vat_main;
+  vat_main_t *vam = cur_vam();
 
   set_reply_status((int)ntohl ((uint32_t)mp->retval));
 
@@ -709,7 +831,7 @@ vl_api_sw_interface_event_t_handler (vl_api_sw_interface_event_t *mp)
     uint32_t flags, sw_if_index;
     uword *ptr;
 
-    sw_if_index = htonl(mp->sw_if_index);
+    sw_if_index = ntohl(mp->sw_if_index);
     ptr = hash_get(interface_name_by_sw_index, sw_if_index);
     if (NULL == ptr) {
         SAIVPP_INFO("vpp cannot get interface name for sw index %u", sw_if_index);
@@ -717,7 +839,7 @@ vl_api_sw_interface_event_t_handler (vl_api_sw_interface_event_t *mp)
     }
     const char *hw_ifname = (const char *) ptr[0];
 
-    flags = htonl(mp->flags);
+    flags = ntohl(mp->flags);
     if (flags & IF_STATUS_API_FLAG_ADMIN_UP &&
         !(flags & IF_STATUS_API_FLAG_LINK_UP)) {
         return;
@@ -1266,7 +1388,14 @@ vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *m
     _(MEMCLNT_MSG_ID(GET_FIRST_MSG_ID_REPLY), get_first_msg_id_reply) \
     _(MEMCLNT_MSG_ID(CONTROL_PING_REPLY), control_ping_reply)
 
-static u16 interface_msg_id_base, memclnt_msg_id_base, __plugin_msg_base;
+static u16 interface_msg_id_base, memclnt_msg_id_base;
+/*
+ * __plugin_msg_base selects the message-id base for the message currently
+ * being constructed. The command path and the dedicated event-connection path
+ * run on different threads under different locks, so this must be thread-local
+ * to avoid a data race between "set base" and the immediately following M()/PING().
+ */
+static __thread u16 __plugin_msg_base;
 static u16 l2_msg_id_base, vxlan_msg_id_base, ipip_msg_id_base;
 static u16 tunterm_msg_id_base;
 static u16 bfd_msg_id_base;
@@ -1552,6 +1681,53 @@ vsc_socket_connect (vat_main_t * vam, char *client_name)
     am->my_client_index = (int)vam->my_client_index;
     return 0;
 }
+
+/*
+ * Establish the dedicated event connection. Uses the explicit-scm
+ * vl_socket_client_connect2() so it is a fully independent client connection
+ * (its own VPP client_index and socket fd). Deliberately does NOT touch the
+ * global api_main->my_client_index, which belongs to the command connection;
+ * messages on this connection carry vat_event_main.my_client_index via the
+ * M_EV/PING_EV macros.
+ */
+static int
+vsc_event_socket_connect (vat_main_t * vam, char *client_name)
+{
+    int rv;
+    vam->socket_client_main = &event_socket_client_main;
+    if ((rv = vl_socket_client_connect2 (&event_socket_client_main,
+                                         (char *) vam->socket_name,
+                                         client_name,
+                                         0 /* default socket rx, tx buffer */ )))
+        return rv;
+
+    /* vpp expects the client index in network order */
+    vam->my_client_index = (u32)htonl (event_socket_client_main.client_index);
+    return 0;
+}
+
+static int init_vpp_event_client ()
+{
+    char client_name[] = "sonic_vpp_event_client";
+    vat_main_t *vam = &vat_event_main;
+
+    vpp_event_mutex_lock_init();
+
+    clib_time_init (&vam->clib_time);
+    vam->socket_name = format (0, "%s%c", API_SOCKET_FILE, 0);
+    /* vat_suspend()/vat_time_now() only need clib_time; reuse the command
+     * vlib_main pointer to keep the helper macros happy. */
+    vam->vlib_main = vat_main.vlib_main;
+
+    if (vsc_event_socket_connect(vam, client_name) == 0) {
+        SAIVPP_INFO("vpp event socket connect successful\n");
+        return 0;
+    }
+
+    SAIVPP_ERROR("vpp event socket connect failed\n");
+    return -1;
+}
+
 
 typedef struct
 {
@@ -1886,14 +2062,24 @@ int init_vpp_client()
         vpp_lcp_ethertype_enable(0x0806);
 
         /*
-         * SONiC periodically polls the port status so currently there is no need for
-         * async notification. This also simplifies the synchronous design of saivpp.
-         * Revisit the async mechanism if there is greater reason.
+         * Bring up the dedicated event connection before subscribing to any
+         * VPP event source. The want_*_events registrations below are issued
+         * on this connection, so VPP delivers all unsolicited notifications to
+         * the event socket, keeping the command socket reply-only.
          */
-        vpp_intf_events_enable_disable(true);
+        if (init_vpp_event_client() != 0) {
+            SAIVPP_ERROR("vpp event client init failed; async events disabled\n");
+        } else {
+            /*
+             * SONiC periodically polls the port status so currently there is no need for
+             * async notification. This also simplifies the synchronous design of saivpp.
+             * Revisit the async mechanism if there is greater reason.
+             */
+            vpp_intf_events_enable_disable(true);
 
-        /* Register with VPP for BFD notifications */
-        vpp_bfd_events_enable_disable(true);
+            /* Register with VPP for BFD notifications */
+            vpp_bfd_events_enable_disable(true);
+        }
 
         /* Enable BFD multihop support in VPP */
         vpp_bfd_udp_enable_multihop();
@@ -2011,25 +2197,27 @@ int set_interface_vrf (const char *hwif_name, u32 sub_id, u32 vrf_id, bool is_ip
 
 static int vpp_intf_events_enable_disable (bool enable)
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = &vat_event_main;
     vl_api_want_interface_events_t *mp;
     int ret;
 
-    VPP_LOCK();
+    EVENT_LOCK();
+    tl_cur_vam = &vat_event_main;
 
     __plugin_msg_base = interface_msg_id_base;
 
-    M (WANT_INTERFACE_EVENTS, mp);
+    M_EV (WANT_INTERFACE_EVENTS, mp);
     mp->enable_disable = enable;
     mp->pid = htonl((uint32_t)getpid());
 
-    S (mp);
-    WR (ret);
+    S_EV (mp);
+    WR_EV (ret);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) enable %d", __func__, ret, enable); }
     else { SAIVPP_INFO("%s enable %d", __func__, enable); }
 
-    VPP_UNLOCK();
+    tl_cur_vam = NULL;
+    EVENT_UNLOCK();
 
     return ret;
 }
@@ -2972,21 +3160,23 @@ int vpp_get_interface_speed (const char *hwif_name, uint32_t *speed)
 
 int vpp_sync_for_events ()
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = &vat_event_main;
     vl_api_control_ping_t *mp_ping;
     int ret;
 
-    VPP_LOCK();
+    EVENT_LOCK();
+    tl_cur_vam = &vat_event_main;
 
     /* Use a control ping for synchronization */
     __plugin_msg_base = memclnt_msg_id_base;
 
-    PING (NULL, mp_ping);
-    S (mp_ping);
+    PING_EV (mp_ping);
+    S_EV (mp_ping);
 
-    WR (ret);
+    WR_EV (ret);
 
-    VPP_UNLOCK();
+    tl_cur_vam = NULL;
+    EVENT_UNLOCK();
 
     return ret;
 }
@@ -3843,25 +4033,27 @@ int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
 
 static int vpp_bfd_events_enable_disable (bool enable)
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = &vat_event_main;
     vl_api_want_bfd_events_t *mp;
     int ret;
 
-    VPP_LOCK();
+    EVENT_LOCK();
+    tl_cur_vam = &vat_event_main;
 
     __plugin_msg_base = bfd_msg_id_base;
 
-    M (WANT_BFD_EVENTS, mp);
+    M_EV (WANT_BFD_EVENTS, mp);
     mp->enable_disable = enable;
     mp->pid = htonl((uint32_t)getpid());
 
-    S (mp);
-    WR (ret);
+    S_EV (mp);
+    WR_EV (ret);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) enable %d", __func__, ret, enable); }
     else { SAIVPP_INFO("%s enable %d", __func__, enable); }
 
-    VPP_UNLOCK();
+    tl_cur_vam = NULL;
+    EVENT_UNLOCK();
 
     return ret;
 }
