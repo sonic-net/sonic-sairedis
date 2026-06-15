@@ -29,8 +29,22 @@ LINK_UP_TRIGGER="${LINK_UP_TRIGGER:-Turn up ports...}"
 KEEP_VETHS_UP_SECONDS="${KEEP_VETHS_UP_SECONDS:-120}"
 KEEP_VETHS_UP_INTERVAL="${KEEP_VETHS_UP_INTERVAL:-3}"
 
+# The SAI PTF T0 framework is designed to build the common switch configuration
+# once and have subsequent tests reuse it (the persisted object IDs in
+# /tmp/sai_model) by passing common_configured=true. When that path is NOT used,
+# every test re-runs sai_create_switch + 32x sai_create_hostif inside the same
+# long-lived saiserver/VPP process, which returns a null OID on the duplicate
+# host-interface and crashes saiserver - so only the first test can run. With
+# reuse enabled (default) the harness runs each test target as its own ptf
+# invocation against one long-lived saiserver/VPP: the first builds + persists
+# the common config (common_configured=false), the rest reuse it
+# (common_configured=true). Set COMMON_CONFIGURED_REUSE=0 to fall back to a
+# single ptf invocation for all targets (legacy behavior).
+COMMON_CONFIGURED_REUSE="${COMMON_CONFIGURED_REUSE:-1}"
+
 DEBUG=0
 TEST_FILTER="${TEST_FILTER:-}"
+TEST_FILTERS=()
 VPP_PID=""
 SAISERVER_PID=""
 REDIS_PID=""
@@ -51,15 +65,24 @@ die()
 usage()
 {
     cat <<'EOF'
-Usage: run_test.sh [--debug] [TEST_FILTER]
+Usage: run_test.sh [--debug] [TEST_FILTER ...]
 
 Examples:
   run_test.sh
   run_test.sh sai_route_test.RouteRifTest
+  run_test.sh sai_route_test.RouteRifTest sai_route_test.RouteRifv6Test
   run_test.sh --debug sai_route_test.RouteRifTest
 
-Without TEST_FILTER, PTF runs the full /sai_test suite. In debug mode,
-VPP, saiserver, and veth interfaces are left running for vppctl inspection.
+Multiple TEST_FILTERs run sequentially. By default each target runs as its own
+ptf invocation against one long-lived saiserver/VPP: the first builds and
+persists the common config, the rest reuse it (common_configured=true). This is
+required because the VPP SAI backend cannot re-create the switch/host-interfaces
+twice in one process. Set COMMON_CONFIGURED_REUSE=0 to run all targets in a
+single legacy invocation.
+
+Without any TEST_FILTER, every discovered test class under /sai_test runs (each
+as its own reuse invocation). In debug mode, VPP, saiserver, and veth
+interfaces are left running for vppctl inspection.
 EOF
 }
 
@@ -89,12 +112,7 @@ parse_args()
     done
 
     if [[ $# -gt 0 ]]; then
-        TEST_FILTER="$1"
-        shift
-    fi
-
-    if [[ $# -gt 0 ]]; then
-        die "unexpected extra argument(s): $*"
+        TEST_FILTERS=("$@")
     fi
 }
 
@@ -528,14 +546,32 @@ start_saiserver()
 
 build_ptf_args()
 {
+    # Args: <test_target> <common_configured> <xunit_dir>
+    #   test_target      a ptf test selector (module or module.Class), or empty
+    #                    for the whole /sai_test suite.
+    #   common_configured  "true"  -> reuse the previously persisted common config
+    #                      "false" -> build (and persist) the common config
+    #                      ""      -> do not pass the param at all (legacy)
+    #   xunit_dir        directory PTF writes its JUnit XML into. PTF rmtree's
+    #                    this dir on startup, so it must be a private per-call
+    #                    dir (NOT a bind mount, NOT shared across invocations).
+    local test_target="$1"
+    local common_configured="$2"
+    local xunit_dir="$3"
+    local test_params="thrift_server='127.0.0.1';port_map_file='$PTF_PORTMAP'"
+
+    if [[ -n "$common_configured" ]]; then
+        test_params="${test_params};common_configured='${common_configured}'"
+    fi
+
     PTF_ARGS=(--test-dir "$SAI_TEST_DIR")
 
     for ((port_index = 0; port_index < PORT_COUNT; port_index++)); do
         PTF_ARGS+=(--interface "${port_index}@$(ptf_interface_name "$port_index")")
     done
 
-    PTF_ARGS+=(--test-params "thrift_server='127.0.0.1';port_map_file='$PTF_PORTMAP'")
-    PTF_ARGS+=(--xunit --xunit-dir "$TEST_RESULTS_DIR")
+    PTF_ARGS+=(--test-params "$test_params")
+    PTF_ARGS+=(--xunit --xunit-dir "$xunit_dir")
 
     # The T0 sanity flood test sends one unknown-unicast frame and expects it to
     # be flooded to every other member port of the VLAN. PTF's flood verifier
@@ -546,9 +582,38 @@ build_ptf_args()
     # no-op, which is the intended/standard mode for flooding tests.
     PTF_ARGS+=(--relax)
 
-    if [[ -n "$TEST_FILTER" ]]; then
-        PTF_ARGS+=("$TEST_FILTER")
+    if [[ -n "$test_target" ]]; then
+        PTF_ARGS+=("$test_target")
     fi
+}
+
+# Enumerate every test class under $SAI_TEST_DIR as "module.Class" selectors so
+# each can run as its own config-reuse ptf invocation. Best-effort: on any
+# failure prints nothing and the caller falls back to a single invocation.
+enumerate_test_classes()
+{
+    python3 - "$SAI_TEST_DIR" <<'PY' 2>/dev/null || true
+import sys, unittest
+test_dir = sys.argv[1]
+try:
+    suite = unittest.TestLoader().discover(
+        test_dir, pattern="sai_*_test.py", top_level_dir=test_dir)
+except Exception:
+    sys.exit(0)
+seen = []
+def walk(s):
+    for t in s:
+        if isinstance(t, unittest.TestSuite):
+            walk(t)
+        else:
+            cls = t.__class__
+            name = "%s.%s" % (cls.__module__, cls.__name__)
+            if name not in seen:
+                seen.append(name)
+walk(suite)
+for n in seen:
+    print(n)
+PY
 }
 
 print_debug_state()
@@ -631,10 +696,271 @@ cleanup()
 
 run_ptf()
 {
-    local test_rc
+    local -a targets=()
 
-    build_ptf_args
-    log "Running PTF${TEST_FILTER:+ filter: $TEST_FILTER}"
+    if [[ "${#TEST_FILTERS[@]}" -gt 0 ]]; then
+        targets=("${TEST_FILTERS[@]}")
+    elif [[ -n "$TEST_FILTER" ]]; then
+        targets=("$TEST_FILTER")
+    fi
+
+    # Legacy single invocation (reuse disabled): start the backend once and run
+    # exactly one ptf process for whatever was requested.
+    if [[ "$COMMON_CONFIGURED_REUSE" != "1" ]]; then
+        local legacy_target=""
+        [[ "${#targets[@]}" -gt 0 ]] && legacy_target="${targets[0]}"
+        start_backend
+        local legacy_rc=0
+        run_one_ptf "$legacy_target" "" || legacy_rc="$?"
+        exit "$legacy_rc"
+    fi
+
+    # Reuse mode. Plan the run as a sequence of (group_id, target) lines, grouped
+    # by each test's common-config signature (the kwargs it passes to
+    # T0TestBase.setUp). Tests that need a DIFFERENT common config than the
+    # group's first test cannot reuse it (e.g. ECMP tests need next-hop groups),
+    # so each signature gets its own group. Every group runs against a FRESHLY
+    # restarted backend: the first test in the group builds + persists that
+    # group's config (common_configured=false), the rest reuse it
+    # (common_configured=true). The backend restart (fresh saiserver) is what
+    # makes a second full config build safe — building twice in ONE saiserver
+    # process crashes it (the original "one test per container" bug).
+    local plan
+    if [[ "${#targets[@]}" -gt 0 ]]; then
+        plan="$(plan_test_groups "${targets[@]}")"
+    else
+        log "No test target given; planning all discovered test classes"
+        plan="$(plan_test_groups)"
+    fi
+
+    if [[ -z "$plan" ]]; then
+        log "Planning produced no targets; running full suite in one invocation"
+        start_backend
+        local suite_rc=0
+        run_one_ptf "" "false" || suite_rc="$?"
+        exit "$suite_rc"
+    fi
+
+    local total
+    total="$(printf '%s\n' "$plan" | grep -c .)"
+    log "Planned ${total} test target(s) across $(printf '%s\n' "$plan" | cut -f1 | sort -u | grep -c .) config group(s)"
+
+    local overall_rc=0
+    local prev_group=""
+    local idx_in_group=0
+    local idx=0
+    local group target sig common_configured rc
+
+    while IFS=$'\t' read -r group target sig; do
+        [[ -z "$target" ]] && continue
+        idx=$((idx + 1))
+
+        if [[ "$group" != "$prev_group" ]]; then
+            # New config group: restart the backend for a clean saiserver, then
+            # the first test of the group rebuilds the common config.
+            if [[ -n "$prev_group" ]]; then
+                stop_backend
+            fi
+            log "### Config group ${group} (signature: ${sig:-()}) ###"
+            start_backend
+            prev_group="$group"
+            idx_in_group=0
+        fi
+
+        if [[ "$idx_in_group" -eq 0 ]]; then
+            common_configured="false"
+        else
+            common_configured="true"
+        fi
+        idx_in_group=$((idx_in_group + 1))
+
+        log "=== [${idx}/${total}] ${target} (group ${group}, common_configured=${common_configured}) ==="
+        rc=0
+        run_one_ptf "$target" "$common_configured" || rc="$?"
+        if [[ "$rc" -ne 0 ]]; then
+            overall_rc="$rc"
+            log "test target '${target}' returned rc=${rc}"
+        fi
+    done <<< "$plan"
+
+    exit "$overall_rc"
+}
+
+# Start the runtime backend (Redis + VPP + saiserver + veth-up watchdog). VPP and
+# saiserver are fresh processes each time this is called, so a subsequent group's
+# common_configured=false config build runs in a clean saiserver and does not hit
+# the duplicate-create crash. The pre-created veth/PortChannel netdevs persist
+# across restarts; only the dataplane daemons are recycled.
+start_backend()
+{
+    start_redis
+    start_vpp
+    start_saiserver
+    keep_vpp_veths_up &
+    KEEP_VETHS_UP_PID="$!"
+}
+
+# Stop the runtime backend and reset per-run state so the next group starts clean.
+stop_backend()
+{
+    if [[ -n "$KEEP_VETHS_UP_PID" ]]; then
+        kill "$KEEP_VETHS_UP_PID" >/dev/null 2>&1 || true
+        wait "$KEEP_VETHS_UP_PID" 2>/dev/null || true
+        KEEP_VETHS_UP_PID=""
+    fi
+    terminate_process saiserver "$SAISERVER_PID"; SAISERVER_PID=""
+    terminate_process vpp "$VPP_PID"; VPP_PID=""
+    terminate_process redis "$REDIS_PID"; REDIS_PID=""
+    # Drop persisted SAI object IDs and the link-up marker so the next group's
+    # first test rebuilds (and re-persists) its own config and re-asserts veths.
+    rm -rf /tmp/sai_model 2>/dev/null || true
+    rm -f "$LINKS_UP_MARKER" 2>/dev/null || true
+}
+
+# Emit a run plan: tab-separated "<group_id>\t<module.Class>\t<signature>" lines,
+# grouped by each test class's common-config signature so identical-config tests
+# run together (and can reuse one config build). With no args, plans every
+# discovered test class under $SAI_TEST_DIR.
+plan_test_groups()
+{
+    SAI_TEST_DIR="$SAI_TEST_DIR" python3 - "$@" <<'PY'
+import ast, os, sys, glob, collections
+
+test_dir = os.environ.get("SAI_TEST_DIR", "/sai_test")
+targets = sys.argv[1:]
+
+# kwargs that do NOT change the common config (so they must not split groups)
+NON_CONFIG_KW = {"skip_reason", "wait_sec"}
+
+mod_file = {}
+for p in glob.glob(os.path.join(test_dir, "sai_*_test.py")):
+    mod_file[os.path.basename(p)[:-3]] = p
+
+# Build a cross-file class registry: name -> {bases:[...], setup:FunctionDef|None,
+# module:str}. Classes can subclass intermediate test bases (e.g. EcmpBaseTestV4)
+# whose setUp sets the common-config kwargs, so signatures must resolve through
+# the inheritance chain, not just the class's own setUp.
+registry = {}
+mod_classes = collections.OrderedDict()
+for mod in sorted(mod_file):
+    try:
+        tree = ast.parse(open(mod_file[mod]).read(), mod_file[mod])
+    except Exception:
+        continue
+    names = []
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        names.append(node.name)
+        bases = [b.id for b in node.bases if isinstance(b, ast.Name)]
+        setup = next((m for m in node.body
+                      if isinstance(m, ast.FunctionDef) and m.name == "setUp"), None)
+        # last definition wins if duplicated
+        registry[node.name] = {"bases": bases, "setup": setup, "module": mod}
+    mod_classes[mod] = names
+
+def _kwargs_from_setup_call(setup):
+    """Return (kwargs_str_or_None, base_to_recurse_or_None) for a class's setUp.
+    kwargs_str: config signature if this setUp passes config kwargs.
+    base_to_recurse: if setUp only chains to super()/Base.setUp() without config
+    kwargs, the class name to resolve the signature from."""
+    for sub in ast.walk(setup):
+        if not (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                and sub.func.attr == "setUp"):
+            continue
+        kws = []
+        for kw in sub.keywords:
+            if kw.arg in NON_CONFIG_KW or kw.arg is None:
+                continue
+            try:
+                val = ast.literal_eval(kw.value)
+            except Exception:
+                val = "?"
+            kws.append("%s=%s" % (kw.arg, val))
+        if kws:
+            return ("|".join(sorted(kws)), None)
+        # No config kwargs: figure out which base this chains to.
+        f = sub.func.value
+        if isinstance(f, ast.Call) and isinstance(f.func, ast.Name) \
+                and f.func.id == "super":
+            return (None, "__super__")          # super().setUp()
+        if isinstance(f, ast.Name):
+            return (None, f.id)                 # <Base>.setUp(self, ...)
+        return (None, "__super__")
+    return ("()", None)
+
+def signature(clsname, seen=None):
+    if seen is None:
+        seen = set()
+    if clsname in seen or clsname not in registry:
+        return "()"   # unknown base (e.g. T0TestBase) -> default config
+    seen.add(clsname)
+    info = registry[clsname]
+    setup = info["setup"]
+    if setup is None:
+        # inherits setUp wholesale from first base
+        for b in info["bases"]:
+            return signature(b, seen)
+        return "()"
+    sig, base = _kwargs_from_setup_call(setup)
+    if sig is not None:
+        return sig
+    # chained to super/base without config kwargs -> resolve that base
+    if base == "__super__":
+        for b in info["bases"]:
+            return signature(b, seen)
+        return "()"
+    return signature(base, seen)
+
+# Expand requested targets (or everything) into (module, class) pairs.
+pairs = []
+if not targets:
+    for mod in mod_classes:
+        for c in mod_classes[mod]:
+            pairs.append((mod, c))
+else:
+    for t in targets:
+        if "." in t:
+            mod, cls = t.split(".", 1)
+            pairs.append((mod, cls))
+        elif t in mod_classes:
+            for c in mod_classes[t]:
+                pairs.append((t, c))
+        else:
+            pairs.append((t, ""))   # unknown selector: run as-is, default group
+
+# Group by resolved signature, preserving first-seen order.
+groups = collections.OrderedDict()
+for mod, cls in pairs:
+    sig = signature(cls) if cls else "()"
+    groups.setdefault(sig, []).append("%s.%s" % (mod, cls) if cls else mod)
+
+for gid, (sig, tlist) in enumerate(groups.items()):
+    for t in tlist:
+        sys.stdout.write("%d\t%s\t%s\n" % (gid, t, sig))
+PY
+}
+
+# Run a single ptf invocation for one target. Echoes PTF output through and
+# triggers the one-time veth bring-up on the framework's "Turn up ports..."
+# marker. Returns ptf's exit code.
+#
+# PTF rmtree's its --xunit-dir on startup, so each invocation gets its own
+# private temp dir (which PTF may freely wipe), and the resulting JUnit XML is
+# copied into the shared $TEST_RESULTS_DIR afterward. This keeps results from
+# accumulating across invocations and avoids EBUSY when $TEST_RESULTS_DIR is a
+# bind mount (rmtree of a mount point fails).
+run_one_ptf()
+{
+    local test_target="$1"
+    local common_configured="$2"
+    local test_rc
+    local xunit_dir
+
+    xunit_dir="$(mktemp -d /tmp/ptf-xunit.XXXXXX)"
+
+    build_ptf_args "$test_target" "$common_configured" "$xunit_dir"
+    log "Running PTF${test_target:+ filter: $test_target}"
 
     set +e
     PYTHONUNBUFFERED=1 ptf "${PTF_ARGS[@]}" 2>&1 | while IFS= read -r ptf_line; do
@@ -649,7 +975,14 @@ run_ptf()
     test_rc="${PIPESTATUS[0]}"
     set -e
 
-    exit "$test_rc"
+    # Collect this invocation's JUnit XML into the shared results dir.
+    if [[ -n "$TEST_RESULTS_DIR" ]]; then
+        mkdir -p "$TEST_RESULTS_DIR"
+        cp -f "$xunit_dir"/*.xml "$TEST_RESULTS_DIR"/ 2>/dev/null || true
+    fi
+    rm -rf "$xunit_dir"
+
+    return "$test_rc"
 }
 
 main()
@@ -659,15 +992,10 @@ main()
     trap cleanup EXIT
 
     preflight
-    start_redis
     disable_ipv6_autoconf
     create_veths
     create_portchannels
     create_sonic_vpp_ifmap
-    start_vpp
-    start_saiserver
-    keep_vpp_veths_up &
-    KEEP_VETHS_UP_PID="$!"
     run_ptf
 }
 
