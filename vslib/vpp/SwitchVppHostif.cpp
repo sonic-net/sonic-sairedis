@@ -358,6 +358,27 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
 
     configure_lcp_interface(hwif_name, dev, true);
 
+    /*
+     * Re-apply the port's configured admin state to the freshly created VPP host
+     * interface. The SAI port admin state may have been set (e.g. during port
+     * bring-up) before this host interface existed; at that point
+     * vpp_set_interface_state() could not resolve the hwif name (no tap yet) and
+     * the admin-up was silently dropped. Without re-applying it here the VPP
+     * host-interface stays admin-down, which keeps the paired kernel netdev (and
+     * therefore the PTF-side veth carrier) down, causing ENETDOWN on transmit.
+     */
+    {
+        sai_attribute_t admin_attr;
+        admin_attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+        if (get(SAI_OBJECT_TYPE_PORT, obj_id, 1, &admin_attr) == SAI_STATUS_SUCCESS &&
+            admin_attr.value.booldata)
+        {
+            interface_set_state(hwif_name, true);
+            SWSS_LOG_NOTICE("Applied admin-up to VPP host interface %s for port %s",
+                    hwif_name, sai_serialize_object_id(obj_id).c_str());
+        }
+    }
+
     {
         bool link_up = false;
 
