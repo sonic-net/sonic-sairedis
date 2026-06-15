@@ -1041,20 +1041,22 @@ vl_api_l2_macs_event_t_handler (vl_api_l2_macs_event_t *mp)
 
     u32 n = ntohl(mp->n_macs);
     if (n == 0) return;
-    if (n > VPP_MAC_EVENT_BATCH_MAX)
-    {
-        SAIVPP_ERROR("Got %d MACs in event, truncating to %d",
-                     n, VPP_MAC_EVENT_BATCH_MAX);
-        n = VPP_MAC_EVENT_BATCH_MAX;
-    }
 
-    for (u32 i = 0; i < n; i++) {
-        vl_api_mac_entry_t *e = &mp->mac[i];
-        memcpy(g_mac_event_batch[i].mac, e->mac_addr, 6);
-        g_mac_event_batch[i].sw_if_index = ntohl(e->sw_if_index);
-        g_mac_event_batch[i].action = (uint8_t)e->action;
+    // Process the full batch in chunks to avoid dropping FDB state deltas.
+    for (u32 off = 0; off < n; off += VPP_MAC_EVENT_BATCH_MAX)
+    {
+        u32 chunk = n - off;
+        if (chunk > VPP_MAC_EVENT_BATCH_MAX)
+            chunk = VPP_MAC_EVENT_BATCH_MAX;
+
+        for (u32 i = 0; i < chunk; i++) {
+            vl_api_mac_entry_t *e = &mp->mac[off + i];
+            memcpy(g_mac_event_batch[i].mac, e->mac_addr, 6);
+            g_mac_event_batch[i].sw_if_index = ntohl(e->sw_if_index);
+            g_mac_event_batch[i].action = (uint8_t)e->action;
+        }
+        g_mac_event_cb(g_mac_event_batch, chunk, g_mac_event_ctx);
     }
-    g_mac_event_cb(g_mac_event_batch, n, g_mac_event_ctx);
 }
 
 /* ----- end WANT_L2_MACS_EVENTS2 handlers (implementations below) ----- */
