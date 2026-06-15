@@ -4654,6 +4654,19 @@ vpp_want_l2_macs_events2 (bool enable, vpp_mac_event_cb_fn cb, void *ctx)
     vl_api_want_l2_macs_events2_t *mp;
     int ret;
 
+    /*
+     * NOTE: Single-switch assumption: VPP has one L2 MAC event stream per process.
+     * g_mac_event_cb/ctx are process-globals — the last registration wins and
+     * one switch's teardown nulls the callback for all.  Assert here so a
+     * future multi-switch deployment fails loudly instead of silently losing
+     * MAC events from all but the last registered switch.
+     * Supporting multiple switches would require demultiplexing events by
+     * sw_if_index at this layer.
+     */
+    if (enable) {
+        assert(g_mac_event_cb == NULL && "only one switch may register MAC events at a time");
+    }
+
     g_mac_event_cb = enable ? cb : NULL;
     g_mac_event_ctx = enable ? ctx : NULL;
 
