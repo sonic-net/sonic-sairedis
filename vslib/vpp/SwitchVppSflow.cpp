@@ -143,3 +143,32 @@ sai_status_t SwitchVpp::sflow_hostif_trap_samplepacket_remove(
     return SAI_STATUS_SUCCESS;
 
 }
+
+sai_status_t SwitchVpp::sflow_hostif_table_entry_create(
+    _In_ sai_object_id_t object_id,
+    _In_ sai_object_id_t switch_id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(object_id);
+
+    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY, sid, switch_id, attr_count,attr_list));
+
+    SWSS_LOG_NOTICE("HOSTIF_TABLE_ENTRY %s created (bookkeeping)", sid.c_str());
+    
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::sflow_hostif_table_entry_remove(
+    _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY, serializedObjectId));
+
+    SWSS_LOG_NOTICE("HOSTIF_TABLE_ENTRY %s removed", serializedObjectId.c_str());
+
+    return SAI_STATUS_SUCCESS;
+}
