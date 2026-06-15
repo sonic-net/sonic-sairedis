@@ -1226,7 +1226,7 @@ void SwitchVpp::processFdbEntriesForAging()
         key.bd_id = bd_it->second;
 
         switch (ev.action) {
-        case 0: /* ADD — newly learned */
+        case VPP_MAC_ACTION_ADD:
             if (m_vpp_fdb_entries.find(key) == m_vpp_fdb_entries.end()) {
                 if (generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_LEARNED)) {
                     m_vpp_fdb_entries[key] = ev.sw_if_index;
@@ -1238,7 +1238,7 @@ void SwitchVpp::processFdbEntriesForAging()
             }
             break;
 
-        case 1: /* DELETE — aged out */
+        case VPP_MAC_ACTION_DELETE:
             if (m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end()) {
                 if (generateFdbAgedEvent(key)) {
                     m_vpp_fdb_entries.erase(key);
@@ -1250,7 +1250,7 @@ void SwitchVpp::processFdbEntriesForAging()
             }
             break;
 
-        case 2: /* MOVE — port changed */
+        case VPP_MAC_ACTION_MOVE:
             if (generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_MOVE)) {
                 m_vpp_fdb_entries[key] = ev.sw_if_index;
             }

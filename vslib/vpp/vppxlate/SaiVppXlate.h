@@ -343,11 +343,18 @@ typedef enum {
     extern int l2fib_flush_int(const char *hwif_name);
     extern int l2fib_flush_bd(uint32_t bd_id);
 
+    /* MAC event action codes from VPP l2_macs_event */
+    typedef enum {
+        VPP_MAC_ACTION_ADD    = 0,  /* newly learned */
+        VPP_MAC_ACTION_DELETE = 1,  /* aged out */
+        VPP_MAC_ACTION_MOVE   = 2,  /* moved to a different port */
+    } vpp_mac_action_t;
+
     /* MAC event callback types for push-based FDB notification via WANT_L2_MACS_EVENTS2 */
     typedef struct {
         uint8_t  mac[6];
         uint32_t sw_if_index;
-        uint8_t  action; /* 0=ADD(learn), 1=DELETE(age), 2=MOVE */
+        uint8_t  action; /* vpp_mac_action_t */
     } vpp_mac_event_t;
 
     /* Batch callback: invoked once per l2_macs_event message with all entries.

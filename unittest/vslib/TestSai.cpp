@@ -93,11 +93,10 @@ TEST(Sai, bulkGet)
 }
 TEST(Sai, fdbAgingWakeEvent)
 {
-    // Verify the FDB aging thread wakes when a switch is created and shuts
-    // down cleanly. The wake event path (SaiFdbAging.cpp: selectable==wakeEvent) is
-    // exercised by the fact that apiInitialize + create(SWITCH) starts the
-    // thread and installs the wake functor, and remove(SWITCH) triggers a
-    // clean join without hanging.
+    // Smoke test: verify the FDB aging thread starts and shuts down cleanly
+    // without deadlocking. The aging thread's normal wake path (MAC event
+    // delivery via m_fdbAgingWakeEvent) is NOT exercised here — this only
+    // confirms the start/stop lifecycle completes without hanging.
     Sai sai;
 
     EXPECT_EQ(sai.apiInitialize(0, &test_services), SAI_STATUS_SUCCESS);
