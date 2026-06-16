@@ -77,18 +77,12 @@ docker build --no-cache \
 **Selectors:** pass one or more targets after the image name. Each target is either a **module** (runs every class in that file) or `**module.Class`** (runs one class). `PORT_COUNT=32` is the standard T0 topology (required for most tests).
 
 
-| Module              | Example Class                      | Coverage                                                         |
-| ------------------- | ---------------------------------- | ---------------------------------------------------------------- |
+| Module           | Example Class             | Coverage                                     |
+| ---------------- | ------------------------- | -------------------------------------------- |
 | `sai_sanity_test`   | `SaiSanityTest`                    | T0 bring-up smoke test — verifies basic config and packet flood  |
-| `sai_route_test`    | `DropRouteTest`                    | L3 routes: RIF, LAG, SVI, default/drop/remove, LPM, MAC learning |
-| `sai_neighbor_test` | `AddHostRouteTest`                 | Neighbor adjacencies, host routes, add/remove, prefix changes    |
-| `sai_rif_test`      | `IngressDisableTestV4`             | Router interface ingress admin-state, MTU, MAC update            |
-| `sai_ecmp_test`     | `EcmpLagDisableTestV4`             | ECMP hash fields, nexthop groups, LAG+ECMP combinations          |
-| `sai_lag_test`      | `LagConfigTest`                    | LAG config, load-balance hashing, member add/remove, disable     |
-| `sai_port_test`     | `PortAutoNegTest`                  | Front-panel port attributes (auto-negotiation)                   |
-| `sai_vlan_test`     | `Vlan_Domain_Forwarding_Test`      | VLAN forwarding, tagging, flooding, MAC learning                 |
-| `sai_fdb_test`      | `L2PortForwardingTest`             | FDB learning, aging, flush, MAC move                             |
-| `sai_tunnel_test`   | `BasicIPInIPTunnelEncapv4Inv4Test` | IP-in-IP tunnel encap/decap, TTL, ECN, peer mode                 |
+| `sai_route_test` | `DropRouteTest`           | Drop route programmed and honored            |
+| `sai_rif_test`   | `IngressDisableTestV4`    | Router interface ingress admin-state control |
+| `sai_ecmp_test`  | `EcmpLagDisableTestV4`    | ECMP + LAG member disable                    |
 
 
 ### **Usage**
@@ -184,7 +178,7 @@ docker rm -f <instanceName>
 
 ## 6) Demo #4: Where we are (compatibility matrix)
 
-Open the latest matrix:
+### SAI Coverage By Test
 
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis
@@ -194,6 +188,21 @@ $EDITOR .azure-pipelines/docker-sai-test-vpp/results/compatibility-matrix.md    
 - Generated automatically from the JUnit XML of a full suite run (`gen_compatibility_matrix.py`): **timestamp**, a **summary table** (PASS/FAIL/ERROR/SKIP with %), and a **legend** (result icons + SAI status codes).
 - **Today: 11 PASS / large remainder FAIL or ERROR** — so the framework works end-to-end, but the backend is **early**.
 - The dominant real gap is the **L3-over-LAG family**: neighbor/route/ECMP on LAG-backed router interfaces are rejected (`-5` INVALID_PARAMETER) or not forwarded to LAG members. That's the next investigation.
-- We've already separated **genuine VPP/SAI gaps** from **test-framework artifacts**, so the matrix reflects real backend status.
 
-The framework is solid and repeatable; the backend coverage is the work ahead — the matrix is how we measure it climbing.
+### SAI Coverage By Functionality
+
+
+| SAI functionality          | Operation                                  | Status   | Proven by                                                                   |
+| -------------------------- | ------------------------------------------ | -------- | --------------------------------------------------------------------------- |
+| Switch init                | `create_switch`                            | ✅ Tested | every passing test (switch created in common config)                        |
+| Port create + attributes   | `create_port`, set admin/MTU/speed         | ✅ Tested | every passing test (ports configured in common config)                      |
+| Host interface (TAP)       | `create_hostif`                            | ✅ Tested | every passing test (`Create Host intfs...`)                                 |
+| Bridge / VLAN / FDB        | `create_vlan`, `create_fdb_entry`          | ✅ Tested | `StaicSviMacFloodingTest` / `...V6` (PASS)                                  |
+| **Router interface + IP**  | `create_router_interface` (+ RIF IP)       | ✅ Tested | `DefaultRouteV4Test` / `...V6` (PASS) — RIF built and used                  |
+| **Route program / remove** | `create_route_entry`, `remove_route_entry` | ✅ Tested | `DefaultRoute`*, `DropRouteTest` / `...v6`, `RemoveRouteV4Test` (PASS)      |
+| RIF admin-state control    | `set_router_interface_attribute`           | ✅ Tested | `IngressDisableTestV4` / `...V6` (PASS)                                     |
+| ECMP / LAG member disable  | nexthop-group + LAG member admin           | ✅ Tested | `EcmpLagDisableTestV4` / `...V6` (PASS)                                     |
+| Neighbor on LAG-backed RIF | `create_neighbor_entry`                    | ⚠️ Gap   | `AddHostRouteTest`, `RemoveAddNeighborTest*` (FAIL `-5`)                    |
+| L3 forwarding over LAG     | route → nexthop → LAG member egress        | ⚠️ Gap   | `RouteRifTest`, `LagMultipleRouteTest` (packet not received on LAG members) |
+| ECMP hash distribution     | hash-field load-balance                    | ⚠️ Gap   | `EcmpHashField*` (packet on unexpected port)                                |
+
