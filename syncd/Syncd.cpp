@@ -1576,6 +1576,8 @@ void Syncd::processPendingDampingSync()
 
 void Syncd::flushPendingDampingNotifications()
 {
+    SWSS_LOG_ENTER();
+
     std::queue<std::vector<sai_port_oper_status_notification_t>> localQueue;
     {
         std::lock_guard<std::mutex> lock(m_pendingNotificationsMutex);
