@@ -96,14 +96,6 @@ int SwitchVpp::vs_set_dev_mac_address(
     return err;
 }
 
-int SwitchVpp::promisc(
-        _In_ const char *dev)
-{
-    SWSS_LOG_ENTER();
-
-    return 0;
-}
-
 sai_status_t SwitchVpp::add_tc_filter_redirect(
         _In_ const std::string& tap,
         _In_ const std::string& hostIfname)
@@ -356,21 +348,6 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
     const char *dev = name.c_str();
     const char *hwif_name = tap_to_hwif_name(dev);
 
-    configure_lcp_interface(hwif_name, dev, true);
-
-    {
-        bool link_up = false;
-
-        interface_get_state(hwif_name, &link_up);
-
-        auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
-
-        send_port_oper_status_notification(obj_id, state, true);
-
-        SWSS_LOG_NOTICE("VPP interface %s(%s) oper state %s", hwif_name, dev,
-                (link_up ? "UP" : "DOWN"));
-    }
-
     sai_attribute_t attr;
 
     memset(&attr, 0, sizeof(attr));
@@ -386,26 +363,43 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
                 sai_serialize_status(status).c_str());
     }
 
-    int err = vs_set_dev_mac_address(name.c_str(), attr.value.mac);
-
-    if (err < 0)
-    {
-        SWSS_LOG_ERROR("failed to set MAC address %s for %s",
-                sai_serialize_mac(attr.value.mac).c_str(),
-                name.c_str());
-
-        close(tapfd);
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    err = sw_interface_set_mac(hwif_name, attr.value.mac);
+    int err = sw_interface_set_mac(hwif_name, attr.value.mac);
 
     if (err < 0)
     {
         SWSS_LOG_ERROR("failed to set MAC address %s for %s",
                 sai_serialize_mac(attr.value.mac).c_str(),
                 hwif_name);
+
+        close(tapfd);
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    configure_lcp_interface(hwif_name, dev, true);
+
+    interface_set_promiscuous(hwif_name, true);
+
+    {
+        bool link_up = false;
+
+        interface_get_state(hwif_name, &link_up);
+
+        auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
+
+        send_port_oper_status_notification(obj_id, state, true);
+
+        SWSS_LOG_NOTICE("VPP interface %s(%s) oper state %s", hwif_name, dev,
+                (link_up ? "UP" : "DOWN"));
+    }
+
+    err = vs_set_dev_mac_address(name.c_str(), attr.value.mac);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("failed to set MAC address %s for %s",
+                sai_serialize_mac(attr.value.mac).c_str(),
+                name.c_str());
 
         close(tapfd);
 

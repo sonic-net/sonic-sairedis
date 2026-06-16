@@ -13,6 +13,7 @@
 #include "vppxlate/SaiVppXlate.h"
 
 #include <list>
+#include <set>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -218,9 +219,6 @@ namespace saivs
                     _In_ const char *dev,
                     _In_ const sai_mac_t& mac);
 
-            static int promisc(
-                    _In_ const char *dev);
-
             static sai_status_t add_tc_filter_redirect(
                     _In_ const std::string& tap,
                     _In_ const std::string& hostIfname);
@@ -303,6 +301,11 @@ namespace saivs
 	    sai_status_t vpp_create_lag_member(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
+	    sai_status_t setLagMember(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _In_ const sai_attribute_t* attr);
+	    sai_status_t updateLagMemberVppState(
+                    _In_ sai_object_id_t lag_member_oid);
 	    sai_status_t removeLagMember(
                     _In_ sai_object_id_t lag_member_oid);
 	    sai_status_t vpp_remove_lag_member(
@@ -977,6 +980,7 @@ namespace saivs
 
         private: // VPP
 	    std::map<sai_object_id_t, platform_bond_info_t> m_lag_bond_map;
+	    std::set<sai_object_id_t> m_lag_members_in_vpp;
 	    std::mutex LagMapMutex;
 
             static int currentMaxInstance;

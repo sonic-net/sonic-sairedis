@@ -297,6 +297,7 @@ typedef enum {
     extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
     extern int interface_ip_address_del_all(const char *hwif_name);
     extern int interface_set_state (const char *hwif_name, bool is_up);
+    extern int interface_set_promiscuous (const char *hwif_name, bool promisc_on);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address);
