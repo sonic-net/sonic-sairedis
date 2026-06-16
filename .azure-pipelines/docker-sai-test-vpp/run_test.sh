@@ -665,6 +665,26 @@ terminate_process()
     kill -9 "$process_pid" >/dev/null 2>&1 || true
 }
 
+# In --debug mode, hold the script (PID 1) open after the tests finish so the
+# container keeps running with VPP, saiserver, Redis, and the veths still up for
+# interactive `vppctl` / `docker exec` inspection. Without this the entrypoint
+# would exit right after the last test and Docker would stop the container,
+# tearing down exactly the state debug mode is meant to preserve. Exit the
+# container with `docker rm -f <name>` when done.
+debug_hold()
+{
+    [[ "$DEBUG" -eq 1 ]] || return 0
+
+    log "Debug mode: tests complete; holding container open for inspection."
+    log "Inspect with: docker exec <name> vppctl show interface"
+    log "Stop with:    docker rm -f <name>"
+    # Sleep in a loop so the process stays in PID 1 and reaps cleanly on signal.
+    while true; do
+        sleep 3600 &
+        wait "$!"
+    done
+}
+
 cleanup()
 {
     local status="$?"
@@ -712,6 +732,7 @@ run_ptf()
         start_backend
         local legacy_rc=0
         run_one_ptf "$legacy_target" "" || legacy_rc="$?"
+        debug_hold
         exit "$legacy_rc"
     fi
 
@@ -738,6 +759,7 @@ run_ptf()
         start_backend
         local suite_rc=0
         run_one_ptf "" "false" || suite_rc="$?"
+        debug_hold
         exit "$suite_rc"
     fi
 
@@ -783,6 +805,7 @@ run_ptf()
         fi
     done <<< "$plan"
 
+    debug_hold
     exit "$overall_rc"
 }
 
