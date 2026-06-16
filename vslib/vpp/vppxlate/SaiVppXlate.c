@@ -406,6 +406,8 @@ do {                                                            \
 #define VPP_MAX_CTX 16
 #define VPP_CTX_INDEX_MASK 0xff
 #define VPP_CTX_GENERATION_SHIFT 8
+/* Context index 0 is reserved to mean "no/invalid context"; valid indices are 1..VPP_MAX_CTX-1. */
+#define VPP_INVALID_CTX_INDEX 0
 typedef struct _vpp_index_map_ {
     uint32_t index_map;
     uintptr_t ptr[VPP_MAX_CTX];
@@ -485,6 +487,7 @@ void vpp_mutex_unlock ()
  */
 static uint32_t alloc_index ()
 {
+    /* idx starts at 1 because index 0 (VPP_INVALID_CTX_INDEX) is reserved. */
     for (uint32_t idx = 1; idx < VPP_MAX_CTX; idx++) {
         uint32_t mask = (uint32_t)(1 << idx);
         if ((idx_map.index_map & mask) == 0) {
@@ -493,15 +496,15 @@ static uint32_t alloc_index ()
         }
     }
 
-    return 0;
+    return VPP_INVALID_CTX_INDEX;
 }
 
 static uint32_t store_ptr (void *ptr)
 {
     uint32_t idx = alloc_index();
 
-    if (idx == 0) {
-        return 0;
+    if (idx == VPP_INVALID_CTX_INDEX) {
+        return VPP_INVALID_CTX_INDEX;
     }
 
     idx_map.ptr[idx] = (uintptr_t) ptr;
@@ -513,7 +516,7 @@ static void release_index (uint32_t context)
 {
     uint32_t idx = context & VPP_CTX_INDEX_MASK;
 
-    if (idx == 0 || idx >= VPP_MAX_CTX) {
+    if (idx == VPP_INVALID_CTX_INDEX || idx >= VPP_MAX_CTX) {
         return;
     }
 
@@ -527,7 +530,7 @@ static uintptr_t get_index_ptr (uint32_t context)
     uint32_t idx = context & VPP_CTX_INDEX_MASK;
     uint32_t generation = context >> VPP_CTX_GENERATION_SHIFT;
 
-    if (idx == 0 || idx >= VPP_MAX_CTX) {
+    if (idx == VPP_INVALID_CTX_INDEX || idx >= VPP_MAX_CTX) {
         return (uintptr_t) NULL;
     }
 
@@ -837,7 +840,9 @@ vl_api_sw_interface_get_table_reply_t_handler (vl_api_sw_interface_get_table_rep
 
     if (msg->context) {
         uint32_t *vrf_id = (uint32_t *) get_index_ptr(msg->context);
-        *vrf_id = ntohl(msg->vrf_id);
+        if (vrf_id) {
+            *vrf_id = ntohl(msg->vrf_id);
+        }
     }
 
     SAIVPP_DEBUG("sw interface get table %s(%d) vrf_id=%u",
@@ -2176,10 +2181,10 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
         }
     }
 
-    uint32_t context = 0;
+    uint32_t context = VPP_INVALID_CTX_INDEX;
     if (stats_index) {
         context = store_ptr(stats_index);
-        if (context == 0) {
+        if (context == VPP_INVALID_CTX_INDEX) {
             VPP_UNLOCK();
             return -ENOMEM;
         }
@@ -4481,11 +4486,21 @@ static int __sw_interface_get_table(uint32_t sw_if_index, bool is_ipv6, uint32_t
     M (SW_INTERFACE_GET_TABLE, mp);
     mp->sw_if_index = htonl(sw_if_index);
     mp->is_ipv6 = is_ipv6;
-    mp->context = store_ptr(out_table_id);
+
+    uint32_t context = store_ptr(out_table_id);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
     WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
 
     VPP_UNLOCK();
     return ret;
@@ -4531,7 +4546,14 @@ int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
         M (IP_ADDRESS_DUMP, mp);
         mp->sw_if_index = htonl(sw_if_idxs[i]);
         mp->is_ipv6 = is_ipv6;
-        mp->context = store_ptr(&ctx);
+
+        uint32_t context = store_ptr(&ctx);
+        if (context == VPP_INVALID_CTX_INDEX) {
+            VPP_UNLOCK();
+            vec_free(sw_if_idxs);
+            return -ENOMEM;
+        }
+        mp->context = context;
 
         S (mp);
 
@@ -4540,6 +4562,10 @@ int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
         S (mp_ping);
 
         WR (ret);
+
+        if (get_index_ptr(context) != (uintptr_t) NULL) {
+            release_index(context);
+        }
 
         VPP_UNLOCK();
 

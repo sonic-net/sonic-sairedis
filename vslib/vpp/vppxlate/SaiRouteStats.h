@@ -33,6 +33,22 @@ typedef struct vpp_route_stats_ {
 
 int vpp_route_stats_query(uint32_t stats_index, vpp_route_stats_t *stats);
 
+/*
+ * Callback invoked once per (worker thread, stats index) pair while dumping all
+ * route stats. The same stats_index is reported once per VPP worker thread, so
+ * the callback must accumulate (+=) packets/bytes per index to match the
+ * per-index totals produced by vpp_route_stats_query.
+ */
+typedef void (*vpp_route_stats_cb)(uint32_t stats_index, uint64_t packets,
+                                   uint64_t bytes, void *data);
+
+/*
+ * Perform a single full dump of "/net/route/to" and invoke cb for every entry.
+ * Returns 0 on success, non-zero if the VPP stats dump failed. This collapses
+ * the per-index connect/dump/disconnect of vpp_route_stats_query into one pass.
+ */
+int vpp_route_stats_dump_all(vpp_route_stats_cb cb, void *data);
+
 #ifdef __cplusplus
 }
 #endif
