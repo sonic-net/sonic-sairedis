@@ -29,6 +29,7 @@
 #include <memory>
 #include <chrono>
 #include <ctime>
+#include <queue>
 
 namespace syncd
 {
@@ -347,6 +348,11 @@ namespace syncd
              * @brief link status sync notification after damping exit
              */
             void processPendingDampingSync();
+
+            /**
+             * @brief link status flush notification after damping exit
+             */
+            void flushPendingDampingNotifications();
 
             /**
              * @brief Write damping counters to STATE_DB for a specific port
@@ -729,5 +735,14 @@ namespace syncd
              * @brief Mutex for damping timer thread synchronization
              */
             std::mutex m_dampingTimerMutex;
+
+            /**
+             * @brief queue for pending notifications
+             */
+            std::queue<std::vector<sai_port_oper_status_notification_t>> m_pendingNotifications;
+            /**
+             * @brief Mutex for pending notifications
+             */
+            std::mutex m_pendingNotificationsMutex;
     };
 }
