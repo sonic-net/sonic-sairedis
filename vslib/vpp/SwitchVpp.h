@@ -1109,8 +1109,6 @@ namespace saivs
 
             BitResourcePool dynamic_bd_id_pool = BitResourcePool(dynamic_bd_id_pool_size, dynamic_bd_id_base);
 
-            std::set<FdbInfo> m_fdb_info_set;
-
             // Snapshot of VPP L2FIB: {mac, bd_id} -> sw_if_index.
             // Kept in sync with MAC events from VPP to support flush operations
             // and de-duplication of events.
