@@ -96,7 +96,7 @@ TEST(Sai, fdbAgingWakeEvent)
     // Smoke test: verify the FDB aging thread starts and shuts down cleanly
     // without deadlocking. The aging thread's normal wake path (MAC event
     // delivery via m_fdbAgingWakeEvent) is NOT exercised here — this only
-    // confirms the start/stop lifecycle completes without hanging.
+    // confirms the start/stop life cycle completes without hanging.
     Sai sai;
 
     EXPECT_EQ(sai.apiInitialize(0, &test_services), SAI_STATUS_SUCCESS);
