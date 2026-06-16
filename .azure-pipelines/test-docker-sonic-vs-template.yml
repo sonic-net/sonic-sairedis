@@ -149,7 +149,7 @@ jobs:
 
   - task: PublishTestResults@2
     inputs:
-      testResultsFiles: '**/tr.xml'
+      testResultsFiles: '**/*_tr.xml'
       testRunTitle: vstest
     condition: always()
 
