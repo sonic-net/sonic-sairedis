@@ -65,3 +65,37 @@ int vpp_route_stats_query (uint32_t stats_index, vpp_route_stats_t *stats)
 
   return query.found ? 0 : -ENOENT;
 }
+
+typedef struct vpp_route_stats_dump_ {
+  vpp_route_stats_cb cb;
+  void *data;
+} vpp_route_stats_dump_t;
+
+static void handle_stat_two_all (const char *stat_name, uint32_t index,
+				 uint64_t count1, uint64_t count2, void *data)
+{
+  vpp_route_stats_dump_t *dump = (vpp_route_stats_dump_t *) data;
+
+  if (strcmp(stat_name, ROUTE_TO) != 0)
+    {
+      return;
+    }
+
+  dump->cb(index, count1, count2, dump->data);
+}
+
+int vpp_route_stats_dump_all (vpp_route_stats_cb cb, void *data)
+{
+  char pathbuf[] = "/net/route/to";
+  vpp_route_stats_dump_t dump;
+
+  dump.cb = cb;
+  dump.data = data;
+
+  if (vpp_stats_dump(pathbuf, NULL, handle_stat_two_all, &dump) != 0)
+    {
+      return -EIO;
+    }
+
+  return 0;
+}

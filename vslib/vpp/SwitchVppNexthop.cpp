@@ -295,69 +295,16 @@ SwitchVpp::createNexthopGroupMember(
         return SAI_STATUS_SUCCESS;
     }
 
-    // Get the nexthop OID from the new member
-    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
-    CHECK_STATUS_QUIET(nhg_mbr_obj.get_mandatory_attr(attr));
-    sai_object_id_t next_hop_oid = attr.value.oid;
-
-    // Get weight if available
-    uint32_t weight = 1;
-    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_WEIGHT;
-    if (nhg_mbr_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
-        weight = attr.value.u32;
-    }
-
     // Fill the nexthop group member info
     nexthop_grp_member_t member;
-    status = fillNHGrpMember(&member, next_hop_oid, weight, 0);
+    status = buildNhgMember(nhg_mbr_obj, member);
     if (status != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("Failed to fill NHG member info for %s", serializedObjectId.c_str());
         return status;
     }
 
     // Add the specific path to each route using this NHG
-    for (auto route : *routes) {
-        uint32_t stats_index = UINT32_MAX;
-        auto counterIt = m_routeToCounterMap.find(route.first);
-        std::map<sai_stat_id_t, uint64_t> old_counter_stats;
-        bool has_old_counter_stats = false;
-        if (counterIt != m_routeToCounterMap.end()) {
-            status = getRouteCounterStats(counterIt->second, old_counter_stats);
-            if (status == SAI_STATUS_SUCCESS) {
-                has_old_counter_stats = true;
-            } else {
-                SWSS_LOG_WARN("Failed to read route counter stats before adding path to route %s, status %d",
-                        route.first.c_str(), status);
-            }
-        }
-
-        SWSS_LOG_INFO("NHG member added. Adding path to route %s", route.first.c_str());
-        status = IpRoutePathAddRemove(route.second.get(), &member, true, &stats_index);
-        if (status != SAI_STATUS_SUCCESS) {
-            SWSS_LOG_ERROR("Failed to add path to route %s, status %d", route.first.c_str(), status);
-            // Continue with other routes
-        } else if (stats_index != UINT32_MAX) {
-            if (counterIt == m_routeToCounterMap.end()) {
-                m_routeStatsIndexMap[route.first] = stats_index;
-            } else {
-                m_routeStatsIndexMap[route.first] = stats_index;
-                std::map<sai_stat_id_t, uint64_t> new_counter_base;
-                status = getRouteCounterStats(counterIt->second, new_counter_base);
-                if (status != SAI_STATUS_SUCCESS) {
-                    SWSS_LOG_ERROR("Failed to reset route counter base for route %s, status %d", route.first.c_str(), status);
-                    if (has_old_counter_stats) {
-                        carryRouteCounterStatsDelta(counterIt->second, old_counter_stats);
-                    }
-                    m_routeCounterStatsBaseMap.erase(counterIt->second);
-                } else {
-                    if (has_old_counter_stats) {
-                        carryRouteCounterStatsDelta(counterIt->second, old_counter_stats);
-                    }
-                    m_routeCounterStatsBaseMap[counterIt->second] = new_counter_base;
-                }
-            }
-        }
-    }
+    updateRoutesForNhgMember(*routes, member, true);
     return SAI_STATUS_SUCCESS;
 }
 
@@ -387,21 +334,9 @@ SwitchVpp::removeNexthopGroupMember(
 
     auto routes = nhg_obj->get_child_objs(SAI_OBJECT_TYPE_ROUTE_ENTRY);
 
-    // Get the nexthop OID from the member being removed (before remove_internal)
-    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
-    CHECK_STATUS_QUIET(nhg_mbr_obj->get_mandatory_attr(attr));
-    sai_object_id_t next_hop_oid = attr.value.oid;
-
-    // Get weight if available
-    uint32_t weight = 1;
-    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_WEIGHT;
-    if (nhg_mbr_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
-        weight = attr.value.u32;
-    }
-
     // Fill the nexthop group member info before removing from internal DB
     nexthop_grp_member_t member;
-    status = fillNHGrpMember(&member, next_hop_oid, weight, 0);
+    status = buildNhgMember(*nhg_mbr_obj, member);
     if (status != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("Failed to fill NHG member info for %s", serializedObjectId.c_str());
         return status;
@@ -419,47 +354,101 @@ SwitchVpp::removeNexthopGroupMember(
 
     // Remove the specific path from each route using this NHG
     // VPP will handle the case of removing the last path
-    for (auto route : *routes) {
+    updateRoutesForNhgMember(*routes, member, false);
+    return SAI_STATUS_SUCCESS;
+}
+
+void
+SwitchVpp::updateRoutesForNhgMember(
+        _In_ const std::unordered_map<std::string, std::shared_ptr<SaiObject>>& routes,
+        _Inout_ nexthop_grp_member_t& member,
+        _In_ bool isAdd)
+{
+    SWSS_LOG_ENTER();
+
+    for (auto route : routes) {
         uint32_t stats_index = UINT32_MAX;
-        auto counterIt = m_routeToCounterMap.find(route.first);
+        sai_object_id_t counter_oid = getRouteBoundCounter(route.first);
         std::map<sai_stat_id_t, uint64_t> old_counter_stats;
         bool has_old_counter_stats = false;
-        if (counterIt != m_routeToCounterMap.end()) {
-            status = getRouteCounterStats(counterIt->second, old_counter_stats);
+        if (counter_oid != SAI_NULL_OBJECT_ID) {
+            sai_status_t status = getRouteCounterStats(counter_oid, old_counter_stats);
             if (status == SAI_STATUS_SUCCESS) {
                 has_old_counter_stats = true;
             } else {
-                SWSS_LOG_WARN("Failed to read route counter stats before removing path from route %s, status %d",
-                        route.first.c_str(), status);
+                SWSS_LOG_WARN("Failed to read route counter stats before %s route %s, status %d",
+                        isAdd ? "adding path to" : "removing path from", route.first.c_str(), status);
             }
         }
 
-        SWSS_LOG_INFO("NHG member removed. Removing path from route %s", route.first.c_str());
-        status = IpRoutePathAddRemove(route.second.get(), &member, false, &stats_index);
+        SWSS_LOG_INFO("NHG member %s. %s route %s",
+                isAdd ? "added" : "removed",
+                isAdd ? "Adding path to" : "Removing path from",
+                route.first.c_str());
+        sai_status_t status = IpRoutePathAddRemove(route.second.get(), &member, isAdd, &stats_index);
         if (status != SAI_STATUS_SUCCESS) {
-            SWSS_LOG_ERROR("Failed to remove path from route %s, status %d", route.first.c_str(), status);
+            SWSS_LOG_ERROR("Failed to %s route %s, status %d",
+                    isAdd ? "add path to" : "remove path from", route.first.c_str(), status);
             // Continue with other routes
-        } else if (stats_index != UINT32_MAX) {
-            if (counterIt == m_routeToCounterMap.end()) {
-                m_routeStatsIndexMap[route.first] = stats_index;
-            } else {
-                m_routeStatsIndexMap[route.first] = stats_index;
-                std::map<sai_stat_id_t, uint64_t> new_counter_base;
-                status = getRouteCounterStats(counterIt->second, new_counter_base);
-                if (status != SAI_STATUS_SUCCESS) {
-                    SWSS_LOG_ERROR("Failed to reset route counter base for route %s, status %d", route.first.c_str(), status);
-                    if (has_old_counter_stats) {
-                        carryRouteCounterStatsDelta(counterIt->second, old_counter_stats);
-                    }
-                    m_routeCounterStatsBaseMap.erase(counterIt->second);
-                } else {
-                    if (has_old_counter_stats) {
-                        carryRouteCounterStatsDelta(counterIt->second, old_counter_stats);
-                    }
-                    m_routeCounterStatsBaseMap[counterIt->second] = new_counter_base;
-                }
-            }
+        } else {
+            recordRouteStatsIndexAndResetBase(route.first, stats_index, has_old_counter_stats, old_counter_stats);
         }
     }
-    return SAI_STATUS_SUCCESS;
+}
+
+void
+SwitchVpp::recordRouteStatsIndexAndResetBase(
+        _In_ const std::string& route,
+        _In_ uint32_t stats_index,
+        _In_ bool has_old_counter_stats,
+        _In_ const std::map<sai_stat_id_t, uint64_t>& old_counter_stats)
+{
+    SWSS_LOG_ENTER();
+
+    if (stats_index == UINT32_MAX) {
+        return;
+    }
+
+    m_routeStatsIndexMap[route] = stats_index;
+
+    sai_object_id_t counter_oid = getRouteBoundCounter(route);
+    if (counter_oid == SAI_NULL_OBJECT_ID) {
+        return;
+    }
+
+    std::map<sai_stat_id_t, uint64_t> new_counter_base;
+    sai_status_t status = getRouteCounterStats(counter_oid, new_counter_base);
+    if (has_old_counter_stats) {
+        carryRouteCounterStatsDelta(counter_oid, old_counter_stats);
+    }
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to reset route counter base for route %s, status %d", route.c_str(), status);
+        m_routeCounterStatsBaseMap.erase(counter_oid);
+    } else {
+        m_routeCounterStatsBaseMap[counter_oid] = new_counter_base;
+    }
+}
+
+sai_status_t
+SwitchVpp::buildNhgMember(
+        _In_ const SaiObject& nhg_mbr_obj,
+        _Out_ nexthop_grp_member_t& member)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    // Get the nexthop OID from the member
+    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
+    CHECK_STATUS_QUIET(nhg_mbr_obj.get_mandatory_attr(attr));
+    sai_object_id_t next_hop_oid = attr.value.oid;
+
+    // Get weight if available
+    uint32_t weight = 1;
+    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_WEIGHT;
+    if (nhg_mbr_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
+        weight = attr.value.u32;
+    }
+
+    return fillNHGrpMember(&member, next_hop_oid, weight, 0);
 }
