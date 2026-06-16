@@ -6,7 +6,7 @@
 - Runs the OCP `sai_test` PTF suite over Thrift, injects/captures packets on virtual interfaces, and emits a per-test **compatibility matrix**.
 - Goal: find the gaps between the SAI contract and the VPP backend — and track progress.
 
-**Demo agenda:** ① build & run → ② what's inside the container → ③ run passing tests + peek at VPP state → ④ where we are (matrix: lots still to do).
+**Demo agenda:** ① build & run → ② what's inside the container → ③ run passing tests + peek at VPP state → ④ what's next
 
 ---
 
@@ -30,7 +30,7 @@
 **How it fits together (left → right):**
 
 - **PTF** drives SAI calls over **Thrift (:9092)** and does packet I/O on the `OEth*_peer` ends.
-- **saiserver** is a thin **Thrift → SAI** shim linked against the backend under test, `**libsaivs.so`**.
+- **saiserver** is a thin **Thrift → SAI** shim linked against the backend under test, `libsaivs.so`.
 - **VPP** is the actual dataplane; `OEthernetX` are the VPP-facing veth ends.
 - A test **programs** routes/neighbors/LAGs via SAI, then **verifies the dataplane** by sending a packet in one port and asserting it comes out the expected port(s).
 - One design subtlety: the harness **auto-groups tests by their required common config** and restarts the backend per group — that's what lets us run the whole suite in one go.
@@ -41,7 +41,7 @@
 
 **What our harness adds before that:** `run_test.sh` pre-creates veth pairs, starts Redis/VPP/saiserver, brings kernel veth ends up, and runs a watchdog that keeps VPP `host-OEthernetX` admin-up while SAI creates hostifs — required because VPP AF_PACKET needs real netdevs and hostifs start admin-down.
 
-**Side effect:** OCP still checks `oper_status` before hostifs exist; on VPP that status stays DOWN until hostifs are created, so you see `port N is not up, status: 2. Retry. Reset Admin State.` for every port. The framework continues anyway, hostifs are created next, and tests pass — the messages are expected noise, not a failure.
+**Side effect:** OCP still checks `oper_status` before hostifs exist; on VPP that status stays DOWN until hostifs are created, so you see `port N is not up, status: 2. Retry. Reset Admin State.` for every port. The framework continues anyway, hostifs are created next, and tests pass.
 
 ---
 
@@ -77,12 +77,12 @@ docker build --no-cache \
 **Selectors:** pass one or more targets after the image name. Each target is either a **module** (runs every class in that file) or `**module.Class`** (runs one class). `PORT_COUNT=32` is the standard T0 topology (required for most tests).
 
 
-| Module           | Example Class             | Coverage                                     |
-| ---------------- | ------------------------- | -------------------------------------------- |
-| `sai_sanity_test`   | `SaiSanityTest`                    | T0 bring-up smoke test — verifies basic config and packet flood  |
-| `sai_route_test` | `DropRouteTest`           | Drop route programmed and honored            |
-| `sai_rif_test`   | `IngressDisableTestV4`    | Router interface ingress admin-state control |
-| `sai_ecmp_test`  | `EcmpLagDisableTestV4`    | ECMP + LAG member disable                    |
+| Module            | Example Class          | Coverage                                                        |
+| ----------------- | ---------------------- | --------------------------------------------------------------- |
+| `sai_sanity_test` | `SaiSanityTest`        | T0 bring-up smoke test — verifies basic config and packet flood |
+| `sai_route_test`  | `DropRouteTest`        | Drop route programmed and honored                               |
+| `sai_rif_test`    | `IngressDisableTestV4` | Router interface ingress admin-state control                    |
+| `sai_ecmp_test`   | `EcmpLagDisableTestV4` | ECMP + LAG member disable                                       |
 
 
 ### **Usage**
@@ -148,6 +148,7 @@ docker exec <instanceName> ls /sai_test
 docker exec <instanceName> ip -br link | grep OEth
 
 # clean up when done
+docker stop <instanceName>
 docker rm -f <instanceName>
 ```
 
@@ -155,7 +156,7 @@ docker rm -f <instanceName>
 
 ## 5) Demo #3: Run passing tests + peek at VPP state
 
-**Pause-and-inspect with `vppctl`** (the debug container from Demo #2 is still up). This is exactly how we debug a failure:
+**Inspect with** `vppctl`
 
 ```bash
 # interfaces VPP created from the SAI config
@@ -202,7 +203,8 @@ $EDITOR .azure-pipelines/docker-sai-test-vpp/results/compatibility-matrix.md    
 | **Route program / remove** | `create_route_entry`, `remove_route_entry` | ✅ Tested | `DefaultRoute`*, `DropRouteTest` / `...v6`, `RemoveRouteV4Test` (PASS)      |
 | RIF admin-state control    | `set_router_interface_attribute`           | ✅ Tested | `IngressDisableTestV4` / `...V6` (PASS)                                     |
 | ECMP / LAG member disable  | nexthop-group + LAG member admin           | ✅ Tested | `EcmpLagDisableTestV4` / `...V6` (PASS)                                     |
-| Neighbor on LAG-backed RIF | `create_neighbor_entry`                    | ⚠️ Gap   | `AddHostRouteTest`, `RemoveAddNeighborTest*` (FAIL `-5`)                    |
+| Neighbor on LAG-backed RIF | `create_neighbor_entry`                    | ⚠️ Gap   | `AddHostRouteTest`, `RemoveAddNeighborTest`* (FAIL `-5`)                    |
 | L3 forwarding over LAG     | route → nexthop → LAG member egress        | ⚠️ Gap   | `RouteRifTest`, `LagMultipleRouteTest` (packet not received on LAG members) |
-| ECMP hash distribution     | hash-field load-balance                    | ⚠️ Gap   | `EcmpHashField*` (packet on unexpected port)                                |
+| ECMP hash distribution     | hash-field load-balance                    | ⚠️ Gap   | `EcmpHashField`* (packet on unexpected port)                                |
+
 
