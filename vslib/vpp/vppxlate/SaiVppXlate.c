@@ -4317,6 +4317,7 @@ int vpp_span_enable_disable(uint32_t sw_if_index_from, uint32_t sw_if_index_to, 
     VPP_UNLOCK();
 
     return ret;
+}
 
 int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index)
 {
