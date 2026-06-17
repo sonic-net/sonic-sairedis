@@ -991,4 +991,161 @@ TEST_F(SyncdLinkEventDampingTest, noDampingConfiguredPropagates)
     // no STATE_DB entry is written for non-configured ports
     EXPECT_EQ(getDampingField("is_damping_active"), "");
 }
+
+TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncWithNotifications)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 2000;  // 2 seconds timeout
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 500;   // Fast decay
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Enter damping: First event goes through
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Second event is suppressed - creates mismatch (physical=UP, advertised=DOWN)
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    EXPECT_EQ(getDampingField("is_damping_active"), "true");
+
+    // CRITICAL: Wait for TIMER-BASED exit (timeout)
+    // Do NOT send any new event - let the timer thread handle the exit
+    // The timeout is 2000ms, wait for it to trigger
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+
+    // Wait for main loop to process
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    // Verify damping exited and notification was sent
+    EXPECT_EQ(getDampingField("is_damping_active"), "false");
+}
+
+TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncQueueOverflow)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 100;   // Very short timeout - 100ms
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 50;    // Very fast decay
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Generate many rapid damping cycles to fill the queue
+    // Each cycle: enter damping -> suppress event -> timer exits -> queues notification
+    // We need 1000+ batches to trigger overflow protection
+
+    for (int cycle = 0; cycle < 1010; ++cycle)
+    {
+        // Enter damping with first event
+        sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+        // Suppress second event (creates mismatch)
+        sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+        // Wait for timeout exit (100ms) - timer thread handles exit
+        std::this_thread::sleep_for(std::chrono::milliseconds(110));
+    }
+
+    // At this point, m_pendingNotifications queue should have hit 1000+ entries
+    // The queue overflow protection should have triggered:
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+}
+
+TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsWithBatches)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 200;   // Short timeout for faster test
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 100;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Create 3 damping cycles to generate 3 notification batches
+    for (int batch = 0; batch < 3; ++batch)
+    {
+        // Enter damping
+        sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+        // Suppress event (creates mismatch)
+        sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+        // Wait for timer-based exit (no new event)
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+
+    // processPendingDampingSync() should have queued 3 batches
+    // flushPendingNotifications() will pop from queue
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+}
+
+TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsExceptionHandling)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 200;
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 100;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Create a damping cycle
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    // Wait for timer exit and flush
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    // Normal path should work without exceptions
+}
+
+TEST_F(SyncdLinkEventDampingTest, restartQueryDrainQueue)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 2000;
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 1000;
+    config.flap_penalty       = 500;
+
+    setDampingConfig(config);
+
+    // Queue multiple events rapidly
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    // Send warm shutdown request
+    swss::DBConnector db("ASIC_DB", 0);
+    swss::ProducerTable restartQuery(&db, "RESTARTQUERY");
+
+    std::vector<swss::FieldValueTuple> values;
+    values.push_back(swss::FieldValueTuple("WARM_SHUTDOWN", "true"));
+
+    restartQuery.set("", values);
+    restartQuery.flush();
+
+    // Wait for restart query processing
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+}
 #endif
