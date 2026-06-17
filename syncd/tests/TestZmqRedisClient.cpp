@@ -110,6 +110,29 @@ TEST_F(ZmqRedisClientTest, removeAsicObjectByMetaKeyDeletesFromRedis)
     EXPECT_FALSE(keyExistsAfterFlush(sai_serialize_object_meta_key(metaKey)));
 }
 
+TEST_F(ZmqRedisClientTest, removeAsicObjectByObjectVidDeletesFromRedis)
+{
+    // VIRTUAL_ROUTER VID: object type 0x03 in bits 55..48, index 0x8.
+    // VidManager::objectTypeQuery decodes it back to SAI_OBJECT_TYPE_VIRTUAL_ROUTER.
+    sai_object_id_t objectVid = 0x0003000000000008;
+
+    sai_object_meta_key_t metaKey;
+    metaKey.objecttype = SAI_OBJECT_TYPE_VIRTUAL_ROUTER;
+    metaKey.objectkey.key.object_id = objectVid;
+
+    // The removeAsicObject(objectVid) overload builds the key as
+    // sai_serialize_object_type(objectTypeQuery(vid)) + ":" + sai_serialize_object_id(vid).
+    // For an object-id meta key this matches sai_serialize_object_meta_key, so
+    // creating via the meta key and removing via the VID target the same Redis key.
+    std::string key = sai_serialize_object_meta_key(metaKey);
+
+    std::vector<swss::FieldValueTuple> attrs;
+    m_redisClient->createAsicObject(metaKey, attrs);
+    EXPECT_NO_THROW(m_redisClient->removeAsicObject(objectVid));
+
+    EXPECT_FALSE(keyExistsAfterFlush(key));
+}
+
 TEST_F(ZmqRedisClientTest, removeAsicObjectsDeletesAllKeysFromRedis)
 {
     auto metaKey1 = makeRouteMetaKey(0x3000000000006, 0x0a000005);
