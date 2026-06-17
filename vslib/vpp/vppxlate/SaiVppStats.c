@@ -149,7 +149,7 @@ vpp_stats_dump (char *query_path, vpp_stat_one one, vpp_stat_two two, void *data
 }
 
 /*
- * fd.io coding-style-patch-verification: ON
+ * fd.io coding-style-patch-verification: ON!
  *
  * Local Variables:
  * eval: (c-set-style "gnu")
