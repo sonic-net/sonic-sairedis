@@ -21,15 +21,15 @@
 │  │ af_packet │◄───►│ libsaivs.so  │◄────►│ sai_test/*.py          │  │
 │  │ linux_cp  │ VPP │ (VPP SAI)    │Thrift│ sai_thrift adapter     │  │
 │  └─────┬─────┘ API └──────────────┘ :9092└───────────┬────────────┘  │
-│        │ AF_PACKET                          raw socket │ (AF_PACKET) │
-│   OEthernet0 ◄════ veth ════► OEth0_peer ──────────────┘             │
+│        │ AF_PACKET                        raw socket │ (AF_PACKET)   │
+│   OEthernet0 ◄════ veth ════► OEth0_peer ────────────┘               │
 │   …            (32 pairs)                                            │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 **How it fits together (left → right):**
 
-- **PTF** drives SAI calls over **Thrift (:9092)** and does packet I/O on the `OEth*_peer` ends.
+- **PTF** drives SAI calls over **Thrift RPC (:9092)** and does packet I/O on the `OEth*_peer` ends.
 - **saiserver** is a thin **Thrift → SAI** shim linked against the backend under test, `libsaivs.so`.
 - **VPP** is the actual dataplane; `OEthernetX` are the VPP-facing veth ends.
 - A test **programs** routes/neighbors/LAGs via SAI, then **verifies the dataplane** by sending a packet in one port and asserting it comes out the expected port(s).
@@ -116,6 +116,8 @@ docker run --rm --privileged -e PORT_COUNT=32 \
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis
 mkdir -p .azure-pipelines/docker-sai-test-vpp/results/xml
+# clear old results
+rm -f .azure-pipelines/docker-sai-test-vpp/results/xml/TEST-*.xml
 docker run --rm --privileged -e PORT_COUNT=32 \
   -v "$PWD/.azure-pipelines/docker-sai-test-vpp/results/xml:/test-results" \
   docker-sai-test-vpp:phase1 <module.Class>
