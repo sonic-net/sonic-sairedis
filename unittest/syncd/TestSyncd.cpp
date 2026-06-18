@@ -879,7 +879,7 @@ protected:
     }
 };
 
-// Define static constexpr members for linkage
+// Define static constant expression members for linkage
 constexpr sai_object_id_t SyncdLinkEventDampingTest::PORT_VID;
 constexpr sai_object_id_t SyncdLinkEventDampingTest::PORT_RID;
 
