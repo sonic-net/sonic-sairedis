@@ -8,6 +8,27 @@ Newest first.
 
 ---
 
+## 2026-06-18 — LAG/ECMP backend fixes: saithriftv2 `switch_id` fallback + vslib host-route/NHG/LAG-member
+*(detail: [progress-6-18.md](progress-6-18.md))*
+
+Resumed the 6-18 plan after finding the Docker image still ran a **2017 `saiserver`**
+while the harness uses **saithriftv2** (`meta/sai.thrift`). OCP tests that omit
+`switch_id` on `neighbor_entry` / `route_entry` hit meta `-5` because the RPC-global
+`switch_id` (set by `sai_thrift_create_switch`) was not used as fallback. Added custom
+`parse_neighbor_entry` / `parse_route_entry` in `sai_rpc_server_helper_functions.tt`,
+rebuilt v2 `saiserver`, and repacked `debs/saiserver_0.9.4_amd64.deb`. With the new
+server plus prior vslib fixes (`programNeighborHostRoute`, ROUTER_INTERFACE NH on LAG,
+NHG idempotent remove, `SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE`), **SAI API `-5` on
+`AddHostRouteTest` / `RemoveAddNeighborTestIPV4` setUp is fixed**; remaining failures
+are PTF packet-not-received on LAG members `[17,18]` (dataplane, same family as 6-17
+Issue A). The clean image was then rebuilt successfully (the earlier failure was just
+missing proxy build args) and a full 4-module matrix run validated progress:
+**PASS 19→27 (+8)**, FAIL 59→55, ERROR 13→11 (`compatibility-matrix-6-18.md`). The
+`-5` neighbor/route-on-LAG-RIF family (Item 1 create) is fully resolved and
+`EcmpLagDisableTestV6` (Item 3) flipped to PASS; `RemoveLagEcmpTestV4/V6` flipped
+PASS→FAIL (another false-pass now exercising the real path). Remaining work is LAG/LPM
+**dataplane forwarding** plus ECMP reuse/re-add `-6`/`-7` sequences.
+
 ## 2026-06-17 — L3-over-LAG forwarding: environment/topology gaps, now FIXED
 *(detail: [progress-6-17.md](progress-6-17.md))*
 

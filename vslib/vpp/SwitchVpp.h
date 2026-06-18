@@ -308,6 +308,14 @@ namespace saivs
 	    sai_status_t vpp_remove_lag_member(
                     _In_ sai_object_id_t lag_member_oid);
 
+            sai_status_t setLagMember(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _In_ const sai_attribute_t* attr);
+
+            sai_status_t vpp_set_lag_member_egress_disable(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _In_ bool egress_disable);
+
             /* FDB Entry and Flush SAI Objects */
             sai_status_t FdbEntryadd(
                     _In_ const std::string &serializedObjectId,
@@ -604,6 +612,12 @@ namespace saivs
 
             sai_status_t removeIpNbr(
                     _In_ const std::string &serializedObjectId);
+
+            sai_status_t programNeighborHostRoute(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _In_ bool is_add);
 
             bool is_ip_nbr_active();
 

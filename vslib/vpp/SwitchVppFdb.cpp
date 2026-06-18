@@ -968,6 +968,97 @@ sai_status_t SwitchVpp::vpp_remove_lag_member(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchVpp::vpp_set_lag_member_egress_disable(
+        _In_ sai_object_id_t lag_member_oid,
+        _In_ bool egress_disable)
+{
+    SWSS_LOG_ENTER();
+
+    int ret;
+    sai_attribute_t attr;
+
+    attr.id = SAI_LAG_MEMBER_ATTR_LAG_ID;
+    sai_status_t status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("attr SAI_LAG_MEMBER_ATTR_LAG_ID is not present");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_object_id_t lag_oid = attr.value.oid;
+
+    platform_bond_info_t bond_info;
+    CHECK_STATUS(get_lag_bond_info(lag_oid, bond_info));
+    uint32_t bond_if_idx = bond_info.sw_if_index;
+
+    attr.id = SAI_LAG_MEMBER_ATTR_PORT_ID;
+    status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("attr SAI_LAG_MEMBER_ATTR_PORT_ID is not present");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_object_id_t port_oid = attr.value.oid;
+
+    std::string if_name;
+    bool found = getTapNameFromPortId(port_oid, if_name);
+    if (found == false)
+    {
+        SWSS_LOG_ERROR("No tap for lag member port %s", sai_serialize_object_id(port_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    const char *hwifname = tap_to_hwif_name(if_name.c_str());
+
+    if (egress_disable)
+    {
+        ret = delete_bond_member(hwifname);
+    }
+    else
+    {
+        bool is_passive = false;
+        bool is_long_timeout = false;
+
+        ret = create_bond_member(bond_if_idx, hwifname, is_passive, is_long_timeout);
+    }
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("failed to %s bond member %s in VPP",
+                egress_disable ? "detach" : "attach", hwifname);
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::setLagMember(
+        _In_ sai_object_id_t lag_member_oid,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (attr == NULL)
+    {
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (attr->id == SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE)
+    {
+        sai_status_t status = vpp_set_lag_member_egress_disable(lag_member_oid, attr->value.booldata);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return status;
+        }
+    }
+
+    auto sid = sai_serialize_object_id(lag_member_oid);
+    return set_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, attr);
+}
+
 sai_status_t SwitchVpp::FdbEntryadd(
         _In_ const std::string &serializedObjectId,
         _In_ sai_object_id_t switch_id,

@@ -21,6 +21,7 @@
 #include "vppxlate/SaiVppXlate.h"
 
 #include <iostream>
+#include <sstream>
 #include <cstring>
 #include <regex>
 #include <fstream>
@@ -666,9 +667,36 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         return SAI_STATUS_SUCCESS;
     }
 
-    if (ot != SAI_OBJECT_TYPE_PORT)
+    std::string if_name;
+
+    if (ot == SAI_OBJECT_TYPE_LAG)
     {
-        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+        platform_bond_info_t bond_info;
+        status = get_lag_bond_info(obj_id, bond_info);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to get bond info for lag %s",
+                    sai_serialize_object_id(obj_id).c_str());
+            return SAI_STATUS_FAILURE;
+        }
+
+        std::ostringstream tap_stream;
+        tap_stream << "be" << bond_info.id;
+        if_name = tap_stream.str();
+    }
+    else if (ot == SAI_OBJECT_TYPE_PORT)
+    {
+        bool found = getTapNameFromPortId(obj_id, if_name);
+        if (found == false)
+        {
+            SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(obj_id).c_str());
+            return SAI_STATUS_FAILURE;
+        }
+    }
+    else
+    {
+        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                 sai_serialize_object_id(obj_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
 
@@ -689,14 +717,6 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
     if (status == SAI_STATUS_SUCCESS)
     {
         vlan_id = attr.value.u16;
-    }
-
-    std::string if_name;
-    bool found = getTapNameFromPortId(obj_id, if_name);
-    if (found == false)
-    {
-        SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(obj_id).c_str());
-        return SAI_STATUS_FAILURE;
     }
 
     swss::IpPrefix intf_ip_prefix;
@@ -784,15 +804,33 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         }
     }
 
-    const char *hwifname = tap_to_hwif_name(if_name.c_str());
-    char hw_subifname[32];
     const char *hw_ifname;
+    char hw_subifname[32];
+    char hw_bondifname[32];
 
-    if (vlan_id) {
-        snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
-        hw_ifname = hw_subifname;
-    } else {
-        hw_ifname = hwifname;
+    if (ot == SAI_OBJECT_TYPE_LAG)
+    {
+        platform_bond_info_t bond_info;
+        status = get_lag_bond_info(obj_id, bond_info);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+
+        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_info.id);
+        hw_ifname = hw_bondifname;
+    }
+    else
+    {
+        const char *hwifname = tap_to_hwif_name(if_name.c_str());
+
+        if (vlan_id) {
+            snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
+            hw_ifname = hw_subifname;
+        } else {
+            hw_ifname = hwifname;
+        }
     }
 
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);

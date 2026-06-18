@@ -286,7 +286,9 @@ SwitchVpp::createNexthopGroupMember(
 
     //call create_internal to update the mapping from NHG to NHG_MBRs, which is used to update the routes
     status = create_internal(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, serializedObjectId, switch_id, attr_count, attr_list);
-    if (status != SAI_STATUS_SUCCESS) {
+    if (status == SAI_STATUS_ITEM_ALREADY_EXISTS) {
+        SWSS_LOG_NOTICE("NHG member %s already exists; continuing path update", serializedObjectId.c_str());
+    } else if (status != SAI_STATUS_SUCCESS) {
         return status;
     }
 
@@ -338,8 +340,8 @@ SwitchVpp::removeNexthopGroupMember(
 
     auto nhg_mbr_obj = get_sai_object(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, serializedObjectId);
     if (!nhg_mbr_obj) {
-        SWSS_LOG_ERROR("Failed to find SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER SaiObject: %s", serializedObjectId.c_str());
-        return SAI_STATUS_FAILURE;
+        SWSS_LOG_NOTICE("NHG member %s already absent; treating remove as success", serializedObjectId.c_str());
+        return SAI_STATUS_SUCCESS;
     }
     attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID;
     CHECK_STATUS_QUIET(nhg_mbr_obj->get_mandatory_attr(attr));
@@ -375,6 +377,10 @@ SwitchVpp::removeNexthopGroupMember(
 
     //call remove_internal to update the mapping from NHG to NHG_MBRs
     status = remove_internal(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, serializedObjectId);
+    if (status == SAI_STATUS_ITEM_NOT_FOUND) {
+        SWSS_LOG_NOTICE("NHG member %s already removed from DB; treating as success", serializedObjectId.c_str());
+        return SAI_STATUS_SUCCESS;
+    }
     if (status != SAI_STATUS_SUCCESS) {
         return status;
     }
