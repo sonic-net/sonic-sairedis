@@ -90,7 +90,17 @@ bool ContextConfig::hasConflict(
             m_zmqEnable == CONTEXT_CONFIG_ZMQ_EMPTY
             && ctx->m_zmqEnable == CONTEXT_CONFIG_ZMQ_EMPTY;
 
-    if (m_zmqEndpoint == ctx->m_zmqEndpoint)
+    // A context locked to Redis (CONTEXT_CONFIG_ZMQ_DISABLED) never binds or
+    // connects ZMQ sockets, so a shared endpoint with such a context can
+    // never collide at bind time. Flagging it as a conflict would make
+    // ContextConfigContainer::insert() throw, which loadFromFile() catches by
+    // discarding the entire parsed context_config.json and falling back to the
+    // default container, so a DISABLED context must not trigger that path.
+    bool eitherZmqDisabled =
+            m_zmqEnable == CONTEXT_CONFIG_ZMQ_DISABLED
+            || ctx->m_zmqEnable == CONTEXT_CONFIG_ZMQ_DISABLED;
+
+    if (m_zmqEndpoint == ctx->m_zmqEndpoint && !eitherZmqDisabled)
     {
         if (bothZmqEmpty)
         {
@@ -105,7 +115,7 @@ bool ContextConfig::hasConflict(
         }
     }
 
-    if (m_zmqNtfEndpoint == ctx->m_zmqNtfEndpoint)
+    if (m_zmqNtfEndpoint == ctx->m_zmqNtfEndpoint && !eitherZmqDisabled)
     {
         if (bothZmqEmpty)
         {

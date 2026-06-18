@@ -275,6 +275,26 @@ TEST(ContextConfigContainer, hasConflict_twoEmptyContextsWithDefaultEndpointsDoN
     EXPECT_FALSE(a->hasConflict(b));
 }
 
+// An ENABLED context sharing endpoints with a DISABLED context is not a
+// conflict. The DISABLED context is locked to Redis and never binds a ZMQ
+// socket, so there is nothing for the ENABLED context to collide with. The
+// check is symmetric, so it holds regardless of which side is DISABLED.
+TEST(ContextConfigContainer, hasConflict_enabledAndDisabledShareEndpointsDoNotConflict)
+{
+    auto a = std::make_shared<ContextConfig>(0, "a", "ASIC_DB_A", "COUNTERS_DB_A", "FLEX_DB_A", "STATE_DB");
+    auto b = std::make_shared<ContextConfig>(1, "b", "ASIC_DB_B", "COUNTERS_DB_B", "FLEX_DB_B", "STATE_DB");
+
+    a->m_zmqEnable = CONTEXT_CONFIG_ZMQ_ENABLED;
+    b->m_zmqEnable = CONTEXT_CONFIG_ZMQ_DISABLED;
+
+    // both keep the shared constructor default endpoints
+    EXPECT_EQ(a->m_zmqEndpoint, b->m_zmqEndpoint);
+    EXPECT_EQ(a->m_zmqNtfEndpoint, b->m_zmqNtfEndpoint);
+
+    EXPECT_FALSE(a->hasConflict(b));
+    EXPECT_FALSE(b->hasConflict(a));
+}
+
 // loadFromFile is idempotent for the same file (no global state leak).
 TEST(ContextConfigContainer, loadFromFile_isIdempotent)
 {
