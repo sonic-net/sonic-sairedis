@@ -1003,11 +1003,12 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncWithNotifications)
 
     setDampingConfig(config);
 
-    // Enter damping: First event goes through
     sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    // Second event is suppressed - creates mismatch (physical=UP, advertised=DOWN)
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
