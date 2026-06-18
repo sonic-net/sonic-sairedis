@@ -1353,6 +1353,8 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
 
 inline sai_object_id_t SwitchVpp::resolvePortIdFromSwIfIndex(uint32_t sw_if_index)
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_swif_to_port_id.find(sw_if_index);
     if (it != m_swif_to_port_id.end())
         return it->second;
