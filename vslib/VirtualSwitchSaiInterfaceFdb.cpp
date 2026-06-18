@@ -1,6 +1,8 @@
 #include "VirtualSwitchSaiInterface.h"
 #include "SwitchStateBase.h"
+#ifdef USE_VPP
 #include "vpp/SwitchVpp.h"
+#endif
 
 #include "meta/sai_serialize.h"
 
