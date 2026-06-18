@@ -1311,10 +1311,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
                     const char *hwif_name = ifname.c_str();
                     auto ret = l2fib_flush_int(hwif_name);
                     SWSS_LOG_NOTICE(" Flush by interface on hwif_name %s  Successful ret_val: %d", hwif_name, ret);
-                    if (is_tunnel_bridge_port(br_port_id))
-                        vpp_fdb_entries_invalidate_all();
-                    else
-                        vpp_fdb_entries_invalidate_by_port(port_id);
+                    vpp_fdb_entries_invalidate_by_port(port_id);
                 }
                 else
                 {
@@ -1354,29 +1351,17 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
     return SAI_STATUS_SUCCESS;
 }
 
-/*
- * Resolve a VPP sw_if_index to a SAI port OID via the 3-step lookup chain:
- * sw_if_index -> VPP hw interface name -> Linux tap/SONiC port name -> SAI port OID.
- * Returns SAI_NULL_OBJECT_ID on any lookup failure.
- */
-sai_object_id_t SwitchVpp::getPortIdFromSwIfIndex(uint32_t sw_if_index)
+inline sai_object_id_t SwitchVpp::resolvePortIdFromSwIfIndex(uint32_t sw_if_index)
 {
-    SWSS_LOG_ENTER();
-    const char *hwifname = vpp_get_swif_name(sw_if_index);
-    if (!hwifname)
-    {
-        SWSS_LOG_WARN("FDB: cannot get hwif name for sw_if_index %u", sw_if_index);
-        return SAI_NULL_OBJECT_ID;
-    }
+    auto it = m_swif_to_port_id.find(sw_if_index);
+    if (it != m_swif_to_port_id.end())
+        return it->second;
 
-    const char *tapname = hwif_to_tap_name(hwifname);
-    if (!tapname)
-    {
-        SWSS_LOG_WARN("FDB: cannot get tap name for hwif %s", hwifname);
-        return SAI_NULL_OBJECT_ID;
-    }
+    sai_object_id_t port_id = getPortIdFromSwIfIndex(sw_if_index);
+    if (port_id != SAI_NULL_OBJECT_ID)
+        m_swif_to_port_id[sw_if_index] = port_id;
 
-    return getPortIdFromIfName(std::string(tapname));
+    return port_id;
 }
 
 bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type)
@@ -1385,7 +1370,7 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
 
     bool is_move = (event_type == SAI_FDB_EVENT_MOVE);
 
-    sai_object_id_t port_id = getPortIdFromSwIfIndex(sw_if_index);
+    sai_object_id_t port_id = resolvePortIdFromSwIfIndex(sw_if_index);
     if (port_id == SAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_ERROR("FDB: cannot resolve port OID for sw_if_index %u", sw_if_index);
@@ -1561,13 +1546,10 @@ void SwitchVpp::vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id)
 void SwitchVpp::vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id)
 {
     SWSS_LOG_ENTER();
-    /* O(N) scan: resolves sw_if_index -> port OID via VPP API for each entry.
-     * This is acceptable since flush-by-interface is infrequent.
-     * TODO: Improve this by storing the sw_if_index -> port OID mapping somewhere. */
     size_t before = m_vpp_fdb_entries.size();
     for (auto it = m_vpp_fdb_entries.begin(); it != m_vpp_fdb_entries.end(); )
     {
-        if (getPortIdFromSwIfIndex(it->second) == port_id)
+        if (resolvePortIdFromSwIfIndex(it->second) == port_id)
             it = m_vpp_fdb_entries.erase(it);
         else
             ++it;

@@ -1269,6 +1269,10 @@ void SwitchVpp::processFdbEntriesForAging()
  * Static trampoline: called on the VPP API receive thread when VPP pushes a
  * batch of MAC learn/age/move events.  Must NOT acquire m_apimutex — just
  * enqueue for safe dispatch by processFdbEntriesForAging() under the mutex.
+ *
+ * TODO: MAC events currently arrive on the shared VPP API socket and are
+ * dispatched synchronously inside the WR() polling loop. Move to a separate
+ * event socket in the future.
  */
 void SwitchVpp::staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx)
 {
@@ -2759,4 +2763,29 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
     return SAI_STATUS_SUCCESS;
+}
+
+/*
+ * Resolve a VPP sw_if_index to a SAI port OID via the 3-step lookup chain:
+ * sw_if_index -> VPP hw interface name -> Linux tap/SONiC port name -> SAI port OID.
+ * Returns SAI_NULL_OBJECT_ID on any lookup failure.
+ */
+sai_object_id_t SwitchVpp::getPortIdFromSwIfIndex(uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+    const char *hwifname = vpp_get_swif_name(sw_if_index);
+    if (!hwifname)
+    {
+        SWSS_LOG_WARN("FDB: cannot get hwif name for sw_if_index %u", sw_if_index);
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    const char *tapname = hwif_to_tap_name(hwifname);
+    if (!tapname)
+    {
+        SWSS_LOG_WARN("FDB: cannot get tap name for hwif %s", hwifname);
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    return getPortIdFromIfName(std::string(tapname));
 }

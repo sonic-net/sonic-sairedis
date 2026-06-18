@@ -1114,6 +1114,10 @@ namespace saivs
             // and de-duplication of events.
             std::map<VppFdbKey, uint32_t> m_vpp_fdb_entries;
 
+            // Cache: VPP sw_if_index -> SAI port OID, built from FDB learn events.
+            // Avoids per-entry VPP API calls in vpp_fdb_entries_invalidate_by_port().
+            std::unordered_map<uint32_t, sai_object_id_t> m_swif_to_port_id;
+
             // Maps VPP sw_if_index -> bridge domain ID.
             // Maintained when ports are added/removed from bridge domains.
             // Required because l2_macs_event carries sw_if_index but not bd_id.
@@ -1153,6 +1157,11 @@ namespace saivs
             bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
             bool generateFdbAgedEvent(const VppFdbKey &key);
             sai_object_id_t getPortIdFromSwIfIndex(uint32_t sw_if_index);
+
+            // Cache-first resolution of sw_if_index -> SAI port OID.
+            // On a cache miss, falls back to the VPP API lookup and memoizes the result.
+            // Defined inline in SwitchVppFdb.cpp (its only translation unit).
+            sai_object_id_t resolvePortIdFromSwIfIndex(uint32_t sw_if_index);
 
             void vpp_fdb_entries_invalidate_all();
             void vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id);
