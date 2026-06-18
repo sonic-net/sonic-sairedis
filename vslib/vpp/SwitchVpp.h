@@ -111,6 +111,13 @@ namespace saivs
             sai_object_id_t getRouteBoundCounter(
                     _In_ const std::string& serializedRouteId);
 
+            // Overload for callers that already hold the committed route object,
+            // avoiding a redundant SaiObjectDB lookup. The object must be the
+            // committed SaiObjectDB object (e.g. from get_sai_object), not an
+            // in-flight cached object, so the bound counter reflects DB state.
+            sai_object_id_t getRouteBoundCounter(
+                    _In_ const SaiObject* route_obj);
+
             // Resolve the single route bound to a counter via the SaiObjectDB
             // child relationship. The counter<->route binding is kept 1:1, so at
             // most one route is expected. Returns false when no route is bound.

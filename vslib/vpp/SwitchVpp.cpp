@@ -831,6 +831,14 @@ sai_object_id_t SwitchVpp::getRouteBoundCounter(
     SWSS_LOG_ENTER();
 
     auto route_obj = m_object_db.get(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedRouteId);
+    return getRouteBoundCounter(route_obj.get());
+}
+
+sai_object_id_t SwitchVpp::getRouteBoundCounter(
+        _In_ const SaiObject* route_obj)
+{
+    SWSS_LOG_ENTER();
+
     if (!route_obj)
     {
         return SAI_NULL_OBJECT_ID;

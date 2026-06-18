@@ -841,7 +841,9 @@ sai_status_t SwitchVpp::removeIpRoute(
 
     // Capture the bound counter before remove_internal tears down the route's
     // SaiObjectDB relationship, so its base/carry tables can still be cleaned up.
-    sai_object_id_t counter_oid = getRouteBoundCounter(serializedObjectId);
+    // route_obj is the committed object fetched above; reuse it to avoid a
+    // redundant SaiObjectDB lookup.
+    sai_object_id_t counter_oid = getRouteBoundCounter(route_obj.get());
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId));
 
