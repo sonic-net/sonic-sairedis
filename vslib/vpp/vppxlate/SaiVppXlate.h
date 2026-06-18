@@ -357,7 +357,7 @@ typedef enum {
 
 /* SPAN (port mirroring) */
 extern int vpp_span_enable_disable(uint32_t sw_if_index_from,
-                                   uint32_t sw_if_index_to, 
+                                   uint32_t sw_if_index_to,
                                    uint8_t state, /* 0 = disable */
                                    bool is_l2);
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);

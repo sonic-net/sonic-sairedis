@@ -41,7 +41,7 @@ sai_status_t SwitchVpp::createMirrorSession(
 
         SWSS_LOG_INFO("SPAN mirror session info: monitor_port=%s, hwif_name=%s, sw_if_index=%d",
             sai_serialize_object_id(monitor_port).c_str(), hwif_name.c_str(), sw_idx);
-        
+
         info.sw_if_index = (uint32_t)sw_idx;
         info.is_erspan = false;
     } else {

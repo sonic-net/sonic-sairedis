@@ -1278,7 +1278,7 @@ static void vpp_base_vpe_init(void)
 
 #define SPAN_MSG_ID(id) \
     (VL_API_##id + span_msg_id_base)
-    
+
 
 #define foreach_vpe_ext_api_reply_msg                                   \
     _(INTERFACE_MSG_ID(SW_INTERFACE_DETAILS), sw_interface_details)     \

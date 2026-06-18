@@ -1053,7 +1053,7 @@ namespace saivs
                         _In_ sai_object_id_t switch_id,
                         _In_ uint32_t attr_count,
                         _In_ const sai_attribute_t *attr_list);
-        
+
                 sai_status_t removeMirrorSession(_In_ sai_object_id_t object_id);
 
     };

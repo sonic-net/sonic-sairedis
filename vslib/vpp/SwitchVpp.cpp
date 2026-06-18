@@ -1465,7 +1465,7 @@ sai_status_t SwitchVpp::setPort(
                             sid.c_str(), pmb.dst_sw_if_idx, it->second.sw_if_index);
                         return SAI_STATUS_FAILURE;
                     }
-                    
+
                     (attr->id == SAI_PORT_ATTR_INGRESS_MIRROR_SESSION) ? pmb.rx = true : pmb.tx = true;
 
                     // 1 = RX, 2 = TX, 3 = both
