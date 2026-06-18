@@ -2231,7 +2231,7 @@ public:
         sai_attribute_t attr;
         attr.id = SAI_PORT_SERDES_ATTR_PORT_ID;
 
-        sai_status_t status = SAI_OBJECT_IN_USE;
+        sai_status_t status = SAI_STATUS_OBJECT_IN_USE;
         while (status == SAI_STATUS_OBJECT_IN_USE)
         {
             status = Base::m_vendorSai->get(Base::m_objectType, port_serdes_rid, 1, &attr);
@@ -2349,7 +2349,6 @@ public:
                            port_rid, status);
             return;
         }
-
 
         laneCount = attr.value.u32list.count;
 
