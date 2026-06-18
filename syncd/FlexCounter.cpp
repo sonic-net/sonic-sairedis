@@ -553,24 +553,6 @@ protected:
         SWSS_LOG_ENTER();
         return &m_supportedCounterGroups[cgr.idx];
     }
-    static bool counterGroupRefDscSorter(CounterGroupRef const& lhs, CounterGroupRef const& rhs)
-    {
-        SWSS_LOG_ENTER();
-        // Must adhere to strict weak ordering
-        if (lhs.idx == rhs.idx)
-        {
-            return false; // The sets are equivalent
-        }
-        else if (lhs.size == rhs.size)
-        {
-            return lhs.idx < rhs.idx; // order by earliest creation when size is same
-        }
-        else
-        {
-            return lhs.size > rhs.size;
-        }
-    }
-
 public:
     typedef CounterIds<StatType> CounterIdsType;
     typedef BulkStatsContext<StatType> BulkContextType;
@@ -629,7 +611,6 @@ public:
 
         std::set<StatType> counter_ids_set = setupBaseCounterGroup(rid, counter_ids, effective_stats_mode);
         counter_ids = std::vector<StatType>(counter_ids_set.begin(), counter_ids_set.end());
-        std::sort(counter_ids.begin(), counter_ids.end());
         updateSupportedCounterGroups(rid, vid, counter_ids, effective_stats_mode);
 
         if (m_objectSupportedCountersGroupMap.count(vid) == 0)
@@ -655,14 +636,6 @@ public:
                 throw std::runtime_error("Test counter poll failed on populating m_objectIdsMap");
             }
         }
-
-        // Perform a remove and re-add to simplify the logic here
-        // This remove function removes the counter from m_objectIdsMap and clears counter group mappings:
-        // - There is special handling logic for m_objectIdsMap below.
-        // - Counter group mappings are no longer needed for this vid since it is already stored in supportedIds.
-        // - This vid will also not have the same counter_ids for discovery later on, except from intentional discoveries
-        //   via addObject, which we would want to rediscover anyways.
-        removeObject(vid, false);
 
         bool supportBulk;
         // TODO: use if const expression when cpp17 is supported
@@ -1583,8 +1556,9 @@ public:
                     m_failedPolls[{rid, vid}] += 1;
                     SWSS_LOG_DEBUG("counter read failed %d times on RID 0x%" PRIx64 " on intf 0x%" PRIx64, m_failedPolls[{rid, vid}], rid, vid);
                 }
-                else
+                else if (m_failedPolls[{rid, vid}] == 3)
                 {
+                    m_failedPolls[{rid, vid}] += 1;
                     SWSS_LOG_ERROR("counter read failed more than 3 times on RID 0x%" PRIx64 " on intf 0x%" PRIx64, rid, vid);
                 }
                 continue;
@@ -1692,7 +1666,24 @@ private:
             {
                 m_counterGroupsSorted.push_back(makeCounterGroupRef(m_supportedCounterGroups.size(), counter_ids_set.size()));
                 m_supportedCounterGroups.push_back(counter_ids_set);
-                std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(), &counterGroupRefDscSorter);
+                // Must adhere to strict weak ordering
+                // Use lambda instead of static function to avoid SWSS_LOG_ENTER CI build requirement for better performance
+                std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(),
+                        [](CounterGroupRef const& lhs, CounterGroupRef const& rhs)
+                        {
+                            if (lhs.idx == rhs.idx)
+                            {
+                                return false; // The sets are equivalent
+                            }
+                            else if (lhs.size == rhs.size)
+                            {
+                                return lhs.idx < rhs.idx; // order by earliest creation when size is same
+                            }
+                            else
+                            {
+                                return lhs.size > rhs.size;
+                            }
+                        });
             }
         }
         return counter_ids_set;
@@ -2024,10 +2015,25 @@ private:
             _In_ sai_stats_mode_t stats_mode)
     {
         SWSS_LOG_ENTER();
-        if (m_objectSupportedCountersGroupMap.count(vid) && !always_check_supported_counters)
+        if (m_objectSupportedCountersGroupMap.find(vid) != m_objectSupportedCountersGroupMap.end())
         {
-            SWSS_LOG_NOTICE("Ignore checking of supported counters");
-            return;
+            if (!always_check_supported_counters)
+            {
+                SWSS_LOG_NOTICE("Ignore checking of supported counters");
+                return;
+            }
+            // If there is already a counter group for this vid, and that counter group contains a counter that is not
+            // included in counter_ids, then it means we are handling a different set of counters.
+            // Remove the previous group and mappings to this vid
+            std::set<StatType> existingGroup = m_supportedCounterGroups[m_objectSupportedCountersGroupMap[vid]];
+            for (auto &counter : existingGroup)
+            {
+                if (find(counter_ids.begin(), counter_ids.end(), counter) == counter_ids.end())
+                {
+                    removeObject(vid, false);
+                    break;
+                }
+            }
         }
 
         // Check if a matching counter group already exists
@@ -2042,12 +2048,18 @@ private:
                 // Success - Check support for counters not in counter group (extra counters)
                 std::vector<StatType> extraCounters;
                 std::set<StatType> newCounters;
+                std::set<StatType> intersectedCounters;
+                bool newGroup = false;
 
-                // Counter groups are a subset of counter_ids in any situation
-                // Vectors need to be sorted for set_difference for defined behavior - counter_ids are already sorted
-                std::sort(countersToPoll.begin(), countersToPoll.end());
-                std::set_difference(counter_ids.begin(), counter_ids.end(), countersToPoll.begin(), countersToPoll.end(),
+                // Make it such that the counter group is a subset of counter_ids
+                std::set_intersection(counter_ids.begin(), counter_ids.end(), countersToPoll.begin(), countersToPoll.end(),
+                                      std::inserter(intersectedCounters, intersectedCounters.begin()));
+                newGroup = intersectedCounters.size() < countersToPoll.size();
+
+                // Vectors need to be sorted for set_difference for defined behavior - sets are sorted in C++
+                std::set_difference(counter_ids.begin(), counter_ids.end(), intersectedCounters.begin(), intersectedCounters.end(),
                                     std::back_inserter(extraCounters));
+
                 for (const StatType &counter : extraCounters)
                 {
                     std::vector<StatType> singleCounter {counter};
@@ -2055,6 +2067,7 @@ private:
                     if (collectData(rid, singleCounter, stats_mode, false, singleValue))
                     {
                         newCounters.insert(counter);
+                        newGroup = true;
                     }
                     else
                     {
@@ -2063,10 +2076,10 @@ private:
                                        sai_serialize_object_id(vid).c_str());
                     }
                 }
-                if (!newCounters.empty())
+                if (newGroup)
                 {
                     // New counters discovered, create new counter group
-                    newCounters.insert(counterSet->begin(), counterSet->end());
+                    newCounters.insert(intersectedCounters.begin(), intersectedCounters.end());
 
                     // If vid already has assigned counter group, merge the two groups if dont_clear flag is set
                     if (m_objectSupportedCountersGroupMap.count(vid) && dont_clear_support_counter)
@@ -2078,7 +2091,24 @@ private:
                     m_objectSupportedCountersGroupMap[vid] = m_supportedCounterGroups.size();
                     m_supportedCounterGroups.push_back(newCounters);
                     m_counterGroupsSorted.push_back(makeCounterGroupRef(m_supportedCounterGroups.size()-1, newCounters.size()));
-                    std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(), &counterGroupRefDscSorter);
+                    // Must adhere to strict weak ordering
+                    // Use lambda instead of static function to avoid SWSS_LOG_ENTER CI build requirement for better performance
+                    std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(),
+                            [](CounterGroupRef const& lhs, CounterGroupRef const& rhs)
+                            {
+                                if (lhs.idx == rhs.idx)
+                                {
+                                    return false; // The sets are equivalent
+                                }
+                                else if (lhs.size == rhs.size)
+                                {
+                                    return lhs.idx < rhs.idx; // order by earliest creation when size is same
+                                }
+                                else
+                                {
+                                    return lhs.size > rhs.size;
+                                }
+                            });
                 }
                 else
                 {
@@ -2094,7 +2124,24 @@ private:
                             m_objectSupportedCountersGroupMap[vid] = m_supportedCounterGroups.size();
                             m_supportedCounterGroups.push_back(newCounters);
                             m_counterGroupsSorted.push_back(makeCounterGroupRef(m_supportedCounterGroups.size()-1, newCounters.size()));
-                            std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(), &counterGroupRefDscSorter);
+                            // Must adhere to strict weak ordering
+                            // Use lambda instead of static function to avoid SWSS_LOG_ENTER CI build requirement for better performance
+                            std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(),
+                                    [](CounterGroupRef const& lhs, CounterGroupRef const& rhs)
+                                    {
+                                        if (lhs.idx == rhs.idx)
+                                        {
+                                            return false; // The sets are equivalent
+                                        }
+                                        else if (lhs.size == rhs.size)
+                                        {
+                                            return lhs.idx < rhs.idx; // order by earliest creation when size is same
+                                        }
+                                        else
+                                        {
+                                            return lhs.size > rhs.size;
+                                        }
+                                    });
                     }
                     else
                     {
@@ -2126,7 +2173,24 @@ private:
         m_objectSupportedCountersGroupMap[vid] = m_supportedCounterGroups.size();
         m_supportedCounterGroups.push_back(supportedIds);
         m_counterGroupsSorted.push_back(makeCounterGroupRef(m_supportedCounterGroups.size()-1, supportedIds.size()));
-        std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(), &counterGroupRefDscSorter);
+        // Must adhere to strict weak ordering
+        // Use lambda instead of static function to avoid SWSS_LOG_ENTER CI build requirement for better performance
+        std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(),
+                [](CounterGroupRef const& lhs, CounterGroupRef const& rhs)
+                {
+                    if (lhs.idx == rhs.idx)
+                    {
+                        return false; // The sets are equivalent
+                    }
+                    else if (lhs.size == rhs.size)
+                    {
+                        return lhs.idx < rhs.idx; // order by earliest creation when size is same
+                    }
+                    else
+                    {
+                        return lhs.size > rhs.size;
+                    }
+                });
     }
 
     void updateSupportedCounters(
