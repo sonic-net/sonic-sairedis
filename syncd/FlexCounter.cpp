@@ -2376,8 +2376,8 @@ public:
             sai_attribute_t attr;
             attr.id = attrId;
 
-            bool failed = false;
-            for (uint32_t tries = 0; tries < 3; tries++)
+            sai_status_t status = SAI_STATUS_OBJECT_IN_USE;
+            while (status == SAI_STATUS_OBJECT_IN_USE)
             {
                 sai_status_t status = Base::m_vendorSai->get(
                     Base::m_objectType,
@@ -2385,25 +2385,22 @@ public:
                     1,
                     &attr);
 
-                if (status == SAI_STATUS_SUCCESS)
+                if (status != SAI_STATUS_OBJECT_IN_USE)
+                {
                     break;
-                else if (status == SAI_STATUS_OBJECT_IN_USE && tries < 2)
-                {
-                    // SAI object is busy - retry in 10ms
-                    SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: SAI object in use, retry getting port serdes count attr %s for port_serdes RID:0x%" PRIx64 "...",
-                                  sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid);
-                    std::this_thread::sleep_for(chrono::milliseconds(10));
                 }
-                else
-                {
-                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes count attr %s for port_serdes RID:0x%" PRIx64 ", status:%d",
-                                  sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, status);
-                    failed = true;
-                    continue;
-                }
+                // SAI object is busy - retry in 10ms
+                SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: SAI object in use, retry getting port serdes count attr %s for port_serdes RID:0x%" PRIx64 "...",
+                              sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid);
+                std::this_thread::sleep_for(chrono::milliseconds(10));
             }
-            if (failed)
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes count attr %s for port_serdes RID:0x%" PRIx64 ", status:%d",
+                               sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, status);
                 continue;
+            }
 
             count = attr.value.u32;
 
