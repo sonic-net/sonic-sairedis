@@ -5,13 +5,36 @@
 #include "swss/logger.h"
 
 #include "vppxlate/SaiIntfStats.h"
+#include "vppxlate/SaiRouteStats.h"
 
 #include "SwitchVppUtils.h"
 
 #include <vector>
 #include <string>
+#include <cerrno>
 
 using namespace saivs;
+
+namespace
+{
+    constexpr uint64_t ROUTE_COUNTER_RESET_DELTA_THRESHOLD = 1ULL << 60;
+
+    // TTL for the route-stats full-dump cache. Must be shorter than the
+    // FlexCounter polling interval so each cycle triggers at most one VPP dump.
+    constexpr auto ROUTE_STATS_CACHE_TTL = std::chrono::milliseconds(1000);
+
+    // Accumulates one dumped route-stats entry into the cache. The same stats
+    // index is reported once per VPP worker thread, so totals are summed here to
+    // match vpp_route_stats_query's per-index accumulation.
+    void accumulateRouteStat(uint32_t stats_index, uint64_t packets, uint64_t bytes, void *data)
+    {
+        // SWSS_LOG_ENTER(); // disabled: hot-path callback invoked per dumped stats entry
+        auto *cache = static_cast<std::unordered_map<uint32_t, vpp_route_stats_t>*>(data);
+        auto& entry = (*cache)[stats_index];
+        entry.packets += packets;
+        entry.bytes += bytes;
+    }
+}
 
 // TODO init vpp
 
@@ -746,6 +769,304 @@ void SwitchVpp::setPortStats(
     debugSetStats(oid, stats);
 }
 
+sai_status_t SwitchVpp::getRouteCounterStats(
+        _In_ sai_object_id_t oid,
+        _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
+        _In_ bool allow_cache)
+{
+    SWSS_LOG_ENTER();
+
+    std::string route;
+    if (!getCounterBoundRoute(oid, route))
+    {
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    auto statsIt = m_routeStatsIndexMap.find(route);
+    if (statsIt == m_routeStatsIndexMap.end())
+    {
+        SWSS_LOG_ERROR("missing VPP stats index for route counter %s route %s",
+                sai_serialize_object_id(oid).c_str(),
+                route.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_status_t status = readRouteStatsByIndex(statsIt->second, stats, allow_cache);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to read VPP route stats for counter %s route %s stats index %u",
+                sai_serialize_object_id(oid).c_str(),
+                route.c_str(),
+                statsIt->second);
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::readRouteStatsByIndex(
+        _In_ uint32_t stats_index,
+        _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
+        _In_ bool allow_cache)
+{
+    SWSS_LOG_ENTER();
+
+    vpp_route_stats_t route_stats;
+    int rc = allow_cache
+        ? getRouteStatsFromCache(stats_index, &route_stats)
+        : vpp_route_stats_query(stats_index, &route_stats);
+    if (rc != 0)
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
+    stats[SAI_COUNTER_STAT_PACKETS] = route_stats.packets;
+    stats[SAI_COUNTER_STAT_BYTES] = route_stats.bytes;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_object_id_t SwitchVpp::getRouteBoundCounter(
+        _In_ const std::string& serializedRouteId)
+{
+    SWSS_LOG_ENTER();
+
+    auto route_obj = m_object_db.get(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedRouteId);
+    return getRouteBoundCounter(route_obj.get());
+}
+
+sai_object_id_t SwitchVpp::getRouteBoundCounter(
+        _In_ const SaiObject* route_obj)
+{
+    SWSS_LOG_ENTER();
+
+    if (!route_obj)
+    {
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    auto counter_obj = route_obj->get_linked_object(SAI_OBJECT_TYPE_COUNTER, SAI_ROUTE_ENTRY_ATTR_COUNTER_ID);
+    if (!counter_obj)
+    {
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    sai_object_id_t counter_oid;
+    sai_deserialize_object_id(counter_obj->get_id(), counter_oid);
+    return counter_oid;
+}
+
+bool SwitchVpp::getCounterBoundRoute(
+        _In_ sai_object_id_t counter_oid,
+        _Out_ std::string& route)
+{
+    SWSS_LOG_ENTER();
+
+    if (counter_oid == SAI_NULL_OBJECT_ID)
+    {
+        return false;
+    }
+
+    auto counter_obj = m_object_db.get(SAI_OBJECT_TYPE_COUNTER, sai_serialize_object_id(counter_oid));
+    if (!counter_obj)
+    {
+        return false;
+    }
+
+    auto routes = counter_obj->get_child_objs(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+    if (!routes || routes->empty())
+    {
+        return false;
+    }
+
+    // The counter<->route binding is enforced 1:1 at bind time, so the first
+    // child is the bound route.
+    route = routes->begin()->first;
+    return true;
+}
+
+int SwitchVpp::getRouteStatsFromCache(
+        _In_ uint32_t stats_index,
+        _Out_ vpp_route_stats_t *stats)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_routeStatsCacheMutex);
+
+    auto now = std::chrono::steady_clock::now();
+    if (!m_routeStatsCacheValid || (now - m_routeStatsCacheTime) >= ROUTE_STATS_CACHE_TTL)
+    {
+        std::unordered_map<uint32_t, vpp_route_stats_t> fresh;
+        if (vpp_route_stats_dump_all(accumulateRouteStat, &fresh) != 0)
+        {
+            if (!m_routeStatsCacheValid)
+            {
+                *stats = vpp_route_stats_t{};
+                return -EIO;
+            }
+            SWSS_LOG_WARN("route stats dump failed; serving stale cache (age %lld ms)",
+                    static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(now - m_routeStatsCacheTime).count()));
+        }
+        else
+        {
+            m_routeStatsCache = std::move(fresh);
+            m_routeStatsCacheValid = true;
+            m_routeStatsCacheTime = now;
+        }
+    }
+
+    auto it = m_routeStatsCache.find(stats_index);
+    if (it == m_routeStatsCache.end())
+    {
+        *stats = vpp_route_stats_t{};
+        return -ENOENT;
+    }
+
+    *stats = it->second;
+    return 0;
+}
+
+uint64_t SwitchVpp::getRouteCounterDelta(
+        _In_ sai_object_id_t oid,
+        _In_ sai_stat_id_t id,
+        _In_ uint64_t current,
+        _In_ uint64_t base)
+{
+    SWSS_LOG_ENTER();
+
+    uint64_t delta = current - base;
+    if (current < base && delta > ROUTE_COUNTER_RESET_DELTA_THRESHOLD)
+    {
+        SWSS_LOG_WARN("route counter %s stat %d reset detected: current %llu base %llu",
+                sai_serialize_object_id(oid).c_str(),
+                id,
+                static_cast<unsigned long long>(current),
+                static_cast<unsigned long long>(base));
+        return 0;
+    }
+
+    return delta;
+}
+
+void SwitchVpp::carryRouteCounterStatsDelta(
+        _In_ sai_object_id_t oid,
+        _In_ const std::map<sai_stat_id_t, uint64_t>& stats)
+{
+    SWSS_LOG_ENTER();
+
+    auto baseMapIt = m_routeCounterStatsBaseMap.find(oid);
+    if (baseMapIt == m_routeCounterStatsBaseMap.end())
+    {
+        return;
+    }
+
+    auto& carry = m_routeCounterStatsCarryMap[oid];
+    for (const auto& stat : stats)
+    {
+        uint64_t base = 0;
+        auto baseIt = baseMapIt->second.find(stat.first);
+        if (baseIt != baseMapIt->second.end())
+        {
+            base = baseIt->second;
+        }
+
+        uint64_t delta = getRouteCounterDelta(oid, stat.first, stat.second, base);
+        if (delta != 0 || carry.find(stat.first) != carry.end())
+        {
+            carry[stat.first] += delta;
+        }
+    }
+
+    if (carry.empty())
+    {
+        m_routeCounterStatsCarryMap.erase(oid);
+    }
+}
+
+sai_status_t SwitchVpp::getRouteStatsExt(
+        _In_ sai_object_id_t oid,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters)
+{
+    SWSS_LOG_ENTER();
+
+    std::map<sai_stat_id_t, uint64_t> stats;
+
+    // Hot path: called once per route counter OID per FlexCounter polling cycle.
+    // Serve from the short-lived full-dump cache so a cycle does one VPP dump.
+    sai_status_t status = getRouteCounterStats(oid, stats, /*allow_cache=*/true);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    auto& base = m_routeCounterStatsBaseMap[oid];
+    auto carryMapIt = m_routeCounterStatsCarryMap.find(oid);
+    bool clear = mode == SAI_STATS_MODE_READ_AND_CLEAR ||
+        mode == SAI_STATS_MODE_BULK_READ_AND_CLEAR ||
+        mode == SAI_STATS_MODE_BULK_CLEAR;
+
+    for (uint32_t i = 0; i < number_of_counters; ++i)
+    {
+        sai_stat_id_t id = counter_ids[i];
+        uint64_t current = 0;
+
+        auto statsIt = stats.find(id);
+        if (statsIt != stats.end())
+        {
+            current = statsIt->second;
+        }
+
+        uint64_t carried = 0;
+        if (carryMapIt != m_routeCounterStatsCarryMap.end())
+        {
+            auto carryIt = carryMapIt->second.find(id);
+            if (carryIt != carryMapIt->second.end())
+            {
+                carried = carryIt->second;
+            }
+        }
+
+        auto baseIt = base.find(id);
+        if (baseIt == base.end())
+        {
+            base[id] = current;
+            counters[i] = carried;
+            if (clear && carryMapIt != m_routeCounterStatsCarryMap.end())
+            {
+                carryMapIt->second.erase(id);
+            }
+            continue;
+        }
+
+        uint64_t baseValue = baseIt->second;
+        uint64_t delta = getRouteCounterDelta(oid, id, current, baseValue);
+        if (current < baseValue && delta == 0)
+        {
+            base[id] = current;
+        }
+
+        counters[i] = carried + delta;
+
+        if (clear)
+        {
+            base[id] = current;
+            if (carryMapIt != m_routeCounterStatsCarryMap.end())
+            {
+                carryMapIt->second.erase(id);
+            }
+        }
+    }
+
+    if (carryMapIt != m_routeCounterStatsCarryMap.end() && carryMapIt->second.empty())
+    {
+        m_routeCounterStatsCarryMap.erase(oid);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::queryAttributeCapability(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type,
@@ -807,6 +1128,19 @@ sai_status_t SwitchVpp::getStatsExt(
     if (object_type == SAI_OBJECT_TYPE_PORT)
     {
         setPortStats(object_id);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_COUNTER)
+    {
+        std::string route;
+        if (getCounterBoundRoute(object_id, route))
+        {
+            return getRouteStatsExt(
+                    object_id,
+                    number_of_counters,
+                    counter_ids,
+                    mode,
+                    counters);
+        }
     }
 
     return SwitchStateBase::getStatsExt(
@@ -1214,6 +1548,19 @@ sai_status_t SwitchVpp::remove(
         return status;
     }
 
+    if (object_type == SAI_OBJECT_TYPE_COUNTER)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+
+        // Drop the counter's stats accounting. The route<->counter relationship
+        // lives in SaiObjectDB (route's COUNTER_ID attribute) and is cleared when
+        // the route is unbound or removed, so only the base/carry tables (keyed
+        // by counter OID) need cleanup here.
+        m_routeCounterStatsBaseMap.erase(objectId);
+        m_routeCounterStatsCarryMap.erase(objectId);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
     {
         sai_status_t status = m_tunnel_mgr_srv6.remove_my_sid_entry(serializedObjectId);
@@ -1573,9 +1920,10 @@ sai_status_t SwitchVpp::set_internal(
 {
     SWSS_LOG_ENTER();
 
-    //Update child-parent relationship before updating the attribute
-    m_object_db.create_or_update(objectType, serializedObjectId, 1, attr, false /*is_create*/);
-
+    // Validate the object exists before mutating any state. The child-parent
+    // relationship update below is not rolled back on failure, so it must not
+    // run for an object that does not exist (a failed set would otherwise leave
+    // SaiObjectDB pointing at the new parent while the attribute is unchanged).
     auto it = m_objectHash.at(objectType).find(serializedObjectId);
 
     if (it == m_objectHash.at(objectType).end())
@@ -1586,6 +1934,9 @@ sai_status_t SwitchVpp::set_internal(
 
         return SAI_STATUS_ITEM_NOT_FOUND;
     }
+
+    //Update child-parent relationship before updating the attribute
+    m_object_db.create_or_update(objectType, serializedObjectId, 1, attr, false /*is_create*/);
 
     auto &attrHash = it->second;
 

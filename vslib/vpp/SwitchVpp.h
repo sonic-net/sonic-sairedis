@@ -11,8 +11,13 @@
 #include "CRMTracker.h"
 
 #include "vppxlate/SaiVppXlate.h"
+#include "vppxlate/SaiRouteStats.h"
 
 #include <list>
+#include <map>
+#include <unordered_map>
+#include <mutex>
+#include <chrono>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -87,6 +92,86 @@ namespace saivs
 
             void setPortStats(
                     _In_ sai_object_id_t oid);
+
+            sai_status_t getRouteStatsExt(
+                    _In_ sai_object_id_t oid,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Out_ uint64_t *counters);
+
+            sai_status_t getRouteCounterStats(
+                    _In_ sai_object_id_t oid,
+                    _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
+                    _In_ bool allow_cache = false);
+
+            // Resolve the counter currently bound to a route via the SaiObjectDB
+            // relationship (route's SAI_ROUTE_ENTRY_ATTR_COUNTER_ID). Returns
+            // SAI_NULL_OBJECT_ID when the route is unbound or absent.
+            sai_object_id_t getRouteBoundCounter(
+                    _In_ const std::string& serializedRouteId);
+
+            // Overload for callers that already hold the committed route object,
+            // avoiding a redundant SaiObjectDB lookup. The object must be the
+            // committed SaiObjectDB object (e.g. from get_sai_object), not an
+            // in-flight cached object, so the bound counter reflects DB state.
+            sai_object_id_t getRouteBoundCounter(
+                    _In_ const SaiObject* route_obj);
+
+            // Resolve the single route bound to a counter via the SaiObjectDB
+            // child relationship. The counter<->route binding is kept 1:1, so at
+            // most one route is expected. Returns false when no route is bound.
+            bool getCounterBoundRoute(
+                    _In_ sai_object_id_t counter_oid,
+                    _Out_ std::string& route);
+
+            // Read VPP route stats for a stats index and fill packets/bytes into
+            // the stats map. Returns SAI_STATUS_SUCCESS or SAI_STATUS_FAILURE.
+            sai_status_t readRouteStatsByIndex(
+                    _In_ uint32_t stats_index,
+                    _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
+                    _In_ bool allow_cache = false);
+
+            // Read VPP route stats for a single stats index. When allow_cache is
+            // true the value is served from a short-lived full-dump cache so a
+            // FlexCounter polling cycle does one VPP dump instead of one per
+            // counter. Returns 0 on success, -ENOENT if the index is absent from
+            // a fresh dump, or -EIO on dump failure.
+            int getRouteStatsFromCache(
+                    _In_ uint32_t stats_index,
+                    _Out_ vpp_route_stats_t *stats);
+
+            uint64_t getRouteCounterDelta(
+                    _In_ sai_object_id_t oid,
+                    _In_ sai_stat_id_t id,
+                    _In_ uint64_t current,
+                    _In_ uint64_t base);
+
+            void carryRouteCounterStatsDelta(
+                    _In_ sai_object_id_t oid,
+                    _In_ const std::map<sai_stat_id_t, uint64_t>& stats);
+
+            void recordRouteStatsIndexAndResetBase(
+                    _In_ const std::string& route,
+                    _In_ uint32_t stats_index,
+                    _In_ bool has_old_counter_stats,
+                    _In_ const std::map<sai_stat_id_t, uint64_t>& old_counter_stats);
+
+            sai_status_t buildNhgMember(
+                    _In_ const SaiObject& nhg_mbr_obj,
+                    _Out_ nexthop_grp_member_t& member);
+
+            void updateRoutesForNhgMember(
+                    _In_ const std::unordered_map<std::string, std::shared_ptr<SaiObject>>& routes,
+                    _Inout_ nexthop_grp_member_t& member,
+                    _In_ bool isAdd);
+
+            sai_status_t setRouteCounterBinding(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_object_id_t counter_oid);
+
+            void removeRouteCounterBinding(
+                    _In_ const std::string &serializedObjectId);
 
             bool port_to_hostif_list(
                     _In_ sai_object_id_t oid,
@@ -636,12 +721,14 @@ namespace saivs
 
             sai_status_t IpRouteAddRemove(
                     _In_ const SaiObject* route_obj,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _Out_ uint32_t *stats_index = nullptr);
 
             sai_status_t IpRoutePathAddRemove(
                     _In_ const SaiObject* route_obj,
                     _In_ nexthop_grp_member_t *member,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _Out_ uint32_t *stats_index = nullptr);
 
             sai_status_t updateIpRoute(
                     _In_ const std::string &serializedObjectId,
@@ -677,6 +764,16 @@ namespace saivs
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_mbr_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
+            std::map<std::string, uint32_t> m_routeStatsIndexMap;
+            std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsBaseMap;
+            std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsCarryMap;
+
+            // Short-lived cache of a full "/net/route/to" dump, keyed by VPP stats
+            // index, used by the FlexCounter polling path (getRouteStatsFromCache).
+            std::unordered_map<uint32_t, vpp_route_stats_t> m_routeStatsCache;
+            std::chrono::steady_clock::time_point m_routeStatsCacheTime;
+            bool m_routeStatsCacheValid = false;
+            std::mutex m_routeStatsCacheMutex;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
