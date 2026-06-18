@@ -2327,28 +2327,29 @@ public:
         attr.value.u32list.count = 0;        // Query with count=0 to get the actual lane count
         attr.value.u32list.list = nullptr;
 
-        for (uint32_t tries = 0; tries < 3; tries++)
+        sai_status_t status = SAI_STATUS_OBJECT_IN_USE;
+        while (status == SAI_STATUS_OBJECT_IN_USE)
         {
             sai_status_t status = Base::m_vendorSai->get(SAI_OBJECT_TYPE_PORT, port_rid, 1, &attr);
-
-            // The SAI status expected is SAI_STATUS_BUFFER_OVERFLOW since we pass in a nullptr
-            // This is the agreed method with Broadcom for retrieving the actual lane count
-            if (status == SAI_STATUS_BUFFER_OVERFLOW)
+            if (status != SAI_STATUS_OBJECT_IN_USE)
+            {
                 break;
-            else if (status == SAI_STATUS_OBJECT_IN_USE && tries < 2)
-            {
-                // SAI object is busy - retry in 10ms
-                SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: SAI object in use, retry getting hardware lane count for port RID:0x%" PRIx64 "...",
-                              port_rid);
-                std::this_thread::sleep_for(chrono::milliseconds(10));
             }
-            else
-            {
-                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get hardware lane count for port RID:0x%" PRIx64 ", status:%d",
-                              port_rid, status);
-                return;
-            }
+
+            // SAI object is busy - retry in 10ms
+            SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: SAI object in use, retry getting hardware lane count for port RID:0x%" PRIx64 "...",
+                          port_rid);
+            std::this_thread::sleep_for(chrono::milliseconds(10));
         }
+        // The SAI status expected is SAI_STATUS_BUFFER_OVERFLOW since we pass in a nullptr
+        // This is the agreed method with Broadcom for retrieving the actual lane count
+        if (status != SAI_STATUS_BUFFER_OVERFLOW)
+        {
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get hardware lane count for port RID:0x%" PRIx64 ", status:%d",
+                           port_rid, status);
+            return;
+        }
+
 
         laneCount = attr.value.u32list.count;
 
