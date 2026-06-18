@@ -2332,7 +2332,7 @@ public:
             sai_status_t status = Base::m_vendorSai->get(SAI_OBJECT_TYPE_PORT, port_rid, 1, &attr);
 
             // The SAI status expected is SAI_STATUS_BUFFER_OVERFLOW since we pass in a nullptr
-            // This is the agreed method with Broadcom for retriving the actual lane count
+            // This is the agreed method with Broadcom for retrieving the actual lane count
             if (status == SAI_STATUS_BUFFER_OVERFLOW)
                 break;
             else if (status == SAI_STATUS_OBJECT_IN_USE && tries < 2)
