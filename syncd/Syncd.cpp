@@ -6790,153 +6790,144 @@ void Syncd::run()
 
             int result = s->select(&sel, 1000);
 
-            if (result < 0)
+            if (result == swss::Select::TIMEOUT)
             {
-                int err = errno;
+                 SWSS_LOG_DEBUG("Select timeout");
 
-                if (err == EINTR || err == EBADF || err == ENOENT)
+                 // Process if any pending state sync due to link event damping
+                 processPendingDampingSync();
+
+                 // Flush in controlled manner
+                flushPendingDampingNotifications();
+                continue;
+            }
+            else if (result == swss::Select::ERROR)
+            {
+                 SWSS_LOG_ERROR("select errored, return value: %d", result);
+                 continue;
+            }
+            else if (result == swss::Select::SIGNALINT)
+            {
+                 SWSS_LOG_DEBUG("Select interrupted by a signal");
+                 continue;
+            }
+
+            // result OBJECT case
+            if (sel == m_restartQuery.get())
+            {
+                /*
+                 * This is actual a bad design, since selectable may pick up
+                 * multiple events from the queue, and after restart those
+                 * events will be forgotten since they were consumed already and
+                 * this may lead to forget populate object table which will
+                 * lead to unable to find some objects.
+                 */
+
+                SWSS_LOG_NOTICE("is asic queue empty: %d", m_selectableChannel->empty());
+
+                while (!m_selectableChannel->empty())
                 {
-                    SWSS_LOG_WARN("select transient error %d, continuing", err);
+                    processEvent(*m_selectableChannel.get());
+                }
+
+                SWSS_LOG_NOTICE("drained queue");
+
+                WatchdogScope ws(m_timerWatchdog, "restart query");
+
+                shutdownType = handleRestartQuery(*m_restartQuery);
+
+                if (shutdownType != SYNCD_RESTART_TYPE_PRE_SHUTDOWN && shutdownType != SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN)
+                {
+                    // break out the event handling loop to shutdown syncd
+                    runMainLoop = false;
+                    break;
+                }
+
+                // Handle switch pre-shutdown and wait for the final shutdown
+                // event
+
+                SWSS_LOG_TIMER("%s pre-shutdown", (shutdownType == SYNCD_RESTART_TYPE_PRE_SHUTDOWN) ? "warm" : "express");
+
+                m_manager->removeAllCounters();
+
+                sai_status_t status = setRestartWarmOnAllSwitches(true);
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_RESTART_WARM=true: %s for pre-shutdown",
+                            sai_serialize_status(status).c_str());
+
+                    shutdownType = SYNCD_RESTART_TYPE_COLD;
+
+                    warmRestartTable.setFlagFailed();
                     continue;
                 }
 
-                SWSS_LOG_ERROR("select failed: errno=%d", err);
-                continue;
-            }
-
-            if (result == swss::Select::OBJECT)
-            {
-                if (sel == m_restartQuery.get())
+                if (shutdownType == SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN)
                 {
-                    /*
-                     * This is actual a bad design, since selectable may pick up
-                     * multiple events from the queue, and after restart those
-                     * events will be forgotten since they were consumed already and
-                     * this may lead to forget populate object table which will
-                     * lead to unable to find some objects.
-                     */
-
-                    SWSS_LOG_NOTICE("is asic queue empty: %d", m_selectableChannel->empty());
-
-                    while (!m_selectableChannel->empty())
-                    {
-                        processEvent(*m_selectableChannel.get());
-                    }
-
-                    SWSS_LOG_NOTICE("drained queue");
-
-                    WatchdogScope ws(m_timerWatchdog, "restart query");
-
-                    shutdownType = handleRestartQuery(*m_restartQuery);
-
-                    if (shutdownType != SYNCD_RESTART_TYPE_PRE_SHUTDOWN && shutdownType != SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN)
-                    {
-                        // break out the event handling loop to shutdown syncd
-                        runMainLoop = false;
-                        break;
-                    }
-
-                    // Handle switch pre-shutdown and wait for the final shutdown
-                    // event
-
-                    SWSS_LOG_TIMER("%s pre-shutdown", (shutdownType == SYNCD_RESTART_TYPE_PRE_SHUTDOWN) ? "warm" : "express");
-
-                    m_manager->removeAllCounters();
-
-                    sai_status_t status = setRestartWarmOnAllSwitches(true);
+                    SWSS_LOG_NOTICE("express boot, enable fast API pre-shutdown");
+                    status = setFastAPIEnableOnAllSwitches();
 
                     if (status != SAI_STATUS_SUCCESS)
                     {
-                        SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_RESTART_WARM=true: %s for pre-shutdown",
-                                sai_serialize_status(status).c_str());
+                        SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_FAST_API_ENABLE=true: %s for express pre-shutdown. Fall back to cold restart",
+                                       sai_serialize_status(status).c_str());
 
                         shutdownType = SYNCD_RESTART_TYPE_COLD;
 
                         warmRestartTable.setFlagFailed();
                         continue;
                     }
+                }
 
-                    if (shutdownType == SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN)
-                    {
-                        SWSS_LOG_NOTICE("express boot, enable fast API pre-shutdown");
-                        status = setFastAPIEnableOnAllSwitches();
+                status = setPreShutdownOnAllSwitches();
 
-                        if (status != SAI_STATUS_SUCCESS)
-                        {
-                            SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_FAST_API_ENABLE=true: %s for express pre-shutdown. Fall back to cold restart",
-                                        sai_serialize_status(status).c_str());
+                if (status == SAI_STATUS_SUCCESS)
+                {
+                    warmRestartTable.setPreShutdown(true);
 
-                            shutdownType = SYNCD_RESTART_TYPE_COLD;
+                    s = std::make_shared<swss::Select>(); // make sure previous select is destroyed
 
-                            warmRestartTable.setFlagFailed();
-                            continue;
-                        }
-                    }
+                    s->addSelectable(m_restartQuery.get());
 
-                    status = setPreShutdownOnAllSwitches();
+                    SWSS_LOG_NOTICE("switched to PRE_SHUTDOWN, from now on accepting only shutdown requests");
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_PRE_SHUTDOWN=true: %s",
+                            sai_serialize_status(status).c_str());
 
-                    if (status == SAI_STATUS_SUCCESS)
-                    {
-                        warmRestartTable.setPreShutdown(true);
+                    warmRestartTable.setPreShutdown(false);
 
-                        s = std::make_shared<swss::Select>(); // make sure previous select is destroyed
+                    // Restore cold shutdown.
 
-                        s->addSelectable(m_restartQuery.get());
-
-                        SWSS_LOG_NOTICE("switched to PRE_SHUTDOWN, from now on accepting only shutdown requests");
-                    }
-                    else
-                    {
-                        SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_PRE_SHUTDOWN=true: %s",
-                                sai_serialize_status(status).c_str());
-
-                        warmRestartTable.setPreShutdown(false);
-
-                        // Restore cold shutdown.
-
-                        setRestartWarmOnAllSwitches(false);
-                    }
-               }
-               else if (sel == m_flexCounter.get())
-               {
-                   processFlexCounterEvent(*(swss::ConsumerTable*)sel);
-               }
-               else if (sel == m_flexCounterGroup.get())
-               {
-                   processFlexCounterGroupEvent(*(swss::ConsumerTable*)sel);
-               }
-               else if (sel == m_selectableChannel.get())
-               {
-                   if (inShutdownWaitMode)
-                   {
-                       processEventInShutdownWaitMode(*m_selectableChannel.get());
-                   }
-                   else
-                   {
-                       processEvent(*m_selectableChannel.get());
-                   }
-               }
-               else
-               {
-                    SWSS_LOG_ERROR("Select returned unknown selectable: %p", sel);
-               }
+                    setRestartWarmOnAllSwitches(false);
+                }
             }
-            else if (result == swss::Select::TIMEOUT)
+            else if (sel == m_flexCounter.get())
             {
-                 SWSS_LOG_DEBUG("Select timeout (idle loop)");
+                processFlexCounterEvent(*(swss::ConsumerTable*)sel);
+            }
+            else if (sel == m_flexCounterGroup.get())
+            {
+                processFlexCounterGroupEvent(*(swss::ConsumerTable*)sel);
+            }
+            else if (sel == m_selectableChannel.get())
+            {
+                if (inShutdownWaitMode)
+                {
+                    processEventInShutdownWaitMode(*m_selectableChannel.get());
+                }
+                else
+                {
+                    processEvent(*m_selectableChannel.get());
+                }
             }
             else
             {
-                 SWSS_LOG_ERROR("select unexpected return value: %d", result);
+                SWSS_LOG_ERROR("Select returned unknown selectable: %p", sel);
             }
-
-            // Process if any pending state sync due to link event damping
-            processPendingDampingSync();
-
-            // Flush in controlled manner
-            flushPendingDampingNotifications();
         }
-
         catch(const std::exception &e)
         {
             SWSS_LOG_ERROR("Runtime error: %s - entering shutdown-wait mode", e.what());
