@@ -1546,7 +1546,7 @@ void Syncd::processPendingDampingSync()
         }
     }
 
-    // Don's send - just enqueue
+    // Don't send - just enqueue
     if (!notifications.empty())
     {
         // Build port VID list for logging
@@ -6927,6 +6927,12 @@ void Syncd::run()
             {
                 SWSS_LOG_ERROR("Select returned unknown selectable: %p", sel);
             }
+
+            // Process if any pending state sync due to link event damping
+            processPendingDampingSync();
+
+            // Flush in controlled manner
+            flushPendingDampingNotifications();
         }
         catch(const std::exception &e)
         {
