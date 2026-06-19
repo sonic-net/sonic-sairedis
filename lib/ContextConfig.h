@@ -55,6 +55,21 @@ namespace sairedis
             bool hasConflict(
                     _In_ std::shared_ptr<const ContextConfig> ctx) const;
 
+        private:
+
+            /**
+             * @brief Decide whether two contexts sharing a ZMQ endpoint collide.
+             *
+             * Shared by the zmqEndpoint and zmqNtfEndpoint checks in
+             * hasConflict() so the same decision logic is not duplicated.
+             */
+            static bool zmqEndpointConflict(
+                    _In_ const std::string& endpoint,
+                    _In_ const std::string& otherEndpoint,
+                    _In_ context_config_zmq_state_t zmqEnable,
+                    _In_ context_config_zmq_state_t otherZmqEnable,
+                    _In_ const char* label);
+
         public: // TODO to private
 
             uint32_t m_guid;

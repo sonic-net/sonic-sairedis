@@ -78,57 +78,65 @@ bool ContextConfig::hasConflict(
 
     // state database can be shared
 
-    // When both contexts have CONTEXT_CONFIG_ZMQ_EMPTY, neither one has
-    // expressed an opinion about ZMQ in the config file. Matching
-    // endpoints are usually the shared constructor defaults from an
-    // ordinary non-ZMQ multi-context layout that omits the optional
-    // zmq_endpoint fields, so the loader must not reject the file. The
-    // match is still worth flagging in the log: if a cmdline override
-    // later promotes both contexts to ZMQ they will collide at bind
-    // time, and an operator scanning startup logs gets a hint at why.
-    bool bothZmqEmpty =
-            m_zmqEnable == CONTEXT_CONFIG_ZMQ_EMPTY
-            && ctx->m_zmqEnable == CONTEXT_CONFIG_ZMQ_EMPTY;
-
-    // A context locked to Redis (CONTEXT_CONFIG_ZMQ_DISABLED) never binds or
-    // connects ZMQ sockets, so a shared endpoint with such a context can
-    // never collide at bind time. Flagging it as a conflict would make
-    // ContextConfigContainer::insert() throw, which loadFromFile() catches by
-    // discarding the entire parsed context_config.json and falling back to the
-    // default container, so a DISABLED context must not trigger that path.
-    bool eitherZmqDisabled =
-            m_zmqEnable == CONTEXT_CONFIG_ZMQ_DISABLED
-            || ctx->m_zmqEnable == CONTEXT_CONFIG_ZMQ_DISABLED;
-
-    if (m_zmqEndpoint == ctx->m_zmqEndpoint && !eitherZmqDisabled)
+    if (zmqEndpointConflict(m_zmqEndpoint, ctx->m_zmqEndpoint,
+            m_zmqEnable, ctx->m_zmqEnable, "zmqEndpoint"))
     {
-        if (bothZmqEmpty)
-        {
-            SWSS_LOG_WARN("zmqEndpoint %s matches between EMPTY contexts; "
-                    "cmdline ZMQ promotion would collide at bind",
-                    m_zmqEndpoint.c_str());
-        }
-        else
-        {
-            SWSS_LOG_ERROR("zmqEndpoint %s conflict", m_zmqEndpoint.c_str());
-            return true;
-        }
+        return true;
     }
 
-    if (m_zmqNtfEndpoint == ctx->m_zmqNtfEndpoint && !eitherZmqDisabled)
+    if (zmqEndpointConflict(m_zmqNtfEndpoint, ctx->m_zmqNtfEndpoint,
+            m_zmqEnable, ctx->m_zmqEnable, "zmqNtfEndpoint"))
     {
-        if (bothZmqEmpty)
-        {
-            SWSS_LOG_WARN("zmqNtfEndpoint %s matches between EMPTY contexts; "
-                    "cmdline ZMQ promotion would collide at bind",
-                    m_zmqNtfEndpoint.c_str());
-        }
-        else
-        {
-            SWSS_LOG_ERROR("zmqNtfEndpoint %s conflict", m_zmqNtfEndpoint.c_str());
-            return true;
-        }
+        return true;
     }
 
     return false;
+}
+
+bool ContextConfig::zmqEndpointConflict(
+        _In_ const std::string& endpoint,
+        _In_ const std::string& otherEndpoint,
+        _In_ context_config_zmq_state_t zmqEnable,
+        _In_ context_config_zmq_state_t otherZmqEnable,
+        _In_ const char* label)
+{
+    SWSS_LOG_ENTER();
+
+    // Different endpoints can never collide at bind time.
+    if (endpoint != otherEndpoint)
+    {
+        return false;
+    }
+
+    // A context locked to Redis (CONTEXT_CONFIG_ZMQ_DISABLED) never binds or
+    // connects ZMQ sockets, so a shared endpoint with such a context can never
+    // collide at bind time. Flagging it as a conflict would make
+    // ContextConfigContainer::insert() throw, which loadFromFile() catches by
+    // discarding the entire parsed context_config.json and falling back to the
+    // default container, so a DISABLED context must not trigger that path.
+    if (zmqEnable == CONTEXT_CONFIG_ZMQ_DISABLED
+            || otherZmqEnable == CONTEXT_CONFIG_ZMQ_DISABLED)
+    {
+        return false;
+    }
+
+    // When both contexts have CONTEXT_CONFIG_ZMQ_EMPTY, neither one has
+    // expressed an opinion about ZMQ in the config file. Matching endpoints are
+    // usually the shared constructor defaults from an ordinary non-ZMQ
+    // multi-context layout that omits the optional zmq_endpoint fields, so the
+    // loader must not reject the file. The match is still worth flagging in the
+    // log: if a cmdline override later promotes both contexts to ZMQ they will
+    // collide at bind time, and an operator scanning startup logs gets a hint
+    // at why.
+    if (zmqEnable == CONTEXT_CONFIG_ZMQ_EMPTY
+            && otherZmqEnable == CONTEXT_CONFIG_ZMQ_EMPTY)
+    {
+        SWSS_LOG_WARN("%s %s matches between EMPTY contexts; "
+                "cmdline ZMQ promotion would collide at bind",
+                label, endpoint.c_str());
+        return false;
+    }
+
+    SWSS_LOG_ERROR("%s %s conflict", label, endpoint.c_str());
+    return true;
 }
