@@ -1034,6 +1034,13 @@ vl_api_bfd_udp_enable_multihop_reply_t_handler (vl_api_bfd_udp_enable_multihop_r
 }
 
 static void
+vl_api_bfd_udp_set_tos_reply_t_handler (vl_api_bfd_udp_set_tos_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_bfd_udp_session_event_t_handler (vl_api_bfd_udp_session_event_t *msg)
 {
   bool multihop = (htonl(msg->sw_if_index) == (uint32_t)~0);
@@ -1350,6 +1357,7 @@ static void vpp_base_vpe_init(void)
     _(BFD_MSG_ID(BFD_UDP_SESSION_EVENT), bfd_udp_session_event) \
     _(BFD_MSG_ID(WANT_BFD_EVENTS_REPLY), want_bfd_events_reply) \
     _(BFD_MSG_ID(BFD_UDP_ENABLE_MULTIHOP_REPLY), bfd_udp_enable_multihop_reply) \
+    _(BFD_MSG_ID(BFD_UDP_SET_TOS_REPLY), bfd_udp_set_tos_reply) \
 
 
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
@@ -3883,6 +3891,31 @@ static int vpp_bfd_udp_enable_multihop ()
 
     if (ret) { SAIVPP_ERROR("%s failed(%d)", __func__, ret); }
     else { SAIVPP_INFO("%s", __func__); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int bfd_udp_set_tos (uint8_t tos)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_bfd_udp_set_tos_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = bfd_msg_id_base;
+
+    M (BFD_UDP_SET_TOS, mp);
+
+    mp->tos = tos;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) tos 0x%02x", __func__, ret, tos); }
+    else { SAIVPP_INFO("%s tos 0x%02x", __func__, tos); }
 
     VPP_UNLOCK();
 
