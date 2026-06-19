@@ -1,16 +1,16 @@
 # VPP SAI Compatibility Matrix
 
-_Generated: 2026-06-19 08:39:58 PDT_
+_Generated: 2026-06-19 13:09:18 PDT_
 
 ## Summary
 
 | Result | Count | % |
 |--------|------:|----:|
-| ✅ PASS | 32 | 33.7% |
-| ❌ FAIL | 50 | 52.6% |
-| ⚠️ ERROR | 11 | 11.6% |
-| ⏭️ SKIP | 2 | 2.1% |
-| **Total** | **95** | **100.0%** |
+| ✅ PASS | 34 | 38.2% |
+| ❌ FAIL | 44 | 49.4% |
+| ⚠️ ERROR | 9 | 10.1% |
+| ⏭️ SKIP | 2 | 2.2% |
+| **Total** | **89** | **100.0%** |
 
 ## Legend
 
@@ -51,7 +51,7 @@ _Generated: 2026-06-19 08:39:58 PDT_
 | Module | Test Class | Result | Detail |
 |--------|------------|--------|--------|
 | `sai_ecmp_test.EcmpCoExistLagRouteV4` | `runTest` | ❌ FAIL | One of the expected packets was received on device 0 on an unexpected port: 0 == |
-| `sai_ecmp_test.EcmpCoExistLagRouteV6` | `runTest` | ❌ FAIL | One of the expected packets was received on device 0 on an unexpected port: 0 == |
+| `sai_ecmp_test.EcmpCoExistLagRouteV6` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports for device 0. ========== RECEIVE |
 | `sai_ecmp_test.EcmpHashFieldDportTestV4` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports for device 0. ========== RECEIVE |
 | `sai_ecmp_test.EcmpHashFieldDportTestV6` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports for device 0. ========== RECEIVE |
 | `sai_ecmp_test.EcmpHashFieldProtoTestV4` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports for device 0. ========== RECEIVE |
@@ -79,26 +79,24 @@ _Generated: 2026-06-19 08:39:58 PDT_
 | `sai_ecmp_test.RemoveLagEcmpTestV4` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports for device 0. ========== RECEIVE |
 | `sai_ecmp_test.RemoveLagEcmpTestV6` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports for device 0. ========== RECEIVE |
 | `sai_ecmp_test.RemoveNexthopGroupTestV4` | `runTest` | ✅ PASS |  |
-| `sai_neighbor_test.AddHostRouteTest` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [17, 18] for device 0. ========= |
-| `sai_neighbor_test.AddHostRouteTestV6` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [17, 18] for device 0. ========= |
+| `sai_neighbor_test.AddHostRouteTest` | `runTest` | ✅ PASS |  |
+| `sai_neighbor_test.AddHostRouteTestV6` | `runTest` | ✅ PASS |  |
 | `sai_neighbor_test.NhopDiffPrefixRemoveLonger` | `runTest` | ✅ PASS |  |
 | `sai_neighbor_test.NhopDiffPrefixRemoveLongerV6` | `runTest` | ✅ PASS |  |
 | `sai_neighbor_test.NhopDiffPrefixRemoveShorter` | `runTest` | ✅ PASS |  |
 | `sai_neighbor_test.NhopDiffPrefixRemoveShorterV6` | `runTest` | ✅ PASS |  |
 | `sai_neighbor_test.NoHostRouteTest` | `runTest` | ⚠️ ERROR | name 'status' is not defined |
 | `sai_neighbor_test.NoHostRouteTestV6` | `runTest` | ✅ PASS |  |
-| `sai_neighbor_test.RemoveAddNeighborTestIPV4` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [17, 18] for device 0. ========= |
-| `sai_neighbor_test.RemoveAddNeighborTestIPV6` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [17, 18] for device 0. ========= |
+| `sai_neighbor_test.RemoveAddNeighborTestIPV4` | `runTest` | ❌ FAIL | 0 != 1 |
+| `sai_neighbor_test.RemoveAddNeighborTestIPV6` | `runTest` | ❌ FAIL | 0 != 1 |
 | `sai_rif_test.IngressDisableTestV4` | `runTest` | ✅ PASS |  |
 | `sai_rif_test.IngressDisableTestV6` | `runTest` | ✅ PASS |  |
 | `sai_rif_test.IngressMacUpdateTest` | `runTest` | ⚠️ ERROR | 'NoneType' object is not subscriptable |
-| `sai_rif_test.IngressMacUpdateTest` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [17, 18] for device 0. ========= |
+| `sai_rif_test.IngressMacUpdateTest` | `runTest` | ⚠️ ERROR | 'NoneType' object is not subscriptable |
 | `sai_rif_test.IngressMacUpdateTestV6` | `runTest` | ⚠️ ERROR | 'NoneType' object is not subscriptable |
-| `sai_rif_test.IngressMacUpdateTestV6` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [17, 18] for device 0. ========= |
-| `sai_rif_test.IngressMtuTestV4` | `runTest` | ⚠️ ERROR | 'IngressMtuTestV4' object has no attribute 'mtu_Vlan10_rif' |
-| `sai_rif_test.IngressMtuTestV4` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [17, 18] for device 0. ========= |
-| `sai_rif_test.IngressMtuTestV6` | `runTest` | ⚠️ ERROR | 'IngressMtuTestV6' object has no attribute 'mtu_port10_rif' |
-| `sai_rif_test.IngressMtuTestV6` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [17, 18] for device 0. ========= |
+| `sai_rif_test.IngressMacUpdateTestV6` | `runTest` | ⚠️ ERROR | 'NoneType' object is not subscriptable |
+| `sai_rif_test.IngressMtuTestV4` | `runTest` | ⚠️ ERROR | 'NoneType' object is not subscriptable |
+| `sai_rif_test.IngressMtuTestV6` | `runTest` | ⚠️ ERROR | 'NoneType' object is not subscriptable |
 | `sai_route_test.DefaultRouteV4Test` | `runTest` | ✅ PASS |  |
 | `sai_route_test.DefaultRouteV6Test` | `runTest` | ✅ PASS |  |
 | `sai_route_test.DropRouteTest` | `runTest` | ✅ PASS |  |
@@ -110,14 +108,10 @@ _Generated: 2026-06-19 08:39:58 PDT_
 | `sai_route_test.RouteDiffPrefixAddThenDeleteLongerV6Test` | `runTest` | ✅ PASS |  |
 | `sai_route_test.RouteDiffPrefixAddThenDeleteShorterV4Test` | `runTest` | ✅ PASS |  |
 | `sai_route_test.RouteDiffPrefixAddThenDeleteShorterV6Test` | `runTest` | ✅ PASS |  |
-| `sai_route_test.RouteLPMRouteNexthopTest` | `runTest` | ⚠️ ERROR | 'RouteLPMRouteNexthopTest' object has no attribute 'port1_route' |
-| `sai_route_test.RouteLPMRouteNexthopTest` | `runTest` | ❌ FAIL | Expected packet was not received on device 0, port 2. ========== EXPECTED ====== |
-| `sai_route_test.RouteLPMRouteNexthopv6Test` | `runTest` | ⚠️ ERROR | 'RouteLPMRouteNexthopv6Test' object has no attribute 'port1_route' |
-| `sai_route_test.RouteLPMRouteNexthopv6Test` | `runTest` | ❌ FAIL | Expected packet was not received on device 0, port 2. ========== EXPECTED ====== |
-| `sai_route_test.RouteLPMRouteRifTest` | `runTest` | ⚠️ ERROR | 'RouteLPMRouteRifTest' object has no attribute 'port1_route' |
-| `sai_route_test.RouteLPMRouteRifTest` | `runTest` | ❌ FAIL | Expected packet was not received on device 0, port 2. ========== EXPECTED ====== |
-| `sai_route_test.RouteLPMRouteRifv6Test` | `runTest` | ⚠️ ERROR | 'RouteLPMRouteRifv6Test' object has no attribute 'port1_route' |
-| `sai_route_test.RouteLPMRouteRifv6Test` | `runTest` | ❌ FAIL | Expected packet was not received on device 0, port 2. ========== EXPECTED ====== |
+| `sai_route_test.RouteLPMRouteNexthopTest` | `runTest` | ❌ FAIL | -17 != 0 |
+| `sai_route_test.RouteLPMRouteNexthopv6Test` | `runTest` | ❌ FAIL | -17 != 0 |
+| `sai_route_test.RouteLPMRouteRifTest` | `runTest` | ❌ FAIL | -17 != 0 |
+| `sai_route_test.RouteLPMRouteRifv6Test` | `runTest` | ❌ FAIL | -17 != 0 |
 | `sai_route_test.RouteRifTest` | `runTest` | ✅ PASS |  |
 | `sai_route_test.RouteRifv6Test` | `runTest` | ✅ PASS |  |
 | `sai_route_test.RouteSameSipDipv4Test` | `runTest` | ✅ PASS |  |

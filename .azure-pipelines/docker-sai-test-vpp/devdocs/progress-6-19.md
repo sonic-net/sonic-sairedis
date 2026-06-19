@@ -167,11 +167,121 @@ Artifacts: `results/compatibility-matrix-6-19.md` (isolation) and `results/compa
 
 ---
 
-## 5. Files touched
+## 5. Neighbor host-route forwarded via `local0` (drop) — root cause of the LAG/host-route/LPM dataplane gap (FIXED, backend)
+
+### 5.1 Symptom
+The dominant remaining FAIL family across `sai_neighbor_test` / `sai_route_test` (and the LAG-ECMP `ReAdd*`/`RemoveLag*` tests) was `Did not receive expected packet` — routed traffic to a neighbor's `/32` (or `/128`) was dropped. This spanned three superficially different cases: LAG host-routes (`AddHostRouteTest`, `RemoveAddNeighborTest*`), port/SVI host-routes, and LPM `/32` overrides (`RouteLPMRouteRif/Nexthop*`).
+
+### 5.2 Root cause (one bug, confirmed via live VPP FIB)
+All three go through `SwitchVpp::programNeighborHostRoute()` (`vslib/vpp/SwitchVppNbr.cpp`), which installs the neighbor's host route. Inspecting the FIB for a failing dst (e.g. `10.1.1.100/32` over a LAG, `192.168.1.200/32` over a port) showed two competing entries:
+```
+API refs:1 src-flags:added,contributing,active,        <- ACTIVE path
+  10.1.1.100 local0
+  [@0]: dpo-load-balance ... [0] [@0]: dpo-drop ip4     <- DROPS
+adjacency refs:1 ... cover:-1                            <- correct path, NOT active
+  10.1.1.100 BondEthernet0
+  [@0]: ipv4 via 10.1.1.100 BondEthernet0 ... 0001010101640077665544000800   <- correct rewrite
+```
+The active path resolved to **`local0`** and dropped, while the correct attached-nexthop adjacency over the real interface existed only as the inactive cover.
+
+Cause: `programNeighborHostRoute()` builds its `nexthop_grp_member_t` with `memset(&member, 0, ...)` and never set `member.sw_if_index`, leaving it **0**. In `ip_route_add_del()` (`vppxlate/SaiVppXlate.c`):
+```c
+if (nexthop->sw_if_index != (u32)-1) {        // 0 != -1  -> taken
+    fib_path->sw_if_index = htonl(0);         // sw_if_index 0 == local0 !
+} else if (nexthop->hwif_name) {              // the correct branch, never reached
+    idx = get_swif_idx(vam, nexthop->hwif_name);
+    ...
+}
+```
+So the host route's path was pinned to `local0` instead of resolving `hwif_name` to the real `BondEthernet<N>` / `host-OEthernet<N>`. The connected/NHG route paths were unaffected because `fillNHGrpMember()` already sets `sw_if_index = ~0`; only the hand-built neighbor host-route member missed it.
+
+### 5.3 Fix
+One line in `programNeighborHostRoute()`:
+```c
+member.sw_if_index = (uint32_t) ~0;   // select the hwif_name lookup branch, not local0
+```
+(Requires a `libsaivs`/`libsairedis` `.deb` rebuild + image rebuild.)
+
+### 5.4 Validation
+- `sai_neighbor_test.AddHostRouteTest` → **PASS** (was dataplane FAIL): LAG host-route now forwards on LAG members.
+- `sai_route_test.RouteLPMRouteRifTest` → **both forwarding assertions now pass** ("received from port2", then LPM override "received from port1"); the test now fails only in **tearDown** with `-17` (OBJECT_IN_USE) because the test removes `port2_rif` without first removing its neighbor (`port2_nbr_entry`) — a teardown-ordering gap / RIF-removal cleanup question, not the forwarding gap.
+- `sai_neighbor_test.RemoveAddNeighborTestIPV4` → the first forwarding check now passes; it now fails later at the **CPU-punt counter** assertion (`post-pre == 1`, got 0) — i.e. traffic to a route whose neighbor was removed is not trapped to CPU queue 0. That is a separate feature (the test itself annotates "bug 15205360"), not the forwarding gap.
+
+So the fix resolves the host-route **forwarding** family; the residuals it exposes (`-17` RIF-in-use on teardown, CPU-trap-on-unresolved-route counter) are distinct follow-ups.
+
+### 5.5 Full-matrix result (isolation mode, with the fix)
+PASS **32 → 34** (same 85 tests): `AddHostRouteTest` and `AddHostRouteTestV6` flip
+FAIL→PASS. The rest of the host-route family now fails only on the §5.4 residuals
+(forwarding itself works): `RemoveAddNeighborTest{IPV4,IPV6}` → `0 != 1` (CPU-trap
+counter); `RouteLPMRouteRif{,v6}Test` / `RouteLPMRouteNexthop{,v6}Test` → `-17`
+(RIF removed while neighbor still bound, in tearDown). No regressions; the
+`sai_rif_test.Ingress*` FAIL→ERROR deltas are the confirmed-unsupported RIF-ingress
+family (collection/teardown variance), not in scope. Snapshot:
+`results/compatibility-matrix-6-19.md`.
+
+---
+
+## 6. Residual analysis — both are correct backend behavior, not new gaps
+
+After the §5 fix, the host-route family's two remaining failure signatures were
+investigated with runtime evidence. Both turned out to be cases where the
+backend/meta layer is behaving **correctly**; neither is fixed by changing backend
+code (doing so would either be wrong or is a large separate feature).
+
+### 6.1 `-17` (OBJECT_IN_USE) on `port2_rif` removal — upstream test teardown bug
+Tests: `RouteLPMRouteRifTest`, `RouteLPMRouteRifv6Test`, `RouteLPMRouteNexthopTest`,
+`RouteLPMRouteNexthopv6Test`.
+
+The `-17` is emitted by the **meta layer**, not vslib. saiserver log on the second
+`remove_router_interface`:
+```
+ERROR: meta_generic_validation_remove: object 0x600000006 reference count is 1, can't remove
+```
+i.e. `port2_rif` still has refcount 1 because the test's `port2_nbr_entry` neighbor
+references it. The tests remove `port1`'s neighbor before `port1_rif` (correct) but
+**forget to remove `port2_nbr_entry` before `port2_rif`** — an asymmetric teardown
+bug in the upstream OCP test. Requiring neighbors to be removed before their RIF is
+**standard SAI semantics** (real orchagent does this ordering), so the meta refcount
+rejection is correct; auto-cascading neighbor cleanup on RIF removal would *deviate*
+from SAI and is not done. The test's actual purpose — LPM route forwarding (incl. the
+`/32` override to a more-specific next hop) — now **passes**; the `-17` is teardown
+noise only. **Decision: document as an upstream test teardown bug + correct SAI
+behavior; no backend or test change.**
+
+### 6.2 CPU-trap counter `0 != 1` — unimplemented CPU-punt feature (confirmed limitation)
+Tests: `RemoveAddNeighborTestIPV4`, `RemoveAddNeighborTestIPV6`.
+
+After the neighbor is removed, the test sends a packet to the (still-present) route
+whose next hop is now unresolved and asserts the switch **CPU queue 0** packet count
+increased by 1 — i.e. the packet should be **trapped/punted to the CPU** for ARP
+resolution. Runtime check: the packet is correctly **dropped** (`verify_no_other_packets`
+passes — no leak), but VPP drops it at the glean/unresolved adjacency and does **not**
+punt it to the CPU host-interface with SAI per-queue stat accounting, so the counter
+stays 0. This CPU-punt-on-unresolved-route path plus `SAI_QUEUE_STAT_PACKETS` plumbing
+on the CPU port is a **substantial, separate backend feature**; the OCP test itself
+annotates this very assertion with "bug 15205360" (a known-questionable check
+upstream). **Decision: document as a confirmed backend limitation; leave the test
+FAIL.** (Forwarding/drop behavior itself is correct.)
+
+This joins the existing confirmed-unsupported set (SVI MAC learning/FDB, SVI
+broadcast / SVI-to-SVI, SVI neighbor idempotency, RIF ingress disable, ECMP hash-field
+distribution).
+
+---
+
+## 7. Files touched
+- `vslib/vpp/SwitchVppNbr.cpp` — **backend fix:** set `member.sw_if_index = ~0` in
+  `programNeighborHostRoute()` so the neighbor host route resolves via `hwif_name`
+  instead of being pinned to `local0`/drop (§5). Requires `.deb` + image rebuild.
 - `SAI/test/sai_test/config/port_configer.py` — env-gated shared/bounded port-up wait (§2).
 - `SAI/test/sai_test/config/route_configer.py` — **kept:** independent `member_port_indexs` copy per v4/v6 NHG (latent aliasing bug). **Reverted:** the Phase-1 `persist_dut` re-persist calls.
 - `SAI/test/sai_test/sai_ecmp_test.py` — **reverted to pristine upstream** (Phase-1 distinct-signature / persist-clear workarounds removed).
 - `.azure-pipelines/docker-sai-test-vpp/run_test.sh` — `ISOLATE_EACH_TEST` mode (default on) + exported `SAI_PORT_UP_*` knobs (opt into shared wait).
 
-## 6. Next steps
-- LAG-ECMP / host-route / LPM **dataplane forwarding** gap (the dominant remaining FAIL family: `Did not receive expected packet` on LAG members / `port 2`).
+## 8. Next steps
+- The §5 residuals are dispositioned (§6): the `-17` is an upstream test teardown bug +
+  correct SAI behavior; the CPU-trap counter is a confirmed limitation. No further
+  action on those.
+- Remaining LAG-ECMP **dataplane** failures (`ReAddLagEcmp*`, `RemoveLagEcmp*`) — verify
+  whether the host-route fix changes them and what (if any) ECMP-member forwarding gap
+  remains.

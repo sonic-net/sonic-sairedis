@@ -163,6 +163,12 @@ sai_status_t SwitchVpp::programNeighborHostRoute(
     member.addr = nbr_entry.ip_address;
     member.rif_oid = nbr_entry.rif_id;
     member.weight = 1;
+    // Force ip_route_add_del() to resolve the egress interface from hwif_name.
+    // sw_if_index 0 is VPP's local0: leaving it 0 (from memset) makes the host
+    // route's path point at local0 and the packet is dropped, even though the
+    // neighbor adjacency over the real interface exists. ~0 selects the
+    // hwif_name lookup branch (same convention as fillNHGrpMember()).
+    member.sw_if_index = (uint32_t) ~0;
 
     create_vpp_nexthop_entry(&member, hwif_name.c_str(), VPP_NEXTHOP_NORMAL, &ip_route->nexthop[0]);
 
