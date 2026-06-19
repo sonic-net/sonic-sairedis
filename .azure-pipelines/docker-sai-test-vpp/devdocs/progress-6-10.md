@@ -18,8 +18,7 @@ This report documents the design, usage, solved problems, and remaining architec
 
 The Dockerfile defines a sealed, self-contained environment running Debian Bookworm. It installs all dependencies, registers configuration files, and sets up the entrypoint.
 
-* **Block 1: Base Image & Env Variables**
-  Sets the main OS image and default paths:
+* **Block 1: Base Image & Env Variables** Sets the main OS image and default paths:
   ```dockerfile
   FROM debian:bookworm
 
@@ -32,15 +31,13 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
       SAI_TEST_DIR=/sai_test \
       TEST_RESULTS_DIR=/test-results
   ```
-* **Block 2: Source File Copy**
-  Copies the test framework code and the configuration directory into their expected paths:
+* **Block 2: Source File Copy** Copies the test framework code and the configuration directory into their expected paths:
   ```dockerfile
   COPY .azure-pipelines/docker-sai-test-vpp /opt/docker-sai-test-vpp
   COPY SAI/test/ptf /opt/ptf
   COPY SAI/test/sai_test /sai_test
   ```
-* **Block 3: APT Package Installation**
-  Installs base prerequisite networking, database, structures, and Python components from Debian's official repository:
+* **Block 3: APT Package Installation** Installs base prerequisite networking, database, structures, and Python components from Debian's official repository:
   ```dockerfile
   RUN echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/bookworm-backports.list && \
       apt-get update && \
@@ -63,14 +60,12 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
           tcpdump && \
       rm -rf /var/lib/apt/lists/*
   ```
-* **Block 4: Python PIP Packages**
-  Compiles and installs Scapy and the PTF framework inside the container:
+* **Block 4: Python PIP Packages** Compiles and installs Scapy and the PTF framework inside the container:
   ```dockerfile
   RUN python3 -m pip install --no-cache-dir scapy==2.5.0 unittest-xml-reporting==3.2.0 && \
       python3 -m pip install --no-cache-dir /opt/ptf
   ```
-* **Block 5: Local Package Staging & Smoke Test**
-  Validates that every single compiled deb is present, installs them while allowing downgrades to match local requirements, overrides sysctl, and finally verifies saithrift is correctly importable in Python:
+* **Block 5: Local Package Staging & Smoke Test** Validates that every single compiled deb is present, installs them while allowing downgrades to match local requirements, overrides sysctl, and finally verifies saithrift is correctly importable in Python:
   ```dockerfile
   RUN set -eux; \
       deb_dir=/opt/docker-sai-test-vpp/debs; \
@@ -130,8 +125,7 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
       apt-get clean; \
       rm -rf /var/lib/apt/lists/*
   ```
-* **Block 6: Config Registration & Entrypoint**
-  Registers and copies static config mapping files, links the execution target, and marks the starting command:
+* **Block 6: Config Registration & Entrypoint** Registers and copies static config mapping files, links the execution target, and marks the starting command:
   ```dockerfile
   RUN install -d \
           /etc/sai \
@@ -158,8 +152,7 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
 
 `run_test.sh` controls the execution of the entire pipeline, managing processes and virtual interfaces.
 
-* **Block 1: Defaults & Parameter Parsing**
-  Grabs runtime configuration variables and parses cmdline filters:
+* **Block 1: Defaults & Parameter Parsing** Grabs runtime configuration variables and parses cmdline filters:
   ```bash
   PORT_COUNT="${PORT_COUNT:-32}"
   MTU="${MTU:-9100}"
@@ -176,8 +169,7 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
           --debug) DEBUG=1; shift ;;
           ...
   ```
-* **Block 2: Preflight Verification & Cwd**
-  Ensures root execution space, verifies path targets exist, and boots directory slots:
+* **Block 2: Preflight Verification & Cwd** Ensures root execution space, verifies path targets exist, and boots directory slots:
   ```bash
   preflight()
   {
@@ -190,8 +182,7 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
       mkdir -p /run/vpp /var/log "$(dirname "$REDIS_SOCKET")" "$TEST_RESULTS_DIR" "$(dirname "$SONIC_VPP_IFMAP")"
   }
   ```
-* **Block 3: Redis Daemonization**
-  Spawns local standalone redis memory server and verifies connectivity:
+* **Block 3: Redis Daemonization** Spawns local standalone redis memory server and verifies connectivity:
   ```bash
   start_redis()
   {
@@ -211,11 +202,9 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
   ```
   
   ##### Purpose of starting Redis in a "standalone" test:
-  Even though this test suite is designed as a standalone framework meant to bypass and abstract away the rest of the SONiC operating system stack (No orchagent, no portsyncd, etc.), **Redis is still required because of internal sairedis architectural dependencies.** 
-  The `saiserver` binary links against the standard `libsairedis.so` shared library. Internally, `libsairedis` expects a running Redis database instance to exist on the switch environment's local Unix socket directory to act as a runtime memory pool, handle notifications communications (ZeroMQ/Redis pub-sub), and write and validate active database transactions. Starting a headless Redis daemon satisfies this shared library constraint without bringing up any of the surrounding control-plane orchestration components of SONiC.
+  Even though this test suite is designed as a standalone framework meant to bypass and abstract away the rest of the SONiC operating system stack (No orchagent, no portsyncd, etc.), **Redis is still required because of internal sairedis architectural dependencies.** The `saiserver` binary links against the standard `libsairedis.so` shared library. Internally, `libsairedis` expects a running Redis database instance to exist on the switch environment's local Unix socket directory to act as a runtime memory pool, handle notifications communications (ZeroMQ/Redis pub-sub), and write and validate active database transactions. Starting a headless Redis daemon satisfies this shared library constraint without bringing up any of the surrounding control-plane orchestration components of SONiC.
 
-* **Block 4: Veth Interface Allocation**
-  Flashes previous link layers and provisions pure veth endpoints with correct MTU:
+* **Block 4: Veth Interface Allocation** Flashes previous link layers and provisions pure veth endpoints with correct MTU:
   ```bash
   create_veths()
   {
@@ -233,8 +222,7 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
       done
   }
   ```
-* **Block 5: Interface Map Creation**
-  Generates the VPP hwif translations map sequentially matching lanes offset:
+* **Block 5: Interface Map Creation** Generates the VPP hwif translations map sequentially matching lanes offset:
   ```bash
   create_sonic_vpp_ifmap()
   {
@@ -246,8 +234,7 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
       done
   }
   ```
-* **Block 6: VPP Boot & Setup**
-  Launches VPP daemon, creates the AF_PACKET host interfaces in batches, and configures interrupt mode:
+* **Block 6: VPP Boot & Setup** Launches VPP daemon, creates the AF_PACKET host interfaces in batches, and configures interrupt mode:
   ```bash
   start_vpp()
   {
@@ -262,8 +249,7 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
       set_vpp_rx_mode_interrupt
   }
   ```
-* **Block 7: Saiserver Spawn**
-  Spawns thrift saiserver daemon and waits for interface port open:
+* **Block 7: Saiserver Spawn** Spawns thrift saiserver daemon and waits for interface port open:
   ```bash
   start_saiserver()
   {
@@ -274,8 +260,7 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
       wait_for_saiserver_ready
   }
   ```
-* **Block 8: PTF Execution & Link Activation**
-  Triggers PTF testing, logs stream to console, and brings up veth pipes asynchronously upon setup completion:
+* **Block 8: PTF Execution & Link Activation** Triggers PTF testing, logs stream to console, and brings up veth pipes asynchronously upon setup completion:
   ```bash
   run_ptf()
   {
@@ -299,8 +284,7 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
       exit "$test_rc"
   }
   ```
-* **Block 9: Cleanup on Exit**
-  Gracefully stops background nodes, removes loop/veth interfaces, and exits preserving error codes:
+* **Block 9: Cleanup on Exit** Gracefully stops background nodes, removes loop/veth interfaces, and exits preserving error codes:
   ```bash
   cleanup()
   {
@@ -338,8 +322,7 @@ Rebuilding is only necessary when **code or configuration inside the sealed imag
 
 When you make changes to any C++ code inside the `sonic-sairedis` repository, you must recompile the submodule and stage the new `.deb` files into the Docker context so the next build picks them up.
 
-1. **Rebuild the deb packages:**
-   From the main `sonic-buildimage` repository root, run the master make command. This builds the saiveredis `.deb` packages inside the SONiC slave build container:
+1. **Rebuild the deb packages:** From the main `sonic-buildimage` repository root, run the master make command. This builds the saiveredis `.deb` packages inside the SONiC slave build container:
    ```bash
    DOCKER_CONFIG=/nobackup/nicching/.docker-sonic-build NOTRIXIE=1 \
      make -C /nobackup/nicching/sonic-buildimage \
@@ -347,8 +330,7 @@ When you make changes to any C++ code inside the `sonic-sairedis` repository, yo
    ```
    *Note: This command will re-compile all sairedis binaries (`libsaivs.so`, `saiserver`, `libsaimetadata.so`, etc.) under `src/sonic-sairedis` and output them to the target directory.*
 
-2. **Stage the new package `.deb`s:**
-   Copy the newly compiled `.deb` packages from `sonic-buildimage`'s build output target directory into our local Docker build staging directory:
+2. **Stage the new package `.deb`s:** Copy the newly compiled `.deb` packages from `sonic-buildimage`'s build output target directory into our local Docker build staging directory:
    ```bash
    # Clear the old packages to avoid conflict
    rm -f /nobackup/nicching/sonic-buildimage/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/debs/*.deb
@@ -446,13 +428,12 @@ During early testing and scaling, we investigated and solved two major bottlenec
 * **The Timeout Mechanism & Blocking Source:**
   - **What had the 1-second timeout:** The synchronous wait macro `WR(ret)` compiled inside [libsaivs.so](target/debs/bookworm/libsaivs_1.0.0_amd64.deb). It initializes a relative deadline: `f64 timeout = vat_time_now (vam) + 1.0;` and loops until that 1.0-second window is crossed.
   - **What was blocking it:** VPP's unsolicited `sw_interface_event` notifications. Inside the 1-second loop, the socket-reading function `vl_socket_client_read(5)` is called to retrieve arriving data. While this function has a 5-second maximum socket read block timer, it returns immediately when *any* data arrives. If VPP pushes a dense burst of transition events, `vl_socket_client_read` gets called repeatedly and is completely saturated parsing those background event messages. Because the thread is busy reading background events, `vam->result_ready` remains `0` (as these are not the command's reply), the 1.0-second deadline is breached, and the call returns a `-99` timeout error.
-* **Why what we were doing before triggered this hang:**
-  Originally, [src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/run_test.sh](src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/run_test.sh) brought up *all* veth interfaces UP before starting VPP (under `LINK_UP_MODE=early`), which caused the initial `create_switch` configuration to hang. To bypass this, we tried a mid-setup compromise: bringing up only 4 ports early, and then bringing up the remaining 28 ports in the background as soon as PTF reached its `"Waiting for switch to get ready,"` readiness log.
-  - **Why this caused the crash:** Firing the veth bring-up script at that exact location triggered VPP's interface notifications *at the same microsecond* that the synchronous main-thread setup reached the `Create Host intfs...` phase. 
-  - When the test suite called the first `sai_thrift_create_hostif()`, the backend driver executed `configure_lcp_interface()` which uses the blocking `WR()` macro. 
-  - Because the background bring-up notifications were floods of data arriving on the same shared socket, `vl_socket_client_read(5)` was saturated processing those transitions. It could not capture the LCP creation reply before the 1-second `WR(ret)` timeout expired. 
+* **Why what we were doing before triggered this hang:** Originally, [src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/run_test.sh](src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/run_test.sh) brought up *all* veth interfaces UP before starting VPP (under `LINK_UP_MODE=early`), which caused the initial `create_switch` configuration to hang. To bypass this, we tried a mid-setup compromise: bringing up only 4 ports early, and then bringing up the remaining 28 ports in the background as soon as PTF reached its `"Waiting for switch to get ready,"` readiness log.
+  - **Why this caused the crash:** Firing the veth bring-up script at that exact location triggered VPP's interface notifications *at the same microsecond* that the synchronous main-thread setup reached the `Create Host intfs...` phase.
+  - When the test suite called the first `sai_thrift_create_hostif()`, the backend driver executed `configure_lcp_interface()` which uses the blocking `WR()` macro.
+  - Because the background bring-up notifications were floods of data arriving on the same shared socket, `vl_socket_client_read(5)` was saturated processing those transitions. It could not capture the LCP creation reply before the 1-second `WR(ret)` timeout expired.
   - The very first host interface creation returned a `-99` error status, causing the execution thread to freeze.
-* **How we fixed it:** 
+* **How we fixed it:**
   1. Configured VPP RX host interfaces to `interrupt` mode in [src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/run_test.sh](src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/run_test.sh) to relieve CPU pressure.
   2. Implemented a **delayed link bring-up**: all veth interfaces are created and left `DOWN` during both the Switch and Host Interface creation phases, keeping the VPP API connection completely silent during setup. Only when PTF logs `"common config done"` (indicating setup has finished and saiserver is no longer executing blocking API commands) does [src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/run_test.sh](src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/run_test.sh) call `bring_up_veths()` in the background.
 
@@ -510,8 +491,7 @@ This issue is caused by a **fundamental design disconnect and circular dependenc
 
 - **The SAI test script assumes real hardware:** On real switch silicon, bringing a port admin-up has immediate effect. You check `oper_status` (in `port_configer.py`), get `UP`, and only *then* map L2 bridge ports and VLAN members.
 - **VPP SAI is a software stack:** On VPP, the physical port (`OEthernet0`) has no connection to the logical SAI port (`Ethernet0`) until **after** a Host Interface (the Linux Tap device) has been created. The operational status cannot transition to `UP` before the TAP interface has been created and bound via LCP (`configure_lcp_interface` inside `SwitchVppHostif.cpp`).
-- **Clarification: Why the "ports down" warning occurs in both link-up modes:**
-  The `"Ports are down after retries"` warning is guaranteed to print during the `turn_up_ports()` setup phase regardless of which link-up mode we use. Here is the technical explanation for why:
+- **Clarification: Why the "ports down" warning occurs in both link-up modes:** The `"Ports are down after retries"` warning is guaranteed to print during the `turn_up_ports()` setup phase regardless of which link-up mode we use. Here is the technical explanation for why:
   - Inside `port_configer.py`, the ports are turnup-polled **before** `create_host_intf()` is called. At that poll time, TAP devices do not exist yet in either link mode, so the port status is guaranteed to be reported as DOWN during the `turn_up_ports()` loop, printing the status "2" warnings.
   - However, in the **early bring-up mode**, once the execution exits the turnup loop and proceeds to `create_host_intf()`, VPP allocates the LCP TAP devices and immediately detects the UP carrier of the pre-existing veths. This transits the ports to `up` and updates the `libsaivs.so` state cache to UP in the background. Thus, when `reset_1q_bridge_ports()` runs later in the setup sequence, the ports *are* UP and bridge ports are allocated successfully (avoiding the `struct.error` crash).
   - In our **delayed bring-up mode** (used to solve the event flood), the links are held DOWN during *both* the TAP creation and the bridge-port setup phases. As a result, the ports never transition to UP within VPP before bridge-port allocation is executed, leading directly to the `struct.error` crash.
