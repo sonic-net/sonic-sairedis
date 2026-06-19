@@ -8,6 +8,40 @@ Newest first.
 
 ---
 
+## 2026-06-19 — ECMP `-6`/`-7` were config-reuse artifacts (fixed); port-up wait sped up ~75s→~13s
+*(detail: [progress-6-19.md](progress-6-19.md))*
+
+Showed the ECMP `-6`/`-7` (`EcmpReuseLagRoute`, `ReAddLagEcmp`, `RemoveNexthopGroup`,
+etc.) were **test-harness config-reuse artifacts, not VPP SAI backend gaps**: the
+harness shares one saiserver per config-signature group and reuses a persisted `dut`
+(because the VPP backend can only build the switch once per process), so a test that
+mutates/destroys NHG membership without re-persisting leaves later tests in the group
+asking the meta layer to remove/recreate stale OIDs (`-7`/`-6`) — the `vslib`
+idempotency code is never even reached, and each test passes standalone. Fixed in the
+OCP test layer by re-persisting the `dut` after NHG member mutations, giving the v4/v6
+NHGs independent `member_port_indexs` lists (a latent aliasing bug → the
+`ReAddLagEcmpTestV6` ERROR), and giving destructive/inline NHG tests distinct config
+signatures so each gets a fresh saiserver: PASS **28→31**, all ECMP `-6`/`-7`/ERROR
+gone. We considered tearing down/bringing up the backend per test instead (would keep
+upstream tests pristine) but measured ~95s reconfigure between groups — ~75s of it the
+T0 config build, of which ~80% (~64s) was the OCP framework's serial per-port admin-up
+polling (32 ports × 2 retries × 1s) that is pure dead time here (SAI oper-status reads
+DOWN the whole window but the links settle right after and tests pass anyway). So we
+added an env-gated **shared/bounded** port-up wait to `port_configer.py` (defaults to
+the original behavior; our `run_test.sh` opts in), cutting the port wait ~64s→~6s and
+the config build ~75s→~13.5s with no production impact (test-only code path). With that
+speedup making per-test recycle affordable (~22s/test), added `ISOLATE_EACH_TEST` (now
+the harness default): every test runs in its own group with a fresh backend and its own
+freshly-built config, so no persisted `dut` is ever shared. This removed the artifacts'
+root cause, letting us **revert the in-test workarounds** — `sai_ecmp_test.py` is
+pristine upstream again and only the genuine `member_port_indexs` aliasing bug fix is
+kept in `route_configer.py`. Head-to-head on the same (pristine-upstream) image: **isolation = 32 PASS in ~49 min**
+vs **grouped = 27 PASS in ~5m15s**. The 5 isolation-only passes are the config-reuse
+victims — `EcmpReuseLagRoute{V4,V6}` (`-6`), `RemoveAllNextHopMemeberTestV4` /
+`RemoveNexthopGroupTestV4` (`-7`), and `RouteSameSipDipv4Test` (ordering-dependent
+dataplane flake). Grouped is ~9× faster for iteration; isolation is the authoritative
+matrix. Flip with `-e ISOLATE_EACH_TEST=0`.
+
 ## 2026-06-18 — LAG/ECMP backend fixes: saithriftv2 `switch_id` fallback + vslib host-route/NHG/LAG-member
 *(detail: [progress-6-18.md](progress-6-18.md))*
 

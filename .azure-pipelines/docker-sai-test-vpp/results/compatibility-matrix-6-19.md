@@ -1,13 +1,13 @@
 # VPP SAI Compatibility Matrix
 
-_Generated: 2026-06-18 15:12:03 PDT_
+_Generated: 2026-06-19 08:39:58 PDT_
 
 ## Summary
 
 | Result | Count | % |
 |--------|------:|----:|
-| ✅ PASS | 31 | 32.6% |
-| ❌ FAIL | 51 | 53.7% |
+| ✅ PASS | 32 | 33.7% |
+| ❌ FAIL | 50 | 52.6% |
 | ⚠️ ERROR | 11 | 11.6% |
 | ⏭️ SKIP | 2 | 2.1% |
 | **Total** | **95** | **100.0%** |
@@ -51,7 +51,7 @@ _Generated: 2026-06-18 15:12:03 PDT_
 | Module | Test Class | Result | Detail |
 |--------|------------|--------|--------|
 | `sai_ecmp_test.EcmpCoExistLagRouteV4` | `runTest` | ❌ FAIL | One of the expected packets was received on device 0 on an unexpected port: 0 == |
-| `sai_ecmp_test.EcmpCoExistLagRouteV6` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports for device 0. ========== RECEIVE |
+| `sai_ecmp_test.EcmpCoExistLagRouteV6` | `runTest` | ❌ FAIL | One of the expected packets was received on device 0 on an unexpected port: 0 == |
 | `sai_ecmp_test.EcmpHashFieldDportTestV4` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports for device 0. ========== RECEIVE |
 | `sai_ecmp_test.EcmpHashFieldDportTestV6` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports for device 0. ========== RECEIVE |
 | `sai_ecmp_test.EcmpHashFieldProtoTestV4` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports for device 0. ========== RECEIVE |
@@ -120,26 +120,26 @@ _Generated: 2026-06-18 15:12:03 PDT_
 | `sai_route_test.RouteLPMRouteRifv6Test` | `runTest` | ❌ FAIL | Expected packet was not received on device 0, port 2. ========== EXPECTED ====== |
 | `sai_route_test.RouteRifTest` | `runTest` | ✅ PASS |  |
 | `sai_route_test.RouteRifv6Test` | `runTest` | ✅ PASS |  |
-| `sai_route_test.RouteSameSipDipv4Test` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [19, 20] for device 0. ========= |
+| `sai_route_test.RouteSameSipDipv4Test` | `runTest` | ✅ PASS |  |
 | `sai_route_test.RouteSameSipDipv6Test` | `runTest` | ✅ PASS |  |
 | `sai_route_test.RouteUpdateTest` | `runTest` | ✅ PASS |  |
 | `sai_route_test.RouteUpdatev6Test` | `runTest` | ✅ PASS |  |
 | `sai_route_test.StaicSviMacFloodingTest` | `runTest` | ✅ PASS |  |
 | `sai_route_test.StaicSviMacFloodingV6Test` | `runTest` | ✅ PASS |  |
 | `sai_route_test.SviDirectBroadcastTest` | `runTest` | ❌ FAIL | False is not true : Did not receive pkt on one of ports [[9, 10, 11, 12, 13, 14, |
-| `sai_route_test.SviMacAgeAfterMoveV4Test` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [19, 20] for device 0. ========= |
+| `sai_route_test.SviMacAgeAfterMoveV4Test` | `runTest` | ❌ FAIL | 0 != -1 |
 | `sai_route_test.SviMacAgeAfterMoveV6Test` | `runTest` | ❌ FAIL | 0 != -1 |
-| `sai_route_test.SviMacAgingTest` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [19, 20] for device 0. ========= |
+| `sai_route_test.SviMacAgingTest` | `runTest` | ❌ FAIL | 0 != -1 |
 | `sai_route_test.SviMacAgingV6Test` | `runTest` | ❌ FAIL | 0 != -1 |
 | `sai_route_test.SviMacFloodingTest` | `runTest` | ⚠️ ERROR | 'SviMacFloodingTest' object has no attribute 'port4_nbr_v4' |
 | `sai_route_test.SviMacFloodingTest` | `runTest` | ❌ FAIL | -6 != 0 |
 | `sai_route_test.SviMacFloodingv6Test` | `runTest` | ⚠️ ERROR | 'SviMacFloodingv6Test' object has no attribute 'port4_nbr_v4' |
 | `sai_route_test.SviMacFloodingv6Test` | `runTest` | ❌ FAIL | -6 != 0 |
 | `sai_route_test.SviMacLarningAfterAgeV6Test` | `runTest` | ❌ FAIL | 0 != -1 |
-| `sai_route_test.SviMacLarningAfterageV4Test` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [19, 20] for device 0. ========= |
-| `sai_route_test.SviMacLearningTest` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [19, 20] for device 0. ========= |
+| `sai_route_test.SviMacLarningAfterageV4Test` | `runTest` | ❌ FAIL | 0 != -1 |
+| `sai_route_test.SviMacLearningTest` | `runTest` | ❌ FAIL | 0 != -1 |
 | `sai_route_test.SviMacLearningV6Test` | `runTest` | ❌ FAIL | 0 != -1 |
-| `sai_route_test.SviMacMoveV4Test` | `runTest` | ❌ FAIL | Did not receive expected packet on any of ports [19, 20] for device 0. ========= |
+| `sai_route_test.SviMacMoveV4Test` | `runTest` | ❌ FAIL | 0 != -1 |
 | `sai_route_test.SviMacMoveV6Test` | `runTest` | ❌ FAIL | 0 != -1 |
 | `sai_route_test.SviMacrMoveStressV4Test` | `runTest` | ⏭️ SKIP | SKIP! Skip test for performance issue. |
 | `sai_route_test.SviMacrMoveStressV6Test` | `runTest` | ⏭️ SKIP | SKIP! Skip test for performance issue. |
