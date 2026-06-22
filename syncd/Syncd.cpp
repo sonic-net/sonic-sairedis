@@ -6826,7 +6826,7 @@ void Syncd::run()
                     // Flush in controlled manner
                     flushPendingDampingNotifications();
                 }
-		continue;
+                continue;
             }
             else if (result == swss::Select::ERROR)
             {
@@ -6898,7 +6898,7 @@ void Syncd::run()
                     if (status != SAI_STATUS_SUCCESS)
                     {
                         SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_FAST_API_ENABLE=true: %s for express pre-shutdown. Fall back to cold restart",
-                                       sai_serialize_status(status).c_str());
+                                sai_serialize_status(status).c_str());
 
                         shutdownType = SYNCD_RESTART_TYPE_COLD;
 

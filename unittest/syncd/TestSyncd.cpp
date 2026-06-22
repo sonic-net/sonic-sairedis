@@ -1103,7 +1103,7 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncQueueOverflow)
     {
         std::lock_guard<std::mutex> lock(m_syncd->m_linkEventDampingMutex);
 
-        auto& state = m_syncd->m_portLinkEventDampingStates[PORT_VID];
+        auto& state = m_syncd->m_portLinkEventDampingStates.at(PORT_VID);
 
         // Set up the condition for processPendingDampingSync to queue a notification
         state.pending_state_sync = true;
@@ -1156,7 +1156,7 @@ TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsWithBatches)
     }
 }
 
-TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsExceptionHandling)
+TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsDrainsQueue)
 {
     // Queue 2 notification batches
     {
@@ -1198,7 +1198,7 @@ TEST_F(SyncdLinkEventDampingTest, fullNotificationFlowIntegrated)
     {
         std::lock_guard<std::mutex> lock(m_syncd->m_linkEventDampingMutex);
 
-        auto& state = m_syncd->m_portLinkEventDampingStates[PORT_VID];
+        auto& state = m_syncd->m_portLinkEventDampingStates.at(PORT_VID);
         state.pending_state_sync = true;
         state.advertised_status = SAI_PORT_OPER_STATUS_DOWN;
         state.physical_status = SAI_PORT_OPER_STATUS_UP;
@@ -1256,7 +1256,7 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncNoPending)
     {
         std::lock_guard<std::mutex> lock(m_syncd->m_linkEventDampingMutex);
 
-        auto& state = m_syncd->m_portLinkEventDampingStates[PORT_VID];
+        auto& state = m_syncd->m_portLinkEventDampingStates.at(PORT_VID);
         state.pending_state_sync = false;  // No pending sync
         state.advertised_status = SAI_PORT_OPER_STATUS_DOWN;
         state.physical_status = SAI_PORT_OPER_STATUS_UP;
