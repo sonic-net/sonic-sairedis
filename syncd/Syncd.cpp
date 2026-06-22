@@ -1227,7 +1227,7 @@ bool Syncd::applyAiedAlgorithm(
         // Penalty decays based on last_decay_time tracking
         else if (state.current_penalty < state.aied_config.reuse_threshold)
         {
-            // Penalty decayed below resue threshold. Exit damping.
+            // Penalty decayed below reuse threshold. Exit damping.
             std::string physicalStatusStr = sai_serialize_port_oper_status(state.physical_status);
             std::string advertisedStatusStr = sai_serialize_port_oper_status(state.advertised_status);
             SWSS_LOG_NOTICE("Port VID %s exiting damped state: penalty (%u) < "
