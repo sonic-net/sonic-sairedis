@@ -305,3 +305,5 @@ jobs:
         with:
           header: gate-sonic-sairedis
           path: gate-report.md
+          coverage_required: ${{ env.COVERAGE_FAIL_UNDER }}
+          diff_cover_log: gate-artifacts/build/diff-cover.log
