@@ -1,0 +1,307 @@
+# gate-sonic-sairedis — cppcheck on hosted runners; build + gtest + diff-cover in sonic-slave.
+name: gate-sonic-sairedis
+
+on:
+  pull_request:
+    branches: [upscaleai-202511, upscaleai-202505]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+env:
+  GATE_CHECKOUT_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+  GATE_BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || 'upscaleai-202511' }}
+  COVERAGE_FAIL_UNDER: ${{ vars.COVERAGE_FAIL_UNDER || '80' }}
+
+concurrency:
+  group: gate-sonic-sairedis-${{ github.event.pull_request.number || github.ref_name || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    permissions:
+      contents: read
+      actions: write
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.GATE_CHECKOUT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: cppcheck on changed C/C++ files
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cppcheck
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            DIFF_RANGE="${{ github.event.pull_request.base.sha }}...HEAD"
+          else
+            BASE="${{ env.GATE_BASE_REF }}"
+            git fetch --no-tags --depth=1 origin "${BASE}"
+            DIFF_RANGE="origin/${BASE}...HEAD"
+          fi
+          mapfile -t sources < <(
+            git diff "${DIFF_RANGE}" --name-only -- '*.cpp' '*.c' '*.h' '*.hpp' \
+              | grep -Ev '^SAI/' || true
+          )
+          if [ "${#sources[@]}" -eq 0 ]; then
+            echo "No changed C/C++ sources outside SAI; skipping cppcheck" | tee cppcheck.log
+            exit 0
+          fi
+          issues=$(
+            cppcheck \
+              --enable=warning,portability \
+              --suppress=missingInclude \
+              --suppress=missingIncludeSystem \
+              --suppress=unmatchedSuppression \
+              --std=c++17 \
+              -Ilib -Isyncd -Ivslib -Imeta -Iunittest \
+              "${sources[@]}" 2>&1 \
+              | grep -E '\[(error|warning|portability)\]' \
+              | grep -v dangerousTypeCast \
+              | grep -v syntaxError \
+              | grep -v missingReturn || true
+          )
+          if [ -n "$issues" ]; then
+            echo "$issues" | tee cppcheck.log
+            exit 1
+          fi
+          echo "cppcheck: no actionable issues on changed files" | tee cppcheck.log
+
+      - name: Upload lint log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gate-lint-logs
+          path: cppcheck.log
+          if-no-files-found: ignore
+
+  build-test:
+    permissions:
+      contents: read
+      id-token: write
+      actions: write
+    runs-on: [self-hosted, linux, sonic-build-202511]
+    needs: lint
+    timeout-minutes: 120
+    steps:
+      - name: Clean workspace (root-owned artifacts from prior builds)
+        run: |
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            sudo chown -R "$(whoami):$(id -gn)" "$GITHUB_WORKSPACE" 2>/dev/null || true
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.GATE_CHECKOUT_REF }}
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Locate SONiC debs
+        id: debs
+        run: bash .github/scripts/locate-gate-debs.sh
+
+      - name: Resolve Docker image
+        id: docker
+        run: |
+          FLAVOR="${{ steps.debs.outputs.slave_flavor }}"
+          IMAGE=$(docker image ls \
+                  --filter "reference=sonic-slave-${FLAVOR}*" \
+                  --format '{{.Repository}}:{{.Tag}}' \
+                  | grep -v ':<none>$' \
+                  | head -1)
+          if [ -z "$IMAGE" ]; then
+            echo "::error::No sonic-slave-${FLAVOR} Docker image found on this runner"
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Using Docker image: $IMAGE (slave_flavor=${FLAVOR})"
+
+      - name: Run build, unit tests, and coverage in sonic-slave
+        env:
+          DOCKER_IMG: ${{ steps.docker.outputs.image }}
+          DEBS_DIR: ${{ steps.debs.outputs.debs_dir }}
+          SLAVE_FLAVOR: ${{ steps.debs.outputs.slave_flavor }}
+        run: |
+          chmod +x scripts/gate-run-tests.sh
+          docker run --rm --privileged --init \
+            --ulimit nofile=65536:65536 \
+            -v "${{ github.workspace }}:/build/sonic-sairedis" \
+            -v "${DEBS_DIR}:/debs:ro" \
+            -w "/build/sonic-sairedis" \
+            "${DOCKER_IMG}" \
+            bash -c 'DEBS_DIR=/debs REPO_ROOT=/build/sonic-sairedis SLAVE_FLAVOR='"${SLAVE_FLAVOR}"' ./scripts/gate-run-tests.sh' \
+            2>&1 | tee build-test.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Fix coverage file ownership from Docker
+        if: always()
+        run: |
+          for f in coverage.xml coverage.info build-test.log; do
+            if [ -e "$f" ]; then
+              sudo chown --no-dereference "$(id -u):$(id -gn)" "$f"
+            fi
+          done
+          if [ -d html ]; then
+            sudo chown -R "$(id -u):$(id -gn)" html
+          fi
+
+      - name: Diff-cover on changed lines (≥${{ env.COVERAGE_FAIL_UNDER }}%)
+        env:
+          COVERAGE_FAIL_UNDER: ${{ env.COVERAGE_FAIL_UNDER }}
+        run: |
+          set -euo pipefail
+          if [ ! -f coverage.xml ]; then
+            echo "coverage.xml missing" | tee diff-cover.log
+            exit 1
+          fi
+          python3 -m pip install --user 'diff-cover>=9.0.0'
+          export PATH="${HOME}/.local/bin:${PATH}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            COMPARE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ env.GATE_BASE_REF }}"
+            git fetch --no-tags --depth=1 origin "${BASE}"
+            COMPARE="origin/${BASE}"
+          fi
+          diff-cover coverage.xml --compare-branch "${COMPARE}" \
+            --format markdown:diff-cover.md || true
+          set +e
+          diff-cover coverage.xml --compare-branch "${COMPARE}" \
+            --fail-under "${COVERAGE_FAIL_UNDER}" 2>&1 | tee diff-cover.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Configure AWS credentials (OIDC)
+        if: success()
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+
+      - name: Upload coverage to S3
+        if: success()
+        env:
+          S3_COVERAGE_BUCKET: ${{ vars.S3_COVERAGE_BUCKET }}
+          GATE_BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          chmod +x .github/scripts/upload-gate-coverage-s3.sh
+          .github/scripts/upload-gate-coverage-s3.sh sonic-sairedis
+
+      - name: Prepare build-test artifacts for upload
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p gate-upload
+          for f in diff-cover.md diff-cover.log coverage.xml; do
+            if [ -f "$f" ]; then
+              cp "$f" gate-upload/
+            fi
+          done
+          if [ -f build-test.log ]; then
+            tail -n 5000 build-test.log > gate-upload/build-test.log
+          fi
+
+      - name: Upload build-test artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gate-build-test-logs
+          path: |
+            gate-upload/build-test.log
+            gate-upload/diff-cover.md
+            gate-upload/diff-cover.log
+            gate-upload/coverage.xml
+          if-no-files-found: ignore
+          overwrite: true
+
+  gate-report:
+    runs-on: ubuntu-22.04
+    needs: [lint, build-test]
+    if: always() && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Download lint artifacts
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        with:
+          name: gate-lint-logs
+          path: gate-artifacts/lint
+        continue-on-error: true
+
+      - name: Download build-test artifacts
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
+        with:
+          name: gate-build-test-logs
+          path: gate-artifacts/build
+        continue-on-error: true
+
+      - name: Build PR comment
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          BUILD_RESULT: ${{ needs.build-test.result }}
+        run: |
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          lint_result = os.environ["LINT_RESULT"]
+          build_result = os.environ["BUILD_RESULT"]
+          icon = {"success": "✅", "failure": "❌", "cancelled": "⚠️", "skipped": "⏭️"}
+
+          def tail(path, n=120):
+              p = Path(path)
+              if not p.is_file():
+                  return "_No log captured._"
+              lines = p.read_text(errors="replace").splitlines()
+              if len(lines) <= n:
+                  return "\n".join(lines)
+              return "\n".join(["...(truncated)..."] + lines[-n:])
+
+          lines = [
+              "## gate-sonic-sairedis",
+              "",
+              "| Stage | Result |",
+              "|-------|--------|",
+              f"| cppcheck (changed C/C++) | {icon.get(lint_result, lint_result)} {lint_result} |",
+              f"| sonic-slave build + gtest + diff-cover (≥${{ env.COVERAGE_FAIL_UNDER }}%) | {icon.get(build_result, build_result)} {build_result} |",
+              "",
+              "_Lint: cppcheck on PR diff (excludes vendored `SAI/`). "
+              "Tests: autotools build with `--with-sai=vs`, `make check`, gcovr coverage in "
+              "sonic-slave matched to bookworm/trixie debs._",
+              "",
+          ]
+
+          if lint_result != "success":
+              lines += ["### Lint failures", "", "```log", tail("gate-artifacts/lint/cppcheck.log"), "```", ""]
+
+          if build_result != "success":
+              lines += ["### Build/test failures", "", "```log", tail("gate-artifacts/build/build-test.log"), "```", ""]
+              diff_md = Path("gate-artifacts/build/diff-cover.md")
+              diff_log = Path("gate-artifacts/build/diff-cover.log")
+              if diff_md.is_file():
+                  lines += ["### Coverage (diff-cover)", "", diff_md.read_text(errors="replace"), ""]
+              elif diff_log.is_file():
+                  lines += ["### Coverage (diff-cover)", "", "```log", tail("gate-artifacts/build/diff-cover.log"), "```", ""]
+
+          if lint_result == "success" and build_result == "success":
+              lines += ["All gate stages passed.", ""]
+              diff_md = Path("gate-artifacts/build/diff-cover.md")
+              if diff_md.is_file():
+                  lines += ["<details><summary>Coverage summary</summary>", "", diff_md.read_text(errors="replace"), "", "</details>", ""]
+
+          Path("gate-report.md").write_text("\n".join(lines))
+          PY
+
+      - name: Post gate summary on PR
+        uses: upscale-ai-network/pm/gh_actions/sticky-gate-comment@feat/sticky-gate-comment-action
+        with:
+          header: gate-sonic-sairedis
+          path: gate-report.md
