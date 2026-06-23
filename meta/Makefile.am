@@ -5,9 +5,13 @@ lib_LTLIBRARIES = libsaimetadata.la libsaimeta.la
 
 BUILT_SOURCES = $(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h
 
+VENDOR_SAI_CUSTOM = $(top_srcdir)/vendor/sai-custom
+
 $(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h: saimeta-gen
 
 saimeta-gen:
+	mkdir -p $(top_srcdir)/SAI/custom
+	cp -f $(VENDOR_SAI_CUSTOM)/*.h $(top_srcdir)/SAI/custom/
 	$(MAKE) -C $(top_srcdir)/SAI/meta saimetadata.c
 
 clean-local:
