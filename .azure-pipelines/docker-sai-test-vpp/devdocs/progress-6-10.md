@@ -200,7 +200,7 @@ The Dockerfile defines a sealed, self-contained environment running Debian Bookw
       REDIS_PID="$!"
       ...
   ```
-  
+
   ##### Purpose of starting Redis in a "standalone" test:
   Even though this test suite is designed as a standalone framework meant to bypass and abstract away the rest of the SONiC operating system stack (No orchagent, no portsyncd, etc.), **Redis is still required because of internal sairedis architectural dependencies.** The `saiserver` binary links against the standard `libsairedis.so` shared library. Internally, `libsairedis` expects a running Redis database instance to exist on the switch environment's local Unix socket directory to act as a runtime memory pool, handle notifications communications (ZeroMQ/Redis pub-sub), and write and validate active database transactions. Starting a headless Redis daemon satisfies this shared library constraint without bringing up any of the surrounding control-plane orchestration components of SONiC.
 
@@ -334,7 +334,7 @@ When you make changes to any C++ code inside the `sonic-sairedis` repository, yo
    ```bash
    # Clear the old packages to avoid conflict
    rm -f /nobackup/nicching/sonic-buildimage/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/debs/*.deb
-   
+
    # Copy the freshly compiled deb packages
    cp /nobackup/nicching/sonic-buildimage/target/debs/bookworm/*.deb \
       /nobackup/nicching/sonic-buildimage/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/debs/
@@ -410,14 +410,14 @@ During early testing and scaling, we investigated and solved two major bottlenec
 * **What appeared to be happening:** Upon attempting to turn up the first port (Port 0), the test run crashed immediately with `IndexError: list index out of range` inside saithrift's auto-generated python module sai_headers.py.
 * **The Root Cause:** In sai_headers.py, the auto-generated code for `SAIEnum` defined `__str__` as:
   ```python
-  def __str__(self):      
+  def __str__(self):
       return super().__str__().split(".")[1]
   ```
   While this was designed for older Python versions, in Python 3.11, calling `super().__str__()` on an `IntEnum` returns just the string representation of the integer value (e.g. `"2"` instead of `"sai_port_oper_status.SAI_PORT_OPER_STATUS_UP"`). Calling `.split(".")[1]` on `"2"` fails with an `IndexError`.
 * **How we fixed it:** We updated [SAI/test/saithriftv2/convert_header.py](SAI/test/saithriftv2/convert_header.py) (which generates the files during compiling) to produce a modern and safe implementation of the `__str__` method for python enum classes that uses `self.name` instead:
   ```python
   class SAIEnum(enum.IntEnum):
-      def __str__(self):      
+      def __str__(self):
           return self.name
   ```
   We rebuilt the python-saithrift deb package, verified that enums are serialized to their string representations (such as `SAI_COMMON_API_CREATE`), and built the new container with the updated libraries.
