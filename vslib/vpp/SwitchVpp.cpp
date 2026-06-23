@@ -1928,12 +1928,7 @@ sai_status_t SwitchVpp::setPort(
 {
     SWSS_LOG_ENTER();
 
-    UpdatePort(portId, 1, attr);
-       
-    if (attr->id == SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE)
-    {
-        sflowPortSamplePacketSet(portId, attr);
-    }
+    UpdatePort(portId, 1, attr); 
 
     auto sid = sai_serialize_object_id(portId);
 
