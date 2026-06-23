@@ -300,11 +300,6 @@ namespace syncd
             void flushPendingDampingNotifications();
 
             /**
-             * @brief check any valid damping config exists in any port
-             */
-            bool hasAnyValidDampingConfig();
-
-            /**
              * @brief Write damping counters to STATE_DB for a specific port
              * @param portVid Virtual object ID of the port
              * @param state Port damping state containing counters

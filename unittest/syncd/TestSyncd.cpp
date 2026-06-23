@@ -1009,16 +1009,9 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncWithNotifications)
 
     // Create the scenario: port goes DOWN (advertised), then UP (suppressed)
     sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
     sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
     sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
     sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Verify damping is active (UP was suppressed)
     EXPECT_EQ(getDampingField("is_damping_active"), "true");

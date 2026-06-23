@@ -57,6 +57,21 @@ using namespace std::placeholders;
 #define WD_DELAY_FACTOR 1
 #endif
 
+
+std::string serializePortVids(const std::vector<sai_port_oper_status_notification_t>& notifications)
+{
+    std::string portVids;
+    portVids.reserve(notifications.size() * 24);
+
+    for (size_t i = 0; i < notifications.size(); ++i)
+    {
+        if (i > 0) portVids += ", ";
+        portVids += sai_serialize_object_id(notifications[i].port_id);
+    }
+
+    return portVids;
+}
+
 Syncd::Syncd(
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ std::shared_ptr<CommandLineOptions> cmd,
@@ -1504,37 +1519,6 @@ void Syncd::checkDampedPortsTimeout()
     }
 }
 
-bool Syncd::hasAnyValidDampingConfig()
-{
-    SWSS_LOG_ENTER();
-
-    std::lock_guard<std::mutex> lock(m_linkEventDampingMutex);
-
-    for (const auto& kv : m_portLinkEventDampingStates)
-    {
-        const auto& state = kv.second;
-
-        // Check if algorithm is AIED
-        if (state.algorithm != SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED)
-        {
-            continue;
-        }
-
-        /* Check if configuration is valid:
-         * 1. suppress_threshold > reuse_threshold
-         * 2. max_suppress_time > decay_half_life
-         */
-        if (state.aied_config.suppress_threshold > state.aied_config.reuse_threshold &&
-            state.aied_config.max_suppress_time > state.aied_config.decay_half_life)
-        {
-            // Found at least one port with valid damping configuration
-            return true;
-        }
-    }
-
-    return false;
-}
-
 void Syncd::processPendingDampingSync()
 {
     SWSS_LOG_ENTER();
@@ -1569,15 +1553,7 @@ void Syncd::processPendingDampingSync()
     if (!notifications.empty())
     {
         // Build port VID list for logging
-        std::string portVids;
-        portVids.reserve(notifications.size() * 24);
-
-        for (size_t i = 0; i < notifications.size(); ++i)
-        {
-            if (i > 0) portVids += ", ";
-            portVids += sai_serialize_object_id(notifications[i].port_id);
-        }
-
+        auto portVids = serializePortVids(notifications);
         SWSS_LOG_NOTICE("processPendingDampingSync: enqueuing %zu port state notifications for ports: %s",
                         notifications.size(), portVids.c_str());
 
@@ -1591,7 +1567,8 @@ void Syncd::processPendingDampingSync()
             m_pendingNotifications.pop(); // Drop oldest
         }
 
-        m_pendingNotifications.push(notifications);
+        m_pendingNotifications.emplace();
+        m_pendingNotifications.back().swap(notifications);
     }
 }
 
@@ -1613,16 +1590,8 @@ void Syncd::flushPendingDampingNotifications()
     while (!localQueue.empty())
     {
         auto &notifications = localQueue.front();
-
         // Build port VID list for logging
-        std::string portVids;
-        portVids.reserve(notifications.size() * 24);
-
-        for (size_t i = 0; i < notifications.size(); ++i)
-        {
-            if (i > 0) portVids += ", ";
-            portVids += sai_serialize_object_id(notifications[i].port_id);
-        }
+        auto portVids = serializePortVids(notifications);
 
         SWSS_LOG_NOTICE("flushPendingDampingNotifications: sending %zu port state change notifications for ports: %s",
                 notifications.size(), portVids.c_str());
@@ -6817,15 +6786,11 @@ void Syncd::run()
             {
                 SWSS_LOG_DEBUG("Select timeout");
 
-                // Only process damping functions if at least one port has valid damping config
-                if (hasAnyValidDampingConfig())
-                {
-                    // Process if any pending state sync due to link event damping
-                    processPendingDampingSync();
+                // Process if any pending state sync due to link event damping
+                processPendingDampingSync();
 
-                    // Flush in controlled manner
-                    flushPendingDampingNotifications();
-                }
+                // Flush in controlled manner
+                flushPendingDampingNotifications();
                 continue;
             }
             else if (result == swss::Select::ERROR)
@@ -6955,15 +6920,11 @@ void Syncd::run()
                 SWSS_LOG_ERROR("Select returned unknown selectable: %p", sel);
             }
 
-            // Only process damping functions if at least one port has valid damping config
-            if (hasAnyValidDampingConfig())
-            {
-                // Process if any pending state sync due to link event damping
-                processPendingDampingSync();
+            // Process if any pending state sync due to link event damping
+            processPendingDampingSync();
 
-                // Flush in controlled manner
-                flushPendingDampingNotifications();
-            }
+            // Flush in controlled manner
+            flushPendingDampingNotifications();
         }
         catch(const std::exception &e)
         {
