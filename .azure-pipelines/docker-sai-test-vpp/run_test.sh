@@ -75,6 +75,20 @@ LINK_UP_TRIGGER="${LINK_UP_TRIGGER:-Turn up ports...}"
 KEEP_VETHS_UP_SECONDS="${KEEP_VETHS_UP_SECONDS:-120}"
 KEEP_VETHS_UP_INTERVAL="${KEEP_VETHS_UP_INTERVAL:-3}"
 
+# Port admin-up wait tuning, consumed by the OCP test framework's
+# turn_up_and_get_checked_ports() (SAI/test/sai_test/config/port_configer.py).
+# In this VPP/veth harness the SAI port oper-status reads DOWN for the whole
+# wait window (linux_cp carrier settles only after the config build), yet the
+# links do come up and the dataplane works - so the framework's default
+# per-port serial wait (32 ports x retries x interval ~= 64s) is pure dead time
+# in every common-config build. We opt into the shared bounded wait (all ports
+# polled together for at most retries x interval seconds) and a short interval,
+# turning ~64s into a few seconds. These are exported so the ptf subprocess
+# (and thus port_configer.py) sees them; unset = upstream/real-HW default.
+export SAI_PORT_UP_SHARED_WAIT="${SAI_PORT_UP_SHARED_WAIT:-1}"
+export SAI_PORT_UP_RETRIES="${SAI_PORT_UP_RETRIES:-2}"
+export SAI_PORT_UP_POLL_INTERVAL="${SAI_PORT_UP_POLL_INTERVAL:-1}"
+
 # The SAI PTF T0 framework is designed to build the common switch configuration
 # once and have subsequent tests reuse it (the persisted object IDs in
 # /tmp/sai_model) by passing common_configured=true. When that path is NOT used,
@@ -87,6 +101,19 @@ KEEP_VETHS_UP_INTERVAL="${KEEP_VETHS_UP_INTERVAL:-3}"
 # (common_configured=true). Set COMMON_CONFIGURED_REUSE=0 to fall back to a
 # single ptf invocation for all targets (legacy behavior).
 COMMON_CONFIGURED_REUSE="${COMMON_CONFIGURED_REUSE:-1}"
+
+# Per-test isolation. When set to 1 (default), every test target runs in its OWN
+# config group: the backend (VPP + saiserver) is torn down and brought up fresh
+# before each test, and each test rebuilds its own common config from scratch
+# (common_configured=false) rather than reloading a `dut` persisted by a previous
+# test. This eliminates all cross-test state contamination (the ECMP -6/-7
+# config-reuse artifacts and the v4/v6 NHG port-list aliasing), so the upstream OCP
+# tests need no per-test workarounds. It is only affordable because the port-up
+# wait was reduced from ~64s to ~6s (see SAI_PORT_UP_SHARED_WAIT and
+# devdocs/progress-6-19.md); each test pays ~22s of recycle+rebuild. Set to 0 to
+# fall back to config-signature grouping with persisted-config reuse (faster full
+# runs, but tests then share a backend within a group).
+ISOLATE_EACH_TEST="${ISOLATE_EACH_TEST:-1}"
 
 DEBUG=0
 TEST_FILTER="${TEST_FILTER:-}"
@@ -873,6 +900,16 @@ run_ptf()
     else
         log "No test target given; planning all discovered test classes"
         plan="$(plan_test_groups)"
+    fi
+
+    # Per-test isolation: rewrite the group id of every plan line to a unique value
+    # so each test gets its own freshly restarted backend and rebuilds its own
+    # common config (common_configured=false). The signature column is preserved for
+    # logging. This is what lets the upstream OCP tests stay free of config-reuse
+    # workarounds.
+    if [[ "$ISOLATE_EACH_TEST" == "1" && -n "$plan" ]]; then
+        plan="$(printf '%s\n' "$plan" | awk -F'\t' 'NF{printf "%d\t%s\t%s\n", NR-1, $2, $3}')"
+        log "ISOLATE_EACH_TEST=1: each test runs in its own group (fresh backend + own config)"
     fi
 
     if [[ -z "$plan" ]]; then
