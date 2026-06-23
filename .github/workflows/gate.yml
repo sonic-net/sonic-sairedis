@@ -153,12 +153,13 @@ jobs:
           fi
 
       - name: Diff-cover on changed lines (≥${{ env.COVERAGE_FAIL_UNDER }}%)
+        if: always()
         env:
           COVERAGE_FAIL_UNDER: ${{ env.COVERAGE_FAIL_UNDER }}
         run: |
           set -euo pipefail
           if [ ! -f coverage.xml ]; then
-            echo "coverage.xml missing" | tee diff-cover.log
+            echo "coverage.xml missing (build did not produce coverage output)" | tee diff-cover.log
             exit 1
           fi
           python3 -m pip install --user 'diff-cover>=9.0.0'

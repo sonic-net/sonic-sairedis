@@ -129,7 +129,10 @@ if [ -f azsyslog.conf ]; then
 fi
 
 echo "=== Running make check ==="
+set +e
 make check
+check_exit=$?
+set -e
 
 echo "=== Generating coverage reports ==="
 find SAI/meta -name "*.gc*" -delete 2>/dev/null || true
@@ -165,4 +168,8 @@ genhtml coverage.info --output-directory html --legend --function-coverage
 test -f coverage.xml || { echo "::error::coverage.xml missing"; exit 1; }
 test -f coverage.info || { echo "::error::coverage.info missing"; exit 1; }
 test -f html/index.html || { echo "::error::html/index.html missing"; exit 1; }
+if [ "$check_exit" -ne 0 ]; then
+  echo "::error::make check failed with exit $check_exit"
+  exit "$check_exit"
+fi
 echo "=== build + unit tests + coverage OK ==="
