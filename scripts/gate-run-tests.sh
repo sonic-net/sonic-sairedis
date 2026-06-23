@@ -111,7 +111,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get -f install -y -qq
 cd "$REPO_ROOT"
 echo "=== Building sonic-sairedis with coverage ==="
 ./autogen.sh
-./configure --with-sai=vs --enable-code-coverage
+./configure --with-sai=vs --enable-code-coverage --disable-python2
 make -j"$(nproc)"
 
 echo "=== Preparing unit tests ==="
