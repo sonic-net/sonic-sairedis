@@ -60,6 +60,8 @@ using namespace std::placeholders;
 
 std::string serializePortVids(const std::vector<sai_port_oper_status_notification_t>& notifications)
 {
+    SWSS_LOG_ENTER();
+
     std::string portVids;
     portVids.reserve(notifications.size() * 24);
 
