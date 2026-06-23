@@ -144,9 +144,25 @@ gcovr -r ./ \
   -e ".*/.libs/.*" -e ".*/debian/.*" -e "vslib/vpp/.*" \
   --exclude-unreachable-branches --json-pretty -o coverage-all.json
 gcovr -a "coverage-*.json" -x --xml-pretty -o coverage.xml
-gcovr -a "coverage-*.json" --lcov -o coverage.info
-gcovr -a "coverage-*.json" --html-details html/ --html-title "sonic-sairedis coverage"
+
+# Bookworm gcovr has no --lcov; use lcov + genhtml for the coverage dashboard.
+lcov --capture --directory . --output-file coverage.raw.info --rc lcov_branch_coverage=1
+lcov --remove coverage.raw.info \
+  '/usr/*' \
+  '*/SAI/*' \
+  '*/debian/*' \
+  '*/.libs/*' \
+  'vslib/vpp/*' \
+  --output-file coverage.info
+rm -f coverage.raw.info
+if [ -f /etc/lcovrc ]; then
+  sudo sed -i 's/^#\s*genhtml_function_coverage\s*=\s*0/genhtml_function_coverage = 1/' /etc/lcovrc
+  grep -q '^genhtml_function_coverage' /etc/lcovrc \
+    || echo 'genhtml_function_coverage = 1' | sudo tee -a /etc/lcovrc >/dev/null
+fi
+genhtml coverage.info --output-directory html --legend --function-coverage
 
 test -f coverage.xml || { echo "::error::coverage.xml missing"; exit 1; }
 test -f coverage.info || { echo "::error::coverage.info missing"; exit 1; }
+test -f html/index.html || { echo "::error::html/index.html missing"; exit 1; }
 echo "=== build + unit tests + coverage OK ==="
