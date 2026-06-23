@@ -33,7 +33,7 @@ using namespace saivs;
         SWSS_LOG_ERROR("%s: status %d", buffer, status); \
         return _status; } }
 
-static void create_route_prefix_entry (
+void create_route_prefix_entry (
        sai_route_entry_t *route_entry,
        vpp_ip_route_t *ip_route)
 {
@@ -149,7 +149,11 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
     if (SAI_OBJECT_TYPE_ROUTER_INTERFACE == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
-        // vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, is_add);
+        sai_status_t rif_status = vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, is_add);
+        if (rif_status != SAI_STATUS_SUCCESS)
+        {
+            return rif_status;
+        }
     }
     else if (SAI_OBJECT_TYPE_PORT == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
@@ -201,7 +205,36 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
         size_t i;
         for (i = 0; i < nxthop_group->nmembers; i++) {
-            create_vpp_nexthop_entry(nxt_grp_member, hwif_name, nexthop_type,  &ip_route->nexthop[i]);
+            const char *member_hwif = hwif_name;
+            std::string member_hwif_str;
+
+            if (member_hwif == NULL && nxt_grp_member->rif_oid != SAI_NULL_OBJECT_ID)
+            {
+                sai_attribute_t rif_attr;
+                uint16_t vlan_id = 0;
+
+                rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+                if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nxt_grp_member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS &&
+                    rif_attr.value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+                {
+                    sai_attribute_t vlan_attr;
+                    vlan_attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+
+                    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nxt_grp_member->rif_oid, 1, &vlan_attr) == SAI_STATUS_SUCCESS)
+                    {
+                        vlan_id = vlan_attr.value.u16;
+                    }
+                }
+
+                rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+                if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nxt_grp_member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS &&
+                    vpp_get_hwif_name(rif_attr.value.oid, vlan_id, member_hwif_str))
+                {
+                    member_hwif = member_hwif_str.c_str();
+                }
+            }
+
+            create_vpp_nexthop_entry(nxt_grp_member, member_hwif, nexthop_type,  &ip_route->nexthop[i]);
             nxt_grp_member++;
         }
         ip_route->nexthop_cnt = nxthop_group->nmembers;
@@ -391,7 +424,36 @@ sai_status_t SwitchVpp::IpRoutePathAddRemove(
     ip_route->is_multipath = true;  // Tell VPP to add/remove a path, not replace the route
     ip_route->nexthop_cnt = 1;
 
-    create_vpp_nexthop_entry(member, NULL, VPP_NEXTHOP_NORMAL, &ip_route->nexthop[0]);
+    const char *member_hwif = NULL;
+    std::string member_hwif_str;
+
+    if (member->rif_oid != SAI_NULL_OBJECT_ID)
+    {
+        sai_attribute_t rif_attr;
+        uint16_t vlan_id = 0;
+
+        rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS &&
+            rif_attr.value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+        {
+            sai_attribute_t vlan_attr;
+            vlan_attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+
+            if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &vlan_attr) == SAI_STATUS_SUCCESS)
+            {
+                vlan_id = vlan_attr.value.u16;
+            }
+        }
+
+        rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS &&
+            vpp_get_hwif_name(rif_attr.value.oid, vlan_id, member_hwif_str))
+        {
+            member_hwif = member_hwif_str.c_str();
+        }
+    }
+
+    create_vpp_nexthop_entry(member, member_hwif, VPP_NEXTHOP_NORMAL, &ip_route->nexthop[0]);
 
     int ret = ip_route_add_del_get_stats(ip_route, is_add, stats_index);
 
