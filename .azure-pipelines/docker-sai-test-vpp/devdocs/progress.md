@@ -8,6 +8,30 @@ Newest first.
 
 ---
 
+## 2026-06-17 — L3-over-LAG forwarding: environment/topology gaps, now FIXED
+*(detail: [progress-6-17.md](progress-6-17.md))*
+
+Re-classified the dominant Phase 2 failure family — L3-over-LAG — from a presumed VPP
+SAI backend gap to environment/topology gaps, after the senior engineer confirmed the
+tests pass when the suite and topology are brought up manually (full SONiC stack). The
+VPP SAI backend takes RIF IPs/MACs from the SONiC netdev/RIF attributes that
+IntfMgr/teamd/orchagent normally provide; the standalone saiserver+OCP+PTF environment
+provides none. Root cause was three coupled gaps: (A) the LAG egress BondEthernet has
+no connected IP; (B) the VLAN SVI's BVI is never created because
+`vpp_create_bvi_interface` treated `SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS` as
+mandatory and the OCP test never passes it; (C) the SVI BVI has no connected IP.
+Fixes: a `run_test.sh` watchdog assigns the DUT connected IPs to each LAG `be<N>` LCP
+tap (mirrored to BondEthernet by linux_nl) and to each `bvi<vlan_id>` via vppctl
+(A, C); the backend now falls back to the switch src MAC when the RIF src MAC attr is
+omitted (B, spec-compliant default, no orchagent-path regression — needs a `.deb`
+rebuild). The watchdog was also changed to run for the whole backend lifetime so the
+IPs survive long runs. Result: the core L3-over-LAG dataplane-forwarding tests
+(`RouteRifTest`, `RouteRifv6Test`, `RouteUpdateTest`/v6, `LagMultipleRouteTest`/v6,
+`RouteSameSipDipv6Test`) now PASS standalone and in the full `sai_route_test` module.
+Remaining route/rif failures are separate families (SVI MAC learning/aging/flood,
+`-5` host-route-on-LAG-RIF create, tearDown-cascade ERRORs) outside the L3-over-LAG
+forwarding scope.
+
 ## 2026-06-15 — Run many tests in one go + compatibility matrix
 *(detail: [progress-6-15.md](progress-6-15.md))*
 
