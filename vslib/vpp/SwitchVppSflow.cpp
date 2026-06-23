@@ -53,7 +53,7 @@ sai_status_t SwitchVpp::samplePacketSet(
     return status;
 }
 
-sai_status_t SwitchVpp::sflow_enable_disable(
+sai_status_t SwitchVpp::sflowEnableDisable(
     _In_ sai_object_id_t port_id,
     _In_ bool enable)
 {
@@ -80,7 +80,7 @@ sai_status_t SwitchVpp::sflow_enable_disable(
 
 }
 
-sai_status_t SwitchVpp::sflow_sampling_rate_set(
+sai_status_t SwitchVpp::sflowSamplingRateSet(
     _In_ uint32_t rate)
 {
     SWSS_LOG_ENTER();
@@ -96,7 +96,7 @@ sai_status_t SwitchVpp::sflow_sampling_rate_set(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchVpp::sflow_hostif_trap_samplepacket_create(
+sai_status_t SwitchVpp::sflowHostifTrapSamplePacketCreate(
     _In_ sai_object_id_t object_id,
     _In_ sai_object_id_t switch_id,
     _In_ uint32_t attr_count,
@@ -106,21 +106,12 @@ sai_status_t SwitchVpp::sflow_hostif_trap_samplepacket_create(
 
     auto sid = sai_serialize_object_id(object_id);
 
-    const sai_attribute_value_t *trap_type_attr = nullptr;
-    uint32_t attr_index = 0;
+    SaiCachedObject trap_obj(this, SAI_OBJECT_TYPE_HOSTIF_TRAP, sid, attr_count, attr_list);
+    sai_attribute_t attr;
+    attr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    CHECK_STATUS_QUIET(trap_obj.get_mandatory_attr(attr));
 
-    sai_status_t status = find_attrib_in_list(
-            attr_count, attr_list,
-            SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE,
-            &trap_type_attr, &attr_index);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("HOSTIF_TRAP %s missing mandatory TRAP_TYPE attribute", sid.c_str());
-        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
-    }
-
-    if (trap_type_attr->s32 == SAI_HOSTIF_TRAP_TYPE_SAMPLEPACKET)
+    if (attr.value.s32 == SAI_HOSTIF_TRAP_TYPE_SAMPLEPACKET)
     {
         SWSS_LOG_NOTICE("HOSTIF_TRAP %s SAMPLEPACKET created (bookkeeping)", sid.c_str());
     }
@@ -131,7 +122,7 @@ sai_status_t SwitchVpp::sflow_hostif_trap_samplepacket_create(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchVpp::sflow_hostif_trap_samplepacket_remove(
+sai_status_t SwitchVpp::sflowHostifTrapSamplePacketRemove(
     _In_ const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
@@ -144,7 +135,7 @@ sai_status_t SwitchVpp::sflow_hostif_trap_samplepacket_remove(
 
 }
 
-sai_status_t SwitchVpp::sflow_hostif_table_entry_create(
+sai_status_t SwitchVpp::sflowHostifTableEntryCreate(
     _In_ sai_object_id_t object_id,
     _In_ sai_object_id_t switch_id,
     _In_ uint32_t attr_count,
@@ -161,7 +152,7 @@ sai_status_t SwitchVpp::sflow_hostif_table_entry_create(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchVpp::sflow_hostif_table_entry_remove(
+sai_status_t SwitchVpp::sflowHostifTableEntryRemove(
     _In_ const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
@@ -171,4 +162,42 @@ sai_status_t SwitchVpp::sflow_hostif_table_entry_remove(
     SWSS_LOG_NOTICE("HOSTIF_TABLE_ENTRY %s removed", serializedObjectId.c_str());
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::sflowPortSamplePacketSet(
+    _In_ sai_object_id_t portId,
+    _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t sp_oid = attr->value.oid;
+
+    if(sp_oid == SAI_NULL_OBJECT_ID)
+    {
+        return sflowEnableDisable(portId, false);
+    }
+
+    sai_attribute_t rate_attr;
+    rate_attr.id = SAI_SAMPLEPACKET_ATTR_SAMPLE_RATE;
+    uint32_t rate = 0;
+
+    auto serialized_id = sai_serialize_object_id(sp_oid);
+
+    if (get(SAI_OBJECT_TYPE_SAMPLEPACKET, serialized_id, 1, &rate_attr) == SAI_STATUS_SUCCESS)
+    {
+        rate = rate_attr.value.u32;
+    }
+
+    if (m_sflow_sample_rate != 0 && m_sflow_sample_rate != rate)
+    {
+        SWSS_LOG_WARN("sFlow sample rate mismatch: global=%u port %s requesting=%u (last-writer-wins)",
+            m_sflow_sample_rate,
+            sai_serialize_object_id(portId).c_str(),
+            rate);
+    }
+
+    m_sflow_sample_rate = rate;
+
+    CHECK_STATUS(sflowEnableDisable(portId, true));
+    return sflowSamplingRateSet(rate);
 }

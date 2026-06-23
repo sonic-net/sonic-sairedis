@@ -1428,14 +1428,14 @@ sai_status_t SwitchVpp::create(
     {
         sai_object_id_t object_id;
         sai_deserialize_object_id(serializedObjectId, object_id);
-        return sflow_hostif_trap_samplepacket_create(object_id, switch_id, attr_count, attr_list);
+        return sflowHostifTrapSamplePacketCreate(object_id, switch_id, attr_count, attr_list);
     }
 
     if(object_type == SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY)
     {
         sai_object_id_t object_id;
         sai_deserialize_object_id(serializedObjectId, object_id);
-        return sflow_hostif_table_entry_create(object_id, switch_id, attr_count, attr_list);
+        return sflowHostifTableEntryCreate(object_id, switch_id, attr_count, attr_list);
     }
 
     if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
@@ -1786,12 +1786,12 @@ sai_status_t SwitchVpp::remove(
 
     if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
     {
-        return sflow_hostif_trap_samplepacket_remove(serializedObjectId);
+        return sflowHostifTrapSamplePacketRemove(serializedObjectId);
     }
 
     if(object_type == SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY)
     {
-        return sflow_hostif_table_entry_remove(serializedObjectId);
+        return sflowHostifTableEntryRemove(serializedObjectId);
     }
 
     if (object_type == SAI_OBJECT_TYPE_ACL_ENTRY)
@@ -1929,44 +1929,10 @@ sai_status_t SwitchVpp::setPort(
     SWSS_LOG_ENTER();
 
     UpdatePort(portId, 1, attr);
-
+       
     if (attr->id == SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE)
     {
-        sai_object_id_t sp_oid = attr->value.oid;
-
-        if(sp_oid == SAI_NULL_OBJECT_ID)
-        {
-            m_sflow_port_to_samplepacket.erase(portId);
-            sflow_enable_disable(portId, false);
-        }
-        else 
-        {
-            sai_attribute_t rate_attr;
-            rate_attr.id = SAI_SAMPLEPACKET_ATTR_SAMPLE_RATE;
-            uint32_t rate = 0;
-
-            auto serialized_id = sai_serialize_object_id(sp_oid);
-
-            if(get(SAI_OBJECT_TYPE_SAMPLEPACKET, serialized_id, 1, &rate_attr) == SAI_STATUS_SUCCESS)
-            {
-                rate = rate_attr.value.u32;
-            }
-
-            if(m_sflow_sample_rate != 0 && m_sflow_sample_rate != rate)
-            {
-                SWSS_LOG_WARN("sFlow sample rate mismatch: global=%u port %s requesting=%u (last-writer-wins)",
-                    m_sflow_sample_rate,
-                    sai_serialize_object_id(portId).c_str(),
-                    rate);
-            }
-
-            m_sflow_port_to_samplepacket[portId] = sp_oid;
-            m_sflow_sample_rate = rate;
-
-            sflow_enable_disable(portId, true);
-            sflow_sampling_rate_set(rate);
-        }
-
+        sflowPortSamplePacketSet(portId, attr);
     }
 
     auto sid = sai_serialize_object_id(portId);
