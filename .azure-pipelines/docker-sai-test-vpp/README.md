@@ -184,8 +184,10 @@ docker run --rm --privileged -e PORT_COUNT=32 \
   2>&1 | tee results/run.log
 ```
 Then build the matrix with the bundled generator (defaults to the `results/`
-tree, no arguments needed):
+tree, no arguments needed). The generator parses the JUnit XML with `defusedxml`
+(hardened against XXE), so install it once if needed:
 ```bash
+pip install defusedxml
 python3 gen_compatibility_matrix.py        # writes results/compatibility-matrix.md
 ```
 `gen_compatibility_matrix.py` walks `results/xml/TEST-*.xml` and writes a

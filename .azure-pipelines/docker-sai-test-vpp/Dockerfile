@@ -115,4 +115,10 @@ RUN install -d \
 
 WORKDIR /
 
+# This is a single-purpose, --privileged test harness: the entrypoint starts VPP,
+# Redis and saiserver, creates/destroys veth + PortChannel netdevs, and uses raw
+# AF_PACKET sockets, all of which require root inside the container. It is run
+# manually/in CI as a disposable test container, never as a deployed service, so a
+# non-root USER would break the harness without adding meaningful isolation.
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["/usr/local/bin/run_test.sh"]

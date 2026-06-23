@@ -33,7 +33,10 @@ import sys
 import os
 import glob
 import datetime
-import xml.etree.ElementTree as ET
+
+# Use defusedxml (hardened against XXE / entity-expansion attacks) to parse the
+# PTF JUnit XML. Install with `pip install defusedxml` if it is not already present.
+import defusedxml.ElementTree as ET
 
 # Default results tree lives alongside this script, under docker-sai-test-vpp/.
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
