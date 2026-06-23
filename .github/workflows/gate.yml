@@ -188,7 +188,7 @@ jobs:
         if: success()
         env:
           S3_COVERAGE_BUCKET: ${{ vars.S3_COVERAGE_BUCKET }}
-          GATE_BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          GATE_BRANCH_NAME: ${{ env.GATE_BASE_REF }}
         run: |
           chmod +x .github/scripts/upload-gate-coverage-s3.sh
           .github/scripts/upload-gate-coverage-s3.sh sonic-sairedis
@@ -301,7 +301,7 @@ jobs:
           PY
 
       - name: Post gate summary on PR
-        uses: upscale-ai-network/pm/gh_actions/sticky-gate-comment@feat/sticky-gate-comment-action
+        uses: upscale-ai-network/pm/gh_actions/sticky-gate-comment@main
         with:
           header: gate-sonic-sairedis
           path: gate-report.md
