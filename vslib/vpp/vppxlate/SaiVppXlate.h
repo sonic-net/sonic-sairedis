@@ -355,11 +355,11 @@ typedef enum {
     extern int vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del);
     extern int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src);
 
-/* SPAN (port mirroring) */
-extern int vpp_span_enable_disable(uint32_t sw_if_index_from,
-                                   uint32_t sw_if_index_to,
-                                   uint8_t state, /* 0 = disable */
-                                   bool is_l2);
+    /* SPAN (port mirroring) */
+    extern int vpp_span_enable_disable(uint32_t sw_if_index_from,
+                                    uint32_t sw_if_index_to,
+                                    uint8_t state, /* 0 = disable */
+                                    bool is_l2);
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
     extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
     extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
