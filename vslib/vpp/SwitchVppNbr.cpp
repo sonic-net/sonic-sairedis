@@ -29,6 +29,8 @@ void create_vpp_nexthop_entry(nexthop_grp_member_t *nxt_grp_member, const char *
 
 static sai_ip_prefix_t make_neighbor_host_prefix(const sai_ip_address_t &addr)
 {
+    SWSS_LOG_ENTER();
+
     sai_ip_prefix_t prefix;
 
     prefix.addr_family = addr.addr_family;
@@ -50,6 +52,8 @@ static bool neighbor_no_host_route_from_attrs(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     for (uint32_t i = 0; i < attr_count; i++)
     {
         if (attr_list[i].id == SAI_NEIGHBOR_ENTRY_ATTR_NO_HOST_ROUTE)
