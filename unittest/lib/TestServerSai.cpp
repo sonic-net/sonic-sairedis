@@ -90,9 +90,16 @@ TEST(ServerSai, stats_st_capability_query)
 
     ServerSai sai;
 
-    sai.apiInitialize(0, &test_services);
-    sai.m_selectableChannel = make_shared<TestServerSaiMockChannel>();
-    sai.m_sai = make_shared<MockSaiInterface>();
+    // Exercise processStatsStCapabilityQuery directly; avoid apiInitialize(),
+    // which starts a background select/epoll thread that races with mocks in CI.
+    sai.m_apiInitialized = true;
+
+    auto mockChannel = std::make_shared<TestServerSaiMockChannel>();
+    auto mockSai = std::make_shared<MockSaiInterface>();
+    mockSai->m_status = SAI_STATUS_SUCCESS;
+
+    sai.m_selectableChannel = mockChannel;
+    sai.m_sai = mockSai;
 
     KeyOpFieldsValuesTuple kco;
     kfvKey(kco) = "oid:0x21000000000000";
