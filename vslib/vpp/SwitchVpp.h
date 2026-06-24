@@ -1056,7 +1056,7 @@ namespace saivs
 
                 sai_status_t removeMirrorSession(_In_ sai_object_id_t object_id);
 
-                sai_status_t SwitchVpp::bindMirrorPort(
+                sai_status_t bindMirrorPort(
                         _In_ sai_object_id_t portId,
                         _In_ const sai_attribute_t* attr);
 
