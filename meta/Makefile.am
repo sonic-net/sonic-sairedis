@@ -17,6 +17,7 @@ $(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h: $(VEN
 
 saimeta-gen: $(VENDOR_SAI_CUSTOM_STAMP)
 	$(MAKE) -C $(top_srcdir)/SAI/meta saimetadata.c
+	sed -i 's/#include <saicustom.h>/#include <sairedis-saicustom.h>/' $(top_srcdir)/SAI/meta/saimetadata.h
 
 clean-local:
 	$(MAKE) -C $(top_srcdir)/SAI/meta clean
