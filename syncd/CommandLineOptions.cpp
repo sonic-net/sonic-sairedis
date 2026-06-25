@@ -20,6 +20,7 @@ CommandLineOptions::CommandLineOptions()
     m_enableUnittests = false;
     m_enableConsistencyCheck = false;
     m_enableSyncMode = false;
+    m_enableAsyncRec = false;
     m_enableSaiBulkSupport = false;
 
     m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC;
@@ -63,6 +64,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " EnableUnittests=" << (m_enableUnittests ? "YES" : "NO");
     ss << " EnableConsistencyCheck=" << (m_enableConsistencyCheck ? "YES" : "NO");
     ss << " EnableSyncMode=" << (m_enableSyncMode ? "YES" : "NO");
+    ss << " EnableAsyncRec=" << (m_enableAsyncRec ? "YES" : "NO");
     ss << " RedisCommunicationMode=" << sai_serialize_redis_communication_mode(m_redisCommunicationMode);
     ss << " EnableSaiBulkSuport=" << (m_enableSaiBulkSupport ? "YES" : "NO");
     ss << " StartType=" << startTypeToString(m_startType);
