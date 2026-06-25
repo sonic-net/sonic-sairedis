@@ -1,5 +1,6 @@
 #include "Syncd.h"
 #include "RedisClient.h"
+#include "ZmqRedisClient.h"
 #include "sai_serialize.h"
 #include "RequestShutdown.h"
 #include "vslib/ContextConfigContainer.h"
@@ -318,6 +319,55 @@ TEST(Syncd, contextConfigZmqEnablePreservedForFileEnabled)
     auto syncd = std::make_shared<Syncd>(sai, cmd, false);
 
     EXPECT_EQ(syncd->m_contextConfig->m_zmqEnable, sairedis::CONTEXT_CONFIG_ZMQ_ENABLED);
+}
+
+TEST(Syncd, zmqWithAsyncRecUsesZmqRedisClient)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_enableAsyncRec = true;
+    cmd->m_contextConfig = "files/ctx_zmq_enabled.json";
+
+    auto syncdObj = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_NE(std::dynamic_pointer_cast<ZmqRedisClient>(syncdObj->m_client), nullptr);
+}
+
+TEST(Syncd, zmqWithoutAsyncRecUsesSyncRedisClient)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_enableAsyncRec = false;
+    cmd->m_contextConfig = "files/ctx_zmq_enabled.json";
+
+    auto syncdObj = std::make_shared<Syncd>(sai, cmd, false);
+
+    // ZMQ active but async_rec disabled: fall back to the synchronous RedisClient,
+    // not the async ZmqRedisClient subclass.
+    EXPECT_EQ(std::dynamic_pointer_cast<ZmqRedisClient>(syncdObj->m_client), nullptr);
+    EXPECT_NE(std::dynamic_pointer_cast<RedisClient>(syncdObj->m_client), nullptr);
+}
+
+TEST(Syncd, asyncRecIgnoredWhenContextConfigVetoesZmq)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_enableAsyncRec = true;
+    cmd->m_contextConfig = "files/ctx_zmq_disabled.json";
+
+    auto syncdObj = std::make_shared<Syncd>(sai, cmd, false);
+
+    // context_config.json vetoes ZMQ (zmq_enable=false): demote to REDIS_SYNC, so
+    // --async-rec is harmlessly ignored and the synchronous RedisClient is used.
+    EXPECT_EQ(cmd->m_redisCommunicationMode, SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC);
+    EXPECT_EQ(std::dynamic_pointer_cast<ZmqRedisClient>(syncdObj->m_client), nullptr);
+    EXPECT_NE(std::dynamic_pointer_cast<RedisClient>(syncdObj->m_client), nullptr);
 }
 
 using namespace syncd;
