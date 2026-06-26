@@ -16,6 +16,7 @@
 #include <net/if.h>
 #include <netinet/in.h>
 #include <stdint.h>
+#include <vector>
 
 #include "vppxlate/SaiVppXlate.h"
 
@@ -203,6 +204,9 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
         nxt_grp_member = nxthop_group->grp_members;
 
+        std::vector<std::string> member_hwif_storage;
+        member_hwif_storage.reserve(nxthop_group->nmembers);
+
         size_t i;
         for (i = 0; i < nxthop_group->nmembers; i++) {
             const char *member_hwif = hwif_name;
@@ -230,7 +234,8 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
                 if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nxt_grp_member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS &&
                     vpp_get_hwif_name(rif_attr.value.oid, vlan_id, member_hwif_str))
                 {
-                    member_hwif = member_hwif_str.c_str();
+                    member_hwif_storage.push_back(std::move(member_hwif_str));
+                    member_hwif = member_hwif_storage.back().c_str();
                 }
             }
 
