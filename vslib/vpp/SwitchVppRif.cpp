@@ -378,7 +378,7 @@ void SwitchVpp::vppProcessEvents ()
 {
     SWSS_LOG_ENTER();
 
-    const struct timespec req = {5, 0};
+    const struct timespec req = {2, 0};
     vpp_event_info_t *evp;
     int ret;
 
