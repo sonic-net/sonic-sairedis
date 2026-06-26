@@ -687,7 +687,9 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _In_ bool program_adjacency = true,
+                    _In_ bool program_host_route = false);
 
             sai_status_t addIpNbr(
                     _In_ const std::string &serializedObjectId,
@@ -697,12 +699,6 @@ namespace saivs
 
             sai_status_t removeIpNbr(
                     _In_ const std::string &serializedObjectId);
-
-            sai_status_t programNeighborHostRoute(
-                    _In_ const std::string &serializedObjectId,
-                    _In_ uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list,
-                    _In_ bool is_add);
 
             bool is_ip_nbr_active();
 
