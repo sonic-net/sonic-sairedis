@@ -744,6 +744,10 @@ namespace saivs
                     _In_ bool is_add,
                     _Out_ uint32_t *stats_index = nullptr);
 
+            const char* resolveNexthopMemberHwif(
+                    _In_ const nexthop_grp_member_t *member,
+                    _Out_ std::string &member_hwif);
+
             sai_status_t updateIpRoute(
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t *attr_list);
