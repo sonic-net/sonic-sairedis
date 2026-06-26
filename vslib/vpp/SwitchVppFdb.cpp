@@ -1520,6 +1520,12 @@ void SwitchVpp::swif_bdid_untrack(const char *hwif_name)
     if (swif != (uint32_t)~0u)
     {
         m_swif_to_bdid.erase(swif);
+
+        // Invalidate the sw_if_index -> SAI port OID memoization as well.
+        // VPP recycles sw_if_index values after an interface is deleted, so a
+        // stale entry would mis-attribute FDB learn/move/age notifications (and
+        // vpp_fdb_entries_invalidate_by_port matches) to the previous port OID.
+        m_swif_to_port_id.erase(swif);
     }
 }
 

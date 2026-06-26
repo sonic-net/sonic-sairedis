@@ -1116,6 +1116,8 @@ namespace saivs
 
             // Cache: VPP sw_if_index -> SAI port OID, built from FDB learn events.
             // Avoids per-entry VPP API calls in vpp_fdb_entries_invalidate_by_port().
+            // Invalidated per sw_if_index on port-leave via swif_bdid_untrack(),
+            // since VPP recycles sw_if_index values after an interface is deleted.
             std::unordered_map<uint32_t, sai_object_id_t> m_swif_to_port_id;
 
             // Maps VPP sw_if_index -> bridge domain ID.
@@ -1168,6 +1170,8 @@ namespace saivs
             void vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id);
 
             // Track/untrack sw_if_index→bd_id when ports join/leave bridge domains.
+            // Untrack also invalidates the m_swif_to_port_id cache for that
+            // sw_if_index, since both per-swif caches share the same lifecycle.
             void swif_bdid_track(const char *hwif_name, uint32_t bd_id);
             void swif_bdid_untrack(const char *hwif_name);
 
