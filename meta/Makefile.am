@@ -3,15 +3,25 @@ AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib
 
 lib_LTLIBRARIES = libsaimetadata.la libsaimeta.la
 
-BUILT_SOURCES = $(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h
+VENDOR_SAI_CUSTOM = $(top_srcdir)/vendor/sai-custom
+VENDOR_SAI_CUSTOM_STAMP = $(top_srcdir)/SAI/custom/.vendor_stamp
 
-$(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h: saimeta-gen
+BUILT_SOURCES = $(VENDOR_SAI_CUSTOM_STAMP) $(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h
 
-saimeta-gen:
+$(VENDOR_SAI_CUSTOM_STAMP): $(wildcard $(VENDOR_SAI_CUSTOM)/*.h)
+	mkdir -p $(top_srcdir)/SAI/custom
+	cp -f $(VENDOR_SAI_CUSTOM)/*.h $(top_srcdir)/SAI/custom/
+	touch $@
+
+$(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h: $(VENDOR_SAI_CUSTOM_STAMP) saimeta-gen
+
+saimeta-gen: $(VENDOR_SAI_CUSTOM_STAMP)
 	$(MAKE) -C $(top_srcdir)/SAI/meta saimetadata.c
+	sed -i 's/#include <saicustom.h>/#include <sairedis-saicustom.h>/' $(top_srcdir)/SAI/meta/saimetadata.h
 
 clean-local:
 	$(MAKE) -C $(top_srcdir)/SAI/meta clean
+	rm -f $(VENDOR_SAI_CUSTOM_STAMP)
 
 libsaimetadata_la_SOURCES =  \
 				$(top_srcdir)/SAI/meta/saimetadata.c \
