@@ -344,31 +344,21 @@ bool SwitchVpp::vpp_get_hwif_name (
 {
     SWSS_LOG_ENTER();
 
-    const char *hwifname = nullptr;
-    char hw_bondifname[32];
+    std::string tap_name;
 
-    if (objectTypeQuery(object_id) == SAI_OBJECT_TYPE_LAG) {
-        platform_bond_info_t bond_info;
-        sai_status_t status = get_lag_bond_info(object_id, bond_info);
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            return false;
-        }
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
-        hwifname = hw_bondifname;
-    } else {
-        std::string if_name;
-        bool found = getTapNameFromPortId(object_id, if_name);
-
-        if (found == false)
-        {
-            SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(object_id).c_str());
-            return false;
-        }
-        hwifname = tap_to_hwif_name(if_name.c_str());
+    if (getTapNameFromPortOrLagId(object_id, tap_name) == false)
+    {
+        SWSS_LOG_ERROR("host interface for port/lag id %s not found",
+                sai_serialize_object_id(object_id).c_str());
+        return false;
     }
 
-    if (!hwifname) return false;
+    const char *hwifname = tap_to_hwif_name(tap_name.c_str());
+
+    if (hwifname == NULL || strcmp(hwifname, "Unknown") == 0)
+    {
+        return false;
+    }
 
     char hw_subifname[64];
     const char *hw_ifname;
@@ -674,37 +664,19 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
 
     std::string if_name;
 
-    if (ot == SAI_OBJECT_TYPE_LAG)
-    {
-        platform_bond_info_t bond_info;
-        status = get_lag_bond_info(obj_id, bond_info);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("failed to get bond info for lag %s",
-                    sai_serialize_object_id(obj_id).c_str());
-            return SAI_STATUS_FAILURE;
-        }
-
-        std::ostringstream tap_stream;
-        tap_stream << "be" << bond_info.id;
-        if_name = tap_stream.str();
-    }
-    else if (ot == SAI_OBJECT_TYPE_PORT)
-    {
-        bool found = getTapNameFromPortId(obj_id, if_name);
-        if (found == false)
-        {
-            SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(obj_id).c_str());
-            return SAI_STATUS_FAILURE;
-        }
-    }
-    else
+    if (ot != SAI_OBJECT_TYPE_PORT && ot != SAI_OBJECT_TYPE_LAG)
     {
         SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                 sai_serialize_object_id(obj_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
 
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (getTapNameFromPortOrLagId(obj_id, if_name) == false)
+    {
+        SWSS_LOG_ERROR("host interface for port/lag id %s not found",
+                sai_serialize_object_id(obj_id).c_str());
         return SAI_STATUS_FAILURE;
     }
 
@@ -811,31 +783,18 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
 
     const char *hw_ifname;
     char hw_subifname[32];
-    char hw_bondifname[32];
+    const char *hwifname = tap_to_hwif_name(if_name.c_str());
 
-    if (ot == SAI_OBJECT_TYPE_LAG)
+    if (hwifname == NULL || strcmp(hwifname, "Unknown") == 0)
     {
-        platform_bond_info_t bond_info;
-        status = get_lag_bond_info(obj_id, bond_info);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            return SAI_STATUS_FAILURE;
-        }
-
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_info.id);
-        hw_ifname = hw_bondifname;
+        return SAI_STATUS_FAILURE;
     }
-    else
-    {
-        const char *hwifname = tap_to_hwif_name(if_name.c_str());
 
-        if (vlan_id) {
-            snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
-            hw_ifname = hw_subifname;
-        } else {
-            hw_ifname = hwifname;
-        }
+    if (vlan_id) {
+        snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
+        hw_ifname = hw_subifname;
+    } else {
+        hw_ifname = hwifname;
     }
 
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);

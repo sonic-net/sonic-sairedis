@@ -1,6 +1,7 @@
 #include "SwitchVpp.h"
 #include "HostInterfaceInfo.h"
 #include "EventPayloadNotification.h"
+#include "SwitchVppUtils.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/NotificationPortStateChange.h"
@@ -17,6 +18,7 @@
 #include <sys/ioctl.h>
 #include <net/if_arp.h>
 #include <unistd.h>
+#include <cctype>
 #include <net/ethernet.h>
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
@@ -632,6 +634,30 @@ void SwitchVpp::populate_if_mapping()
     fclose(fp);
 }
 
+static bool bond_tap_to_hwif_name(
+        _In_ const char *name,
+        _Out_ std::string &bond_hwif)
+{
+    SWSS_LOG_ENTER();
+
+    if (name[0] != 'b' || name[1] != 'e' || name[2] == '\0')
+    {
+        return false;
+    }
+
+    for (const char *p = name + 2; *p != '\0'; p++)
+    {
+        if (!isdigit(static_cast<unsigned char>(*p)))
+        {
+            return false;
+        }
+    }
+
+    bond_hwif = std::string(BONDETHERNET_PREFIX) + (name + 2);
+
+    return true;
+}
+
 const char* SwitchVpp::tap_to_hwif_name(
         _In_ const char *name)
 {
@@ -645,6 +671,15 @@ const char* SwitchVpp::tap_to_hwif_name(
 
     if (it == m_hostif_hwif_map.end())
     {
+        static thread_local std::string bond_hwif;
+
+        if (bond_tap_to_hwif_name(name, bond_hwif))
+        {
+            SWSS_LOG_DEBUG("Mapped bond tap %s to hwif %s", name, bond_hwif.c_str());
+
+            return bond_hwif.c_str();
+        }
+
         SWSS_LOG_ERROR("failed to find hwif info entry for hostif device: %s", tap_name.c_str());
 
         return "Unknown";

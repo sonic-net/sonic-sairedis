@@ -11,6 +11,7 @@
 
 #include <vector>
 #include <string>
+#include <sstream>
 #include <cerrno>
 
 using namespace saivs;
@@ -715,6 +716,39 @@ bool SwitchVpp::port_to_hostif_list(
     //}
     //return(
     return getTapNameFromPortId(port_id, if_name);
+}
+
+bool SwitchVpp::getTapNameFromPortOrLagId(
+        _In_ sai_object_id_t obj_id,
+        _Out_ std::string& if_name)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_type_t ot = objectTypeQuery(obj_id);
+
+    if (ot == SAI_OBJECT_TYPE_PORT)
+    {
+        return getTapNameFromPortId(obj_id, if_name);
+    }
+
+    if (ot == SAI_OBJECT_TYPE_LAG)
+    {
+        platform_bond_info_t bond_info;
+        sai_status_t status = get_lag_bond_info(obj_id, bond_info);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+
+        std::ostringstream tap_stream;
+        tap_stream << "be" << bond_info.id;
+        if_name = tap_stream.str();
+
+        return true;
+    }
+
+    return false;
 }
 
 bool SwitchVpp::port_to_hwifname(

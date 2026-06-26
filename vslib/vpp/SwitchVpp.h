@@ -1069,6 +1069,10 @@ namespace saivs
 
             void populate_if_mapping();
 
+            bool getTapNameFromPortOrLagId(
+                    _In_ sai_object_id_t obj_id,
+                    _Out_ std::string& if_name);
+
             const char *tap_to_hwif_name(const char *name);
 
             const char *hwif_to_tap_name(const char *name);
