@@ -189,11 +189,7 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
     if (SAI_OBJECT_TYPE_ROUTER_INTERFACE == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
-        sai_status_t rif_status = vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, is_add);
-        if (rif_status != SAI_STATUS_SUCCESS)
-        {
-            return rif_status;
-        }
+        // vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, is_add);
     }
     else if (SAI_OBJECT_TYPE_PORT == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
