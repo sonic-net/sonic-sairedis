@@ -2471,6 +2471,75 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForNatEntry(
             currentNatObj->getObjectStatus());
 }
 
+/**
+ * @brief Find current best match for MY_SID entry.
+ *
+ *
+ * @param m_currentView Current view.
+ * @param m_temporaryView Temporary view.
+ * @param temporaryObj Temporary object.
+ *
+ * @return Best match object if found or nullptr.
+ */
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForMySidEntry(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Make a copy here to not destroy object data, later
+     * on this data should be read only.
+     */
+
+    sai_object_meta_key_t mk = temporaryObj->m_meta_key;
+
+    if (!exchangeTemporaryVidToCurrentVid(mk))
+    {
+        /*
+         * Not all oids inside struct object were translated, so there is no
+         * matching object in current view, we need to return null.
+         */
+
+        return nullptr;
+    }
+
+    std::string str_my_sid_entry = sai_serialize_my_sid_entry(mk.objectkey.key.my_sid_entry);
+
+    /*
+     * Now when we have serialized MY_SID entry with temporary vr_id VID
+     * replaced to current vr_id VID we can do dictionary lookup for MY_SID entry.
+     */
+    auto currentMySidEntry = m_currentView.m_soMySidEntries.find(str_my_sid_entry);
+
+    if (currentMySidEntry == m_currentView.m_soMySidEntries.end())
+    {
+        SWSS_LOG_DEBUG("unable to find MY_SID entry %s in current asic view", str_my_sid_entry.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same MY_SID entry in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentMySidObj = currentMySidEntry->second;
+
+    if (currentMySidObj->getObjectStatus() == SAI_OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentMySidObj;
+    }
+
+    /*
+     * If we are here, that means this MY_SID entry was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_THROW("found MY_SID entry %s in current view, but it status is %d, FATAL",
+            str_my_sid_entry.c_str(),
+            currentMySidObj->getObjectStatus());
+}
+
 std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatch(
         _In_ const std::shared_ptr<const SaiObj> &temporaryObj)
 {
@@ -2516,6 +2585,9 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatch(
 
         case SAI_OBJECT_TYPE_INSEG_ENTRY:
             return findCurrentBestMatchForInsegEntry(temporaryObj);
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+            return findCurrentBestMatchForMySidEntry(temporaryObj);
 
             /*
              * We can have special case for switch since we know there should
