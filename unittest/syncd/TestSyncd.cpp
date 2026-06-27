@@ -352,7 +352,7 @@ TEST(Syncd, zmqWithoutAsyncRecUsesSyncRedisClient)
     EXPECT_NE(std::dynamic_pointer_cast<RedisClient>(syncdObj->m_client), nullptr);
 }
 
-TEST(Syncd, asyncRecIgnoredWhenContextConfigVetoesZmq)
+TEST(Syncd, asyncRecIgnoredWhenContextConfigDisablesZmq)
 {
     auto sai = std::make_shared<MockableSaiInterface>();
     auto cmd = std::make_shared<CommandLineOptions>();
@@ -363,7 +363,7 @@ TEST(Syncd, asyncRecIgnoredWhenContextConfigVetoesZmq)
 
     auto syncdObj = std::make_shared<Syncd>(sai, cmd, false);
 
-    // context_config.json vetoes ZMQ (zmq_enable=false): demote to REDIS_SYNC, so
+    // context_config.json disables ZMQ (zmq_enable=false): demote to REDIS_SYNC, so
     // --async-rec is harmlessly ignored and the synchronous RedisClient is used.
     EXPECT_EQ(cmd->m_redisCommunicationMode, SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC);
     EXPECT_EQ(std::dynamic_pointer_cast<ZmqRedisClient>(syncdObj->m_client), nullptr);

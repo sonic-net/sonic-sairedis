@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <memory>
+#include <map>
 
 #include <swss/logger.h>
 
@@ -42,6 +43,20 @@ protected:
         swss::Table table(m_dbAsic.get(), "ASIC_STATE");
         std::vector<swss::FieldValueTuple> values;
         return table.get(key, values);
+    }
+
+    // Like keyExistsAfterFlush, but returns the object's fields so tests can
+    // assert which attributes survived a merge write. Resetting the client
+    // joins the AsyncDBUpdater thread, so all pending writes are committed
+    // before we read.
+    std::map<std::string, std::string> fieldsAfterFlush(const std::string& key)
+    {
+        SWSS_LOG_ENTER();
+        m_redisClient.reset();
+        swss::Table table(m_dbAsic.get(), "ASIC_STATE");
+        std::vector<swss::FieldValueTuple> values;
+        table.get(key, values);
+        return std::map<std::string, std::string>(values.begin(), values.end());
     }
 
     static sai_object_meta_key_t makeRouteMetaKey(sai_object_id_t vrId, uint32_t ip4Addr)
@@ -176,4 +191,44 @@ TEST_F(ZmqRedisClientTest, createAsicObjectsWritesAllEntriesToRedis)
     swss::Table table(m_dbAsic.get(), "ASIC_STATE");
     std::vector<swss::FieldValueTuple> values;
     EXPECT_TRUE(table.get(key2, values));
+}
+
+// Regression test for the HSET (vs SET) write op: setAsicObject updates a
+// single field and must not erase the object's other attributes. With the
+// old SET_COMMAND (del + set) the PACKET_ACTION field below would be wiped.
+TEST_F(ZmqRedisClientTest, setAsicObjectPreservesOtherFields)
+{
+    auto metaKey = makeRouteMetaKey(0x3000000000009, 0x0a000009);
+
+    // Create the object with two attributes.
+    std::vector<swss::FieldValueTuple> attrs;
+    attrs.emplace_back("SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID", "oid:0x5000000000040");
+    attrs.emplace_back("SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION", "SAI_PACKET_ACTION_FORWARD");
+    m_redisClient->createAsicObject(metaKey, attrs);
+
+    // Update only NEXT_HOP_ID; PACKET_ACTION must survive the merge.
+    m_redisClient->setAsicObject(metaKey, "SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID", "oid:0x5000000000041");
+
+    auto fields = fieldsAfterFlush(sai_serialize_object_meta_key(metaKey));
+    EXPECT_EQ(fields["SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID"], "oid:0x5000000000041");
+    EXPECT_EQ(fields["SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION"], "SAI_PACKET_ACTION_FORWARD");
+}
+
+// createAsicObject also uses the HSET merge op: a second create on the same
+// key adds a field without erasing the field written by the first create.
+TEST_F(ZmqRedisClientTest, createAsicObjectMergesFields)
+{
+    auto metaKey = makeRouteMetaKey(0x300000000000a, 0x0a00000a);
+
+    // First create writes NEXT_HOP_ID.
+    m_redisClient->createAsicObject(metaKey,
+            {{"SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID", "oid:0x5000000000050"}});
+
+    // Second create on the same key writes PACKET_ACTION; the merge keeps both.
+    m_redisClient->createAsicObject(metaKey,
+            {{"SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION", "SAI_PACKET_ACTION_FORWARD"}});
+
+    auto fields = fieldsAfterFlush(sai_serialize_object_meta_key(metaKey));
+    EXPECT_EQ(fields["SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID"], "oid:0x5000000000050");
+    EXPECT_EQ(fields["SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION"], "SAI_PACKET_ACTION_FORWARD");
 }
