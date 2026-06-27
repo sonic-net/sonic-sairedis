@@ -244,6 +244,82 @@ TEST(Syncd, zmqSyncWithJsonEnabledUsesZmq)
     EXPECT_TRUE(syncd->m_enableSyncMode);
 }
 
+// Cmdline requests ZMQ_SYNC and the context file omits zmq_enable.
+// The reconciler defers to the command line and the resolved mode
+// stays at ZMQ_SYNC. An absent zmq_enable means "no opinion from the
+// file," distinct from an explicit false (which demotes to REDIS_SYNC,
+// covered by zmqSyncWithJsonDisabledFallsBackToRedisSync).
+TEST(Syncd, zmqSyncWithJsonEmptyDefersToCmdline)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_empty.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(cmd->m_redisCommunicationMode, SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC);
+    EXPECT_TRUE(syncd->m_enableSyncMode);
+}
+
+// The reconciliation in Syncd's constructor must not mutate
+// m_zmqEnable. That field reflects what context_config.json said at
+// parse time and stays that way for the life of the ContextConfig, so
+// future consumers (warm boot, diagnostic dumps, per-context override
+// logic) can still distinguish "the file said ZMQ" from "the operator
+// passed -z zmq_sync on a file-silent context." This is the same
+// invariant the orchagent-side RedisRemoteSaiInterface code honors.
+TEST(Syncd, contextConfigZmqEnablePreservedAfterCmdlinePromotion)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_empty.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    // The cmdline promoted the transport to ZMQ_SYNC, but the parsed
+    // file opinion remains untouched.
+    EXPECT_EQ(syncd->m_contextConfig->m_zmqEnable, sairedis::CONTEXT_CONFIG_ZMQ_EMPTY);
+}
+
+// Symmetric assertion for the demote path: file explicitly disables
+// ZMQ, cmdline requests ZMQ_SYNC. The reconciler demotes to REDIS_SYNC,
+// but m_zmqEnable still reflects the file's explicit false rather than
+// being overwritten by the resolved decision.
+TEST(Syncd, contextConfigZmqEnablePreservedAfterCmdlineDemote)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_disabled.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(syncd->m_contextConfig->m_zmqEnable, sairedis::CONTEXT_CONFIG_ZMQ_DISABLED);
+}
+
+// And the file-authoritative-ZMQ case: file says zmq_enable: true, no
+// cmdline override. m_zmqEnable stays ENABLED, which is what the file
+// said and also what the reconciler resolved to. The point of this
+// assertion is that the value matches even though the reconcile blocks
+// did not fire.
+TEST(Syncd, contextConfigZmqEnablePreservedForFileEnabled)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_enabled.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(syncd->m_contextConfig->m_zmqEnable, sairedis::CONTEXT_CONFIG_ZMQ_ENABLED);
+}
+
 using namespace syncd;
 
 #ifdef MOCK_METHOD
