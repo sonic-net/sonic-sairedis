@@ -73,7 +73,7 @@ void ZmqRedisClient::createAsicObject(
         values.emplace_back("NULL", "NULL");
     }
 
-    auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(key, SET_COMMAND, values);
+    auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(key, HSET_COMMAND, values);
     m_asyncDbUpdater->update(kco);
 }
 
@@ -91,7 +91,7 @@ void ZmqRedisClient::createAsicObjects(
             values.emplace_back("NULL", "NULL");
         }
 
-        auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(kvp.first, SET_COMMAND, values);
+        auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(kvp.first, HSET_COMMAND, values);
         m_asyncDbUpdater->update(kco);
     }
 }
@@ -106,6 +106,6 @@ void ZmqRedisClient::setAsicObject(
     std::string key = sai_serialize_object_meta_key(metaKey);
     std::vector<swss::FieldValueTuple> values;
     values.emplace_back(attr, value);
-    auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(key, SET_COMMAND, values);
+    auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(key, HSET_COMMAND, values);
     m_asyncDbUpdater->update(kco);
 }
