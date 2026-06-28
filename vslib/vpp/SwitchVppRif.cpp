@@ -572,6 +572,33 @@ sai_status_t SwitchVpp::vpp_set_interface_mtu (
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchVpp::vpp_set_interface_loopback_action (
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t vlan_id,
+        _In_ int32_t packet_action)
+{
+    SWSS_LOG_ENTER();
+
+    if (is_ip_nbr_active() == false) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string ifname;
+
+    if (vpp_get_hwif_name(object_id, vlan_id, ifname) == true) {
+        const char *hwif_name = ifname.c_str();
+        int action = (packet_action == SAI_PACKET_ACTION_DROP) ? 1 : 0;
+
+        int ret = vpp_iface_loopback_set_action(hwif_name, action);
+        SWSS_LOG_NOTICE("Setting router interface loopback action %s to %s (ret %d)",
+                        hwif_name, action ? "drop" : "forward", ret);
+        if (ret != 0) {
+            return SAI_STATUS_FAILURE;
+        }
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::UpdatePort(
         _In_ sai_object_id_t object_id,
         _In_ uint32_t attr_count,
@@ -1659,6 +1686,13 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         vpp_set_interface_mtu(obj_id, vlan_id, attr_type_mtu->value.u32);
     }
 
+    auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+
+    if (attr_loopback != NULL)
+    {
+        vpp_set_interface_loopback_action(obj_id, vlan_id, attr_loopback->value.s32);
+    }
+
     bool v4_is_up = false, v6_is_up = false;
 
     auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
@@ -1754,6 +1788,13 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
     if (attr_type_mtu != NULL)
     {
         vpp_set_interface_mtu(obj_id, vlan_id, attr_type_mtu->value.u32);
+    }
+
+    auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+
+    if (attr_loopback != NULL)
+    {
+        vpp_set_interface_loopback_action(obj_id, vlan_id, attr_loopback->value.s32);
     }
 
     bool v4_is_up = false, v6_is_up = false;

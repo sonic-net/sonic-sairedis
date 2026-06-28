@@ -709,6 +709,11 @@ namespace saivs
                     _In_ uint32_t vlan_id,
                     _In_ uint32_t mtu);
 
+            sai_status_t vpp_set_interface_loopback_action (
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t vlan_id,
+                    _In_ int32_t packet_action);
+
             sai_status_t UpdatePort(
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t attr_count,
