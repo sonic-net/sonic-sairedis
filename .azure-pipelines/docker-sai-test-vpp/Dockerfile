@@ -66,7 +66,7 @@ RUN set -eux; \
     require_deb "SAI Redis package" "libsairedis_*.deb"; \
     require_deb "SAI metadata package" "libsaimetadata_*.deb"; \
     require_deb "SONiC SWSS common package" "libswsscommon_*.deb"; \
-    require_deb "YANG runtime package" "libyang_*.deb"; \
+    require_deb "YANG runtime package" "libyang_*.deb" "libyang3_*.deb"; \
     require_deb "SAI thrift server package" "saiserver_*.deb" "saiserverv2_*.deb"; \
     require_deb "SAI Python thrift package" "python-saithrift_*.deb" "python-saithriftv2_*.deb"; \
     runtime_debs=(); \
