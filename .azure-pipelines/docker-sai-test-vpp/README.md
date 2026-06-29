@@ -4,10 +4,6 @@ A self-contained, single-container framework for validating the **SAI API
 implementation of the VPP virtual-switch backend** (`libsaivs.so`) by running the
 OpenComputeProject (OCP) `sai_test` PTF suite against a real VPP dataplane.
 
-> Periodic progress notes and deep-dive debugging logs live in
-> [`devdocs/`](devdocs/) — start with [`devdocs/progress.md`](devdocs/progress.md)
-> for a high-level history.
-
 ---
 
 ## a) Purpose and design
@@ -62,6 +58,24 @@ next-hop groups). So `run_test.sh`:
    builds + persists that group's config, the rest reuse it.
 
 This lets one container run any mix of tests correctly in a single invocation.
+
+### Supported tests
+
+The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI
+backend (last validated **2026-06-19** against
+`sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test`). It is the
+published substitute for a full compatibility matrix: only passing tests are
+listed. After a local matrix run, update this section when the pass set changes
+(see **Collecting results** below).
+
+| Module | Passing test classes |
+|---|---|
+| `sai_ecmp_test` | `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `RemoveAllNextHopMemeberTestV4`, `RemoveNexthopGroupTestV4` |
+| `sai_neighbor_test` | `AddHostRouteTest`, `AddHostRouteTestV6`, `NhopDiffPrefixRemoveLonger`, `NhopDiffPrefixRemoveLongerV6`, `NhopDiffPrefixRemoveShorter`, `NhopDiffPrefixRemoveShorterV6`, `NoHostRouteTestV6` |
+| `sai_rif_test` | `IngressDisableTestV4`, `IngressDisableTestV6` |
+| `sai_route_test` | `DefaultRouteV4Test`, `DefaultRouteV6Test`, `DropRouteTest`, `DropRoutev6Test`, `LagMultipleRouteTest`, `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteRifTest`, `RouteRifv6Test`, `RouteSameSipDipv4Test`, `RouteSameSipDipv6Test`, `RouteUpdateTest`, `RouteUpdatev6Test`, `StaicSviMacFloodingTest`, `StaicSviMacFloodingV6Test` |
+
+**34** classes passing (of 89 executed in the last full matrix run).
 
 ---
 
@@ -170,10 +184,10 @@ docker run --rm --privileged -e PORT_COUNT=32 \
 docker run --rm --privileged -e PORT_COUNT=32 docker-sai-test-vpp:phase1
 ```
 
-### Collecting results (JUnit XML) and building a compatibility matrix
+### Collecting results (JUnit XML) and updating the supported-test list
 PTF writes one JUnit-XML file per test into `/test-results`. By convention these
-land in this harness's own results tree, `docker-sai-test-vpp/results/`. Run from
-the `docker-sai-test-vpp/` directory and bind-mount `results/xml` out:
+land in the local-only `results/` tree (git-ignored; not published to the remote).
+Run from the `docker-sai-test-vpp/` directory and bind-mount `results/xml` out:
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp
 mkdir -p results/xml
@@ -183,17 +197,21 @@ docker run --rm --privileged -e PORT_COUNT=32 \
   sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test \
   2>&1 | tee results/run.log
 ```
-Then build the matrix with the bundled generator (defaults to the `results/`
-tree, no arguments needed). The generator parses the JUnit XML with `defusedxml`
-(hardened against XXE), so install it once if needed:
+Then build a local compatibility matrix with the bundled generator (defaults to
+the `results/` tree). The generator parses JUnit XML with `defusedxml` (hardened
+against XXE), so install it once if needed:
 ```bash
 pip install defusedxml
 python3 gen_compatibility_matrix.py        # writes results/compatibility-matrix.md
 ```
 `gen_compatibility_matrix.py` walks `results/xml/TEST-*.xml` and writes a
 PASS/FAIL/ERROR/SKIP table with a count summary. You can also pass an explicit
-`<xml_dir> [output.md]` to point it elsewhere. Generated artifacts under
-`results/` (the XML, `run.log`, and the matrix) are git-ignored.
+`<xml_dir> [output.md]` to point it elsewhere.
+
+**Publishing pass results:** when the set of passing tests changes, update the
+**Supported tests** section in this `README.md` from the local matrix (list only
+classes with PASS; do not commit the matrix itself). Working notes and deep-dive
+logs may be kept under `devdocs/` (also local-only and git-ignored).
 
 ---
 
@@ -228,9 +246,8 @@ use `vppctl`; remember to `docker rm -f officesai-debug` when done.
 - `/var/log/vpp.log`, `/var/log/vpp-startup.log` — VPP CLI history / stdout
   (crash backtraces).
 - `/var/log/vpp-api-trace.txt` — decoded VPP binary-API trace (dumped at teardown).
-- `/test-results/TEST-*.xml` — per-test JUnit results (bind-mount to
-  `docker-sai-test-vpp/results/xml/` on the host; the generated matrix is written
-  to `docker-sai-test-vpp/results/compatibility-matrix.md`).
+- `/test-results/TEST-*.xml` — per-test JUnit results (bind-mount to the local
+  `results/xml/` directory on the host).
 
 ### Gotchas
 - The container must be `--privileged` (raw AF_PACKET sockets on veths/TAPs).
@@ -239,7 +256,3 @@ use `vppctl`; remember to `docker rm -f officesai-debug` when done.
   expect to re-run a full config build inside a single long-lived saiserver.
 - A benign `buffer: numa[1] falling back to non-hugepage backed buffer pool`
   line at teardown is a host hugepage-availability warning, not a test failure.
-
-### History / deep dives
-See [`devdocs/`](devdocs/): `progress.md` (rolling summary), the dated
-`progress-*.md` / `debug-*.md` logs, and `vpp-port-admin-state-bug.md`.
