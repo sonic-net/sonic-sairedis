@@ -1052,6 +1052,9 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncWithNotifications)
         }
     }
 
+    // flush the notifications
+    m_syncd->flushPendingDampingNotifications();
+
     // Verify pending_state_sync was cleared and advertised was updated
     {
         std::lock_guard<std::mutex> lock(m_syncd->m_linkEventDampingMutex);
