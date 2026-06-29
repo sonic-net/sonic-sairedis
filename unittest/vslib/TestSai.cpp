@@ -3,6 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <thread>
+
 #include <memory>
 
 using namespace saivs;
@@ -87,4 +90,31 @@ TEST(Sai, bulkGet)
                 pattrs.data(),
                 SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
                 statuses.data()));
+}
+TEST(Sai, fdbAgingWakeEvent)
+{
+    // Smoke test: verify the FDB aging thread starts and shuts down cleanly
+    // without deadlocking. The aging thread's normal wake path (MAC event
+    // delivery via m_fdbAgingWakeEvent) is NOT exercised here — this only
+    // confirms the start/stop life cycle completes without hanging.
+    Sai sai;
+
+    EXPECT_EQ(sai.apiInitialize(0, &test_services), SAI_STATUS_SUCCESS);
+
+    sai_attribute_t attr;
+    sai_object_id_t switch_id = SAI_NULL_OBJECT_ID;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(sai.create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 1, &attr), SAI_STATUS_SUCCESS);
+    EXPECT_NE(switch_id, SAI_NULL_OBJECT_ID);
+
+    // Allow the aging thread to run at least one cycle.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // remove(SWITCH) triggers stopFdbAgingThread() which joins the thread.
+    // If the wake/shutdown paths are broken this would hang; the test passing
+    // confirms the aging thread terminates correctly.
+    EXPECT_EQ(sai.remove(SAI_OBJECT_TYPE_SWITCH, switch_id), SAI_STATUS_SUCCESS);
 }

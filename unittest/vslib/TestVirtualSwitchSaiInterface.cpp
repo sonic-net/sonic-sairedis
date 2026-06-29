@@ -497,3 +497,18 @@ TEST_F(VirtualSwitchSaiInterfaceTest, objectTypeGetAvailability_MySidEntry_Inval
 
     EXPECT_EQ(status, SAI_STATUS_FAILURE);
 }
+
+TEST_F(VirtualSwitchSaiInterfaceTest, initFdbEventHandling)
+{
+    // Verify the wake functor is forwarded to all switch instances.
+    // For the base (non-platform) SwitchStateBase the virtual is a no-op, so the
+    // functor is never called — but the call chain itself must not crash.
+    bool called = false;
+    m_vssai->initFdbEventHandling([&called]() { called = true; });
+
+    // Base SwitchStateBase does NOT invoke the functor — calling it is a no-op.
+    EXPECT_FALSE(called);
+
+    // deinitFdbEventHandling must also be safe to call after init.
+    EXPECT_NO_FATAL_FAILURE(m_vssai->deinitFdbEventHandling());
+}
