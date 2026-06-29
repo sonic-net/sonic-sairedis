@@ -877,6 +877,48 @@ protected:
 
         return found ? value : "";
     }
+
+    std::mutex& dampingStateMutex()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_linkEventDampingMutex;
+    }
+
+    std::map<sai_object_id_t, LinkEventDampingPortState>& portDampingStates()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_portLinkEventDampingStates;
+    }
+
+    std::mutex& pendingNotificationsMutex()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_pendingNotificationsMutex;
+    }
+
+    std::queue<std::vector<sai_port_oper_status_notification_t>>& pendingNotifications()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_pendingNotifications;
+    }
+
+    void invokeProcessPendingDampingSync()
+    {
+        SWSS_LOG_ENTER();
+
+        m_syncd->processPendingDampingSync();
+    }
+
+    void invokeFlushPendingDampingNotifications()
+    {
+        SWSS_LOG_ENTER();
+
+        m_syncd->flushPendingDampingNotifications();
+    }
 };
 
 // Define static constant expression members for linkage
@@ -1018,10 +1060,10 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncWithNotifications)
 
     // Set up preconditions
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_linkEventDampingMutex);
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
 
-        auto it = m_syncd->m_portLinkEventDampingStates.find(PORT_VID);
-        ASSERT_NE(it, m_syncd->m_portLinkEventDampingStates.end())
+        auto it = portDampingStates().find(PORT_VID);
+        ASSERT_NE(it, portDampingStates().end())
             << "Port damping state not found";
 
         auto& state = it->second;
@@ -1036,29 +1078,29 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncWithNotifications)
     }
 
     // Call the function
-    m_syncd->processPendingDampingSync();
+    invokeProcessPendingDampingSync();
 
     // Verify the notification was enqueued
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 1)
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 1)
             << "Expected 1 notification batch to be enqueued";
 
-        if (!m_syncd->m_pendingNotifications.empty())
+        if (!pendingNotifications().empty())
         {
-            auto& batch = m_syncd->m_pendingNotifications.front();
+            auto& batch = pendingNotifications().front();
             EXPECT_EQ(batch.size(), 1) << "Expected 1 notification in batch";
             EXPECT_EQ(batch[0].port_id, PORT_VID) << "Notification for wrong port";
         }
     }
 
     // flush the notifications
-    m_syncd->flushPendingDampingNotifications();
+    invokeFlushPendingDampingNotifications();
 
     // Verify pending_state_sync was cleared and advertised was updated
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_linkEventDampingMutex);
-        auto& state = m_syncd->m_portLinkEventDampingStates[PORT_VID];
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+        auto& state = portDampingStates()[PORT_VID];
         EXPECT_FALSE(state.pending_state_sync) << "pending_state_sync should be cleared";
         EXPECT_EQ(state.advertised_status, state.physical_status)
             << "Advertised should match physical after sync";
@@ -1078,7 +1120,7 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncQueueOverflow)
 
     // Directly populate the queue to 1000 entries
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
 
         sai_port_oper_status_notification_t dummy_ntf;
         dummy_ntf.port_id = PORT_VID;
@@ -1089,17 +1131,17 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncQueueOverflow)
         // Fill queue to exactly 1000 entries
         for (int i = 0; i < 1000; ++i)
         {
-            m_syncd->m_pendingNotifications.push(batch);
+            pendingNotifications().push(batch);
         }
 
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 1000);
+        EXPECT_EQ(pendingNotifications().size(), 1000);
     }
 
     // Set up the scenario to trigger one more notification
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_linkEventDampingMutex);
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
 
-        auto& state = m_syncd->m_portLinkEventDampingStates.at(PORT_VID);
+        auto& state = portDampingStates().at(PORT_VID);
 
         // Set up the condition for processPendingDampingSync to queue a notification
         state.pending_state_sync = true;
@@ -1108,14 +1150,14 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncQueueOverflow)
     }
 
     // This should trigger overflow protection
-    m_syncd->processPendingDampingSync();
+    invokeProcessPendingDampingSync();
 
     // Verify the overflow protection worked
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
 
         // Queue should still be 1000 (dropped oldest, added newest)
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 1000)
+        EXPECT_EQ(pendingNotifications().size(), 1000)
             << "Queue should be capped at 1000 after overflow";
     }
 }
@@ -1124,7 +1166,7 @@ TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsWithBatches)
 {
     // Directly populate the queue with multiple batches
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
 
         // Create 3 different notification batches
         for (int batch_num = 0; batch_num < 3; ++batch_num)
@@ -1136,18 +1178,18 @@ TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsWithBatches)
                 : SAI_PORT_OPER_STATUS_UP;
 
             std::vector<sai_port_oper_status_notification_t> batch = {ntf};
-            m_syncd->m_pendingNotifications.push(batch);
+            pendingNotifications().push(batch);
         }
 
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 3);
+        EXPECT_EQ(pendingNotifications().size(), 3);
     }
 
-    m_syncd->flushPendingDampingNotifications();
+    invokeFlushPendingDampingNotifications();
 
     // Verify all batches were flushed
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 0)
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0)
             << "All batches should be flushed";
     }
 }
@@ -1156,7 +1198,7 @@ TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsDrainsQueue)
 {
     // Queue 2 notification batches
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
 
         for (int i = 0; i < 2; ++i)
         {
@@ -1165,17 +1207,17 @@ TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsDrainsQueue)
             ntf.port_state = SAI_PORT_OPER_STATUS_UP;
 
             std::vector<sai_port_oper_status_notification_t> batch = {ntf};
-            m_syncd->m_pendingNotifications.push(batch);
+            pendingNotifications().push(batch);
         }
     }
 
     // Tests normal path
-    m_syncd->flushPendingDampingNotifications();
+    invokeFlushPendingDampingNotifications();
 
     // Verify all batches were processed
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 0);
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
     }
 }
 
@@ -1192,30 +1234,30 @@ TEST_F(SyncdLinkEventDampingTest, fullNotificationFlowIntegrated)
 
     // Set up with pending notification
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_linkEventDampingMutex);
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
 
-        auto& state = m_syncd->m_portLinkEventDampingStates.at(PORT_VID);
+        auto& state = portDampingStates().at(PORT_VID);
         state.pending_state_sync = true;
         state.advertised_status = SAI_PORT_OPER_STATUS_DOWN;
         state.physical_status = SAI_PORT_OPER_STATUS_UP;
     }
 
     // Step 1: processPendingDampingSync queues the notification
-    m_syncd->processPendingDampingSync();
+    invokeProcessPendingDampingSync();
 
     // Verify notification was queued
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 1);
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 1);
     }
 
     // Step 2: flushPendingDampingNotifications sends it
-    m_syncd->flushPendingDampingNotifications();
+    invokeFlushPendingDampingNotifications();
 
     // Verify queue was flushed
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 0);
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
     }
 }
 
@@ -1223,17 +1265,17 @@ TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsEmptyQueue)
 {
     // Ensure queue is empty
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 0);
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
     }
 
     // Call flush with empty queue
-    m_syncd->flushPendingDampingNotifications();
+    invokeFlushPendingDampingNotifications();
 
     // Queue should still be empty
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 0);
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
     }
 }
 
@@ -1250,21 +1292,21 @@ TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncNoPending)
 
     // Set up state WITHOUT pending_state_sync
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_linkEventDampingMutex);
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
 
-        auto& state = m_syncd->m_portLinkEventDampingStates.at(PORT_VID);
+        auto& state = portDampingStates().at(PORT_VID);
         state.pending_state_sync = false;  // No pending sync
         state.advertised_status = SAI_PORT_OPER_STATUS_DOWN;
         state.physical_status = SAI_PORT_OPER_STATUS_UP;
     }
 
     // Call the function - should NOT queue any notifications
-    m_syncd->processPendingDampingSync();
+    invokeProcessPendingDampingSync();
 
     // Verify NO notification was queued
     {
-        std::lock_guard<std::mutex> lock(m_syncd->m_pendingNotificationsMutex);
-        EXPECT_EQ(m_syncd->m_pendingNotifications.size(), 0)
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0)
             << "No notification should be queued when pending_state_sync=false";
     }
 }

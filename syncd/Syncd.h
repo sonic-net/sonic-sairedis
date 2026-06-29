@@ -32,10 +32,16 @@
 #include <ctime>
 #include <queue>
 
+class SyncdTest;
+class SyncdLinkEventDampingTest;
+
 namespace syncd
 {
     class Syncd
     {
+        friend class ::SyncdTest;
+        friend class ::SyncdLinkEventDampingTest;
+
         private:
 
             Syncd(const Syncd&) = delete;
