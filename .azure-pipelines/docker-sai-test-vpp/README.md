@@ -1,22 +1,15 @@
 # docker-sai-test-vpp — VPP SAI Unit-Test Framework
 
-A self-contained, single-container framework for validating the **SAI API
-implementation of the VPP virtual-switch backend** (`libsaivs.so`) by running the
-OpenComputeProject (OCP) `sai_test` PTF suite against a real VPP dataplane.
-
----
+A self-contained, single-container framework for validating the **SAI API implementation of the VPP virtual-switch backend** (`libsaivs.so`) by running the OpenComputeProject (OCP) `sai_test` PTF suite against a real VPP dataplane.
 
 ## a) Purpose and design
 
 ### What it does
-The framework exercises SAI operations (create/set/get/remove of ports, RIFs,
-routes, neighbors, VLANs, FDB, LAGs, ECMP, …) through a Thrift RPC interface and
-verifies the resulting **data-plane** behavior by injecting and capturing packets
-on virtual interfaces. It is the test vehicle for finding gaps between the SAI
-contract and the VPP backend, and for producing a per-test **compatibility
-matrix**.
+
+The framework exercises SAI operations (create/set/get/remove of ports, RIFs, routes, neighbors, VLANs, FDB, LAGs, ECMP, …) through a Thrift RPC interface and verifies the resulting **data-plane** behavior by injecting and capturing packets on virtual interfaces. It is the test vehicle for finding gaps between the SAI contract and the VPP backend, and for producing a per-test **compatibility matrix**.
 
 ### Architecture (one privileged container)
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │ docker-sai-test-vpp  (--privileged)                                    │
@@ -34,39 +27,24 @@ matrix**.
   THIS HARNESS: Dockerfile, run_test.sh, sai.profile, *-map.ini
 ```
 
-- **VPP** is the dataplane; `OEthernetX` are the VPP-facing kernel veth ends and
-  `OEthX_peer` are the PTF-facing ends. `OEthernetX` represents an out-facing
-  (wire) interface; the inside `EthernetX` (linux_cp TAP) faces the SONiC control
-  plane.
+- **VPP** is the dataplane; `OEthernetX` are the VPP-facing kernel veth ends and `OEthX_peer` are the PTF-facing ends. `OEthernetX` represents an out-facing (wire) interface; the inside `EthernetX` (linux_cp TAP) faces the SONiC control plane.
 - **saiserver** is a thin Thrift→SAI shim (port 9092) linked against `libsaivs.so`.
-- **PTF** runs the OCP `sai_test` Python suite and does packet I/O on the
-  `OEthX_peer` ends.
-- **`run_test.sh`** is the container entrypoint and orchestrator: Redis →
-  veth/PortChannel topology → VPP → saiserver → PTF.
+- **PTF** runs the OCP `sai_test` Python suite and does packet I/O on the `OEthX_peer` ends.
+- **`run_test.sh`** is the container entrypoint and orchestrator: Redis → veth/PortChannel topology → VPP → saiserver → PTF.
 
 ### Key design point — config-signature grouping
-The VPP SAI backend can build the switch + host-interfaces **once per saiserver
-process**. The OCP framework is built to configure a common T0 setup once and have
-subsequent tests reuse it (`common_configured=true`). But different test classes
-ask `T0TestBase.setUp` for *different* common configs (e.g. ECMP tests need
-next-hop groups). So `run_test.sh`:
 
-1. parses each requested test class's `setUp` (resolving config kwargs through the
-   class **inheritance chain**) to compute its common-config "signature";
+The VPP SAI backend can build the switch + host-interfaces **once per saiserver process**. The OCP framework is built to configure a common T0 setup once and have subsequent tests reuse it (`common_configured=true`). But different test classes ask `T0TestBase.setUp` for *different* common configs (e.g. ECMP tests need next-hop groups). So `run_test.sh`:
+
+1. parses each requested test class's `setUp` (resolving config kwargs through the class **inheritance chain**) to compute its common-config "signature";
 2. groups tests by signature;
-3. for each group: **restarts the backend** (fresh saiserver), the first test
-   builds + persists that group's config, the rest reuse it.
+3. for each group: **restarts the backend** (fresh saiserver), the first test builds + persists that group's config, the rest reuse it.
 
 This lets one container run any mix of tests correctly in a single invocation.
 
 ### Supported tests
 
-The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI
-backend (last validated **2026-06-19** against
-`sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test`). It is the
-published substitute for a full compatibility matrix: only passing tests are
-listed. After a local matrix run, update this section when the pass set changes
-(see **Collecting results** below).
+The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-06-19** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
 
 | Module | Passing test classes |
 |---|---|
@@ -77,29 +55,67 @@ listed. After a local matrix run, update this section when the pass set changes
 
 **34** classes passing (of 89 executed in the last full matrix run).
 
----
-
 ## b) Building the framework
 
-The image bundles pre-built `.deb` packages from `debs/`. You only need to
-regenerate `.deb`s when the corresponding source changes.
+The image bundles pre-built `.deb` packages from `debs/` (git-ignored locally). You only need to regenerate `.deb`s when the corresponding source changes.
+
+### Use cases
+
+The framework is designed to support three distinct deployment and testing scenarios:
+
+#### **Use case 1: Local dev in a `sonic-buildimage` workspace**
+- **What changes:** `vslib/` C++ backend, `SAI/test/sai_test` Python tests, VPP packages, or harness scripts.
+- **How dependencies are supplied:** Copy runtime `.deb`s from `target/debs/<suite>/` into `docker-sai-test-vpp/debs/`, then build the image. The default suite today is **bookworm** (see Dockerfile); trixie is planned once `sonic-vpp` and VPP packages are validated on it.
+- **Status:** Supported today via `build_harness.sh` (below). Assumes the workspace layout `sonic-buildimage/src/sonic-sairedis`. VPP packages can come from `target/debs/bookworm/` after a platform-vpp build, from a `sonic-platform-vpp` pipeline download, or from `VPP_DEB_DIR` when running the build script.
+
+#### **Use case 2: `sonic-sairedis` PR CI**
+- **What changes:** `vslib/` C++ backend, harness files, or OCP tests.
+- **How dependencies are supplied:** The pipeline's **Build** stage compiles and produces fresh `libsairedis` / `libsaivs` / `saiserver` / `python-saithrift` artifacts. Other runtime `.deb`s (`libswsscommon`, `libyang`, VPP) must be downloaded from existing pipeline artifacts — following the same pattern as `.azure-pipelines/build-docker-sonic-vs-template.yml` (swss-common pipeline, sonic-platform-vpp `vpp-bookworm`, buildimage common libs).
+- **Status:** Documented intent; CI wiring is follow-up work for this PR (Phase 3).
+- **Required runtime packages and typical artifact sources:**
+
+| Package glob | PR build produces? | Typical CI download source |
+|---|---|---|
+| `libsaivs_*`, `libsairedis_*`, `libsaimetadata_*`, `saiserverv2_*`, `python-saithriftv2_*` | Yes (this repo's Build stage) | Current pipeline job artifacts |
+| `libswsscommon_*` | No | `Azure.sonic-swss-common` pipeline artifact |
+| `libyang_*` | No | `sonic-buildimage` common-lib / VS build artifact |
+| `libvppinfra_*`, `vpp_*`, `vpp-plugin-*` | No | `sonic-net.sonic-platform-vpp` artifact `vpp-bookworm` |
+
+#### **Use case 3: `sonic-platform-vpp` PR CI**
+- **What changes:** VPP `.deb`s only.
+- **How dependencies are supplied:** Pull a pre-built `docker-sai-test-vpp` image from the `sonic-sairedis` pipeline artifact, then rebuild/replace only the VPP packages inside `debs/` (or `docker build` with updated VPP debs on top of the cached layers).
+- **Status:** Documented intent; requires Use Case 2 image publish first.
+- **Workflow:** After the harness image is published as a pipeline artifact in Use Case 2, a platform-vpp job can `docker load` that image, overlay freshly built VPP `.deb`s into `debs/`, and rebuild only the package-install layer (or run tests in a container with VPP packages swapped in).
 
 ### Required `.deb` packages (validated by the Dockerfile)
+
 | Package glob | Source repo / how produced |
 |---|---|
 | `libvppinfra_*`, `vpp_*`, `vpp-plugin-core_*`, `vpp-plugin-dpdk_*` | VPP packages (from the `sonic-platform-vpp` build) |
 | `libsaivs_*` | `sonic-sairedis` — the VPP SAI backend under test |
 | `libsairedis_*`, `libsaimetadata_*` | `sonic-sairedis` |
 | `libswsscommon_*` | `sonic-swss-common` |
-| `libyang_*` | `sonic-buildimage` (libyang) |
+| `libyang_*` / `libyang3_*` | `sonic-buildimage` (libyang3 on bookworm) |
 | `saiserver_*` / `saiserverv2_*` | `sonic-sairedis` SAI Thrift server |
 | `python-saithrift_*` / `python-saithriftv2_*` | `sonic-sairedis` SAI Thrift Python client |
 
-All of these are staged in [`debs/`](debs/). The Dockerfile installs every
-runtime `.deb` it finds there (skipping `-dbg`/`-dev`/`-dbgsym`).
+All of these are staged in [`debs/`](debs/) (local-only). The Dockerfile installs every runtime `.deb` it finds there (skipping `-dbg`/`-dev`/`-dbgsym`).
 
-### Regenerating the SAI `.deb`s (only when `vslib/` C++ changes)
+### Build script (use case 1)
+
+`build_harness.sh` automates staging from `sonic-buildimage` and building the image. It validates that all required runtime `.deb`s are present in `debs/` before `docker build`. If sonic-sairedis packages are missing, it runs the bookworm `make` targets automatically (disable with `--no-auto-build`). VPP, `libswsscommon`, and `libyang`/`libyang3` are not auto-built — the script fails with hints if they are absent.
+
+```bash
+cd <sonic-buildimage>/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp
+./build_harness.sh
+```
+
+Useful options: `--build-sairedis` (force-rebuild sairedis debs even when present), `--no-auto-build` (never invoke `make` for missing sairedis debs), `--no-stage-debs` (image rebuild only), `--vpp-deb-dir <path>`, `--image-tag <tag>`. Run `./build_harness.sh --help` for the full list.
+
+### Regenerating the SAI `.deb`s manually (only when `vslib/` C++ changes)
+
 From the **buildimage repo root** (`sonic-buildimage`):
+
 ```bash
 cd <sonic-buildimage>
 
@@ -119,12 +135,15 @@ cp target/debs/bookworm/libsaivs_*.deb     target/debs/bookworm/libsaivs-dev_*.d
    target/debs/bookworm/saiserver_*.deb    target/debs/bookworm/python-saithrift_*.deb \
    src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/debs/
 ```
-> Behind a corporate proxy, prefix `make` with your Docker build credentials,
-> e.g. `DOCKER_CONFIG=<dir>`. VPP `.deb`s come from the `sonic-platform-vpp`
-> pipeline; drop new ones into `debs/` to upgrade VPP.
 
-### Building the image
-From the **`sonic-sairedis`** directory:
+Then run `./build_harness.sh` (or `./build_harness.sh --no-stage-debs` if `debs/` is already up to date).
+
+> Behind a corporate proxy, prefix `make` with your Docker build credentials, e.g. `DOCKER_CONFIG=<dir>`. VPP `.deb`s come from the `sonic-platform-vpp` pipeline; drop new ones into `debs/` or pass `--vpp-deb-dir`. `build_harness.sh` forwards proxy env vars to `docker build`.
+
+### Building the image manually
+
+Equivalent to `./build_harness.sh --no-stage-debs` after `debs/` is populated. From the **`sonic-sairedis`** directory:
+
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis
 
@@ -132,7 +151,9 @@ docker build --no-cache \
   -f .azure-pipelines/docker-sai-test-vpp/Dockerfile \
   -t docker-sai-test-vpp:phase1 .
 ```
+
 If you are behind a proxy, pass it through (both lower- and upper-case):
+
 ```bash
 docker build --no-cache \
   --build-arg http_proxy=$http_proxy   --build-arg https_proxy=$https_proxy \
@@ -142,32 +163,25 @@ docker build --no-cache \
   -t docker-sai-test-vpp:phase1 .
 ```
 
-> Rebuild scope: editing only `run_test.sh` / `sai_test/**` needs an **image
-> rebuild** only (fast). Editing `vslib/` C++ needs a **`.deb` rebuild** (above)
-> first, then the image.
-
----
+> Rebuild scope: editing only `run_test.sh` / `sai_test/**` needs an **image rebuild** only (fast). Editing `vslib/` C++ needs a **`.deb` rebuild** (above) first, then the image.
 
 ## c) Running tests
 
-The container entrypoint is `run_test.sh`. Test selectors are PTF targets:
-`module` (e.g. `sai_route_test`) or `module.Class`
-(e.g. `sai_route_test.RouteRifTest`). `PORT_COUNT` sets the port/veth count
-(use 32 for the standard T0 topology).
+The container entrypoint is `run_test.sh`. Test selectors are PTF targets: `module` (e.g. `sai_route_test`) or `module.Class` (e.g. `sai_route_test.RouteRifTest`). `PORT_COUNT` sets the port/veth count (use 32 for the standard T0 topology).
 
 ### Where the tests come from
-The OCP `sai_test` suite is baked into the image at `/sai_test` (copied from
-`SAI/test/sai_test/` in the repo). PTF and the SAI Thrift client come from
-`SAI/test/ptf` and the `python-saithrift` package. `run_test.sh` discovers test
-classes under `/sai_test` automatically.
+
+The OCP `sai_test` suite is baked into the image at `/sai_test` (copied from `SAI/test/sai_test/` in the repo). PTF and the SAI Thrift client come from `SAI/test/ptf` and the `python-saithrift` package. `run_test.sh` discovers test classes under `/sai_test` automatically.
 
 ### Run a single test
+
 ```bash
 docker run --rm --privileged -e PORT_COUNT=32 \
   docker-sai-test-vpp:phase1 sai_route_test.RouteRifTest
 ```
 
 ### Run several tests (auto-grouped by config, one container)
+
 ```bash
 docker run --rm --privileged -e PORT_COUNT=32 \
   docker-sai-test-vpp:phase1 \
@@ -175,6 +189,7 @@ docker run --rm --privileged -e PORT_COUNT=32 \
 ```
 
 ### Run whole modules, or everything
+
 ```bash
 # whole modules
 docker run --rm --privileged -e PORT_COUNT=32 \
@@ -185,9 +200,9 @@ docker run --rm --privileged -e PORT_COUNT=32 docker-sai-test-vpp:phase1
 ```
 
 ### Collecting results (JUnit XML) and updating the supported-test list
-PTF writes one JUnit-XML file per test into `/test-results`. By convention these
-land in the local-only `results/` tree (git-ignored; not published to the remote).
-Run from the `docker-sai-test-vpp/` directory and bind-mount `results/xml` out:
+
+PTF writes one JUnit-XML file per test into `/test-results`. By convention these land in the local-only `results/` tree (git-ignored; not published to the remote). Run from the `docker-sai-test-vpp/` directory and bind-mount `results/xml` out:
+
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp
 mkdir -p results/xml
@@ -197,27 +212,24 @@ docker run --rm --privileged -e PORT_COUNT=32 \
   sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test \
   2>&1 | tee results/run.log
 ```
-Then build a local compatibility matrix with the bundled generator (defaults to
-the `results/` tree). The generator parses JUnit XML with `defusedxml` (hardened
-against XXE), so install it once if needed:
+
+Then build a local compatibility matrix with the bundled generator (defaults to the `results/` tree). The generator parses JUnit XML with `defusedxml` (hardened against XXE), so install it once if needed:
+
 ```bash
 pip install defusedxml
 python3 gen_compatibility_matrix.py        # writes results/compatibility-matrix.md
 ```
-`gen_compatibility_matrix.py` walks `results/xml/TEST-*.xml` and writes a
-PASS/FAIL/ERROR/SKIP table with a count summary. You can also pass an explicit
-`<xml_dir> [output.md]` to point it elsewhere.
 
-**Publishing pass results:** when the set of passing tests changes, update the
-**Supported tests** section in this `README.md` from the local matrix (list only
-classes with PASS; do not commit the matrix itself). Working notes and deep-dive
-logs may be kept under `devdocs/` (also local-only and git-ignored).
+`gen_compatibility_matrix.py` walks `results/xml/TEST-*.xml` and writes a PASS/FAIL/ERROR/SKIP table with a count summary. You can also pass an explicit `<xml_dir> [output.md]` to point it elsewhere.
 
----
+**Publishing pass results:** when the set of passing tests changes, update the **Supported tests** section in this `README.md` from the local matrix (list only classes with PASS; do not commit the matrix itself). Working notes and deep-dive logs may be kept under `devdocs/` (also local-only and git-ignored).
 
 ## d) Additional information
 
+Debug hold mode, environment variables, in-container log paths, and common pitfalls.
+
 ### Debug mode (leave VPP / saiserver / veths alive for inspection)
+
 ```bash
 docker rm -f officesai-debug 2>/dev/null
 docker run -d --name officesai-debug --privileged -e PORT_COUNT=32 \
@@ -229,10 +241,11 @@ docker exec officesai-debug vppctl show ip fib
 docker exec officesai-debug vppctl show bond
 docker cp officesai-debug:/var/log/saiserver.log ./saiserver.log
 ```
-In `--debug` the container leaves the dataplane running after the test so you can
-use `vppctl`; remember to `docker rm -f officesai-debug` when done.
+
+In `--debug` the container leaves the dataplane running after the test so you can use `vppctl`; remember to `docker rm -f officesai-debug` when done.
 
 ### Environment knobs
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT_COUNT` | 32 | number of `OEthernetX`/`OEthX_peer` veth pairs |
@@ -240,19 +253,17 @@ use `vppctl`; remember to `docker rm -f officesai-debug` when done.
 | `KEEP_VETHS_UP_SECONDS` | 120 | how long the per-group watchdog keeps VPP host-interfaces/veths up |
 | `TEST_FILTER` | — | alternative way to pass a single selector via env |
 
+These are read by `run_test.sh` at container start (defaults shown).
+
 ### Logs inside the container
-- `/var/log/saiserver.log` — high-level SAI RPC trace (saiserver runs with SWSS
-  debug logging).
-- `/var/log/vpp.log`, `/var/log/vpp-startup.log` — VPP CLI history / stdout
-  (crash backtraces).
+
+- `/var/log/saiserver.log` — saiserver stdout/stderr **plus** `libsaivs` `SWSS_LOG_*` lines. After the SAI change that removed `swss::Logger` setup from `saiserver.cpp`, the harness routes `SWSS_LOG_*` to stdout via an `LD_PRELOAD` shim (`swss_log_stdout_preload.cpp` → `/usr/local/lib/libswss_log_stdout.so`) so SAI backend traces still land in this file. `sai_log_set()` API-level notices from saiserver itself are also configured there.
+- `/var/log/vpp.log`, `/var/log/vpp-startup.log` — VPP CLI history / stdout (crash backtraces).
 - `/var/log/vpp-api-trace.txt` — decoded VPP binary-API trace (dumped at teardown).
-- `/test-results/TEST-*.xml` — per-test JUnit results (bind-mount to the local
-  `results/xml/` directory on the host).
+- `/test-results/TEST-*.xml` — per-test JUnit results (bind-mount to the local `results/xml/` directory on the host).
 
 ### Gotchas
+
 - The container must be `--privileged` (raw AF_PACKET sockets on veths/TAPs).
-- The VPP SAI backend can build the switch once per saiserver process; the
-  per-group backend restart in `run_test.sh` handles this automatically — do not
-  expect to re-run a full config build inside a single long-lived saiserver.
-- A benign `buffer: numa[1] falling back to non-hugepage backed buffer pool`
-  line at teardown is a host hugepage-availability warning, not a test failure.
+- The VPP SAI backend can build the switch once per saiserver process; the per-group backend restart in `run_test.sh` handles this automatically — do not expect to re-run a full config build inside a single long-lived saiserver.
+- A benign `buffer: numa[1] falling back to non-hugepage backed buffer pool` line at teardown is a host hugepage-availability warning, not a test failure.
