@@ -1538,15 +1538,11 @@ void Syncd::processPendingDampingSync()
             if (state.pending_state_sync &&
                 state.advertised_status != state.physical_status)
             {
-                state.pending_state_sync = false;
-                state.advertised_status = state.physical_status;
-
                 sai_port_oper_status_notification_t n;
                 n.port_id = port;
                 n.port_state = state.physical_status;
 
                 notifications.push_back(n);
-                writeDampingCountersToStateDb(port, state);
             }
         }
     }
@@ -1610,6 +1606,19 @@ void Syncd::flushPendingDampingNotifications()
                 SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE,
                 s,
                 entry);
+            {
+                std::lock_guard<std::mutex> lock(m_linkEventDampingMutex);
+                for (const auto &ntf : notifications)
+                {
+                    auto it = m_portLinkEventDampingStates.find(ntf.port_id);
+                    if (it != m_portLinkEventDampingStates.end())
+                    {
+                        it->second.pending_state_sync = false;
+                        it->second.advertised_status = ntf.port_state;
+                        writeDampingCountersToStateDb(ntf.port_id, it->second);
+                    }
+                }
+            }
         }
 
         catch (const std::exception &e)
