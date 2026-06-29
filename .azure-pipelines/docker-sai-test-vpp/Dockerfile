@@ -96,6 +96,21 @@ RUN set -eux; \
     test -s /usr/lib/python3/dist-packages/saithrift.pth; \
     python3 -c 'import sai_thrift'; \
     mv /usr/sbin/sysctl.real /usr/sbin/sysctl; \
+    build_dev_debs=(); \
+    for f in ${deb_dir}/libswsscommon-dev_*.deb; do \
+        [[ -f "$f" ]] && build_dev_debs+=("$f"); \
+    done; \
+    if [[ ${#build_dev_debs[@]} -gt 0 ]]; then \
+        apt-get install -y --no-install-recommends "${build_dev_debs[@]}"; \
+    else \
+        apt-get install -y --no-install-recommends libswsscommon-dev || true; \
+    fi; \
+    apt-get install -y --no-install-recommends g++ && \
+    g++ -shared -fPIC -o /usr/local/lib/libswss_log_stdout.so \
+        /opt/docker-sai-test-vpp/swss_log_stdout_preload.cpp -lswsscommon && \
+    apt-get purge -y g++ && \
+    if [[ ${#build_dev_debs[@]} -gt 0 ]]; then apt-get purge -y libswsscommon-dev; fi && \
+    apt-get autoremove -y && \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 

@@ -682,7 +682,10 @@ wait_for_saiserver_ready()
 start_saiserver()
 {
     log "Starting saiserver"
-    export SWSS_LOG_STDOUT=1
+    # libsaivs logs through SWSS_LOG_* (libswsscommon). saiserver.cpp no longer
+    # configures swss::Logger after the SAI standalone cleanup; LD_PRELOAD routes
+    # those lines to stdout so the redirect below lands in SAISERVER_LOG.
+    export LD_PRELOAD="/usr/local/lib/libswss_log_stdout.so${LD_PRELOAD:+:${LD_PRELOAD}}"
     saiserver -p "$SAI_PROFILE" -f "$SAISERVER_PORTMAP" > "$SAISERVER_LOG" 2>&1 &
     SAISERVER_PID="$!"
 
