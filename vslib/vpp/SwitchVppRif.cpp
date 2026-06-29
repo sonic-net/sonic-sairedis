@@ -572,6 +572,62 @@ sai_status_t SwitchVpp::vpp_set_interface_mtu (
     return SAI_STATUS_SUCCESS;
 }
 
+bool SwitchVpp::vpp_get_rif_hwif_name (
+        _In_ sai_object_id_t rif_oid,
+        _Out_ std::string& ifname)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
+        return false;
+    }
+    int32_t rif_type = attr.value.s32;
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN) {
+        // VLAN RIF is backed by the bridge's BVI interface (bvi<vlan-id>).
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
+            return false;
+        }
+        sai_object_id_t vlan_oid = attr.value.oid;
+        if (objectTypeQuery(vlan_oid) != SAI_OBJECT_TYPE_VLAN) {
+            return false;
+        }
+        sai_attribute_t vattr;
+        vattr.id = SAI_VLAN_ATTR_VLAN_ID;
+        if (get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &vattr) != SAI_STATUS_SUCCESS) {
+            return false;
+        }
+        ifname = std::string("bvi") + std::to_string(vattr.value.u16);
+        return true;
+    }
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
+        return false;
+    }
+    sai_object_id_t port_oid = attr.value.oid;
+
+    sai_object_type_t ot = objectTypeQuery(port_oid);
+    if (ot != SAI_OBJECT_TYPE_PORT && ot != SAI_OBJECT_TYPE_LAG) {
+        return false;
+    }
+
+    uint16_t vlan_id = 0;
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT) {
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
+            return false;
+        }
+        vlan_id = attr.value.u16;
+    }
+
+    return vpp_get_hwif_name(port_oid, vlan_id, ifname);
+}
+
 sai_status_t SwitchVpp::vpp_set_interface_loopback_action (
         _In_ sai_object_id_t object_id,
         _In_ uint32_t vlan_id,
@@ -586,6 +642,32 @@ sai_status_t SwitchVpp::vpp_set_interface_loopback_action (
     std::string ifname;
 
     if (vpp_get_hwif_name(object_id, vlan_id, ifname) == true) {
+        const char *hwif_name = ifname.c_str();
+        int action = (packet_action == SAI_PACKET_ACTION_DROP) ? 1 : 0;
+
+        int ret = vpp_iface_loopback_set_action(hwif_name, action);
+        SWSS_LOG_NOTICE("Setting router interface loopback action %s to %s (ret %d)",
+                        hwif_name, action ? "drop" : "forward", ret);
+        if (ret != 0) {
+            return SAI_STATUS_FAILURE;
+        }
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::vpp_set_vlan_rif_loopback_action (
+        _In_ sai_object_id_t rif_oid,
+        _In_ int32_t packet_action)
+{
+    SWSS_LOG_ENTER();
+
+    if (is_ip_nbr_active() == false) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string ifname;
+
+    if (vpp_get_rif_hwif_name(rif_oid, ifname) == true) {
         const char *hwif_name = ifname.c_str();
         int action = (packet_action == SAI_PACKET_ACTION_DROP) ? 1 : 0;
 
@@ -1736,6 +1818,20 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
         return SAI_STATUS_FAILURE;
     }
     rif_type = attr.value.s32;
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+    {
+        // VLAN RIFs carry no PORT_ID; they are backed by the bridge BVI
+        // (bvi<vlan-id>). Apply the attributes we support on the BVI.
+        auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+
+        if (attr_loopback != NULL)
+        {
+            vpp_set_vlan_rif_loopback_action(object_id, attr_loopback->value.s32);
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
 
     attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
     status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &attr);

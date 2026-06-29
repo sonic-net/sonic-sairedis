@@ -808,43 +808,12 @@ void SwitchVpp::setRifStats(
 {
     SWSS_LOG_ENTER();
 
-    sai_attribute_t attr;
-
-    attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
-    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, oid, 1, &attr) != SAI_STATUS_SUCCESS)
-    {
-        return;
-    }
-    int32_t rif_type = attr.value.s32;
-
-    attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, oid, 1, &attr) != SAI_STATUS_SUCCESS)
-    {
-        // Only port/LAG based RIFs (incl. sub-ports) are backed by a VPP
-        // hardware interface whose counters we can read here.
-        return;
-    }
-    sai_object_id_t port_oid = attr.value.oid;
-
-    sai_object_type_t ot = objectTypeQuery(port_oid);
-    if (ot != SAI_OBJECT_TYPE_PORT && ot != SAI_OBJECT_TYPE_LAG)
-    {
-        return;
-    }
-
-    uint16_t vlan_id = 0;
-    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
-    {
-        attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
-        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, oid, 1, &attr) != SAI_STATUS_SUCCESS)
-        {
-            return;
-        }
-        vlan_id = attr.value.u16;
-    }
-
     std::string if_name;
-    if (!vpp_get_hwif_name(port_oid, vlan_id, if_name))
+
+    // Resolve the RIF to its backing VPP interface: the port/LAG/sub-port
+    // hwif, or the bridge BVI (bvi<vlan-id>) for a VLAN RIF. Only these are
+    // backed by a VPP hardware interface whose counters we can read here.
+    if (!vpp_get_rif_hwif_name(oid, if_name))
     {
         return;
     }
