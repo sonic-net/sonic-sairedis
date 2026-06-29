@@ -85,13 +85,11 @@ using namespace saivs;
  *
  *   Tagged member (wire ethertype is 0x8100 -> OTHER slot):
  *     IP4 slot   <- ~0
- *     OTHER slot <- tag_other_table  (defensive LLDP match)
- *                       |  on miss
- *                       v
- *                   tag_dhcp_table (DHCPv4 over .1Q match)
+ *     OTHER slot <- tag_dhcp_table (DHCPv4 over .1Q match)
  *                       |  on miss
  *                       v
  *                   continue normal L2 path
+ *     (LLDP is never tagged, so no tagged-LLDP table is needed.)
  *
  * Hit-next graph slots out of l2-input-classify, resolved once via
  * vpp_add_node_next():
@@ -116,10 +114,10 @@ static uint32_t s_trap_fixup_next_index = ~0; /* sonic-ext-l2-trap-fixup (tagged
 static uint32_t s_untag_other_table = ~0;     /* LLDP by ethertype */
 static uint32_t s_untag_ip4_table   = ~0;     /* DHCPv4 client broadcast */
 
-/* Tagged member tables: outer ethertype is 0x8100, so EVERY tagged
- * frame (including IPv4-inside-VLAN) lands in the other slot.
- * Chain tag_other -> tag_dhcp -> continue on miss. */
-static uint32_t s_tag_other_table = ~0;       /* inner ethertype (LLDP) */
+/* Tagged member table: outer ethertype is 0x8100, so EVERY tagged
+ * frame (including IPv4-inside-VLAN) lands in the other slot.  LLDP is
+ * never tagged, so only the DHCPv4-over-.1Q table is needed; it is
+ * attached directly to the tagged member's OTHER slot. */
 static uint32_t s_tag_dhcp_table = ~0;        /* DHCPv4 broadcast over .1Q */
 
 /*
@@ -205,7 +203,7 @@ static int l2_punt_classify_init()
         mask[36] = 0xFF; mask[37] = 0xFF;       /* UDP dport only (sport ignored) */
 
         if (vpp_classify_table_create(
-                8 /*nbuckets*/, 64*1024 /*memory_size*/,
+                8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
                 0 /*skip*/, 3 /*match_n_vectors*/,
                 ~0 /*next_table*/, ~0 /*miss_next=continue*/,
                 mask, 48, &s_untag_ip4_table) != 0) {
@@ -231,7 +229,7 @@ static int l2_punt_classify_init()
         mask[12] = 0xFF; mask[13] = 0xFF;
 
         if (vpp_classify_table_create(
-                8 /*nbuckets*/, 64*1024 /*memory_size*/,
+                8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
                 0 /*skip*/, 1 /*match_n_vectors*/,
                 ~0 /*next_table=none*/,
                 ~0 /*miss_next=continue*/,
@@ -246,8 +244,7 @@ static int l2_punt_classify_init()
                                  m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
     }
 
-    /* --- Tagged DHCP table (created before tag_other for the same
-     *     chain reason).  Frame at l2-input-classify on a tagged
+    /* --- Tagged DHCP table.  Frame at l2-input-classify on a tagged
      *     sub-if still carries the outer 802.1Q tag (VTR pop has not
      *     yet run), so all post-L2 offsets shift by +4.
      *
@@ -272,7 +269,7 @@ static int l2_punt_classify_init()
         mask[40] = 0xFF; mask[41] = 0xFF;        /* UDP dport only (sport ignored) */
 
         if (vpp_classify_table_create(
-                8, 64*1024,
+                8, 4*1024 /*memory_size: 1 session*/,
                 0 /*skip*/, 3 /*match_n_vectors*/,
                 ~0 /*next_table*/, ~0 /*miss_next*/,
                 mask, 48, &s_tag_dhcp_table) != 0) {
@@ -290,44 +287,12 @@ static int l2_punt_classify_init()
         }
     }
 
-    /* --- Tagged "other" table: match inner ethertype at offset 16 ---
-     * skip=1, match=1 → covers bytes 16-31.  Chains to tag_dhcp on miss.
-     * VPP session match data must be (skip+match)*16 = 32 bytes.
-     *
-     * In practice ethernet-input dispatches by outer ethertype, and
-     * 0x88cc != 0x8100, so tagged LLDP never reaches the sub-if
-     * classifier -- it is consumed by linux-cp-punt-xc directly off
-     * the parent.  This entry is purely a defensive safety net. */
-    {
-        uint8_t mask[16] = {0};
-        mask[0] = 0xFF; mask[1] = 0xFF;          /* inner ethertype (offset 16-17) */
-
-        uint32_t chain_next = (s_tag_dhcp_table != ~0u)
-                                ? s_tag_dhcp_table : (uint32_t)~0u;
-
-        if (vpp_classify_table_create(
-                8, 64*1024,
-                1 /*skip*/, 1 /*match*/,
-                chain_next /*next_table on miss*/,
-                ~0 /*miss_next*/,
-                mask, 16, &s_tag_other_table) != 0) {
-            SWSS_LOG_ERROR("l2_punt_classify_init: tag_other table create failed");
-            return -1;
-        }
-
-        /* LLDP inner 0x88CC → redirect-punt (defensive)
-         * match[0..15] = skip padding, match[16..31] = match vector */
-        uint8_t m[32] = {0}; m[16+0] = 0x88; m[16+1] = 0xCC;
-        vpp_classify_session_add(s_tag_other_table, s_punt_next_index,
-                                 m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
-    }
-
     s_l2_punt_classify_inited = true;
     SWSS_LOG_NOTICE("L2 punt classify tables initialized: "
-                    "untag_ip4=%u untag_other=%u tag_other=%u tag_dhcp=%u "
+                    "untag_ip4=%u untag_other=%u tag_dhcp=%u "
                     "punt_next=%u trap_fixup_next=%u",
                     s_untag_ip4_table, s_untag_other_table,
-                    s_tag_other_table, s_tag_dhcp_table,
+                    s_tag_dhcp_table,
                     s_punt_next_index, s_trap_fixup_next_index);
     return 0;
 }
@@ -340,11 +305,12 @@ static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged)
     }
 
     /* Tagged frames carry outer ethertype 0x8100 -> OTHER slot only.
-     * Untagged frames carry the inner ethertype on the wire, so DHCPv4
-     * (0x0800) lands in the IP4 slot and LLDP (0x88CC) in the OTHER
-     * slot; install both. */
+     * LLDP is never tagged, so the tagged OTHER slot only needs the
+     * DHCPv4-over-.1Q table.  Untagged frames carry the inner ethertype
+     * on the wire, so DHCPv4 (0x0800) lands in the IP4 slot and LLDP
+     * (0x88CC) in the OTHER slot; install both. */
     uint32_t ip4_tbl   = is_tagged ? (uint32_t)~0u : s_untag_ip4_table;
-    uint32_t other_tbl = is_tagged ? s_tag_other_table : s_untag_other_table;
+    uint32_t other_tbl = is_tagged ? s_tag_dhcp_table : s_untag_other_table;
 
     int rc = vpp_classify_set_interface_l2_tables(
         hwif_name, ip4_tbl, ~0 /*ip6*/, other_tbl, true /*is_input*/);
