@@ -803,6 +803,69 @@ void SwitchVpp::setPortStats(
     debugSetStats(oid, stats);
 }
 
+void SwitchVpp::setRifStats(
+        _In_ sai_object_id_t oid)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, oid, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        return;
+    }
+    int32_t rif_type = attr.value.s32;
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, oid, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        // Only port/LAG based RIFs (incl. sub-ports) are backed by a VPP
+        // hardware interface whose counters we can read here.
+        return;
+    }
+    sai_object_id_t port_oid = attr.value.oid;
+
+    sai_object_type_t ot = objectTypeQuery(port_oid);
+    if (ot != SAI_OBJECT_TYPE_PORT && ot != SAI_OBJECT_TYPE_LAG)
+    {
+        return;
+    }
+
+    uint16_t vlan_id = 0;
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+    {
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, oid, 1, &attr) != SAI_STATUS_SUCCESS)
+        {
+            return;
+        }
+        vlan_id = attr.value.u16;
+    }
+
+    std::string if_name;
+    if (!vpp_get_hwif_name(port_oid, vlan_id, if_name))
+    {
+        return;
+    }
+
+    vpp_interface_stats_t rif_stats;
+
+    if (vpp_intf_stats_query(if_name.c_str(), &rif_stats) == 0)
+    {
+        std::map<sai_stat_id_t, uint64_t> stats;
+
+        stats[SAI_ROUTER_INTERFACE_STAT_IN_PACKETS] = rif_stats.rx;
+        stats[SAI_ROUTER_INTERFACE_STAT_IN_OCTETS] = rif_stats.rx_bytes;
+        stats[SAI_ROUTER_INTERFACE_STAT_OUT_PACKETS] = rif_stats.tx;
+        stats[SAI_ROUTER_INTERFACE_STAT_OUT_OCTETS] = rif_stats.tx_bytes;
+        stats[SAI_ROUTER_INTERFACE_STAT_IN_ERROR_PACKETS] = rif_stats.rx_error;
+        stats[SAI_ROUTER_INTERFACE_STAT_OUT_ERROR_PACKETS] = rif_stats.tx_error;
+
+        debugSetStats(oid, stats);
+    }
+}
+
 sai_status_t SwitchVpp::getRouteCounterStats(
         _In_ sai_object_id_t oid,
         _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
@@ -1162,6 +1225,10 @@ sai_status_t SwitchVpp::getStatsExt(
     if (object_type == SAI_OBJECT_TYPE_PORT)
     {
         setPortStats(object_id);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
+    {
+        setRifStats(object_id);
     }
     else if (object_type == SAI_OBJECT_TYPE_COUNTER)
     {

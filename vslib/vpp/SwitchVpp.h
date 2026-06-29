@@ -95,6 +95,9 @@ namespace saivs
             void setPortStats(
                     _In_ sai_object_id_t oid);
 
+            void setRifStats(
+                    _In_ sai_object_id_t oid);
+
             sai_status_t getRouteStatsExt(
                     _In_ sai_object_id_t oid,
                     _In_ uint32_t number_of_counters,
