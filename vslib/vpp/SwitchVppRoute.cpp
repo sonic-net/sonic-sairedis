@@ -101,6 +101,10 @@ void create_vpp_nexthop_entry (
     vpp_nexthop->sw_if_index = nxt_grp_member->sw_if_index;
     vpp_nexthop->weight = (uint8_t) nxt_grp_member->weight;
     vpp_nexthop->preference = 0;
+    vpp_nexthop->n_labels = nxt_grp_member->n_labels;
+    for (uint8_t li = 0; li < nxt_grp_member->n_labels && li < VPP_MPLS_MAX_LABELS; li++) {
+        vpp_nexthop->label_stack[li] = nxt_grp_member->label_stack[li];
+    }
 }
 
 const char* SwitchVpp::resolveNexthopMemberHwif(
