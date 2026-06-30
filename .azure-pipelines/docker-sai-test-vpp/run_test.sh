@@ -69,7 +69,6 @@ SONIC_VPP_IFMAP="${SONIC_VPP_IFMAP:-/usr/share/sonic/hwsku/sonic_vpp_ifmap.ini}"
 THRIFT_PORT="${THRIFT_PORT:-9092}"
 STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-60}"
 VPPCTL_TIMEOUT="${VPPCTL_TIMEOUT:-5}"
-VPP_CREATE_BATCH_SIZE="${VPP_CREATE_BATCH_SIZE:-8}"
 VPP_LOG="${VPP_LOG:-/var/log/vpp.log}"
 VPP_STDOUT_LOG="${VPP_STDOUT_LOG:-/var/log/vpp-startup.log}"
 VPP_API_TRACE="${VPP_API_TRACE:-/tmp/vpp-sai-api-trace.api}"
@@ -129,6 +128,7 @@ VPP_PID=""
 SAISERVER_PID=""
 REDIS_PID=""
 VPP_CONF=""
+VPP_INIT_CLI=""
 KEEP_VETHS_UP_PID=""
 KEEP_LAG_RIF_IPS_PID=""
 
@@ -255,8 +255,6 @@ preflight()
     require_file "$SAISERVER_PORTMAP"
     require_file "$PTF_PORTMAP"
     [[ -d "$SAI_TEST_DIR" ]] || die "required directory not found: $SAI_TEST_DIR"
-    [[ "$VPP_CREATE_BATCH_SIZE" =~ ^[0-9]+$ ]] || die "VPP_CREATE_BATCH_SIZE must be a positive integer"
-    [[ "$VPP_CREATE_BATCH_SIZE" -gt 0 ]] || die "VPP_CREATE_BATCH_SIZE must be greater than zero"
 
     mkdir -p /run/vpp /var/log "$(dirname "$REDIS_SOCKET")" "$TEST_RESULTS_DIR" "$(dirname "$SONIC_VPP_IFMAP")"
 }
@@ -504,6 +502,17 @@ create_sonic_vpp_ifmap()
     done
 }
 
+generate_vpp_init_cli()
+{
+    VPP_INIT_CLI="$(mktemp /tmp/vpp-sai-test-init.XXXXXX.cli)"
+    : > "$VPP_INIT_CLI"
+
+    for ((port_index = 0; port_index < PORT_COUNT; port_index++)); do
+        echo "create host-interface name OEthernet${port_index}" >> "$VPP_INIT_CLI"
+        echo "set interface rx-mode host-OEthernet${port_index} interrupt" >> "$VPP_INIT_CLI"
+    done
+}
+
 generate_vpp_config()
 {
     VPP_CONF="$(mktemp /tmp/vpp-sai-test.XXXXXX.conf)"
@@ -512,6 +521,7 @@ generate_vpp_config()
 
     sed -e "s|__VPP_LOG__|${VPP_LOG}|g" \
         -e "s|__BUFFERS_PER_NUMA__|${buffers_per_numa}|g" \
+        -e "s|__VPP_INIT_CLI__|${VPP_INIT_CLI}|g" \
         "$template" > "$VPP_CONF"
 }
 
@@ -534,43 +544,6 @@ wait_for_vpp_ready()
     die "timed out waiting for VPP; see $VPP_LOG and $VPP_STDOUT_LOG"
 }
 
-create_vpp_host_interfaces()
-{
-    local batch_cmds=""
-    local batch_count=0
-    local batch_start=0
-
-    log "Creating VPP host interfaces"
-
-    for ((port_index = 0; port_index < PORT_COUNT; port_index++)); do
-        if [[ "$batch_count" -eq 0 ]]; then
-            batch_cmds="$(mktemp /tmp/vpp-sai-test-create.XXXXXX.cmds)"
-            batch_start="$port_index"
-        fi
-
-        echo "create host-interface name OEthernet${port_index}" >> "$batch_cmds"
-        batch_count=$((batch_count + 1))
-
-        if [[ "$batch_count" -eq "$VPP_CREATE_BATCH_SIZE" ]]; then
-            if ! timeout "$STARTUP_TIMEOUT" vppctl exec "$batch_cmds" >/dev/null; then
-                rm -f "$batch_cmds"
-                die "failed to create VPP host interfaces ${batch_start}..${port_index}; see $VPP_LOG and $VPP_STDOUT_LOG"
-            fi
-            rm -f "$batch_cmds"
-            batch_cmds=""
-            batch_count=0
-        fi
-    done
-
-    if [[ "$batch_count" -gt 0 ]]; then
-        if ! timeout "$STARTUP_TIMEOUT" vppctl exec "$batch_cmds" >/dev/null; then
-            rm -f "$batch_cmds"
-            die "failed to create VPP host interfaces ${batch_start}..$((PORT_COUNT - 1)); see $VPP_LOG and $VPP_STDOUT_LOG"
-        fi
-        rm -f "$batch_cmds"
-    fi
-}
-
 verify_vpp_interfaces()
 {
     local interface_output
@@ -584,36 +557,16 @@ verify_vpp_interfaces()
     done
 }
 
-set_vpp_rx_mode_interrupt()
-{
-    local rx_mode_cmds
-
-    log "Setting VPP AF_PACKET RX mode to interrupt"
-    rx_mode_cmds="$(mktemp /tmp/vpp-sai-test-rxmode.XXXXXX.cmds)"
-
-    for ((port_index = 0; port_index < PORT_COUNT; port_index++)); do
-        echo "set interface rx-mode host-OEthernet${port_index} interrupt" >> "$rx_mode_cmds"
-    done
-
-    if ! timeout "$STARTUP_TIMEOUT" vppctl exec "$rx_mode_cmds" >/dev/null; then
-        rm -f "$rx_mode_cmds"
-        die "failed to set VPP host interface RX mode; see $VPP_LOG and $VPP_STDOUT_LOG"
-    fi
-
-    rm -f "$rx_mode_cmds"
-}
-
 start_vpp()
 {
+    generate_vpp_init_cli
     generate_vpp_config
     log "Starting VPP"
     vpp -c "$VPP_CONF" > "$VPP_STDOUT_LOG" 2>&1 &
     VPP_PID="$!"
 
     wait_for_vpp_ready
-    create_vpp_host_interfaces
     verify_vpp_interfaces
-    set_vpp_rx_mode_interrupt
 }
 
 wait_for_saiserver_ready()
@@ -816,6 +769,7 @@ cleanup()
     delete_veths
     delete_portchannels
     [[ -n "$VPP_CONF" ]] && rm -f "$VPP_CONF"
+    [[ -n "$VPP_INIT_CLI" ]] && rm -f "$VPP_INIT_CLI"
     set -e
 
     return "$status"

@@ -4,6 +4,7 @@ unix {
   full-coredump
   cli-listen /run/vpp/cli.sock
   poll-sleep-usec 100
+  exec __VPP_INIT_CLI__
 }
 
 api-trace {
