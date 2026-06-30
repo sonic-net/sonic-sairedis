@@ -169,6 +169,7 @@ namespace syncd
                             .on_ipsec_post_status = &Slot<context>::onIpsecPostStatus,
                             .on_switch_macsec_post_status = &Slot<context>::onSwitchMacsecPostStatus,
                             .on_switch_ipsec_post_status = &Slot<context>::onSwitchIpsecPostStatus,
+                            .on_next_hop_group_hw_protection_switchover = nullptr,
                             .on_ha_set_event = &Slot<context>::onHaSetEvent,
                             .on_ha_scope_event = &Slot<context>::onHaScopeEvent,
                             .on_flow_bulk_get_session_event = &Slot<context>::onFlowBulkGetSessionEvent,
