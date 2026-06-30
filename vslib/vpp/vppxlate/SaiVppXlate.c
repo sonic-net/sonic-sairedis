@@ -1069,6 +1069,13 @@ vl_api_set_ip_flow_hash_v2_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg
 }
 
 static void
+vl_api_set_ip_flow_hash_router_id_reply_t_handler (vl_api_set_ip_flow_hash_router_id_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_ip_neighbor_add_del_reply_t_handler (vl_api_ip_neighbor_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1634,6 +1641,7 @@ static void vpp_base_vpe_init(void)
     _(IP_MSG_ID(IP_ROUTE_ADD_DEL_REPLY), ip_route_add_del_reply) \
     _(IP_MSG_ID(SW_INTERFACE_IP6_ENABLE_DISABLE_REPLY), sw_interface_ip6_enable_disable_reply) \
     _(IP_MSG_ID(SET_IP_FLOW_HASH_V2_REPLY), set_ip_flow_hash_v2_reply)        \
+    _(IP_MSG_ID(SET_IP_FLOW_HASH_ROUTER_ID_REPLY), set_ip_flow_hash_router_id_reply) \
     _(IP_MSG_ID(IP_ADDRESS_DETAILS), ip_address_details) \
     _(IP_NBR_MSG_ID(IP_NEIGHBOR_ADD_DEL_REPLY), ip_neighbor_add_del_reply) \
     _(L2_MSG_ID(BRIDGE_DOMAIN_ADD_DEL_REPLY), bridge_domain_add_del_reply) \
@@ -3177,6 +3185,37 @@ int vpp_ip_flow_hash_set (uint32_t vrf_id, uint32_t hash_mask, int addr_family)
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) vrf_id %u af %d", __func__, ret, vrf_id, addr_family); }
     else { SAIVPP_INFO("%s vrf_id %u af %d", __func__, vrf_id, addr_family); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/*
+ * Set the global ECMP flow-hash "router ID" -- the per-router value VPP mixes
+ * into the IPv4/IPv6 ECMP flow hash (see ip4_inlines.h / ip6_inlines.h:
+ * "a ^= ip_flow_hash_router_id"). This is the natural backend for the SAI
+ * switch attribute SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED: changing it
+ * re-distributes ECMP/LAG path selection without touching any per-flow state.
+ */
+int vpp_ip_flow_hash_router_id_set (uint32_t router_id)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_set_ip_flow_hash_router_id_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = ip_msg_id_base;
+
+    M (SET_IP_FLOW_HASH_ROUTER_ID, mp);
+    mp->router_id = htonl(router_id);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) router_id %u", __func__, ret, router_id); }
+    else { SAIVPP_INFO("%s router_id %u", __func__, router_id); }
 
     VPP_UNLOCK();
 

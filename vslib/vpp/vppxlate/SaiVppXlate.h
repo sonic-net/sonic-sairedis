@@ -312,6 +312,7 @@ typedef enum {
     extern int ip_route_add_del(vpp_ip_route_t *prefix, bool is_add);
     extern int ip_route_add_del_get_stats(vpp_ip_route_t *prefix, bool is_add, uint32_t *stats_index);
     extern int vpp_ip_flow_hash_set(uint32_t vrf_id, uint32_t mask, int addr_family);
+    extern int vpp_ip_flow_hash_router_id_set(uint32_t router_id);
 
     extern int vpp_acl_add_replace(vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace);
     extern int vpp_acl_del(uint32_t acl_index);
