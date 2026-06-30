@@ -38,7 +38,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --no-cache-dir scapy==2.5.0 unittest-xml-reporting==3.2.0 && \
-    python3 -m pip install --no-cache-dir /opt/ptf
+    python3 -m pip install --no-cache-dir --ignore-installed /opt/ptf
 
 RUN set -eux; \
     deb_dir=/opt/docker-sai-test-vpp/debs; \
@@ -104,13 +104,13 @@ RUN set -eux; \
     else \
         apt-get install -y --no-install-recommends libswsscommon-dev || true; \
     fi; \
-    apt-get install -y --no-install-recommends g++ && \
+    apt-get install -y --no-install-recommends g++ libhiredis-dev && \
     g++ -shared -fPIC -o /usr/local/lib/libswss_log_stdout.so \
         /opt/docker-sai-test-vpp/swss_log_stdout_preload.cpp -lswsscommon && \
-    apt-get purge -y g++ && \
+    apt-get purge -y g++ libhiredis-dev && \
     if [[ ${#build_dev_debs[@]} -gt 0 ]]; then apt-get purge -y libswsscommon-dev; fi && \
     apt-get autoremove -y && \
-    apt-get clean; \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 RUN install -d \

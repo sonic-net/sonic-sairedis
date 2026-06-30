@@ -139,7 +139,7 @@ stage_debs_from_buildimage()
     copy_matching_debs "${deb_dir}" \
         'libsaivs_*.deb' 'libsairedis_*.deb' 'libsaimetadata_*.deb' \
         'libswsscommon_*.deb' 'libswsscommon-dev_*.deb' \
-        'libyang_*.deb' 'libyang3_*.deb' \
+        'libyang_*.deb' 'libyang3_*.deb' 'libpcre3_*.deb' \
         'saiserver_*.deb' 'saiserverv2_*.deb' \
         'python-saithrift_*.deb' 'python-saithriftv2_*.deb'
 
