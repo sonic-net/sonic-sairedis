@@ -1812,6 +1812,28 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         vpp_set_interface_mtu(obj_id, vlan_id, attr_type_mtu->value.u32);
     }
 
+    auto attr_type_mpls = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_MPLS_STATE, attr_count, attr_list);
+
+    if (attr_type_mpls != NULL)
+    {
+        std::string mpls_hwif_name;
+        if (vpp_get_hwif_name(obj_id, vlan_id, mpls_hwif_name))
+        {
+            CHECK_STATUS(ensureMplsTable());
+            int mpls_ret = sw_interface_set_mpls_enable(mpls_hwif_name.c_str(), attr_type_mpls->value.booldata);
+            if (mpls_ret != 0)
+            {
+                SWSS_LOG_ERROR("Failed to %s MPLS on router interface %s: %d",
+                               attr_type_mpls->value.booldata ? "enable" : "disable",
+                               mpls_hwif_name.c_str(), mpls_ret);
+                return SAI_STATUS_FAILURE;
+            }
+            SWSS_LOG_NOTICE("MPLS %s on router interface %s",
+                            attr_type_mpls->value.booldata ? "enabled" : "disabled",
+                            mpls_hwif_name.c_str());
+        }
+    }
+
     bool v4_is_up = false, v6_is_up = false;
 
     auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
@@ -1907,6 +1929,28 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
     if (attr_type_mtu != NULL)
     {
         vpp_set_interface_mtu(obj_id, vlan_id, attr_type_mtu->value.u32);
+    }
+
+    auto attr_type_mpls = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_MPLS_STATE, attr_count, attr_list);
+
+    if (attr_type_mpls != NULL)
+    {
+        std::string mpls_hwif_name;
+        if (vpp_get_hwif_name(obj_id, vlan_id, mpls_hwif_name))
+        {
+            CHECK_STATUS(ensureMplsTable());
+            int mpls_ret = sw_interface_set_mpls_enable(mpls_hwif_name.c_str(), attr_type_mpls->value.booldata);
+            if (mpls_ret != 0)
+            {
+                SWSS_LOG_ERROR("Failed to %s MPLS on router interface %s: %d",
+                               attr_type_mpls->value.booldata ? "enable" : "disable",
+                               mpls_hwif_name.c_str(), mpls_ret);
+                return SAI_STATUS_FAILURE;
+            }
+            SWSS_LOG_NOTICE("MPLS %s on router interface %s",
+                            attr_type_mpls->value.booldata ? "enabled" : "disabled",
+                            mpls_hwif_name.c_str());
+        }
     }
 
     bool v4_is_up = false, v6_is_up = false;
