@@ -546,15 +546,27 @@ wait_for_vpp_ready()
 
 verify_vpp_interfaces()
 {
+    log "Verifying VPP interfaces are created"
     local interface_output
+    local port_index
+    local attempt
 
-    interface_output="$(timeout "$VPPCTL_TIMEOUT" vppctl show interface 2>/dev/null || true)"
-
-    for ((port_index = 0; port_index < PORT_COUNT; port_index++)); do
-        if ! grep -q "host-OEthernet${port_index}" <<< "$interface_output"; then
-            die "VPP interface host-OEthernet${port_index} was not created"
+    for ((attempt = 1; attempt <= 15; attempt++)); do
+        local all_created=1
+        interface_output="$(timeout "$VPPCTL_TIMEOUT" vppctl show interface 2>/dev/null || true)"
+        for ((port_index = 0; port_index < PORT_COUNT; port_index++)); do
+            if ! grep -q "host-OEthernet${port_index}" <<< "$interface_output"; then
+                all_created=0
+                break
+            fi
+        done
+        if [[ "$all_created" -eq 1 ]]; then
+            return 0
         fi
+        sleep 1
     done
+
+    die "VPP interfaces were not created; see $VPP_LOG and $VPP_STDOUT_LOG"
 }
 
 start_vpp()
