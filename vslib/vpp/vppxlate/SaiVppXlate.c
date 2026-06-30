@@ -1385,6 +1385,7 @@ static void vpp_base_vpe_init(void)
     _(INTERFACE_MSG_ID(SW_INTERFACE_ADD_DEL_ADDRESS_REPLY), sw_interface_add_del_address_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_FLAGS_REPLY), sw_interface_set_flags_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MTU_REPLY), sw_interface_set_mtu_reply) \
+    _(INTERFACE_MSG_ID(SW_INTERFACE_SET_LINK_SPEED_REPLY), sw_interface_set_link_speed_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MAC_ADDRESS_REPLY), sw_interface_set_mac_address_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_UNNUMBERED_REPLY), sw_interface_set_unnumbered_reply) \
     _(INTERFACE_MSG_ID(HW_INTERFACE_SET_MTU_REPLY), hw_interface_set_mtu_reply) \
@@ -3009,6 +3010,48 @@ int interface_get_state (const char *hwif_name, bool *link_is_up)
     return ret;
 }
 
+int vpp_refresh_interface_speed (const char *hwif_name)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_dump_t *mp;
+    vl_api_control_ping_t *mp_ping;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_DUMP, mp);
+
+    u32 idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("%s: unable to get sw_index for %s", __func__, hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    mp->sw_if_index = htonl(idx);
+    /* context=0 so the details handler takes the normal path and
+     * updates link_speed_by_sw_index. */
+
+    S (mp);
+
+    __plugin_msg_base = memclnt_msg_id_base;
+    PING (NULL, mp_ping);
+    S (mp_ping);
+
+    WR (ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s: dump failed(%d) for %s (idx %u)", __func__, ret, hwif_name, idx);
+    } else {
+        SAIVPP_INFO("%s: refreshed speed for %s (idx %u)", __func__, hwif_name, idx);
+    }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
 int vpp_get_interface_speed (const char *hwif_name, uint32_t *speed)
 {
     vat_main_t *vam = &vat_main;
@@ -3095,6 +3138,46 @@ int sw_interface_set_mtu (const char *hwif_name, uint32_t mtu)
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s mtu %u", __func__, ret, hwif_name, mtu); }
     else { SAIVPP_INFO("%s %s mtu %u", __func__, hwif_name, mtu); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int sw_interface_set_link_speed (const char *hwif_name, uint32_t link_speed)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_link_speed_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_SET_LINK_SPEED, mp);
+    if (hwif_name) {
+        u32 idx;
+
+        idx = get_swif_idx(vam, hwif_name);
+        if (idx != (u32) -1) {
+            mp->sw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    mp->link_speed = htonl(link_speed);
+
+    S (mp);
+
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s link_speed %u", __func__, ret, hwif_name, link_speed); }
+    else { SAIVPP_INFO("%s %s link_speed %u", __func__, hwif_name, link_speed); }
 
     VPP_UNLOCK();
 
