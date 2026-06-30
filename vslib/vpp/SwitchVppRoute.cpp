@@ -15,6 +15,7 @@
 #include <sys/socket.h>
 #include <net/if.h>
 #include <netinet/in.h>
+#include <stdint.h>
 
 #include "vppxlate/SaiVppXlate.h"
 
@@ -103,7 +104,8 @@ void create_vpp_nexthop_entry (
 
 sai_status_t SwitchVpp::IpRouteAddRemove(
         _In_ const SaiObject* route_obj,
-        _In_ bool is_add)
+        _In_ bool is_add,
+        _Out_ uint32_t *stats_index)
 {
     SWSS_LOG_ENTER();
 
@@ -204,13 +206,18 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         }
         ip_route->nexthop_cnt = nxthop_group->nmembers;
 
-        ret = ip_route_add_del(ip_route, is_add);
+        ret = ip_route_add_del_get_stats(ip_route, is_add, is_add ? stats_index : NULL);
 
         SWSS_LOG_NOTICE("%s ip route in VS %s status %d table %u", (is_add ? "Add" : "Remove"),
                         serializedObjectId.c_str(), ret, vrf_id);
         SWSS_LOG_NOTICE("%s route nexthop type %s count %u", (is_add ? "Add" : "Remove"),
                         sai_serialize_object_type(RealObjectIdManager::objectTypeQuery(next_hop_oid)).c_str(),
                         nxthop_group->nmembers);
+
+        if (ret == 0 && is_add && stats_index && *stats_index == UINT32_MAX)
+        {
+            SWSS_LOG_WARN("VPP did not return a route stats index for %s", serializedObjectId.c_str());
+        }
 
         free(ip_route);
         free(nxthop_group);
@@ -219,7 +226,131 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         SWSS_LOG_NOTICE("Ignoring VS ip route %s", serializedObjectId.c_str());
     }
 
-    return ret;
+    return (ret == 0) ? SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
+}
+
+sai_status_t SwitchVpp::setRouteCounterBinding(
+        _In_ const std::string &serializedObjectId,
+        _In_ sai_object_id_t counter_oid)
+{
+    SWSS_LOG_ENTER();
+
+    if (counter_oid == SAI_NULL_OBJECT_ID)
+    {
+        removeRouteCounterBinding(serializedObjectId);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // Capture the route's existing counter binding (read from the committed
+    // SaiObjectDB relationship, before the caller's create_internal/set_internal
+    // persists the new binding) so base/carry can be restored on rollback. The
+    // create path is always unbound here. A same-counter re-set (A -> A) still
+    // uses this for rollback if the new stats read fails. A direct rebind to a
+    // *different* counter (A -> B) is SAI-legal but not expected from current
+    // SONiC FlowCounterRouteOrch (which toggles NULL <-> counter); warn if seen.
+    sai_object_id_t old_counter_oid = getRouteBoundCounter(serializedObjectId);
+    std::map<sai_stat_id_t, uint64_t> old_counter_base;
+    std::map<sai_stat_id_t, uint64_t> old_counter_carry;
+    bool has_old_counter_base = false;
+    bool has_old_counter_carry = false;
+    if (old_counter_oid != SAI_NULL_OBJECT_ID)
+    {
+        if (old_counter_oid != counter_oid)
+        {
+            SWSS_LOG_WARN("unexpected direct rebind of route %s counter %s -> %s without intervening NULL",
+                    serializedObjectId.c_str(),
+                    sai_serialize_object_id(old_counter_oid).c_str(),
+                    sai_serialize_object_id(counter_oid).c_str());
+        }
+        auto oldBaseIt = m_routeCounterStatsBaseMap.find(old_counter_oid);
+        if (oldBaseIt != m_routeCounterStatsBaseMap.end())
+        {
+            old_counter_base = oldBaseIt->second;
+            has_old_counter_base = true;
+        }
+        auto oldCarryIt = m_routeCounterStatsCarryMap.find(old_counter_oid);
+        if (oldCarryIt != m_routeCounterStatsCarryMap.end())
+        {
+            old_counter_carry = oldCarryIt->second;
+            has_old_counter_carry = true;
+        }
+    }
+
+    // Enforce the 1:1 invariant: reject a counter already bound to a different
+    // route (read from the committed relationship).
+    std::string boundRoute;
+    if (getCounterBoundRoute(counter_oid, boundRoute) &&
+        boundRoute != serializedObjectId)
+    {
+        SWSS_LOG_ERROR("counter %s is already bound to route %s",
+                sai_serialize_object_id(counter_oid).c_str(),
+                boundRoute.c_str());
+        return SAI_STATUS_OBJECT_IN_USE;
+    }
+
+    // Drop the old counter's base/carry (already captured above for rollback).
+    if (old_counter_oid != SAI_NULL_OBJECT_ID)
+    {
+        m_routeCounterStatsBaseMap.erase(old_counter_oid);
+        m_routeCounterStatsCarryMap.erase(old_counter_oid);
+    }
+
+    // Snapshot the new counter's base from the route's VPP stats index. The
+    // route -> index mapping is already populated (callers guarantee a valid
+    // stats index for a non-NULL counter), so this does not depend on the new
+    // counter<->route relationship being committed yet.
+    auto statsIt = m_routeStatsIndexMap.find(serializedObjectId);
+    if (statsIt == m_routeStatsIndexMap.end())
+    {
+        SWSS_LOG_ERROR("missing VPP stats index for route %s binding counter %s",
+                serializedObjectId.c_str(),
+                sai_serialize_object_id(counter_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    std::map<sai_stat_id_t, uint64_t> stats;
+    auto status = readRouteStatsByIndex(statsIt->second, stats);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to read VPP route stats for route %s counter %s stats index %u",
+                serializedObjectId.c_str(),
+                sai_serialize_object_id(counter_oid).c_str(),
+                statsIt->second);
+        if (old_counter_oid != SAI_NULL_OBJECT_ID)
+        {
+            if (has_old_counter_base)
+            {
+                m_routeCounterStatsBaseMap[old_counter_oid] = old_counter_base;
+            }
+            if (has_old_counter_carry)
+            {
+                m_routeCounterStatsCarryMap[old_counter_oid] = old_counter_carry;
+            }
+        }
+        return status;
+    }
+
+    m_routeCounterStatsBaseMap[counter_oid] = stats;
+    m_routeCounterStatsCarryMap.erase(counter_oid);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::removeRouteCounterBinding(
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    // Resolve the currently bound counter from the committed relationship; the
+    // caller must invoke this while the route's COUNTER_ID is still persisted.
+    sai_object_id_t counter_oid = getRouteBoundCounter(serializedObjectId);
+    if (counter_oid == SAI_NULL_OBJECT_ID)
+    {
+        return;
+    }
+
+    m_routeCounterStatsBaseMap.erase(counter_oid);
+    m_routeCounterStatsCarryMap.erase(counter_oid);
 }
 
 // Add or remove a single path from a multipath route
@@ -227,7 +358,8 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 sai_status_t SwitchVpp::IpRoutePathAddRemove(
         _In_ const SaiObject* route_obj,
         _In_ nexthop_grp_member_t *member,
-        _In_ bool is_add)
+        _In_ bool is_add,
+        _Out_ uint32_t *stats_index)
 {
     SWSS_LOG_ENTER();
 
@@ -261,7 +393,7 @@ sai_status_t SwitchVpp::IpRoutePathAddRemove(
 
     create_vpp_nexthop_entry(member, NULL, VPP_NEXTHOP_NORMAL, &ip_route->nexthop[0]);
 
-    int ret = ip_route_add_del(ip_route, is_add);
+    int ret = ip_route_add_del_get_stats(ip_route, is_add, stats_index);
 
     SWSS_LOG_NOTICE("%s path in route %s status %d table %u",
                     (is_add ? "Add" : "Remove"), serializedObjectId.c_str(), ret, vrf_id);
@@ -283,8 +415,29 @@ sai_status_t SwitchVpp::addIpRoute(
     bool isTunnelNh = false;
     bool isSRv6Nh = false;
     bool hasNexthopAttr = false;
+    bool route_programmed = false;
+    uint32_t stats_index = UINT32_MAX;
+    sai_object_id_t counter_oid = SAI_NULL_OBJECT_ID;
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     SaiCachedObject ip_route_obj(this, SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, attr_count, attr_list);
+
+    sai_attribute_t counter_attr;
+    counter_attr.id = SAI_ROUTE_ENTRY_ATTR_COUNTER_ID;
+    if (ip_route_obj.get_attr(counter_attr) == SAI_STATUS_SUCCESS)
+    {
+        counter_oid = counter_attr.value.oid;
+        std::string boundRoute;
+        if (counter_oid != SAI_NULL_OBJECT_ID &&
+            getCounterBoundRoute(counter_oid, boundRoute) &&
+            boundRoute != serializedObjectId)
+        {
+            SWSS_LOG_ERROR("counter %s is already bound to route %s",
+                    sai_serialize_object_id(counter_oid).c_str(),
+                    boundRoute.c_str());
+            return SAI_STATUS_OBJECT_IN_USE;
+        }
+    }
 
     /* Check if route has a NEXT_HOP_ID pointing to a real nexthop (NH or NHG).
      * Routes pointing to PORT or ROUTER_INTERFACE (e.g. Loopback0 IP2ME routes)
@@ -320,8 +473,24 @@ sai_status_t SwitchVpp::addIpRoute(
         }
     }
 
+    auto removeProgrammedRoute = [&]() -> sai_status_t
+    {
+        if (!route_programmed)
+        {
+            return SAI_STATUS_SUCCESS;
+        }
+
+        if (isSRv6Nh)
+        {
+            return m_tunnel_mgr_srv6.remove_sidlist_route_entry(serializedObjectId, nh_id_attr.value.oid);
+        }
+
+        return IpRouteAddRemove(&ip_route_obj, false, NULL);
+    };
+
     if (isTunnelNh) {
-        IpRouteAddRemove(&ip_route_obj, true);
+        status = IpRouteAddRemove(&ip_route_obj, true, &stats_index);
+        route_programmed = (status == SAI_STATUS_SUCCESS);
     } else {
         /*
          * Loopback check: only when there is no nexthop attribute.
@@ -334,14 +503,64 @@ sai_status_t SwitchVpp::addIpRoute(
         if (isLoopback == false && is_ip_nbr_active() == true)
         {
             if (isSRv6Nh) {
-                m_tunnel_mgr_srv6.create_sidlist_route_entry(serializedObjectId, switch_id, attr_count, attr_list);
+                status = m_tunnel_mgr_srv6.create_sidlist_route_entry(serializedObjectId, switch_id, attr_count, attr_list);
             } else {
-                IpRouteAddRemove(&ip_route_obj, true);
+                status = IpRouteAddRemove(&ip_route_obj, true, &stats_index);
             }
+            route_programmed = (status == SAI_STATUS_SUCCESS);
         }
     }
 
-    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, switch_id, attr_count, attr_list));
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (counter_oid != SAI_NULL_OBJECT_ID && stats_index == UINT32_MAX)
+    {
+        SWSS_LOG_ERROR("route %s cannot bind counter %s without a VPP stats index",
+                serializedObjectId.c_str(),
+                sai_serialize_object_id(counter_oid).c_str());
+        if (removeProgrammedRoute() != SAI_STATUS_SUCCESS)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    if (stats_index != UINT32_MAX)
+    {
+        m_routeStatsIndexMap[serializedObjectId] = stats_index;
+    }
+
+    status = setRouteCounterBinding(serializedObjectId, counter_oid);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        m_routeStatsIndexMap.erase(serializedObjectId);
+        if (removeProgrammedRoute() != SAI_STATUS_SUCCESS)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+        return status;
+    }
+
+    status = create_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, switch_id, attr_count, attr_list);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        // The route (and its COUNTER_ID) was not committed, so the relationship
+        // does not exist; erase the base/carry snapshot by counter OID directly.
+        if (counter_oid != SAI_NULL_OBJECT_ID)
+        {
+            m_routeCounterStatsBaseMap.erase(counter_oid);
+            m_routeCounterStatsCarryMap.erase(counter_oid);
+        }
+        m_routeStatsIndexMap.erase(serializedObjectId);
+        if (removeProgrammedRoute() != SAI_STATUS_SUCCESS)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+        return status;
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -352,22 +571,213 @@ sai_status_t SwitchVpp::updateIpRoute(
 {
     SWSS_LOG_ENTER();
 
+    auto rollbackRoute = [&](
+            const SaiObject* old_route_obj,
+            const SaiObject* new_route_obj,
+            uint32_t old_stats_index) -> sai_status_t
+    {
+        if (new_route_obj)
+        {
+            auto delete_status = IpRouteAddRemove(new_route_obj, false, NULL);
+            if (delete_status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("failed to delete new route %s during rollback, status %d",
+                        serializedObjectId.c_str(),
+                        delete_status);
+                return SAI_STATUS_FAILURE;
+            }
+        }
+
+        uint32_t rollback_stats_index = UINT32_MAX;
+        auto rollback_status = IpRouteAddRemove(old_route_obj, true, &rollback_stats_index);
+        if (rollback_status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to rollback route %s, status %d",
+                    serializedObjectId.c_str(),
+                    rollback_status);
+            return SAI_STATUS_FAILURE;
+        }
+
+        if (rollback_stats_index != UINT32_MAX)
+        {
+            m_routeStatsIndexMap[serializedObjectId] = rollback_stats_index;
+        }
+        else if (old_stats_index != UINT32_MAX)
+        {
+            m_routeStatsIndexMap[serializedObjectId] = old_stats_index;
+            SWSS_LOG_WARN("rollback route %s restored old cached stats index %u because VPP did not return a new index",
+                    serializedObjectId.c_str(),
+                    old_stats_index);
+        }
+
+        return SAI_STATUS_SUCCESS;
+    };
+
+    if (attr->id == SAI_ROUTE_ENTRY_ATTR_COUNTER_ID)
+    {
+        // Read the committed old binding before set_internal persists the new one.
+        sai_object_id_t old_counter_oid = getRouteBoundCounter(serializedObjectId);
+
+        if (attr->value.oid != SAI_NULL_OBJECT_ID &&
+            m_routeStatsIndexMap.find(serializedObjectId) == m_routeStatsIndexMap.end())
+        {
+            SWSS_LOG_ERROR("route %s cannot bind counter %s without a VPP stats index",
+                    serializedObjectId.c_str(),
+                    sai_serialize_object_id(attr->value.oid).c_str());
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+
+        sai_status_t status = setRouteCounterBinding(serializedObjectId, attr->value.oid);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return status;
+        }
+
+        status = set_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            if (setRouteCounterBinding(serializedObjectId, old_counter_oid) != SAI_STATUS_SUCCESS)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+        }
+
+        return status;
+    }
+
     if (is_ip_nbr_active() == true) {
         SWSS_LOG_NOTICE("ip route entry update %s", serializedObjectId.c_str());
         SaiModDBObject route_mod_obj(this, SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, 1, attr);
+        uint32_t stats_index = UINT32_MAX;
+        uint32_t old_stats_index = UINT32_MAX;
+        auto oldStatsIt = m_routeStatsIndexMap.find(serializedObjectId);
+        if (oldStatsIt != m_routeStatsIndexMap.end())
+        {
+            old_stats_index = oldStatsIt->second;
+        }
 
         auto route_db_obj = route_mod_obj.get_db_obj();
         if (!route_db_obj) {
             SWSS_LOG_ERROR("Failed to find SAI_OBJECT_TYPE_ROUTE_ENTRY SaiObject: %s", serializedObjectId.c_str());
             return SAI_STATUS_FAILURE;
-        } else {
-            IpRouteAddRemove(route_db_obj.get(), false);
         }
 
-            IpRouteAddRemove(&route_mod_obj, true);
+        sai_object_id_t counter_oid = getRouteBoundCounter(serializedObjectId);
+        std::map<sai_stat_id_t, uint64_t> old_counter_stats;
+        bool has_old_counter_stats = false;
+        if (counter_oid != SAI_NULL_OBJECT_ID)
+        {
+            auto status = getRouteCounterStats(counter_oid, old_counter_stats);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                return status;
+            }
+            has_old_counter_stats = true;
+        }
+
+        {
+            auto status = IpRouteAddRemove(route_db_obj.get(), false, NULL);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                return status;
+            }
+            m_routeStatsIndexMap.erase(serializedObjectId);
+        }
+
+        auto status = IpRouteAddRemove(&route_mod_obj, true, &stats_index);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            auto rollback_status = rollbackRoute(route_db_obj.get(), NULL, old_stats_index);
+            if (rollback_status != SAI_STATUS_SUCCESS)
+            {
+                return rollback_status;
+            }
+            return status;
+        }
+
+        if (stats_index != UINT32_MAX)
+        {
+            m_routeStatsIndexMap[serializedObjectId] = stats_index;
+        }
+        else if (counter_oid != SAI_NULL_OBJECT_ID)
+        {
+            auto rollback_status = rollbackRoute(route_db_obj.get(), &route_mod_obj, old_stats_index);
+            if (rollback_status != SAI_STATUS_SUCCESS)
+            {
+                return rollback_status;
+            }
+            SWSS_LOG_WARN("route %s cannot keep counter binding because VPP did not return a stats index",
+                    serializedObjectId.c_str());
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+
+        std::map<sai_stat_id_t, uint64_t> new_counter_base;
+        bool has_new_counter_base = false;
+        if (counter_oid != SAI_NULL_OBJECT_ID)
+        {
+            status = getRouteCounterStats(counter_oid, new_counter_base);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                auto rollback_status = rollbackRoute(route_db_obj.get(), &route_mod_obj, old_stats_index);
+                if (rollback_status != SAI_STATUS_SUCCESS)
+                {
+                    return rollback_status;
+                }
+                return status;
+            }
+            has_new_counter_base = true;
+        }
+
+        status = set_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            auto rollback_status = rollbackRoute(route_db_obj.get(), &route_mod_obj, old_stats_index);
+            if (rollback_status != SAI_STATUS_SUCCESS)
+            {
+                return rollback_status;
+            }
+            return status;
+        }
+
+        if (has_new_counter_base)
+        {
+            if (has_old_counter_stats)
+            {
+                carryRouteCounterStatsDelta(counter_oid, old_counter_stats);
+            }
+            m_routeCounterStatsBaseMap[counter_oid] = new_counter_base;
+        }
+
+        return SAI_STATUS_SUCCESS;
     }
 
-    set_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, attr);
+    sai_object_id_t counter_oid = getRouteBoundCounter(serializedObjectId);
+    std::map<sai_stat_id_t, uint64_t> old_counter_stats;
+    bool has_old_counter_stats = false;
+    if (counter_oid != SAI_NULL_OBJECT_ID)
+    {
+        CHECK_STATUS(getRouteCounterStats(counter_oid, old_counter_stats));
+        has_old_counter_stats = true;
+    }
+
+    std::map<sai_stat_id_t, uint64_t> new_counter_base;
+    bool has_new_counter_base = false;
+    if (counter_oid != SAI_NULL_OBJECT_ID)
+    {
+        CHECK_STATUS(getRouteCounterStats(counter_oid, new_counter_base));
+        has_new_counter_base = true;
+    }
+
+    CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, attr));
+
+    if (has_new_counter_base)
+    {
+        if (has_old_counter_stats)
+        {
+            carryRouteCounterStatsDelta(counter_oid, old_counter_stats);
+        }
+        m_routeCounterStatsBaseMap[counter_oid] = new_counter_base;
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -424,12 +834,25 @@ sai_status_t SwitchVpp::removeIpRoute(
             if (isSRv6Nh) {
                 m_tunnel_mgr_srv6.remove_sidlist_route_entry(serializedObjectId, nh_oid);
             } else {
-	            IpRouteAddRemove(route_obj.get(), false);
+                CHECK_STATUS(IpRouteAddRemove(route_obj.get(), false));
             }
 	    }
     }
 
+    // Capture the bound counter before remove_internal tears down the route's
+    // SaiObjectDB relationship, so its base/carry tables can still be cleaned up.
+    // route_obj is the committed object fetched above; reuse it to avoid a
+    // redundant SaiObjectDB lookup.
+    sai_object_id_t counter_oid = getRouteBoundCounter(route_obj.get());
+
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId));
+
+    if (counter_oid != SAI_NULL_OBJECT_ID)
+    {
+        m_routeCounterStatsBaseMap.erase(counter_oid);
+        m_routeCounterStatsCarryMap.erase(counter_oid);
+    }
+    m_routeStatsIndexMap.erase(serializedObjectId);
 
     return SAI_STATUS_SUCCESS;
 }

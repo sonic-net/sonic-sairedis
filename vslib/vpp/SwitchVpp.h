@@ -11,8 +11,15 @@
 #include "CRMTracker.h"
 
 #include "vppxlate/SaiVppXlate.h"
+#include "vppxlate/SaiRouteStats.h"
 
 #include <list>
+#include <map>
+#include <unordered_map>
+#include <mutex>
+#include <chrono>
+#include <functional>
+#include <queue>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -88,6 +95,86 @@ namespace saivs
             void setPortStats(
                     _In_ sai_object_id_t oid);
 
+            sai_status_t getRouteStatsExt(
+                    _In_ sai_object_id_t oid,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Out_ uint64_t *counters);
+
+            sai_status_t getRouteCounterStats(
+                    _In_ sai_object_id_t oid,
+                    _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
+                    _In_ bool allow_cache = false);
+
+            // Resolve the counter currently bound to a route via the SaiObjectDB
+            // relationship (route's SAI_ROUTE_ENTRY_ATTR_COUNTER_ID). Returns
+            // SAI_NULL_OBJECT_ID when the route is unbound or absent.
+            sai_object_id_t getRouteBoundCounter(
+                    _In_ const std::string& serializedRouteId);
+
+            // Overload for callers that already hold the committed route object,
+            // avoiding a redundant SaiObjectDB lookup. The object must be the
+            // committed SaiObjectDB object (e.g. from get_sai_object), not an
+            // in-flight cached object, so the bound counter reflects DB state.
+            sai_object_id_t getRouteBoundCounter(
+                    _In_ const SaiObject* route_obj);
+
+            // Resolve the single route bound to a counter via the SaiObjectDB
+            // child relationship. The counter<->route binding is kept 1:1, so at
+            // most one route is expected. Returns false when no route is bound.
+            bool getCounterBoundRoute(
+                    _In_ sai_object_id_t counter_oid,
+                    _Out_ std::string& route);
+
+            // Read VPP route stats for a stats index and fill packets/bytes into
+            // the stats map. Returns SAI_STATUS_SUCCESS or SAI_STATUS_FAILURE.
+            sai_status_t readRouteStatsByIndex(
+                    _In_ uint32_t stats_index,
+                    _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
+                    _In_ bool allow_cache = false);
+
+            // Read VPP route stats for a single stats index. When allow_cache is
+            // true the value is served from a short-lived full-dump cache so a
+            // FlexCounter polling cycle does one VPP dump instead of one per
+            // counter. Returns 0 on success, -ENOENT if the index is absent from
+            // a fresh dump, or -EIO on dump failure.
+            int getRouteStatsFromCache(
+                    _In_ uint32_t stats_index,
+                    _Out_ vpp_route_stats_t *stats);
+
+            uint64_t getRouteCounterDelta(
+                    _In_ sai_object_id_t oid,
+                    _In_ sai_stat_id_t id,
+                    _In_ uint64_t current,
+                    _In_ uint64_t base);
+
+            void carryRouteCounterStatsDelta(
+                    _In_ sai_object_id_t oid,
+                    _In_ const std::map<sai_stat_id_t, uint64_t>& stats);
+
+            void recordRouteStatsIndexAndResetBase(
+                    _In_ const std::string& route,
+                    _In_ uint32_t stats_index,
+                    _In_ bool has_old_counter_stats,
+                    _In_ const std::map<sai_stat_id_t, uint64_t>& old_counter_stats);
+
+            sai_status_t buildNhgMember(
+                    _In_ const SaiObject& nhg_mbr_obj,
+                    _Out_ nexthop_grp_member_t& member);
+
+            void updateRoutesForNhgMember(
+                    _In_ const std::unordered_map<std::string, std::shared_ptr<SaiObject>>& routes,
+                    _Inout_ nexthop_grp_member_t& member,
+                    _In_ bool isAdd);
+
+            sai_status_t setRouteCounterBinding(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_object_id_t counter_oid);
+
+            void removeRouteCounterBinding(
+                    _In_ const std::string &serializedObjectId);
+
             bool port_to_hostif_list(
                     _In_ sai_object_id_t oid,
                     _Inout_ std::string& if_name);
@@ -121,6 +208,23 @@ namespace saivs
                     _Out_ uint64_t *counters) override;
 
             virtual void processFdbEntriesForAging() override;
+
+        public:
+
+            // Key for the m_vpp_fdb_entries snapshot map.
+            // Uniquely identifies an L2FIB entry within VPP: a MAC address
+            // learned on a specific bridge domain (bd_id == SAI VLAN ID).
+            // Used to detect LEARNED/AGED/MOVE events by diffing VPP push
+            // notifications against the previously-known state.
+            struct VppFdbKey {
+                uint8_t mac[6];   // source MAC address
+                uint32_t bd_id;   // VPP bridge domain ID (equals SAI VLAN ID)
+                bool operator<(const VppFdbKey &o) const {
+                    int r = memcmp(mac, o.mac, 6);
+                    if (r != 0) return r < 0;
+                    return bd_id < o.bd_id;
+                }
+            };
 
         public:
 
@@ -636,12 +740,14 @@ namespace saivs
 
             sai_status_t IpRouteAddRemove(
                     _In_ const SaiObject* route_obj,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _Out_ uint32_t *stats_index = nullptr);
 
             sai_status_t IpRoutePathAddRemove(
                     _In_ const SaiObject* route_obj,
                     _In_ nexthop_grp_member_t *member,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _Out_ uint32_t *stats_index = nullptr);
 
             sai_status_t updateIpRoute(
                     _In_ const std::string &serializedObjectId,
@@ -677,6 +783,16 @@ namespace saivs
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_mbr_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
+            std::map<std::string, uint32_t> m_routeStatsIndexMap;
+            std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsBaseMap;
+            std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsCarryMap;
+
+            // Short-lived cache of a full "/net/route/to" dump, keyed by VPP stats
+            // index, used by the FlexCounter polling path (getRouteStatsFromCache).
+            std::unordered_map<uint32_t, vpp_route_stats_t> m_routeStatsCache;
+            std::chrono::steady_clock::time_point m_routeStatsCacheTime;
+            bool m_routeStatsCacheValid = false;
+            std::mutex m_routeStatsCacheMutex;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
@@ -945,6 +1061,10 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) override;
 
+            // Set the callback to wake the FDB aging thread immediately on MAC events.
+            void initFdbEventHandling(std::function<void()> fn) override;
+            void deinitFdbEventHandling() override;
+
         protected: // VPP
             typedef struct platform_bond_info_ {
                 uint32_t sw_if_index;
@@ -989,7 +1109,71 @@ namespace saivs
 
             BitResourcePool dynamic_bd_id_pool = BitResourcePool(dynamic_bd_id_pool_size, dynamic_bd_id_base);
 
-            std::set<FdbInfo> m_fdb_info_set;
+            // Snapshot of VPP L2FIB: {mac, bd_id} -> sw_if_index.
+            // Kept in sync with MAC events from VPP to support flush operations
+            // and de-duplication of events.
+            std::map<VppFdbKey, uint32_t> m_vpp_fdb_entries;
+
+            // Cache: VPP sw_if_index -> SAI port OID, built from FDB learn events.
+            // Avoids per-entry VPP API calls in vpp_fdb_entries_invalidate_by_port().
+            // Invalidated per sw_if_index on port-leave via swif_bdid_untrack(),
+            // since VPP recycles sw_if_index values after an interface is deleted.
+            std::unordered_map<uint32_t, sai_object_id_t> m_swif_to_port_id;
+
+            // Maps VPP sw_if_index -> bridge domain ID.
+            // Maintained when ports are added/removed from bridge domains.
+            // Required because l2_macs_event carries sw_if_index but not bd_id.
+            std::map<uint32_t, uint32_t> m_swif_to_bdid;
+
+            // MAC event queue — thread boundary between VPP and saivpp.
+            //
+            // Producer: VPP API receive thread via staticMacEventCb()
+            //   -> vl_api_l2_macs_event_t_handler (holds VPP_LOCK, not m_apimutex)
+            //   -> onVppMacEvent() pushes to queue and signals m_fdbAgingWakeEvent
+            //
+            // Consumer: FDB aging thread via processFdbEntriesForAging()
+            //   -> woken by m_fdbAgingWakeEvent (~10ms after VPP event)
+            //   -> drains queue under m_apimutex
+            //   -> calls generateFdbLearnedOrMoveEvent / generateFdbAgedEvent
+            //
+            // Protected by m_mac_event_queue_mutex (separate from m_apimutex).
+            struct VppMacEvent {
+                uint8_t  mac[6];
+                uint32_t sw_if_index;
+                uint8_t  action; // 0=ADD(learn), 1=DELETE(age), 2=MOVE
+            };
+            std::mutex              m_mac_event_queue_mutex;
+            std::queue<VppMacEvent> m_mac_event_queue;
+
+            // Called from VPP API receive thread via vpp_want_l2_macs_events2 callback.
+            // Enqueues events for safe processing under m_apimutex.
+
+            // Static trampoline registered as vpp_mac_event_cb_fn.
+            // Receives the entire batch from a single l2_macs_event message.
+            static void staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
+
+            // Optional callback to wake the FDB aging thread immediately when
+            // MAC events are enqueued (set by Sai after starting aging thread).
+            std::function<void()> m_fdbAgingWakeFn;
+
+            bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
+            bool generateFdbAgedEvent(const VppFdbKey &key);
+            sai_object_id_t getPortIdFromSwIfIndex(uint32_t sw_if_index);
+
+            // Cache-first resolution of sw_if_index -> SAI port OID.
+            // On a cache miss, falls back to the VPP API lookup and memoizes the result.
+            // Defined inline in SwitchVppFdb.cpp (its only translation unit).
+            sai_object_id_t resolvePortIdFromSwIfIndex(uint32_t sw_if_index);
+
+            void vpp_fdb_entries_invalidate_all();
+            void vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id);
+            void vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id);
+
+            // Track/untrack sw_if_index→bd_id when ports join/leave bridge domains.
+            // Untrack also invalidates the m_swif_to_port_id cache for that
+            // sw_if_index, since both per-swif caches share the same lifecycle.
+            void swif_bdid_track(const char *hwif_name, uint32_t bd_id);
+            void swif_bdid_untrack(const char *hwif_name);
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 

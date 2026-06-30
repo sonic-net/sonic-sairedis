@@ -94,7 +94,8 @@ libSaiVS_a_SOURCES +=\
 					  vpp/vppxlate/SaiVppXlate.c \
 					  vpp/vppxlate/SaiVppStats.c \
 					  vpp/vppxlate/SaiAclStats.c \
-					  vpp/vppxlate/SaiIntfStats.c
+					  vpp/vppxlate/SaiIntfStats.c \
+					  vpp/vppxlate/SaiRouteStats.c
 endif
 
 BUILT_SOURCES = sai_vs.cpp

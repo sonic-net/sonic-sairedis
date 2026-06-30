@@ -15,6 +15,15 @@
 
 using namespace saivs;
 
+static constexpr uint8_t SONIC_BFD_DEFAULT_TOS = 192;
+
+// VPP's BFD dataplane stamps every emitted packet with bfd_main.tos,
+// a single global written by the bfd_udp_set_tos API; there is no
+// per-session TOS in VPP today. Track the last value we programmed so
+// we can (a) skip redundant RPCs and (b) warn the operator when
+// concurrent sessions request mismatched values.
+static int s_last_bfd_tos = -1;
+
 sai_status_t SwitchVpp::bfd_session_add(
     _In_ const std::string &serializedObjectId,
     _In_ sai_object_id_t switch_id,
@@ -167,6 +176,13 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
         multihop = attr->value.booldata;
     }
 
+    uint8_t tos = SONIC_BFD_DEFAULT_TOS;
+    attr = sai_metadata_get_attr_by_id(SAI_BFD_SESSION_ATTR_TOS, attr_count, attr_list);
+    if (attr)
+    {
+        tos = attr->value.u8;
+    }
+
     const char *hwif_name = NULL;
     if (!multihop) {
         /* Attribute#7 */
@@ -212,6 +228,29 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
 
     if (multihop || hwif_name) {
         SWSS_LOG_NOTICE("BFD session create request sent to VS, hwif: %s, multihop: %d, oid: %ld",  hwif_name, multihop, bfd_oid);
+        /* VPP exposes only a global BFD TOS; sync it before adding a
+         * session that disagrees with the last-programmed value. Warn
+         * (but proceed) when active sessions had a different TOS --
+         * VPP applies the latest globally, which implicitly retags
+         * those too. */
+        {
+            BFD_MUTEX;
+            if (s_last_bfd_tos != static_cast<int>(tos))
+            {
+                if (s_last_bfd_tos != -1 && !m_bfd_info_map.empty())
+                {
+                    SWSS_LOG_WARN("BFD session oid %ld requests TOS 0x%02x but %zu existing "
+                                  "session(s) were programmed with TOS 0x%02x. VPP applies "
+                                  "BFD TOS globally; the new value will affect ALL sessions.",
+                                  bfd_oid, tos, m_bfd_info_map.size(),
+                                  static_cast<uint8_t>(s_last_bfd_tos));
+                }
+                if (bfd_udp_set_tos(tos) >= 0)
+                {
+                    s_last_bfd_tos = tos;
+                }
+            }
+        }
         /*vpp call to add bfd session*/
         ret = bfd_udp_add(multihop, hwif_name, &vpp_local_addr, &vpp_peer_addr, detect_mult, required_min_tx, required_min_rx);
         if (ret >= 0)

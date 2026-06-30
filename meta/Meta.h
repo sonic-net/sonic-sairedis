@@ -429,6 +429,10 @@ namespace saimeta
             bool objectExists(
                     _In_ const sai_object_meta_key_t& mk) const;
 
+            bool objectHasAttribute(
+                    _In_ const sai_object_meta_key_t& mk,
+                    _In_ sai_attr_id_t attr_id) const;
+
         private: // port helpers
 
             sai_status_t meta_port_remove_validation(

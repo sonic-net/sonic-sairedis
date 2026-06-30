@@ -1379,215 +1379,481 @@ TEST(Meta, bulk_dash_outbound_ca_to_pa_entry)
 }
 
 
-// ---------------------------------------------------------------------------
-// DashMeta behavior tests.
-// ---------------------------------------------------------------------------
-
 #include "DashMeta.h"
+#include "sai_serialize.h"
+
+// ---------------------------------------------------------------------------
+// Typed DASH-entry tests.
+//
+// One traits struct per SAI DASH entry type. The same suite of TYPED_TESTs
+// then runs against every entry listed in DashEntryTypes below. To cover a
+// new DASH entry type, add a Traits struct exposing the static members used
+// here and append it to DashEntryTypes.
+// ---------------------------------------------------------------------------
 
 namespace
 {
-    constexpr sai_object_type_t kDashEntryType =
-        (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY;
-
-    bool dashBypassActive()
+    struct InboundRoutingTraits
     {
-        // SWSS_LOG_ENTER() is disabled for performance reasons
-        return bypassValidation(kDashEntryType);
-    }
+        using entry_t = sai_inbound_routing_entry_t;
+        static constexpr sai_object_type_t object_type =
+            (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY;
+
+        struct Ctx { sai_object_id_t switchid, vnet, eni; };
+
+        static Ctx setUp(Meta& m)
+        {
+            SWSS_LOG_ENTER();
+            Ctx c{};
+            c.switchid = create_switch(m);
+            c.vnet = create_vnet(m, c.switchid, 10);
+            c.eni = create_eni(m, c.switchid, c.vnet);
+            return c;
+        }
+
+        static void tearDown(Meta& m, Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            remove_eni(m, c.eni);
+            remove_vnet(m, c.vnet);
+        }
+
+        static entry_t makeEntry(const Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            sai_ip_address_t sip{}, mask{};
+            sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            inet_pton(AF_INET, "192.168.0.1", &sip.addr.ip4);
+            mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            inet_pton(AF_INET, "255.255.255.0", &mask.addr.ip4);
+            return { c.switchid, c.eni, 10, sip, mask, 1 };
+        }
+
+        static sai_object_meta_key_t metaKey(const entry_t& e)
+        {
+            SWSS_LOG_ENTER();
+            sai_object_meta_key_t k{};
+            k.objecttype = object_type;
+            k.objectkey.key.inbound_routing_entry = e;
+            return k;
+        }
+
+        static std::vector<sai_attribute_t> createAttrs(const Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            std::vector<sai_attribute_t> attrs;
+            sai_attribute_t a{};
+
+            a.id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
+            a.value.s32 = SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP_PA_VALIDATE;
+            attrs.push_back(a);
+
+            a = {};
+            a.id = SAI_INBOUND_ROUTING_ENTRY_ATTR_SRC_VNET_ID;
+            a.value.oid = c.vnet;
+            attrs.push_back(a);
+
+            return attrs;
+        }
+
+        // OID referenced by an attribute in createAttrs(); meta layer should
+        // bump its refcount on create and block its removal until entry remove.
+        static sai_object_id_t referencedOid(const Ctx& c) { return c.vnet; }
+        static sai_object_type_t referencedOidType()
+        {
+            SWSS_LOG_ENTER();
+            return (sai_object_type_t)SAI_OBJECT_TYPE_VNET;
+        }
+    };
+
+    struct PaValidationTraits
+    {
+        using entry_t = sai_pa_validation_entry_t;
+        static constexpr sai_object_type_t object_type =
+            (sai_object_type_t)SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY;
+
+        struct Ctx { sai_object_id_t switchid, vnet; };
+
+        static Ctx setUp(Meta& m)
+        {
+            SWSS_LOG_ENTER();
+            Ctx c{};
+            c.switchid = create_switch(m);
+            c.vnet = create_vnet(m, c.switchid, 10);
+            return c;
+        }
+
+        static void tearDown(Meta& m, Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            remove_vnet(m, c.vnet);
+        }
+
+        static entry_t makeEntry(const Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            entry_t e{};
+            e.switch_id = c.switchid;
+            e.vnet_id = c.vnet;
+            e.sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            inet_pton(AF_INET, "192.3.3.3", &e.sip.addr.ip4);
+            return e;
+        }
+
+        static sai_object_meta_key_t metaKey(const entry_t& e)
+        {
+            SWSS_LOG_ENTER();
+            sai_object_meta_key_t k{};
+            k.objecttype = object_type;
+            k.objectkey.key.pa_validation_entry = e;
+            return k;
+        }
+
+        static std::vector<sai_attribute_t> createAttrs(const Ctx&)
+        {
+            SWSS_LOG_ENTER();
+            sai_attribute_t a{};
+            a.id = SAI_PA_VALIDATION_ENTRY_ATTR_ACTION;
+            a.value.s32 = SAI_PA_VALIDATION_ENTRY_ACTION_PERMIT;
+            return { a };
+        }
+
+        // PA validation entry has no OID-typed attribute; OID-attr-based
+        // refcount/in-use tests are skipped for this type.
+        static sai_object_id_t referencedOid(const Ctx&) { return SAI_NULL_OBJECT_ID; }
+        static sai_object_type_t referencedOidType() { return SAI_OBJECT_TYPE_NULL; }
+    };
+
+    struct OutboundRoutingTraits
+    {
+        using entry_t = sai_outbound_routing_entry_t;
+        static constexpr sai_object_type_t object_type =
+            (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY;
+
+        struct Ctx { sai_object_id_t switchid, vnet, group, counter; };
+
+        static Ctx setUp(Meta& m)
+        {
+            SWSS_LOG_ENTER();
+            Ctx c{};
+            c.switchid = create_switch(m);
+            c.vnet = create_vnet(m, c.switchid, 101);
+            c.group = create_outbound_routing_group(m, c.switchid, false);
+            c.counter = create_counter(m, c.switchid);
+            return c;
+        }
+
+        static void tearDown(Meta& m, Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            remove_outbound_routing_group(m, c.group);
+            remove_vnet(m, c.vnet);
+            remove_counter(m, c.counter);
+        }
+
+        static entry_t makeEntry(const Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            entry_t e{};
+            e.switch_id = c.switchid;
+            e.outbound_routing_group_id = c.group;
+            e.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            inet_pton(AF_INET, "192.168.1.0", &e.destination.addr.ip4);
+            inet_pton(AF_INET, "255.255.255.0", &e.destination.mask.ip4);
+            return e;
+        }
+
+        static sai_object_meta_key_t metaKey(const entry_t& e)
+        {
+            SWSS_LOG_ENTER();
+            sai_object_meta_key_t k{};
+            k.objecttype = object_type;
+            k.objectkey.key.outbound_routing_entry = e;
+            return k;
+        }
+
+        static std::vector<sai_attribute_t> createAttrs(const Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            std::vector<sai_attribute_t> attrs;
+            sai_attribute_t a{};
+
+            a.id = SAI_OUTBOUND_ROUTING_ENTRY_ATTR_ACTION;
+            a.value.u32 = SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_VNET;
+            attrs.push_back(a);
+
+            a = {};
+            a.id = SAI_OUTBOUND_ROUTING_ENTRY_ATTR_DST_VNET_ID;
+            a.value.oid = c.vnet;
+            attrs.push_back(a);
+
+            a = {};
+            a.id = SAI_OUTBOUND_ROUTING_ENTRY_ATTR_COUNTER_ID;
+            a.value.oid = c.counter;
+            attrs.push_back(a);
+
+            return attrs;
+        }
+
+        // DST_VNET_ID attribute references the VNET.
+        static sai_object_id_t referencedOid(const Ctx& c) { return c.vnet; }
+        static sai_object_type_t referencedOidType()
+        {
+            SWSS_LOG_ENTER();
+            return (sai_object_type_t)SAI_OBJECT_TYPE_VNET;
+        }
+    };
+
+    struct OutboundCaToPaTraits
+    {
+        using entry_t = sai_outbound_ca_to_pa_entry_t;
+        static constexpr sai_object_type_t object_type =
+            (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY;
+
+        struct Ctx { sai_object_id_t switchid, vnet, counter; };
+
+        static Ctx setUp(Meta& m)
+        {
+            SWSS_LOG_ENTER();
+            Ctx c{};
+            c.switchid = create_switch(m);
+            c.vnet = create_vnet(m, c.switchid, 10);
+            c.counter = create_counter(m, c.switchid);
+            return c;
+        }
+
+        static void tearDown(Meta& m, Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            remove_vnet(m, c.vnet);
+            remove_counter(m, c.counter);
+        }
+
+        static entry_t makeEntry(const Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            entry_t e{};
+            e.switch_id = c.switchid;
+            e.dst_vnet_id = c.vnet;
+            e.dip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            inet_pton(AF_INET, "192.168.0.1", &e.dip.addr.ip4);
+            return e;
+        }
+
+        static sai_object_meta_key_t metaKey(const entry_t& e)
+        {
+            SWSS_LOG_ENTER();
+            sai_object_meta_key_t k{};
+            k.objecttype = object_type;
+            k.objectkey.key.outbound_ca_to_pa_entry = e;
+            return k;
+        }
+
+        static std::vector<sai_attribute_t> createAttrs(const Ctx& c)
+        {
+            SWSS_LOG_ENTER();
+            std::vector<sai_attribute_t> attrs;
+            sai_attribute_t a{};
+
+            a.id = SAI_OUTBOUND_CA_TO_PA_ENTRY_ATTR_UNDERLAY_DIP;
+            a.value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            inet_pton(AF_INET, "192.168.0.1", &a.value.ipaddr.addr.ip4);
+            attrs.push_back(a);
+
+            a = {};
+            a.id = SAI_OUTBOUND_CA_TO_PA_ENTRY_ATTR_OVERLAY_DMAC;
+            sai_mac_t dmac = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 };
+            memcpy(a.value.mac, dmac, sizeof(dmac));
+            attrs.push_back(a);
+
+            a = {};
+            a.id = SAI_OUTBOUND_CA_TO_PA_ENTRY_ATTR_COUNTER_ID;
+            a.value.oid = c.counter;
+            attrs.push_back(a);
+
+            return attrs;
+        }
+
+        // COUNTER_ID attribute references the counter.
+        static sai_object_id_t referencedOid(const Ctx& c) { return c.counter; }
+        static sai_object_type_t referencedOidType() { return SAI_OBJECT_TYPE_COUNTER; }
+    };
 }
 
-TEST(DashMeta, dashEntryCreate_ObjectCachingMatchesPolicy)
+template <typename T>
+class DashMetaTypedTest : public ::testing::Test {};
+
+using DashEntryTypes = ::testing::Types<
+    InboundRoutingTraits,
+    PaValidationTraits,
+    OutboundRoutingTraits,
+    OutboundCaToPaTraits>;
+
+TYPED_TEST_SUITE(DashMetaTypedTest, DashEntryTypes);
+
+TYPED_TEST(DashMetaTypedTest, CreateThenRemove)
 {
+    using T = TypeParam;
     Meta m(std::make_shared<MetaTestSaiInterface>());
 
-    sai_object_id_t switchid = create_switch(m);
-    sai_object_id_t vnet = create_vnet(m, switchid, 10);
-    sai_object_id_t eni = create_eni(m, switchid, vnet);
+    auto ctx = T::setUp(m);
+    auto entry = T::makeEntry(ctx);
+    auto attrs = T::createAttrs(ctx);
 
-    sai_ip_address_t sip, sip_mask;
-    sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    inet_pton(AF_INET, "192.168.0.1", &sip.addr.ip4);
-    sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    inet_pton(AF_INET, "255.255.255.0", &sip_mask.addr.ip4);
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              m.create(&entry, (uint32_t)attrs.size(), attrs.data()))
+            << "type=" << sai_serialize_object_type(T::object_type).c_str();
 
-    sai_inbound_routing_entry_t entry = {
-        .switch_id = switchid, .eni_id = eni, .vni = 10,
-        .sip = sip, .sip_mask = sip_mask, .priority = 1
-    };
-
-    sai_attribute_t attr;
-    attr.id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
-    attr.value.s32 = SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP;
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, 1, &attr));
-
-    sai_object_meta_key_t meta_key = {
-        .objecttype = kDashEntryType,
-        .objectkey = { .key = { .inbound_routing_entry = entry } }
-    };
-
-    EXPECT_EQ(!dashBypassActive(), m.objectExists(meta_key))
-            << "policy=" << dashCacheModeName();
+    const auto key = T::metaKey(entry);
+    const bool bypass = bypassValidation(T::object_type);
+    EXPECT_EQ(!bypass, m.objectExists(key))
+            << "type=" << sai_serialize_object_type(T::object_type).c_str()
+            << " policy=" << dashCacheModeName();
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
+    EXPECT_FALSE(m.objectExists(key));
 
-    EXPECT_FALSE(m.objectExists(meta_key));
-
-    remove_eni(m, eni);
-    remove_vnet(m, vnet);
+    T::tearDown(m, ctx);
 }
 
-TEST(DashMeta, dashEntryCreate_OidReferenceCountMatchesPolicy)
+TYPED_TEST(DashMetaTypedTest, DuplicateCreateMatchesPolicy)
 {
+    using T = TypeParam;
     Meta m(std::make_shared<MetaTestSaiInterface>());
 
-    sai_object_id_t switchid = create_switch(m);
-    sai_object_id_t vnet = create_vnet(m, switchid, 10);
-    sai_object_id_t eni = create_eni(m, switchid, vnet);
+    auto ctx = T::setUp(m);
+    auto entry = T::makeEntry(ctx);
+    auto attrs = T::createAttrs(ctx);
 
-    const int32_t vnet_refs_before = m.getObjectReferenceCount(vnet);
-    EXPECT_EQ(1, vnet_refs_before);
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              m.create(&entry, (uint32_t)attrs.size(), attrs.data()));
 
-    sai_ip_address_t sip, sip_mask;
-    sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    inet_pton(AF_INET, "192.168.0.1", &sip.addr.ip4);
-    sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    inet_pton(AF_INET, "255.255.255.0", &sip_mask.addr.ip4);
-
-    sai_inbound_routing_entry_t entry = {
-        .switch_id = switchid, .eni_id = eni, .vni = 10,
-        .sip = sip, .sip_mask = sip_mask, .priority = 1
-    };
-
-    sai_attribute_t attrs[2];
-    attrs[0].id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
-    attrs[0].value.s32 = SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP_PA_VALIDATE;
-    attrs[1].id = SAI_INBOUND_ROUTING_ENTRY_ATTR_SRC_VNET_ID;
-    attrs[1].value.oid = vnet;
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, 2, attrs));
-
-    const int32_t expected_delta = dashBypassActive() ? 0 : 1;
-    EXPECT_EQ(vnet_refs_before + expected_delta, m.getObjectReferenceCount(vnet))
-            << "policy=" << dashCacheModeName();
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
-
-    EXPECT_EQ(vnet_refs_before, m.getObjectReferenceCount(vnet));
-
-    remove_eni(m, eni);
-    remove_vnet(m, vnet);
-}
-
-TEST(DashMeta, dashEntryRemove_MissingResultMatchesPolicy)
-{
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-    sai_object_id_t vnet = create_vnet(m, switchid, 99);
-    sai_object_id_t eni = create_eni(m, switchid, vnet);
-
-    sai_ip_address_t sip, sip_mask;
-    sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    inet_pton(AF_INET, "10.0.0.1", &sip.addr.ip4);
-    sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    inet_pton(AF_INET, "255.255.255.255", &sip_mask.addr.ip4);
-
-    sai_inbound_routing_entry_t entry = {
-        .switch_id = switchid, .eni_id = eni, .vni = 99,
-        .sip = sip, .sip_mask = sip_mask, .priority = 1
-    };
-
-    const sai_status_t expected = dashBypassActive()
-        ? SAI_STATUS_SUCCESS
-        : SAI_STATUS_ITEM_NOT_FOUND;
-
-    EXPECT_EQ(expected, m.remove(&entry))
-            << "policy=" << dashCacheModeName();
-
-    remove_eni(m, eni);
-    remove_vnet(m, vnet);
-}
-
-TEST(DashMeta, dashEntryCreate_DuplicateResultMatchesPolicy)
-{
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-    sai_object_id_t vnet = create_vnet(m, switchid, 10);
-    sai_object_id_t eni = create_eni(m, switchid, vnet);
-
-    sai_ip_address_t sip, sip_mask;
-    sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    inet_pton(AF_INET, "192.168.0.1", &sip.addr.ip4);
-    sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    inet_pton(AF_INET, "255.255.255.0", &sip_mask.addr.ip4);
-
-    sai_inbound_routing_entry_t entry = {
-        .switch_id = switchid, .eni_id = eni, .vni = 10,
-        .sip = sip, .sip_mask = sip_mask, .priority = 1
-    };
-
-    sai_attribute_t attr;
-    attr.id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
-    attr.value.s32 = SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP;
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, 1, &attr));
-
-    const sai_status_t expected = dashBypassActive()
+    const bool bypass = bypassValidation(T::object_type);
+    const sai_status_t expected = bypass
         ? SAI_STATUS_SUCCESS
         : SAI_STATUS_ITEM_ALREADY_EXISTS;
-
-    EXPECT_EQ(expected, m.create(&entry, 1, &attr))
-            << "policy=" << dashCacheModeName();
+    EXPECT_EQ(expected,
+              m.create(&entry, (uint32_t)attrs.size(), attrs.data()))
+            << "type=" << sai_serialize_object_type(T::object_type).c_str()
+            << " policy=" << dashCacheModeName();
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
-    remove_eni(m, eni);
-    remove_vnet(m, vnet);
+    T::tearDown(m, ctx);
 }
 
-TEST(DashMeta, dashEntryVnetRemoveProtectionMatchesPolicy)
+TYPED_TEST(DashMetaTypedTest, RemoveMissingMatchesPolicy)
 {
+    using T = TypeParam;
     Meta m(std::make_shared<MetaTestSaiInterface>());
 
-    sai_object_id_t switchid = create_switch(m);
-    sai_object_id_t vnet = create_vnet(m, switchid, 10);
-    sai_object_id_t eni = create_eni(m, switchid, vnet);
+    auto ctx = T::setUp(m);
+    auto entry = T::makeEntry(ctx);
 
-    sai_ip_address_t sip, sip_mask;
-    sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    inet_pton(AF_INET, "192.168.0.1", &sip.addr.ip4);
-    sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    inet_pton(AF_INET, "255.255.255.0", &sip_mask.addr.ip4);
+    const bool bypass = bypassValidation(T::object_type);
+    const sai_status_t expected = bypass
+        ? SAI_STATUS_SUCCESS
+        : SAI_STATUS_ITEM_NOT_FOUND;
+    EXPECT_EQ(expected, m.remove(&entry))
+            << "type=" << sai_serialize_object_type(T::object_type).c_str()
+            << " policy=" << dashCacheModeName();
 
-    sai_inbound_routing_entry_t entry = {
-        .switch_id = switchid, .eni_id = eni, .vni = 10,
-        .sip = sip, .sip_mask = sip_mask, .priority = 1
-    };
+    T::tearDown(m, ctx);
+}
 
-    sai_attribute_t attrs[2];
-    attrs[0].id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
-    attrs[0].value.s32 = SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP_PA_VALIDATE;
-    attrs[1].id = SAI_INBOUND_ROUTING_ENTRY_ATTR_SRC_VNET_ID;
-    attrs[1].value.oid = vnet;
+TYPED_TEST(DashMetaTypedTest, ReferencedOidRefcountMatchesPolicy)
+{
+    using T = TypeParam;
+    Meta m(std::make_shared<MetaTestSaiInterface>());
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, 2, attrs));
+    auto ctx = T::setUp(m);
+    const sai_object_id_t ref = T::referencedOid(ctx);
+    if (ref == SAI_NULL_OBJECT_ID) {
+        T::tearDown(m, ctx);
+        GTEST_SKIP() << "type=" << sai_serialize_object_type(T::object_type).c_str()
+                     << " has no OID-typed attribute to track";
+    }
 
-    const int32_t expected_refs_with_entry = dashBypassActive() ? 1 : 2;
-    EXPECT_EQ(expected_refs_with_entry, m.getObjectReferenceCount(vnet))
-            << "policy=" << dashCacheModeName();
+    auto entry = T::makeEntry(ctx);
+    auto attrs = T::createAttrs(ctx);
+    const int32_t before = m.getObjectReferenceCount(ref);
 
-    EXPECT_EQ(SAI_STATUS_OBJECT_IN_USE,
-              m.remove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet));
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              m.create(&entry, (uint32_t)attrs.size(), attrs.data()));
+
+    const bool bypass = bypassValidation(T::object_type);
+    const int32_t expected_delta = bypass ? 0 : 1;
+    EXPECT_EQ(before + expected_delta, m.getObjectReferenceCount(ref))
+            << "type=" << sai_serialize_object_type(T::object_type).c_str()
+            << " policy=" << dashCacheModeName();
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
+    EXPECT_EQ(before, m.getObjectReferenceCount(ref));
 
-    EXPECT_EQ(1, m.getObjectReferenceCount(vnet));
-    EXPECT_EQ(SAI_STATUS_OBJECT_IN_USE,
-              m.remove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet));
+    T::tearDown(m, ctx);
+}
 
-    remove_eni(m, eni);
-    EXPECT_EQ(0, m.getObjectReferenceCount(vnet));
-    remove_vnet(m, vnet);
+TYPED_TEST(DashMetaTypedTest, ReferencedOidRemoveProtectedMatchesPolicy)
+{
+    using T = TypeParam;
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    auto ctx = T::setUp(m);
+    const sai_object_id_t ref = T::referencedOid(ctx);
+    if (ref == SAI_NULL_OBJECT_ID) {
+        T::tearDown(m, ctx);
+        GTEST_SKIP() << "type=" << sai_serialize_object_type(T::object_type).c_str()
+                     << " has no OID-typed attribute to track";
+    }
+
+    auto entry = T::makeEntry(ctx);
+    auto attrs = T::createAttrs(ctx);
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              m.create(&entry, (uint32_t)attrs.size(), attrs.data()));
+
+    const bool bypass = bypassValidation(T::object_type);
+    if (!bypass) {
+        // Under non-bypass policies the entry's OID-attribute reference must
+        // block removal of the referenced object until the entry is gone.
+        // Under bypass the destructive remove is skipped so tearDown still
+        // owns cleanup; refcount behavior is already covered by the previous
+        // test.
+        EXPECT_EQ(SAI_STATUS_OBJECT_IN_USE,
+                  m.remove(T::referencedOidType(), ref))
+                << "type=" << sai_serialize_object_type(T::object_type).c_str()
+                << " policy=" << dashCacheModeName();
+    }
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
+    T::tearDown(m, ctx);
+}
+
+TYPED_TEST(DashMetaTypedTest, AttributeCachingMatchesPolicy)
+{
+    using T = TypeParam;
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    auto ctx = T::setUp(m);
+    auto entry = T::makeEntry(ctx);
+    auto attrs = T::createAttrs(ctx);
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              m.create(&entry, (uint32_t)attrs.size(), attrs.data()));
+
+    const auto key = T::metaKey(entry);
+
+    for (const auto& a : attrs)
+    {
+        auto mdp = sai_metadata_get_attr_metadata(T::object_type, a.id);
+        ASSERT_NE(nullptr, mdp);
+        const bool expected = shouldCacheAttribute(T::object_type, *mdp);
+        EXPECT_EQ(expected, m.objectHasAttribute(key, a.id))
+                << "type=" << sai_serialize_object_type(T::object_type).c_str()
+                << " attr=" << mdp->attridname
+                << " isoidattribute=" << mdp->isoidattribute
+                << " policy=" << dashCacheModeName();
+    }
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
+    T::tearDown(m, ctx);
 }

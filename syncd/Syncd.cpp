@@ -40,6 +40,7 @@
 
 #include <iterator>
 #include <algorithm>
+#include <cmath>
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 #define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
@@ -56,6 +57,23 @@ using namespace std::placeholders;
 #define WD_DELAY_FACTOR 1
 #endif
 
+
+std::string serializePortVids(const std::vector<sai_port_oper_status_notification_t>& notifications)
+{
+    SWSS_LOG_ENTER();
+
+    std::string portVids;
+    portVids.reserve(notifications.size() * 24);
+
+    for (size_t i = 0; i < notifications.size(); ++i)
+    {
+        if (i > 0) portVids += ", ";
+        portVids += sai_serialize_object_id(notifications[i].port_id);
+    }
+
+    return portVids;
+}
+
 Syncd::Syncd(
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ std::shared_ptr<CommandLineOptions> cmd,
@@ -67,7 +85,8 @@ Syncd::Syncd(
     m_vendorSai(vendorSai),
     m_veryFirstRun(false),
     m_enableSyncMode(false),
-    m_timerWatchdog(cmd->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR)
+    m_timerWatchdog(cmd->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR),
+    m_runDampingTimerThread(false)
 {
     SWSS_LOG_ENTER();
 
@@ -84,14 +103,20 @@ Syncd::Syncd(
         SWSS_LOG_THROW("no context config defined at global context %u", m_commandLineOptions->m_globalContext);
     }
 
-    if (m_commandLineOptions->m_enableSyncMode
-            && !(m_contextConfig->m_loadedFromJson && m_contextConfig->m_zmqEnable))
+    // Resolved per-process transport decision. Derived from the file's
+    // opinion (m_zmqEnable) and then adjusted by the deprecated -s and
+    // the -z command-line reconciles below. m_zmqEnable itself stays at
+    // the parsed value so any future code that needs the file's intent
+    // can still ask for it.
+    bool zmqActive = (m_contextConfig->m_zmqEnable == sairedis::CONTEXT_CONFIG_ZMQ_ENABLED);
+
+    if (m_commandLineOptions->m_enableSyncMode && m_contextConfig->m_zmqEnable != sairedis::CONTEXT_CONFIG_ZMQ_ENABLED)
     {
         SWSS_LOG_WARN("enable sync mode is deprecated, please use communication mode, FORCING redis sync mode");
 
         m_enableSyncMode = true;
 
-        m_contextConfig->m_zmqEnable = false;
+        zmqActive = false;
 
         m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
     }
@@ -100,12 +125,14 @@ Syncd::Syncd(
     {
         // If context_config.json explicitly set zmq_enable=false,
         // respect it and fall back to Redis sync
-        if (m_contextConfig->m_loadedFromJson && !m_contextConfig->m_zmqEnable)
+        if (m_contextConfig->m_zmqEnable == sairedis::CONTEXT_CONFIG_ZMQ_DISABLED)
         {
             SWSS_LOG_NOTICE("context %u: zmq_enable=false in context config, falling back to Redis sync",
                     m_contextConfig->m_guid);
 
             m_enableSyncMode = true;
+
+            zmqActive = false;
 
             m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
         }
@@ -113,7 +140,7 @@ Syncd::Syncd(
         {
             SWSS_LOG_NOTICE("zmq sync mode enabled via cmd line for context %u", m_contextConfig->m_guid);
 
-            m_contextConfig->m_zmqEnable = true;
+            zmqActive = true;
 
             m_enableSyncMode = true;
         }
@@ -134,9 +161,11 @@ Syncd::Syncd(
     // we need STATE_DB ASIC_DB and COUNTERS_DB
 
     m_dbAsic = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
+    m_dbState = std::make_shared<swss::DBConnector>("STATE_DB", 0);
+    m_dampingCounterTable = std::make_shared<swss::Table>(m_dbState.get(), "LINK_EVENT_DAMPING_STATS");
     m_mdioIpcServer = std::make_shared<MdioIpcServer>(m_vendorSai, m_commandLineOptions->m_globalContext);
 
-    if (m_contextConfig->m_zmqEnable)
+    if (zmqActive)
     {
         m_notifications = std::make_shared<ZeroMQNotificationProducer>(m_contextConfig->m_zmqNtfEndpoint);
 
@@ -170,8 +199,9 @@ Syncd::Syncd(
 
     bool isDpuSwitch = switchType == "dpu";
 
-    if (m_contextConfig->m_zmqEnable && isDpuSwitch && !isVirtualSwitch)
+    if (zmqActive && isDpuSwitch && !isVirtualSwitch)
     {
+        // For DPU switches, disable Redis writes to maintain backwards compatibility with PR #1694
         m_client = std::make_shared<DisabledRedisClient>();
     }
     else
@@ -179,7 +209,11 @@ Syncd::Syncd(
         m_client = std::make_shared<RedisClient>(m_dbAsic);
     }
 
-    m_processor = std::make_shared<NotificationProcessor>(m_notifications, m_client, std::bind(&Syncd::syncProcessNotification, this, _1));
+    m_processor = std::make_shared<NotificationProcessor>(
+            m_notifications,
+            m_client,
+            std::bind(&Syncd::syncProcessNotification, this, _1),
+            std::bind(&Syncd::applyLinkEventDamping, this, _1, _2));
     m_handler = std::make_shared<NotificationHandler>(m_processor);
 
     m_sn.onFdbEvent = std::bind(&NotificationHandler::onFdbEvent, m_handler.get(), _1, _2);
@@ -263,6 +297,9 @@ Syncd::Syncd(
 
     m_breakConfig = BreakConfigParser::parseBreakConfig(m_commandLineOptions->m_breakConfig);
 
+    // Start the damping timer thread for proactive timeout enforcement
+    startDampingTimerThread();
+
     SWSS_LOG_NOTICE("syncd started");
 }
 
@@ -270,7 +307,8 @@ Syncd::~Syncd()
 {
     SWSS_LOG_ENTER();
 
-    // empty
+    // Stop the damping timer thread
+    stopDampingTimerThread();
 }
 
 void Syncd::performStartupLogic()
@@ -472,6 +510,9 @@ sai_status_t Syncd::processSingleEvent(
 
     if (op == REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_QUERY)
         return processObjectTypeGetAvailabilityQuery(kco);
+
+    if (op == REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET)
+        return processLinkEventDampingConfigSet(kco);
 
     if (op == REDIS_FLEX_COUNTER_COMMAND_START_POLL)
         return processFlexCounterEvent(key, SET_COMMAND, kfvFieldsValues(kco));
@@ -840,6 +881,881 @@ sai_status_t Syncd::processStatsStCapabilityQuery(
     m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_STATS_ST_CAPABILITY_RESPONSE);
 
     return status;
+}
+
+sai_status_t Syncd::processLinkEventDampingConfigSet(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    auto& key = kfvKey(kco);
+    auto& values = kfvFieldsValues(kco);
+
+    // Parse the key format: "OBJECT_TYPE:OBJECT_ID"
+    size_t colon_pos = key.find(":");
+    if (colon_pos == std::string::npos)
+    {
+        SWSS_LOG_ERROR("invalid key format: %s", key.c_str());
+        sendLinkEventDampingConfigResponse(SAI_STATUS_INVALID_PARAMETER);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // Extract object type and object ID
+    std::string strObjectType = key.substr(0, colon_pos);
+    std::string strObjectId = key.substr(colon_pos + 1);
+    sai_object_type_t objectType;
+    sai_deserialize_object_type(strObjectType, objectType);
+
+    // Link event damping is a software-based feature - validate port exists
+    if (objectType != SAI_OBJECT_TYPE_PORT)
+    {
+        SWSS_LOG_ERROR("invalid object type for link event damping config: %s",
+                strObjectType.c_str());
+        sendLinkEventDampingConfigResponse(SAI_STATUS_INVALID_PARAMETER);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_id_t portVid;
+    sai_object_id_t portRid;
+
+    sai_deserialize_object_id(strObjectId, portVid);
+
+    // Reject NULL object ID explicitly
+    if (portVid == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("invalid port VID: NULL object id");
+        sendLinkEventDampingConfigResponse(SAI_STATUS_INVALID_PARAMETER);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // Validate that the port exists by translating VID to RID
+    if (!m_translator->tryTranslateVidToRid(portVid, portRid))
+    {
+        SWSS_LOG_ERROR("failed to translate port VID to RID");
+        sendLinkEventDampingConfigResponse(SAI_STATUS_INVALID_PARAMETER);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    /* Link event damping is a software-based feature implemented in syncd.
+     * Store the configuration parameters on the port object so that OnPortStateChange
+     * can apply the damping algorithm before forwarding notifications. The damping
+     * parameters will be used to decide whether to suppress link state changes.
+     */
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    // Acquire lock to protect damping state
+    std::lock_guard<std::mutex> lock(m_linkEventDampingMutex);
+
+    // Get or create damping state for this port
+    auto& dampingState = m_portLinkEventDampingStates[portVid];
+
+    // Process each attribute and apply it to the port
+    for (const auto& v : values)
+    {
+        std::string strAttrId = fvField(v);
+        std::string strAttrValue = fvValue(v);
+
+        SWSS_LOG_DEBUG("processing link event damping attribute: %s = %s",
+                strAttrId.c_str(), strAttrValue.c_str());
+
+        // Deserialize attribute ID
+        sai_redis_port_attr_t attrId;
+        sai_deserialize_redis_port_attr_id(strAttrId, attrId);
+
+        // Parse and set the attribute value based on the attribute ID
+        switch (attrId)
+        {
+            case SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM:
+            {
+                sai_redis_link_event_damping_algorithm_t algo;
+                sai_deserialize_redis_link_event_damping_algorithm(strAttrValue, algo);
+
+                SWSS_LOG_INFO("setting link event damping algorithm on port %s: %d",
+                        strObjectId.c_str(), algo);
+
+                // Store the configuration locally for use in notification processing
+                dampingState.algorithm = algo;
+                status = SAI_STATUS_SUCCESS;
+                break;
+            }
+
+            case SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG:
+            {
+                // Allocate temporary memory for the config structure
+                sai_redis_link_event_damping_algo_aied_config_t config{};
+                sai_deserialize_redis_link_event_damping_aied_config(strAttrValue, config);
+
+                SWSS_LOG_INFO("setting link event damping AIED config on port %s: "
+                        "max_suppress_time=%u, suppress_threshold=%u, "
+                        "reuse_threshold=%u, decay_half_life=%u, flap_penalty=%u",
+                        strObjectId.c_str(), config.max_suppress_time,
+                        config.suppress_threshold, config.reuse_threshold,
+                        config.decay_half_life, config.flap_penalty);
+
+                dampingState.aied_config = config;
+                status = SAI_STATUS_SUCCESS;
+                break;
+            }
+
+            default:
+            {
+                SWSS_LOG_WARN("unknown attribute ID: %d for link event damping", attrId);
+                status = SAI_STATUS_INVALID_PARAMETER;
+                break;
+            }
+        }
+
+        if (status != SAI_STATUS_SUCCESS && status != SAI_STATUS_INVALID_PARAMETER)
+        {
+            // Log error but continue processing other attributes
+            SWSS_LOG_WARN("error processing link event damping attribute %s: %s",
+                    strAttrId.c_str(), sai_serialize_status(status).c_str());
+            break;
+        }
+    }
+
+    sendLinkEventDampingConfigResponse(status);
+    return status;
+}
+
+void Syncd::sendLinkEventDampingConfigResponse(
+        _In_ sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    // If sync mode is not enabled, do not send response.
+    if (!m_enableSyncMode)
+    {
+        return;
+    }
+
+    std::string strStatus = sai_serialize_status(status);
+    std::vector<swss::FieldValueTuple> entry;
+
+    SWSS_LOG_INFO("sending link event damping config response: %s", strStatus.c_str());
+
+    m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET);
+}
+
+uint64_t Syncd::getCurrentTimeMs()
+{
+    SWSS_LOG_ENTER();
+
+    auto now = std::chrono::steady_clock::now();
+    auto duration = now.time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+}
+
+void Syncd::decayPenalty(
+        _In_ LinkEventDampingPortState& state,
+        _In_ uint64_t currentTimeMs)
+{
+    SWSS_LOG_ENTER();
+
+    if (state.current_penalty == 0)
+    {
+        return;  // No penalty to decay
+    }
+
+    if (state.aied_config.decay_half_life == 0)
+    {
+        return;  // Invalid configuration, skip decay
+    }
+
+    // Use last_decay_time to track decay independently from state transitions
+    // This ensures penalty decays even if no link state changes occur
+    uint64_t base_time = state.last_decay_time_ms;
+    if (base_time == 0)
+    {
+        // First time calculating decay - use last transition time as base
+        base_time = state.last_transition_time_ms;
+    }
+
+    // Calculate elapsed time in milliseconds since last decay
+    uint64_t elapsed_ms = currentTimeMs - base_time;
+
+    if (elapsed_ms <= 0)
+    {
+        return;  // No time has elapsed
+    }
+
+    // Penalty decay formula: P(t) = P0 * (0.5 ^ (t / half_life))
+    double half_lives = (double)elapsed_ms / state.aied_config.decay_half_life;
+    double decay_factor = std::pow(0.5, half_lives);
+    uint32_t decayed_penalty = (uint32_t)(state.current_penalty * decay_factor);
+
+    // Ensure penalty doesn't go below 0
+    if (decayed_penalty < state.current_penalty)
+    {
+        state.current_penalty = decayed_penalty;
+        state.last_decay_time_ms = currentTimeMs;  // Update last decay time
+        SWSS_LOG_DEBUG("Port penalty decayed: %u (half_life=%u ms, elapsed=%lu ms, decay_factor=%f)",
+                state.current_penalty, state.aied_config.decay_half_life, elapsed_ms, decay_factor);
+    }
+    else if (state.last_decay_time_ms == 0)
+    {
+        // Initialize decay time on first check
+        state.last_decay_time_ms = currentTimeMs;
+    }
+}
+
+bool Syncd::applyAiedAlgorithm(
+        _In_ sai_object_id_t portVid,
+        _In_ LinkEventDampingPortState& state,
+        _In_ sai_port_oper_status_t newStatus,
+        _In_ uint64_t currentTimeMs)
+{
+    SWSS_LOG_ENTER();
+
+    std::string portVidStr = sai_serialize_object_id(portVid);
+
+    // Validate configuration
+    if ((state.aied_config.decay_half_life == 0) ||
+        (state.aied_config.max_suppress_time == 0) ||
+        (state.aied_config.decay_half_life > state.aied_config.max_suppress_time))
+    {
+        SWSS_LOG_WARN("Port VID %s invalid damping configuration: "
+             "decay_half_life (%u ms) max_suppress_time (%u ms). Damping disabled.",
+             portVidStr.c_str(), state.aied_config.decay_half_life,
+             state.aied_config.max_suppress_time);
+        return false;  // Damping disabled for invalid config
+    }
+
+    if ((state.aied_config.suppress_threshold == 0) ||
+        (state.aied_config.reuse_threshold == 0) ||
+        (state.aied_config.suppress_threshold <= state.aied_config.reuse_threshold))
+    {
+        SWSS_LOG_WARN("Port VID %s invalid damping configuration: "
+             "suppress_threshold (%u) reuse_threshold (%u). Damping disabled.",
+             portVidStr.c_str(), state.aied_config.suppress_threshold,
+             state.aied_config.reuse_threshold);
+        return false;  // Damping disabled for invalid config
+    }
+
+    // First, apply penalty decay
+    decayPenalty(state, currentTimeMs);
+
+    // Track if damping was active before this event
+    bool was_damping_active_before = state.is_damping_active;
+
+    // Check if a link state change occurred
+    if (state.physical_status != newStatus)
+    {
+        // Link state transitioned
+        state.pre_damping_link_transitions++;
+
+        if (newStatus == SAI_PORT_OPER_STATUS_UP)
+        {
+            state.pre_damping_up_events++;
+        }
+        else if (newStatus == SAI_PORT_OPER_STATUS_DOWN)
+        {
+            state.pre_damping_down_events++;
+            // Reset damping timer on DOWN event if damping is already active
+            if (state.is_damping_active)
+            {
+                state.damping_start_time_ms = currentTimeMs;
+                SWSS_LOG_DEBUG("Damping timer reset on DOWN event: new start time = %lu ms",
+                     currentTimeMs);
+            }
+        }
+
+        // Add penalty ONLY on DOWN events (UP -> DOWN)
+        if (state.physical_status == SAI_PORT_OPER_STATUS_UP && newStatus == SAI_PORT_OPER_STATUS_DOWN)
+        {
+            state.current_penalty += state.aied_config.flap_penalty;
+
+            // Calculate penalty ceiling: 2^(max_suppress_time/decay_half_life) * reuse_threshold
+            double exponent = (double)state.aied_config.max_suppress_time / state.aied_config.decay_half_life;
+            uint32_t penalty_ceiling = (uint32_t)(std::pow(2.0, exponent) * state.aied_config.reuse_threshold);
+
+            if (state.current_penalty > penalty_ceiling)
+            {
+                state.current_penalty = penalty_ceiling;
+            }
+
+            SWSS_LOG_DEBUG("Port DOWN event: penalty accumulated to %u "
+                    "(penalty_ceiling: %u, flap_penalty: %u)",
+                    state.current_penalty, penalty_ceiling, state.aied_config.flap_penalty);
+        }
+        else
+        {
+            SWSS_LOG_DEBUG("Port UP event: no penalty added (penalty remains: %u)",
+                    state.current_penalty);
+        }
+
+        // Update physical status and timestamps
+        state.physical_status = newStatus;
+        state.last_transition_time_ms = currentTimeMs;
+
+        // If this is the first state change after damping config was set,
+        // initialize decay time as well
+        if (state.last_decay_time_ms == 0)
+        {
+            state.last_decay_time_ms = currentTimeMs;
+        }
+
+        // Check if we should enter damping state
+        if (state.current_penalty >= state.aied_config.suppress_threshold &&
+            !state.is_damping_active)
+        {
+            SWSS_LOG_NOTICE("Port VID %s entering damped state: penalty (%u) >= "
+                   "suppress_threshold (%u) at time %lu ms. Current event will be "
+                   "PROPAGATED, future events will be suppressed.",
+                   portVidStr.c_str(), state.current_penalty,
+                   state.aied_config.suppress_threshold, currentTimeMs);
+            state.is_damping_active = true;
+            state.damping_start_time_ms = currentTimeMs;
+        }
+
+        // Write updated pre-damping counters and physical status to STATE_DB
+        writeDampingCountersToStateDb(portVid, state);
+    }
+
+    /* Damping exits when EITHER:
+     * 1. Time-based: damping_duration_ms >= max_suppress_time
+     * 2. Penalty-based: current_penalty < reuse_threshold (decay-based recovery)
+     */
+    if (state.is_damping_active)
+    {
+        // Check timeout - never suppress longer than max_suppress_time
+        uint64_t damping_duration_ms = currentTimeMs - state.damping_start_time_ms;
+
+        if (damping_duration_ms >= state.aied_config.max_suppress_time)
+        {
+            // Store temporary strings to avoid dangling pointers
+            std::string physicalStatusStr = sai_serialize_port_oper_status(state.physical_status);
+            std::string advertisedStatusStr = sai_serialize_port_oper_status(state.advertised_status);
+            SWSS_LOG_NOTICE("Port VID %s exiting damped state: max suppress time (%u ms) "
+                    "exceeded. Duration: %lu ms. Physical state: %s, Advertised state: %s",
+                    portVidStr.c_str(), state.aied_config.max_suppress_time,
+                    damping_duration_ms, physicalStatusStr.c_str(),
+                    advertisedStatusStr.c_str());
+            state.is_damping_active = false;
+            state.damping_start_time_ms = 0;  // Reset timer when exiting damping
+
+            // Propagate last link event when penalty decays below reuse threshold
+            if (state.advertised_status != state.physical_status)
+            {
+                state.pending_state_sync = true;
+                SWSS_LOG_NOTICE("Port VID %s state mismatch detected on damping "
+                        "exit (timeout): physical=%s, advertised=%s. "
+                        "Marking for state sync on next notification.",
+                        portVidStr.c_str(), physicalStatusStr.c_str(),
+                        advertisedStatusStr.c_str());
+            }
+            state.advertised_status = state.physical_status;
+
+            // Write updated state to STATE_DB after exiting damping
+            writeDampingCountersToStateDb(portVid, state);
+        }
+        // Check reuse threshold - exit if penalty decays below threshold
+        // Penalty decays based on last_decay_time tracking
+        else if (state.current_penalty < state.aied_config.reuse_threshold)
+        {
+            // Penalty decayed below reuse threshold. Exit damping.
+            std::string physicalStatusStr = sai_serialize_port_oper_status(state.physical_status);
+            std::string advertisedStatusStr = sai_serialize_port_oper_status(state.advertised_status);
+            SWSS_LOG_NOTICE("Port VID %s exiting damped state: penalty (%u) < "
+                    "reuse_threshold (%u). Penalty decayed due to exponential decay "
+                    "formula. Physical state: %s, Advertised state: %s",
+                    portVidStr.c_str(), state.current_penalty,
+                    state.aied_config.reuse_threshold, physicalStatusStr.c_str(),
+                    advertisedStatusStr.c_str());
+            state.is_damping_active = false;
+            state.damping_start_time_ms = 0;  // Reset timer when exiting damping
+
+            // Propagate last link event when penalty decays below reuse threshold
+            if (state.advertised_status != state.physical_status)
+            {
+                state.pending_state_sync = true;
+                SWSS_LOG_NOTICE("Port VID %s state mismatch detected on damping "
+                        "exit (decay): physical=%s, advertised=%s. "
+                        "Marking for state sync on next notification.",
+                        portVidStr.c_str(), physicalStatusStr.c_str(),
+                        advertisedStatusStr.c_str());
+            }
+            state.advertised_status = state.physical_status;
+
+            // Write updated state to STATE_DB after exiting damping
+            writeDampingCountersToStateDb(portVid, state);
+        }
+    }
+
+    // Determine if notification should be suppressed
+    bool should_suppress = false;
+
+    /* Only suppress when damping is already active. When entering
+     * into damping active, the event should be propagated.
+     */
+    if (state.is_damping_active && was_damping_active_before)
+    {
+        // Calculate current suppression time based on damping algorithm
+        uint64_t damping_duration_ms = currentTimeMs - state.damping_start_time_ms;
+
+        if (damping_duration_ms < state.aied_config.max_suppress_time)
+        {
+            // Calculate expected suppression time
+            // suppression_time = decay_half_life * log2(reuse_threshold / accumulated_penalty)
+            if (state.current_penalty > 0 && state.current_penalty >= state.aied_config.reuse_threshold)
+            {
+                double suppression_ratio = (double)state.aied_config.reuse_threshold / state.current_penalty;
+                double expected_suppress_time = state.aied_config.decay_half_life * std::log2(suppression_ratio);
+
+                SWSS_LOG_DEBUG("Port damping active: suppression_time=%.0f ms, "
+                        "max_suppress_time=%u ms, current_penalty=%u, reuse_threshold=%u",
+                        expected_suppress_time, state.aied_config.max_suppress_time,
+                        state.current_penalty, state.aied_config.reuse_threshold);
+            }
+
+            // Suppress the notification
+            should_suppress = true;
+            state.last_suppressed_status = newStatus;  // Track what was suppressed
+            // Store temporary strings to avoid dangling pointers
+            std::string newStatusStr = sai_serialize_port_oper_status(newStatus);
+            SWSS_LOG_NOTICE("Port VID %s suppressing port state change notification: "
+                    "new_status=%s (damping active, penalty: %u, duration: %lu ms)",
+                    portVidStr.c_str(), newStatusStr.c_str(),
+                    state.current_penalty, damping_duration_ms);
+        }
+        else
+        {
+            // Should not happen due to exit check above, but handle gracefully
+            should_suppress = false;
+
+            SWSS_LOG_WARN("Port VID %s unexpected state: damping_active=true but "
+                    "duration >= max_suppress_time", portVidStr.c_str());
+        }
+    }
+    else
+    {
+        // Damping is NOT active OR this is the threshold-crossing event - propagate the notification
+        should_suppress = false;
+        std::string physicalStatusStr = sai_serialize_port_oper_status(state.physical_status);
+        std::string advertisedStatusStr = sai_serialize_port_oper_status(state.advertised_status);
+
+        // Track advertised transitions
+        if (newStatus == SAI_PORT_OPER_STATUS_UP)
+        {
+            state.post_damping_up_events++;
+        }
+        else if (newStatus == SAI_PORT_OPER_STATUS_DOWN)
+        {
+            state.post_damping_down_events++;
+        }
+        state.post_damping_link_transitions++;
+
+        // SYNC STATE: Update advertised to match new state
+        state.advertised_status = newStatus;
+
+        // Clear the pending sync flag since state is now synchronized
+        if (state.pending_state_sync && newStatus == state.physical_status)
+        {
+            state.pending_state_sync = false;
+            SWSS_LOG_INFO("Port state sync completed: physical=%s, advertised=%s",
+                    physicalStatusStr.c_str(), advertisedStatusStr.c_str());
+        }
+
+        // Write updated counters to STATE_DB
+        writeDampingCountersToStateDb(portVid, state);
+
+        // When damping changes state (enabled->disabled), propagate the event
+        if (was_damping_active_before && !state.is_damping_active)
+        {
+            SWSS_LOG_NOTICE("Port VID %s state change PROPAGATED (damping state changed "
+                    "from active to inactive): physical=%s, advertised=%s",
+                    portVidStr.c_str(), physicalStatusStr.c_str(),
+                    advertisedStatusStr.c_str());
+        }
+        else
+        {
+            SWSS_LOG_INFO("Port VID %s state change PROPAGATED: physical=%s, advertised=%s (damping inactive)",
+                     portVidStr.c_str(), physicalStatusStr.c_str(),
+                     advertisedStatusStr.c_str());
+        }
+
+    }
+
+    return should_suppress;
+}
+
+bool Syncd::applyLinkEventDamping(
+        _In_ sai_object_id_t portVid,
+        _In_ sai_port_oper_status_t newStatus)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_linkEventDampingMutex);
+
+    // Check if damping is configured for this port
+    auto it = m_portLinkEventDampingStates.find(portVid);
+    if (it == m_portLinkEventDampingStates.end())
+    {
+        // No damping configured for this port
+        return false;  // Don't suppress
+    }
+
+    LinkEventDampingPortState& state = it->second;
+
+    // Apply the appropriate damping algorithm
+    switch (state.algorithm)
+    {
+        case SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED:
+        {
+            uint64_t currentTimeMs = getCurrentTimeMs();
+            return applyAiedAlgorithm(portVid, state, newStatus, currentTimeMs);
+        }
+
+        case SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED:
+            SWSS_LOG_INFO("Damping algorithm disabled: %d", state.algorithm);
+            return false;
+
+        default:
+            SWSS_LOG_WARN("Unknown damping algorithm: %d", state.algorithm);
+            return false;
+    }
+}
+
+void Syncd::checkDampedPortsTimeout()
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_linkEventDampingMutex);
+    uint64_t currentTimeMs = getCurrentTimeMs();
+
+    // Iterate through all ports with damping configured
+    for (auto& kv : m_portLinkEventDampingStates)
+    {
+        auto& portVid = kv.first;
+        auto& state   = kv.second;
+
+        // Only check ports that are currently in damped state
+        if (!state.is_damping_active)
+        {
+            continue;
+        }
+
+        // Check if damping algorithm is enabled
+        if (state.algorithm != SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED)
+        {
+            continue;
+        }
+
+        std::string portVidStr = sai_serialize_object_id(portVid);
+        std::string physicalStatusStr = sai_serialize_port_oper_status(state.physical_status);
+        std::string advertisedStatusStr = sai_serialize_port_oper_status(state.advertised_status);
+        // Apply penalty decay first - penalty naturally decays over time
+        decayPenalty(state, currentTimeMs);
+
+        // Check if penalty has decayed below reuse threshold
+        if (state.current_penalty < state.aied_config.reuse_threshold)
+        {
+            SWSS_LOG_NOTICE("Proactive timeout check: Port VID %s exiting damped state: "
+                    "penalty (%u) < reuse_threshold (%u). Penalty decayed due to "
+                    "exponential decay formula. Physical state: %s, Advertised state: %s",
+                    portVidStr.c_str(), state.current_penalty,
+                    state.aied_config.reuse_threshold, physicalStatusStr.c_str(),
+                    advertisedStatusStr.c_str());
+
+            // Exit damping state
+            state.is_damping_active = false;
+            state.damping_start_time_ms = 0;  // Reset timer when exiting damping
+
+            // Check if there's a state mismatch that needs to be propagated
+            if (state.advertised_status != state.physical_status)
+            {
+                state.pending_state_sync = true;
+
+                SWSS_LOG_NOTICE("Marked pending sync (decay) for Port VID %s: "
+                        "physical=%s advertised=%s",
+                        portVidStr.c_str(), physicalStatusStr.c_str(),
+                        advertisedStatusStr.c_str());
+            }
+            else
+            {
+                SWSS_LOG_INFO("Exited damping with no state mismatch for Port VID %s: ",
+                        portVidStr.c_str());
+            }
+
+            // Write updated state to STATE_DB after exiting damping
+            writeDampingCountersToStateDb(portVid, state);
+
+            // Skip to next port since we have already handled this one
+            continue;
+        }
+
+        // Calculate how long the port has been damped
+        uint64_t damping_duration_ms = currentTimeMs - state.damping_start_time_ms;
+
+        // Check if max_suppress_time has been exceeded
+        if (damping_duration_ms >= state.aied_config.max_suppress_time)
+        {
+            SWSS_LOG_NOTICE("Damping exit (timeout): Port VID %s "
+                    "Duration=%lu >= max=%u, Physical %s, Advertised %s",
+                    portVidStr.c_str(), damping_duration_ms,
+                    state.aied_config.max_suppress_time,
+                    physicalStatusStr.c_str(), advertisedStatusStr.c_str());
+
+            // Exit damping state
+            state.is_damping_active = false;
+            state.damping_start_time_ms = 0;  // Reset timer when exiting damping
+
+            // Check if there's a state mismatch that needs to be propagated
+            if (state.advertised_status != state.physical_status)
+            {
+                state.pending_state_sync = true;
+
+                SWSS_LOG_NOTICE("Marked pending sync (timeout) for Port VID %s: "
+                        "physical=%s, advertised=%s.",
+                        portVidStr.c_str(), physicalStatusStr.c_str(),
+                        advertisedStatusStr.c_str());
+            }
+            else
+            {
+                SWSS_LOG_INFO("Exited damping with no state mismatch for Port VID %s",
+                        portVidStr.c_str());
+            }
+
+            // Write updated state to STATE_DB after exiting damping
+            writeDampingCountersToStateDb(portVid, state);
+        }
+        else
+        {
+            // Port is still in damped state
+            // Updating penalty decay to STATE DB may not be useful.
+            SWSS_LOG_DEBUG("Proactive timeout check: Port VID %s still damped: "
+                    "penalty=%u, duration=%lu ms", portVidStr.c_str(),
+                    state.current_penalty, damping_duration_ms);
+        }
+    }
+}
+
+void Syncd::processPendingDampingSync()
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_port_oper_status_notification_t> notifications;
+
+    {
+        std::lock_guard<std::mutex> lock(m_linkEventDampingMutex);
+
+        for (auto &kv : m_portLinkEventDampingStates)
+        {
+            auto port = kv.first;
+            auto &state = kv.second;
+
+            if (state.pending_state_sync &&
+                state.advertised_status != state.physical_status)
+            {
+                sai_port_oper_status_notification_t n;
+                n.port_id = port;
+                n.port_state = state.physical_status;
+
+                notifications.push_back(n);
+            }
+        }
+    }
+
+    // Don't send - just enqueue
+    if (!notifications.empty())
+    {
+        // Build port VID list for logging
+        auto portVids = serializePortVids(notifications);
+        SWSS_LOG_NOTICE("processPendingDampingSync: enqueuing %zu port state notifications for ports: %s",
+                        notifications.size(), portVids.c_str());
+
+        std::lock_guard<std::mutex> lock(m_pendingNotificationsMutex);
+
+        // Queue overflow protection
+        if (m_pendingNotifications.size() >= 1000)
+        {
+            SWSS_LOG_ERROR("Pending notification queue overflow: size=%zu, dropping oldest batch",
+                          m_pendingNotifications.size());
+            m_pendingNotifications.pop(); // Drop oldest
+        }
+
+        m_pendingNotifications.emplace();
+        m_pendingNotifications.back().swap(notifications);
+    }
+}
+
+void Syncd::flushPendingDampingNotifications()
+{
+    SWSS_LOG_ENTER();
+
+    std::queue<std::vector<sai_port_oper_status_notification_t>> localQueue;
+    {
+        std::lock_guard<std::mutex> lock(m_pendingNotificationsMutex);
+        std::swap(localQueue, m_pendingNotifications);
+    }
+
+    if (!localQueue.empty())
+    {
+        SWSS_LOG_NOTICE("flushPendingDampingNotifications: flushing %zu notification batches", localQueue.size());
+    }
+
+    while (!localQueue.empty())
+    {
+        auto &notifications = localQueue.front();
+        // Build port VID list for logging
+        auto portVids = serializePortVids(notifications);
+
+        SWSS_LOG_NOTICE("flushPendingDampingNotifications: sending %zu port state change notifications for ports: %s",
+                notifications.size(), portVids.c_str());
+
+        try
+        {
+            std::string s = sai_serialize_port_oper_status_ntf(
+                (uint32_t)notifications.size(),
+                notifications.data());
+
+            std::vector<swss::FieldValueTuple> entry;
+
+            m_notifications->send(
+                SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE,
+                s,
+                entry);
+            {
+                std::lock_guard<std::mutex> lock(m_linkEventDampingMutex);
+                for (const auto &ntf : notifications)
+                {
+                    auto it = m_portLinkEventDampingStates.find(ntf.port_id);
+                    if (it != m_portLinkEventDampingStates.end())
+                    {
+                        it->second.pending_state_sync = false;
+                        it->second.advertised_status = ntf.port_state;
+                        writeDampingCountersToStateDb(ntf.port_id, it->second);
+                    }
+                }
+            }
+        }
+
+        catch (const std::exception &e)
+        {
+            SWSS_LOG_ERROR("Failed to send port state notifications for ports %s: %s",
+                    portVids.c_str(), e.what());
+            // Continue processing remaining notifications instead of crashing
+        }
+
+        localQueue.pop();
+    }
+}
+
+void Syncd::dampingTimerThreadFunc()
+{
+    SWSS_LOG_ENTER();
+    SWSS_LOG_NOTICE("Damping timer thread started");
+
+    while (true)
+    {
+        {
+            std::unique_lock<std::mutex> lock(m_dampingTimerMutex);
+
+            // Wait for 1 second or until signaled to stop
+            if (m_dampingTimerCv.wait_for(lock, std::chrono::seconds(1), [this] { return !m_runDampingTimerThread; }))
+            {
+                // Signaled to stop
+                SWSS_LOG_NOTICE("Damping timer thread received stop signal");
+                break;
+            }
+
+            // Check if still running (in case of spurious wake up)
+            if (!m_runDampingTimerThread)
+            {
+                break;
+            }
+        }
+
+        // Perform the proactive timeout check
+        try
+        {
+            checkDampedPortsTimeout();
+        }
+        catch (const std::exception& e)
+        {
+            SWSS_LOG_ERROR("Exception in damping timer thread: %s", e.what());
+        }
+        catch (...)
+        {
+            SWSS_LOG_ERROR("Unknown exception in damping timer thread");
+        }
+    }
+
+    SWSS_LOG_NOTICE("Damping timer thread stopped");
+}
+
+void Syncd::startDampingTimerThread()
+{
+    SWSS_LOG_ENTER();
+
+    if (m_runDampingTimerThread)
+    {
+        SWSS_LOG_WARN("Damping timer thread already running");
+        return;
+    }
+
+    m_runDampingTimerThread = true;
+    m_dampingTimerThread = std::make_shared<std::thread>(&Syncd::dampingTimerThreadFunc, this);
+
+    SWSS_LOG_NOTICE("Started damping timer thread for proactive max_suppress_time enforcement");
+}
+
+void Syncd::stopDampingTimerThread()
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_runDampingTimerThread)
+    {
+        SWSS_LOG_INFO("Damping timer thread not running");
+        return;
+    }
+
+    // Signal the thread to stop
+    {
+        std::lock_guard<std::mutex> lock(m_dampingTimerMutex);
+        m_runDampingTimerThread = false;
+    }
+    m_dampingTimerCv.notify_one();
+
+    // Wait for the thread to finish
+    if (m_dampingTimerThread && m_dampingTimerThread->joinable())
+    {
+        m_dampingTimerThread->join();
+        SWSS_LOG_NOTICE("Damping timer thread stopped and joined");
+    }
+
+    m_dampingTimerThread.reset();
+}
+
+void Syncd::writeDampingCountersToStateDb(
+        _In_ sai_object_id_t portVid,
+        _In_ const LinkEventDampingPortState& state)
+{
+    SWSS_LOG_ENTER();
+
+    // Convert VID to string for STATE_DB key
+    std::string portVidStr = sai_serialize_object_id(portVid);
+
+    // Prepare counter fields
+    std::vector<swss::FieldValueTuple> fields;
+    fields.emplace_back("pre_damping_link_transitions", std::to_string(state.pre_damping_link_transitions));
+    fields.emplace_back("pre_damping_up_events", std::to_string(state.pre_damping_up_events));
+    fields.emplace_back("pre_damping_down_events", std::to_string(state.pre_damping_down_events));
+    fields.emplace_back("post_damping_up_events", std::to_string(state.post_damping_up_events));
+    fields.emplace_back("post_damping_down_events", std::to_string(state.post_damping_down_events));
+    fields.emplace_back("post_damping_link_transitions", std::to_string(state.post_damping_link_transitions));
+
+    // Add damping state information
+    fields.emplace_back("is_damping_active", state.is_damping_active ? "true" : "false");
+    fields.emplace_back("current_penalty", std::to_string(state.current_penalty));
+    fields.emplace_back("damping_start_time_ms", std::to_string(state.damping_start_time_ms));
+    fields.emplace_back("physical_status", sai_serialize_port_oper_status(state.physical_status));
+    fields.emplace_back("advertised_status", sai_serialize_port_oper_status(state.advertised_status));
+
+    // Write to STATE_DB
+    m_dampingCounterTable->set(portVidStr, fields);
+
+    SWSS_LOG_DEBUG("Wrote damping counters to STATE_DB for port %s", portVidStr.c_str());
 }
 
 sai_status_t Syncd::processFdbFlush(
@@ -5884,8 +6800,31 @@ void Syncd::run()
         {
             swss::Selectable *sel = NULL;
 
-            int result = s->select(&sel);
+            int result = s->select(&sel, 1000);
 
+            if (result == swss::Select::TIMEOUT)
+            {
+                SWSS_LOG_DEBUG("Select timeout");
+
+                // Process if any pending state sync due to link event damping
+                processPendingDampingSync();
+
+                // Flush in controlled manner
+                flushPendingDampingNotifications();
+                continue;
+            }
+            else if (result == swss::Select::ERROR)
+            {
+                SWSS_LOG_ERROR("select errored, return value: %d", result);
+                continue;
+            }
+            else if (result == swss::Select::SIGNALINT)
+            {
+                SWSS_LOG_DEBUG("Select interrupted by a signal");
+                continue;
+            }
+
+            // result OBJECT case
             if (sel == m_restartQuery.get())
             {
                 /*
@@ -5944,7 +6883,7 @@ void Syncd::run()
                     if (status != SAI_STATUS_SUCCESS)
                     {
                         SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_FAST_API_ENABLE=true: %s for express pre-shutdown. Fall back to cold restart",
-				       sai_serialize_status(status).c_str());
+                                sai_serialize_status(status).c_str());
 
                         shutdownType = SYNCD_RESTART_TYPE_COLD;
 
@@ -5998,8 +6937,14 @@ void Syncd::run()
             }
             else
             {
-                SWSS_LOG_ERROR("select failed: %d", result);
+                SWSS_LOG_ERROR("Select returned unknown selectable: %p", sel);
             }
+
+            // Process if any pending state sync due to link event damping
+            processPendingDampingSync();
+
+            // Flush in controlled manner
+            flushPendingDampingNotifications();
         }
         catch(const std::exception &e)
         {

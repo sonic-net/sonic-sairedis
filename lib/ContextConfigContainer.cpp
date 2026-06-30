@@ -123,13 +123,30 @@ std::shared_ptr<ContextConfigContainer> ContextConfigContainer::loadFromFile(
 
             auto cc = std::make_shared<ContextConfig>(guid, name, dbAsic, dbCounters, dbFlex, dbState);
 
-            cc->m_zmqEnable = item["zmq_enable"];
-            cc->m_zmqEndpoint = item["zmq_endpoint"];
-            cc->m_zmqNtfEndpoint = item["zmq_ntf_endpoint"];
-            cc->m_loadedFromJson = true;
+            if (item.contains("zmq_enable"))
+            {
+                // .get<bool>() enforces the JSON boolean type. A numeric or
+                // string value throws type_error.302, which the outer
+                // try/catch turns into a fallback to the default container.
+                cc->m_zmqEnable = item["zmq_enable"].get<bool>() ? CONTEXT_CONFIG_ZMQ_ENABLED : CONTEXT_CONFIG_ZMQ_DISABLED;
+            }
+
+            if (item.contains("zmq_endpoint"))
+            {
+                cc->m_zmqEndpoint = item["zmq_endpoint"];
+            }
+
+            if (item.contains("zmq_ntf_endpoint"))
+            {
+                cc->m_zmqNtfEndpoint = item["zmq_ntf_endpoint"];
+            }
+
+            const char* zmqEnabledState = (cc->m_zmqEnable == CONTEXT_CONFIG_ZMQ_ENABLED) ? "true"
+                                        : (cc->m_zmqEnable == CONTEXT_CONFIG_ZMQ_DISABLED) ? "false"
+                                        : "empty";
 
             SWSS_LOG_NOTICE("contextConfig zmq enable %s, endpoint: %s, ntf endpoint: %s",
-                    (cc->m_zmqEnable) ? "true" : "false",
+                    zmqEnabledState,
                     cc->m_zmqEndpoint.c_str(),
                     cc->m_zmqNtfEndpoint.c_str());
 
