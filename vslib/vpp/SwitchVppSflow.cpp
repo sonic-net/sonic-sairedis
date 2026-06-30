@@ -148,7 +148,7 @@ sai_status_t SwitchVpp::sflowHostifTableEntryCreate(
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY, sid, switch_id, attr_count,attr_list));
 
     SWSS_LOG_NOTICE("HOSTIF_TABLE_ENTRY %s created (bookkeeping)", sid.c_str());
-    
+
     return SAI_STATUS_SUCCESS;
 }
 

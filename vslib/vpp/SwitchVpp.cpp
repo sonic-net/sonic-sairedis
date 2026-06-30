@@ -1928,7 +1928,7 @@ sai_status_t SwitchVpp::setPort(
 {
     SWSS_LOG_ENTER();
 
-    UpdatePort(portId, 1, attr); 
+    UpdatePort(portId, 1, attr);
 
     auto sid = sai_serialize_object_id(portId);
 

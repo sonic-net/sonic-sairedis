@@ -1043,7 +1043,7 @@ namespace saivs
                     _In_ sai_object_id_t ace_cntr_oid,
                     _In_ uint32_t attr_count,
                     _Out_ sai_attribute_t *attr_list);
-        
+
             sai_status_t samplePacketCreate(
                     _In_ sai_object_id_t object_id,
                     _In_ sai_object_id_t switch_id,
@@ -1073,7 +1073,7 @@ namespace saivs
             sai_status_t sflowPortSamplePacketSet(
                     _In_ sai_object_id_t portId,
                     _In_ const sai_attribute_t *attr);
-        
+
             sai_status_t sflowHostifTrapSamplePacketRemove(
                      _In_ const std::string &serializedObjectId);
 
@@ -1085,8 +1085,8 @@ namespace saivs
 
              sai_status_t sflowHostifTableEntryRemove(
                      _In_ const std::string &serializedObjectId);
-            
-                
+
+
         public: // VPP
 
             sai_status_t aclGetVppIndices(

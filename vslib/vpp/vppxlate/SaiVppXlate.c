@@ -2845,7 +2845,7 @@ int vpp_sflow_enable_disable(const char *hwif_name, bool enable)
         VPP_UNLOCK();
         return -EINVAL;
     }
-    
+
     mp->enable_disable = enable;
 
     S(mp);
