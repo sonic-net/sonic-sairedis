@@ -1,6 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Harness assets (e.g. vpp_startup.conf.template) live next to this script in the
+# source tree and are installed under /opt/docker-sai-test-vpp in the image. When
+# the image runs the script from /usr/local/bin, fall back to the install dir.
+HARNESS_DIR="$SCRIPT_DIR"
+[[ -f "$HARNESS_DIR/vpp_startup.conf.template" ]] || HARNESS_DIR="/opt/docker-sai-test-vpp"
+
 PORT_COUNT="${PORT_COUNT:-32}"
 MTU="${MTU:-9100}"
 # Number of PortChannel (LAG) netdevs to pre-create. In production SONiC's teamd
@@ -500,63 +507,12 @@ create_sonic_vpp_ifmap()
 generate_vpp_config()
 {
     VPP_CONF="$(mktemp /tmp/vpp-sai-test.XXXXXX.conf)"
+    local template="${HARNESS_DIR}/vpp_startup.conf.template"
+    local buffers_per_numa=$((PORT_COUNT * 2048))
 
-    cat > "$VPP_CONF" <<EOF
-unix {
-  nodaemon
-  log $VPP_LOG
-  full-coredump
-  cli-listen /run/vpp/cli.sock
-  poll-sleep-usec 100
-}
-
-api-trace {
-  on
-  nitems 32768
-}
-
-api-segment {
-  global-size 256M
-  api-size 64M
-}
-
-socksvr {
-  default
-}
-
-memory {
-    main-heap-size 4G
-}
-
-l3fib {
-    fib-entry-pool-size 256K
-    load-balance-pool-size 256K
-    ip4-mtrie-pool-size 256K
-}
-
-ip6 {
-    heap-size 128M
-}
-
-plugins {
-  plugin default { disable }
-  plugin af_packet_plugin.so { enable }
-  plugin linux_cp_plugin.so { enable }
-  plugin linux_nl_plugin.so { enable }
-  plugin acl_plugin.so { enable }
-  plugin vxlan_plugin.so { enable }
-  plugin tunterm_acl_plugin.so { enable }
-  plugin ip_validate_plugin.so { enable }
-}
-
-linux-cp {
-  lcp-auto-subint
-}
-
-buffers {
-  buffers-per-numa $((PORT_COUNT * 2048))
-}
-EOF
+    sed -e "s|__VPP_LOG__|${VPP_LOG}|g" \
+        -e "s|__BUFFERS_PER_NUMA__|${buffers_per_numa}|g" \
+        "$template" > "$VPP_CONF"
 }
 
 wait_for_vpp_ready()
