@@ -65,12 +65,12 @@ The framework is designed to support three distinct deployment and testing scena
 
 #### **Use case 1: Local dev in a `sonic-buildimage` workspace**
 - **What changes:** `vslib/` C++ backend, `SAI/test/sai_test` Python tests, VPP packages, or harness scripts.
-- **How dependencies are supplied:** Copy runtime `.deb`s from `target/debs/<suite>/` into `docker-sai-test-vpp/debs/`, then build the image. The default suite today is **bookworm** (see Dockerfile); trixie is planned once `sonic-vpp` and VPP packages are validated on it.
-- **Status:** Supported today via `build_harness.sh` (below). Assumes the workspace layout `sonic-buildimage/src/sonic-sairedis`. VPP packages can come from `target/debs/bookworm/` after a platform-vpp build, from a `sonic-platform-vpp` pipeline download, or from `VPP_DEB_DIR` when running the build script.
+- **How dependencies are supplied:** Copy runtime `.deb`s from `target/debs/<suite>/` into `docker-sai-test-vpp/debs/`, then build the image. The default suite today is **trixie** (see Dockerfile).
+- **Status:** Supported today via `build_harness.sh` (below). Assumes the workspace layout `sonic-buildimage/src/sonic-sairedis`. VPP packages can come from `target/debs/trixie/` after a platform-vpp build, from a `sonic-platform-vpp` pipeline download, or from `VPP_DEB_DIR` when running the build script.
 
 #### **Use case 2: `sonic-sairedis` PR CI**
 - **What changes:** `vslib/` C++ backend, harness files, or OCP tests.
-- **How dependencies are supplied:** The pipeline's **Build** stage compiles and produces fresh `libsairedis` / `libsaivs` / `saiserver` / `python-saithrift` artifacts. Other runtime `.deb`s (`libswsscommon`, `libyang`, VPP) must be downloaded from existing pipeline artifacts — following the same pattern as `.azure-pipelines/build-docker-sonic-vs-template.yml` (swss-common pipeline, sonic-platform-vpp `vpp-bookworm`, buildimage common libs).
+- **How dependencies are supplied:** The pipeline's **Build** stage compiles and produces fresh `libsairedis` / `libsaivs` / `saiserver` / `python-saithrift` artifacts. Other runtime `.deb`s (`libswsscommon`, `libyang`, VPP) must be downloaded from existing pipeline artifacts — following the same pattern as `.azure-pipelines/build-docker-sonic-vs-template.yml` (swss-common pipeline, sonic-platform-vpp `vpp-trixie`, buildimage common libs).
 - **Status:** Documented intent; CI wiring is follow-up work for this PR (Phase 3).
 - **Required runtime packages and typical artifact sources:**
 
@@ -79,7 +79,7 @@ The framework is designed to support three distinct deployment and testing scena
 | `libsaivs_*`, `libsairedis_*`, `libsaimetadata_*`, `saiserverv2_*`, `python-saithriftv2_*` | Yes (this repo's Build stage) | Current pipeline job artifacts |
 | `libswsscommon_*` | No | `Azure.sonic-swss-common` pipeline artifact |
 | `libyang_*` | No | `sonic-buildimage` common-lib / VS build artifact |
-| `libvppinfra_*`, `vpp_*`, `vpp-plugin-*` | No | `sonic-net.sonic-platform-vpp` artifact `vpp-bookworm` |
+| `libvppinfra_*`, `vpp_*`, `vpp-plugin-*` | No | `sonic-net.sonic-platform-vpp` artifact `vpp-trixie` |
 
 #### **Use case 3: `sonic-platform-vpp` PR CI**
 - **What changes:** VPP `.deb`s only.
@@ -95,7 +95,7 @@ The framework is designed to support three distinct deployment and testing scena
 | `libsaivs_*` | `sonic-sairedis` — the VPP SAI backend under test |
 | `libsairedis_*`, `libsaimetadata_*` | `sonic-sairedis` |
 | `libswsscommon_*` | `sonic-swss-common` |
-| `libyang_*` / `libyang3_*` | `sonic-buildimage` (libyang3 on bookworm) |
+| `libyang_*` / `libyang3_*` | `sonic-buildimage` (libyang3 on trixie) |
 | `saiserver_*` / `saiserverv2_*` | `sonic-sairedis` SAI Thrift server |
 | `python-saithrift_*` / `python-saithriftv2_*` | `sonic-sairedis` SAI Thrift Python client |
 
@@ -103,7 +103,7 @@ All of these are staged in [`debs/`](debs/) (local-only). The Dockerfile install
 
 ### Build script (use case 1)
 
-`build_harness.sh` automates staging from `sonic-buildimage` and building the image. It validates that all required runtime `.deb`s are present in `debs/` before `docker build`. If sonic-sairedis packages are missing, it runs the bookworm `make` targets automatically (disable with `--no-auto-build`). VPP, `libswsscommon`, and `libyang`/`libyang3` are not auto-built — the script fails with hints if they are absent.
+`build_harness.sh` automates staging from `sonic-buildimage` and building the image. It validates that all required runtime `.deb`s are present in `debs/` before `docker build`. If sonic-sairedis packages are missing, it runs the trixie `make` targets automatically (disable with `--no-auto-build`). VPP, `libswsscommon`, and `libyang`/`libyang3` are not auto-built — the script fails with hints if they are absent.
 
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp
@@ -120,19 +120,19 @@ From the **buildimage repo root** (`sonic-buildimage`):
 cd <sonic-buildimage>
 
 # Force re-generation by removing the stale targets first
-rm -f target/debs/bookworm/libsairedis_*.deb target/debs/bookworm/libsairedis-dev_*.deb \
-      target/debs/bookworm/libsaivs_*.deb     target/debs/bookworm/libsaivs-dev_*.deb
+rm -f target/debs/trixie/libsairedis_*.deb target/debs/trixie/libsairedis-dev_*.deb \
+      target/debs/trixie/libsaivs_*.deb     target/debs/trixie/libsaivs-dev_*.deb
 
 # Build libsaivs / libsairedis
-NOTRIXIE=1 make target/debs/bookworm/libsairedis_1.0.0_amd64.deb
+make target/debs/trixie/libsairedis_1.0.0_amd64.deb
 
 # Build saiserver + saithrift client (if those changed)
-NOTRIXIE=1 BLDENV=bookworm make -f Makefile.work target/debs/bookworm/libsaithrift-dev_0.9.4_amd64.deb
+BLDENV=trixie make -f Makefile.work target/debs/trixie/libsaithrift-dev_0.9.4_amd64.deb
 
 # Stage the fresh packages into the harness build context
-cp target/debs/bookworm/libsaivs_*.deb     target/debs/bookworm/libsaivs-dev_*.deb \
-   target/debs/bookworm/libsairedis_*.deb  target/debs/bookworm/libsairedis-dev_*.deb \
-   target/debs/bookworm/saiserver_*.deb    target/debs/bookworm/python-saithrift_*.deb \
+cp target/debs/trixie/libsaivs_*.deb     target/debs/trixie/libsaivs-dev_*.deb \
+   target/debs/trixie/libsairedis_*.deb  target/debs/trixie/libsairedis-dev_*.deb \
+   target/debs/trixie/saiserver_*.deb    target/debs/trixie/python-saithrift_*.deb \
    src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp/debs/
 ```
 

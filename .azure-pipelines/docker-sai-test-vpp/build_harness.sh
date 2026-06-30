@@ -7,7 +7,7 @@ SAIREDIS_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUILDIMAGE_ROOT="${SONIC_BUILDIMAGE:-$(cd "${SAIREDIS_ROOT}/../.." && pwd)}"
 DEB_STAGING="${SCRIPT_DIR}/debs"
 DOCKERFILE="${SAIREDIS_ROOT}/.azure-pipelines/docker-sai-test-vpp/Dockerfile"
-BLDENV="${BLDENV:-bookworm}"
+BLDENV="${BLDENV:-trixie}"
 IMAGE_TAG="${IMAGE_TAG:-docker-sai-test-vpp:phase1}"
 STAGE_DEBS="${STAGE_DEBS:-1}"
 BUILD_SAIREDIS_DEBS="${BUILD_SAIREDIS_DEBS:-0}"
@@ -34,7 +34,7 @@ Options:
                         sonic-buildimage before staging
   --no-auto-build       Do not invoke make when sonic-sairedis .debs are
                         missing (validate only; fail with hints)
-  --bldenv <name>       Debian suite for target/debs (default: bookworm)
+  --bldenv <name>       Debian suite for target/debs (default: trixie)
   --image-tag <tag>     Docker image tag (default: docker-sai-test-vpp:phase1)
   --vpp-deb-dir <path>  Directory of VPP .debs (default: search buildimage
                         target/debs/<bldenv> and VPP_DEB_DIR env)
@@ -205,12 +205,12 @@ report_missing_debs()
         hints+=(
             "VPP infra (libvppinfra_*.deb):"
             "  Build platform-vpp in sonic-buildimage, or download sonic-net.sonic-platform-vpp"
-            "  pipeline artifact vpp-bookworm, then re-run with --vpp-deb-dir <path> or VPP_DEB_DIR"
+            "  pipeline artifact vpp-trixie, then re-run with --vpp-deb-dir <path> or VPP_DEB_DIR"
         )
     fi
     if ! deb_present "${DEB_STAGING}" 'vpp_*.deb'; then
         hints+=(
-            "VPP (vpp_*.deb): same sources as libvppinfra (platform-vpp build or vpp-bookworm artifact)"
+            "VPP (vpp_*.deb): same sources as libvppinfra (platform-vpp build or vpp-trixie artifact)"
         )
     fi
     if ! deb_present "${DEB_STAGING}" 'vpp-plugin-core_*.deb'; then
@@ -226,14 +226,14 @@ report_missing_debs()
     if ! deb_present "${DEB_STAGING}" 'libswsscommon_*.deb'; then
         hints+=(
             "SONiC SWSS common (libswsscommon_*.deb):"
-            "  From sonic-buildimage: NOTRIXIE=1 make target/debs/${BLDENV}/libswsscommon_1.0.0_amd64.deb"
+            "  From sonic-buildimage: make target/debs/${BLDENV}/libswsscommon_1.0.0_amd64.deb"
             "  Or download Azure.sonic-swss-common pipeline artifact, then re-run ./build_harness.sh"
         )
     fi
     if ! deb_present "${DEB_STAGING}" 'libyang_*.deb' 'libyang3_*.deb'; then
         hints+=(
             "YANG runtime (libyang_*.deb or libyang3_*.deb):"
-            "  From sonic-buildimage: NOTRIXIE=1 make target/debs/${BLDENV}/libyang3_3.12.2-1_amd64.deb"
+            "  From sonic-buildimage: make target/debs/${BLDENV}/libyang3_3.12.2-1_amd64.deb"
             "  Or download sonic-buildimage.common_libs / VS build artifact, then re-run ./build_harness.sh"
         )
     fi

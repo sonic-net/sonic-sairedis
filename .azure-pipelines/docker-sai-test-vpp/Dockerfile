@@ -1,4 +1,4 @@
-FROM debian:bookworm
+FROM debian:trixie
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
@@ -17,15 +17,14 @@ COPY .azure-pipelines/docker-sai-test-vpp /opt/docker-sai-test-vpp
 COPY SAI/test/ptf /opt/ptf
 COPY SAI/test/sai_test /sai_test
 
-RUN echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/bookworm-backports.list && \
-    apt-get update && \
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
         iproute2 \
-        libboost-serialization1.83.0/bookworm-backports \
+        libboost-serialization1.83.0 \
         libpcap0.8 \
-        libthrift-0.17.0 \
+        libthrift-0.19.0t64 \
         libzmq5 \
         procps \
         python3 \
