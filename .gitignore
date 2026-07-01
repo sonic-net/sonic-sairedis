@@ -119,6 +119,7 @@ unittest/vslib/testslibsaivs
 unittest/proxylib/tests
 unittest/proxylib/testslibsaiproxy
 unittest/saidump/tests
+unittest/saisdkdump/tests
 vslib/tests
 stub/tests
 unittest/stub/stub/testslibsaistub
