@@ -992,7 +992,10 @@ public:
                     std::vector<uint64_t> stats(counter_ids.size());
                     if (!collectData(rid, counter_ids, effective_stats_mode, false, stats))
                     {
-                        SWSS_LOG_INFO("counter read failed on RID 0x%x on intf 0x%x, adding to objectIdsMap regardless", rid, vid);
+                        // Workaround for N/A Counters on Broadcom management ports
+                        // Adding VIDs with unsupported counters to objectIdsMap to unblock testing
+                        // Please see https://github.com/sonic-net/sonic-sairedis/issues/1753 for details
+                        SWSS_LOG_INFO("counter read failed on RID 0x%" PRIx64 " on intf 0x%" PRIx64 ", adding to objectIdsMap regardless", rid, vid);
                     }
                     auto it_vid = m_objectIdsMap.find(vid);
                     if (it_vid != m_objectIdsMap.end())
@@ -1156,10 +1159,13 @@ public:
                                         kv.second->getStatsMode() == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
             }
 
+            // Workaround for N/A Counters on Broadcom management ports
+            // Using '0' for unsupported counters to unblock testing
+            // Please see https://github.com/sonic-net/sonic-sairedis/issues/1753 for details
             std::vector<uint64_t> stats(statIds.size(), 0);
             if (!collectData(rid, statIds, effective_stats_mode, false, stats))
             {
-                SWSS_LOG_INFO("counter read failed on RID 0x%x on intf 0x%x, filling with '0' value", rid, vid);
+                SWSS_LOG_INFO("counter read failed on RID 0x%" PRIx64 " on intf 0x%" PRIx64 ", filling with '0' value", rid, vid);
             }
 
             std::vector<swss::FieldValueTuple> values;
