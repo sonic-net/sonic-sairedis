@@ -1239,6 +1239,12 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
         return SAI_STATUS_FAILURE;
     }
 
+    // bond_enslave reprograms the member device (member MAC becomes the bond
+    // MAC) and resets its RX flags, clearing promiscuous mode. The bond presents
+    // a single MAC that differs from the member's own, so the member must be
+    // promiscuous to receive unicast frames addressed to the bond MAC.
+    interface_set_promiscuous(hwifname, true);
+
     CHECK_STATUS(vpp_ensure_lag_lcp(lag_oid));
 
     return SAI_STATUS_SUCCESS;

@@ -1025,7 +1025,16 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
        hw_ifname = hw_bviifname;
     } else if (full_if_name.compare(0, strlen(PORTCHANNEL_PREFIX), PORTCHANNEL_PREFIX) == 0) {
         uint32_t bond_id = std::stoi(full_if_name.substr(strlen(PORTCHANNEL_PREFIX)));
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_id);
+        if (vlan_id) {
+            // Routed port-channel sub-interface (PortChannel<id>.<vlan>): the IP
+            // belongs to the VPP sub-interface BondEthernet<id>.<vlan>, not the
+            // bond master.  Programming it on the master would leave the sub-if
+            // without an address so VPP never enables ip4/ip6 on it and for-us /
+            // routed traffic is dropped at ip4-not-enabled.
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d.%u", BONDETHERNET_PREFIX, bond_id, vlan_id);
+        } else {
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_id);
+        }
         hw_ifname = hw_bondifname;
     } else {
        hwifname = tap_to_hwif_name(if_name.c_str());
@@ -1614,21 +1623,48 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         }
         create_sub_interface(parent_hwif, vlan_id, vlan_id);
 
-        /*
-         * lcp-auto-subint is disabled in VPP startup config (vlan-bvi HLD §3.6),
-         * so the VPP sub-interface does NOT get an automatic linux-cp pair.
-         * Explicitly create the LCP pair binding <parent>.<vlan_id> (VPP side)
-         * to the kernel sub-vlan netdev (<dev>.<vlan_id>). Without this the
-         * sub-interface will not show up in `vppctl show lcp` and host punt
-         * will not work for the SUB_PORT RIF.
-         */
         char vpp_subif_name[64];
         snprintf(vpp_subif_name, sizeof(vpp_subif_name), "%s.%u", parent_hwif, vlan_id);
-        configure_lcp_interface(vpp_subif_name, host_subifname, true);
 
-        /* Get new list of physical interfaces from VS */
+        if (ot == SAI_OBJECT_TYPE_LAG)
+        {
+            /*
+             * Bonded (port-channel) sub-interface.  Create the linux-cp pair
+             * binding BondEthernet<id>.<vlan> to a host sub-tap named
+             * be<id>.<vlan> (a VLAN netdev on the bond's be<id> host tap).  We
+             * deliberately do NOT reuse the kernel sub-netdev name
+             * PortChannel<id>.<vlan> -- that already exists (8021q on the
+             * PortChannel bond) and the name would collide, leaving the pair
+             * with an invalid host (lip_host_sw_if_index = ~0) so punt drops.
+             *
+             * The pair is required so linux-cp installs the passive ip[46]
+             * punt-redirect AND so linux-cp-punt-xc has a valid host to punt
+             * ARP/L2 to.  No TC redirect to PortChannel<id>.<vlan> is needed:
+             * the sonic_ext aggr-tap-redirect feature (enabled on this host
+             * sub-tap because its phy is a bond sub-if) steers the punted frame
+             * to the originating member tap with the wire VLAN re-pushed, and
+             * the kernel's bond + 8021q stack delivers it to
+             * PortChannel<id>.<vlan>.
+             */
+            char host_tapname[32];
+            snprintf(host_tapname, sizeof(host_tapname), "be%u.%u", bond_info.id, vlan_id);
+            configure_lcp_interface(vpp_subif_name, host_tapname, true);
+        }
+        else
+        {
+            /*
+             * lcp-auto-subint is disabled in VPP startup config (vlan-bvi HLD
+             * §3.6), so the VPP sub-interface does NOT get an automatic
+             * linux-cp pair.  Explicitly create the LCP pair binding
+             * <parent>.<vlan_id> (VPP side) to the kernel sub-vlan netdev
+             * (<dev>.<vlan_id>).  Without this the sub-interface will not show
+             * up in `vppctl show lcp` and host punt will not work for the
+             * SUB_PORT RIF.
+             */
+            configure_lcp_interface(vpp_subif_name, host_subifname, true);
+        }
+        /* Get new list of physical interfaces from VPP */
         refresh_interfaces_list();
-
         linux_ifname = host_subifname;
     } else {
         linux_ifname = dev;
@@ -1951,11 +1987,21 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
      * Tear down the explicit LCP pair created in vpp_create_router_interface for
      * SUB_PORT (lcp-auto-subint is disabled, HLD §3.6). hostif name is ignored by
      * the LCP plugin on delete, but pass the symmetric value for log clarity.
+     *
+     * Bonded (port-channel) sub-interfaces use a be<id>.<vlan> host tap (not the
+     * colliding PortChannel<id>.<vlan> name); pass that on delete.
      */
     char vpp_subif_name[64];
     char host_subifname[64];
     snprintf(vpp_subif_name, sizeof(vpp_subif_name), "%s.%u", parent_hwif, vlan_id);
-    snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
+    if (ot == SAI_OBJECT_TYPE_LAG)
+    {
+        snprintf(host_subifname, sizeof(host_subifname), "be%u.%u", bond_info.id, vlan_id);
+    }
+    else
+    {
+        snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
+    }
     configure_lcp_interface(vpp_subif_name, host_subifname, false);
 
     delete_sub_interface(parent_hwif, vlan_id);
