@@ -397,6 +397,12 @@ void SwitchVpp::vppProcessEvents ()
         SWSS_LOG_NOTICE("Checking for any VS events status %d", ret);
         while ((evp = vpp_ev_dequeue())) {
             if (evp->type == VPP_INTF_LINK_STATUS) {
+                if (evp->data.intf_status.link_up) {
+                    /* Refresh cached link speed from VPP on link-up.
+                     * The initial sw_interface_dump may have cached speed=0
+                     * if the link was down at startup. */
+                    vpp_refresh_interface_speed(evp->data.intf_status.hwif_name);
+                }
                 asyncIntfStateUpdate(evp->data.intf_status.hwif_name,
                                      evp->data.intf_status.link_up);
                 SWSS_LOG_NOTICE("Received port link event for %s state %s",
@@ -570,6 +576,31 @@ sai_status_t SwitchVpp::vpp_set_interface_mtu (
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchVpp::vpp_set_port_speed (
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t vlan_id,
+        _In_ uint32_t speed)
+{
+    SWSS_LOG_ENTER();
+
+    if (is_ip_nbr_active() == false) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string ifname;
+
+    if (vpp_get_hwif_name(object_id, vlan_id, ifname) == true) {
+        const char *hwif_name = ifname.c_str();
+
+        // SAI port speed is in Mbps, VPP link speed is in Kbps
+        uint32_t link_speed = speed * 1000;
+
+        sw_interface_set_link_speed(hwif_name, link_speed);
+        SWSS_LOG_NOTICE("Updating port %s speed to %u Mbps", hwif_name, speed);
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::UpdatePort(
         _In_ sai_object_id_t object_id,
         _In_ uint32_t attr_count,
@@ -625,6 +656,13 @@ sai_status_t SwitchVpp::UpdatePort(
     if (attr_type != NULL)
     {
         vpp_set_port_mtu(object_id, 0, attr_type->value.u32);
+    }
+
+    attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_SPEED, attr_count, attr_list);
+
+    if (attr_type != NULL)
+    {
+        vpp_set_port_speed(object_id, 0, attr_type->value.u32);
     }
 
     return SAI_STATUS_SUCCESS;

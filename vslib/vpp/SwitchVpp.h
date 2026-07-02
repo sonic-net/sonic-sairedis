@@ -683,6 +683,12 @@ namespace saivs
                     _In_ uint32_t vlan_id,
                     _In_ uint32_t mtu);
 
+            // set ethernet interface link speed
+            sai_status_t vpp_set_port_speed (
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t vlan_id,
+                    _In_ uint32_t speed);
+
             sai_status_t UpdatePort(
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t attr_count,

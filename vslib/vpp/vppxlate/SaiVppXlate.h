@@ -299,6 +299,7 @@ typedef enum {
     extern int interface_set_state (const char *hwif_name, bool is_up);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
+    extern int sw_interface_set_link_speed(const char *hwif_name, uint32_t link_speed);
     extern int sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address);
     extern int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable);
     extern int ip_vrf_add(uint32_t vrf_id, const char *vrf_name, bool is_ipv6);
@@ -323,6 +324,7 @@ typedef enum {
     extern int vpp_tunterm_acl_interface_add_del (uint32_t tunterm_index,
                                            bool is_bind, const char *hwif_name);
     extern int interface_get_state(const char *hwif_name, bool *link_is_up);
+    extern int vpp_refresh_interface_speed(const char *hwif_name);
     extern int vpp_get_interface_speed(const char *hwif_name, uint32_t *speed);
     extern int vpp_sync_for_events();
     extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
