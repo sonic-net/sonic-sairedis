@@ -424,7 +424,12 @@ do {                                                            \
         if (now >= hard_deadline || now >= idle_deadline)       \
             break;                                              \
         if (scm && scm->socket_enable) {                        \
-            vl_socket_client_read (1);                          \
+            int _wr_rv = vl_socket_client_read (1);              \
+            if (_wr_rv == 0) {                                  \
+                idle_deadline = vat_time_now (vam) + 1.0;       \
+                if (idle_deadline > hard_deadline)              \
+                    idle_deadline = hard_deadline;              \
+            }                                                   \
         }                                                       \
         if (vam->result_ready == 1) {                           \
             ret = vam->retval;                                  \
@@ -492,7 +497,12 @@ do {                                                            \
         if (now >= hard_deadline || now >= idle_deadline)       \
             break;                                              \
         if (scm && scm->socket_enable) {                        \
-            vl_socket_client_read2 (scm, 1);                    \
+            int _wr_rv = vl_socket_client_read2 (scm, 1);     \
+            if (_wr_rv == 0) {                                  \
+                idle_deadline = vat_time_now (vam) + 1.0;       \
+                if (idle_deadline > hard_deadline)              \
+                    idle_deadline = hard_deadline;              \
+            }                                                   \
         }                                                       \
         if (vam->result_ready == 1) {                           \
             ret = vam->retval;                                  \
