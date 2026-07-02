@@ -23,9 +23,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     bool initTimeSpanSeen = false;
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lrm:h";
+    const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lRrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lh";
+    const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lRh";
 #endif // SAITHRIFT
 
     while (true)
@@ -42,6 +42,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "syncMode",                no_argument,       0, 's' },
             { "redisCommunicationMode",  required_argument, 0, 'z' },
             { "enableSaiBulkSupport",    no_argument,       0, 'l' },
+            { "asyncRec",                no_argument,       0, 'R' },
             { "globalContext",           required_argument, 0, 'g' },
             { "contextContig",           required_argument, 0, 'x' },
             { "breakConfig",             required_argument, 0, 'b' },
@@ -115,6 +116,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 options->m_enableSaiBulkSupport = true;
                 break;
 
+            case 'R':
+                options->m_enableAsyncRec = true;
+                break;
+
             case 'g':
                 options->m_globalContext = (uint32_t)std::stoul(optarg);
                 break;
@@ -182,9 +187,9 @@ void CommandLineOptionsParser::printUsage()
     SWSS_LOG_ENTER();
 
 #ifdef SAITHRIFT
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-r] [-m portmap] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-R] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-r] [-m portmap] [-h]" << std::endl;
 #else
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-R] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-h]" << std::endl;
 #endif // SAITHRIFT
 
     std::cout << "    -d --diag" << std::endl;
@@ -207,6 +212,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Redis communication mode (redis_async|redis_sync|zmq_sync), default: redis_async" << std::endl;
     std::cout << "    -l --enableBulk" << std::endl;
     std::cout << "        Enable SAI Bulk support" << std::endl;
+    std::cout << "    -R --asyncRec" << std::endl;
+    std::cout << "        Enable asynchronous ASIC_DB writes (only effective with ZMQ southbound)" << std::endl;
     std::cout << "    -g --globalContext" << std::endl;
     std::cout << "        Global context index to load from context config file" << std::endl;
     std::cout << "    -x --contextConfig" << std::endl;
