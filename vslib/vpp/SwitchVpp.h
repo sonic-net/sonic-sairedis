@@ -1206,5 +1206,43 @@ namespace saivs
             virtual sai_status_t querySwitchHashAlgorithmCapability(
                 _Inout_ sai_s32_list_t *enum_values_capability) override;
 
+        private: // VPP mirror
+            constexpr static const int m_maxMirrorSessions = 10;
+            uint32_t m_mirror_session_count = 0;
+            uint16_t m_next_erspan_session_id = 1;
+
+            struct MirrorSessionInfo {
+                uint32_t sw_if_index;
+                bool is_erspan;
+                vpp_ip_addr_t src_ip;
+                vpp_ip_addr_t dst_ip;
+                uint16_t session_id;
+            };
+
+            std::map<sai_object_id_t, MirrorSessionInfo> m_mirror_sessions;
+
+            struct PortMirrorBinding {
+                sai_object_id_t session_oid;
+                bool rx;
+                bool tx;
+                uint32_t dst_sw_if_idx;
+            };
+
+            // port id to PortMirrorBinding
+            std::map<sai_object_id_t, PortMirrorBinding> m_port_mirror_bindings;
+
+        protected:
+                sai_status_t createMirrorSession(
+                        _In_ sai_object_id_t object_id,
+                        _In_ sai_object_id_t switch_id,
+                        _In_ uint32_t attr_count,
+                        _In_ const sai_attribute_t *attr_list);
+
+                sai_status_t removeMirrorSession(_In_ sai_object_id_t object_id);
+
+                sai_status_t bindMirrorPort(
+                        _In_ sai_object_id_t portId,
+                        _In_ const sai_attribute_t* attr);
+
     };
 }
