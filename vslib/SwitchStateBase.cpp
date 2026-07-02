@@ -4321,6 +4321,27 @@ sai_status_t SwitchStateBase::queryTamBindPointTypeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryTamTelTypeModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    /* SAI_TAM_TEL_TYPE_MODE_SINGLE_TYPE and SAI_TAM_TEL_TYPE_MODE_MIXED_TYPE. */
+    constexpr uint32_t value_count = 2;
+
+    if (enum_values_capability->count < value_count)
+    {
+        enum_values_capability->count = value_count;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = value_count;
+    enum_values_capability->list[0] = SAI_TAM_TEL_TYPE_MODE_SINGLE_TYPE;
+    enum_values_capability->list[1] = SAI_TAM_TEL_TYPE_MODE_MIXED_TYPE;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryIcmpEchoSessionStatsCountModeCapability(
                    _Inout_ sai_s32_list_t *enum_values_capability)
 {
@@ -4389,6 +4410,10 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
     else if (object_type == SAI_OBJECT_TYPE_TAM && attr_id == SAI_TAM_ATTR_TAM_BIND_POINT_TYPE_LIST)
     {
         return queryTamBindPointTypeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_TAM_TEL_TYPE && attr_id == SAI_TAM_TEL_TYPE_ATTR_MODE)
+    {
+        return queryTamTelTypeModeCapability(enum_values_capability);
     }
     else if (object_type == SAI_OBJECT_TYPE_ICMP_ECHO_SESSION && attr_id == SAI_ICMP_ECHO_SESSION_ATTR_STATS_COUNT_MODE)
     {
