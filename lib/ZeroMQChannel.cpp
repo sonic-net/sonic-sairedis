@@ -265,6 +265,13 @@ sai_status_t ZeroMQChannel::wait(
 {
     SWSS_LOG_ENTER();
 
+    if (m_shutdown)
+    {
+        SWSS_LOG_NOTICE("skipping zmq_poll, shutdown in progress for: %s", command.c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
     SWSS_LOG_INFO("wait for %s response", command.c_str());
 
     zmq_pollitem_t items [1] = { };
@@ -284,7 +291,7 @@ sai_status_t ZeroMQChannel::wait(
             // zmq_send was done but zmq_recv did not complete. Close and
             // recreate the socket to reset the state machine (Issue #26300).
 
-            SWSS_LOG_ERROR("zmq_poll timed out for: %s, resetting REQ socket", command.c_str());
+            SWSS_LOG_WARN("zmq_poll timed out for: %s, resetting REQ socket", command.c_str());
 
             zmq_close(m_socket);
 
@@ -301,9 +308,19 @@ sai_status_t ZeroMQChannel::wait(
 
             return SAI_STATUS_FAILURE;
         }
-        if (rc < 0 && zmq_errno() == EINTR && i < ZMQ_MAX_RETRY)
+        if (rc < 0 && zmq_errno() == EINTR)
         {
-            continue;
+            if (m_shutdown)
+            {
+                SWSS_LOG_NOTICE("zmq_poll interrupted during shutdown for: %s", command.c_str());
+
+                return SAI_STATUS_FAILURE;
+            }
+
+            if (i < ZMQ_MAX_RETRY)
+            {
+                continue;
+            }
         }
         if (rc < 0)
         {
