@@ -72,6 +72,16 @@ endif
 ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
 	sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
 endif
+	# SAI may be built with vendor custom headers in SAI/custom/ and the generated
+	# saimetadata.h emitted in that case includes "#include <saicustom.h>". Ship
+	# those custom headers in libsaivs-dev (the VS SAI dev package that is installed
+	# during downstream builds such as sonic-swss) so that include resolves.
+	# libsaivs-dev conflicts with vendor SAI dev packages, so the two never
+	# co-install and there is no file-overwrite clash. Guarded on existence so
+	# builds that don't include custom headers are unaffected.
+	if ls SAI/custom/*custom*.h >/dev/null 2>&1 && [ -d debian/libsaivs-dev/usr/include/sai ]; then \
+		install -m 644 SAI/custom/*custom*.h debian/libsaivs-dev/usr/include/sai/; \
+	fi
 
 override_dh_installinit:
 	dh_installinit --init-script=syncd
