@@ -12,10 +12,28 @@ ifneq (${SWSS_COMMON_LIB},)
 	LD_LIBRARY_PATH_CONFIG = LD_LIBRARY_PATH=${SWSS_COMMON_LIB}
 endif
 
-# see FEATURE AREAS in dpkg-buildflags(1)
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+# Provides DEB_HOST_ARCH for arch-conditional compiler flags below.
+include /usr/share/dpkg/architecture.mk
 
-# see ENVIRONMENT in dpkg-buildflags(1)
+# see FEATURE AREAS in dpkg-buildflags(1)
+# +bindnow enables -Wl,-z,now (full RELRO); required by OpenSSF hardening baseline.
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all,+bindnow
+
+# OpenSSF Compiler Options Hardening Guide baseline.
+# FORTIFY_SOURCE=3: upgraded from dpkg default of =2.
+# _GLIBCXX_ASSERTIONS: C++ stdlib bounds checking.
+export DEB_CPPFLAGS_MAINT_APPEND = -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS
+# fstack-clash-protection: not in bookworm hardening area; inject directly.
+# fcf-protection/mbranch-protection: arch-specific CFI.
+# Production safety flags per OpenSSF baseline.
+# -ftrivial-auto-var-init=zero requires GCC >= 12; omit on older toolchains.
+GCC_MAJOR := $(shell gcc -dumpversion 2>/dev/null | cut -d. -f1)
+TRIVIAL_INIT := $(shell [ "$(GCC_MAJOR)" -ge 12 ] 2>/dev/null && echo "-ftrivial-auto-var-init=zero" || echo "")
+export DEB_CFLAGS_MAINT_APPEND   = -fstack-clash-protection $(if $(filter amd64,$(DEB_HOST_ARCH)),-fcf-protection=full) $(if $(filter arm64,$(DEB_HOST_ARCH)),-mbranch-protection=standard) -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing $(TRIVIAL_INIT)
+export DEB_CXXFLAGS_MAINT_APPEND = -fstack-clash-protection $(if $(filter amd64,$(DEB_HOST_ARCH)),-fcf-protection=full) $(if $(filter arm64,$(DEB_HOST_ARCH)),-mbranch-protection=standard) -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing $(TRIVIAL_INIT)
+# Linker hardening: nodlopen, noexecstack, as-needed.
+# --no-copy-dt-needed-entries omitted: requires explicit transitive dep fixes per-repo.
+export DEB_LDFLAGS_MAINT_APPEND  = -Wl,-z,nodlopen -Wl,-z,noexecstack -Wl,--as-needed
 # package maintainers to append CFLAGS
 #export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
 # package maintainers to append LDFLAGS
