@@ -1290,6 +1290,14 @@ std::string sai_serialize_tunnel_stat(
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_tunnel_stat_t);
 }
 
+std::string sai_serialize_icmp_echo_session_stat(
+        _In_ const sai_icmp_echo_session_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_icmp_echo_session_stat_t);
+}
+
 std::string sai_serialize_counter_stat(
         _In_ const sai_counter_stat_t counter)
 {
