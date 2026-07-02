@@ -209,7 +209,26 @@ AC_SUBST(CXXFLAGS_COMMON)
 
 # -lvlibapi -lvapiclient -lvppapiclient -lvlibmemoryclient -lsvm -lvppinfra -lvlib -lvatplugin
 # -lvapiclient -lsvm -lvatplugin
-AC_CHECK_LIB([vlib], [main], [AC_SUBST(VPP_LIBS, "-lvlib -lvlibapi -lvppapiclient -lvlibmemoryclient -lvppinfra")])
+#
+# VPP linkage is opt-in via --enable-vpp. Unconditional autodetect via
+# AC_CHECK_LIB([vlib], [main], ...) caused the published libsaivs.so to carry
+# DT_NEEDED entries for libvlib / libvlibapi / libvlibmemoryclient /
+# libvppapiclient / libvppinfra (and transitively cJSON) whenever the sairedis
+# build host happened to have VPP installed, breaking downstream consumers
+# (e.g. sonic-swss) that link libsaivs in environments without the matching VPP
+# runtime / libcjson.
+AC_ARG_ENABLE(vpp,
+[  --enable-vpp            link the VPP backend into libsaivs / syncd (default: no)],
+[case "${enableval}" in
+    yes) enable_vpp=true ;;
+    no)  enable_vpp=false ;;
+    *)   AC_MSG_ERROR(bad value ${enableval} for --enable-vpp) ;;
+esac],[enable_vpp=false])
+if test x$enable_vpp = xtrue; then
+    AC_CHECK_LIB([vlib], [main],
+        [AC_SUBST(VPP_LIBS, "-lvlib -lvlibapi -lvppapiclient -lvlibmemoryclient -lvppinfra")],
+        [AC_MSG_ERROR([--enable-vpp was given but VPP development libraries (libvlib) were not found])])
+fi
 AM_CONDITIONAL([USE_VPP], [test "x$VPP_LIBS" != "x"])
 
 AC_ARG_WITH(extra-libsai-ldflags,
