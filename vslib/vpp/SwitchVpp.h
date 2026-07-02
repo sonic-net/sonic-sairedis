@@ -793,9 +793,11 @@ namespace saivs
             std::chrono::steady_clock::time_point m_routeStatsCacheTime;
             bool m_routeStatsCacheValid = false;
             std::mutex m_routeStatsCacheMutex;
+            std::map<sai_object_id_t, sai_object_id_t> m_sflow_port_to_samplepacket;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
+            uint32_t m_sflow_sample_rate = 0;
 
         protected: // VPP
 
@@ -1041,6 +1043,49 @@ namespace saivs
                     _In_ sai_object_id_t ace_cntr_oid,
                     _In_ uint32_t attr_count,
                     _Out_ sai_attribute_t *attr_list);
+
+            sai_status_t samplePacketCreate(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t samplePacketRemove(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t samplePacketSet(
+                    _In_ sai_object_id_t entry_id,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t sflowEnableDisable(
+                    _In_ sai_object_id_t port_id,
+                    _In_ bool enable);
+
+            sai_status_t sflowSamplingRateSet(
+                    _In_ uint32_t rate);
+
+            sai_status_t sflowHostifTrapSamplePacketCreate(
+                     _In_ sai_object_id_t object_id,
+                     _In_ sai_object_id_t switch_id,
+                     _In_ uint32_t attr_count,
+                     _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t sflowPortSamplePacketSet(
+                    _In_ sai_object_id_t portId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t sflowHostifTrapSamplePacketRemove(
+                     _In_ const std::string &serializedObjectId);
+
+            sai_status_t sflowHostifTableEntryCreate(
+                     _In_ sai_object_id_t object_id,
+                     _In_ sai_object_id_t switch_id,
+                     _In_ uint32_t attr_count,
+                     _In_ const sai_attribute_t *attr_list);
+
+             sai_status_t sflowHostifTableEntryRemove(
+                     _In_ const std::string &serializedObjectId);
+
 
         public: // VPP
 
