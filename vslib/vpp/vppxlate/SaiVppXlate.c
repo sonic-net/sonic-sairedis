@@ -568,6 +568,10 @@ void vpp_mutex_unlock ()
  * Dedicated lock for the asynchronous event connection (vat_event_main /
  * event_socket_client_main). Kept separate from vpp_mutex so the background
  * event-polling thread never serializes against the synchronous command path.
+ *
+ * Lock ordering: code running under EVENT_LOCK must never acquire VPP_LOCK.
+ * The command path holds VPP_LOCK and may wait on the event connection;
+ * acquiring VPP_LOCK while holding EVENT_LOCK would deadlock.
  */
 static pthread_mutex_t vpp_event_mutex;
 
@@ -3168,6 +3172,10 @@ int vpp_get_interface_speed (const char *hwif_name, uint32_t *speed)
     return 0;
 }
 
+/*
+ * Synchronize with VPP via the dedicated event socket. Runs under EVENT_LOCK;
+ * must not acquire VPP_LOCK (see EVENT_LOCK comment above).
+ */
 int vpp_sync_for_events ()
 {
     vat_main_t *vam = &vat_event_main;
