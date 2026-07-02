@@ -144,6 +144,7 @@ static uint32_t s_tag_dhcp_table = ~0;        /* DHCPv4 broadcast over .1Q */
 
 static int l2_punt_classify_init()
 {
+    SWSS_LOG_ENTER();
     if (s_l2_punt_classify_inited)
         return 0;
 
@@ -299,6 +300,7 @@ static int l2_punt_classify_init()
 
 static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged)
 {
+    SWSS_LOG_ENTER();
     if (l2_punt_classify_init() != 0) {
         SWSS_LOG_ERROR("l2_punt_classify_apply: init failed for %s", hwif_name);
         return -1;
@@ -326,6 +328,7 @@ static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged)
 
 static int l2_punt_classify_remove(const char *hwif_name)
 {
+    SWSS_LOG_ENTER();
     /* Detach all tables from the interface */
     return vpp_classify_set_interface_l2_tables(
         hwif_name, ~0, ~0, ~0, true /*is_input*/);
