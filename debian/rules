@@ -12,12 +12,24 @@ ifneq (${SWSS_COMMON_LIB},)
 	LD_LIBRARY_PATH_CONFIG = LD_LIBRARY_PATH=${SWSS_COMMON_LIB}
 endif
 
-# see FEATURE AREAS in dpkg-buildflags(1)
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+# Provides DEB_HOST_ARCH for arch-conditional compiler flags below.
+include /usr/share/dpkg/architecture.mk
 
-# see ENVIRONMENT in dpkg-buildflags(1)
-# Upgrade FORTIFY_SOURCE to level 3 (dpkg default is =2).
-export DEB_CPPFLAGS_MAINT_APPEND = -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3
+# see FEATURE AREAS in dpkg-buildflags(1)
+# +bindnow enables -Wl,-z,now (full RELRO); required by OpenSSF hardening baseline.
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all,+bindnow
+
+# OpenSSF Compiler Options Hardening Guide baseline.
+# FORTIFY_SOURCE=3: upgraded from dpkg default of =2.
+# _GLIBCXX_ASSERTIONS: C++ stdlib bounds checking.
+export DEB_CPPFLAGS_MAINT_APPEND = -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS
+# fstack-clash-protection: not in bookworm hardening area; inject directly.
+# fcf-protection/mbranch-protection: arch-specific CFI.
+# Production safety flags per OpenSSF baseline.
+export DEB_CFLAGS_MAINT_APPEND   = -fstack-clash-protection $(if $(filter amd64,$(DEB_HOST_ARCH)),-fcf-protection=full) $(if $(filter arm64,$(DEB_HOST_ARCH)),-mbranch-protection=standard) -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing -ftrivial-auto-var-init=zero
+export DEB_CXXFLAGS_MAINT_APPEND = -fstack-clash-protection $(if $(filter amd64,$(DEB_HOST_ARCH)),-fcf-protection=full) $(if $(filter arm64,$(DEB_HOST_ARCH)),-mbranch-protection=standard) -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing -ftrivial-auto-var-init=zero
+# Linker hardening: nodlopen, noexecstack, as-needed, no-copy-dt-needed-entries.
+export DEB_LDFLAGS_MAINT_APPEND  = -Wl,-z,nodlopen -Wl,-z,noexecstack -Wl,--as-needed -Wl,--no-copy-dt-needed-entries
 # package maintainers to append CFLAGS
 #export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
 # package maintainers to append LDFLAGS
