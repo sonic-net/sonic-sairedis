@@ -445,15 +445,40 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 	    return SAI_STATUS_FAILURE;
     }
 
-    auto attr_mac_addr = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS, attr_count, attr_list);
-    if (attr_mac_addr == NULL)
-    {
-	    SWSS_LOG_NOTICE("attr ROUTER INTERFACE MAC Address is not found");
-	    return SAI_STATUS_FAILURE;
-    }
-
     sai_mac_t mac_addr;
-    memcpy(mac_addr, attr_mac_addr->value.mac, sizeof(sai_mac_t));
+
+    auto attr_mac_addr = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS, attr_count, attr_list);
+    if (attr_mac_addr != NULL)
+    {
+	    memcpy(mac_addr, attr_mac_addr->value.mac, sizeof(sai_mac_t));
+    }
+    else
+    {
+	    // SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS is optional; per the SAI
+	    // spec its default is the switch source MAC. When a caller omits it
+	    // (e.g. the OCP sai_test PTF suite creates VLAN RIFs without a MAC,
+	    // unlike orchagent which always supplies the switch MAC), fall back to
+	    // SAI_SWITCH_ATTR_SRC_MAC_ADDRESS instead of failing the BVI create.
+	    // Without this the VLAN BVI is never created, so SVI ingress traffic
+	    // floods L2 instead of being routed - which broke every standalone L3
+	    // route/RIF test whose ingress is a VLAN access port. See
+	    // .azure-pipelines/docker-sai-test-vpp/devdocs/progress-6-17.md (Issue B).
+	    sai_attribute_t sw_attr;
+	    memset(&sw_attr, 0, sizeof(sw_attr));
+	    sw_attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+
+	    sai_status_t mac_status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &sw_attr);
+	    if (mac_status != SAI_STATUS_SUCCESS)
+	    {
+		    SWSS_LOG_ERROR("RIF src MAC not provided and failed to read switch src MAC on %s: %s",
+				    sai_serialize_object_id(m_switch_id).c_str(),
+				    sai_serialize_status(mac_status).c_str());
+		    return SAI_STATUS_FAILURE;
+	    }
+
+	    memcpy(mac_addr, sw_attr.value.mac, sizeof(sai_mac_t));
+	    SWSS_LOG_NOTICE("RIF src MAC not provided; using switch src MAC for BVI of vlan %u", vlan_id);
+    }
 
     //Create BVI interface
     create_bvi_interface(mac_addr,vlan_id);
@@ -956,6 +981,97 @@ sai_status_t SwitchVpp::vpp_remove_lag_member(
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::vpp_set_lag_member_egress_disable(
+        _In_ sai_object_id_t lag_member_oid,
+        _In_ bool egress_disable)
+{
+    SWSS_LOG_ENTER();
+
+    int ret;
+    sai_attribute_t attr;
+
+    attr.id = SAI_LAG_MEMBER_ATTR_LAG_ID;
+    sai_status_t status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("attr SAI_LAG_MEMBER_ATTR_LAG_ID is not present");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_object_id_t lag_oid = attr.value.oid;
+
+    platform_bond_info_t bond_info;
+    CHECK_STATUS(get_lag_bond_info(lag_oid, bond_info));
+    uint32_t bond_if_idx = bond_info.sw_if_index;
+
+    attr.id = SAI_LAG_MEMBER_ATTR_PORT_ID;
+    status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("attr SAI_LAG_MEMBER_ATTR_PORT_ID is not present");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_object_id_t port_oid = attr.value.oid;
+
+    std::string if_name;
+    bool found = getTapNameFromPortId(port_oid, if_name);
+    if (found == false)
+    {
+        SWSS_LOG_ERROR("No tap for lag member port %s", sai_serialize_object_id(port_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    const char *hwifname = tap_to_hwif_name(if_name.c_str());
+
+    if (egress_disable)
+    {
+        ret = delete_bond_member(hwifname);
+    }
+    else
+    {
+        bool is_passive = false;
+        bool is_long_timeout = false;
+
+        ret = create_bond_member(bond_if_idx, hwifname, is_passive, is_long_timeout);
+    }
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("failed to %s bond member %s in VPP",
+                egress_disable ? "detach" : "attach", hwifname);
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::setLagMember(
+        _In_ sai_object_id_t lag_member_oid,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (attr == NULL)
+    {
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (attr->id == SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE)
+    {
+        sai_status_t status = vpp_set_lag_member_egress_disable(lag_member_oid, attr->value.booldata);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return status;
+        }
+    }
+
+    auto sid = sai_serialize_object_id(lag_member_oid);
+    return set_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, attr);
 }
 
 sai_status_t SwitchVpp::FdbEntryadd(

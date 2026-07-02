@@ -412,6 +412,14 @@ namespace saivs
 	    sai_status_t vpp_remove_lag_member(
                     _In_ sai_object_id_t lag_member_oid);
 
+            sai_status_t setLagMember(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _In_ const sai_attribute_t* attr);
+
+            sai_status_t vpp_set_lag_member_egress_disable(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _In_ bool egress_disable);
+
             /* FDB Entry and Flush SAI Objects */
             sai_status_t FdbEntryadd(
                     _In_ const std::string &serializedObjectId,
@@ -698,7 +706,9 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _In_ bool program_adjacency = true,
+                    _In_ bool program_host_route = false);
 
             sai_status_t addIpNbr(
                     _In_ const std::string &serializedObjectId,
@@ -748,6 +758,10 @@ namespace saivs
                     _In_ nexthop_grp_member_t *member,
                     _In_ bool is_add,
                     _Out_ uint32_t *stats_index = nullptr);
+
+            const char* resolveNexthopMemberHwif(
+                    _In_ const nexthop_grp_member_t *member,
+                    _Out_ std::string &member_hwif);
 
             sai_status_t updateIpRoute(
                     _In_ const std::string &serializedObjectId,
@@ -1073,6 +1087,10 @@ namespace saivs
             } platform_bond_info_t;
 
             void populate_if_mapping();
+
+            bool getTapNameFromPortOrLagId(
+                    _In_ sai_object_id_t obj_id,
+                    _Out_ std::string& if_name);
 
             const char *tap_to_hwif_name(const char *name);
 
