@@ -50,6 +50,9 @@
 #include <vpp_plugins/acl/acl.api_enum.h>
 #include <vpp_plugins/acl/acl.api_types.h>
 
+#include <vpp_plugins/sflow/sflow.api_enum.h>
+#include <vpp_plugins/sflow/sflow.api_types.h>
+
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_enum.h>
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_types.h>
 
@@ -290,6 +293,24 @@
 
 #define vl_api_version(n, v) static u32 acl_api_version = v;
 #include <vpp_plugins/acl/acl.api.h>
+#undef vl_api_version
+
+/* sflow API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sflow/sflow.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/sflow/sflow.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sflow/sflow.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sflow_api_version = v;
+#include <vpp_plugins/sflow/sflow.api.h>
 #undef vl_api_version
 
 /* BOND API inclusion */
@@ -1177,6 +1198,20 @@ vl_api_bfd_udp_enable_multihop_reply_t_handler (vl_api_bfd_udp_enable_multihop_r
 }
 
 static void
+vl_api_sflow_enable_disable_reply_t_handler(vl_api_sflow_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sflow_sampling_rate_set_reply_t_handler(vl_api_sflow_sampling_rate_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_bfd_udp_set_tos_reply_t_handler (vl_api_bfd_udp_set_tos_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1521,6 +1556,8 @@ static void vpp_base_vpe_init(void)
 
 #define VLIB_API_MSG_ID(id) \
     (VL_API_##id + vlib_msg_id_base)
+#define SFLOW_MSG_ID(id) \
+    (VL_API_##id + sflow_msg_id_base)
 
 #define foreach_vpe_ext_api_reply_msg                                   \
     _(INTERFACE_MSG_ID(SW_INTERFACE_DETAILS), sw_interface_details)     \
@@ -1578,6 +1615,7 @@ static void vpp_base_vpe_init(void)
 
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
 static u16 acl_msg_id_base;
+static u16 sflow_msg_id_base;
 
 static void vpp_ext_vpe_init(void)
 {
@@ -1642,6 +1680,7 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     set_reply_status(retval);
 }
 
+
 #define LCP_MSG_ID(id) \
     (VL_API_##id + lcp_msg_id_base)
 
@@ -1676,6 +1715,8 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
     _(SR_MSG_ID(SR_STEERING_ADD_DEL_REPLY), sr_steering_add_del_reply) \
     _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply) \
+    _(SFLOW_MSG_ID(SFLOW_ENABLE_DISABLE_REPLY), sflow_enable_disable_reply) \
+    _(SFLOW_MSG_ID(SFLOW_SAMPLING_RATE_SET_REPLY), sflow_sampling_rate_set_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
     _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply)
 
@@ -1757,6 +1798,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "vlib_%08x%c", vlibapi_version, 0);
     vlib_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(vlib_msg_id_base != (u16) ~0);
+ 
+    msg_base_lookup_name = format (0, "sflow_%08x%c", sflow_api_version, 0);
+    sflow_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(sflow_msg_id_base != (u16) ~0);
 }
 
 #define API_SOCKET_FILE "/run/vpp/api.sock"
@@ -2975,6 +3020,74 @@ int vpp_acl_interface_unbind (const char *hwif_name, uint32_t acl_index,
                               bool is_input)
 {
     return __vpp_acl_interface_bind_unbind(hwif_name, acl_index, is_input, false);
+}
+
+int vpp_sflow_enable_disable(const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_enable_disable_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_ENABLE_DISABLE, mp);
+
+    if(hwif_name){
+        u32 idx;
+        idx = get_swif_idx(vam, hwif_name);
+        if(idx != (u32) - 1){
+            mp->hw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->enable_disable = enable;
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable);
+    } else {
+        SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+
+}
+
+int vpp_sflow_sampling_rate_set(uint32_t sampling_n)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_sampling_rate_set_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_SAMPLING_RATE_SET, mp);
+
+    mp->sampling_N = htonl(sampling_n);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) sampling_N %u", __func__, ret, sampling_n);
+    } else {
+        SAIVPP_INFO("%s sampling_N %u", __func__, sampling_n);
+    }
+
+    VPP_UNLOCK();
+    return ret;
 }
 
 int vpp_ip_flow_hash_set (uint32_t vrf_id, uint32_t hash_mask, int addr_family)
