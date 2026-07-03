@@ -2799,3 +2799,120 @@ TEST_F(FlexCounterTcpFallback, tcpFallbackWhenNoUnixSocket)
 
     countersTable.del(key);
 }
+
+TEST(FlexCounter, failedPollsCountAndCleanUp)
+{
+    // This test verifies that:
+    //
+    // 1. When getStats starts failing after successful polls on an already-added object,
+    //    counter DB values go stale (stop updating) and the poll continues.
+    // 2. After removing and re-adding the same object, the failure count resets
+    //    (m_failedPolls cleanup on remove) so it polls successfully again.
+
+    std::atomic<bool> failGetStats{false};
+    std::atomic<uint32_t> pollCycleCount{0};
+
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t,
+                                        sai_stat_capability_list_t *)
+    {
+        return SAI_STATUS_FAILURE;
+    };
+
+    sai->mock_getStats = [&](sai_object_type_t, sai_object_id_t,
+                             uint32_t number_of_counters, const sai_stat_id_t *,
+                             uint64_t *counters) -> sai_status_t
+    {
+        if (failGetStats.load())
+        {
+            pollCycleCount++;
+            return SAI_STATUS_FAILURE;
+        }
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            counters[i] = (i + 1) * 100;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t,
+                                const sai_object_key_t *, uint32_t,
+                                const sai_stat_id_t *, sai_stats_mode_t,
+                                sai_status_t *, uint64_t *)
+    {
+        return SAI_STATUS_FAILURE;
+    };
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+
+    sai_object_id_t oid{0x1000000000000};
+    std::string expectedKey = toOid(oid);
+
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+
+    std::vector<swss::FieldValueTuple> pluginValues;
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(pluginValues);
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    // Verify counters will stop updating DB after 3 or more failed polls
+    // Add object and verify counters in DB
+    std::vector<swss::FieldValueTuple> counterValues;
+    counterValues.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_ERRORS");
+    fc.addCounter(oid, oid, counterValues);
+    EXPECT_FALSE(fc.isEmpty());
+
+    waitForCounterKeys(countersTable, 1);
+    waitForCounterValues(countersTable, expectedKey,
+                      {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_ERRORS"},
+                      {"100", "200"});
+
+    // getStats starts failing and DB values should go stale (not updated, not cleared).
+    failGetStats = true;
+    pollCycleCount = 0;
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
+    while (std::chrono::steady_clock::now() < deadline && pollCycleCount.load() < 3)
+    {
+        usleep(100 * 1000);
+    }
+    EXPECT_GE(pollCycleCount.load(), 3u);
+
+    // Stale values should remain in the DB, unchanged
+    std::string value;
+    countersTable.hget(expectedKey, "SAI_PORT_STAT_IF_IN_OCTETS", value);
+    EXPECT_EQ(value, "100");
+    countersTable.hget(expectedKey, "SAI_PORT_STAT_IF_IN_ERRORS", value);
+    EXPECT_EQ(value, "200");
+
+    // Verify m_failedPolls is cleaned up on removeObject so the
+    // re-added object can poll fresh without stale failing state.
+    // Remove and re-add with getStats succeeding
+    fc.removeCounter(oid);
+    countersTable.del(expectedKey);
+    EXPECT_TRUE(fc.isEmpty());
+
+    failGetStats = false;
+
+    fc.addCounter(oid, oid, counterValues);
+    EXPECT_FALSE(fc.isEmpty());
+
+    waitForCounterKeys(countersTable, 1);
+    waitForCounterValues(countersTable, expectedKey,
+                      {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_ERRORS"},
+                      {"100", "200"});
+
+    // Cleanup
+    fc.removeCounter(oid);
+    countersTable.del(expectedKey);
+    EXPECT_TRUE(fc.isEmpty());
+
+    std::vector<std::string> keys;
+    countersTable.getKeys(keys);
+    removeTimeStamp(keys, countersTable);
+    ASSERT_TRUE(keys.empty());
+}
