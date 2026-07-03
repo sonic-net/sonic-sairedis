@@ -6375,6 +6375,12 @@ void Meta::meta_generic_validation_post_set(
     // only on create we need to increase entry object types members
     // save actual attributes and values to local db
 
+    // For DASH allow-listed types under EXISTENCE_REFCOUNT, non-OID
+    // attributes set after create are intentionally NOT cached here.
+    // The OID-reference-count side effects above still run, so the cache
+    // and live OID refcounts stay consistent. Meta-layer gets on a
+    // non-OID attribute set this way would miss the cache, but the
+    // vendor SAI layer remains the source of truth for real gets.
     if (saimeta::shouldCacheAttribute(meta_key.objecttype, md))
     {
         m_saiObjectCollection.setObjectAttr(meta_key, md, attr);
@@ -6835,7 +6841,7 @@ void Meta::meta_sai_on_port_host_tx_ready_change(
 
     if (!m_oids.objectReferenceExists(port_id))
     {
-        SWSS_LOG_NOTICE("port_id new object spotted %s not present in local DB (snoop!)",
+        SWSS_LOG_INFO("port_id new object spotted %s not present in local DB (snoop!)",
                 sai_serialize_object_id(port_id).c_str());
 
         sai_object_meta_key_t host_tx_ready_key = { .objecttype = ot, .objectkey = { .key = { .object_id = port_id } } };
@@ -6979,7 +6985,7 @@ void Meta::meta_sai_on_port_state_change_single(
 
     if (valid && !m_oids.objectReferenceExists(data.port_id))
     {
-        SWSS_LOG_NOTICE("data.port_id new object spotted %s not present in local DB (snoop!)",
+        SWSS_LOG_INFO("data.port_id new object spotted %s not present in local DB (snoop!)",
                 sai_serialize_object_id(data.port_id).c_str());
 
         sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = data.port_id } } };
@@ -7477,6 +7483,22 @@ bool Meta::objectExists(
     SWSS_LOG_ENTER();
 
     return m_saiObjectCollection.objectExists(mk);
+}
+
+bool Meta::objectHasAttribute(
+        _In_ const sai_object_meta_key_t& mk,
+        _In_ sai_attr_id_t attr_id) const
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_saiObjectCollection.objectExists(mk))
+    {
+        return false;
+    }
+
+    auto obj = m_saiObjectCollection.getObject(mk);
+
+    return obj && obj->hasAttr(attr_id);
 }
 
 void Meta::populate(

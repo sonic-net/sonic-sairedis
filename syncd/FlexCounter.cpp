@@ -1319,8 +1319,11 @@ public:
                     } else {
                         SWSS_LOG_WARN("%s RID %s can't provide the statistic",  m_name.c_str(), sai_serialize_object_id(rid).c_str());
                     }
-                }
 
+                    auto counter_data = std::make_shared<CounterIds<StatType>>(rid, counter_ids);
+                    m_objectIdsMap.emplace(vid, counter_data);
+                    SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
+                }
                 return;
             }
 

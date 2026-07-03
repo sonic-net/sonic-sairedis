@@ -88,12 +88,14 @@ libSaiVS_a_SOURCES +=\
 					  vpp/SwitchVppRoute.cpp \
 					  vpp/SwitchVppNbr.cpp \
 					  vpp/SwitchVppSRv6.cpp \
+					  vpp/SwitchVppSflow.cpp \
 					  vpp/TunnelManager.cpp \
 					  vpp/SaiVppLog.cpp \
 					  vpp/vppxlate/SaiVppXlate.c \
 					  vpp/vppxlate/SaiVppStats.c \
 					  vpp/vppxlate/SaiAclStats.c \
-					  vpp/vppxlate/SaiIntfStats.c
+					  vpp/vppxlate/SaiIntfStats.c \
+					  vpp/vppxlate/SaiRouteStats.c
 endif
 
 BUILT_SOURCES = sai_vs.cpp

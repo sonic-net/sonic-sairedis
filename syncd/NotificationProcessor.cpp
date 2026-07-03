@@ -18,8 +18,10 @@ using namespace saimeta;
 NotificationProcessor::NotificationProcessor(
         _In_ std::shared_ptr<NotificationProducerBase> producer,
         _In_ std::shared_ptr<BaseRedisClient> client,
-        _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer):
+        _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer,
+        _In_ std::function<bool(sai_object_id_t, sai_port_oper_status_t)> linkEventDampingApplier):
     m_synchronizer(synchronizer),
+    m_linkEventDampingApplier(linkEventDampingApplier),
     m_client(client),
     m_notifications(producer)
 {
@@ -494,6 +496,9 @@ void NotificationProcessor::process_on_port_state_change(
 
     SWSS_LOG_DEBUG("port notification count: %u", count);
 
+    // Vector to store filtered notifications (after damping applied)
+    std::vector<sai_port_oper_status_notification_t> filtered_notifications;
+
     for (uint32_t i = 0; i < count; i++)
     {
         sai_port_oper_status_notification_t *oper_stat = &data[i];
@@ -520,14 +525,43 @@ void NotificationProcessor::process_on_port_state_change(
          * Port may be in process of removal. OA may receive notification for VID either
          * SAI_NULL_OBJECT_ID or non exist at time of processing
          */
+        SWSS_LOG_INFO("Port VID %s state change notification: %s",
+                sai_serialize_object_id(oper_stat->port_id).c_str(),
+                sai_serialize_port_oper_status(oper_stat->port_state).c_str());
 
-        SWSS_LOG_INFO("Port VID %s state change notification",
-                sai_serialize_object_id(oper_stat->port_id).c_str());
+        // Apply link event damping if configured
+        bool should_suppress = false;
+        if (m_linkEventDampingApplier != nullptr && oper_stat->port_id != SAI_NULL_OBJECT_ID)
+        {
+            should_suppress = m_linkEventDampingApplier(oper_stat->port_id, oper_stat->port_state);
+        }
+
+        if (!should_suppress)
+        {
+            // Add to filtered notifications
+            filtered_notifications.push_back(*oper_stat);
+            SWSS_LOG_INFO("Port state change PROPAGATED: %s -> %s",
+                    sai_serialize_object_id(oper_stat->port_id).c_str(),
+                    sai_serialize_port_oper_status(oper_stat->port_state).c_str());
+        }
+        else
+        {
+            SWSS_LOG_INFO("Port state change SUPPRESSED by damping: %s -> %s",
+                    sai_serialize_object_id(oper_stat->port_id).c_str(),
+                    sai_serialize_port_oper_status(oper_stat->port_state).c_str());
+        }
     }
 
-    std::string s = sai_serialize_port_oper_status_ntf(count, data);
-
-    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, s);
+    // Send only non-suppressed (filtered) notifications
+    if (!filtered_notifications.empty())
+    {
+        std::string s = sai_serialize_port_oper_status_ntf((uint32_t)filtered_notifications.size(), filtered_notifications.data());
+        sendNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, s);
+    }
+    else
+    {
+        SWSS_LOG_DEBUG("All port state changes were suppressed by damping, no notification sent");
+    }
 }
 
 void NotificationProcessor::process_on_bfd_session_state_change(

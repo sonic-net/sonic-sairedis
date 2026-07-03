@@ -156,6 +156,7 @@ config
 const
 CONST
 consts
+copyable
 counterName
 countOnly
 cout
@@ -342,6 +343,8 @@ Redis
 refactor
 refactored
 refactoring
+refcount
+refcounts
 reimplement
 reinit
 removedVidToRid
@@ -465,6 +468,8 @@ VIDTORID
 vlan
 vlans
 VLANS
+vnet
+VNET
 VOQ
 vr
 vslib
@@ -516,3 +521,13 @@ setOpAllowList
 setStatsLabel
 HWM
 allowlist
+Cmdline
+cmdline
+codebase
+enablement
+guid
+hasn
+ifstream
+nlohmann
+reconciler
+truthy

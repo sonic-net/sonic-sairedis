@@ -123,10 +123,12 @@ bool vpp_get_intf_name_for_prefix (
     if (is_v6)
     {
         cmd << IP_CMD << " -6 " << " addr show " << " to " << prefix.to_string();
-        cmd << " scope global | awk -F':' '/[0-9]+: [a-zA-Z]+/ { printf \"%s\", $2 }' | cut -d' ' -f2 -z | sed 's/@[a-zA-Z].*//g'";
+        cmd << " scope global | grep -vw " << DUALTOR_TUNNEL_IF;
+        cmd << " | awk -F':' '/[0-9]+: [a-zA-Z]+/ { printf \"%s\", $2 }' | cut -d' ' -f2 -z | sed 's/@[a-zA-Z].*//g'";
     } else {
         cmd << IP_CMD << " addr show " << " to " << prefix.to_string();
-        cmd << " scope global | awk -F':' '/[0-9]+: [a-zA-Z]+/ { printf \"%s\", $2 }' | cut -d' ' -f2 -z | sed 's/@[a-zA-Z].*//g'";
+        cmd << " scope global | grep -vw " << DUALTOR_TUNNEL_IF;
+        cmd << " | awk -F':' '/[0-9]+: [a-zA-Z]+/ { printf \"%s\", $2 }' | cut -d' ' -f2 -z | sed 's/@[a-zA-Z].*//g'";
     }
     int ret = swss::exec(cmd.str(), ifname);
     if (ret)
@@ -343,6 +345,9 @@ bool SwitchVpp::vpp_get_hwif_name (
 {
     SWSS_LOG_ENTER();
 
+    const char *hwifname = nullptr;
+    char hw_bondifname[32];
+
     if (objectTypeQuery(object_id) == SAI_OBJECT_TYPE_LAG) {
         platform_bond_info_t bond_info;
         sai_status_t status = get_lag_bond_info(object_id, bond_info);
@@ -350,21 +355,23 @@ bool SwitchVpp::vpp_get_hwif_name (
         {
             return false;
         }
-        ifname = std::string(BONDETHERNET_PREFIX) + std::to_string(bond_info.id);
-        return true;
+        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
+        hwifname = hw_bondifname;
+    } else {
+        std::string if_name;
+        bool found = getTapNameFromPortId(object_id, if_name);
+
+        if (found == false)
+        {
+            SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(object_id).c_str());
+            return false;
+        }
+        hwifname = tap_to_hwif_name(if_name.c_str());
     }
 
-    std::string if_name;
-    bool found = getTapNameFromPortId(object_id, if_name);
+    if (!hwifname) return false;
 
-    if (found == false)
-    {
-        SWSS_LOG_NOTICE("host interface for port id %s not found", sai_serialize_object_id(object_id).c_str());
-        return false;
-    }
-
-    const char *hwifname = tap_to_hwif_name(if_name.c_str());
-    char hw_subifname[32];
+    char hw_subifname[64];
     const char *hw_ifname;
 
     if (vlan_id) {
@@ -586,6 +593,13 @@ sai_status_t SwitchVpp::UpdatePort(
         } else {
             aclBindUnbindPort(object_id, attr_type->value.oid, true, true);
         }
+    }
+
+    attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE, attr_count, attr_list);
+
+    if (attr_type != NULL)
+    {
+        sflowPortSamplePacketSet(object_id, attr_type);
     }
 
     attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_EGRESS_ACL, attr_count, attr_list);
@@ -1591,7 +1605,15 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
 
         /* The host(tap) subinterface is also created as part of the vpp subinterface creation */
-        create_sub_interface(tap_to_hwif_name(dev), vlan_id, vlan_id);
+        const char *parent_hwif;
+        char hw_subif_parent[32];
+        if (ot == SAI_OBJECT_TYPE_LAG) {
+            snprintf(hw_subif_parent, sizeof(hw_subif_parent), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
+            parent_hwif = hw_subif_parent;
+        } else {
+            parent_hwif = tap_to_hwif_name(dev);
+        }
+        create_sub_interface(parent_hwif, vlan_id, vlan_id);
 
         /* Get new list of physical interfaces from VS */
         refresh_interfaces_list();
@@ -1828,6 +1850,14 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     }
     rif_type = attr.value.s32;
 
+    if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT &&
+        rif_type != SAI_ROUTER_INTERFACE_TYPE_PORT)
+    {
+        SWSS_LOG_NOTICE("Skipping router interface remove for attr type %d", rif_type);
+
+        return SAI_STATUS_SUCCESS;
+    }
+
     attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
     status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr);
 
@@ -1877,7 +1907,18 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     uint16_t vlan_id = attr.value.u16;
 
     std::string if_name;
-    bool found = getTapNameFromPortId(obj_id, if_name);
+    platform_bond_info_t bond_info;
+    bool found;
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        status = get_lag_bond_info(obj_id, bond_info);
+        if (status != SAI_STATUS_SUCCESS) {
+            return status;
+        }
+        if_name = std::string(BONDETHERNET_PREFIX) + std::to_string(bond_info.id);
+        found = true;
+    } else {
+        found = getTapNameFromPortId(obj_id, if_name);
+    }
     if (found == false)
     {
         SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(obj_id).c_str());
@@ -1886,7 +1927,15 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
 
     const char *dev = if_name.c_str();
 
-    delete_sub_interface(tap_to_hwif_name(dev), vlan_id);
+    const char *parent_hwif;
+    char hw_del_parent[32];
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        snprintf(hw_del_parent, sizeof(hw_del_parent), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
+        parent_hwif = hw_del_parent;
+    } else {
+        parent_hwif = tap_to_hwif_name(dev);
+    }
+    delete_sub_interface(parent_hwif, vlan_id);
     /* Get new list of physical interfaces from VS */
     refresh_interfaces_list();
 

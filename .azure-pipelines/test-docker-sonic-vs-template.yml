@@ -85,7 +85,7 @@ jobs:
   - script: |
       set -ex
       # install packages for vs test
-      sudo pip3 install pytest flaky exabgp docker
+      sudo uv pip install --system pytest flaky exabgp docker
 
       # install packages for kvm test
       sudo apt-get update
@@ -132,9 +132,9 @@ jobs:
       docker ps
       ip netns list
       pushd sonic-swss/tests
-      params=''
+      params='--force-flaky'
       if [ '${{ parameters.asan }}' == True ]; then
-        params='--graceful-stop'
+        params="${params} --graceful-stop"
       fi
       all_tests=$(ls test_*.py)
       all_tests="${all_tests} p4rt dash"
@@ -149,7 +149,7 @@ jobs:
 
   - task: PublishTestResults@2
     inputs:
-      testResultsFiles: '**/tr.xml'
+      testResultsFiles: '**/*_tr.xml'
       testRunTitle: vstest
     condition: always()
 
