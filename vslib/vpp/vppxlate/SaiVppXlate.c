@@ -2793,6 +2793,7 @@ int vpp_ip_flow_hash_set (uint32_t vrf_id, uint32_t hash_mask, int addr_family)
     } else if (addr_family == AF_INET6) {
         mp->af = ADDRESS_IP6;
     } else {
+        VPP_UNLOCK();
         return -1;
     }
 
