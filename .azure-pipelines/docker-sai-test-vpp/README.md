@@ -30,7 +30,7 @@ The framework exercises SAI operations (create/set/get/remove of ports, RIFs, ro
 - **VPP** is the dataplane; `OEthernetX` are the VPP-facing kernel veth ends and `OEthX_peer` are the PTF-facing ends. `OEthernetX` represents an out-facing (wire) interface; the inside `EthernetX` (linux_cp TAP) faces the SONiC control plane.
 - **saiserver** is a thin Thrift→SAI shim (port 9092) linked against `libsaivs.so`.
 - **PTF** runs the OCP `sai_test` Python suite and does packet I/O on the `OEthX_peer` ends.
-- **`run_test.sh`** is the container entrypoint and orchestrator: Redis → veth/PortChannel topology → VPP → saiserver → PTF.
+- **`run_test.sh`** is the container entrypoint and orchestrator: Redis → veth topology → VPP → saiserver → PTF. PortChannel netdevs and LAG/SVI connected IPs are set up in sai_test `setUp()` via `vpp_ut_support.py` (not in `run_test.sh`).
 
 ### Key design point — config-signature grouping
 
@@ -251,6 +251,9 @@ In `--debug` the container leaves the dataplane running after the test so you ca
 | `PORT_COUNT` | 32 | number of `OEthernetX`/`OEthX_peer` veth pairs |
 | `COMMON_CONFIGURED_REUSE` | 1 | 1 = config-signature grouping + reuse; 0 = legacy single ptf invocation |
 | `KEEP_VETHS_UP_SECONDS` | 120 | how long the per-group watchdog keeps VPP host-interfaces/veths up |
+| `LAG_RIF_IPS` | 1 | enable LAG RIF connected-IP assignment in sai_test setUp (`vpp_ut_support`) |
+| `SVI_RIF_IPS` | 1 | enable SVI RIF connected-IP assignment in sai_test setUp |
+| `SAI_VPP_UT_HARNESS` | 1 | set by `run_test.sh`; gates `vpp_ut_support` hooks in sai_test configurers |
 | `TEST_FILTER` | — | alternative way to pass a single selector via env |
 
 These are read by `run_test.sh` at container start (defaults shown).

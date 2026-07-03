@@ -10,50 +10,19 @@ HARNESS_DIR="$SCRIPT_DIR"
 
 PORT_COUNT="${PORT_COUNT:-32}"
 MTU="${MTU:-9100}"
-# Number of PortChannel (LAG) netdevs to pre-create. In production SONiC's teamd
-# creates these; the standalone PTF environment has no teamd, so the harness
-# emulates them. The T0 sanity config creates 4 LAGs.
+# Number of PortChannel (LAG) netdevs used for cleanup at container exit.
 LAG_COUNT="${LAG_COUNT:-4}"
-# Assign the DUT-side connected IP for each LAG router interface so routed-to-LAG
-# traffic forwards. The VPP SAI backend does NOT take a RIF IP from SAI; in
-# production SONiC, IntfMgr puts the interface IP on the SONiC netdev and VPP's
-# linux_cp/linux_nl plugin mirrors it onto the matching VPP interface. For a LAG,
-# the backend creates a BondEthernet<N> whose linux_cp host-interface (LCP tap)
-# is the kernel netdev "be<N>" (see vpp_create_lag_member -> configure_lcp_interface
-# in vslib/vpp/SwitchVppFdb.cpp). Adding an IP to "be<N>" makes linux_nl mirror it
-# onto BondEthernet<N>. The standalone PTF harness has no IntfMgr/teamd, so without
-# this step BondEthernet<N> has no L3 address, the LAG next-hop /32 stays
-# UNRESOLVED, and routed-to-LAG traffic is dropped (every L3-over-LAG test fails
-# "Did not receive on [17,18]/[19,20]"; the host route also can't resolve).
-#
-# The "be<N>" tap is created lazily by the backend when the LAG's first member is
-# added (during the test's common-config build), so the IP cannot be pre-assigned
-# at startup; a background watchdog assigns it once the tap appears (see
-# keep_lag_rif_ips_up), mirroring the existing keep_vpp_veths_up pattern.
-#
-# T0 config (config/route_configer.py) builds LAG<k> RIFs (LAG<k> -> BondEthernet<k>
-# -> be<k>) whose next hop is the T1 device 10.1.(k+1).100 / fc00:1::(k+1):100,
-# i.e. connected subnet 10.1.(k+1).0/24 (fc00:1::(k+1):0/112). The DUT takes the .1
-# host in each.
+# LAG/SVI connected-IP patterns for vpp_ut_support.py (assigned in sai_test setUp
+# when a LAG or VLAN RIF is created; see harness_sai_test/overrides/*_configer.py).
 LAG_RIF_IPS="${LAG_RIF_IPS:-1}"
 LAG_RIF_IPV4_PATTERN="${LAG_RIF_IPV4_PATTERN:-10.1.%d.1/24}"
 LAG_RIF_IPV6_PATTERN="${LAG_RIF_IPV6_PATTERN:-fc00:1::%d:1/112}"
 # VPP linux_cp host-interface (LCP tap) name prefix for a BondEthernet<N>.
 LAG_BE_TAP_PREFIX="${LAG_BE_TAP_PREFIX:-be}"
 
-# Assign the DUT-side connected IP for each SVI (VLAN) router interface, for the
-# same reason as the LAG RIFs: the VPP SAI backend takes the connected subnet from
-# the SONiC netdev/IntfMgr, which the standalone harness does not provide, so the
-# VLAN BVI comes up with no L3 address and routed traffic INTO a VLAN access port
-# is dropped at ip4-validate (IP4 input not enabled on a BVI with no address).
-# Unlike a BondEthernet, a BVI ("bvi<vlan_id>") has no linux_cp host-interface to
-# mirror from, so the IP is set directly in VPP via vppctl once the BVI exists
-# (created during the common-config build; see the BVI src-MAC fallback in
-# vslib/vpp/SwitchVppFdb.cpp and devdocs/progress-6-17.md Issue B).
-#
-# T0 config (config/vlan_configer.py + route_configer.py) builds VLAN10 (server
-# group 1 -> 192.168.1.0/24, fc02::1:0/112) and VLAN20 (server group 2 ->
-# 192.168.2.0/24, fc02::2:0/112). SVI_RIF_VLANS maps "<vlan_id>:<group_id>".
+# Assign the DUT-side connected IP for each SVI (VLAN) router interface (see
+# vpp_ut_support.assign_svi_rif_ips). Unlike a BondEthernet, a BVI has no linux_cp
+# host-interface; the IP is set directly in VPP via vppctl once the BVI exists.
 SVI_RIF_IPS="${SVI_RIF_IPS:-1}"
 SVI_RIF_VLANS="${SVI_RIF_VLANS:-10:1 20:2}"
 SVI_RIF_IPV4_PATTERN="${SVI_RIF_IPV4_PATTERN:-192.168.%d.1/24}"
@@ -121,6 +90,11 @@ COMMON_CONFIGURED_REUSE="${COMMON_CONFIGURED_REUSE:-1}"
 # runs, but tests then share a backend within a group).
 ISOLATE_EACH_TEST="${ISOLATE_EACH_TEST:-1}"
 
+export SAI_VPP_UT_HARNESS=1
+export LAG_RIF_IPS LAG_RIF_IPV4_PATTERN LAG_RIF_IPV6_PATTERN LAG_BE_TAP_PREFIX
+export SVI_RIF_IPS SVI_RIF_VLANS SVI_RIF_IPV4_PATTERN SVI_RIF_IPV6_PATTERN SVI_BVI_PREFIX
+export MTU VPPCTL_TIMEOUT
+
 DEBUG=0
 TEST_FILTER="${TEST_FILTER:-}"
 TEST_FILTERS=()
@@ -130,7 +104,6 @@ REDIS_PID=""
 VPP_CONF=""
 VPP_INIT_CLI=""
 KEEP_VETHS_UP_PID=""
-KEEP_LAG_RIF_IPS_PID=""
 
 log()
 {
@@ -330,95 +303,6 @@ delete_portchannels()
         fi
     done
     set -e
-}
-
-create_portchannels()
-{
-    # In production SONiC's teamd creates the PortChannel<N> netdevs that the VPP
-    # SAI LAG backend uses to derive bond ids (find_new_bond_id) and as the target
-    # of the tap->PortChannel tc-mirred redirect. The standalone PTF environment has
-    # no teamd, so emulate those netdevs here. Names must be PortChannel<bond_id>
-    # with a numeric suffix the backend parses via std::stoi.
-    log "Creating ${LAG_COUNT} PortChannel netdev(s)"
-    delete_portchannels
-
-    for ((lag_index = 0; lag_index < LAG_COUNT; lag_index++)); do
-        local pc_if="PortChannel${lag_index}"
-        ip link add "$pc_if" type bond >/dev/null 2>&1 || ip link add "$pc_if" type dummy
-        ip link set dev "$pc_if" mtu "$MTU"
-        ip link set dev "$pc_if" up
-    done
-}
-
-# Assign the DUT-side connected IP to each LAG and SVI router interface so routed
-# traffic forwards (see the LAG_RIF_IPS / SVI_RIF_IPS comment blocks above). Both
-# the LAG LCP taps ("be<N>") and the VLAN BVIs ("bvi<vlan_id>") are created lazily
-# by the backend during the common-config build, so this runs as a short-lived
-# background watchdog that re-asserts the IPs across the config-build window;
-# interfaces that do not exist yet are simply skipped. All assignments are
-# idempotent. Bounded by KEEP_VETHS_UP_SECONDS, like keep_vpp_veths_up.
-#
-# LAG: the IP goes on the kernel "be<N>" netdev (the BondEthernet LCP host-if),
-# which linux_nl mirrors onto BondEthernet<N>. SVI: a BVI has no LCP host-if, so
-# the IP is set directly in VPP on "bvi<vlan_id>" via vppctl.
-#
-# Unlike keep_vpp_veths_up, this loops for the whole backend lifetime (until
-# stop_backend/cleanup kills it) rather than a fixed window: a single config group
-# can run many tests for well over KEEP_VETHS_UP_SECONDS, and later tests (e.g. the
-# SVI MAC-learning/aging suite) churn interface/FDB state, so the connected IPs
-# must be continuously re-asserted, not just during the initial config build.
-keep_lag_rif_ips_up()
-{
-    while true; do
-        if [[ "$LAG_RIF_IPS" == "1" ]]; then
-            for ((lag_index = 0; lag_index < LAG_COUNT; lag_index++)); do
-                local be_if="${LAG_BE_TAP_PREFIX}${lag_index}"
-                local subnet_id=$((lag_index + 1))
-                local v4_addr v6_addr
-
-                ip link show "$be_if" >/dev/null 2>&1 || continue
-
-                # shellcheck disable=SC2059
-                v4_addr="$(printf "$LAG_RIF_IPV4_PATTERN" "$subnet_id")"
-                # shellcheck disable=SC2059
-                v6_addr="$(printf "$LAG_RIF_IPV6_PATTERN" "$subnet_id")"
-
-                # disable_ipv6_autoconf() sets disable_ipv6=1 on default/all to
-                # stop the 32 veths flooding VPP with DAD/NDP. That also blocks
-                # adding a v6 address, so re-enable IPv6 on just this tap (a few
-                # netdevs, no flood risk) and skip DAD (a "tentative" addr is not
-                # scope global, so the mirror/route resolution would miss it).
-                echo 0 > "/proc/sys/net/ipv6/conf/${be_if}/disable_ipv6" 2>/dev/null || true
-                echo 0 > "/proc/sys/net/ipv6/conf/${be_if}/accept_dad" 2>/dev/null || true
-
-                ip addr add "$v4_addr" dev "$be_if" 2>/dev/null || true
-                ip -6 addr add "$v6_addr" dev "$be_if" nodad 2>/dev/null || true
-            done
-        fi
-
-        if [[ "$SVI_RIF_IPS" == "1" ]]; then
-            local vlan_map vlan_id group_id bvi_if v4_addr v6_addr
-            for vlan_map in $SVI_RIF_VLANS; do
-                vlan_id="${vlan_map%%:*}"
-                group_id="${vlan_map##*:}"
-                bvi_if="${SVI_BVI_PREFIX}${vlan_id}"
-
-                # Only program once the backend has created the BVI in VPP.
-                timeout "$VPPCTL_TIMEOUT" vppctl show interface "$bvi_if" >/dev/null 2>&1 || continue
-
-                # shellcheck disable=SC2059
-                v4_addr="$(printf "$SVI_RIF_IPV4_PATTERN" "$group_id")"
-                # shellcheck disable=SC2059
-                v6_addr="$(printf "$SVI_RIF_IPV6_PATTERN" "$group_id")"
-
-                # Idempotent: vppctl rejects a duplicate add, which we ignore.
-                timeout "$VPPCTL_TIMEOUT" vppctl set interface ip address "$bvi_if" "$v4_addr" >/dev/null 2>&1 || true
-                timeout "$VPPCTL_TIMEOUT" vppctl set interface ip address "$bvi_if" "$v6_addr" >/dev/null 2>&1 || true
-            done
-        fi
-
-        sleep "$KEEP_VETHS_UP_INTERVAL"
-    done
 }
 
 create_veths()
@@ -762,9 +646,6 @@ cleanup()
     if [[ -n "$KEEP_VETHS_UP_PID" ]]; then
         kill "$KEEP_VETHS_UP_PID" >/dev/null 2>&1 || true
     fi
-    if [[ -n "$KEEP_LAG_RIF_IPS_PID" ]]; then
-        kill "$KEEP_LAG_RIF_IPS_PID" >/dev/null 2>&1 || true
-    fi
     if [[ "$status" -ne 0 || "$DEBUG" -eq 1 ]]; then
         print_debug_state
     fi
@@ -895,7 +776,8 @@ run_ptf()
 # Start the runtime backend (Redis + VPP + saiserver + veth-up watchdog). VPP and
 # saiserver are fresh processes each time this is called, so a subsequent group's
 # common_configured=false config build runs in a clean saiserver and does not hit
-# the duplicate-create crash. The pre-created veth/PortChannel netdevs persist
+# the duplicate-create crash. Veth netdevs persist across backend restarts;
+# PortChannel netdevs are created on demand in sai_test setUp (vpp_ut_support).
 # across restarts; only the dataplane daemons are recycled.
 start_backend()
 {
@@ -904,8 +786,6 @@ start_backend()
     start_saiserver
     keep_vpp_veths_up &
     KEEP_VETHS_UP_PID="$!"
-    keep_lag_rif_ips_up &
-    KEEP_LAG_RIF_IPS_PID="$!"
 }
 
 # Stop the runtime backend and reset per-run state so the next group starts clean.
@@ -915,11 +795,6 @@ stop_backend()
         kill "$KEEP_VETHS_UP_PID" >/dev/null 2>&1 || true
         wait "$KEEP_VETHS_UP_PID" 2>/dev/null || true
         KEEP_VETHS_UP_PID=""
-    fi
-    if [[ -n "$KEEP_LAG_RIF_IPS_PID" ]]; then
-        kill "$KEEP_LAG_RIF_IPS_PID" >/dev/null 2>&1 || true
-        wait "$KEEP_LAG_RIF_IPS_PID" 2>/dev/null || true
-        KEEP_LAG_RIF_IPS_PID=""
     fi
     terminate_process saiserver "$SAISERVER_PID"; SAISERVER_PID=""
     terminate_process vpp "$VPP_PID"; VPP_PID=""
@@ -1107,7 +982,6 @@ main()
     preflight
     disable_ipv6_autoconf
     create_veths
-    create_portchannels
     create_sonic_vpp_ifmap
     run_ptf
 }
