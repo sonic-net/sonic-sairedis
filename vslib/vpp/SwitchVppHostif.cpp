@@ -561,6 +561,23 @@ sai_status_t SwitchVpp::vs_remove_hostif_tap_interface(
         m_hostif_info_map.erase(it);
     }
 
+    /*
+     * Tear down the VPP state that vs_create_hostif_tap_interface() set up, so a
+     * later re-create of the same host interface in the SAME saiserver process
+     * starts from a clean slate. Without this the leftover linux-cp pair and
+     * enabled IPv6 make the next create fail (config_lcp_hostif / ip6-enable
+     * return VALUE_EXIST), which previously required a full backend restart per
+     * test to avoid. Both calls are idempotent (vpp_normalize_ret tolerates
+     * NO_SUCH_ENTRY on delete), so removing a partially-created hostif is safe.
+     */
+    const char *hwif_name = tap_to_hwif_name(name.c_str());
+
+    if (hwif_name != nullptr)
+    {
+        sw_interface_ip6_enable_disable(hwif_name, false);
+        configure_lcp_interface(hwif_name, name.c_str(), false);
+    }
+
     removeIfNameToPortId(name);
 
     if (port_id != SAI_NULL_OBJECT_ID)

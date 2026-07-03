@@ -355,14 +355,20 @@ void os_exit(int code) {}
 #include "../SaiVppLog.h"
 
 /*
- * Normalize VPP return code for delete operations.
- * If the operation is a delete and VPP returns NO_SUCH_ENTRY,
- * the entry is already gone — treat it as success.
+ * Normalize VPP return code so add/delete operations are idempotent.
+ * - delete + NO_SUCH_ENTRY: the entry is already gone — treat as success.
+ * - add    + VALUE_EXIST:   the entry already exists — treat as success.
+ * This lets the SAI backend re-run a create/remove cycle in one process
+ * (e.g. host-interface recreate) without failing on leftover VPP state.
  */
 static inline int vpp_normalize_ret(int ret, bool is_del, const char *func)
 {
     if (is_del && ret == VNET_API_ERROR_NO_SUCH_ENTRY) {
 	    SAIVPP_INFO("%s: ignoring NO_SUCH_ENTRY(%d) on delete", func, ret);
+	    ret = 0;
+    }
+    if (!is_del && ret == VNET_API_ERROR_VALUE_EXIST) {
+	    SAIVPP_INFO("%s: ignoring VALUE_EXIST(%d) on add", func, ret);
 	    ret = 0;
     }
     return ret;
@@ -3149,6 +3155,12 @@ int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
     S (mp);
 
     WR (ret);
+
+    /* enable is an "add"; disable is a "delete". Tolerate VALUE_EXIST when
+     * enabling an interface whose IPv6 is already enabled (and NO_SUCH_ENTRY
+     * when disabling one that is already disabled) so host-interface recreate
+     * in a single process is idempotent. */
+    ret = vpp_normalize_ret(ret, !enable, __func__);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable); }
     else { SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable); }
