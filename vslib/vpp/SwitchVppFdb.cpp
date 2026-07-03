@@ -723,10 +723,11 @@ sai_status_t SwitchVpp::vpp_create_lag(
     mode = VPP_BOND_API_MODE_XOR;
     lb = VPP_BOND_API_LB_ALGO_L34_INNER;
 
-    create_bond_interface(bond_id, mode, lb, &swif_idx);
-    if (swif_idx == static_cast<uint32_t>(~0))
+    int ret = create_bond_interface(bond_id, mode, lb, &swif_idx);
+    if (ret != 0 || swif_idx == static_cast<uint32_t>(~0) || swif_idx == 0)
     {
-        SWSS_LOG_ERROR("failed to create bond interface in VPP for %s", sai_serialize_object_id(lag_id).c_str());
+        SWSS_LOG_ERROR("failed to create bond interface in VPP for %s (ret=%d, swif_idx=%u)",
+                sai_serialize_object_id(lag_id).c_str(), ret, swif_idx);
         return SAI_STATUS_FAILURE;
     }
 
