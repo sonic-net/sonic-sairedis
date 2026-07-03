@@ -1155,6 +1155,8 @@ namespace saivs
 
             void vppProcessEvents ();
 
+            void resyncPortOperStatus();
+
             void startVppEventsThread();
 
         private: // VPP
@@ -1250,6 +1252,8 @@ namespace saivs
             void swif_bdid_untrack(const char *hwif_name);
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
+
+            std::map<std::string, bool> m_last_oper_up;
 
             CRMTracker m_crmTracker;
 

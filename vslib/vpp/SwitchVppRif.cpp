@@ -385,6 +385,50 @@ bool SwitchVpp::vpp_get_hwif_name (
     return true;
 }
 
+void SwitchVpp::resyncPortOperStatus()
+{
+    SWSS_LOG_ENTER();
+
+    for (auto& kvp: m_hostif_info_map)
+    {
+        const std::string& tapname = kvp.first;
+        auto& info = kvp.second;
+
+        if (!info)
+        {
+            continue;
+        }
+
+        const char* dev = tapname.c_str();
+        const char* hwif_name = tap_to_hwif_name(dev);
+
+        bool link_up = false;
+
+        if (interface_get_state(hwif_name, &link_up) != 0)
+        {
+            continue;
+        }
+
+        auto prev_it = m_last_oper_up.find(tapname);
+        bool have_prev = (prev_it != m_last_oper_up.end());
+
+        if (have_prev && prev_it->second == link_up)
+        {
+            continue;
+        }
+
+        m_last_oper_up[tapname] = link_up;
+
+        auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
+
+        send_port_oper_status_notification(info->m_portId, state, false);
+
+        SWSS_LOG_NOTICE("resync oper-status %s(%s) %s",
+                        hwif_name, dev,
+                        link_up ? "UP" : "DOWN");
+    }
+}
+
 void SwitchVpp::vppProcessEvents ()
 {
     SWSS_LOG_ENTER();
@@ -397,6 +441,10 @@ void SwitchVpp::vppProcessEvents ()
         nanosleep(&req, NULL);
         ret = vpp_sync_for_events();
         SWSS_LOG_NOTICE("Checking for any VS events status %d", ret);
+        if (ret < 0)
+        {
+            SWSS_LOG_WARN("vpp_sync_for_events failed (%d); event socket reconnect attempted", ret);
+        }
         while ((evp = vpp_ev_dequeue())) {
             if (evp->type == VPP_INTF_LINK_STATUS) {
                 asyncIntfStateUpdate(evp->data.intf_status.hwif_name,
@@ -414,6 +462,7 @@ void SwitchVpp::vppProcessEvents ()
             }
             vpp_ev_free(evp);
         }
+        resyncPortOperStatus();
     }
 }
 

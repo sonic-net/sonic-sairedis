@@ -498,6 +498,10 @@ do {                                                            \
             break;                                              \
         if (scm && scm->socket_enable) {                        \
             int _wr_rv = vl_socket_client_read2 (scm, 1);     \
+            if (_wr_rv < 0) {                                   \
+                ret = _wr_rv;                                   \
+                break;                                          \
+            }                                                   \
             if (_wr_rv == 0) {                                  \
                 idle_deadline = vat_time_now (vam) + 1.0;       \
                 if (idle_deadline > hard_deadline)              \
@@ -566,6 +570,9 @@ static void vpp_evq_init ()
 static int vpp_acl_counters_enable_disable(bool enable);
 static int vpp_intf_events_enable_disable(bool enable);
 static int vpp_bfd_events_enable_disable(bool enable);
+static int vpp_event_client_setup(void);
+static int vpp_event_connect(void);
+static int vpp_event_reconnect(void);
 static int vpp_bfd_udp_enable_multihop();
 static int vpp_lcp_ethertype_enable(u16 ethertype);
 
@@ -691,6 +698,9 @@ uword *link_speed_by_sw_index = NULL;
  */
 static socket_client_main_t event_socket_client_main;
 vat_main_t vat_event_main;
+
+static int event_client_connected = 0;
+static int event_mutex_initialized = 0;
 
 /*
  * Per-thread "current" vat_main. Reply handlers run in the context of whatever
@@ -1840,26 +1850,78 @@ vsc_event_socket_connect (vat_main_t * vam, char *client_name)
     return 0;
 }
 
-static int init_vpp_event_client ()
+static int init_vpp_event_client (void)
+{
+    return vpp_event_connect();
+}
+
+static int
+vpp_event_client_setup (void)
+{
+    vat_main_t *vam = &vat_event_main;
+    static int vam_setup_done = 0;
+
+    if (!event_mutex_initialized)
+    {
+        vpp_event_mutex_lock_init();
+        event_mutex_initialized = 1;
+    }
+
+    if (!vam_setup_done)
+    {
+        clib_time_init (&vam->clib_time);
+        vam->socket_name = format (0, "%s%c", API_SOCKET_FILE, 0);
+        vam->vlib_main = vat_main.vlib_main;
+        vam_setup_done = 1;
+    }
+
+    return 0;
+}
+
+static int
+vpp_event_connect (void)
 {
     char client_name[] = "sonic_vpp_event_client";
     vat_main_t *vam = &vat_event_main;
 
-    vpp_event_mutex_lock_init();
+    vpp_event_client_setup();
 
-    clib_time_init (&vam->clib_time);
-    vam->socket_name = format (0, "%s%c", API_SOCKET_FILE, 0);
-    /* vat_suspend()/vat_time_now() only need clib_time; reuse the command
-     * vlib_main pointer to keep the helper macros happy. */
-    vam->vlib_main = vat_main.vlib_main;
-
-    if (vsc_event_socket_connect(vam, client_name) == 0) {
+    if (vsc_event_socket_connect(vam, client_name) == 0)
+    {
+        event_client_connected = 1;
         SAIVPP_INFO("vpp event socket connect successful\n");
         return 0;
     }
 
+    event_client_connected = 0;
     SAIVPP_ERROR("vpp event socket connect failed\n");
     return -1;
+}
+
+static int
+vpp_event_reconnect (void)
+{
+    vat_main_t *vam = &vat_event_main;
+
+    SAIVPP_INFO("attempting vpp event socket reconnect\n");
+
+    EVENT_LOCK();
+    vl_socket_client_disconnect2 (&event_socket_client_main);
+    event_client_connected = 0;
+    vam->result_ready = 0;
+    EVENT_UNLOCK();
+
+    if (vpp_event_connect() != 0)
+        return -1;
+
+    if (vpp_intf_events_enable_disable(true) != 0)
+        return -1;
+
+    if (vpp_bfd_events_enable_disable(true) != 0)
+        return -1;
+
+    SAIVPP_INFO("vpp event socket reconnect successful\n");
+    return 0;
 }
 
 
@@ -3372,8 +3434,16 @@ int vpp_sync_for_events ()
     vl_api_control_ping_t *mp_ping;
     int ret;
 
+    if (!event_client_connected)
+    {
+        if (vpp_event_reconnect() != 0)
+            return -1;
+    }
+
     EVENT_LOCK();
     tl_cur_vam = &vat_event_main;
+
+    vam->result_ready = 0;
 
     /* Use a control ping for synchronization */
     __plugin_msg_base = memclnt_msg_id_base;
@@ -3385,6 +3455,12 @@ int vpp_sync_for_events ()
 
     tl_cur_vam = NULL;
     EVENT_UNLOCK();
+
+    if (ret < 0)
+    {
+        SAIVPP_ERROR("vpp_sync_for_events failed (%d), reconnecting event socket\n", ret);
+        vpp_event_reconnect();
+    }
 
     return ret;
 }
