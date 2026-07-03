@@ -870,6 +870,12 @@ vl_api_sw_interface_set_mtu_reply_t_handler (vl_api_sw_interface_set_mtu_reply_t
     set_reply_status(retval);
 }
 static void
+vl_api_sw_interface_set_link_speed_reply_t_handler (vl_api_sw_interface_set_link_speed_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+static void
 vl_api_sw_interface_set_mac_address_reply_t_handler (vl_api_sw_interface_set_mac_address_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
