@@ -123,10 +123,12 @@ bool vpp_get_intf_name_for_prefix (
     if (is_v6)
     {
         cmd << IP_CMD << " -6 " << " addr show " << " to " << prefix.to_string();
-        cmd << " scope global | awk -F':' '/[0-9]+: [a-zA-Z]+/ { printf \"%s\", $2 }' | cut -d' ' -f2 -z | sed 's/@[a-zA-Z].*//g'";
+        cmd << " scope global | grep -vw " << DUALTOR_TUNNEL_IF;
+        cmd << " | awk -F':' '/[0-9]+: [a-zA-Z]+/ { printf \"%s\", $2 }' | cut -d' ' -f2 -z | sed 's/@[a-zA-Z].*//g'";
     } else {
         cmd << IP_CMD << " addr show " << " to " << prefix.to_string();
-        cmd << " scope global | awk -F':' '/[0-9]+: [a-zA-Z]+/ { printf \"%s\", $2 }' | cut -d' ' -f2 -z | sed 's/@[a-zA-Z].*//g'";
+        cmd << " scope global | grep -vw " << DUALTOR_TUNNEL_IF;
+        cmd << " | awk -F':' '/[0-9]+: [a-zA-Z]+/ { printf \"%s\", $2 }' | cut -d' ' -f2 -z | sed 's/@[a-zA-Z].*//g'";
     }
     int ret = swss::exec(cmd.str(), ifname);
     if (ret)
