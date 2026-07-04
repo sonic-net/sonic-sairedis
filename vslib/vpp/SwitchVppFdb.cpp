@@ -483,6 +483,15 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     uint32_t bd_id = (uint32_t) vlan_id;
     set_bridge_domain_flags(bd_id, VPP_BD_FLAG_ARP_TERM,true);
 
+    // Create-path parity with vpp_update_router_interface: if the VLAN RIF is created
+    // with SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, apply it on the BVI now.
+    // Otherwise the action would only take effect on a later set.
+    auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+    if (attr_loopback != NULL && is_ip_nbr_active())
+    {
+        vpp_apply_loopback_action(hw_ifname, attr_loopback->value.s32);
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -653,10 +662,21 @@ uint32_t SwitchVpp::find_new_bond_id()
     bool found_new_bond_id = false;
     while (std::getline(iss, line)) {
         std::string portchannel_name = line.substr(0, line.find('\n'));
-        bond_id = std::stoi(portchannel_name.substr(strlen(PORTCHANNEL_PREFIX)));
+        // A base PortChannel is named "PortChannel<id>". Sub-interfaces ("PortChannelX.Y"
+        // or the short "PoX.Y" form) and any malformed entry must not be mistaken for a new
+        // bond: a '.' or non-digit right after the prefix parses to a bogus id (often 0 via
+        // the safe-stoi fallback), which previously got assigned to a real LAG and left its
+        // RIF/neighbor on the wrong BondEthernet.
+        std::string suffix = portchannel_name.substr(strlen(PORTCHANNEL_PREFIX));
+        if (suffix.empty() || suffix[0] < '0' || suffix[0] > '9' ||
+            suffix.find('.') != std::string::npos || suffix.find('@') != std::string::npos) {
+            SWSS_LOG_DEBUG("Skipping non-base PortChannel entry for bond id: %s", portchannel_name.c_str());
+            continue;
+        }
+        bond_id = (uint32_t) vpp_safe_stoi(suffix, "find_new_bond_id");
 
         if (existing_bond_ids.find(bond_id) == existing_bond_ids.end()) {
-            SWSS_LOG_NOTICE("Found new bond id from PortChannel name: %d", bond_id);
+            SWSS_LOG_NOTICE("Found new bond id from PortChannel name: %u", bond_id);
             found_new_bond_id = true;
             break;
         }

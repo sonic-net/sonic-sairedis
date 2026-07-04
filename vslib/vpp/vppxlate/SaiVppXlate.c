@@ -4794,7 +4794,7 @@ static int __sw_interface_get_table(uint32_t sw_if_index, bool is_ipv6, uint32_t
     return ret;
 }
 
-int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip,                                 uint32_t vrf_id,
+int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
                                 uint32_t *out_sw_if_index)
 {
     int ret;
