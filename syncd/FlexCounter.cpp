@@ -1423,7 +1423,7 @@ public:
         m_counterGroupsSorted.push_back(makeCounterGroupRef(idx, m_supportedCounterGroups[idx].size()));
 
         // Must adhere to strict weak ordering
-        // Use lambda instead of static func to avoid SWSS_LOG_ENTER CI build requirement for better performance
+        // Use lambda instead of a static function to avoid SWSS_LOG_ENTER CI build requirement for better performance
         std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(),
                 [](CounterGroupRef const& lhs, CounterGroupRef const& rhs)
             {
