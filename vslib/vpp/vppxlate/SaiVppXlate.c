@@ -56,8 +56,8 @@
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_enum.h>
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_types.h>
 
-#include <vpp_plugins/iface_loopback/iface_loopback.api_enum.h>
-#include <vpp_plugins/iface_loopback/iface_loopback.api_types.h>
+#include <vpp_plugins/sonic_ext/sonic_ext.api_enum.h>
+#include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
 
 #include <vlibmemory/vlib.api_types.h>
 #include <vlibmemory/memclnt.api_enum.h>
@@ -121,22 +121,22 @@
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api.h>
 #undef vl_api_version
 
-/* iface_loopback API inclusion */
+/* sonic_ext (RIF loopback) API inclusion */
 
 #define vl_typedefs
-#include <vpp_plugins/iface_loopback/iface_loopback.api.h>
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
 #undef vl_typedefs
 
 #define  vl_endianfun
-#include <vpp_plugins/iface_loopback/iface_loopback.api.h>
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
 #undef vl_endianfun
 
 #define vl_calcsizefun
-#include <vpp_plugins/iface_loopback/iface_loopback.api.h>
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
 #undef vl_calcsizefun
 
-#define vl_api_version(n, v) static u32 iface_loopback_api_version = v;
-#include <vpp_plugins/iface_loopback/iface_loopback.api.h>
+#define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
 #undef vl_api_version
 
 /* interface API inclusion */
@@ -1679,7 +1679,7 @@ static void get_base_msg_id()
     sflow_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sflow_msg_id_base != (u16) ~0);
 
-    msg_base_lookup_name = format (0, "iface_loopback_%08x%c", iface_loopback_api_version, 0);
+    msg_base_lookup_name = format (0, "sonic_ext_%08x%c", sonic_ext_api_version, 0);
     iface_loopback_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(iface_loopback_msg_id_base != (u16) ~0);
 }
