@@ -1320,7 +1320,6 @@ public:
                         SWSS_LOG_WARN("%s RID %s can't provide the statistic",  m_name.c_str(), sai_serialize_object_id(rid).c_str());
                     }
                 }
-
                 return;
             }
 
