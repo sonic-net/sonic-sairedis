@@ -789,6 +789,18 @@ start_backend()
 }
 
 # Stop the runtime backend and reset per-run state so the next group starts clean.
+#
+# NOTE: ideally each test would restore the initial state via SAI teardown in its
+# own tearDown(), avoiding this full backend recycle. That does not fully work yet
+# because the VS-VPP backend's object removal is not idempotent enough to rebuild
+# the whole T0 config a second time in one saiserver process: on remove, leftover
+# VPP state (linux-cp pairs, bridge domains, bonds, etc.) is not always torn down,
+# so the next create hits "already exists" (VPP VALUE_EXIST/-81) and fails. The
+# host-interface case was fixed in sonic-sairedis PR #1952 (vs_remove_hostif now
+# deletes the linux-cp pair + disables IPv6, and create tolerates VALUE_EXIST), but
+# VLAN, bridge-port, LAG, RIF and route removal still need the same treatment.
+# Until that is done, we restart the backend (fresh saiserver) per group so each
+# config build starts from clean VPP state. See devdocs/progress-7-3-hostif-removal.md.
 stop_backend()
 {
     if [[ -n "$KEEP_VETHS_UP_PID" ]]; then
