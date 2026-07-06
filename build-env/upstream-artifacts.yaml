@@ -10,10 +10,21 @@ upstream:
   # ------------------------------------------------------------------ #
   # sonic-swss-common libraries that sonic-sairedis links against.
   #
-  # cascade_optional: true -> if the resolved sonic-swss-common artifact ships a
-  # build-env/ (once sonic-swss-common#<PR> merges), buildenv_setup will cascade
-  # its base.yaml deps automatically; until then it is treated as a leaf and we
-  # just install the libswsscommon DEBs below.
+  # This is sonic-sairedis' only cascading upstream (vpp below is a sairedis-only
+  # leaf). Note what is deliberately NOT declared here:
+  #   * common-libs (libyang3) -- inherited TRANSITIVELY. buildenv_setup downloads
+  #     the sonic-swss-common artifact, reads its build-env/, and walks
+  #     sonic-swss-common's own upstream-artifacts.yaml, which declares common-libs
+  #     -> libyang3 (the lib libswsscommon links against). See cascade.py.
+  #   * libnl -- inherited from sonic-swss-common's base.yaml (apt libnl-*-dev, all
+  #     arches), so it no longer needs a per-arch declaration here either.
+  #
+  # This REQUIRES the resolved sonic-swss-common artifact to actually ship a
+  # build-env/, i.e. sonic-swss-common must be built from a branch that already
+  # carries the buildenv_setup tool + build-env/ (see branch resolution below).
+  # cascade_optional: false so buildenv_setup WARNS loudly if the artifact has no
+  # build-env/ to cascade into -- otherwise the cascade silently no-ops and the
+  # libswsscommon dpkg -i fails downstream on the unmet libyang3 dependency.
   # ------------------------------------------------------------------ #
   - name: sonic-swss-common
     project: build
@@ -21,7 +32,7 @@ upstream:
     branch: master          # TEMPORARY (PoC): the lawlee/ci-unify pipeline run may
                             # not be present/stable; pin the linked libs to master.
                             # Remove before merge so it tracks BUILD_BRANCH.
-    cascade_optional: true
+    cascade_optional: false
     result_filter: [succeeded, partiallySucceeded]
     artifact_name:
       - { when: { arch: amd64 },        value: 'sonic-swss-common-{debian_version}' }
@@ -29,30 +40,6 @@ upstream:
     debs:
       - 'libswsscommon_1.0.0_{arch}.deb'
       - 'libswsscommon-dev_1.0.0_{arch}.deb'
-
-  # ------------------------------------------------------------------ #
-  # libnl (amd64 only) + libyang3 from the common-libs build.
-  # On arm, libnl is apt-installed instead (see packages/base.yaml).
-  # ------------------------------------------------------------------ #
-  - name: common-libs
-    project: build
-    pipeline: Azure.sonic-buildimage.common_libs
-    branch: master          # TEMPORARY (PoC): common_libs has no lawlee/ci-unify
-                            # branch. Remove before merge.
-    cascade_optional: true
-    artifact_name:
-      - { when: { arch: amd64 },        value: 'common-lib' }
-      - { when: { arch: { not: amd64 } }, value: 'common-lib.{arch}' }
-    debs:
-      # libnl DEBs: amd64 only
-      - { path: 'target/debs/{debian_version}/libnl-3*.deb',     when: { arch: amd64 } }
-      - { path: 'target/debs/{debian_version}/libnl-genl*.deb',  when: { arch: amd64 } }
-      - { path: 'target/debs/{debian_version}/libnl-route*.deb', when: { arch: amd64 } }
-      - { path: 'target/debs/{debian_version}/libnl-nf*.deb',    when: { arch: amd64 } }
-      # libyang3: all arches
-      - 'target/debs/{debian_version}/libyang3_*.deb'
-      # libpcre3: trixie only
-      - { path: 'target/debs/{debian_version}/libpcre3_*.deb', when: { debian_version: trixie } }
 
   # ------------------------------------------------------------------ #
   # sonic platform-vpp DEBs (amd64 only). Always built on master.
