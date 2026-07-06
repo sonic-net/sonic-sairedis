@@ -12,8 +12,9 @@ PORT_COUNT="${PORT_COUNT:-32}"
 MTU="${MTU:-9100}"
 # Number of PortChannel (LAG) netdevs used for cleanup at container exit.
 LAG_COUNT="${LAG_COUNT:-4}"
-# LAG/SVI connected-IP patterns for vpp_ut_support.py (assigned in sai_test setUp
-# when a LAG or VLAN RIF is created; see harness_sai_test/overrides/*_configer.py).
+# LAG/SVI connected-IP patterns consumed by sai_test's SIMULATE_SONIC helper
+# (config/simulate_sonic.py), which assigns them in setUp when a LAG or VLAN RIF is
+# created. These env vars retarget the helper's defaults to this VPP bench.
 LAG_RIF_IPS="${LAG_RIF_IPS:-1}"
 LAG_RIF_IPV4_PATTERN="${LAG_RIF_IPV4_PATTERN:-10.1.%d.1/24}"
 LAG_RIF_IPV6_PATTERN="${LAG_RIF_IPV6_PATTERN:-fc00:1::%d:1/112}"
@@ -21,7 +22,7 @@ LAG_RIF_IPV6_PATTERN="${LAG_RIF_IPV6_PATTERN:-fc00:1::%d:1/112}"
 LAG_BE_TAP_PREFIX="${LAG_BE_TAP_PREFIX:-be}"
 
 # Assign the DUT-side connected IP for each SVI (VLAN) router interface (see
-# vpp_ut_support.assign_svi_rif_ips). Unlike a BondEthernet, a BVI has no linux_cp
+# simulate_sonic.assign_svi_rif_ips). Unlike a BondEthernet, a BVI has no linux_cp
 # host-interface; the IP is set directly in VPP via vppctl once the BVI exists.
 SVI_RIF_IPS="${SVI_RIF_IPS:-1}"
 SVI_RIF_VLANS="${SVI_RIF_VLANS:-10:1 20:2}"
@@ -90,9 +91,25 @@ COMMON_CONFIGURED_REUSE="${COMMON_CONFIGURED_REUSE:-1}"
 # runs, but tests then share a backend within a group).
 ISOLATE_EACH_TEST="${ISOLATE_EACH_TEST:-1}"
 
-export SAI_VPP_UT_HARNESS=1
+# Turn on sai_test's SONiC control-plane simulation (config/simulate_sonic.py):
+# create PortChannel netdevs and assign LAG/SVI RIF IPs from the test setUp, since
+# this standalone bench has no teamd / IntfMgr. The remaining vars retarget the
+# helper's interface names / address patterns to this VPP bench.
+export SIMULATE_SONIC=1
 export LAG_RIF_IPS LAG_RIF_IPV4_PATTERN LAG_RIF_IPV6_PATTERN LAG_BE_TAP_PREFIX
 export SVI_RIF_IPS SVI_RIF_VLANS SVI_RIF_IPV4_PATTERN SVI_RIF_IPV6_PATTERN SVI_BVI_PREFIX
+# A VLAN SVI (BVI) has no host-interface netdev, so simulate_sonic cannot use "ip".
+# Provide the VPP-specific command templates it runs to program the BVI address
+# directly ({ifname}/{addr} are substituted). Keeping these here (the harness layer)
+# is what lets sai_test's simulate_sonic stay backend-neutral. Note: the {ifname}
+# braces can't sit inside a ${VAR:-default} expansion, so guard with a plain if.
+if [[ -z "${SVI_RIF_PROBE_CMD:-}" ]]; then
+    SVI_RIF_PROBE_CMD="timeout ${VPPCTL_TIMEOUT} vppctl show interface {ifname}"
+fi
+if [[ -z "${SVI_RIF_SET_IP_CMD:-}" ]]; then
+    SVI_RIF_SET_IP_CMD="timeout ${VPPCTL_TIMEOUT} vppctl set interface ip address {ifname} {addr}"
+fi
+export SVI_RIF_PROBE_CMD SVI_RIF_SET_IP_CMD
 export MTU VPPCTL_TIMEOUT
 
 DEBUG=0
@@ -777,7 +794,7 @@ run_ptf()
 # saiserver are fresh processes each time this is called, so a subsequent group's
 # common_configured=false config build runs in a clean saiserver and does not hit
 # the duplicate-create crash. Veth netdevs persist across backend restarts;
-# PortChannel netdevs are created on demand in sai_test setUp (vpp_ut_support).
+# PortChannel netdevs are created on demand in sai_test setUp (SIMULATE_SONIC).
 # across restarts; only the dataplane daemons are recycled.
 start_backend()
 {

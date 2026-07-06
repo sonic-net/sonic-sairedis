@@ -16,9 +16,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 COPY .azure-pipelines/docker-sai-test-vpp /opt/docker-sai-test-vpp
 COPY SAI/test/ptf /opt/ptf
 COPY SAI/test/sai_test /sai_test
-COPY .azure-pipelines/docker-sai-test-vpp/vpp_ut_support.py /sai_test/config/vpp_ut_support.py
-COPY .azure-pipelines/docker-sai-test-vpp/harness_sai_test/overrides/lag_configer.py /sai_test/config/lag_configer.py
-COPY .azure-pipelines/docker-sai-test-vpp/harness_sai_test/overrides/route_configer.py /sai_test/config/route_configer.py
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
