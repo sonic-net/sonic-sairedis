@@ -1,0 +1,51 @@
+# sonic-sairedis build dependencies (apt + pip).
+#
+# base.yaml CASCADES: repos downstream of sonic-sairedis (sonic-swss) that build
+# against libsairedis inherit everything declared here.
+#
+# Consumed by `buildenv_setup --scope build`. The buildenv_setup tool itself
+# lives in sonic-swss-common/ci/ (cloned by the CI template); sonic-sairedis is a
+# consumer.
+#
+# NOTE: once sonic-swss-common publishes its own build-env/ to the branch this
+# build resolves, the sonic-swss-common cascade (see upstream-artifacts.yaml)
+# will also contribute its base.yaml deps (libhiredis, swig, redis-server, ...).
+# Those are re-declared here for now so the PoC is self-contained and correct
+# regardless of cascade availability (apt install is idempotent).
+
+packages:
+  # --- core C/C++ build + link dependencies (from build-template.yml) --------
+  - libdbus-glib-1-dev
+  - libpcsclite-dev
+  - libhiredis-dev
+  - swig
+  - libzmq3-dev
+  - autoconf-archive
+
+  # libnl: on amd64 these come from the common-libs artifact (see
+  # upstream-artifacts.yaml); on arm they are apt-installed here (mirrors the
+  # "Install libnl for arm dependencies" step in build-template.yml).
+  - { name: libnl-3-dev,       when: { arch: { not: amd64 } } }
+  - { name: libnl-genl-3-dev,  when: { arch: { not: amd64 } } }
+  - { name: libnl-route-3-dev, when: { arch: { not: amd64 } } }
+  - { name: libnl-nf-3-dev,    when: { arch: { not: amd64 } } }
+  - { name: libnl-cli-3-dev,   when: { arch: { not: amd64 } } }
+
+  # redis-server is needed to run sonic-sairedis' unit tests during the Build
+  # stage (and by downstream VS test hosts). Cascades.
+  - redis-server
+
+post_install:
+  # Configure the system redis for sonic-sairedis' tests.
+  #
+  # NOTE (design finding F11): sonic-sairedis' redis config does NOT set
+  # `notify-keyspace-events AKE` (unlike sonic-swss-common / sonic-swss). This is
+  # why a single shared cascading redis script can't be used naively: the common
+  # lines (unixsocket / unixsocketperm) belong in sonic-swss-common's cascading
+  # base.yaml, while the per-repo deltas stay local. For this PoC (sonic-swss-common
+  # build-env not yet on the resolved branch) sonic-sairedis carries its own
+  # complete-but-minimal redis config.
+  - name: configure-redis-for-tests
+    source: configure-redis-for-tests.sh
+    requires: [redis-server]
+    scopes: [build, test]

@@ -1,0 +1,79 @@
+# Upstream build artifacts that sonic-sairedis needs at build time.
+#
+# Consumed by `buildenv_setup`, which downloads each via the Azure DevOps REST
+# API (or uses a --upstream-staged-dir/<name>/ bundle when staged in the same
+# pipeline run, e.g. sonic-swss-common's own CI building sairedis downstream).
+#
+# Artifact-name convention: amd64 has no arch suffix; non-amd64 appends .{arch}.
+
+upstream:
+  # ------------------------------------------------------------------ #
+  # sonic-swss-common libraries that sonic-sairedis links against.
+  #
+  # cascade_optional: true -> if the resolved sonic-swss-common artifact ships a
+  # build-env/ (once sonic-swss-common#<PR> merges), buildenv_setup will cascade
+  # its base.yaml deps automatically; until then it is treated as a leaf and we
+  # just install the libswsscommon DEBs below.
+  # ------------------------------------------------------------------ #
+  - name: sonic-swss-common
+    project: build
+    pipeline: Azure.sonic-swss-common
+    branch: master          # TEMPORARY (PoC): the lawlee/ci-unify pipeline run may
+                            # not be present/stable; pin the linked libs to master.
+                            # Remove before merge so it tracks BUILD_BRANCH.
+    cascade_optional: true
+    result_filter: [succeeded, partiallySucceeded]
+    artifact_name:
+      - { when: { arch: amd64 },        value: 'sonic-swss-common-{debian_version}' }
+      - { when: { arch: { not: amd64 } }, value: 'sonic-swss-common-{debian_version}.{arch}' }
+    debs:
+      - 'libswsscommon_1.0.0_{arch}.deb'
+      - 'libswsscommon-dev_1.0.0_{arch}.deb'
+
+  # ------------------------------------------------------------------ #
+  # libnl (amd64 only) + libyang3 from the common-libs build.
+  # On arm, libnl is apt-installed instead (see packages/base.yaml).
+  # ------------------------------------------------------------------ #
+  - name: common-libs
+    project: build
+    pipeline: Azure.sonic-buildimage.common_libs
+    branch: master          # TEMPORARY (PoC): common_libs has no lawlee/ci-unify
+                            # branch. Remove before merge.
+    cascade_optional: true
+    artifact_name:
+      - { when: { arch: amd64 },        value: 'common-lib' }
+      - { when: { arch: { not: amd64 } }, value: 'common-lib.{arch}' }
+    debs:
+      # libnl DEBs: amd64 only
+      - { path: 'target/debs/{debian_version}/libnl-3*.deb',     when: { arch: amd64 } }
+      - { path: 'target/debs/{debian_version}/libnl-genl*.deb',  when: { arch: amd64 } }
+      - { path: 'target/debs/{debian_version}/libnl-route*.deb', when: { arch: amd64 } }
+      - { path: 'target/debs/{debian_version}/libnl-nf*.deb',    when: { arch: amd64 } }
+      # libyang3: all arches
+      - 'target/debs/{debian_version}/libyang3_*.deb'
+      # libpcre3: trixie only
+      - { path: 'target/debs/{debian_version}/libpcre3_*.deb', when: { debian_version: trixie } }
+
+  # ------------------------------------------------------------------ #
+  # sonic platform-vpp DEBs (amd64 only). Always built on master.
+  # ------------------------------------------------------------------ #
+  - name: vpp
+    project: build
+    pipeline: sonic-net.sonic-platform-vpp
+    branch: master          # vpp is always pinned to master (unchanged from today).
+    when: { arch: amd64 }
+    cascade_optional: true
+    result_filter: [succeeded, partiallySucceeded]
+    apt_fix_broken: true    # the 10 vpp DEBs are interdependent; fix up after dpkg -i
+    artifact_name: 'vpp-{debian_version}'
+    debs:
+      - 'libvppinfra-dev_*_{arch}.deb'
+      - 'libvppinfra_*_{arch}.deb'
+      - 'vpp_*_{arch}.deb'
+      - 'vpp-crypto-engines_*_{arch}.deb'
+      - 'vpp-dbg_*_{arch}.deb'
+      - 'vpp-dev_*_{arch}.deb'
+      - 'vpp-plugin-core_*_{arch}.deb'
+      - 'vpp-plugin-devtools_*_{arch}.deb'
+      - 'vpp-plugin-dpdk_*_{arch}.deb'
+      - 'python3-vpp-api_*_{arch}.deb'
