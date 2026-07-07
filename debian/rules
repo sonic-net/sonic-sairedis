@@ -16,6 +16,12 @@ endif
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 # see ENVIRONMENT in dpkg-buildflags(1)
+# Upgrade FORTIFY_SOURCE to level 3 (dpkg default is =2).
+# Guard: FORTIFY_SOURCE is incompatible with AddressSanitizer; skip when
+# the ASAN build passes --enable-asan via DEB_CONFIGURE_EXTRA_FLAGS.
+ifeq ($(findstring --enable-asan,$(DEB_CONFIGURE_EXTRA_FLAGS)),)
+export DEB_CPPFLAGS_MAINT_APPEND = -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3
+endif
 # package maintainers to append CFLAGS
 #export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
 # package maintainers to append LDFLAGS
