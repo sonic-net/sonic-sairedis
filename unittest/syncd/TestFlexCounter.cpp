@@ -2828,6 +2828,7 @@ TEST_F(FlexCounterTcpFallback, tcpFallbackWhenNoUnixSocket)
     EXPECT_TRUE(fc.isEmpty());
 
     countersTable.del(key);
+}
 
 TEST(FlexCounter, failedPollsCountAndCleanUp)
 {
