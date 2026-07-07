@@ -3003,7 +3003,7 @@ public:
         sai_attribute_t attr;
         attr.id = SAI_PORT_SERDES_ATTR_PORT_ID;
 
-        for (uint32_t tries = 0; tries < 5; tries++)
+        for (uint32_t tries = 1; tries <= 5; tries++)
         {
             sai_status_t status = Base::m_vendorSai->get(Base::m_objectType, port_serdes_rid, 1, &attr);
 
@@ -3012,7 +3012,7 @@ public:
                 port_rid = attr.value.oid;
                 return true;
             }
-            else if (status == SAI_STATUS_OBJECT_IN_USE and tries < 2)
+            else if (status == SAI_STATUS_OBJECT_IN_USE and tries < 5)
             {
                 // SAI object is busy - retry in 10ms
                 SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: SAI object in use, retry getting port RID for port serdes RID:0x%" PRIx64 "...",
@@ -3099,7 +3099,7 @@ public:
         attr.value.u32list.count = 0;        // Query with count=0 to get the actual lane count
         attr.value.u32list.list = nullptr;
 
-        for (uint32_t tries = 0; tries < 5; tries++)
+        for (uint32_t tries = 1; tries <= 5; tries++)
         {
             sai_status_t status = Base::m_vendorSai->get(SAI_OBJECT_TYPE_PORT, port_rid, 1, &attr);
 
@@ -3107,7 +3107,7 @@ public:
             // This is the agreed method with Broadcom for retrieving the actual lane count
             if (status == SAI_STATUS_BUFFER_OVERFLOW)
                 break;
-            else if (status == SAI_STATUS_OBJECT_IN_USE && tries < 2)
+            else if (status == SAI_STATUS_OBJECT_IN_USE && tries < 5)
             {
                 // SAI object is busy - retry in 10ms
                 SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: SAI object in use, retry getting hardware lane count for port RID:0x%" PRIx64 "...",
@@ -3148,7 +3148,7 @@ public:
             attr.id = attrId;
 
             bool failed = false;
-            for (uint32_t tries = 0; tries < 5; tries++)
+            for (uint32_t tries = 1; tries <= 5; tries++)
             {
                 sai_status_t status = Base::m_vendorSai->get(
                     Base::m_objectType,
@@ -3158,7 +3158,7 @@ public:
 
                 if (status == SAI_STATUS_SUCCESS)
                     break;
-                else if (status == SAI_STATUS_OBJECT_IN_USE && tries < 2)
+                else if (status == SAI_STATUS_OBJECT_IN_USE && tries < 5)
                 {
                     // SAI object is busy - retry in 10ms
                     SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: SAI object in use, retry getting port serdes count attr %s for port_serdes RID:0x%" PRIx64 "...",
