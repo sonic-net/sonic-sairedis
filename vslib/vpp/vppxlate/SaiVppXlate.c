@@ -626,6 +626,27 @@ void vpp_event_mutex_unlock ()
 #define EVENT_UNLOCK() vpp_event_mutex_unlock()
 
 /*
+ * Leaf lock protecting the shared interface lookup tables
+ * (vat_main.sw_if_index_by_interface_name, interface_name_by_sw_index and
+ * link_speed_by_sw_index). These tables are read and written from both the
+ * synchronous command path (under VPP_LOCK) and the asynchronous event
+ * handler (under EVENT_LOCK), so neither connection lock on its own provides
+ * mutual exclusion over them; a concurrent read during a write/rehash/free
+ * corrupts the hash and crashes syncd.
+ *
+ * Lock ordering: this is a leaf lock. It may be acquired while holding
+ * VPP_LOCK or EVENT_LOCK, but code holding it must never acquire VPP_LOCK,
+ * EVENT_LOCK, or re-acquire this lock (keep the critical sections to the raw
+ * hash operations only). This keeps the EVENT_LOCK-never-acquires-VPP_LOCK
+ * ordering rule above intact. Statically initialized so it is valid before
+ * any thread (including the background event thread) starts.
+ */
+static pthread_mutex_t vpp_intf_table_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+#define INTF_TABLE_LOCK() pthread_mutex_lock(&vpp_intf_table_mutex)
+#define INTF_TABLE_UNLOCK() pthread_mutex_unlock(&vpp_intf_table_mutex)
+
+/*
  * Right now configuration is done synchronously in a single thread.
  * When the need arises for multiple requests in pipeline we can move to a pool to
  * allocate index.
@@ -881,12 +902,22 @@ vl_api_sw_interface_event_t_handler (vl_api_sw_interface_event_t *mp)
     uword *ptr;
 
     sw_if_index = ntohl(mp->sw_if_index);
+
+    /*
+     * Copy the interface name out while holding the table lock; the pointer
+     * returned by hash_get points into interface_name_by_sw_index, which the
+     * command path may concurrently rewrite/free under VPP_LOCK.
+     */
+    char hw_ifname[64];
+    INTF_TABLE_LOCK();
     ptr = hash_get(interface_name_by_sw_index, sw_if_index);
     if (NULL == ptr) {
+        INTF_TABLE_UNLOCK();
         SAIVPP_INFO("vpp cannot get interface name for sw index %u", sw_if_index);
         return;
     }
-    const char *hw_ifname = (const char *) ptr[0];
+    snprintf(hw_ifname, sizeof(hw_ifname), "%s", (const char *) ptr[0]);
+    INTF_TABLE_UNLOCK();
 
     flags = ntohl(mp->flags);
     if (flags & IF_STATUS_API_FLAG_ADMIN_UP &&
@@ -910,7 +941,7 @@ vl_api_sw_interface_event_t_handler (vl_api_sw_interface_event_t *mp)
         vpp_intf_status_t *stp = &evinfo->data.intf_status;
 
         stp->link_up = link_up;
-        strncpy(stp->hwif_name, hw_ifname, sizeof(stp->hwif_name) -1);
+        snprintf(stp->hwif_name, sizeof(stp->hwif_name), "%s", hw_ifname);
 
         vpp_ev_enqueue(evinfo);
     }
@@ -931,12 +962,14 @@ vl_api_sw_interface_details_t_handler (vl_api_sw_interface_details_t *mp)
   vat_main_t *vam = &vat_main;
   u8 *s = format (0, "%s%c", mp->interface_name, 0);
 
+  INTF_TABLE_LOCK();
   hash_set_mem (vam->sw_if_index_by_interface_name, s,
                 ntohl (mp->sw_if_index));
   hash_set (interface_name_by_sw_index, ntohl (mp->sw_if_index), s);
 
   /* Save link speed (in Kbps) per interface */
   hash_set (link_speed_by_sw_index, ntohl (mp->sw_if_index), ntohl (mp->link_speed));
+  INTF_TABLE_UNLOCK();
 
   /* In sub interface case, fill the sub interface table entry */
   if (mp->sw_if_index != mp->sup_sw_if_index)
@@ -1943,6 +1976,14 @@ api_sw_interface_dump (vat_main_t *vam)
 
     VPP_LOCK();
 
+    /*
+     * Toss and recreate the name tables atomically w.r.t. the event handler,
+     * which reads interface_name_by_sw_index under INTF_TABLE_LOCK. The lock is
+     * released before the dump below because WR() dispatches the
+     * sw_interface_details handler, which re-acquires INTF_TABLE_LOCK.
+     */
+    INTF_TABLE_LOCK();
+
     /* Toss the old name table */
     hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
                 vec_add2 (nses, ns, 1);
@@ -1969,6 +2010,9 @@ api_sw_interface_dump (vat_main_t *vam)
 
     /* recreate the interface name hash table */
     vam->sw_if_index_by_interface_name = hash_create_string (0, sizeof (uword));
+
+    INTF_TABLE_UNLOCK();
+
     __plugin_msg_base = interface_msg_id_base;
     /*
      * Ask for all interface names. Otherwise, the epic catalog of
@@ -2013,11 +2057,13 @@ dump_interface_table (vat_main_t *vam)
         return -99;
     }
 
+    INTF_TABLE_LOCK();
     hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
                 vec_add2 (nses, ns, 1);
                 ns->name = (u8 *) (p->key);
                 ns->value = (u32) p->value[0];
             }));
+    INTF_TABLE_UNLOCK();
 
     vec_sort_with_function (nses, name_sort_cmp);
 
@@ -2035,13 +2081,16 @@ static u32 get_swif_idx (vat_main_t *vam, const char *ifname)
     hash_pair_t *p;
     u8 *name;
     u32 value;
+    u32 found = (u32) -1;
 
+    INTF_TABLE_LOCK();
     hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
                 name = (u8 *) (p->key);
                 value = (u32) p->value[0];
-                if (strcmp((char *) name, ifname) == 0) return value;
+                if (strcmp((char *) name, ifname) == 0) { found = value; }
             }));
-    return ((u32) -1);
+    INTF_TABLE_UNLOCK();
+    return found;
 }
 
 static const char * get_swif_name (vat_main_t *vam, const u32 swif_idx)
@@ -2049,13 +2098,16 @@ static const char * get_swif_name (vat_main_t *vam, const u32 swif_idx)
     hash_pair_t *p;
     u8 *name;
     u32 value;
+    const char *found = NULL;
 
+    INTF_TABLE_LOCK();
     hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
                 name = (u8 *) (p->key);
                 value = (u32) p->value[0];
-                if (value == swif_idx) return (const char * )name;
+                if (value == swif_idx) { found = (const char *) name; }
             }));
-    return NULL;
+    INTF_TABLE_UNLOCK();
+    return found;
 }
 
 static int config_lcp_hostif (vat_main_t *vam,
@@ -2224,9 +2276,11 @@ int init_vpp_client()
 
     vpp_base_vpe_init();
     vam->socket_name = format (0, "%s%c", API_SOCKET_FILE, 0);
+    INTF_TABLE_LOCK();
     vam->sw_if_index_by_interface_name = hash_create_string (0, sizeof (uword));
     interface_name_by_sw_index = hash_create (0, sizeof (uword));
     link_speed_by_sw_index = hash_create (0, sizeof (uword));
+    INTF_TABLE_UNLOCK();
 
     if (vsc_socket_connect(vam, client_name) == 0) {
         int rc;
@@ -3406,13 +3460,16 @@ int vpp_get_interface_speed (const char *hwif_name, uint32_t *speed)
         return -EINVAL;
     }
 
+    INTF_TABLE_LOCK();
     p = hash_get(link_speed_by_sw_index, idx);
     if (!p) {
+        INTF_TABLE_UNLOCK();
         VPP_UNLOCK();
         return -ENOENT;
     }
 
     *speed = (uint32_t) p[0];
+    INTF_TABLE_UNLOCK();
 
     if (*speed == 0 || *speed == UINT32_MAX) {
         VPP_UNLOCK();
@@ -5023,9 +5080,11 @@ int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
     // Iterates all known sw intfs to collect addresses.
     u32 *sw_if_idxs = NULL;
     hash_pair_t *p;
+    INTF_TABLE_LOCK();
     hash_foreach_pair(p, interface_name_by_sw_index, ({
         vec_add1(sw_if_idxs, (u32) p->key);
     }));
+    INTF_TABLE_UNLOCK();
 
     for (unsigned int i = 0; i < vec_len(sw_if_idxs); i++) {
         /* Pre-filter: skip interfaces not in the target VRF */
