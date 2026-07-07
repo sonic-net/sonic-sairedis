@@ -12,12 +12,11 @@ upstream:
   #
   # This is sonic-sairedis' only cascading upstream (vpp below is a sairedis-only
   # leaf). Note what is deliberately NOT declared here:
-  #   * common-libs (libyang3) -- inherited TRANSITIVELY. buildenv_setup downloads
-  #     the sonic-swss-common artifact, reads its build-env/, and walks
-  #     sonic-swss-common's own upstream-artifacts.yaml, which declares common-libs
-  #     -> libyang3 (the lib libswsscommon links against). See cascade.py.
-  #   * libnl -- inherited from sonic-swss-common's base.yaml (apt libnl-*-dev, all
-  #     arches), so it no longer needs a per-arch declaration here either.
+  #   * common-libs (SONiC-patched libnl + libyang3) -- inherited TRANSITIVELY.
+  #     buildenv_setup downloads the sonic-swss-common artifact, reads its
+  #     build-env/, and walks sonic-swss-common's own upstream-artifacts.yaml,
+  #     which declares common-libs -> libnl + libyang3 (the libs libswsscommon
+  #     links against -- all from the common-libs artifact, never apt). See cascade.py.
   #
   # This REQUIRES the resolved sonic-swss-common artifact to actually ship a
   # build-env/, i.e. sonic-swss-common must be built from a branch that already
@@ -29,9 +28,11 @@ upstream:
   - name: sonic-swss-common
     project: build
     pipeline: Azure.sonic-swss-common
-    branch: master          # TEMPORARY (PoC): the lawlee/ci-unify pipeline run may
-                            # not be present/stable; pin the linked libs to master.
-                            # Remove before merge so it tracks BUILD_BRANCH.
+    # No `branch:` pin -> resolves on ctx.branch (--branch $(BUILD_BRANCH)). On a
+    # lawlee/ci-unify BRANCH build BUILD_BRANCH=lawlee/ci-unify, whose
+    # sonic-swss-common artifact now ships build-env/ (so the cascade works). NOTE
+    # (PoC): a PR build uses BUILD_BRANCH=<target>=master, whose artifact has no
+    # build-env/ yet -> validate this PoC via a branch build, not the PR build.
     cascade_optional: false
     result_filter: [succeeded, partiallySucceeded]
     artifact_name:
