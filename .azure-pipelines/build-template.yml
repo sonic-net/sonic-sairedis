@@ -1,4 +1,7 @@
 parameters:
+- name: repo
+  type: string
+  default: self
 - name: arch
   type: string
   values:
@@ -66,9 +69,15 @@ jobs:
     options:  "--privileged"
 
   steps:
-  - checkout: self
+  # `repo` lets a consumer pipeline (e.g. sonic-swss-common) reuse this template to
+  # build sonic-sairedis. Default `self` preserves sairedis's own pipeline. When
+  # overridden with the sonic-sairedis repository resource, check out to `s` so
+  # $(Build.SourcesDirectory) still points at the sairedis checkout as usual.
+  - checkout: ${{ parameters.repo }}
     clean: true
     submodules: true
+    ${{ if ne(parameters.repo, 'self') }}:
+      path: s
   - script: |
       set -ex
       # Bootstrap the tool's own runtime deps (buildenv_setup needs PyYAML + requests).
