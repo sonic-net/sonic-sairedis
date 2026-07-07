@@ -28,11 +28,12 @@ upstream:
   - name: sonic-swss-common
     project: build
     pipeline: Azure.sonic-swss-common
-    # No `branch:` pin -> resolves on ctx.branch (--branch $(BUILD_BRANCH)). On a
-    # lawlee/ci-unify BRANCH build BUILD_BRANCH=lawlee/ci-unify, whose
-    # sonic-swss-common artifact now ships build-env/ (so the cascade works). NOTE
-    # (PoC): a PR build uses BUILD_BRANCH=<target>=master, whose artifact has no
-    # build-env/ yet -> validate this PoC via a branch build, not the PR build.
+    # TEMPORARY (PoC): pin the cascade source to the POC branch. On a branch build
+    # BUILD_BRANCH = Build.SourceBranchName = "ci-unify" (Azure returns only the last
+    # ref segment of refs/heads/lawlee/ci-unify), so ctx.branch can't resolve the
+    # lawlee/ci-unify swss-common run. Remove this line before merge to restore
+    # BUILD_BRANCH tracking (commit 93690566).
+    branch: lawlee/ci-unify
     cascade_optional: false
     result_filter: [succeeded, partiallySucceeded]
     artifact_name:
