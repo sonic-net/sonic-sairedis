@@ -85,7 +85,7 @@ jobs:
   - script: |
       set -ex
       # install packages for vs test
-      sudo pip3 install pytest flaky exabgp docker
+      sudo uv pip install --system pytest flaky exabgp docker
 
       # install packages for kvm test
       sudo apt-get update
