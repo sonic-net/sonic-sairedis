@@ -299,6 +299,12 @@ TunnelManager::create_vpp_vxlan_encap(
         } else {
             ip4_nbr_add_del(NULL, sw_if_index, &req.dst_address.addr.ip4, false, true/*no_fib_entry*/, bvi_mac, 1);
         }
+        /* Override the tunnel interface's auto-generated MAC with the router MAC.
+         * When a packet is routed into this L3 VXLAN tunnel, VPP builds the inner
+         * Ethernet header using the tunnel interface's hardware MAC as the source.
+         * Without this, the inner source MAC is VPP's auto MAC (02:fe:..) instead
+         * of the router MAC that HW ASICs (and the VNET decap test) expect. */
+        sw_interface_set_mac_by_index(sw_if_index, bvi_mac);
     }
 
     SWSS_LOG_INFO("successfully created encap for vxlan tunnel %d", sw_if_index);
