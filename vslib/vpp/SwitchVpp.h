@@ -1167,8 +1167,10 @@ namespace saivs
             std::shared_ptr<std::thread> m_vpp_thread;
 
         private: // VPP
+	    // m_lag_bond_map and m_egress_disabled_lag_member_ports are only accessed on
+	    // the LAG create/set/remove path, which the VS layer serializes through a
+	    // single queue, so they require no additional locking.
 	    std::map<sai_object_id_t, platform_bond_info_t> m_lag_bond_map;
-	    std::mutex LagMapMutex;
 	    std::set<sai_object_id_t> m_egress_disabled_lag_member_ports;
 
             static int currentMaxInstance;
