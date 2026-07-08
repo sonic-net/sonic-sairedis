@@ -142,6 +142,7 @@ static uint32_t s_tag_dhcp_table = ~0;        /* DHCPv4 broadcast over .1Q */
 #define SAIVS_DHCP_BOOTPC 68
 #define SAIVS_DHCP_BOOTPS 67
 
+/* Called only from the single SAI processing thread; the s_* globals need no locking. */
 static int l2_punt_classify_init()
 {
     SWSS_LOG_ENTER();
@@ -542,8 +543,14 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * protocols (LLDP, LACP, ARP, DHCP) are punted/copied to the
          * LCP host tap.  Tagged frames still carry the 802.1Q header
          * when l2-input-classify runs (VTR has not yet stripped it).
+         *
+         * Treated as best-effort: on failure the member still comes
+         * up, but control-plane punt on this member is not enabled.
          */
-        l2_punt_classify_apply(hw_ifname, true /*tagged*/);
+        if (l2_punt_classify_apply(hw_ifname, true /*tagged*/) != 0) {
+            SWSS_LOG_WARN("l2_punt_classify_apply failed for tagged member %s (vlan %u)",
+                          hw_ifname, vlan_id);
+        }
     }
     else if (tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED)
     {
@@ -562,8 +569,13 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         /* Enable L2 classify-based punt on the parent so control
          * protocols (LLDP, LACP, ARP, DHCP) arriving on the parent
          * are punted/copied to the LCP host tap.
+         *
+         * Treated as best-effort; see the tagged branch above.
          */
-        l2_punt_classify_apply(hw_ifname, false /*untagged*/);
+        if (l2_punt_classify_apply(hw_ifname, false /*untagged*/) != 0) {
+            SWSS_LOG_WARN("l2_punt_classify_apply failed for untagged member %s (vlan %u)",
+                          hw_ifname, vlan_id);
+        }
     }
     else {
         SWSS_LOG_ERROR("Tagging Mode %d not implemented", tagging_mode);

@@ -1453,9 +1453,13 @@ static void vl_api_classify_add_del_table_reply_t_handler(
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    uint32_t *table_index = (uint32_t *) get_index_ptr(msg->context);
-    *table_index = ntohl(msg->new_table_index);
-    release_index(msg->context);
+    if (msg->context) {
+        uint32_t *table_index = (uint32_t *) get_index_ptr(msg->context);
+        if (table_index) {
+            *table_index = ntohl(msg->new_table_index);
+        }
+        release_index(msg->context);
+    }
 }
 
 static void vl_api_classify_add_del_session_reply_t_handler(
@@ -1480,9 +1484,13 @@ static void vl_api_get_next_index_reply_t_handler(
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    uint32_t *next_index = (uint32_t *) get_index_ptr(msg->context);
-    *next_index = ntohl(msg->next_index);
-    release_index(msg->context);
+    if (msg->context) {
+        uint32_t *next_index = (uint32_t *) get_index_ptr(msg->context);
+        if (next_index) {
+            *next_index = ntohl(msg->next_index);
+        }
+        release_index(msg->context);
+    }
 }
 
 /* vlib API reply handler (add_node_next) */
@@ -1493,9 +1501,13 @@ static void vl_api_add_node_next_reply_t_handler(
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    uint32_t *next_index = (uint32_t *) get_index_ptr(msg->context);
-    *next_index = ntohl(msg->next_index);
-    release_index(msg->context);
+    if (msg->context) {
+        uint32_t *next_index = (uint32_t *) get_index_ptr(msg->context);
+        if (next_index) {
+            *next_index = ntohl(msg->next_index);
+        }
+        release_index(msg->context);
+    }
 }
 
 #define vl_api_get_first_msg_id_reply_t_handler vl_noop_handler
