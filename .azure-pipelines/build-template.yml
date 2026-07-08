@@ -43,6 +43,10 @@ parameters:
   type: boolean
   default: false
 
+- name: stage_swss_common
+  type: boolean
+  default: false
+
 - name: debian_version
   type: string
 
@@ -54,6 +58,12 @@ jobs:
     DIFF_COVER_CHECK_THRESHOLD: 80
     ${{ if eq(parameters.run_unit_test, true) }}:
       DIFF_COVER_ENABLE: 'true'
+    # When a consumer stages the current-run swss-common (stage_swss_common),
+    # require the cascade to use it rather than silently falling back to a download.
+    ${{ if eq(parameters.stage_swss_common, true) }}:
+      REQUIRE_STAGED: '--required-staged-upstream sonic-swss-common'
+    ${{ else }}:
+      REQUIRE_STAGED: ''
 
   pool:
     ${{ if ne(parameters.pool, 'default') }}:
@@ -78,6 +88,24 @@ jobs:
     submodules: true
     ${{ if ne(parameters.repo, 'self') }}:
       path: s
+  - ${{ if ne(parameters.repo, 'self') }}:
+    - script: |
+        set -e
+        # Branch-match the reused resource repo to the source repo being built
+        # ($(BUILD_BRANCH)). Only for the reuse path (repo != self): sairedis's own
+        # checkout is already on the right ref, and a self PR build is on the merge
+        # ref which must NOT be switched. Fall back to the checked-out ref if that
+        # branch doesn't exist here (e.g. a PoC feature branch, or BUILD_BRANCH being
+        # the truncated last ref segment).
+        git checkout $(BUILD_BRANCH) 2>/dev/null && git submodule update || \
+          echo "keeping checked-out ref $(git rev-parse --abbrev-ref HEAD)"
+      displayName: "Branch-match ${{ parameters.repo }} to $(BUILD_BRANCH)"
+  - ${{ if eq(parameters.stage_swss_common, true) }}:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        artifact: ${{ parameters.swss_common_artifact_name }}
+        path: $(Pipeline.Workspace)/staged/sonic-swss-common
+      displayName: "Stage current-run sonic-swss-common for the cascade"
   - script: |
       set -ex
       # Bootstrap the tool's own runtime deps (buildenv_setup needs PyYAML + requests).
@@ -92,12 +120,18 @@ jobs:
       # Sets up apt/pip deps + downloads/installs libswsscommon, libnl, libyang3 and
       # vpp DEBs (see build-env/upstream-artifacts.yaml), and runs the redis /
       # sswsyncd / rsyslog post-install hooks.
+      # --upstream-staged-dir lets a consumer (sonic-swss-common) supply the
+      # current-run swss-common bundle at <dir>/sonic-swss-common/, so the cascade
+      # uses THIS run's swss-common instead of the latest completed external run.
+      # When that dir is absent (sairedis's own pipeline), buildenv_setup falls back
+      # to downloading; REQUIRE_STAGED enforces the override in the consumer case.
       PYTHONPATH=/tmp/sw-common/ci python3 -m buildenv_setup \
         --repo-dir $(Build.SourcesDirectory) \
         --scope build \
         --arch ${{ parameters.arch }} \
         --debian-version ${{ parameters.debian_version }} \
-        --branch $(BUILD_BRANCH)
+        --branch $(BUILD_BRANCH) \
+        --upstream-staged-dir $(Pipeline.Workspace)/staged $(REQUIRE_STAGED)
     displayName: "Set up build environment (buildenv_setup)"
     env:
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
