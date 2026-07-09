@@ -1303,6 +1303,8 @@ sai_status_t SwitchVpp::create(
 {
     SWSS_LOG_ENTER();
 
+    serviceDeferredOperStatusResync();
+
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
         sai_object_id_t object_id;
@@ -1657,6 +1659,8 @@ sai_status_t SwitchVpp::remove(
         _In_ const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
+
+    serviceDeferredOperStatusResync();
 
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
@@ -2016,6 +2020,8 @@ sai_status_t SwitchVpp::set(
         _In_ const sai_attribute_t* attr)
 {
     SWSS_LOG_ENTER();
+
+    serviceDeferredOperStatusResync();
 
     if (objectType == SAI_OBJECT_TYPE_PORT)
     {

@@ -580,7 +580,19 @@ static pthread_mutex_t vpp_mutex;
 
 void vpp_mutex_lock_init ()
 {
-    pthread_mutex_init(&vpp_mutex, NULL);
+    /*
+     * Recursive so the command path can nest EVENT_LOCK inside VPP_LOCK (e.g.
+     * event registration/reconnect issued while holding VPP_LOCK). EVENT_LOCK
+     * now maps onto this same mutex (see EVENT_LOCK below): the command path and
+     * the background event thread both allocate on VPP's process-global,
+     * non-thread-safe clib heap, so they must be mutually exclusive to avoid
+     * heap corruption (os_panic in clib_mem_heap_realloc_aligned).
+     */
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&vpp_mutex, &attr);
+    pthread_mutexattr_destroy(&attr);
 }
 
 void vpp_mutex_lock ()
@@ -597,13 +609,11 @@ void vpp_mutex_unlock ()
 #define VPP_UNLOCK() vpp_mutex_unlock()
 
 /*
- * Dedicated lock for the asynchronous event connection (vat_event_main /
- * event_socket_client_main). Kept separate from vpp_mutex so the background
- * event-polling thread never serializes against the synchronous command path.
- *
- * Lock ordering: code running under EVENT_LOCK must never acquire VPP_LOCK.
- * The command path holds VPP_LOCK and may wait on the event connection;
- * acquiring VPP_LOCK while holding EVENT_LOCK would deadlock.
+ * Legacy dedicated event-connection mutex. No longer used for locking: EVENT_LOCK
+ * now maps onto the recursive vpp_mutex (see EVENT_LOCK below) so that command-path
+ * and event-thread clib allocations are mutually exclusive on VPP's shared,
+ * non-thread-safe clib heap. Retained only to keep the init/teardown surface
+ * unchanged; kept unused otherwise.
  */
 static pthread_mutex_t vpp_event_mutex;
 
@@ -622,8 +632,19 @@ void vpp_event_mutex_unlock ()
     pthread_mutex_unlock(&vpp_event_mutex);
 }
 
-#define EVENT_LOCK() vpp_event_mutex_lock()
-#define EVENT_UNLOCK() vpp_event_mutex_unlock()
+/*
+ * EVENT_LOCK maps onto the same recursive vpp_mutex as VPP_LOCK. The event
+ * connection (vat_event_main) and the command connection (vat_main) both
+ * allocate on VPP's process-global, non-thread-safe clib heap; a background
+ * event-thread clib allocation racing a command-thread clib allocation corrupts
+ * the heap and crashes (os_panic in clib_mem_heap_realloc_aligned). Serializing
+ * every VPP client/clib operation under one recursive mutex prevents that. The
+ * mutex is recursive so the command path may still nest EVENT_LOCK inside
+ * VPP_LOCK (event registration/reconnect). No command operation blocks waiting
+ * on an unsolicited event, so this single lock cannot deadlock.
+ */
+#define EVENT_LOCK() vpp_mutex_lock()
+#define EVENT_UNLOCK() vpp_mutex_unlock()
 
 /*
  * Leaf lock protecting the shared interface lookup tables
