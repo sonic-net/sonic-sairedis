@@ -376,14 +376,18 @@ void os_exit(int code) {}
 #include "../SaiVppLog.h"
 
 /*
- * Normalize VPP return code for delete operations.
- * If the operation is a delete and VPP returns NO_SUCH_ENTRY,
- * the entry is already gone — treat it as success.
+ * Normalize VPP return code for idempotent operations.
+ * If the operation is a delete and VPP returns NO_SUCH_ENTRY, the entry is
+ * already gone; if it is an add and VPP returns VALUE_EXIST, the entry is
+ * already present. In both cases treat it as success.
  */
 static inline int vpp_normalize_ret(int ret, bool is_del, const char *func)
 {
     if (is_del && ret == VNET_API_ERROR_NO_SUCH_ENTRY) {
 	    SAIVPP_INFO("%s: ignoring NO_SUCH_ENTRY(%d) on delete", func, ret);
+	    ret = 0;
+    } else if (!is_del && ret == VNET_API_ERROR_VALUE_EXIST) {
+	    SAIVPP_INFO("%s: ignoring VALUE_EXIST(%d) on add", func, ret);
 	    ret = 0;
     }
     return ret;
@@ -4241,6 +4245,8 @@ int create_bond_member(uint32_t bond_sw_if_index, const char *hwif_name, bool is
     S (mp);
 
     WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s bond_sw_if_index %u", __func__, ret, hwif_name, bond_sw_if_index); }
     else { SAIVPP_INFO("%s %s bond_sw_if_index %u", __func__, hwif_name, bond_sw_if_index); }
