@@ -1814,7 +1814,7 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "vlib_%08x%c", vlibapi_version, 0);
     vlib_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(vlib_msg_id_base != (u16) ~0);
- 
+
     msg_base_lookup_name = format (0, "sflow_%08x%c", sflow_api_version, 0);
     sflow_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sflow_msg_id_base != (u16) ~0);
