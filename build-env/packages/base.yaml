@@ -35,16 +35,21 @@ packages:
   - redis-server
 
 post_install:
-  # Configure the system redis for sonic-sairedis' tests.
+  # Configure the system redis for sonic-sairedis' unit tests. These run during the
+  # Build stage (make check), so scopes: [build, test] -- unlike sonic-swss-common,
+  # whose Build stage runs the same script INLINE after cargo (its base.yaml entry is
+  # test-scoped only, to keep redis down during the Rust logger_init_without_redis test).
   #
-  # NOTE (design finding F11): sonic-sairedis' redis config does NOT set
-  # `notify-keyspace-events AKE` (unlike sonic-swss-common / sonic-swss). This is
-  # why a single shared cascading redis script can't be used naively: the common
-  # lines (unixsocket / unixsocketperm) belong in sonic-swss-common's cascading
-  # base.yaml, while the per-repo deltas stay local. For this PoC (sonic-swss-common
-  # build-env not yet on the resolved branch) sonic-sairedis carries its own
-  # complete-but-minimal redis config.
+  # DEDUP: the script body is NOT carried in sonic-sairedis. `configure-redis-for-tests.sh`
+  # is resolved from the cascaded sonic-swss-common bundle -- buildenv_setup falls back
+  # to upstream build-env/ dirs when a source file isn't present locally (see
+  # post_install.resolve_script) -- so the redis config lives in exactly ONE place:
+  # sonic-swss-common/build-env/configure-redis-for-tests.sh.
+  #
+  # That shared script sets `notify-keyspace-events AKE`, which sonic-sairedis' old
+  # standalone config did not. Reusing it applies AKE to sonic-sairedis too; the
+  # sonic-sairedis CI pipeline verifies this keyspace delta is harmless for its tests.
   - name: configure-redis-for-tests
-    source: configure-redis-for-tests.sh
+    source: configure-redis-for-tests.sh   # resolved from the sonic-swss-common cascade
     requires: [redis-server]
     scopes: [build, test]

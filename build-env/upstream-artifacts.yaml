@@ -54,6 +54,11 @@ upstream:
     cascade_optional: true
     result_filter: [succeeded, partiallySucceeded]
     apt_fix_broken: true    # the 10 vpp DEBs are interdependent; fix up after dpkg -i
+    # vpp's maintainer scripts call sysctl, which fails in the unprivileged CI
+    # container. VPP_INSTALL_SKIP_SYSCTL=1 makes them skip it. install_env puts the
+    # vpp DEBs in their own dpkg -i group (see planner._deb_install_groups), installed
+    # AFTER the empty-env library providers, as `sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i ...`.
+    install_env: { VPP_INSTALL_SKIP_SYSCTL: "1" }
     artifact_name: 'vpp-{debian_version}'
     debs:
       - 'libvppinfra-dev_*_{arch}.deb'
