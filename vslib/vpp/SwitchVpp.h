@@ -438,14 +438,6 @@ namespace saivs
                     _In_ sai_object_id_t lag_member_oid,
                     _Out_ uint32_t& bond_sw_if_index);
 
-            sai_status_t setLagMember(
-                    _In_ sai_object_id_t lag_member_oid,
-                    _In_ const sai_attribute_t* attr);
-
-            sai_status_t vpp_set_lag_member_egress_disable(
-                    _In_ sai_object_id_t lag_member_oid,
-                    _In_ bool egress_disable);
-
             /* FDB Entry and Flush SAI Objects */
             sai_status_t FdbEntryadd(
                     _In_ const std::string &serializedObjectId,
