@@ -631,6 +631,11 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
 
     ss->setMeta(meta);
 
+    if (m_fdbEventFn)
+    {
+        ss->initFdbEventHandling(m_fdbEventFn);
+    }
+
     if (warmBootState != nullptr)
     {
         auto status = ss->warm_boot_initialize_objects(); // TODO move to constructor

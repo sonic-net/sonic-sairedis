@@ -201,6 +201,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         //Create bridge and set the l2 port
         set_sw_interface_l2_bridge(hw_ifname,bridge_id, true, VPP_API_PORT_TYPE_NORMAL);
 
+        swif_bdid_track(hw_ifname, bridge_id);
+
         //Set interface state up
         interface_set_state(hw_ifname, true);
     }
@@ -210,6 +212,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
 
         //Create bridge and set the l2 port
         set_sw_interface_l2_bridge(hw_ifname,bridge_id, true, VPP_API_PORT_TYPE_NORMAL);
+
+        swif_bdid_track(hw_ifname, bridge_id);
 
         //Set the vlan member to bridge and tags rewrite
         vpp_l2_vtr_op_t vtr_op = L2_VTR_PUSH_1;
@@ -373,6 +377,7 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
 
         //Remove interface from bridge, interface type should be changed to others types like l3.
         set_sw_interface_l2_bridge(hw_ifname, bridge_id, false, VPP_API_PORT_TYPE_NORMAL);
+        swif_bdid_untrack(hw_ifname);
     }
     else if (tagging_mode == SAI_VLAN_TAGGING_MODE_TAGGED)
     {
@@ -382,6 +387,7 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         hw_ifname = host_subifname;
         // Remove the l2 port from bridge
         set_sw_interface_l2_bridge(hw_ifname, bridge_id, false, VPP_API_PORT_TYPE_NORMAL);
+        swif_bdid_untrack(hw_ifname);
 
         // delete subinterface
         delete_sub_interface(hw_ifname, vlan_id);
@@ -791,7 +797,19 @@ sai_status_t SwitchVpp::createLagMember(
     auto sid = sai_serialize_object_id(object_id);
 
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, switch_id, attr_count, attr_list));
-    return vpp_create_lag_member(attr_count, attr_list);
+
+    // Add the member to the VPP bond first so the bond (and its LCP/tap) inherits
+    // the member MAC, then detach it from the bond if it is created egress-disabled.
+    CHECK_STATUS(vpp_create_lag_member(attr_count, attr_list));
+
+    auto egress_disable = sai_metadata_get_attr_by_id(SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE, attr_count, attr_list);
+    if (egress_disable != NULL && egress_disable->value.booldata)
+    {
+        SWSS_LOG_NOTICE("LAG member %s created with egress disabled, detach from VPP bond", sid.c_str());
+        CHECK_STATUS(vpp_set_lag_member_egress_disable(object_id, true));
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::vpp_create_lag_member(
@@ -804,7 +822,6 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
     bool is_passive = false;
     int ret;
     uint32_t bond_if_idx;
-    uint32_t bond_id;
     sai_object_id_t lag_oid, lag_port_oid;
 
     //Get the bond interface index from attr SAI_LAG_MEMBER_ATTR_LAG_ID
@@ -868,26 +885,244 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
         return SAI_STATUS_FAILURE;
     }
 
-    if (!bond_info.lcp_created) {
-        // create tap and lcp for the Bond intf after first member is added to ensure tap mac = member mac = bond mac
-        std::ostringstream tap_stream;
-        bond_id = bond_info.id;
-        tap_stream << "be" << bond_id;
-        std::string tap = tap_stream.str();
+    CHECK_STATUS(vpp_ensure_lag_lcp(lag_oid));
 
-        const char *hw_ifname;
-        hw_ifname = vpp_get_swif_name(bond_if_idx);
-        configure_lcp_interface(hw_ifname, tap.c_str(), true);
+    return SAI_STATUS_SUCCESS;
+}
 
-        // add tc filter to redirect traffic from tap to PortChannel
-        std::string portchannel = std::string("PortChannel") + std::to_string(bond_id);
-        std::string be = std::string("be") + std::to_string(bond_id);
-        CHECK_STATUS(add_tc_filter_redirect(be, portchannel));
+sai_status_t SwitchVpp::vpp_ensure_lag_lcp(
+        _In_ sai_object_id_t lag_oid)
+{
+    SWSS_LOG_ENTER();
 
-        // update the lag to bond map
-        bond_info.lcp_created = true;
-        m_lag_bond_map[lag_oid] = bond_info;
+    platform_bond_info_t bond_info;
+    CHECK_STATUS(get_lag_bond_info(lag_oid, bond_info));
+
+    if (bond_info.lcp_created)
+    {
+        return SAI_STATUS_SUCCESS;
     }
+
+    uint32_t bond_id = bond_info.id;
+    std::ostringstream tap_stream;
+    tap_stream << "be" << bond_id;
+    std::string tap = tap_stream.str();
+
+    const char *hw_ifname = vpp_get_swif_name(bond_info.sw_if_index);
+    if (hw_ifname == NULL)
+    {
+        SWSS_LOG_ERROR("failed to get VPP bond interface name for %s", sai_serialize_object_id(lag_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    configure_lcp_interface(hw_ifname, tap.c_str(), true);
+
+    std::string portchannel = std::string("PortChannel") + std::to_string(bond_id);
+    std::string be = std::string("be") + std::to_string(bond_id);
+    CHECK_STATUS(add_tc_filter_redirect(be, portchannel));
+
+    bond_info.lcp_created = true;
+    m_lag_bond_map[lag_oid] = bond_info;
+
+    SWSS_LOG_NOTICE("Created LCP and tc redirect for LAG %s", sai_serialize_object_id(lag_oid).c_str());
+
+    return SAI_STATUS_SUCCESS;
+}
+
+SwitchVpp::LagMemberEgressDisableAction SwitchVpp::getLagMemberEgressDisableAction(
+        _In_ bool requested_egress_disable,
+        _In_ bool current_attr_found,
+        _In_ bool current_egress_disable)
+{
+    SWSS_LOG_ENTER();
+
+    if (current_attr_found && current_egress_disable == requested_egress_disable)
+    {
+        return LagMemberEgressDisableAction::NONE;
+    }
+
+    if (!current_attr_found && !requested_egress_disable)
+    {
+        return LagMemberEgressDisableAction::NONE;
+    }
+
+    return requested_egress_disable ? LagMemberEgressDisableAction::DISABLE : LagMemberEgressDisableAction::ENABLE;
+}
+
+sai_status_t SwitchVpp::setLagMember(
+        _In_ sai_object_id_t lagMemberId,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (attr == nullptr)
+    {
+        SWSS_LOG_ERROR("LAG member set attribute is null");
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    auto sid = sai_serialize_object_id(lagMemberId);
+
+    auto &objectHash = m_objectHash.at(SAI_OBJECT_TYPE_LAG_MEMBER);
+    if (objectHash.find(sid) == objectHash.end())
+    {
+        SWSS_LOG_ERROR("not found %s:%s",
+                sai_serialize_object_type(SAI_OBJECT_TYPE_LAG_MEMBER).c_str(),
+                sid.c_str());
+
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    if (attr->id != SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE)
+    {
+        return set_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, attr);
+    }
+
+    sai_attribute_t current_attr = {};
+    current_attr.id = SAI_LAG_MEMBER_ATTR_EGRESS_DISABLE;
+    sai_status_t status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lagMemberId, 1, &current_attr);
+
+    // Missing EGRESS_DISABLE means the SAI default is false. Object existence
+    // was checked above, so get failure here is treated as missing attr.
+    auto action = getLagMemberEgressDisableAction(
+            attr->value.booldata,
+            status == SAI_STATUS_SUCCESS,
+            current_attr.value.booldata);
+
+    if (action == LagMemberEgressDisableAction::NONE)
+    {
+        return set_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, attr);
+    }
+
+    if (action == LagMemberEgressDisableAction::DISABLE)
+    {
+        SWSS_LOG_NOTICE("Disable egress on LAG member %s, detach from VPP bond", sid.c_str());
+        CHECK_STATUS(vpp_set_lag_member_egress_disable(lagMemberId, true));
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("Enable egress on LAG member %s, re-attach to VPP bond", sid.c_str());
+        CHECK_STATUS(vpp_set_lag_member_egress_disable(lagMemberId, false));
+    }
+
+    return set_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid, attr);
+}
+
+sai_status_t SwitchVpp::get_lag_member_port(
+        _In_ sai_object_id_t lag_member_oid,
+        _Out_ sai_object_id_t& port_oid)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    attr.id = SAI_LAG_MEMBER_ATTR_PORT_ID;
+    sai_status_t status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("attr SAI_LAG_MEMBER_ATTR_PORT_ID is not present");
+        return SAI_STATUS_FAILURE;
+    }
+
+    port_oid = attr.value.oid;
+    sai_object_type_t obj_type = objectTypeQuery(port_oid);
+
+    if (obj_type != SAI_OBJECT_TYPE_PORT)
+    {
+        SWSS_LOG_ERROR("SAI_LAG_MEMBER_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+                sai_serialize_object_id(port_oid).c_str(),
+                sai_serialize_object_type(obj_type).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::get_lag_member_bond_index(
+        _In_ sai_object_id_t lag_member_oid,
+        _Out_ uint32_t& bond_sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    attr.id = SAI_LAG_MEMBER_ATTR_LAG_ID;
+    sai_status_t status = get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_oid, 1, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("attr SAI_LAG_MEMBER_ATTR_LAG_ID is not present");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_object_id_t lag_oid = attr.value.oid;
+    if (objectTypeQuery(lag_oid) != SAI_OBJECT_TYPE_LAG)
+    {
+        SWSS_LOG_ERROR("attr SAI_LAG_MEMBER_ATTR_LAG_ID is not a valid LAG");
+        return SAI_STATUS_FAILURE;
+    }
+
+    platform_bond_info_t bond_info;
+    CHECK_STATUS(get_lag_bond_info(lag_oid, bond_info));
+    bond_sw_if_index = bond_info.sw_if_index;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::vpp_set_lag_member_egress_disable(
+        _In_ sai_object_id_t lag_member_oid,
+        _In_ bool egress_disable)
+{
+    SWSS_LOG_ENTER();
+
+    // Egress-disable removes the member from the VPP bond's egress distribution by
+    // detaching it from the bond, while leaving the member link administratively up.
+    // The bond runs in XOR mode and LACP is handled by teamd in Linux over the
+    // member's LCP tap, whose link state follows the VPP member link. The member
+    // link must therefore stay up so LACP PDUs keep flowing and the PortChannel can
+    // converge, so only the bond membership is toggled here. The member's own
+    // SAI_PORT_ATTR_ADMIN_STATE is left untouched.
+    sai_object_id_t port_oid;
+    CHECK_STATUS(get_lag_member_port(lag_member_oid, port_oid));
+
+    std::string if_name;
+    if (!getTapNameFromPortId(port_oid, if_name))
+    {
+        SWSS_LOG_ERROR("No port found for lag member port id: %s", sai_serialize_object_id(port_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    const char *hwif_name = tap_to_hwif_name(if_name.c_str());
+
+    int ret;
+    if (egress_disable)
+    {
+        ret = delete_bond_member(hwif_name);
+    }
+    else
+    {
+        uint32_t bond_sw_if_index;
+        CHECK_STATUS(get_lag_member_bond_index(lag_member_oid, bond_sw_if_index));
+        ret = create_bond_member(bond_sw_if_index, hwif_name, false, false);
+    }
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("failed to %s VPP bond member %s",
+                egress_disable ? "detach" : "re-attach", hwif_name);
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (egress_disable)
+    {
+        m_egress_disabled_lag_member_ports.insert(port_oid);
+    }
+    else
+    {
+        m_egress_disabled_lag_member_ports.erase(port_oid);
+    }
+
+    SWSS_LOG_NOTICE("%s VPP bond member %s for egress %s",
+            egress_disable ? "Detached" : "Re-attached", hwif_name,
+            egress_disable ? "disable" : "enable");
 
     return SAI_STATUS_SUCCESS;
 }
@@ -897,7 +1132,24 @@ sai_status_t SwitchVpp::removeLagMember(
 {
     SWSS_LOG_ENTER();
 
-    CHECK_STATUS_QUIET(vpp_remove_lag_member(lag_member_oid));
+    // An egress-disabled member is already detached from the VPP bond, so skip the
+    // detach to avoid acting on a non-member; otherwise detach it from the bond now.
+    sai_object_id_t port_oid = SAI_NULL_OBJECT_ID;
+    bool egress_disabled = false;
+
+    if (get_lag_member_port(lag_member_oid, port_oid) == SAI_STATUS_SUCCESS)
+    {
+        egress_disabled = m_egress_disabled_lag_member_ports.count(port_oid) > 0;
+    }
+
+    if (egress_disabled)
+    {
+        m_egress_disabled_lag_member_ports.erase(port_oid);
+    }
+    else
+    {
+        CHECK_STATUS_QUIET(vpp_remove_lag_member(lag_member_oid));
+    }
 
     auto sid = sai_serialize_object_id(lag_member_oid);
 
@@ -1398,6 +1650,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
                             sai_serialize_object_id(br_port_id).c_str());
                     auto ret = l2fib_flush_all();
                     SWSS_LOG_NOTICE("Flush ALL (tunnel bridge port fallback) ret_val: %d", ret);
+                    vpp_fdb_entries_invalidate_all();
                     break;
                 }
 
@@ -1420,6 +1673,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
                     const char *hwif_name = ifname.c_str();
                     auto ret = l2fib_flush_int(hwif_name);
                     SWSS_LOG_NOTICE(" Flush by interface on hwif_name %s  Successful ret_val: %d", hwif_name, ret);
+                    vpp_fdb_entries_invalidate_by_port(port_id);
                 }
                 else
                 {
@@ -1435,6 +1689,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
             {
                 auto ret = l2fib_flush_bd(bd_id);
                 SWSS_LOG_NOTICE(" Flush on bd_id %d Successfull ret_val: %d",bd_id, ret);
+                vpp_fdb_entries_invalidate_by_bd(bd_id);
             }
             break;
 
@@ -1444,6 +1699,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
             {
                 auto ret = l2fib_flush_all();
                 SWSS_LOG_NOTICE(" Flush ALL fdb entry ret_val: %d", ret);
+                vpp_fdb_entries_invalidate_all();
             }
             break;
 
@@ -1455,4 +1711,220 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+inline sai_object_id_t SwitchVpp::resolvePortIdFromSwIfIndex(uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_swif_to_port_id.find(sw_if_index);
+    if (it != m_swif_to_port_id.end())
+        return it->second;
+
+    sai_object_id_t port_id = getPortIdFromSwIfIndex(sw_if_index);
+    if (port_id != SAI_NULL_OBJECT_ID)
+        m_swif_to_port_id[sw_if_index] = port_id;
+
+    return port_id;
+}
+
+bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type)
+{
+    SWSS_LOG_ENTER();
+
+    bool is_move = (event_type == SAI_FDB_EVENT_MOVE);
+
+    sai_object_id_t port_id = resolvePortIdFromSwIfIndex(sw_if_index);
+    if (port_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("FDB: cannot resolve port OID for sw_if_index %u", sw_if_index);
+        return false;
+    }
+
+    sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
+
+    findBridgeVlanForPortVlan(port_id, (sai_vlan_id_t)key.bd_id, bv_id, bridge_port_id);
+
+    if (bv_id == SAI_NULL_OBJECT_ID || bridge_port_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("FDB: bv_id or bridge_port not found for sw_if_index %u bd %u",
+                       sw_if_index, key.bd_id);
+        return false;
+    }
+
+    std::set<FdbInfo>::iterator existing_it = m_fdb_info_set.end();
+    FdbInfo fi;
+
+    if (is_move)
+    {
+        FdbInfo fi_search;
+        fi_search.setVlanId((sai_vlan_id_t)key.bd_id);
+        memcpy(fi_search.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+
+        existing_it = m_fdb_info_set.find(fi_search);
+        if (existing_it == m_fdb_info_set.end())
+        {
+            SWSS_LOG_WARN("FDB: entry not found in m_fdb_info_set for bd %u, treating as learn",
+                          key.bd_id);
+            return generateFdbLearnedOrMoveEvent(key, sw_if_index, SAI_FDB_EVENT_LEARNED);
+        }
+        fi = *existing_it;
+    }
+    else
+    {
+        fi.m_fdbEntry.switch_id = m_switch_id;
+        fi.m_fdbEntry.bv_id = bv_id;
+        memcpy(fi.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+    }
+
+    fi.setBridgePortId(bridge_port_id);
+    fi.setPortId(port_id);
+    fi.setVlanId((sai_vlan_id_t)key.bd_id);
+    fi.setTimestamp((uint32_t)time(NULL));
+
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = bridge_port_id;
+
+    sai_fdb_event_notification_data_t data;
+    data.event_type = event_type;
+    data.fdb_entry = fi.getFdbEntry();
+    data.attr_count = 2;
+    data.attr = attrs;
+
+    auto sid = sai_serialize_fdb_entry(data.fdb_entry);
+    sai_status_t status;
+
+    if (is_move)
+        status = set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, sid, &attrs[1]);
+    else
+        status = create_internal(SAI_OBJECT_TYPE_FDB_ENTRY, sid, m_switch_id, 2, attrs);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("FDB: %s failed for %s: %s",
+                       is_move ? "set_internal" : "create_internal",
+                       sid.c_str(), sai_serialize_status(status).c_str());
+        return false;
+    }
+
+    if (is_move)
+        m_fdb_info_set.erase(existing_it);
+    m_fdb_info_set.insert(fi);
+
+    send_fdb_event_notification(data);
+
+    SWSS_LOG_NOTICE("FDB: notified %s for MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u",
+                    is_move ? "MOVE" : "LEARNED",
+                    key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                    key.bd_id, sw_if_index);
+    return true;
+}
+
+bool SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
+{
+    SWSS_LOG_ENTER();
+
+    FdbInfo fi_search;
+    fi_search.setVlanId((sai_vlan_id_t)key.bd_id);
+    memcpy(fi_search.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+
+    auto it = m_fdb_info_set.find(fi_search);
+    if (it == m_fdb_info_set.end())
+    {
+        SWSS_LOG_ERROR("FDB: entry not found in m_fdb_info_set for bd %u", key.bd_id);
+        return false;
+    }
+
+    FdbInfo fi = *it;
+
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = fi.getBridgePortId();
+
+    sai_fdb_event_notification_data_t data;
+    data.event_type = SAI_FDB_EVENT_AGED;
+    data.fdb_entry = fi.getFdbEntry();
+    data.attr_count = 2;
+    data.attr = attrs;
+
+    auto sid = sai_serialize_fdb_entry(data.fdb_entry);
+    remove_internal(SAI_OBJECT_TYPE_FDB_ENTRY, sid);
+
+    m_fdb_info_set.erase(it);
+
+    send_fdb_event_notification(data);
+
+    SWSS_LOG_NOTICE("FDB: notified AGED for MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u",
+                    key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+    return true;
+}
+
+void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)
+{
+    SWSS_LOG_ENTER();
+    uint32_t swif = vpp_get_swif_idx_by_name(hwif_name);
+    if (swif != (uint32_t)~0u)
+    {
+        m_swif_to_bdid[swif] = bd_id;
+    }
+}
+
+void SwitchVpp::swif_bdid_untrack(const char *hwif_name)
+{
+    SWSS_LOG_ENTER();
+    uint32_t swif = vpp_get_swif_idx_by_name(hwif_name);
+    if (swif != (uint32_t)~0u)
+    {
+        m_swif_to_bdid.erase(swif);
+
+        // Invalidate the sw_if_index -> SAI port OID memoization as well.
+        // VPP recycles sw_if_index values after an interface is deleted, so a
+        // stale entry would mis-attribute FDB learn/move/age notifications (and
+        // vpp_fdb_entries_invalidate_by_port matches) to the previous port OID.
+        m_swif_to_port_id.erase(swif);
+    }
+}
+
+void SwitchVpp::vpp_fdb_entries_invalidate_all()
+{
+    SWSS_LOG_ENTER();
+    SWSS_LOG_INFO("FDB: invalidating all %zu m_vpp_fdb_entries", m_vpp_fdb_entries.size());
+    m_vpp_fdb_entries.clear();
+}
+
+void SwitchVpp::vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id)
+{
+    SWSS_LOG_ENTER();
+    size_t before = m_vpp_fdb_entries.size();
+    for (auto it = m_vpp_fdb_entries.begin(); it != m_vpp_fdb_entries.end(); )
+    {
+        if (it->first.bd_id == bd_id)
+            it = m_vpp_fdb_entries.erase(it);
+        else
+            ++it;
+    }
+    SWSS_LOG_INFO("FDB: invalidated by bd_id=%u, removed %zu entries, %zu remain",
+                  bd_id, before - m_vpp_fdb_entries.size(), m_vpp_fdb_entries.size());
+}
+
+void SwitchVpp::vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+    size_t before = m_vpp_fdb_entries.size();
+    for (auto it = m_vpp_fdb_entries.begin(); it != m_vpp_fdb_entries.end(); )
+    {
+        if (resolvePortIdFromSwIfIndex(it->second) == port_id)
+            it = m_vpp_fdb_entries.erase(it);
+        else
+            ++it;
+    }
+    SWSS_LOG_INFO("FDB: invalidated by port_id=%s, removed %zu entries, %zu remain",
+                  sai_serialize_object_id(port_id).c_str(),
+                  before - m_vpp_fdb_entries.size(), m_vpp_fdb_entries.size());
 }
