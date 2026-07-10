@@ -244,6 +244,82 @@ TEST(Syncd, zmqSyncWithJsonEnabledUsesZmq)
     EXPECT_TRUE(syncd->m_enableSyncMode);
 }
 
+// Cmdline requests ZMQ_SYNC and the context file omits zmq_enable.
+// The reconciler defers to the command line and the resolved mode
+// stays at ZMQ_SYNC. An absent zmq_enable means "no opinion from the
+// file," distinct from an explicit false (which demotes to REDIS_SYNC,
+// covered by zmqSyncWithJsonDisabledFallsBackToRedisSync).
+TEST(Syncd, zmqSyncWithJsonEmptyDefersToCmdline)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_empty.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(cmd->m_redisCommunicationMode, SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC);
+    EXPECT_TRUE(syncd->m_enableSyncMode);
+}
+
+// The reconciliation in Syncd's constructor must not mutate
+// m_zmqEnable. That field reflects what context_config.json said at
+// parse time and stays that way for the life of the ContextConfig, so
+// future consumers (warm boot, diagnostic dumps, per-context override
+// logic) can still distinguish "the file said ZMQ" from "the operator
+// passed -z zmq_sync on a file-silent context." This is the same
+// invariant the orchagent-side RedisRemoteSaiInterface code honors.
+TEST(Syncd, contextConfigZmqEnablePreservedAfterCmdlinePromotion)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_empty.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    // The cmdline promoted the transport to ZMQ_SYNC, but the parsed
+    // file opinion remains untouched.
+    EXPECT_EQ(syncd->m_contextConfig->m_zmqEnable, sairedis::CONTEXT_CONFIG_ZMQ_EMPTY);
+}
+
+// Symmetric assertion for the demote path: file explicitly disables
+// ZMQ, cmdline requests ZMQ_SYNC. The reconciler demotes to REDIS_SYNC,
+// but m_zmqEnable still reflects the file's explicit false rather than
+// being overwritten by the resolved decision.
+TEST(Syncd, contextConfigZmqEnablePreservedAfterCmdlineDemote)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_disabled.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(syncd->m_contextConfig->m_zmqEnable, sairedis::CONTEXT_CONFIG_ZMQ_DISABLED);
+}
+
+// And the file-authoritative-ZMQ case: file says zmq_enable: true, no
+// cmdline override. m_zmqEnable stays ENABLED, which is what the file
+// said and also what the reconciler resolved to. The point of this
+// assertion is that the value matches even though the reconcile blocks
+// did not fire.
+TEST(Syncd, contextConfigZmqEnablePreservedForFileEnabled)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_enabled.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(syncd->m_contextConfig->m_zmqEnable, sairedis::CONTEXT_CONFIG_ZMQ_ENABLED);
+}
+
 using namespace syncd;
 
 #ifdef MOCK_METHOD
@@ -877,7 +953,53 @@ protected:
 
         return found ? value : "";
     }
+
+    std::mutex& dampingStateMutex()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_linkEventDampingMutex;
+    }
+
+    std::map<sai_object_id_t, LinkEventDampingPortState>& portDampingStates()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_portLinkEventDampingStates;
+    }
+
+    std::mutex& pendingNotificationsMutex()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_pendingNotificationsMutex;
+    }
+
+    std::queue<std::vector<sai_port_oper_status_notification_t>>& pendingNotifications()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_pendingNotifications;
+    }
+
+    void invokeProcessPendingDampingSync()
+    {
+        SWSS_LOG_ENTER();
+
+        m_syncd->processPendingDampingSync();
+    }
+
+    void invokeFlushPendingDampingNotifications()
+    {
+        SWSS_LOG_ENTER();
+
+        m_syncd->flushPendingDampingNotifications();
+    }
 };
+
+// Define static constant expression members for linkage
+constexpr sai_object_id_t SyncdLinkEventDampingTest::PORT_VID;
+constexpr sai_object_id_t SyncdLinkEventDampingTest::PORT_RID;
 
 TEST_F(SyncdLinkEventDampingTest, flapsEnterDampingAndSuppress)
 {
@@ -990,5 +1112,278 @@ TEST_F(SyncdLinkEventDampingTest, noDampingConfiguredPropagates)
 
     // no STATE_DB entry is written for non-configured ports
     EXPECT_EQ(getDampingField("is_damping_active"), "");
+}
+
+TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncWithNotifications)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 2000;
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 500;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Create the scenario: port goes DOWN (advertised), then UP (suppressed)
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    // Verify damping is active (UP was suppressed)
+    EXPECT_EQ(getDampingField("is_damping_active"), "true");
+
+    // Set up preconditions
+    {
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+
+        auto it = portDampingStates().find(PORT_VID);
+        ASSERT_NE(it, portDampingStates().end())
+            << "Port damping state not found";
+
+        auto& state = it->second;
+
+        // Simulate what the timer thread does when damping exits via timeout
+        state.pending_state_sync = true;
+        state.is_damping_active = false;
+
+        // Verify the mismatch exists (this is what triggers the notification)
+        EXPECT_NE(state.advertised_status, state.physical_status)
+            << "Expected status mismatch for notification generation";
+    }
+
+    // Call the function
+    invokeProcessPendingDampingSync();
+
+    // Verify the notification was enqueued
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 1)
+            << "Expected 1 notification batch to be enqueued";
+
+        if (!pendingNotifications().empty())
+        {
+            auto& batch = pendingNotifications().front();
+            EXPECT_EQ(batch.size(), 1) << "Expected 1 notification in batch";
+            EXPECT_EQ(batch[0].port_id, PORT_VID) << "Notification for wrong port";
+        }
+    }
+
+    // flush the notifications
+    invokeFlushPendingDampingNotifications();
+
+    // Verify pending_state_sync was cleared and advertised was updated
+    {
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+        auto& state = portDampingStates()[PORT_VID];
+        EXPECT_FALSE(state.pending_state_sync) << "pending_state_sync should be cleared";
+        EXPECT_EQ(state.advertised_status, state.physical_status)
+            << "Advertised should match physical after sync";
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncQueueOverflow)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 2000;
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 500;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Directly populate the queue to 1000 entries
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+
+        sai_port_oper_status_notification_t dummy_ntf;
+        dummy_ntf.port_id = PORT_VID;
+        dummy_ntf.port_state = SAI_PORT_OPER_STATUS_UP;
+
+        std::vector<sai_port_oper_status_notification_t> batch = {dummy_ntf};
+
+        // Fill queue to exactly 1000 entries
+        for (int i = 0; i < 1000; ++i)
+        {
+            pendingNotifications().push(batch);
+        }
+
+        EXPECT_EQ(pendingNotifications().size(), 1000);
+    }
+
+    // Set up the scenario to trigger one more notification
+    {
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+
+        auto& state = portDampingStates().at(PORT_VID);
+
+        // Set up the condition for processPendingDampingSync to queue a notification
+        state.pending_state_sync = true;
+        state.advertised_status = SAI_PORT_OPER_STATUS_DOWN;
+        state.physical_status = SAI_PORT_OPER_STATUS_UP;
+    }
+
+    // This should trigger overflow protection
+    invokeProcessPendingDampingSync();
+
+    // Verify the overflow protection worked
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+
+        // Queue should still be 1000 (dropped oldest, added newest)
+        EXPECT_EQ(pendingNotifications().size(), 1000)
+            << "Queue should be capped at 1000 after overflow";
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsWithBatches)
+{
+    // Directly populate the queue with multiple batches
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+
+        // Create 3 different notification batches
+        for (int batch_num = 0; batch_num < 3; ++batch_num)
+        {
+            sai_port_oper_status_notification_t ntf;
+            ntf.port_id = PORT_VID;
+            ntf.port_state = (batch_num % 2 == 0)
+                ? SAI_PORT_OPER_STATUS_DOWN
+                : SAI_PORT_OPER_STATUS_UP;
+
+            std::vector<sai_port_oper_status_notification_t> batch = {ntf};
+            pendingNotifications().push(batch);
+        }
+
+        EXPECT_EQ(pendingNotifications().size(), 3);
+    }
+
+    invokeFlushPendingDampingNotifications();
+
+    // Verify all batches were flushed
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0)
+            << "All batches should be flushed";
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsDrainsQueue)
+{
+    // Queue 2 notification batches
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+
+        for (int i = 0; i < 2; ++i)
+        {
+            sai_port_oper_status_notification_t ntf;
+            ntf.port_id = PORT_VID;
+            ntf.port_state = SAI_PORT_OPER_STATUS_UP;
+
+            std::vector<sai_port_oper_status_notification_t> batch = {ntf};
+            pendingNotifications().push(batch);
+        }
+    }
+
+    // Tests normal path
+    invokeFlushPendingDampingNotifications();
+
+    // Verify all batches were processed
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, fullNotificationFlowIntegrated)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 2000;
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 500;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Set up with pending notification
+    {
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+
+        auto& state = portDampingStates().at(PORT_VID);
+        state.pending_state_sync = true;
+        state.advertised_status = SAI_PORT_OPER_STATUS_DOWN;
+        state.physical_status = SAI_PORT_OPER_STATUS_UP;
+    }
+
+    // Step 1: processPendingDampingSync queues the notification
+    invokeProcessPendingDampingSync();
+
+    // Verify notification was queued
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 1);
+    }
+
+    // Step 2: flushPendingDampingNotifications sends it
+    invokeFlushPendingDampingNotifications();
+
+    // Verify queue was flushed
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsEmptyQueue)
+{
+    // Ensure queue is empty
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
+    }
+
+    // Call flush with empty queue
+    invokeFlushPendingDampingNotifications();
+
+    // Queue should still be empty
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncNoPending)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 2000;
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 500;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Set up state WITHOUT pending_state_sync
+    {
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+
+        auto& state = portDampingStates().at(PORT_VID);
+        state.pending_state_sync = false;  // No pending sync
+        state.advertised_status = SAI_PORT_OPER_STATUS_DOWN;
+        state.physical_status = SAI_PORT_OPER_STATUS_UP;
+    }
+
+    // Call the function - should NOT queue any notifications
+    invokeProcessPendingDampingSync();
+
+    // Verify NO notification was queued
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0)
+            << "No notification should be queued when pending_state_sync=false";
+    }
 }
 #endif

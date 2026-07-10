@@ -342,11 +342,45 @@ typedef enum {
     extern int l2fib_flush_all();
     extern int l2fib_flush_int(const char *hwif_name);
     extern int l2fib_flush_bd(uint32_t bd_id);
+
+    /* MAC event action codes from VPP l2_macs_event */
+    typedef enum {
+        VPP_MAC_ACTION_ADD    = 0,  /* newly learned */
+        VPP_MAC_ACTION_DELETE = 1,  /* aged out */
+        VPP_MAC_ACTION_MOVE   = 2,  /* moved to a different port */
+    } vpp_mac_action_t;
+
+    /* MAC event callback types for push-based FDB notification via WANT_L2_MACS_EVENTS2 */
+    typedef struct {
+        uint8_t  mac[6];
+        uint32_t sw_if_index;
+        uint8_t  action; /* vpp_mac_action_t */
+    } vpp_mac_event_t;
+
+    /* Batch callback: invoked once per l2_macs_event message with all entries.
+     * Called on the VPP API receive thread — must NOT acquire m_apimutex. */
+    typedef void (*vpp_mac_event_cb_fn)(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
+
+    /* Register/deregister for push-based MAC learn/age/move events from VPP.
+     * cb is invoked on the VPP API receive thread — implementations MUST NOT
+     * acquire the saivpp main mutex (m_apimutex) directly; enqueue the event
+     * and process it from a thread that safely holds the mutex. */
+    extern int vpp_want_l2_macs_events2(bool enable, vpp_mac_event_cb_fn cb, void *ctx);
+
+    /* Set the L2 FIB scan delay (in units of 10ms, default=10 → 100ms).
+     * Reduces the interval between VPP scanning for aged/moved MACs. */
+    extern int vpp_l2fib_set_scan_delay(uint16_t delay_10ms);
+
+    /* Reverse-lookup: return the VPP sw_if_index for a given hw interface name,
+     * or ~0u if not found. */
+    extern uint32_t vpp_get_swif_idx_by_name(const char *hwif_name);
+
     extern int bfd_udp_add(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr, uint8_t detect_mult,
                            uint32_t desired_min_tx, uint32_t required_min_rx);
     extern int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr);
+    extern int bfd_udp_set_tos(uint8_t tos);
 
     extern int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add,  uint32_t *sw_if_index);
     extern int vpp_ip_addr_t_to_string(vpp_ip_addr_t *ip_addr, char *buffer, size_t maxlen);
@@ -355,6 +389,8 @@ typedef enum {
     extern int vpp_sidlist_del(vpp_ip_addr_t *bsid);
     extern int vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del);
     extern int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src);
+    extern int vpp_sflow_enable_disable(const char *hwif_name, bool enable);
+    extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
     extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
     extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
