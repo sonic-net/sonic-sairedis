@@ -220,6 +220,8 @@ void waitForCounterValues(
     }
 }
 
+typedef std::function<void()> SetupCompleteCallback;
+
 void testAddRemoveCounter(
         unsigned int numOid,
         sai_object_type_t object_type,
@@ -235,7 +237,8 @@ void testAddRemoveCounter(
         bool bulkChunkSizeAfterPort = true,
         const std::string pluginName = "",
         bool immediatelyRemoveBulkChunkSizePerCounter = false,
-        bool forceSingleCreate = false)
+        bool forceSingleCreate = false,
+        SetupCompleteCallback onSetupComplete = nullptr)
 {
     SWSS_LOG_ENTER();
 
@@ -298,6 +301,11 @@ void testAddRemoveCounter(
             bulkChunkSizeValues.emplace_back(BULK_CHUNK_SIZE_PER_PREFIX_FIELD, "");
             fc.addCounterPlugin(bulkChunkSizeValues);
         }
+    }
+
+    if (onSetupComplete)
+    {
+        onSetupComplete();
     }
 
     EXPECT_EQ(fc.isEmpty(), false);
@@ -1386,11 +1394,12 @@ TEST(FlexCounter, bulkChunksize)
      *    with both per counter bulk size supported or not
      *
      * A counter can be polled in initialization phase and runtime
-     * For each test, it is expected to call bulk for "initialCheckCount" times during initialization.
-     * In this stage, the mock function just return succeed for failure to indicate whether bulk poll is supported
-     * but it does not provide a counter value for further check
+     * The mock uses a "runtimeReady" flag (set via the onSetupComplete callback in
+     * testAddRemoveCounter) to distinguish the two phases. While !runtimeReady, the
+     * mock just returns success or failure to indicate whether bulk poll is supported
+     * but does not provide counter values for further checking.
      *
-     * The calls to bulk starting from "initialCheckCount+1" are treated as runtime calls.
+     * Once runtimeReady is set, calls are treated as runtime calls.
      * The counter values objects are generated as following:
      *   - a counterSeed maintains the current counter value to return
      *   - If the counterValuesMap[object_id][counter_id] exists, returns it as the counter's value
@@ -1506,10 +1515,9 @@ TEST(FlexCounter, bulkChunksize)
     std::vector<std::vector<sai_stat_id_t>> counterRecord;
     std::vector<std::vector<uint64_t>> valueRecord;
     sai_uint64_t counterSeed = 0;
-    // non zero unifiedBulkChunkSize indicates all counter IDs share the same bulk chunk size
     uint32_t unifiedBulkChunkSize = 0;
-    int32_t initialCheckCount;
     int32_t partialSupportingBulkObjectFactor;
+    bool runtimeReady = false;
     sai->mock_bulkGetStats = [&](sai_object_id_t,
                                 sai_object_type_t,
                                 uint32_t object_count,
@@ -1523,7 +1531,7 @@ TEST(FlexCounter, bulkChunksize)
         EXPECT_TRUE(mode == SAI_STATS_MODE_BULK_READ);
         std::vector<sai_stat_id_t> record;
         std::vector<uint64_t> value;
-        if (initialCheckCount-- > 0)
+        if (!runtimeReady)
         {
             allObjectIds.insert(toOid(object_keys[0].key.object_id));
             // This call is to check whether bulk counter polling is supported during initialization
@@ -1567,33 +1575,9 @@ TEST(FlexCounter, bulkChunksize)
                 counters[i * number_of_counters + j] = counterMap[counter_ids[j]];
                 record.emplace_back(counter_ids[j]);
                 value.emplace_back(counterSeed);
-                // Only assert the unified chunk size when all counters are
-                // polled together (merged state). Between the two
-                // addCounterPlugin calls that set and then remove per-prefix
-                // chunk sizes, the polling thread can poll with per-prefix
-                // partitions that have fewer counters and different chunk
-                // sizes. After the merge-back, FlexCounter also re-probes
-                // bulk capability with single-object calls (object_count=1)
-                // that have all counters. Skip the assertion for both
-                // per-prefix polls and re-probe polls.
                 if (unifiedBulkChunkSize > 0)
                 {
-                    if (object_count != unifiedBulkChunkSize
-                        && number_of_counters == allCounters.size()
-                        && object_count > 1)
-                    {
-                        EXPECT_EQ(object_count, unifiedBulkChunkSize);
-                    }
-                    continue;
-                }
-                // Skip re-probe polls (single-object capability probes
-                // that happen after the merge-back, with object_count==1).
-                // The per-counter assertions below check steady-state
-                // per-prefix chunk sizes, which only apply when
-                // object_count > 1. This matches the documented intent
-                // in the comment above and the unified-path guard.
-                if (object_count == 1)
-                {
+                    EXPECT_EQ(object_count, unifiedBulkChunkSize);
                     continue;
                 }
                 switch (counter_ids[j])
@@ -1643,8 +1627,10 @@ TEST(FlexCounter, bulkChunksize)
         allObjectIds.erase(key);
     };
 
+    auto setRuntimeReady = [&]() { runtimeReady = true; };
+    auto resetRuntime = [&]() { runtimeReady = false; };
+
     // create ports first and then set bulk chunk size + per counter bulk chunk size
-    initialCheckCount = 6;
     testAddRemoveCounter(
         6,
         SAI_OBJECT_TYPE_PORT,
@@ -1656,11 +1642,12 @@ TEST(FlexCounter, bulkChunksize)
         STATS_MODE_READ,
         false,
         "3",
-        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        true, "", false, false, setRuntimeReady);
     EXPECT_TRUE(allObjectIds.empty());
+    resetRuntime();
 
     // set bulk chunk size + per counter bulk chunk size first and then create ports
-    initialCheckCount = 6;
     testAddRemoveCounter(
         6,
         SAI_OBJECT_TYPE_PORT,
@@ -1676,14 +1663,14 @@ TEST(FlexCounter, bulkChunksize)
         false,
         PORT_PLUGIN_FIELD,
         false,
-        true);
+        true, setRuntimeReady);
     EXPECT_TRUE(allObjectIds.empty());
+    resetRuntime();
 
     // Remove per counter bulk chunk size after initializing it
     // This is to cover the scenario of removing per counter bulk chunk size filed
     // All counters share a unified bulk chunk size
     unifiedBulkChunkSize = 3;
-    initialCheckCount = 6;
     testAddRemoveCounter(
         6,
         SAI_OBJECT_TYPE_PORT,
@@ -1698,12 +1685,12 @@ TEST(FlexCounter, bulkChunksize)
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         true,
         "",
-        true);
+        true, false, setRuntimeReady);
     EXPECT_TRUE(allObjectIds.empty());
     unifiedBulkChunkSize = 0;
+    resetRuntime();
 
     // add ports counters in bulk mode first and then set bulk chunk size + per counter bulk chunk size
-    initialCheckCount = 3;
     testAddRemoveCounter(
         6,
         SAI_OBJECT_TYPE_PORT,
@@ -1715,11 +1702,12 @@ TEST(FlexCounter, bulkChunksize)
         STATS_MODE_READ,
         true,
         "3",
-        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        true, "", false, false, setRuntimeReady);
     EXPECT_TRUE(allObjectIds.empty());
+    resetRuntime();
 
     // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode
-    initialCheckCount = 3;
     testAddRemoveCounter(
         6,
         SAI_OBJECT_TYPE_PORT,
@@ -1733,14 +1721,13 @@ TEST(FlexCounter, bulkChunksize)
         "3",
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         false,
-        PORT_PLUGIN_FIELD);
+        PORT_PLUGIN_FIELD, false, false, setRuntimeReady);
     EXPECT_TRUE(allObjectIds.empty());
+    resetRuntime();
 
     // add ports counters in bulk mode with some bulk-unsupported counters first and then set bulk chunk size + per counter bulk chunk size
     // all counters will be polled using single call in runtime
     forceSingleCall = true;
-    initialCheckCount = 1; // check bulk for all counter IDs altogether
-    initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
     bulkUnsupportedCounters = {
         SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES,
         SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES
@@ -1756,13 +1743,14 @@ TEST(FlexCounter, bulkChunksize)
         STATS_MODE_READ,
         true,
         "3",
-        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        true, "", false, false, setRuntimeReady);
     EXPECT_TRUE(allObjectIds.empty());
     forceSingleCall = false;
+    resetRuntime();
 
     forceSingleCall = true;
     noBulkCapabilityOnly = true;
-    initialCheckCount = 0; // check bulk for all counter IDs altogether
     bulkUnsupportedCounters = {
 	SAI_PORT_STAT_IF_IN_OCTETS,
 	SAI_PORT_STAT_IF_IN_UCAST_PKTS,
@@ -1779,17 +1767,17 @@ TEST(FlexCounter, bulkChunksize)
         counterVerifyFunc,
         false,
         STATS_MODE_READ,
-        true);
+        true, "", "",
+        true, "", false, false, setRuntimeReady);
     EXPECT_TRUE(allObjectIds.empty());
     bulkUnsupportedCounters.clear();
     noBulkCapabilityOnly = false;
     forceSingleCall = false;
+    resetRuntime();
 
     // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode with some bulk-unsupported counters
     // All bulk-unsupported counters are polled using single call and all the rest counters are polled using bulk call
     // For each OID, it will be in both m_bulkContexts and m_objectIdsMap
-    initialCheckCount = 3; // check bulk for 3 prefixes
-    initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
     testAddRemoveCounter(
         6,
         SAI_OBJECT_TYPE_PORT,
@@ -1803,14 +1791,13 @@ TEST(FlexCounter, bulkChunksize)
         "3",
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         false,
-        PORT_PLUGIN_FIELD);
+        PORT_PLUGIN_FIELD, false, false, setRuntimeReady);
     EXPECT_TRUE(allObjectIds.empty());
+    resetRuntime();
 
     // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode with some bulk-unsupported counters
     // All bulk-unsupported counters are polled using single call and all the rest counters are polled using bulk call
     // For each OID, it will be in both m_bulkContexts and m_objectIdsMap
-    initialCheckCount = 3; // check bulk for 3 prefixes
-    initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
     partialSupportingBulkObjectFactor = 2;
     testAddRemoveCounter(
         6,
@@ -1825,8 +1812,9 @@ TEST(FlexCounter, bulkChunksize)
         "3",
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         false,
-        PORT_PLUGIN_FIELD);
+        PORT_PLUGIN_FIELD, false, false, setRuntimeReady);
     EXPECT_TRUE(allObjectIds.empty());
+    resetRuntime();
 }
 
 TEST(FlexCounter, counterIdChange)
