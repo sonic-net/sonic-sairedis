@@ -3159,7 +3159,7 @@ void ComparisonLogic::applyViewTransition(
 
         if (ot == SAI_OBJECT_TYPE_ARS_PROFILE || ot == SAI_OBJECT_TYPE_ARS)
         {
-            processObjectForViewTransition(current, temp, obj.second);
+            processObjectForViewTransition(current, temp, obj.second); // LCOV_EXCL_LINE: ARS objects only exist on hardware with ARS support
         }
     }
 
