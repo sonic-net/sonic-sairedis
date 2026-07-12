@@ -1298,9 +1298,16 @@ TEST(SaiSerialize, serialize_qos_map)
 
     attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
 
+    // sai_qos_map_params_t gains new members over SAI releases (e.g. dei, vc);
+    // any addition breaks this designated initializer under -Werror
+    // -Wmissing-field-initializers. The unset members default to 0, which is
+    // fine for this test, so suppress the missing-field warning here.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
     sai_qos_map_t qm = {
         .key   = { .tc = 1, .dscp = 2, .dot1p = 3, .prio = 4, .pg = 5, .queue_index = 6, .color = SAI_PACKET_COLOR_RED, .mpls_exp = 0, .fc = 2 },
         .value = { .tc = 11, .dscp = 22, .dot1p = 33, .prio = 44, .pg = 55, .queue_index = 66, .color = SAI_PACKET_COLOR_GREEN, .mpls_exp = 0, .fc = 2 } };
+#pragma GCC diagnostic pop
 
     attr.value.qosmap.count = 1;
     attr.value.qosmap.list = &qm;

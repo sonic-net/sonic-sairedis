@@ -147,6 +147,15 @@ namespace syncd
         {
             public:
 
+                // SAI periodically adds new members to sai_switch_notifications_t
+                // (e.g. new on_* notification callbacks). Because this designated
+                // initializer is compiled with -Werror -Wextra
+                // -Wmissing-field-initializers, any such addition breaks the build
+                // until this list is updated. New callbacks default to nullptr
+                // (no handler), which is the desired behavior until syncd wires
+                // them up, so suppress the missing-field warning for this init.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
                 Slot():
                     SlotBase({
                             .on_switch_state_change = &Slot<context>::onSwitchStateChange,
@@ -173,6 +182,7 @@ namespace syncd
                             .on_ha_scope_event = &Slot<context>::onHaScopeEvent,
                             .on_flow_bulk_get_session_event = &Slot<context>::onFlowBulkGetSessionEvent,
                             }) { }
+#pragma GCC diagnostic pop
 
                 virtual ~Slot() {}
 
