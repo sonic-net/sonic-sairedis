@@ -312,6 +312,38 @@ TEST_F(SwitchStateBaseTest, tamBindPointTypeCapabilitiesGet)
     ASSERT_EQ(static_cast<sai_tam_bind_point_type_t>(values[0]), SAI_TAM_BIND_POINT_TYPE_SWITCH);
 }
 
+TEST_F(SwitchStateBaseTest, tamTelTypeModeCapabilitiesGet)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_TAM_TEL_TYPE, SAI_TAM_TEL_TYPE_ATTR_MODE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+    ASSERT_EQ(data.count, 2U);
+
+    std::vector<sai_int32_t> values(data.count);
+    data.list = values.data();
+
+    status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_TAM_TEL_TYPE, SAI_TAM_TEL_TYPE_ATTR_MODE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    ASSERT_EQ(data.count, 2U);
+
+    const std::set<sai_tam_tel_type_mode_t> expected = {
+        SAI_TAM_TEL_TYPE_MODE_SINGLE_TYPE,
+        SAI_TAM_TEL_TYPE_MODE_MIXED_TYPE,
+    };
+
+    std::set<sai_tam_tel_type_mode_t> actual;
+    std::transform(
+        values.cbegin(), values.cend(), std::inserter(actual, actual.begin()),
+        [](sai_int32_t value) { return static_cast<sai_tam_tel_type_mode_t>(value); }
+    );
+    ASSERT_EQ(expected, actual);
+}
+
 TEST_F(SwitchStateBaseTest, switchQoSMaxNumOfTrafficClasses)
 {
     ASSERT_EQ(m_ss->set_maximum_number_of_traffic_classes(), SAI_STATUS_SUCCESS);
