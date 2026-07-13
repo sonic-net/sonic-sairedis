@@ -88,7 +88,8 @@ sudo sed -ri 's/^# unixsocket/unixsocket/' /etc/redis/redis.conf
 sudo sed -ri 's/^unixsocketperm .../unixsocketperm 777/' /etc/redis/redis.conf
 sudo sed -ri 's/redis-server.sock/redis.sock/' /etc/redis/redis.conf
 sudo service redis-server start
-sudo mkdir -m 755 -p /var/run/sswsyncd
+sudo mkdir -p /var/run/sswsyncd
+sudo chmod 1777 /var/run/sswsyncd
 
 echo "=== Starting rsyslog ==="
 sudo rsyslogd || true
@@ -115,12 +116,6 @@ echo "=== Building sonic-sairedis with coverage ==="
 make -j"$(nproc)"
 
 echo "=== Preparing unit tests ==="
-if [ -f syncd/.libs/syncd_tests ]; then
-  sudo setcap "cap_sys_time=eip" syncd/.libs/syncd_tests
-fi
-if [ -f unittest/syncd/.libs/tests ]; then
-  sudo setcap "cap_dac_override,cap_ipc_lock,cap_ipc_owner,cap_sys_time=eip" unittest/syncd/.libs/tests
-fi
 if [ -f azsyslog.conf ]; then
   sudo cp azsyslog.conf /etc/rsyslog.conf
   sudo pkill -F /run/rsyslogd.pid 2>/dev/null || true
@@ -128,11 +123,29 @@ if [ -f azsyslog.conf ]; then
   sudo rsyslogd
 fi
 
-echo "=== Running make check ==="
+echo "=== Running build + tests ==="
 set +e
-make check
+make -j"$(nproc)" check
 check_exit=$?
 set -e
+
+if [ $check_exit -ne 0 ]; then
+  echo "=== make check failed (exit $check_exit) — checking for privilege-related failures ==="
+  other_failures=$(find . -name test-suite.log -exec grep -l '^FAIL:' {} + 2>/dev/null \
+                   | grep -v unittest/syncd/test-suite.log || true)
+  if [ -n "$other_failures" ]; then
+    echo "::error::Test failures in suites other than unittest/syncd — not retrying"
+    echo "  Failed logs: $other_failures"
+  elif grep -ql 'FAILED.*MdioIpcServer\|MdioIpcServer.*FAILED' unittest/syncd/test-suite.log 2>/dev/null; then
+    echo "MdioIpcServer is the only failure — retrying unittest/syncd with sudo"
+    if sudo unittest/syncd/.libs/tests; then
+      echo "Retry with sudo succeeded — clearing failure"
+      check_exit=0
+    else
+      echo "::error::unittest/syncd tests failed even with sudo"
+    fi
+  fi
+fi
 
 echo "=== Generating coverage reports ==="
 find SAI/meta -name "*.gc*" -delete 2>/dev/null || true

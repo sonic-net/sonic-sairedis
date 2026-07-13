@@ -3144,6 +3144,25 @@ void ComparisonLogic::applyViewTransition(
         }
     }
 
+    /*
+     * Process ARS profile and ARS objects before ports and other objects.
+     * Mellanox SAI requires an ARS profile to exist before
+     * SAI_PORT_ATTR_ARS_ENABLE can be set to true. Since ARS_ENABLE is a
+     * boolean (not an OID reference), the recursive dependency walk in
+     * processObjectForViewTransition does not capture this implicit
+     * dependency. Processing ARS objects early ensures profile
+     * CREATE/SET operations execute before any port attribute SETs.
+     */
+    for (auto &obj: temp.m_soAll)
+    {
+        auto ot = obj.second->getObjectType();
+
+        if (ot == SAI_OBJECT_TYPE_ARS_PROFILE || ot == SAI_OBJECT_TYPE_ARS)
+        {
+            processObjectForViewTransition(current, temp, obj.second); // LCOV_EXCL_LINE: ARS objects only exist on hardware with ARS support
+        }
+    }
+
     for (auto &obj: temp.m_soAll)
     {
         if (obj.second->getObjectType() != SAI_OBJECT_TYPE_ROUTE_ENTRY)

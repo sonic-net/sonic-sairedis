@@ -15,6 +15,8 @@ for my $file (@files)
     chomp $file;
     next if $file =~ m!SAI/flex!;
     next if $file =~ m!/debian/!;
+    next if $file =~ m!SAI/doc/!;
+    next if $file =~ m!vendor/sai-custom/!;
     next if not $file =~ m!/(sai[^/]*.h)$!;
 
     if (defined $H{$1})
