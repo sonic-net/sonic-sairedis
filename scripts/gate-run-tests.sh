@@ -88,7 +88,8 @@ sudo sed -ri 's/^# unixsocket/unixsocket/' /etc/redis/redis.conf
 sudo sed -ri 's/^unixsocketperm .../unixsocketperm 777/' /etc/redis/redis.conf
 sudo sed -ri 's/redis-server.sock/redis.sock/' /etc/redis/redis.conf
 sudo service redis-server start
-sudo mkdir -m 1777 -p /var/run/sswsyncd
+sudo mkdir -p /var/run/sswsyncd
+sudo chmod 1777 /var/run/sswsyncd
 
 echo "=== Starting rsyslog ==="
 sudo rsyslogd || true
@@ -130,15 +131,18 @@ set -e
 
 if [ $check_exit -ne 0 ]; then
   echo "=== make check failed (exit $check_exit) — checking for privilege-related failures ==="
-  if grep -ql 'FAILED.*MdioIpcServer\|MdioIpcServer.*FAILED' unittest/syncd/test-suite.log 2>/dev/null; then
-    echo "MdioIpcServer test failed — retrying unittest/syncd with sudo"
-    sudo unittest/syncd/.libs/tests
-    retry_exit=$?
-    if [ $retry_exit -eq 0 ]; then
+  other_failures=$(find . -name test-suite.log -exec grep -l '^FAIL:' {} + 2>/dev/null \
+                   | grep -v unittest/syncd/test-suite.log || true)
+  if [ -n "$other_failures" ]; then
+    echo "::error::Test failures in suites other than unittest/syncd — not retrying"
+    echo "  Failed logs: $other_failures"
+  elif grep -ql 'FAILED.*MdioIpcServer\|MdioIpcServer.*FAILED' unittest/syncd/test-suite.log 2>/dev/null; then
+    echo "MdioIpcServer is the only failure — retrying unittest/syncd with sudo"
+    if sudo unittest/syncd/.libs/tests; then
       echo "Retry with sudo succeeded — clearing failure"
       check_exit=0
     else
-      echo "::error::unittest/syncd tests failed even with sudo (exit $retry_exit)"
+      echo "::error::unittest/syncd tests failed even with sudo"
     fi
   fi
 fi
