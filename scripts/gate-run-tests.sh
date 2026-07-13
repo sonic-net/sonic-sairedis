@@ -115,12 +115,6 @@ echo "=== Building sonic-sairedis with coverage ==="
 make -j"$(nproc)"
 
 echo "=== Preparing unit tests ==="
-if [ -f syncd/.libs/syncd_tests ]; then
-  sudo setcap "cap_sys_time=eip" syncd/.libs/syncd_tests
-fi
-if [ -f unittest/syncd/.libs/tests ]; then
-  sudo setcap "cap_dac_override,cap_ipc_lock,cap_ipc_owner,cap_sys_time=eip" unittest/syncd/.libs/tests
-fi
 if [ -f azsyslog.conf ]; then
   sudo cp azsyslog.conf /etc/rsyslog.conf
   sudo pkill -F /run/rsyslogd.pid 2>/dev/null || true
@@ -128,7 +122,20 @@ if [ -f azsyslog.conf ]; then
   sudo rsyslogd
 fi
 
-echo "=== Running make check ==="
+# Build the check targets first (make check = build + run).
+# We split them so setcap can be applied after the final link.
+echo "=== Building check targets ==="
+make -j"$(nproc)" check TESTS=
+
+echo "=== Applying capabilities to test binaries ==="
+if [ -f syncd/.libs/syncd_tests ]; then
+  sudo setcap "cap_sys_time=eip" syncd/.libs/syncd_tests
+fi
+if [ -f unittest/syncd/.libs/tests ]; then
+  sudo setcap "cap_dac_override,cap_ipc_lock,cap_ipc_owner,cap_sys_time=eip" unittest/syncd/.libs/tests
+fi
+
+echo "=== Running tests ==="
 set +e
 make check
 check_exit=$?
