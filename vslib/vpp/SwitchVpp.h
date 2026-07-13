@@ -17,6 +17,7 @@
 #include <map>
 #include <unordered_map>
 #include <mutex>
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <queue>
@@ -1165,6 +1166,17 @@ namespace saivs
 
             void vppProcessEvents ();
 
+            void resyncPortOperStatus();
+
+            // Run a deferred oper-status resync on the command thread if the
+            // event thread has requested one. resyncPortOperStatus() issues VPP
+            // binary-API calls (interface_get_state) which allocate on VPP's
+            // non-thread-safe clib heap; running them on the background event
+            // thread races the command thread's clib allocations and crashes
+            // (os_panic in clib_mem_heap_realloc_aligned). So the event thread
+            // only flags that a resync is due and the command thread performs it.
+            void serviceDeferredOperStatusResync();
+
             void startVppEventsThread();
 
         private: // VPP
@@ -1173,6 +1185,7 @@ namespace saivs
             std::map<std::string, std::string> m_hwif_hostif_map;
             int mapping_init = 0;
             bool m_run_vpp_events_thread = true;
+            std::atomic<bool> m_operResyncDue { false };
             bool VppEventsThreadStarted = false;
             std::shared_ptr<std::thread> m_vpp_thread;
 
@@ -1260,6 +1273,8 @@ namespace saivs
             void swif_bdid_untrack(const char *hwif_name);
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
+
+            std::map<std::string, bool> m_last_oper_up;
 
             CRMTracker m_crmTracker;
 
