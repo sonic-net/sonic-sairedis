@@ -147,3 +147,44 @@ TEST(CommandLineOptionsParser, parseCommandLineOnlyInitTimeout)
     EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 30000000);
     EXPECT_EQ(opt->m_watchdogInitTimeSpan, 150000000);
 }
+
+TEST(CommandLineOptionsParser, parseCommandLineIsRepeatable)
+{
+    // Each parseCommandLine call must be independent of any earlier call in the same
+    // process: parsing one argument vector must fully reset the parser so a later parse
+    // sees only its own arguments. Exercise several parses back to back and check that
+    // each yields exactly its own result.
+
+    {
+        char arg1[] = "test";
+        char arg2[] = "-R";
+        std::vector<char *> args = {arg1, arg2};
+
+        auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+        EXPECT_TRUE(opt->m_enableAsyncRec);
+    }
+
+    {
+        char arg1[] = "test";
+        char arg2[] = "-w";
+        char arg3[] = "30000000";
+        char arg4[] = "-W";
+        char arg5[] = "150000000";
+        std::vector<char *> args = {arg1, arg2, arg3, arg4, arg5};
+
+        auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+        EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 30000000);
+        EXPECT_EQ(opt->m_watchdogInitTimeSpan, 150000000);
+        EXPECT_FALSE(opt->m_enableAsyncRec);
+    }
+
+    {
+        char arg1[] = "test";
+        std::vector<char *> args = {arg1};
+
+        auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+        EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 30000000);
+        EXPECT_EQ(opt->m_watchdogInitTimeSpan, 30000000);
+        EXPECT_FALSE(opt->m_enableAsyncRec);
+    }
+}

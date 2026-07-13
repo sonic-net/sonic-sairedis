@@ -18,7 +18,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
     auto options = std::make_shared<CommandLineOptions>();
 
-    optind = 1;
+    // glibc getopt keeps global scanner state across calls. parseCommandLine may be
+    // invoked more than once within a single process, so reset with optind=0 to force
+    // full re-initialization and keep one parse from leaking state into the next.
+    optind = 0;
 
     bool initTimeSpanSeen = false;
 
