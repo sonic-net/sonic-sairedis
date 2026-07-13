@@ -128,12 +128,17 @@ echo "=== Building check targets ==="
 make -j"$(nproc)" check TESTS=
 
 echo "=== Applying capabilities to test binaries ==="
-if [ -f syncd/.libs/syncd_tests ]; then
-  sudo setcap "cap_sys_time=eip" syncd/.libs/syncd_tests
+if [ ! -x syncd/.libs/syncd_tests ]; then
+  echo "::error::Missing required test binary: syncd/.libs/syncd_tests"
+  exit 1
 fi
-if [ -f unittest/syncd/.libs/tests ]; then
-  sudo setcap "cap_dac_override,cap_ipc_lock,cap_ipc_owner,cap_sys_time=eip" unittest/syncd/.libs/tests
+sudo setcap "cap_sys_time=eip" syncd/.libs/syncd_tests
+
+if [ ! -x unittest/syncd/.libs/tests ]; then
+  echo "::error::Missing required test binary: unittest/syncd/.libs/tests"
+  exit 1
 fi
+sudo setcap "cap_dac_override,cap_ipc_lock,cap_ipc_owner,cap_sys_time=eip" unittest/syncd/.libs/tests
 
 echo "=== Running tests ==="
 set +e
