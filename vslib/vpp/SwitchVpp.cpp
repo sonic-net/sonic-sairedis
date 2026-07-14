@@ -2798,6 +2798,8 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
         {
             /* VPP reports link_speed in Kbps, SAI uses Mbps */
             attr.value.u32 = vpp_speed_kbps / 1000;
+            SWSS_LOG_NOTICE("port oper speed from VPP: %s %u Kbps -> %u Mbps",
+                            hwif_name.c_str(), vpp_speed_kbps, attr.value.u32);
         }
         else
         {
@@ -2805,6 +2807,8 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
             attr.id = SAI_PORT_ATTR_SPEED;
 
             CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+            SWSS_LOG_NOTICE("port oper speed fallback to configured: %s %u Mbps",
+                            hwif_name.c_str(), attr.value.u32);
         }
     }
 
