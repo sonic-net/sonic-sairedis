@@ -619,13 +619,19 @@ terminate_process()
     local process_name="$1"
     local process_pid="$2"
 
-    if [[ -z "$process_pid" ]] || ! kill -0 "$process_pid" >/dev/null 2>&1; then
+    if [[ -z "$process_pid" ]]; then
+        return 0
+    fi
+
+    if ! kill -0 "$process_pid" >/dev/null 2>&1; then
+        wait "$process_pid" 2>/dev/null || true
         return 0
     fi
 
     kill "$process_pid" >/dev/null 2>&1 || true
     for ((attempt = 1; attempt <= 5; attempt++)); do
         if ! kill -0 "$process_pid" >/dev/null 2>&1; then
+            wait "$process_pid" 2>/dev/null || true
             return 0
         fi
         sleep 1
@@ -633,6 +639,7 @@ terminate_process()
 
     log "Force stopping $process_name"
     kill -9 "$process_pid" >/dev/null 2>&1 || true
+    wait "$process_pid" 2>/dev/null || true
 }
 
 # In --debug mode, hold the script (PID 1) open after the tests finish so the
