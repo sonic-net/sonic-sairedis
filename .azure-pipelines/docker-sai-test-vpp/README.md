@@ -242,6 +242,18 @@ nohup docker run --rm --privileged -e PORT_COUNT=32 \
 tail -f results/run.log
 ```
 
+### Monitor
+
+While a matrix run is in progress (from the `docker-sai-test-vpp/` directory):
+
+| | |
+|---|---|
+| **Log** | `results/run.log` (or whatever path you passed to `nohup` / `tee`) |
+| **Progress** | `grep -oE '\[[0-9]+/87\]' results/run.log \| tail -1` |
+| **Container** | `docker ps --filter ancestor=docker-sai-test-vpp:local` |
+
+The `87` in the progress grep matches the four-module isolation plan (`sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test`). For other selectors, use `grep -oE '\[[0-9]+/[0-9]+\]'` instead.
+
 Monitor progress without the full firehose:
 
 ```bash
