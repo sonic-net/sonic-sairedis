@@ -8,7 +8,7 @@ BUILDIMAGE_ROOT="${SONIC_BUILDIMAGE:-$(cd "${SAIREDIS_ROOT}/../.." && pwd)}"
 DEB_STAGING="${SCRIPT_DIR}/debs"
 DOCKERFILE="${SAIREDIS_ROOT}/.azure-pipelines/docker-sai-test-vpp/Dockerfile"
 BLDENV="${BLDENV:-trixie}"
-IMAGE_TAG="${IMAGE_TAG:-docker-sai-test-vpp:phase1}"
+IMAGE_TAG="${IMAGE_TAG:-docker-sai-test-vpp:local}"
 STAGE_DEBS="${STAGE_DEBS:-1}"
 BUILD_SAIREDIS_DEBS="${BUILD_SAIREDIS_DEBS:-0}"
 AUTO_BUILD_SAIREDIS_DEBS="${AUTO_BUILD_SAIREDIS_DEBS:-1}"
@@ -35,7 +35,7 @@ Options:
   --no-auto-build       Do not invoke make when sonic-sairedis .debs are
                         missing (validate only; fail with hints)
   --bldenv <name>       Debian suite for target/debs (default: trixie)
-  --image-tag <tag>     Docker image tag (default: docker-sai-test-vpp:phase1)
+  --image-tag <tag>     Docker image tag (default: docker-sai-test-vpp:local)
   --vpp-deb-dir <path>  Directory of VPP .debs (default: search buildimage
                         target/debs/<bldenv> and VPP_DEB_DIR env)
   -h, --help            Show this help
