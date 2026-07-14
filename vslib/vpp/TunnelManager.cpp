@@ -660,6 +660,75 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry(
         tunnel_map_oid = attr.value.oid;
     }
 
+    // L3 VNET decap (VNI -> Virtual Router): install decap for secondary
+    // (non-local) VTEPs so the multiple-tunnels "special" VTEP is decappable.
+    // The primary Loopback0 VTEP is detected and skipped inside the helper.
+    if (tunnel_map_type == SAI_TUNNEL_MAP_TYPE_VNI_TO_VIRTUAL_ROUTER_ID) {
+        if (vni == 0 || tunnel_map_oid == SAI_NULL_OBJECT_ID) {
+            return SAI_STATUS_SUCCESS;
+        }
+
+        sai_object_id_t term_oid;
+        sai_deserialize_object_id(serializedObjectId, term_oid);
+        if (m_vxlan_decap_term_map.find(term_oid) != m_vxlan_decap_term_map.end()) {
+            return SAI_STATUS_SUCCESS;   // already installed
+        }
+
+        // The map entry VR -> VPP VRF that routes the decapped inner packet.
+        attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VIRTUAL_ROUTER_ID_VALUE;
+        if (map_entry_obj.get_attr(attr) != SAI_STATUS_SUCCESS) {
+            return SAI_STATUS_SUCCESS;
+        }
+        auto ip_vrf = m_switch_db->vpp_get_ip_vrf(attr.value.oid);
+        if (!ip_vrf) {
+            SWSS_LOG_ERROR("VXLAN decap map entry %s: no VRF for VNI %u",
+                           serializedObjectId.c_str(), vni);
+            return SAI_STATUS_SUCCESS;
+        }
+
+        // Find the VXLAN tunnel(s) referencing this decap mapper; each tunnel's
+        // ENCAP_SRC_IP is the local VTEP IP to make decappable.
+        auto mapper_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL_MAP,
+            sai_serialize_object_id(tunnel_map_oid));
+        if (!mapper_obj) {
+            return SAI_STATUS_SUCCESS;
+        }
+        auto tunnels = mapper_obj->get_child_objs(SAI_OBJECT_TYPE_TUNNEL);
+        if (!tunnels) {
+            return SAI_STATUS_SUCCESS;
+        }
+
+        std::vector<TunnelVPPData> created;
+        for (auto& tunnel_pair : *tunnels) {
+            auto tunnel_obj = tunnel_pair.second;
+
+            attr.id = SAI_TUNNEL_ATTR_TYPE;
+            if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS ||
+                attr.value.s32 != SAI_TUNNEL_TYPE_VXLAN) continue;
+
+            attr.id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+            if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) continue;
+            sai_ip_address_t vtep_ip = attr.value.ipaddr;
+
+            TunnelVPPData td;
+            bool skipped = false;
+            if (create_vxlan_decap_term(vtep_ip, vni, ip_vrf, td, skipped)
+                    != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("VXLAN decap map entry %s: decap create failed VNI %u",
+                               serializedObjectId.c_str(), vni);
+                continue;
+            }
+            if (!skipped) {
+                created.push_back(td);
+            }
+        }
+
+        if (!created.empty()) {
+            m_vxlan_decap_term_map[term_oid] = created;
+        }
+        return SAI_STATUS_SUCCESS;
+    }
+
     if (tunnel_map_type != SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID) {
         return SAI_STATUS_SUCCESS;
     }
@@ -718,6 +787,21 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry_removal(
 {
     SWSS_LOG_ENTER();
 
+    // L3 VNET decap secondary-VTEP teardown, keyed by map-entry OID so it works
+    // even if the SAI object is already gone from the DB.
+    {
+        sai_object_id_t term_oid;
+        sai_deserialize_object_id(serializedObjectId, term_oid);
+        auto term_it = m_vxlan_decap_term_map.find(term_oid);
+        if (term_it != m_vxlan_decap_term_map.end()) {
+            for (auto& td : term_it->second) {
+                remove_vxlan_decap_term(td);
+            }
+            m_vxlan_decap_term_map.erase(term_it);
+            return SAI_STATUS_SUCCESS;
+        }
+    }
+
     auto entry_obj = m_switch_db->get_sai_object(
         SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, serializedObjectId);
     if (!entry_obj) {
@@ -770,6 +854,257 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry_removal(
 
     m_l2_tunnel_map.erase(it);
 
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t
+TunnelManager::vxlan_secondary_vtep_local_receive(
+                    _In_ const sai_ip_address_t& vtep_ip,
+                    _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    bool is_v6 = (vtep_ip.addr_family == SAI_IP_ADDR_FAMILY_IPV6);
+
+    vpp_ip_route_t *route = (vpp_ip_route_t *)
+        calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
+    if (!route) {
+        SWSS_LOG_ERROR("Failed to allocate memory for VTEP local-receive route");
+        return SAI_STATUS_FAILURE;
+    }
+
+    route->vrf_id = 0;          // underlay / default VRF
+    route->is_multipath = false;
+    route->nexthop_cnt = 1;
+
+    if (is_v6) {
+        route->prefix_len = 128;
+        route->prefix_addr.sa_family = AF_INET6;
+        memcpy(route->prefix_addr.addr.ip6.sin6_addr.s6_addr, vtep_ip.addr.ip6,
+               sizeof(route->prefix_addr.addr.ip6.sin6_addr.s6_addr));
+        route->nexthop[0].addr.sa_family = AF_INET6;
+    } else {
+        route->prefix_len = 32;
+        route->prefix_addr.sa_family = AF_INET;
+        route->prefix_addr.addr.ip4.sin_addr.s_addr = vtep_ip.addr.ip4;
+        route->nexthop[0].addr.sa_family = AF_INET;
+    }
+    route->nexthop[0].type = VPP_NEXTHOP_LOCAL;
+    route->nexthop[0].sw_if_index = (uint32_t)~0;
+
+    int ret = ip_route_add_del(route, is_add);
+    free(route);
+
+    if (ret != 0) {
+        SWSS_LOG_ERROR("Failed to %s VRF0 local-receive for secondary VTEP (ret %d)",
+                       is_add ? "add" : "remove", ret);
+        return SAI_STATUS_FAILURE;
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
+/*
+ * Fill the decap-only VXLAN tunnel's destination address.
+ *
+ * VPP derives a tunnel's address-family from its SOURCE and then REJECTS any
+ * tunnel whose src/dst families differ (vxlan_add_del_tunnel_clean_input:
+ * "ip46_address_is_ip4(src) != ip46_address_is_ip4(dst)"). For IPv4 the
+ * decap-only sentinel dst is the unspecified 0.0.0.0. For IPv6 the unspecified
+ * :: is misclassified as IPv4 by ip46_address_is_ip4() (its top 12 bytes are
+ * zero), which would fail the family-match check and reject the tunnel. So for
+ * IPv6 use a non-zero, non-multicast placeholder derived from src: it is
+ * guaranteed IPv6-classified and different from src. The dst is never used for
+ * forwarding - decap matches the source-independent (src, vni) wildcard that
+ * patch 0014 registers on tunnel add.
+ */
+static void
+vxlan_decap_term_set_dst(_In_ const vpp_ip_addr_t& src, _Out_ vpp_ip_addr_t& dst)
+{
+    if (src.sa_family == AF_INET6) {
+        dst.sa_family = AF_INET6;
+        memcpy(&dst.addr.ip6.sin6_addr, &src.addr.ip6.sin6_addr,
+               sizeof(struct in6_addr));
+        /* Flip a high-order byte so ip46_address_is_ip4(dst) stays false and
+         * dst != src, while remaining within the (non-multicast) src prefix. */
+        dst.addr.ip6.sin6_addr.s6_addr[8] ^= 0x01;
+    } else {
+        dst.sa_family = AF_INET;
+        dst.addr.ip4.sin_addr.s_addr = 0;   /* 0.0.0.0 sentinel */
+    }
+}
+
+sai_status_t
+TunnelManager::create_vxlan_decap_term(
+                    _In_  const sai_ip_address_t& vtep_ip,
+                    _In_  uint32_t vni,
+                    _In_  std::shared_ptr<IpVrfInfo> ip_vrf,
+                    _Out_ TunnelVPPData& tunnel_data,
+                    _Out_ bool& is_local_skip)
+{
+    SWSS_LOG_ENTER();
+
+    char            hw_bvi_ifname[32];
+    auto            router_mac = get_router_mac();
+    auto            bvi_mac = router_mac.data();
+    vpp_ip_route_t  bvi_ip_prefix;
+
+    is_local_skip = false;
+
+    // Primary-VTEP guard: if this VTEP IP already belongs to one of our own
+    // interfaces (switch Loopback0), decap is already handled by the
+    // nexthop-driven decap path; do nothing to avoid disturbing it.
+    refresh_interfaces_list();
+    {
+        vpp_ip_addr_t    probe_ip;
+        sai_ip_address_t vtep_probe = vtep_ip;
+        sai_ip_address_t_to_vpp_ip_addr_t(vtep_probe, probe_ip);
+        uint32_t owner_if = 0;
+        if (vpp_sw_interface_find_by_ip(&probe_ip, (uint32_t)~0, &owner_if) == 0) {
+            SWSS_LOG_NOTICE("VXLAN decap term: VTEP is a local interface addr "
+                            "(sw_if %u); skipping VNI %u (primary VTEP)", owner_if, vni);
+            is_local_skip = true;
+            return SAI_STATUS_SUCCESS;
+        }
+    }
+
+    // Allocate a BD + BVI so the decapped inner packet is L3-routed by a BVI
+    // bound to the decap-mapper VRF (mirrors create_vpp_vxlan_decap).
+    int bd_id = m_switch_db->dynamic_bd_id_pool.alloc();
+    if (bd_id == -1) {
+        SWSS_LOG_ERROR("Failed to allocate bridge domain ID for vxlan decap term");
+        return SAI_STATUS_FAILURE;
+    }
+    tunnel_data.bd_id = bd_id;
+    tunnel_data.ip_vrf = ip_vrf;
+    tunnel_data.vni = vni;
+    tunnel_data.src_ip = vtep_ip;
+    memset(&tunnel_data.dst_ip, 0, sizeof(tunnel_data.dst_ip));
+    tunnel_data.dst_ip.addr_family = vtep_ip.addr_family;
+
+    if (create_bvi_interface(bvi_mac, bd_id) != 0) {
+        SWSS_LOG_ERROR("Failed to create bvi interface for vxlan decap term");
+        m_switch_db->dynamic_bd_id_pool.free(bd_id);
+        return SAI_STATUS_FAILURE;
+    }
+    refresh_interfaces_list();
+
+    snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", bd_id);
+    interface_set_state(hw_bvi_ifname, true);
+    set_sw_interface_l2_bridge(hw_bvi_ifname, bd_id, true, VPP_API_PORT_TYPE_BVI);
+    set_interface_vrf(hw_bvi_ifname, 0, ip_vrf->m_vrf_id, ip_vrf->m_is_ipv6);
+
+    // Synthetic per-BD addresses L3-enable both families on the BVI so a v4
+    // VTEP can still route inner v6 and vice-versa (mirrors decap path).
+    uint16_t offset = (uint16_t)((uint16_t)(bd_id - SwitchVpp::dynamic_bd_id_base) + 2);
+
+    bvi_ip_prefix.prefix_len = 32;
+    bvi_ip_prefix.prefix_addr.sa_family = AF_INET;
+    {
+        struct sockaddr_in *sin = &bvi_ip_prefix.prefix_addr.addr.ip4;
+        sin->sin_addr.s_addr = htonl(offset);
+    }
+    interface_ip_address_add_del(hw_bvi_ifname, &bvi_ip_prefix, true);
+
+    bvi_ip_prefix.prefix_len = 128;
+    bvi_ip_prefix.prefix_addr.sa_family = AF_INET6;
+    {
+        struct sockaddr_in6 *sin6 = &bvi_ip_prefix.prefix_addr.addr.ip6;
+        memset(&sin6->sin6_addr, 0, sizeof(struct in6_addr));
+        sin6->sin6_addr.s6_addr[14] = (uint8_t)((offset >> 8) & 0xFF);
+        sin6->sin6_addr.s6_addr[15] = (uint8_t)(offset & 0xFF);
+    }
+    interface_ip_address_add_del(hw_bvi_ifname, &bvi_ip_prefix, true);
+
+    // Create the decap-capable VXLAN tunnel: src = VTEP IP, dst = unspecified.
+    // Its add registers the source-independent decap entry (VTEP IP, VNI).
+    vpp_vxlan_tunnel_t req;
+    memset(&req, 0, sizeof(req));
+    req.dst_port = m_vxlan_port;
+    req.src_port = m_vxlan_port;
+    req.instance = ~0;
+    req.vni = vni;
+    req.decap_next_index = ~0;
+    sai_ip_address_t vtep_ip_nc = vtep_ip;
+    sai_ip_address_t_to_vpp_ip_addr_t(vtep_ip_nc, req.src_address);
+    vxlan_decap_term_set_dst(req.src_address, req.dst_address);
+
+    if (create_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("VXLAN decap term: failed to create tunnel for VNI %u", vni);
+        delete_bvi_interface(hw_bvi_ifname);
+        m_switch_db->dynamic_bd_id_pool.free(bd_id);
+        refresh_interfaces_list();
+        vpp_bridge_domain_add_del(bd_id, false);
+        return SAI_STATUS_FAILURE;
+    }
+
+    // Bridge the tunnel into the BD so decapped frames reach the BVI.
+    if (set_sw_interface_l2_bridge_by_index(tunnel_data.sw_if_index, bd_id, true,
+                                            VPP_API_PORT_TYPE_NORMAL) != 0) {
+        SWSS_LOG_ERROR("VXLAN decap term: failed to bridge tunnel for VNI %u", vni);
+        remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
+        delete_bvi_interface(hw_bvi_ifname);
+        m_switch_db->dynamic_bd_id_pool.free(bd_id);
+        refresh_interfaces_list();
+        vpp_bridge_domain_add_del(bd_id, false);
+        return SAI_STATUS_FAILURE;
+    }
+
+    // Local-receive the VTEP IP in the underlay (VRF0) so outer VXLAN packets
+    // to this secondary VTEP are punted to vxlan-input. The primary VTEP is
+    // already local via Loopback0; a secondary VTEP is not backed by any
+    // interface address, so add it explicitly.
+    if (vxlan_secondary_vtep_local_receive(vtep_ip, true) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("VXLAN decap term: failed to add VRF0 local-receive for VNI %u", vni);
+        set_sw_interface_l2_bridge_by_index(tunnel_data.sw_if_index, bd_id, false,
+                                            VPP_API_PORT_TYPE_NORMAL);
+        remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
+        delete_bvi_interface(hw_bvi_ifname);
+        m_switch_db->dynamic_bd_id_pool.free(bd_id);
+        refresh_interfaces_list();
+        vpp_bridge_domain_add_del(bd_id, false);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("VXLAN decap term: installed secondary VTEP decap VNI %u bd %u sw_if %u",
+                    vni, bd_id, tunnel_data.sw_if_index);
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t
+TunnelManager::remove_vxlan_decap_term(_In_ TunnelVPPData& tunnel_data)
+{
+    SWSS_LOG_ENTER();
+
+    char hw_bvi_ifname[32];
+
+    // Remove the VRF0 local-receive for the secondary VTEP IP.
+    vxlan_secondary_vtep_local_receive(tunnel_data.src_ip, false);
+
+    // Unbridge + delete the decap VXLAN tunnel.
+    vpp_vxlan_tunnel_t req;
+    memset(&req, 0, sizeof(req));
+    req.dst_port = m_vxlan_port;
+    req.src_port = m_vxlan_port;
+    req.instance = ~0;
+    req.vni = tunnel_data.vni;
+    req.decap_next_index = ~0;
+    sai_ip_address_t src_nc = tunnel_data.src_ip;
+    sai_ip_address_t_to_vpp_ip_addr_t(src_nc, req.src_address);
+    vxlan_decap_term_set_dst(req.src_address, req.dst_address);
+
+    set_sw_interface_l2_bridge_by_index(tunnel_data.sw_if_index, tunnel_data.bd_id,
+                                        false, VPP_API_PORT_TYPE_NORMAL);
+    remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
+
+    // Delete the BVI + bridge domain.
+    snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", tunnel_data.bd_id);
+    delete_bvi_interface(hw_bvi_ifname);
+    m_switch_db->dynamic_bd_id_pool.free(tunnel_data.bd_id);
+    refresh_interfaces_list();
+    vpp_bridge_domain_add_del(tunnel_data.bd_id, false);
+
+    SWSS_LOG_NOTICE("VXLAN decap term: removed secondary VTEP decap VNI %u bd %u",
+                    tunnel_data.vni, tunnel_data.bd_id);
     return SAI_STATUS_SUCCESS;
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <vector>
 #include "SwitchVpp.h"
 #include "vppxlate/SaiVppXlate.h"
 
@@ -186,6 +187,30 @@ namespace saivs
         std::unordered_map<sai_object_id_t, TunnelVPPData> m_tunnel_encap_nexthop_map;
         // Map from VNI to VPP tunnel data (L2 VXLAN / EVPN)
         std::unordered_map<uint32_t, TunnelVPPData> m_l2_tunnel_map;
+
+        // Map from an L3 VNET decap map-entry (VNI -> Virtual Router) OID to the
+        // VPP decap objects installed for a secondary (non-local) VXLAN VTEP.
+        std::unordered_map<sai_object_id_t, std::vector<TunnelVPPData>> m_vxlan_decap_term_map;
+
+        // Install decap for one secondary-VTEP VNI: a BD/BVI bound to the mapper
+        // VRF, a decap-capable VXLAN tunnel (its add registers source-independent
+        // decap), and a VRF0 local-receive for the VTEP IP. Sets is_local_skip
+        // and installs nothing when the VTEP IP is already a local interface
+        // address (the primary Loopback0 VTEP, handled by the nexthop path).
+        sai_status_t create_vxlan_decap_term(
+                        _In_  const sai_ip_address_t& vtep_ip,
+                        _In_  uint32_t vni,
+                        _In_  std::shared_ptr<IpVrfInfo> ip_vrf,
+                        _Out_ TunnelVPPData& tunnel_data,
+                        _Out_ bool& is_local_skip);
+
+        // Tear down one secondary-VTEP decap installed by create_vxlan_decap_term.
+        sai_status_t remove_vxlan_decap_term(_In_ TunnelVPPData& tunnel_data);
+
+        // Add/remove a VRF0 (underlay) local-receive route for a secondary VTEP
+        // IP so outer VXLAN packets to it are punted to vxlan-input.
+        sai_status_t vxlan_secondary_vtep_local_receive(
+                        _In_ const sai_ip_address_t& vtep_ip, _In_ bool is_add);
 
         sai_status_t tunnel_encap_nexthop_action(
                         _In_ const SaiObject* tunnel_nh_obj,
