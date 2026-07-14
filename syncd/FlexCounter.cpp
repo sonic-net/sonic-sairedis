@@ -2398,7 +2398,7 @@ public:
                     SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes count attr %s for port_serdes RID:0x%" PRIx64 ", status:%d",
                                   sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, status);
                     failed = true;
-                    continue;
+                    break;
                 }
             }
             if (failed)
