@@ -1521,6 +1521,10 @@ sai_status_t SwitchVpp::create(
         sai_status_t status = m_tunnel_mgr.create_l2_vxlan_tunnel(object_id, sw_if_index);
         SWSS_LOG_INFO("L2 VXLAN tunnel create for %s: status=%d sw_if_index=%u",
             serializedObjectId.c_str(), status, sw_if_index);
+
+        // Late-tunnel hook: install any L3 secondary-VTEP decap terms whose
+        // TUNNEL_MAP_ENTRY was created before this tunnel existed (M3).
+        m_tunnel_mgr.handle_l3_vxlan_tunnel_create(object_id);
         return status;
     }
 

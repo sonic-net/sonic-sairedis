@@ -3705,7 +3705,20 @@ int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, u32 *sw_if
     mp->encap_vrf_id = htonl(tunnel->encap_vrf_id);
     mp->vni = htonl(tunnel->vni);
     mp->is_l3 = tunnel->is_l3;
-    mp->decap_next_index = htonl(tunnel->decap_next_index);
+    {
+        /* SONiC VNET decap-any: signal a source-independent decap term by
+         * setting the high bit of the wire decap_next_index. Force a valid
+         * default next index if the caller left it unset (~0), so the bit is
+         * distinguishable and the stripped value stays valid in VPP. */
+        u32 dni = tunnel->decap_next_index;
+        if (tunnel->decap_any) {
+            if (dni == (u32)~0) {
+                dni = VPP_VXLAN_DECAP_NEXT_L2_INPUT;
+            }
+            dni |= VPP_VXLAN_DECAP_ANY_FLAG;
+        }
+        mp->decap_next_index = htonl(dni);
+    }
 
     S (mp);
     WR (ret);
