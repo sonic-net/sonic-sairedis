@@ -201,3 +201,55 @@ sai_status_t SwitchVpp::sflowPortSamplePacketSet(
     CHECK_STATUS(sflowEnableDisable(portId, true));
     return sflowSamplingRateSet(rate);
 }
+
+sai_status_t SwitchVpp::sflowInterfaceSamplingRateSet(
+    _In_ sai_object_id_t port_id, 
+    _In_ uint32_t rate )
+{
+    SWSS_LOG_ENTER();
+
+    std::string if_name;
+
+    if(!port_to_hwifname(port_id, if_name))
+    {
+        SWSS_LOG_ERROR("failed to get hwif name for port %s", sai_serialize_object_id(port_id).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    int ret = vpp_sflow_interface_sampling_rate_set(if_name.c_str(), rate);
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("sflow sampling rate set failed for port %s, status %d", sai_serialize_object_id(port_id).c_str(), ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("Changed sampling rate to 1-in-%d for port %s", rate, sai_serialize_object_id(port_id).c_str());
+    
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::sflowInterfaceDirectionSet(
+    _In_ sai_object_id_t port_id,
+    _In_ uint32_t direction)
+{
+    SWSS_LOG_ENTER();
+
+    std::string if_name;
+
+    if(!port_to_hwifname(port_id, if_name))
+    {
+        SWSS_LOG_ERROR("failed to get hwif name for port %s", sai_serialize_object_id(port_id).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    int ret = vpp_sflow_interface_direction_set(if_name.c_str(), direction);
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("sflow direction set failed for port %s, status %d", sai_serialize_object_id(port_id).c_str(), ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("Changed direction for port %s", sai_serialize_object_id(port_id).c_str());
+    
+    return SAI_STATUS_SUCCESS;
+}

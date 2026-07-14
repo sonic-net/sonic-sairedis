@@ -1086,6 +1086,16 @@ namespace saivs
              sai_status_t sflowHostifTableEntryRemove(
                      _In_ const std::string &serializedObjectId);
 
+             sai_status_t sflowInterfaceSamplingRateSet(
+                     _In_ sai_object_id_t port_id,
+                     _In_ uint32_t rate);
+
+             sai_status_t sflowInterfaceDirectionSet(
+                     _In_ sai_object_id_t port_id,
+                     _In_ uint32_t direction);
+                     
+        
+
 
         public: // VPP
 
