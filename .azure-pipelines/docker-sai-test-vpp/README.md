@@ -44,16 +44,16 @@ This lets one container run any mix of tests correctly in a single invocation.
 
 ### Supported tests
 
-The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-06-19** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
+The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-07-14** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test` on `sai_vpp_ut_phase3`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
 
 | Module | Passing test classes |
 |---|---|
-| `sai_ecmp_test` | `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `RemoveAllNextHopMemeberTestV4`, `RemoveNexthopGroupTestV4` |
+| `sai_ecmp_test` | `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `ReAddLagEcmpTestV4`, `RemoveAllNextHopMemeberTestV4`, `RemoveLagEcmpTestV4`, `RemoveLagEcmpTestV6`, `RemoveNexthopGroupTestV4` |
 | `sai_neighbor_test` | `AddHostRouteTest`, `AddHostRouteTestV6`, `NhopDiffPrefixRemoveLonger`, `NhopDiffPrefixRemoveLongerV6`, `NhopDiffPrefixRemoveShorter`, `NhopDiffPrefixRemoveShorterV6`, `NoHostRouteTestV6` |
 | `sai_rif_test` | `IngressDisableTestV4`, `IngressDisableTestV6` |
 | `sai_route_test` | `DefaultRouteV4Test`, `DefaultRouteV6Test`, `DropRouteTest`, `DropRoutev6Test`, `LagMultipleRouteTest`, `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteRifTest`, `RouteRifv6Test`, `RouteSameSipDipv4Test`, `RouteSameSipDipv6Test`, `RouteUpdateTest`, `RouteUpdatev6Test`, `StaicSviMacFloodingTest`, `StaicSviMacFloodingV6Test` |
 
-**34** classes passing (of 89 executed in the last full matrix run).
+**37** classes passing (of 89 executed in the last full matrix run).
 
 ## b) Building the framework
 
