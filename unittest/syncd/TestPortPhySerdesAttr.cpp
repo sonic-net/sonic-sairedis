@@ -356,6 +356,13 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
     flexCounter->removeCounter(testPortSerdesOid);
 }
 
+/**
+ * Verify transient SAI_STATUS_OBJECT_IN_USE errors are mitigated with retries
+ * and results in a good syncd state such that RX_VGA entries appears in
+ * PORT_PHY_ATTR_TABLE after retries.
+ * The test logic bounds the number of retries to 5, hence testing with 2 fails +
+ * 1 successful final try in this test case.
+ */
 TEST_F(TestPortPhySerdesAttr, RetryOnObjectInUseThenSucceed)
 {
     int portIdCalls = 0;
@@ -483,6 +490,11 @@ TEST_F(TestPortPhySerdesAttr, RetryOnObjectInUseThenSucceed)
     flexCounter->removeCounter(testPortSerdesOid);
 }
 
+/**
+ * Verify the failure is acknowledged after failing all retry attempts.
+ * syncd should end in a bad state where no data appears in PORT_PHY_ATTR_TABLE
+ * since the port RID mapping was never established.
+ */
 TEST_F(TestPortPhySerdesAttr, RetryExhaustedGetPortRid)
 {
     int portIdCalls = 0;
@@ -543,6 +555,11 @@ TEST_F(TestPortPhySerdesAttr, RetryExhaustedGetPortRid)
     flexCounter->removeCounter(testPortSerdesOid);
 }
 
+/**
+ * Verify the failure is acknowledged after failing all retry attempts.
+ * syncd should end in a bad state where no data appears in PORT_PHY_ATTR_TABLE
+ * since the lane count needed was never determined.
+ */
 TEST_F(TestPortPhySerdesAttr, RetryExhaustedLaneCount)
 {
     int hwLaneListCalls = 0;
@@ -609,6 +626,12 @@ TEST_F(TestPortPhySerdesAttr, RetryExhaustedLaneCount)
     flexCounter->removeCounter(testPortSerdesOid);
 }
 
+/**
+ * Verify the failure is acknowledged after failing all retry attempts.
+ * syncd should end in a bad state where no data appears in PORT_PHY_ATTR_TABLE
+ * since the tap count needed for TX_FIR_TAPS_LIST initialization was never
+ * determined.
+ */
 TEST_F(TestPortPhySerdesAttr, RetryExhaustedTapsCount)
 {
     int txFirCountCalls = 0;
