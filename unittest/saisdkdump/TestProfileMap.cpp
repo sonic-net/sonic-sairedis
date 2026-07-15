@@ -8,6 +8,8 @@
 
 #include "ProfileMap.h"
 
+#include "swss/logger.h"
+
 namespace
 {
     class TempProfile
