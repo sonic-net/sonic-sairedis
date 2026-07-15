@@ -110,6 +110,7 @@ stages:
       artifact_name: sonic-sairedis-trixie
       syslog_artifact_name: sonic-sairedis-trixie.syslog
       run_unit_test: true
+      saithrift_v2: true
       debian_version: trixie
 
   - template: .azure-pipelines/build-template.yml
