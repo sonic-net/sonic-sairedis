@@ -1006,6 +1006,10 @@ void ComparisonLogic::createNewObjectFromTemporaryObject(
                 currentObj->m_str_object_id = sai_serialize_inseg_entry(currentObj->m_meta_key.objectkey.key.inseg_entry);
                 break;
 
+            case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+                currentObj->m_str_object_id = sai_serialize_my_sid_entry(currentObj->m_meta_key.objectkey.key.my_sid_entry);
+                break;
+
             default:
 
                 SWSS_LOG_THROW("unexpected non object id type: %s",
