@@ -788,7 +788,9 @@ run_ptf()
         rc=0
         run_one_ptf "$target" "$common_configured" || rc="$?"
         if [[ "$rc" -ne 0 ]]; then
-            overall_rc="$rc"
+            if (( rc > overall_rc )); then
+                overall_rc="$rc"
+            fi
             log "test target '${target}' returned rc=${rc}"
         fi
     done <<< "$plan"
