@@ -1477,7 +1477,7 @@ vl_api_sw_interface_span_enable_disable_reply_t_handler(vl_api_sw_interface_span
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-    
+
     if (retval) { SAIVPP_ERROR("span enable/disable failed(%d)", retval); }
     else { SAIVPP_INFO("span enable/disable successful"); }
 }
@@ -1851,7 +1851,7 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "span_%08x%c", span_api_version, 0);
     span_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(span_msg_id_base != (u16) ~0);
-  
+
     msg_base_lookup_name = format (0, "classify_%08x%c", classify_api_version, 0);
     classify_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(classify_msg_id_base != (u16) ~0);
