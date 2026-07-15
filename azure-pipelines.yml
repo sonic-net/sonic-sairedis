@@ -38,6 +38,9 @@ parameters:
   - name: debian_version
     type: string
     default: bookworm
+  - name: vpp_run_id
+    type: string
+    default: ''
 variables:
   - name: BUILD_BRANCH
     ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
@@ -132,6 +135,18 @@ stages:
       artifact_name: sonic-sairedis-trixie.arm64
       syslog_artifact_name: sonic-sairedis-trixie.syslog.arm64
       debian_version: trixie
+
+- stage: BuildSaiTestVpp
+  dependsOn: BuildTrixie
+  condition: succeeded('BuildTrixie')
+  jobs:
+  - template: .azure-pipelines/build-docker-sai-test-vpp-template.yml
+    parameters:
+      timeout: 90
+      sairedis_artifact_name: sonic-sairedis-trixie
+      swss_common_artifact_name: sonic-swss-common-trixie
+      artifact_name: docker-sai-test-vpp
+      vpp_run_id: ${{ parameters.vpp_run_id }}
 
 - stage: BuildSwss
   dependsOn: Build
