@@ -15,6 +15,8 @@ namespace
     public:
         explicit TempProfile(const std::string& content)
         {
+            SWSS_LOG_ENTER();
+
             char path[] = "/tmp/saisdkdump_profile_test.XXXXXX";
             int fd = mkstemp(path);
             EXPECT_GE(fd, 0);
@@ -32,6 +34,8 @@ namespace
 
         ~TempProfile()
         {
+            SWSS_LOG_ENTER();
+
             if (!m_path.empty())
             {
                 unlink(m_path.c_str());
@@ -40,6 +44,8 @@ namespace
 
         const std::string& path() const
         {
+            SWSS_LOG_ENTER();
+
             return m_path;
         }
 
@@ -53,6 +59,8 @@ namespace
 
 TEST(ProfileMap, emptyPathLoadsNoEntries)
 {
+    SWSS_LOG_ENTER();
+
     ProfileMap profileMap;
 
     EXPECT_TRUE(profileMap.loadFromFile(""));
@@ -61,6 +69,8 @@ TEST(ProfileMap, emptyPathLoadsNoEntries)
 
 TEST(ProfileMap, missingFileReturnsFalse)
 {
+    SWSS_LOG_ENTER();
+
     ProfileMap profileMap;
 
     EXPECT_FALSE(profileMap.loadFromFile("/tmp/saisdkdump_profile_missing_file"));
@@ -68,6 +78,8 @@ TEST(ProfileMap, missingFileReturnsFalse)
 
 TEST(ProfileMap, parsesKeyValuePairs)
 {
+    SWSS_LOG_ENTER();
+
     ProfileMap profileMap;
     const TempProfile profile(
             "# comment line\n"
@@ -83,6 +95,8 @@ TEST(ProfileMap, parsesKeyValuePairs)
 
 TEST(ProfileMap, parsesCrLfLineEndings)
 {
+    SWSS_LOG_ENTER();
+
     ProfileMap profileMap;
     const TempProfile profile(
             "CT_TABLE_DUMP_ENABLE=true\r\n"
@@ -95,6 +109,8 @@ TEST(ProfileMap, parsesCrLfLineEndings)
 
 TEST(ProfileMap, skipsMalformedLines)
 {
+    SWSS_LOG_ENTER();
+
     ProfileMap profileMap;
     const TempProfile profile(
             "VALID=yes\n"
@@ -108,6 +124,8 @@ TEST(ProfileMap, skipsMalformedLines)
 
 TEST(ProfileMap, getNextValueIteratesAndResets)
 {
+    SWSS_LOG_ENTER();
+
     ProfileMap profileMap;
     const TempProfile profile(
             "FIRST=one\n"
@@ -139,6 +157,8 @@ TEST(ProfileMap, getNextValueIteratesAndResets)
 
 TEST(ProfileMap, clearRemovesEntries)
 {
+    SWSS_LOG_ENTER();
+
     ProfileMap profileMap;
     const TempProfile profile("CT_TABLE_DUMP_ENABLE=true\n");
 
