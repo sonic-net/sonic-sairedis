@@ -55,6 +55,14 @@ The table below lists OCP `sai_test` classes that **pass** on the current VPP SA
 
 **37** classes passing. The harness plans **87** test targets across the four modules above; `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries.
 
+### CI regression baseline
+
+`ci-matrix-tests.txt` is the expected set of 85 runnable selectors from the four-module plan (the 87 planned classes include two non-runnable base classes). `ci-pass-tests.txt` is the 37-selector stable-pass subset used by the PR check. CI requires the observed JUnit selector set to match the matrix contract, then leaves failures outside the stable baseline visible while failing on a missing, failed, errored, or skipped baseline selector.
+
+`evaluate_ci_baseline.py` compares the JUnit directory with the baseline, reports newly passing selectors as promotion candidates, and treats missing or malformed results and harness exit codes of 2 or greater as infrastructure failures. Baseline changes are reviewed explicitly; CI never updates the file automatically.
+
+When a runnable test class is added, removed, or renamed in one of the four CI modules, update the sorted, fully qualified selectors in `ci-matrix-tests.txt` in the same reviewed change.
+
 ## b) Building the framework
 
 The image bundles pre-built `.deb` packages from `debs/` (git-ignored locally). You only need to regenerate `.deb`s when the corresponding source changes. All examples below use the local image tag **`docker-sai-test-vpp:local`** (the `build_harness.sh` default).
@@ -71,7 +79,7 @@ The framework is designed to support three distinct deployment and testing scena
 #### **Use case 2: `sonic-sairedis` PR CI**
 - **What changes:** `vslib/` C++ backend, harness files, or OCP tests.
 - **How dependencies are supplied:** The pipeline's **Build** stage compiles and produces fresh `libsairedis` / `libsaivs` / `saiserver` / `python-saithrift` artifacts. Other runtime `.deb`s (`libswsscommon`, `libyang`, VPP) must be downloaded from existing pipeline artifacts — following the same pattern as `.azure-pipelines/build-docker-sonic-vs-template.yml` (swss-common pipeline, sonic-platform-vpp `vpp-trixie`, buildimage common libs).
-- **Status:** Documented intent; CI wiring is follow-up work for this PR (Phase 3).
+- **Status:** Pipeline wiring is implemented by `BuildSaiTestVpp` and `TestSaiVpp`; Azure artifact authorization and burn-in are required before making the check mandatory.
 - **Required runtime packages and typical artifact sources:**
 
 | Package glob | PR build produces? | Typical CI download source |
@@ -270,7 +278,18 @@ python3 gen_compatibility_matrix.py        # writes results/compatibility-matrix
 
 `gen_compatibility_matrix.py` walks `results/xml/TEST-*.xml` and writes a PASS/FAIL/ERROR/SKIP table with a count summary. You can also pass an explicit `<xml_dir> [output.md]` to point it elsewhere.
 
-**Publishing pass results:** when the set of passing tests changes, update the **Supported tests** section in this `README.md` from the local matrix (list only classes with PASS; do not commit the matrix itself). Working notes and deep-dive logs may be kept under `devdocs/` (also local-only and git-ignored).
+Evaluate the same results against the PR baseline with the matrix process exit code (`0` for an all-pass matrix, `1` when test failures are present, or `2+` for setup failure):
+
+```bash
+python3 evaluate_ci_baseline.py \
+  --xml-dir results/xml \
+  --baseline ci-pass-tests.txt \
+  --expected ci-matrix-tests.txt \
+  --matrix-rc 1 \
+  --report results/baseline-report.txt
+```
+
+**Publishing pass results:** when repeated clean runs establish a newly stable pass, add its fully qualified selector to `ci-pass-tests.txt` and update the **Supported tests** section in this `README.md` in the same reviewed change. List only PASS classes and do not commit the generated matrix; working notes and deep-dive logs may be kept under `devdocs/` (also local-only and git-ignored).
 
 ## d) Additional information
 
