@@ -148,6 +148,15 @@ stages:
       artifact_name: docker-sai-test-vpp
       vpp_run_id: ${{ parameters.vpp_run_id }}
 
+- stage: TestSaiVpp
+  dependsOn: BuildSaiTestVpp
+  condition: succeeded('BuildSaiTestVpp')
+  jobs:
+  - template: .azure-pipelines/test-sai-vpp-template.yml
+    parameters:
+      image_artifact_name: docker-sai-test-vpp
+      log_artifact_name: sai-vpp-test-results
+
 - stage: BuildSwss
   dependsOn: Build
   condition: succeeded('Build')
