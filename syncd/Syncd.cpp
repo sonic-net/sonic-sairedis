@@ -202,7 +202,7 @@ Syncd::Syncd(
 
     bool asyncRec = m_commandLineOptions->m_enableAsyncRec;
 
-    if (zmqActive && isDpuSwitch)
+    if (zmqActive && isDpuSwitch && !isVirtualSwitch)
     {
         // For DPU switches, disable Redis writes to maintain backwards compatibility with PR #1694
         m_client = std::make_shared<DisabledRedisClient>();
