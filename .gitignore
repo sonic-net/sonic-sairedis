@@ -11,6 +11,9 @@
 
 # Packaging Files #
 ###################
+/*.buildinfo
+/*.changes
+/*.deb
 debian/*.debhelper.log
 debian/*.substvars
 debian/.debhelper/
