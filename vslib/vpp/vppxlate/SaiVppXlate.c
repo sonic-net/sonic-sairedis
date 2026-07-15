@@ -418,13 +418,14 @@ do {                                                            \
     f64 hard_deadline = start_time + 10.0;                      \
     f64 idle_deadline = start_time + 1.0;                       \
     socket_client_main_t *scm = vam->socket_client_main;        \
+    int _wr_rv;                                                 \
     ret = -99;                                                  \
     while (1) {                                                 \
         f64 now = vat_time_now (vam);                           \
         if (now >= hard_deadline || now >= idle_deadline)       \
             break;                                              \
         if (scm && scm->socket_enable) {                        \
-            int _wr_rv = vl_socket_client_read (1);              \
+            _wr_rv = vl_socket_client_read (1);                 \
             if (_wr_rv == 0) {                                  \
                 idle_deadline = vat_time_now (vam) + 1.0;       \
                 if (idle_deadline > hard_deadline)              \
