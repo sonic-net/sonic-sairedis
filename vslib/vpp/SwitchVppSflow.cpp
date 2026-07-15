@@ -168,38 +168,74 @@ sai_status_t SwitchVpp::sflowPortSamplePacketSet(
     _In_ sai_object_id_t portId,
     _In_ const sai_attribute_t *attr)
 {
+   /*
+    * SAI updates ingress and egress sampling independently, while VPP
+    * expects one combined per-port direction mask. Use the incoming
+    * attribute for the direction being updated, retrieve the stored
+    * attribute for the opposite direction, and combine both before
+    * programming the exact sampling rate and direction into VPP.
+    */
+
     SWSS_LOG_ENTER();
 
-    sai_object_id_t sp_oid = attr->value.oid;
+    if(attr->id != SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE && attr->id != SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE)
+    {
+        SWSS_LOG_ERROR("Unexpected sFlow port attribute ID %u", attr->id);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
 
-    if(sp_oid == SAI_NULL_OBJECT_ID)
+    bool updating_ingress = attr->id == SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
+    sai_object_id_t updated_oid = attr->value.oid; 
+
+    sai_attribute_t other_attr{};
+
+    other_attr.id = updating_ingress
+        ? SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE
+        : SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
+   
+    sai_object_id_t other_oid = SAI_NULL_OBJECT_ID;    
+
+    if (get(SAI_OBJECT_TYPE_PORT, portId, 1, &other_attr) == SAI_STATUS_SUCCESS)
+    {
+        other_oid = other_attr.value.oid;
+    }
+
+    sai_object_id_t ingress_oid = updating_ingress ? updated_oid : other_oid;
+    sai_object_id_t egress_oid = updating_ingress ? other_oid : updated_oid;
+
+    constexpr uint32_t SFLOW_DIRECTION_INGRESS = 1U;
+    constexpr uint32_t SFLOW_DIRECTION_EGRESS = 2U;
+    uint32_t direction = 0;
+
+    if(ingress_oid != SAI_NULL_OBJECT_ID)
+    {
+        direction |= SFLOW_DIRECTION_INGRESS;
+    }
+
+    if(egress_oid != SAI_NULL_OBJECT_ID)
+    {
+        direction |= SFLOW_DIRECTION_EGRESS;
+    }
+
+    if (direction == 0)
     {
         return sflowEnableDisable(portId, false);
     }
 
-    sai_attribute_t rate_attr;
+    sai_object_id_t active_oid = updated_oid != SAI_NULL_OBJECT_ID ? updated_oid : other_oid;
+
+    auto serialized_id = sai_serialize_object_id(active_oid);
+
+    sai_attribute_t rate_attr{};
     rate_attr.id = SAI_SAMPLEPACKET_ATTR_SAMPLE_RATE;
-    uint32_t rate = 0;
 
-    auto serialized_id = sai_serialize_object_id(sp_oid);
+    CHECK_STATUS(get(SAI_OBJECT_TYPE_SAMPLEPACKET, serialized_id, 1, &rate_attr));
 
-    if (get(SAI_OBJECT_TYPE_SAMPLEPACKET, serialized_id, 1, &rate_attr) == SAI_STATUS_SUCCESS)
-    {
-        rate = rate_attr.value.u32;
-    }
+    uint32_t rate = rate_attr.value.u32;
 
-    if (m_sflow_sample_rate != 0 && m_sflow_sample_rate != rate)
-    {
-        SWSS_LOG_WARN("sFlow sample rate mismatch: global=%u port %s requesting=%u (last-writer-wins)",
-            m_sflow_sample_rate,
-            sai_serialize_object_id(portId).c_str(),
-            rate);
-    }
-
-    m_sflow_sample_rate = rate;
-
-    CHECK_STATUS(sflowEnableDisable(portId, true));
-    return sflowSamplingRateSet(rate);
+    CHECK_STATUS(sflowInterfaceSamplingRateSet(portId, rate));
+    CHECK_STATUS(sflowInterfaceDirectionSet(portId, direction));
+    return sflowEnableDisable(portId, true);
 }
 
 sai_status_t SwitchVpp::sflowInterfaceSamplingRateSet(
