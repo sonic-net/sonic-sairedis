@@ -68,6 +68,8 @@ bool ProfileMap::loadFromFile(const std::string& profileMapFile)
 
 void ProfileMap::clear()
 {
+    SWSS_LOG_ENTER();
+
     m_map.clear();
     m_iter = m_map.begin();
 }
