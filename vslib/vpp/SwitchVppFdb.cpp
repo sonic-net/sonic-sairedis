@@ -514,12 +514,26 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         snprintf(host_subifname, sizeof(host_subifname), "%s.%u", hwifname, vlan_id);
 
         /* lcp-auto-subint creates the host tap automatically */
-        create_sub_interface(hwifname, vlan_id, vlan_id);
+        int rc = create_sub_interface(hwifname, vlan_id, vlan_id);
+        if (rc != 0) {
+            SWSS_LOG_ERROR("vpp_create_vlan_member: create_sub_interface(%s.%u) failed rc=%d; "
+                           "tagged member NOT added to bd=%u",
+                           hwifname, vlan_id, rc, bridge_id);
+            return SAI_STATUS_FAILURE;
+        }
 
         hw_ifname = host_subifname;
 
         //Create bridge and set the l2 port
-        set_sw_interface_l2_bridge(hw_ifname,bridge_id, true, VPP_API_PORT_TYPE_NORMAL);
+        rc = set_sw_interface_l2_bridge(hw_ifname, bridge_id, true, VPP_API_PORT_TYPE_NORMAL);
+        if (rc != 0) {
+            SWSS_LOG_ERROR("vpp_create_vlan_member: set_sw_interface_l2_bridge(%s -> bd=%u) failed rc=%d; "
+                           "member NOT in bridge domain; rolling back sub-interface",
+                           hw_ifname, bridge_id, rc);
+            /* Best-effort rollback of the sub-interface we just created */
+            delete_sub_interface(hwifname, vlan_id);
+            return SAI_STATUS_FAILURE;
+        }
 
         swif_bdid_track(hw_ifname, bridge_id);
 
@@ -533,11 +547,24 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
             vpp_vlan_type_t push_dot1q = VLAN_DOT1Q;
             uint32_t tag1 = (uint32_t)vlan_id;
             uint32_t tag2 = ~0;
-            set_l2_interface_vlan_tag_rewrite(hw_ifname, tag1, tag2, push_dot1q, vtr_op);
+            rc = set_l2_interface_vlan_tag_rewrite(hw_ifname, tag1, tag2, push_dot1q, vtr_op);
+            if (rc != 0) {
+                SWSS_LOG_ERROR("vpp_create_vlan_member: set_l2_interface_vlan_tag_rewrite(%s, POP_1 vlan=%u) "
+                               "failed rc=%d; tagged frames will not be stripped on ingress to bd=%u "
+                               "(BVI will see 802.1Q-tagged frames)",
+                               hw_ifname, vlan_id, rc, bridge_id);
+                /* Best-effort continue: member is in BD but tag handling is broken. */
+            }
         }
 
         //Set interface state up
-        interface_set_state(hw_ifname, true);
+        rc = interface_set_state(hw_ifname, true);
+        if (rc != 0) {
+            SWSS_LOG_ERROR("vpp_create_vlan_member: interface_set_state(%s, up) failed rc=%d; "
+                           "tagged member added to bd=%u but admin-down",
+                           hw_ifname, rc, bridge_id);
+            /* Best-effort continue: caller can retry admin-up later. */
+        }
 
         /* Enable L2 classify-based punt on the sub-interface so control
          * protocols (LLDP, LACP, ARP, DHCP) are punted/copied to the
@@ -548,8 +575,9 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * up, but control-plane punt on this member is not enabled.
          */
         if (l2_punt_classify_apply(hw_ifname, true /*tagged*/) != 0) {
-            SWSS_LOG_WARN("l2_punt_classify_apply failed for tagged member %s (vlan %u)",
-                          hw_ifname, vlan_id);
+            SWSS_LOG_ERROR("vpp_create_vlan_member: l2_punt_classify_apply(%s, tagged) failed for bd=%u; "
+                           "ARP/LLDP/DHCP will not be punted on this member",
+                           hw_ifname, bridge_id);
         }
     }
     else if (tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED)
@@ -557,7 +585,13 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         hw_ifname = hwifname;
 
         //Create bridge and set the l2 port
-        set_sw_interface_l2_bridge(hw_ifname,bridge_id, true, VPP_API_PORT_TYPE_NORMAL);
+        int rc = set_sw_interface_l2_bridge(hw_ifname, bridge_id, true, VPP_API_PORT_TYPE_NORMAL);
+        if (rc != 0) {
+            SWSS_LOG_ERROR("vpp_create_vlan_member: set_sw_interface_l2_bridge(%s -> bd=%u, untagged) "
+                           "failed rc=%d; member NOT in bridge domain",
+                           hw_ifname, bridge_id, rc);
+            return SAI_STATUS_FAILURE;
+        }
 
         swif_bdid_track(hw_ifname, bridge_id);
 
@@ -573,8 +607,9 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * Treated as best-effort; see the tagged branch above.
          */
         if (l2_punt_classify_apply(hw_ifname, false /*untagged*/) != 0) {
-            SWSS_LOG_WARN("l2_punt_classify_apply failed for untagged member %s (vlan %u)",
-                          hw_ifname, vlan_id);
+            SWSS_LOG_ERROR("vpp_create_vlan_member: l2_punt_classify_apply(%s, untagged) failed for bd=%u; "
+                           "ARP/LLDP/DHCP will not be punted on this member",
+                           hw_ifname, bridge_id);
         }
     }
     else {
@@ -582,6 +617,23 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
+    /* Diagnostic: dump the BD member count after this add so we can see
+     * from the log whether every SAI VLAN_MEMBER create actually landed
+     * in the VPP bridge domain.  Mismatches between SONiC's expected
+     * VLAN_MEMBER count and this counter indicate silent failures in
+     * VPP config that would otherwise be invisible.
+     */
+    {
+        uint32_t member_count_after = 0;
+        (void)bridge_domain_get_member_count(bridge_id, &member_count_after);
+        SWSS_LOG_NOTICE("vpp_create_vlan_member: bd=%u added %s member %s tagging=%s; "
+                        "bd member_count now %u (includes BVI if present)",
+                        bridge_id,
+                        (tagging_mode == SAI_VLAN_TAGGING_MODE_TAGGED) ? "tagged" : "untagged",
+                        hw_ifname,
+                        (tagging_mode == SAI_VLAN_TAGGING_MODE_TAGGED) ? "tagged" : "untagged",
+                        member_count_after);
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -820,7 +872,17 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     memcpy(mac_addr, attr_mac_addr->value.mac, sizeof(sai_mac_t));
 
     //Create BVI interface
-    create_bvi_interface(mac_addr,vlan_id);
+    int rc = create_bvi_interface(mac_addr, vlan_id);
+    if (rc != 0) {
+        SWSS_LOG_ERROR("vpp_create_bvi_interface: create_bvi_interface(vlan=%u, mac=%02x:%02x:%02x:%02x:%02x:%02x) "
+                       "failed rc=%d; SVI has no L3 endpoint in VPP and routed traffic destined to Vlan%u "
+                       "cannot be delivered to VLAN member ports",
+                       vlan_id,
+                       mac_addr[0], mac_addr[1], mac_addr[2],
+                       mac_addr[3], mac_addr[4], mac_addr[5],
+                       rc, vlan_id);
+        return SAI_STATUS_FAILURE;
+    }
 
     // Get new list of physical interfaces from VS
     refresh_interfaces_list();
@@ -831,10 +893,31 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     hw_ifname = hw_bviifname;
 
     //Create bridge and set the l2 port as BVI
-    set_sw_interface_l2_bridge(hw_ifname,vlan_id, true, VPP_API_PORT_TYPE_BVI);
+    rc = set_sw_interface_l2_bridge(hw_ifname, vlan_id, true, VPP_API_PORT_TYPE_BVI);
+    if (rc != 0) {
+        SWSS_LOG_ERROR("vpp_create_bvi_interface: set_sw_interface_l2_bridge(%s -> bd=%u, BVI) failed rc=%d; "
+                       "BVI created but NOT attached as bridge domain L3 endpoint; L3 routes hitting Vlan%u "
+                       "cannot be delivered to member ports; rolling back BVI",
+                       hw_ifname, vlan_id, rc, vlan_id);
+        /* Best-effort rollback of the BVI we just created */
+        delete_bvi_interface(hw_ifname);
+        return SAI_STATUS_FAILURE;
+    }
+
+    /* Track BVI in swif -> bd map to match member tracking, so FDB
+     * notification / port invalidation logic sees a complete picture
+     * of what is bound to this bridge domain.
+     */
+    swif_bdid_track(hw_ifname, vlan_id);
 
     //Set interface state up
-    interface_set_state(hw_ifname, true);
+    rc = interface_set_state(hw_ifname, true);
+    if (rc != 0) {
+        SWSS_LOG_ERROR("vpp_create_bvi_interface: interface_set_state(%s, up) failed rc=%d; "
+                       "BVI is in bd=%u but admin-down; L3-in-to-BVI traffic will not egress until it comes up",
+                       hw_ifname, rc, vlan_id);
+        /* Best-effort continue: caller can retry admin-up later. */
+    }
 
     // BVI is the L3 endpoint of the BD and exchanges *untagged* frames
     // with the BD, matching the Linux model where Vlan<id> is presented
@@ -856,10 +939,37 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 
         SWSS_LOG_NOTICE("configure_lcp_interface vpp_name:%s tap:%s",
                         vpp_ifname.c_str(), tap_name.c_str());
-        configure_lcp_interface(vpp_ifname.c_str(), tap_name.c_str(), true);
+        rc = configure_lcp_interface(vpp_ifname.c_str(), tap_name.c_str(), true);
+        if (rc != 0) {
+            SWSS_LOG_ERROR("vpp_create_bvi_interface: configure_lcp_interface(%s <-> %s) failed rc=%d; "
+                           "sonic-ext-aggr-tap-redirect vft NOT fired for bd=%u -- ARP/L3 punt via BVI "
+                           "will not land on the originating member tap, so ARP resolution and DHCP relay "
+                           "on this VLAN will be broken",
+                           vpp_ifname.c_str(), tap_name.c_str(), rc, vlan_id);
+            /* Best-effort continue: BVI is in BD but punt path is broken. */
+        }
 
         refresh_interfaces_list();
-        interface_set_state(tap_name.c_str(), true);
+        rc = interface_set_state(tap_name.c_str(), true);
+        if (rc != 0) {
+            SWSS_LOG_ERROR("vpp_create_bvi_interface: interface_set_state(%s, up) failed rc=%d; "
+                           "LCP host tap for bd=%u is admin-down; kernel neighbor updates will not sync",
+                           tap_name.c_str(), rc, vlan_id);
+        }
+    }
+
+    /* Diagnostic: after BVI + LCP setup, dump the current bridge-domain
+     * member count.  The count reported here includes the BVI itself, so
+     * subsequent vpp_create_vlan_member() log lines can be cross-checked
+     * against this baseline to see whether every SAI VLAN_MEMBER actually
+     * landed in the bridge domain.
+     */
+    {
+        uint32_t member_count_after = 0;
+        (void)bridge_domain_get_member_count(vlan_id, &member_count_after);
+        SWSS_LOG_NOTICE("vpp_create_bvi_interface: bd=%u bvi=%s attached; "
+                        "bd member_count now %u (includes BVI)",
+                        vlan_id, hw_ifname, member_count_after);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -922,6 +1032,13 @@ sai_status_t SwitchVpp::vpp_delete_bvi_interface(
 
     //Remove interface from bridge, interface type should be changed to others types like l3.
     set_sw_interface_l2_bridge(hw_ifname, bd_id, false, VPP_API_PORT_TYPE_BVI);
+
+    /* Untrack BVI's swif -> bd binding to mirror the track call in
+     * vpp_create_bvi_interface().  Otherwise the entry lingers with a
+     * (potentially recycled) sw_if_index and would mis-attribute later
+     * FDB notifications.
+     */
+    swif_bdid_untrack(hw_ifname);
 
     // Tear down LCP pair for the BVI tap.  Tap name is deterministic:
     // tap_Vlan<id>; no per-instance lookup table is needed.
