@@ -822,6 +822,17 @@ std::string sai_serialize_number(
     return std::to_string(number);
 }
 
+/**
+ * @brief SAI convention: enum custom/extension ranges start at 0x10000000.
+ *
+ * Vendor SDKs may legitimately return custom-range values (e.g. Mellanox
+ * reports a custom sai_acl_bind_point_type_t in ACL capability queries)
+ * that are absent from the enum metadata these headers were built with.
+ * Serializing them numerically is correct; warning about them every
+ * query cycle is pure syslog noise (UPSW-7095).
+ */
+#define SAI_ENUM_CUSTOM_RANGE_BASE 0x10000000
+
 std::string sai_serialize_enum(
         _In_ const int32_t value,
         _In_ const sai_enum_metadata_t* meta)
@@ -841,7 +852,15 @@ std::string sai_serialize_enum(
         }
     }
 
-    SWSS_LOG_WARN("enum value %d not found in enum %s", value, meta->name);
+    if (value >= SAI_ENUM_CUSTOM_RANGE_BASE)
+    {
+        SWSS_LOG_DEBUG("custom range enum value %d not named in enum %s",
+                value, meta->name);
+    }
+    else
+    {
+        SWSS_LOG_WARN("enum value %d not found in enum %s", value, meta->name);
+    }
 
     return sai_serialize_number(value);
 }
