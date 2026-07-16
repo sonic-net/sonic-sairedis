@@ -450,6 +450,12 @@ TunnelManager::remove_vpp_vxlan_decap(
 
     delete_bvi_interface(hw_bvi_ifname);
 
+    // Detach the vxlan tunnel interface from the BD before deleting the BD. The
+    // tunnel itself is deleted later by remove_vpp_vxlan_encap; if it is still a
+    // member here, vpp_bridge_domain_add_del(is_add=0) fails with -120 (BD in use).
+    set_sw_interface_l2_bridge_by_index(tunnel_data.sw_if_index, tunnel_data.bd_id,
+                                        false, VPP_API_PORT_TYPE_NORMAL);
+
     m_switch_db->dynamic_bd_id_pool.free(tunnel_data.bd_id);
     refresh_interfaces_list();
     //bd is create automatically when the fist interface is add to it but requires manual deletion
