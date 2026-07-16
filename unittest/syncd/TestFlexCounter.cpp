@@ -2010,10 +2010,16 @@ void testDashMeterAddRemoveCounter(
     {
         EXPECT_EQ(fc.isEmpty(), false);
 
+        size_t expectedMeterKeys = 0;
+        for (uint32_t i = 0; i < DASH_NUM_METER_BUCKETS_PER_ENI; ++i) {
+            if (i % 100 == 0) expectedMeterKeys++;
+        }
+        expectedMeterKeys *= object_ids.size();
+
         swss::DBConnector pollDb("COUNTERS_DB", 0);
         swss::RedisPipeline pollPipeline(&pollDb);
         swss::Table pollTable(&pollPipeline, COUNTERS_TABLE, false);
-        waitForCounterKeys(pollTable, object_ids.size());
+        waitForCounterKeys(pollTable, expectedMeterKeys);
     }
     else
     {
