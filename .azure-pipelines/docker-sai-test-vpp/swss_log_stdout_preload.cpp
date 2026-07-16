@@ -10,8 +10,8 @@ static void route_swss_log_to_stdout()
 {
     SWSS_LOG_ENTER();
     swss::Logger::setMinPrio(swss::Logger::SWSS_DEBUG);
-    // STDERR keeps SWSS_LOG_ENTER/EXIT out of swss::exec() captured stdout (e.g.
-    // find_new_bond_id's ip|awk pipeline). run_test.sh redirects 2>&1 to SAISERVER_LOG.
+    // Standard error keeps function entry and exit logs out of captured standard
+    // output. The harness redirects both streams to the SAI server log.
     swss::Logger::swssOutputNotify("saiserver", "STDERR");
 }
 
