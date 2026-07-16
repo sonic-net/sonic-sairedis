@@ -10,7 +10,8 @@ BUILT_SOURCES = pysairedis_wrap.cpp
 
 _pysairedis_la_SOURCES = pysairedis_wrap.cpp $(SOURCES)
 _pysairedis_la_CXXFLAGS = $(PYTHON3_CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) \
-						  -Wno-cast-align -Wno-cast-qual -Wno-shadow -Wno-redundant-decls
+						  -Wno-cast-align -Wno-cast-qual -Wno-shadow -Wno-redundant-decls \
+						  -Wno-error=disabled-optimization
 
 _pysairedis_la_LDFLAGS = -module \
 		-lhiredis -lswsscommon -lpthread \
