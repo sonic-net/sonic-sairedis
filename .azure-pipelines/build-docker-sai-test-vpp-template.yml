@@ -14,7 +14,6 @@ parameters:
 
 - name: vpp_run_id
   type: string
-  default: ''
 
 jobs:
 - job: BuildSaiTestVppImage
@@ -72,31 +71,17 @@ jobs:
         **/target/debs/trixie/libpcre3_*.deb
     displayName: Download sonic-buildimage common packages
 
-  - ${{ if eq(parameters.vpp_run_id, '') }}:
-    - task: DownloadPipelineArtifact@2
-      name: downloadVpp
-      inputs:
-        source: specific
-        project: build
-        pipeline: sonic-net.sonic-platform-vpp
-        artifact: vpp-trixie
-        path: $(Build.ArtifactStagingDirectory)/download
-        runVersion: latestFromBranch
-        runBranch: refs/heads/master
-      displayName: Download latest successful sonic platform-vpp packages
-
-  - ${{ if ne(parameters.vpp_run_id, '') }}:
-    - task: DownloadPipelineArtifact@2
-      name: downloadVpp
-      inputs:
-        source: specific
-        project: build
-        pipeline: sonic-net.sonic-platform-vpp
-        artifact: vpp-trixie
-        path: $(Build.ArtifactStagingDirectory)/download
-        runVersion: specific
-        runId: ${{ parameters.vpp_run_id }}
-      displayName: Download specified sonic platform-vpp packages
+  - task: DownloadPipelineArtifact@2
+    name: downloadVpp
+    inputs:
+      source: specific
+      project: build
+      pipeline: sonic-net.sonic-platform-vpp
+      artifact: vpp-trixie
+      path: $(Build.ArtifactStagingDirectory)/download
+      runVersion: specific
+      runId: ${{ parameters.vpp_run_id }}
+    displayName: Download resolved sonic platform-vpp packages
 
   - script: |
       set -euxo pipefail
@@ -110,6 +95,11 @@ jobs:
       ptf_revision="$(git -C "$ptf_dir" rev-parse HEAD)"
       ptf_describe="$(git -C "$ptf_dir" describe --tags --long --always HEAD)"
       ptf_version="$(python3 .azure-pipelines/docker-sai-test-vpp/derive_ptf_version.py "$ptf_dir")"
+
+        if [[ "$(downloadVpp.BuildNumber)" != "${{ parameters.vpp_run_id }}" ]]; then
+          echo "Resolved VPP run ${{ parameters.vpp_run_id }}, downloaded $(downloadVpp.BuildNumber)" >&2
+          exit 1
+        fi
 
       rm -rf "$deb_dir"
       mkdir -p "$deb_dir"
@@ -165,7 +155,7 @@ jobs:
           echo "ptf_revision=$ptf_revision"
           echo "ptf_describe=$ptf_describe"
           echo "ptf_version=$ptf_version"
-          echo "vpp_requested_run_id=${{ parameters.vpp_run_id }}"
+          echo "vpp_resolved_run_id=${{ parameters.vpp_run_id }}"
           echo "vpp_downloaded_build=$(downloadVpp.BuildNumber)"
           echo "swss_common_downloaded_build=$(downloadSwssCommon.BuildNumber)"
           echo "common_lib_downloaded_build=$(downloadCommonLib.BuildNumber)"
