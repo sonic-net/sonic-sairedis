@@ -724,7 +724,9 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _In_ bool program_adjacency = true,
+                    _In_ bool program_host_route = false);
 
             sai_status_t addIpNbr(
                     _In_ const std::string &serializedObjectId,
@@ -774,6 +776,10 @@ namespace saivs
                     _In_ nexthop_grp_member_t *member,
                     _In_ bool is_add,
                     _Out_ uint32_t *stats_index = nullptr);
+
+            const char* resolveNexthopMemberHwif(
+                    _In_ const nexthop_grp_member_t *member,
+                    _Out_ std::string &member_hwif);
 
             sai_status_t updateIpRoute(
                     _In_ const std::string &serializedObjectId,
@@ -1144,6 +1150,10 @@ namespace saivs
             } platform_bond_info_t;
 
             void populate_if_mapping();
+
+            bool getTapNameFromPortOrLagId(
+                    _In_ sai_object_id_t obj_id,
+                    _Out_ std::string& if_name);
 
             const char *tap_to_hwif_name(const char *name);
 
