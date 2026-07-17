@@ -1,0 +1,73 @@
+# Upstream build artifacts that sonic-sairedis needs at build time.
+#
+# Consumed by `buildenv_setup`, which downloads each via the Azure DevOps REST
+# API (or uses a --upstream-staged-dir/<name>/ bundle when staged in the same
+# pipeline run, e.g. sonic-swss-common's own CI building sairedis downstream).
+#
+# Artifact-name convention: amd64 has no arch suffix; non-amd64 appends .{arch}.
+
+upstream:
+  # ------------------------------------------------------------------ #
+  # sonic-swss-common libraries that sonic-sairedis links against.
+  #
+  # This is sonic-sairedis' only cascading upstream (vpp below is a sairedis-only
+  # leaf). Note what is deliberately NOT declared here:
+  #   * common-libs (SONiC-patched libnl + libyang3) -- inherited TRANSITIVELY.
+  #     buildenv_setup downloads the sonic-swss-common artifact, reads its
+  #     build-env/, and walks sonic-swss-common's own upstream-artifacts.yaml,
+  #     which declares common-libs -> libnl + libyang3 (the libs libswsscommon
+  #     links against -- all from the common-libs artifact, never apt). See cascade.py.
+  #
+  # This REQUIRES the resolved sonic-swss-common artifact to actually ship a
+  # build-env/, i.e. sonic-swss-common must be built from a branch that already
+  # carries the buildenv_setup tool + build-env/ (see branch resolution below).
+  # cascade_optional: false so buildenv_setup WARNS loudly if the artifact has no
+  # build-env/ to cascade into -- otherwise the cascade silently no-ops and the
+  # libswsscommon dpkg -i fails downstream on the unmet libyang3 dependency.
+  # ------------------------------------------------------------------ #
+  - name: sonic-swss-common
+    project: build
+    pipeline: Azure.sonic-swss-common
+    # TEMPORARY (PoC): pin the cascade source to the POC branch. On a branch build
+    # BUILD_BRANCH = Build.SourceBranchName = "ci-unify" (Azure returns only the last
+    # ref segment of refs/heads/lawlee/ci-unify), so ctx.branch can't resolve the
+    # lawlee/ci-unify swss-common run. Remove this line before merge to restore
+    # BUILD_BRANCH tracking (commit 93690566).
+    branch: lawlee/ci-unify
+    cascade_optional: false
+    result_filter: [succeeded, partiallySucceeded]
+    artifact_name:
+      - { when: { arch: amd64 },        value: 'sonic-swss-common-{debian_version}' }
+      - { when: { arch: { not: amd64 } }, value: 'sonic-swss-common-{debian_version}.{arch}' }
+    debs:
+      - 'libswsscommon_1.0.0_{arch}.deb'
+      - 'libswsscommon-dev_1.0.0_{arch}.deb'
+
+  # ------------------------------------------------------------------ #
+  # sonic platform-vpp DEBs (amd64 only). Always built on master.
+  # ------------------------------------------------------------------ #
+  - name: vpp
+    project: build
+    pipeline: sonic-net.sonic-platform-vpp
+    branch: master          # vpp is always pinned to master (unchanged from today).
+    when: { arch: amd64 }
+    cascade_optional: true
+    result_filter: [succeeded, partiallySucceeded]
+    apt_fix_broken: true    # the 10 vpp DEBs are interdependent; fix up after dpkg -i
+    # vpp's maintainer scripts call sysctl, which fails in the unprivileged CI
+    # container. VPP_INSTALL_SKIP_SYSCTL=1 makes them skip it. install_env puts the
+    # vpp DEBs in their own dpkg -i group (see planner._deb_install_groups), installed
+    # AFTER the empty-env library providers, as `sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i ...`.
+    install_env: { VPP_INSTALL_SKIP_SYSCTL: "1" }
+    artifact_name: 'vpp-{debian_version}'
+    debs:
+      - 'libvppinfra-dev_*_{arch}.deb'
+      - 'libvppinfra_*_{arch}.deb'
+      - 'vpp_*_{arch}.deb'
+      - 'vpp-crypto-engines_*_{arch}.deb'
+      - 'vpp-dbg_*_{arch}.deb'
+      - 'vpp-dev_*_{arch}.deb'
+      - 'vpp-plugin-core_*_{arch}.deb'
+      - 'vpp-plugin-devtools_*_{arch}.deb'
+      - 'vpp-plugin-dpdk_*_{arch}.deb'
+      - 'python3-vpp-api_*_{arch}.deb'

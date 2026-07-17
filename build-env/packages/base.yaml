@@ -1,0 +1,55 @@
+# sonic-sairedis build dependencies (apt + pip).
+#
+# base.yaml CASCADES: repos downstream of sonic-sairedis (sonic-swss) that build
+# against libsairedis inherit everything declared here.
+#
+# Consumed by `buildenv_setup --scope build`. The buildenv_setup tool itself
+# lives in sonic-swss-common/ci/ (cloned by the CI template); sonic-sairedis is a
+# consumer.
+#
+# NOTE: once sonic-swss-common publishes its own build-env/ to the branch this
+# build resolves, the sonic-swss-common cascade (see upstream-artifacts.yaml)
+# will also contribute its base.yaml deps (libhiredis, swig, redis-server, ...).
+# Those are re-declared here for now so the PoC is self-contained and correct
+# regardless of cascade availability (apt install is idempotent).
+
+packages:
+  # --- core C/C++ build + link dependencies (from build-template.yml) --------
+  - libdbus-glib-1-dev
+  - libpcsclite-dev
+  - libhiredis-dev
+  - swig
+  - libzmq3-dev
+  - autoconf-archive
+
+  # libnl: NOT declared here at all. The SONiC-patched libnl family
+  # (libnl-{3,genl,route,nf,cli}-*) is inherited via the sonic-swss-common
+  # cascade -- sonic-swss-common's upstream-artifacts.yaml downloads the full
+  # libnl set (incl libnl-cli) from the common-libs artifact for all arches, and
+  # that cascades transitively to sonic-sairedis. Never apt-install libnl where
+  # common-libs provides it (see repo policy). This replaces sonic-sairedis' old
+  # split of amd64-libnl-from-common-lib + arm-libnl-from-apt.
+
+  # redis-server is needed to run sonic-sairedis' unit tests during the Build
+  # stage (and by downstream VS test hosts). Cascades.
+  - redis-server
+
+post_install:
+  # Configure the system redis for sonic-sairedis' unit tests. These run during the
+  # Build stage (make check), so scopes: [build, test] -- unlike sonic-swss-common,
+  # whose Build stage runs the same script INLINE after cargo (its base.yaml entry is
+  # test-scoped only, to keep redis down during the Rust logger_init_without_redis test).
+  #
+  # DEDUP: the script body is NOT carried in sonic-sairedis. `configure-redis-for-tests.sh`
+  # is resolved from the cascaded sonic-swss-common bundle -- buildenv_setup falls back
+  # to upstream build-env/ dirs when a source file isn't present locally (see
+  # post_install.resolve_script) -- so the redis config lives in exactly ONE place:
+  # sonic-swss-common/build-env/configure-redis-for-tests.sh.
+  #
+  # That shared script sets `notify-keyspace-events AKE`, which sonic-sairedis' old
+  # standalone config did not. Reusing it applies AKE to sonic-sairedis too; the
+  # sonic-sairedis CI pipeline verifies this keyspace delta is harmless for its tests.
+  - name: configure-redis-for-tests
+    source: configure-redis-for-tests.sh   # resolved from the sonic-swss-common cascade
+    requires: [redis-server]
+    scopes: [build, test]

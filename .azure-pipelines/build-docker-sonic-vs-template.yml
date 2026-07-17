@@ -46,7 +46,10 @@ jobs:
       artifact: ${{ parameters.swss_common_artifact_name }}
       path: $(Build.ArtifactStagingDirectory)/download
       runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      # TEMPORARY (PoC): resolve the swss-common cascade artifact from lawlee/ci-unify.
+      # BUILD_BRANCH = Build.SourceBranchName = "ci-unify" (last ref segment only), which
+      # can't find the lawlee/ci-unify run. Restore refs/heads/$(BUILD_BRANCH) before merge.
+      runBranch: 'refs/heads/lawlee/ci-unify'
       allowPartiallySucceededBuilds: true
     displayName: "Download sonic swss common deb packages"
   - task: DownloadPipelineArtifact@2
@@ -66,7 +69,9 @@ jobs:
       pipeline: Azure.sonic-buildimage.common_libs
       artifact: common-lib
       runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      # TEMPORARY (PoC): pin to refs/heads/master; the common_libs pipeline has no
+      # lawlee/ci-unify branch. Restore refs/heads/$(BUILD_BRANCH) before merge.
+      runBranch: 'refs/heads/master'
       path: $(Build.ArtifactStagingDirectory)/download
       patterns: '**/target/debs/*/libnexthopgroup_*.deb'
     displayName: "Download sonic-buildimage libnexthopgroup package"
@@ -91,7 +96,9 @@ jobs:
       ${{ else }}:
         artifact: sonic-dash-api.${{ parameters.arch }}
       runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      # TEMPORARY (PoC): pin to refs/heads/master; sonic-dash-api has no
+      # lawlee/ci-unify branch. Restore refs/heads/$(BUILD_BRANCH) before merge.
+      runBranch: 'refs/heads/master'
       path: $(Build.ArtifactStagingDirectory)/download
       patterns: |
         libdashapi*.deb
