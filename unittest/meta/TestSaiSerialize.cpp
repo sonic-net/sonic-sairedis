@@ -18,6 +18,40 @@ using namespace saimeta;
 
 using json = nlohmann::json;
 
+TEST(SaiSerialize, sai_serialize_enum)
+{
+    SWSS_LOG_ENTER();
+
+    // Named value serializes to its name.
+    EXPECT_EQ(sai_serialize_enum(SAI_ACL_BIND_POINT_TYPE_PORT,
+                &sai_metadata_enum_sai_acl_bind_point_type_t),
+            "SAI_ACL_BIND_POINT_TYPE_PORT");
+
+    // Unknown value below the custom range serializes numerically (WARN path).
+    EXPECT_EQ(sai_serialize_enum(999,
+                &sai_metadata_enum_sai_acl_bind_point_type_t),
+            "999");
+
+    // Vendor custom-range value (>= 0x10000000) serializes numerically
+    // and logs at DEBUG, not WARN (UPSW-7095).
+    // Lower log level so the SWSS_LOG_DEBUG guard lets the call through
+    // and gcovr counts the line as covered.
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
+
+    EXPECT_EQ(sai_serialize_enum(0x10000000,
+                &sai_metadata_enum_sai_acl_bind_point_type_t),
+            "268435456");
+
+    EXPECT_EQ(sai_serialize_enum(0x10000001,
+                &sai_metadata_enum_sai_acl_bind_point_type_t),
+            "268435457");
+
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
+
+    // NULL metadata serializes numerically.
+    EXPECT_EQ(sai_serialize_enum(7, NULL), "7");
+}
+
 TEST(SaiSerialize, transfer_attributes)
 {
     SWSS_LOG_ENTER();
