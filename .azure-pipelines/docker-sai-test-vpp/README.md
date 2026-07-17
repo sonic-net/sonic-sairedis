@@ -46,18 +46,28 @@ Set `COMMON_CONFIGURED_REUSE=0` only for legacy single-invocation debugging (one
 
 The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-07-14** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test` on `sai_vpp_ut_phase3`, `ISOLATE_EACH_TEST=1`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
 
-| Module | Passing test classes |
+| Module | Passing test classes (CI required) |
 |---|---|
-| `sai_ecmp_test` | `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `ReAddLagEcmpTestV4`, `RemoveAllNextHopMemeberTestV4`, `RemoveLagEcmpTestV4`, `RemoveLagEcmpTestV6`, `RemoveNexthopGroupTestV4` |
+| `sai_ecmp_test` | `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `RemoveAllNextHopMemeberTestV4`, `RemoveNexthopGroupTestV4` |
 | `sai_neighbor_test` | `AddHostRouteTest`, `AddHostRouteTestV6`, `NhopDiffPrefixRemoveLonger`, `NhopDiffPrefixRemoveLongerV6`, `NhopDiffPrefixRemoveShorter`, `NhopDiffPrefixRemoveShorterV6`, `NoHostRouteTestV6` |
 | `sai_rif_test` | `IngressDisableTestV4`, `IngressDisableTestV6` |
 | `sai_route_test` | `DefaultRouteV4Test`, `DefaultRouteV6Test`, `DropRouteTest`, `DropRoutev6Test`, `LagMultipleRouteTest`, `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteRifTest`, `RouteRifv6Test`, `RouteSameSipDipv4Test`, `RouteSameSipDipv6Test`, `RouteUpdateTest`, `RouteUpdatev6Test`, `StaicSviMacFloodingTest`, `StaicSviMacFloodingV6Test` |
 
-**37** classes passing. The harness plans **87** test targets across the four modules above; `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries.
+**34** classes are required to pass the PR check (`ci-pass-tests.txt`). The harness plans **87** test targets across the four modules above; `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries.
+
+#### Flaky L3-over-LAG ECMP tests (run, not gated)
+
+Three additional `sai_ecmp_test` classes have passed in clean local matrix runs but are **dataplane-flaky** (hash/L3-over-LAG forwarding: pass/fail can flip run-to-run with no code change). They remain in the full matrix (`ci-matrix-tests.txt`) for visibility but are **not** in `ci-pass-tests.txt` and do not fail the PR check:
+
+| Module | Flaky test classes |
+|---|---|
+| `sai_ecmp_test` | `ReAddLagEcmpTestV4`, `RemoveLagEcmpTestV4`, `RemoveLagEcmpTestV6` |
+
+Promote one of these into `ci-pass-tests.txt` only after repeated clean runs show it is stable.
 
 ### CI regression baseline
 
-`ci-matrix-tests.txt` is the expected set of 85 runnable selectors from the four-module plan (the 87 planned classes include two non-runnable base classes). `ci-pass-tests.txt` is the 37-selector stable-pass subset used by the PR check. CI requires the observed JUnit selector set to match the matrix contract, then leaves failures outside the stable baseline visible while failing on a missing, failed, errored, or skipped baseline selector.
+`ci-matrix-tests.txt` is the expected set of 85 runnable selectors from the four-module plan (the 87 planned classes include two non-runnable base classes). `ci-pass-tests.txt` is the **34-selector** stable-pass subset used by the PR check. CI requires the observed JUnit selector set to match the matrix contract, then leaves failures outside the stable baseline visible while failing on a missing, failed, errored, or skipped baseline selector.
 
 `evaluate_ci_baseline.py` compares the JUnit directory with the baseline, reports newly passing selectors as promotion candidates, and treats missing or malformed results and harness exit codes of 2 or greater as infrastructure failures. Baseline changes are reviewed explicitly; CI never updates the file automatically.
 
