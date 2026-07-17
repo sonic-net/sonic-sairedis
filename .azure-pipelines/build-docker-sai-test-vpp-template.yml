@@ -105,6 +105,11 @@ jobs:
       deb_dir="$(System.DefaultWorkingDirectory)/.azure-pipelines/docker-sai-test-vpp/debs"
       context_dir="$(Build.ArtifactStagingDirectory)/docker-context"
       image_tag="docker-sai-test-vpp:$(Build.DefinitionName).$(Build.BuildNumber)"
+      ptf_dir="$(System.DefaultWorkingDirectory)/SAI/test/ptf"
+      sai_revision="$(git -C SAI rev-parse HEAD)"
+      ptf_revision="$(git -C "$ptf_dir" rev-parse HEAD)"
+      ptf_describe="$(git -C "$ptf_dir" describe --tags --long --always HEAD)"
+      ptf_version="$(python3 .azure-pipelines/docker-sai-test-vpp/derive_ptf_version.py "$ptf_dir")"
 
       rm -rf "$deb_dir"
       mkdir -p "$deb_dir"
@@ -156,6 +161,10 @@ jobs:
           echo "build_id=$(Build.BuildId)"
           echo "source_version=$(Build.SourceVersion)"
           echo "source_branch=$(Build.SourceBranch)"
+          echo "sai_revision=$sai_revision"
+          echo "ptf_revision=$ptf_revision"
+          echo "ptf_describe=$ptf_describe"
+          echo "ptf_version=$ptf_version"
           echo "vpp_requested_run_id=${{ parameters.vpp_run_id }}"
           echo "vpp_downloaded_build=$(downloadVpp.BuildNumber)"
           echo "swss_common_downloaded_build=$(downloadSwssCommon.BuildNumber)"
@@ -189,6 +198,7 @@ jobs:
 
       build_args=(
           --no-cache
+          --build-arg "PTF_VERSION=$ptf_version"
           --label com.sonic.saivpp-ci=true
           -f "$context_harness/Dockerfile"
           -t "$image_tag"
