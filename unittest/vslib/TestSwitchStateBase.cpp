@@ -324,6 +324,24 @@ TEST_F(SwitchStateBaseTest, switchQoSMaxNumOfTrafficClasses)
     ASSERT_EQ(attr.value.u8, maxTcNum);
 }
 
+TEST_F(SwitchStateBaseTest, switchFabricPortDefaults)
+{
+    ASSERT_EQ(m_ss->set_switch_default_attributes(), SAI_STATUS_SUCCESS);
+
+    // A switch without a fabric lane map must report 0 fabric ports rather than
+    // SAI_STATUS_NOT_IMPLEMENTED, matching hardware on a fabric-less box.
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_FABRIC_PORTS;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_swid), 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_EQ(attr.value.u32, 0U);
+
+    attr.id = SAI_SWITCH_ATTR_FABRIC_PORT_LIST;
+    attr.value.objlist.count = 0;
+    attr.value.objlist.list = nullptr;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_swid), 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_EQ(attr.value.objlist.count, 0U);
+}
+
 TEST_F(SwitchStateBaseTest, processFipsPostConfig)
 {
     std::ofstream post_config_file(VS_SAI_FIPS_POST_CONFIG_FILE);

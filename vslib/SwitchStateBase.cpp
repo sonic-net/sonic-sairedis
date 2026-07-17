@@ -1196,6 +1196,20 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
+    // Default to no fabric ports so a GET returns 0 rather than
+    // SAI_STATUS_NOT_IMPLEMENTED. Switches with a fabric lane map overwrite
+    // these in set_fabric_port_list().
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_FABRIC_PORTS;
+    attr.value.u32 = 0;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_FABRIC_PORT_LIST;
+    attr.value.objlist.count = 0;
+    attr.value.objlist.list = nullptr;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
     return set_switch_supported_object_types();
 }
 
