@@ -223,7 +223,8 @@ Syncd::Syncd(
             m_notifications,
             m_client,
             std::bind(&Syncd::syncProcessNotification, this, _1),
-            std::bind(&Syncd::applyLinkEventDamping, this, _1, _2));
+            std::bind(&Syncd::applyLinkEventDamping, this, _1, _2),
+            m_dbAsic);
     m_handler = std::make_shared<NotificationHandler>(m_processor);
 
     m_sn.onFdbEvent = std::bind(&NotificationHandler::onFdbEvent, m_handler.get(), _1, _2);
