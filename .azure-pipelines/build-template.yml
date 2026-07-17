@@ -47,12 +47,23 @@ parameters:
   type: boolean
   default: false
 
+- name: depends_on
+  type: object
+  default: []
+
+- name: vpp_run_id
+  type: string
+  default: ''
+
 jobs:
 - job:
+  dependsOn: ${{ parameters.depends_on }}
   displayName: ${{ parameters.arch }}
   timeoutInMinutes: ${{ parameters.timeout }}
   variables:
     DIFF_COVER_CHECK_THRESHOLD: 80
+    ${{ if ne(parameters.vpp_run_id, '') }}:
+      VPP_RUN_ID: $[ dependencies.ResolveVpp.outputs['resolveVppRun.VPP_RUN_ID'] ]
     ${{ if eq(parameters.run_unit_test, true) }}:
       DIFF_COVER_ENABLE: 'true'
 
@@ -191,18 +202,32 @@ jobs:
       sudo dpkg -i $(find ./download -name *.deb)
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install libyang from common lib"
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      source: specific
-      project: build
-      pipeline: sonic-net.sonic-platform-vpp
-      artifact: vpp-${{ parameters.debian_version }}
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/master'
-      allowPartiallySucceededBuilds: true
-      path: $(Build.ArtifactStagingDirectory)/download
-    displayName: "Download sonic platform-vpp deb packages"
-    condition: eq('${{ parameters.arch }}', 'amd64')
+  - ${{ if eq(parameters.vpp_run_id, '') }}:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        source: specific
+        project: build
+        pipeline: sonic-net.sonic-platform-vpp
+        artifact: vpp-${{ parameters.debian_version }}
+        runVersion: 'latestFromBranch'
+        runBranch: 'refs/heads/master'
+        allowPartiallySucceededBuilds: true
+        path: $(Build.ArtifactStagingDirectory)/download
+      displayName: "Download sonic platform-vpp deb packages"
+      condition: eq('${{ parameters.arch }}', 'amd64')
+  - ${{ if ne(parameters.vpp_run_id, '') }}:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        source: specific
+        project: build
+        pipeline: sonic-net.sonic-platform-vpp
+        artifact: vpp-${{ parameters.debian_version }}
+        runVersion: specific
+        runId: ${{ parameters.vpp_run_id }}
+        allowPartiallySucceededBuilds: true
+        path: $(Build.ArtifactStagingDirectory)/download
+      displayName: "Download specified sonic platform-vpp deb packages"
+      condition: eq('${{ parameters.arch }}', 'amd64')
   - script: |
       set -ex
       sudo dpkg -i download/libvppinfra-dev_*_${{ parameters.arch }}.deb
