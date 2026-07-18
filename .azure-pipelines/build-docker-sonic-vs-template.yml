@@ -45,8 +45,12 @@ jobs:
       pipeline: Azure.sonic-swss-common
       artifact: ${{ parameters.swss_common_artifact_name }}
       path: $(Build.ArtifactStagingDirectory)/download
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      # PINNED to sonic-swss-common PR #1222 build 1164874 (CI-unification migration
+      # validation): build against the migration swss-common (stock apt libnl,
+      # published build-env/). Revert to latestFromBranch / runBranch:
+      # refs/heads/$(BUILD_BRANCH) before merge.
+      runVersion: 'specific'
+      runId: '1164874'
       allowPartiallySucceededBuilds: true
     displayName: "Download sonic swss common deb packages"
   - task: DownloadPipelineArtifact@2
