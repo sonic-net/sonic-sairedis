@@ -48,6 +48,7 @@ CommandLineOptions::CommandLineOptions()
 #endif // SAITHRIFT
 
     m_supportingBulkCounterGroups = "";
+    m_enablePerPortCounterDiscovery = false;
 
     m_enableAttrVersionCheck = false;
 }
@@ -75,6 +76,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " WatchdogWarnTimeSpan=" << m_watchdogWarnTimeSpan;
     ss << " WatchdogInitTimeSpan=" << m_watchdogInitTimeSpan;
     ss << " SupportingBulkCounters=" << m_supportingBulkCounterGroups;
+    ss << " EnablePerPortCounterDiscovery=" << (m_enablePerPortCounterDiscovery ? "YES" : "NO");
     ss << " EnableAttrVersionCheck=" << (m_enableAttrVersionCheck ? "YES" : "NO");
 
 #ifdef SAITHRIFT

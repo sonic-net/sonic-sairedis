@@ -1,4 +1,5 @@
 #include "FlexCounter.h"
+#include "VendorSaiOptions.h"
 #include "sai_serialize.h"
 #include "MockableSaiInterface.h"
 #include "MockHelper.h"
@@ -46,6 +47,35 @@ std::string toOid(T value)
 
 std::shared_ptr<MockableSaiInterface> sai(new MockableSaiInterface());
 typedef std::function<void(swss::Table &countersTable, const std::string& key, const std::vector<std::string>& counterIdNames, const std::vector<std::string>& expectedValues)> VerifyStatsFunc;
+
+class ScopedPerPortCounterDiscovery
+{
+    public:
+
+        explicit ScopedPerPortCounterDiscovery(
+                _In_ bool enabled)
+        {
+            m_previous = sai->getOptions(VendorSaiOptions::OPTIONS_KEY);
+
+            auto options = std::make_shared<VendorSaiOptions>();
+
+            if (auto previousVendorOptions = std::dynamic_pointer_cast<VendorSaiOptions>(m_previous))
+            {
+                *options = *previousVendorOptions;
+            }
+
+            options->m_enablePerPortCounterDiscovery = enabled;
+
+            sai->setOptions(VendorSaiOptions::OPTIONS_KEY, options);
+        }
+
+        ~ScopedPerPortCounterDiscovery()
+        {
+            sai->setOptions(VendorSaiOptions::OPTIONS_KEY, m_previous);
+        }
+
+        std::shared_ptr<sairedis::SaiOptions> m_previous;
+};
 
 std::vector<sai_object_id_t> generateOids(
         unsigned int numOid,
@@ -2456,6 +2486,8 @@ TEST_F(FlexCounterTcpFallback, tcpFallbackWhenNoUnixSocket)
 
 TEST(FlexCounter, dynamicCounterGroups)
 {
+    ScopedPerPortCounterDiscovery enablePerPortCounterDiscovery(true);
+
     // This test tests counter group functionality. It ensures each interface only polls the counters they support.
 
     // All 6 counters are requested for every port, but getStats fails for
@@ -2638,6 +2670,8 @@ TEST(FlexCounter, dynamicCounterGroups)
 
 TEST(FlexCounter, dynamicCounterGroupsBulkPath)
 {
+    ScopedPerPortCounterDiscovery enablePerPortCounterDiscovery(true);
+
     // Bulk-path variant of dynamicCounterGroups. Uses
     // bulkAddObjectWithCounterGroups, which selects the largest counter group
     // for bulkGetStats and falls back to single-object polling for ports whose
