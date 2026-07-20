@@ -1044,6 +1044,8 @@ TunnelManager::vxlan_secondary_vtep_local_receive(
 static void
 vxlan_decap_term_set_dst(_In_ const vpp_ip_addr_t& src, _Out_ vpp_ip_addr_t& dst)
 {
+    SWSS_LOG_ENTER();
+
     if (src.sa_family == AF_INET6) {
         dst.sa_family = AF_INET6;
         memcpy(&dst.addr.ip6.sin6_addr, &src.addr.ip6.sin6_addr,
