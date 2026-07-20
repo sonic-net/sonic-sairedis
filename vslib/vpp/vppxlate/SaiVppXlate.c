@@ -77,6 +77,12 @@
 #include <vnet/ipip/ipip.api_enum.h>
 #include <vnet/ipip/ipip.api_types.h>
 
+#include <vnet/classify/classify.api_enum.h>
+#include <vnet/classify/classify.api_types.h>
+
+#include <vlibmemory/vlib.api_enum.h>
+#include <vlibmemory/vlib.api_types.h>
+
 /* l2 API inclusion */
 
 #define vl_typedefs
@@ -98,6 +104,48 @@
 
 #define vl_api_version(n, v) static u32 l2_api_version = v;
 #include <vnet/l2/l2.api.h>
+#undef vl_api_version
+
+/* classify API inclusion */
+
+#define vl_typedefs
+#include <vnet/classify/classify.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vnet/classify/classify.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vnet/classify/classify.api.h>
+#undef vl_calcsizefun
+
+#define vl_print(handle, ...)  vlib_cli_output (handle, __VA_ARGS__)
+#define vl_printfun
+#include <vnet/classify/classify.api.h>
+#undef vl_printfun
+
+#define vl_api_version(n, v) static u32 classify_api_version = v;
+#include <vnet/classify/classify.api.h>
+#undef vl_api_version
+
+/* vlib API inclusion (for get_next_index) */
+
+#define  vl_endianfun
+#include <vlibmemory/vlib.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vlibmemory/vlib.api.h>
+#undef vl_calcsizefun
+
+#define vl_print(handle, ...)  vlib_cli_output (handle, __VA_ARGS__)
+#define vl_printfun
+#include <vlibmemory/vlib.api.h>
+#undef vl_printfun
+
+#define vl_api_version(n, v) static u32 vlibapi_version = v;
+#include <vlibmemory/vlib.api.h>
 #undef vl_api_version
 
 /* tunterm API inclusion */
@@ -376,14 +424,18 @@ void os_exit(int code) {}
 #include "../SaiVppLog.h"
 
 /*
- * Normalize VPP return code for delete operations.
- * If the operation is a delete and VPP returns NO_SUCH_ENTRY,
- * the entry is already gone — treat it as success.
+ * Normalize VPP return code for idempotent operations.
+ * If the operation is a delete and VPP returns NO_SUCH_ENTRY, the entry is
+ * already gone; if it is an add and VPP returns VALUE_EXIST, the entry is
+ * already present. In both cases treat it as success.
  */
 static inline int vpp_normalize_ret(int ret, bool is_del, const char *func)
 {
     if (is_del && ret == VNET_API_ERROR_NO_SUCH_ENTRY) {
 	    SAIVPP_INFO("%s: ignoring NO_SUCH_ENTRY(%d) on delete", func, ret);
+	    ret = 0;
+    } else if (!is_del && ret == VNET_API_ERROR_VALUE_EXIST) {
+	    SAIVPP_INFO("%s: ignoring VALUE_EXIST(%d) on add", func, ret);
 	    ret = 0;
     }
     return ret;
@@ -407,15 +459,39 @@ do {                                                            \
  * events causing vl_socket_client_read to return before the expected result is received. If
  * vam->result_ready is not set, which should be set when API callback function is called, then
  * it means we get some unsolicited events and we need to retry.
+ *
+ * The reply message queue can be saturated when there are lots of events. Use a dynamic timeout:
+ *   - Hard cap: 10 seconds total wait time. Tolerates large bursts of unsolicited events that
+ *     delay processing of the actual reply.
+ *   - Idle cap: 1 second since the last successfully processed message. Each time a message is
+ *     processed (even an unsolicited one) the idle deadline is extended by 1 second, up to the
+ *     hard cap.
+ *   - vl_socket_client_read is called with a 1 second wait so it returns frequently while
+ *     messages are being drained, allowing the WR loop to refresh the idle deadline and re-check
+ *     result_ready promptly.
+ *   - The loop breaks when we get the expected reply (vam->result_ready == 1), the 10 second hard
+ *     cap is reached, or 1 second elapses with no new message processed.
  */
 #define WR(ret)                                                 \
 do {                                                            \
-    f64 timeout = vat_time_now (vam) + 1.0;                     \
+    f64 start_time = vat_time_now (vam);                        \
+    f64 hard_deadline = start_time + 10.0;                      \
+    f64 idle_deadline = start_time + 1.0;                       \
     socket_client_main_t *scm = vam->socket_client_main;        \
+    int _wr_rv;                                                 \
     ret = -99;                                                  \
-    while (vat_time_now (vam) < timeout) {                      \
-        if (scm && scm->socket_enable)                          \
-            vl_socket_client_read (5);                          \
+    while (1) {                                                 \
+        f64 now = vat_time_now (vam);                           \
+        if (now >= hard_deadline || now >= idle_deadline)       \
+            break;                                              \
+        if (scm && scm->socket_enable) {                        \
+            _wr_rv = vl_socket_client_read (1);                 \
+            if (_wr_rv == 0) {                                  \
+                idle_deadline = vat_time_now (vam) + 1.0;       \
+                if (idle_deadline > hard_deadline)              \
+                    idle_deadline = hard_deadline;              \
+            }                                                   \
+        }                                                       \
         if (vam->result_ready == 1) {                           \
             ret = vam->retval;                                  \
             break;                                              \
@@ -837,6 +913,14 @@ vl_api_create_subif_reply_t_handler (vl_api_create_subif_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+
+    if (msg->context) {
+      u32 *swif_idx = (u32 *) get_index_ptr(msg->context);
+      if (swif_idx) {
+        *swif_idx = ntohl(msg->sw_if_index);
+      }
+      release_index(msg->context);
+    }
 }
 
 static void
@@ -879,6 +963,13 @@ vl_api_sw_interface_add_del_address_reply_t_handler (vl_api_sw_interface_add_del
 
 static void
 vl_api_sw_interface_set_flags_reply_t_handler (vl_api_sw_interface_set_flags_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sw_interface_set_promisc_reply_t_handler (vl_api_sw_interface_set_promisc_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
@@ -1358,6 +1449,71 @@ vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *m
     set_reply_status(retval);
 }
 
+/* classify API reply handlers */
+
+static void vl_api_classify_add_del_table_reply_t_handler(
+    vl_api_classify_add_del_table_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (msg->context) {
+        uint32_t *table_index = (uint32_t *) get_index_ptr(msg->context);
+        if (table_index) {
+            *table_index = ntohl(msg->new_table_index);
+        }
+        release_index(msg->context);
+    }
+}
+
+static void vl_api_classify_add_del_session_reply_t_handler(
+    vl_api_classify_add_del_session_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void vl_api_classify_set_interface_l2_tables_reply_t_handler(
+    vl_api_classify_set_interface_l2_tables_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+/* vlib API reply handler (get_next_index) */
+
+static void vl_api_get_next_index_reply_t_handler(
+    vl_api_get_next_index_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (msg->context) {
+        uint32_t *next_index = (uint32_t *) get_index_ptr(msg->context);
+        if (next_index) {
+            *next_index = ntohl(msg->next_index);
+        }
+        release_index(msg->context);
+    }
+}
+
+/* vlib API reply handler (add_node_next) */
+
+static void vl_api_add_node_next_reply_t_handler(
+    vl_api_add_node_next_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (msg->context) {
+        uint32_t *next_index = (uint32_t *) get_index_ptr(msg->context);
+        if (next_index) {
+            *next_index = ntohl(msg->next_index);
+        }
+        release_index(msg->context);
+    }
+}
+
 #define vl_api_get_first_msg_id_reply_t_handler vl_noop_handler
 #define vl_api_get_first_msg_id_reply_t_handler_json vl_noop_handler
 
@@ -1373,6 +1529,8 @@ static u16 tunterm_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
 static u16 bond_msg_id_base;
+static u16 classify_msg_id_base;
+static u16 vlib_msg_id_base;
 
 static void vpp_base_vpe_init(void)
 {
@@ -1409,6 +1567,11 @@ static void vpp_base_vpe_init(void)
 #define BFD_MSG_ID(id) \
     (VL_API_##id + bfd_msg_id_base)
 
+#define CLASSIFY_MSG_ID(id) \
+    (VL_API_##id + classify_msg_id_base)
+
+#define VLIB_API_MSG_ID(id) \
+    (VL_API_##id + vlib_msg_id_base)
 #define SFLOW_MSG_ID(id) \
     (VL_API_##id + sflow_msg_id_base)
 
@@ -1422,6 +1585,7 @@ static void vpp_base_vpe_init(void)
     _(INTERFACE_MSG_ID(SW_INTERFACE_GET_TABLE_REPLY), sw_interface_get_table_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_ADD_DEL_ADDRESS_REPLY), sw_interface_add_del_address_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_FLAGS_REPLY), sw_interface_set_flags_reply) \
+    _(INTERFACE_MSG_ID(SW_INTERFACE_SET_PROMISC_REPLY), sw_interface_set_promisc_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MTU_REPLY), sw_interface_set_mtu_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MAC_ADDRESS_REPLY), sw_interface_set_mac_address_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_UNNUMBERED_REPLY), sw_interface_set_unnumbered_reply) \
@@ -1458,6 +1622,11 @@ static void vpp_base_vpe_init(void)
     _(BFD_MSG_ID(WANT_BFD_EVENTS_REPLY), want_bfd_events_reply) \
     _(BFD_MSG_ID(BFD_UDP_ENABLE_MULTIHOP_REPLY), bfd_udp_enable_multihop_reply) \
     _(BFD_MSG_ID(BFD_UDP_SET_TOS_REPLY), bfd_udp_set_tos_reply) \
+    _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_TABLE_REPLY), classify_add_del_table_reply) \
+    _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_SESSION_REPLY), classify_add_del_session_reply) \
+    _(CLASSIFY_MSG_ID(CLASSIFY_SET_INTERFACE_L2_TABLES_REPLY), classify_set_interface_l2_tables_reply) \
+    _(VLIB_API_MSG_ID(GET_NEXT_INDEX_REPLY), get_next_index_reply) \
+    _(VLIB_API_MSG_ID(ADD_NODE_NEXT_REPLY), add_node_next_reply)
 
 
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
@@ -1637,6 +1806,14 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "tunterm_acl_%08x%c", tunterm_api_version, 0);
     tunterm_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(tunterm_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "classify_%08x%c", classify_api_version, 0);
+    classify_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(classify_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "vlib_%08x%c", vlibapi_version, 0);
+    vlib_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(vlib_msg_id_base != (u16) ~0);
 
     msg_base_lookup_name = format (0, "sflow_%08x%c", sflow_api_version, 0);
     sflow_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
@@ -1896,7 +2073,7 @@ static int __delete_loopback (vat_main_t *vam, const char *hwif_name, u32 instan
     return ret;
 }
 
-static int __create_sub_interface (vat_main_t *vam, vl_api_interface_index_t if_idx, u32 sub_id, u16 vlan_id)
+static int __create_sub_interface (vat_main_t *vam, vl_api_interface_index_t if_idx, u32 sub_id, u16 vlan_id, u32 *new_sw_if_index)
 {
     vl_api_create_subif_t *mp;
     int ret;
@@ -1912,6 +2089,12 @@ static int __create_sub_interface (vat_main_t *vam, vl_api_interface_index_t if_
 
     /* create_sub_interfaces() from vnet/interface_cli.c */
     mp->sub_if_flags = htonl(SUB_IF_API_FLAG_EXACT_MATCH | SUB_IF_API_FLAG_ONE_TAG);
+
+    if (new_sw_if_index) {
+        *new_sw_if_index = (u32) ~0;
+        mp->context = store_ptr(new_sw_if_index);
+    }
+
     S (mp);
 
     WR (ret);
@@ -1994,7 +2177,7 @@ int init_vpp_client()
 
         vpp_acl_counters_enable_disable(true);
 
-        /* Enable LACP punt/xc in linux-cp */
+        /* Enable LACP punt/xc in linux-cp (no flood) */
         vpp_lcp_ethertype_enable(0x8809);
         /* Enable LLDP in linux-cp */
         vpp_lcp_ethertype_enable(0x88cc);
@@ -2062,24 +2245,59 @@ int delete_loopback (const char *hwif_name, u32 instance)
 int create_sub_interface (const char *hwif_name, u32 sub_id, u16 vlan_id)
 {
     u32 idx;
+    u32 new_sw_if_index = (u32) ~0;
+    int rc;
     vat_main_t *vam = &vat_main;
 
     idx = get_swif_idx(vam, hwif_name);
     SAIVPP_INFO("swif index of interface %s is %u\n", hwif_name, idx);
 
-    return __create_sub_interface(vam, idx, sub_id, vlan_id);
+    rc = __create_sub_interface(vam, idx, sub_id, vlan_id, &new_sw_if_index);
+
+    /* Insert the new sub-interface into the local sw_if_index cache so
+     * that subsequent get_swif_idx() lookups (e.g. configure_lcp_interface)
+     * resolve without a full sw_interface_dump. */
+    if (rc == 0 && new_sw_if_index != (u32) ~0) {
+        char subif_name[64];
+        u8 *s;
+
+        snprintf(subif_name, sizeof(subif_name), "%s.%u", hwif_name, sub_id);
+        s = format(0, "%s%c", subif_name, 0);
+        hash_set_mem(vam->sw_if_index_by_interface_name, s, new_sw_if_index);
+        hash_set(interface_name_by_sw_index, new_sw_if_index, s);
+    }
+
+    return rc;
 }
 
 int delete_sub_interface (const char *hwif_name, u32 sub_id)
 {
     u32 idx;
+    int rc;
     vat_main_t *vam = &vat_main;
     char tmpbuf[64];
 
     snprintf(tmpbuf, sizeof(tmpbuf), "%s.%u", hwif_name, sub_id);
     idx = get_swif_idx(vam, tmpbuf);
     SAIVPP_INFO("swif index of interface %s is %u\n", tmpbuf, idx);
-    return __delete_sub_interface(vam, idx);
+    rc = __delete_sub_interface(vam, idx);
+
+    /* Evict from local cache on success. */
+    if (rc == 0 && idx != (u32) ~0) {
+        hash_pair_t *p;
+        u8 *key_to_free = NULL;
+        hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
+                    if (strcmp((char *) p->key, tmpbuf) == 0) {
+                        key_to_free = (u8 *) p->key;
+                    }
+                }));
+        if (key_to_free) {
+            hash_unset_mem(vam->sw_if_index_by_interface_name, key_to_free);
+            vec_free(key_to_free);
+        }
+        hash_unset(interface_name_by_sw_index, idx);
+    }
+    return rc;
 }
 
 static int __set_interface_vrf (vat_main_t *vam, vl_api_interface_index_t if_idx,
@@ -3065,6 +3283,46 @@ int interface_set_state (const char *hwif_name, bool is_up)
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s is_up %d", __func__, ret, hwif_name, is_up); }
     else { SAIVPP_INFO("%s %s is_up %d", __func__, hwif_name, is_up); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int interface_set_promiscuous (const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_promisc_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_SET_PROMISC, mp);
+    if (hwif_name) {
+        u32 idx;
+
+        idx = get_swif_idx(vam, hwif_name);
+        if (idx != (u32) -1) {
+            mp->sw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    mp->promisc_on = enable;
+
+    S (mp);
+
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable); }
+    else { SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable); }
 
     VPP_UNLOCK();
 
@@ -4169,6 +4427,205 @@ static int vpp_lcp_ethertype_enable(u16 ethertype)
     return ret;
 }
 
+/* ========================================================================
+ * VPP Classify API wrappers for L2 punt via l2-input-classify
+ * ======================================================================== */
+
+int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
+                              uint32_t skip_n_vectors, uint32_t match_n_vectors,
+                              uint32_t next_table_index, uint32_t miss_next_index,
+                              const uint8_t *mask, uint32_t mask_len,
+                              uint32_t *new_table_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_add_del_table_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M22 (CLASSIFY_ADD_DEL_TABLE, mp, mask_len);
+    mp->is_add = true;
+    mp->del_chain = false;
+    mp->table_index = htonl(~0u); /* create new */
+    mp->nbuckets = htonl(nbuckets);
+    mp->memory_size = htonl(memory_size);
+    mp->skip_n_vectors = htonl(skip_n_vectors);
+    mp->match_n_vectors = htonl(match_n_vectors);
+    mp->next_table_index = htonl(next_table_index);
+    mp->miss_next_index = htonl(miss_next_index);
+    mp->current_data_flag = 0;
+    mp->current_data_offset = 0;
+    mp->mask_len = htonl(mask_len);
+    clib_memcpy(mp->mask, mask, mask_len);
+    mp->context = store_ptr(new_table_index);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d)", __func__, ret); }
+    else { SAIVPP_INFO("%s table_index=%u", __func__, *new_table_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_classify_table_delete(uint32_t table_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_add_del_table_t *mp;
+    int ret;
+    uint32_t dummy_idx = ~0u;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M (CLASSIFY_ADD_DEL_TABLE, mp);
+    mp->is_add = false;
+    mp->del_chain = true;
+    mp->table_index = htonl(table_index);
+    mp->mask_len = 0;
+    mp->context = store_ptr(&dummy_idx);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u", __func__, ret, table_index); }
+    else { SAIVPP_INFO("%s table %u", __func__, table_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+                             const uint8_t *match, uint32_t match_len,
+                             uint32_t opaque_index, int32_t advance,
+                             uint8_t action)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_add_del_session_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M22 (CLASSIFY_ADD_DEL_SESSION, mp, match_len);
+    mp->is_add = true;
+    mp->table_index = htonl(table_index);
+    mp->hit_next_index = htonl(hit_next_index);
+    mp->opaque_index = htonl(opaque_index);
+    mp->advance = (i32)htonl((u32)advance);
+    mp->action = action;
+    mp->metadata = 0;
+    mp->match_len = htonl(match_len);
+    clib_memcpy(mp->match, match, match_len);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u", __func__, ret, table_index); }
+    else { SAIVPP_INFO("%s table %u hit_next %u", __func__, table_index, hit_next_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_classify_session_del(uint32_t table_index,
+                             const uint8_t *match, uint32_t match_len)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_add_del_session_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M22 (CLASSIFY_ADD_DEL_SESSION, mp, match_len);
+    mp->is_add = false;
+    mp->table_index = htonl(table_index);
+    mp->hit_next_index = 0;
+    mp->match_len = htonl(match_len);
+    clib_memcpy(mp->match, match, match_len);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u", __func__, ret, table_index); }
+    else { SAIVPP_INFO("%s table %u", __func__, table_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_classify_set_interface_l2_tables(const char *hwif_name,
+                                         uint32_t ip4_table_index,
+                                         uint32_t ip6_table_index,
+                                         uint32_t other_table_index,
+                                         bool is_input)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_set_interface_l2_tables_t *mp;
+    int ret;
+    u32 sw_if_index;
+
+    sw_if_index = get_swif_idx(vam, hwif_name);
+    if (sw_if_index == (u32) -1) {
+        SAIVPP_ERROR("%s: hwif %s not found", __func__, hwif_name ? hwif_name : "<null>");
+        return -1;
+    }
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M (CLASSIFY_SET_INTERFACE_L2_TABLES, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->ip4_table_index = htonl(ip4_table_index);
+    mp->ip6_table_index = htonl(ip6_table_index);
+    mp->other_table_index = htonl(other_table_index);
+    mp->is_input = is_input ? 1 : 0;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s", __func__, ret, hwif_name); }
+    else { SAIVPP_INFO("%s hwif %s ip4=%u ip6=%u other=%u", __func__,
+                       hwif_name, ip4_table_index, ip6_table_index, other_table_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_add_node_next(const char *node_name, const char *next_name,
+                            uint32_t *next_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_add_node_next_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = vlib_msg_id_base;
+
+    M (ADD_NODE_NEXT, mp);
+    strncpy((char *)mp->node_name, node_name, sizeof(mp->node_name) - 1);
+    strncpy((char *)mp->next_name, next_name, sizeof(mp->next_name) - 1);
+    mp->context = store_ptr(next_index);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) node %s next %s", __func__, ret, node_name, next_name); }
+    else { SAIVPP_INFO("%s node %s next %s -> %u", __func__, node_name, next_name, *next_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
 int create_bond_interface(uint32_t bond_id, uint32_t mode, uint32_t lb, uint32_t  *swif_idx)
 {
     vat_main_t *vam = &vat_main;
@@ -4286,6 +4743,8 @@ int create_bond_member(uint32_t bond_sw_if_index, const char *hwif_name, bool is
     S (mp);
 
     WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s bond_sw_if_index %u", __func__, ret, hwif_name, bond_sw_if_index); }
     else { SAIVPP_INFO("%s %s bond_sw_if_index %u", __func__, hwif_name, bond_sw_if_index); }
