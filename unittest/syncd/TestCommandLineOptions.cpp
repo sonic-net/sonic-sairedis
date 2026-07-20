@@ -88,7 +88,7 @@ TEST(CommandLineOptionsParser, parseCommandLine)
     char arg3[] = "1000";
     char arg4[] = "-B";
     char arg5[] = "WATERMARK";
-    char arg6[] "-G";
+    char arg6[] = "-G";
     std::vector<char *> args = {arg1, arg2, arg3, arg4, arg5, arg6};
 
     auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
