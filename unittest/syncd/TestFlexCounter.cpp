@@ -55,6 +55,7 @@ class ScopedPerPortCounterDiscovery
         explicit ScopedPerPortCounterDiscovery(
                 _In_ bool enabled)
         {
+            SWSS_LOG_ENTER();
             m_previous = sai->getOptions(VendorSaiOptions::OPTIONS_KEY);
 
             auto options = std::make_shared<VendorSaiOptions>();
@@ -71,6 +72,7 @@ class ScopedPerPortCounterDiscovery
 
         ~ScopedPerPortCounterDiscovery()
         {
+            SWSS_LOG_ENTER();
             sai->setOptions(VendorSaiOptions::OPTIONS_KEY, m_previous);
         }
 
