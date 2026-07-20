@@ -66,6 +66,11 @@ if [ "$SUPPORTING_BULK_COUNTER_GROUPS" != "" ]; then
     CMD_ARGS+=" -B $SUPPORTING_BULK_COUNTER_GROUPS"
 fi
 
+ENABLE_PER_PORT_COUNTER_DISCOVERY=$(echo $SYNCD_VARS | jq -r '.enable_per_port_counter_discovery')
+if [ "$ENABLE_PER_PORT_COUNTER_DISCOVERY" == "true" ]; then
+    CMD_ARGS+=" -G"
+fi
+
 case "$(cat /proc/cmdline)" in
   *SONIC_BOOT_TYPE=fastfast*)
     if [ -e /var/warmboot/warm-starting ]; then
