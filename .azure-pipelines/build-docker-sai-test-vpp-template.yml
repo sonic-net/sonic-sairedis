@@ -202,8 +202,23 @@ jobs:
 
       echo "$image_tag" > "$(Build.ArtifactStagingDirectory)/image-tag.txt"
       docker save "$image_tag" | gzip -c > "$(Build.ArtifactStagingDirectory)/docker-sai-test-vpp.gz"
-      sha256sum "$(Build.ArtifactStagingDirectory)/docker-sai-test-vpp.gz" \
-          > "$(Build.ArtifactStagingDirectory)/SHA256SUMS"
+      contract_dir="$(Build.ArtifactStagingDirectory)/ci-contract"
+      mkdir -p "$contract_dir"
+      for contract_file in \
+          ci-matrix-tests.txt \
+          ci-pass-tests.txt \
+          evaluate_ci_baseline.py \
+          gen_compatibility_matrix.py; do
+          cp -v ".azure-pipelines/docker-sai-test-vpp/$contract_file" "$contract_dir/"
+      done
+      (
+          cd "$(Build.ArtifactStagingDirectory)"
+          sha256sum \
+            docker-sai-test-vpp.gz \
+            image-tag.txt \
+            provenance.txt \
+            ci-contract/* > SHA256SUMS
+      )
       rm -rf "$download_dir" "$context_dir"
     displayName: Build ${{ parameters.artifact_name }}
 
