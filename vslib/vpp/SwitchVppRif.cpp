@@ -602,6 +602,13 @@ sai_status_t SwitchVpp::UpdatePort(
         sflowPortSamplePacketSet(object_id, attr_type);
     }
 
+    attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE, attr_count, attr_list);
+
+    if(attr_type != NULL)
+    {
+        sflowPortSamplePacketSet(object_id, attr_type);
+    }
+
     attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_EGRESS_ACL, attr_count, attr_list);
 
     if (attr_type != NULL)
