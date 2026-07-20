@@ -94,7 +94,7 @@ TEST(CommandLineOptionsParser, parseCommandLine)
     auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
     EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 1000);
     EXPECT_EQ(opt->m_watchdogInitTimeSpan, 1000);
-    EXPECT_EQ(opt->supportingBulkCounterGroups, "WATERMARK");
+    EXPECT_EQ(opt->m_supportingBulkCounterGroups, "WATERMARK");
     EXPECT_TRUE(opt->m_enablePerPortCounterDiscovery);
 }
 
