@@ -109,6 +109,7 @@ namespace syncd
 #endif // SAITHRIFT
 
             std::string m_supportingBulkCounterGroups;
+            bool m_enablePerPortCounterDiscovery;
 
             bool m_enableAttrVersionCheck;
     };
