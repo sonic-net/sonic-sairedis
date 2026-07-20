@@ -1132,6 +1132,20 @@ vl_api_bfd_udp_set_tos_reply_t_handler (vl_api_bfd_udp_set_tos_reply_t *msg)
 }
 
 static void
+vl_api_sflow_interface_sampling_rate_set_reply_t_handler(vl_api_sflow_interface_sampling_rate_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sflow_interface_direction_set_reply_t_handler(vl_api_sflow_interface_direction_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_bfd_udp_session_event_t_handler (vl_api_bfd_udp_session_event_t *msg)
 {
   bool multihop = (htonl(msg->sw_if_index) == (uint32_t)~0);
@@ -1564,6 +1578,8 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply) \
     _(SFLOW_MSG_ID(SFLOW_ENABLE_DISABLE_REPLY), sflow_enable_disable_reply) \
     _(SFLOW_MSG_ID(SFLOW_SAMPLING_RATE_SET_REPLY), sflow_sampling_rate_set_reply) \
+    _(SFLOW_MSG_ID(SFLOW_INTERFACE_SAMPLING_RATE_SET_REPLY), sflow_interface_sampling_rate_set_reply) \
+    _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
     _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply)
 
