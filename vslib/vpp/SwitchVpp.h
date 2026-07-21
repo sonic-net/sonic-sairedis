@@ -1283,10 +1283,12 @@ namespace saivs
         private: // VPP mirror
             constexpr static const int m_maxMirrorSessions = 10;
             uint32_t m_mirror_session_count = 0;
-            uint16_t m_next_erspan_session_id = 1;
+            uint16_t m_next_erspan_session_id = 1;  // currently unused; for Phase II (ERSPAN)
 
             struct MirrorSessionInfo {
                 uint32_t sw_if_index;
+
+                // Fields for Phase II (ERSPAN) support; currently unused
                 bool is_erspan;
                 vpp_ip_addr_t src_ip;
                 vpp_ip_addr_t dst_ip;
