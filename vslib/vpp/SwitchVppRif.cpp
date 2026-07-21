@@ -1734,7 +1734,6 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     {
         snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
 
-        /* The host(tap) subinterface is also created as part of the vpp subinterface creation */
         const char *parent_hwif;
         char hw_subif_parent[32];
         if (ot == SAI_OBJECT_TYPE_LAG) {
@@ -1744,6 +1743,18 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
             parent_hwif = tap_to_hwif_name(dev);
         }
         create_sub_interface(parent_hwif, vlan_id, vlan_id);
+
+        /*
+         * lcp-auto-subint is disabled in VPP startup config (vlan-bvi HLD §3.6),
+         * so the VPP sub-interface does NOT get an automatic linux-cp pair.
+         * Explicitly create the LCP pair binding <parent>.<vlan_id> (VPP side)
+         * to the kernel sub-vlan netdev (<dev>.<vlan_id>). Without this the
+         * sub-interface will not show up in `vppctl show lcp` and host punt
+         * will not work for the SUB_PORT RIF.
+         */
+        char vpp_subif_name[64];
+        snprintf(vpp_subif_name, sizeof(vpp_subif_name), "%s.%u", parent_hwif, vlan_id);
+        configure_lcp_interface(vpp_subif_name, host_subifname, true);
 
         /* Get new list of physical interfaces from VS */
         refresh_interfaces_list();
@@ -2098,16 +2109,21 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     } else {
         parent_hwif = tap_to_hwif_name(dev);
     }
+
+    /*
+     * Tear down the explicit LCP pair created in vpp_create_router_interface for
+     * SUB_PORT (lcp-auto-subint is disabled, HLD §3.6). hostif name is ignored by
+     * the LCP plugin on delete, but pass the symmetric value for log clarity.
+     */
+    char vpp_subif_name[64];
+    char host_subifname[64];
+    snprintf(vpp_subif_name, sizeof(vpp_subif_name), "%s.%u", parent_hwif, vlan_id);
+    snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
+    configure_lcp_interface(vpp_subif_name, host_subifname, false);
+
     delete_sub_interface(parent_hwif, vlan_id);
     /* Get new list of physical interfaces from VS */
     refresh_interfaces_list();
-
-/*
-    char host_subifname[32], hwif_name[32];
-    snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
-    snprintf(hwif_name, sizeof(hwif_name), "%s.%u", tap_to_hwif_name(dev), vlan_id);
-    configure_lcp_interface(tap_to_hwif_name(dev), host_subifname);
-*/
 
     return SAI_STATUS_SUCCESS;
 }

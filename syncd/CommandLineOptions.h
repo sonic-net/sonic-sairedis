@@ -77,6 +77,14 @@ namespace syncd
 
             bool m_enableSyncMode;
 
+            /**
+             * When set to true, ASIC_DB writes are performed asynchronously on a
+             * background thread (via ZmqRedisClient) instead of synchronously on
+             * the processing thread. Only effective when ZMQ southbound is active
+             * on a non-virtual, non-DPU switch. Driven by SYSTEM_DEFAULTS|async_rec.
+             */
+            bool m_enableAsyncRec;
+
             bool m_enableSaiBulkSupport;
 
             sai_redis_communication_mode_t m_redisCommunicationMode;
