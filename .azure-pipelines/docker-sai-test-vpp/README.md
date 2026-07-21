@@ -342,6 +342,7 @@ In `--debug` the container leaves the dataplane running after the test so you ca
 | `LAG_RIF_IPS` | 1 | enable LAG RIF connected-IP assignment in sai_test setUp (`SIMULATE_SONIC`) |
 | `SVI_RIF_IPS` | 1 | enable SVI RIF connected-IP assignment in sai_test setUp |
 | `SIMULATE_SONIC` | 1 | set by `run_test.sh`; enables sai_test's SONiC control-plane simulation (PortChannel netdevs + LAG/SVI RIF IPs) |
+| `SIMULATE_SONIC_IPV6_CONTROL_SRC_MAC` | `00:77:66:55:44:00` | discard only simulated-router RS/MLDv2 startup frames from this source MAC; empty disables the filter |
 | `TEST_FILTER` | — | alternative way to pass a single selector via env |
 
 These are read by `run_test.sh` at container start (defaults shown).
