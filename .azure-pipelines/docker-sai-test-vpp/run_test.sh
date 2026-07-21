@@ -514,6 +514,41 @@ start_saiserver()
     wait_for_saiserver_ready
 }
 
+ptf_target_requires_relax()
+{
+    case "$1" in
+        sai_fdb_test.BridgePortLearnDisableTest|\
+        sai_fdb_test.BroadcastNoLearnTest|\
+        sai_fdb_test.FdbAgingAfterMoveTest|\
+        sai_fdb_test.FdbAgingTest|\
+        sai_fdb_test.FdbFlushAllDynamicTest|\
+        sai_fdb_test.FdbFlushAllStaticTest|\
+        sai_fdb_test.FdbFlushAllTest|\
+        sai_fdb_test.FdbFlushPortDynamicTest|\
+        sai_fdb_test.FdbFlushPortStaticTest|\
+        sai_fdb_test.FdbFlushVlanDynamicTest|\
+        sai_fdb_test.FdbFlushVlanStaticTest|\
+        sai_fdb_test.MulticastNoLearnTest|\
+        sai_fdb_test.NonBridgePortNoLearnTest|\
+        sai_fdb_test.RemoveVlanmemberLearnTest|\
+        sai_fdb_test.VlanLearnDisableTest|\
+        sai_route_test.SviDirectBroadcastTest|\
+        sai_sanity_test.SaiSanityTest|\
+        sai_tunnel_test.SviIPInIPTunnelDecapFloodV6InV4Test|\
+        sai_tunnel_test.SviIPInIPTunnelDecapFloodv4Inv4Test|\
+        sai_vlan_test.ArpRequestFloodingTest|\
+        sai_vlan_test.BroadcastTest|\
+        sai_vlan_test.DisableMacLearningTaggedTest|\
+        sai_vlan_test.DisableMacLearningUntaggedTest|\
+        sai_vlan_test.TaggedVlanFloodingTest|\
+        sai_vlan_test.UnTaggedVlanFloodingTest)
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
 build_ptf_args()
 {
     # Args: <test_target> <common_configured> <xunit_dir>
@@ -543,14 +578,14 @@ build_ptf_args()
     PTF_ARGS+=(--test-params "$test_params")
     PTF_ARGS+=(--xunit --xunit-dir "$xunit_dir")
 
-    # The T0 sanity flood test sends one unknown-unicast frame and expects it to
-    # be flooded to every other member port of the VLAN. PTF's flood verifier
-    # (verify_each_packet_on_multiple_port_lists) consumes only one copy from the
-    # expected port list and then asserts via verify_no_other_packets() that no
-    # further packets remain - which is impossible for a real flood that delivers
-    # a copy to every member port. --relax makes verify_no_other_packets() a
-    # no-op, which is the intended/standard mode for flooding tests.
-    PTF_ARGS+=(--relax)
+    # Positive flood tests expect copies on multiple ports, but PTF's flood
+    # verifier consumes one copy and then rejects the remaining copies via
+    # verify_no_other_packets(). Relax that final check only for explicitly
+    # classified flood targets; applying it globally would disable negative
+    # packet assertions in unrelated tests.
+    if ptf_target_requires_relax "$test_target"; then
+        PTF_ARGS+=(--relax)
+    fi
 
     if [[ -n "$test_target" ]]; then
         PTF_ARGS+=("$test_target")
