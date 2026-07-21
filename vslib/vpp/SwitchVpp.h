@@ -95,6 +95,9 @@ namespace saivs
             void setPortStats(
                     _In_ sai_object_id_t oid);
 
+            void setRifStats(
+                    _In_ sai_object_id_t oid);
+
             sai_status_t getRouteStatsExt(
                     _In_ sai_object_id_t oid,
                     _In_ uint32_t number_of_counters,
@@ -708,6 +711,23 @@ namespace saivs
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
                     _In_ uint32_t mtu);
+
+            sai_status_t vpp_apply_loopback_action (
+                    _In_ const std::string& ifname,
+                    _In_ int32_t packet_action);
+
+            sai_status_t vpp_set_interface_loopback_action (
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t vlan_id,
+                    _In_ int32_t packet_action);
+
+            sai_status_t vpp_set_rif_loopback_action (
+                    _In_ sai_object_id_t rif_oid,
+                    _In_ int32_t packet_action);
+
+            bool vpp_get_rif_hwif_name (
+                    _In_ sai_object_id_t rif_oid,
+                    _Out_ std::string& ifname);
 
             sai_status_t UpdatePort(
                     _In_ sai_object_id_t object_id,

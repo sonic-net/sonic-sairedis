@@ -4,7 +4,21 @@
 
 #include "vppxlate/SaiVppXlate.h"
 
+#include <string>
+#include <exception>
+
 using namespace saivs;
+
+int saivs::vpp_safe_stoi(const std::string& s, const char* tag)
+{
+    try {
+        return std::stoi(s);
+    } catch (const std::exception& e) {
+        SWSS_LOG_ERROR("vpp_safe_stoi: failed to parse '%s' as int (%s): %s",
+                       s.c_str(), tag, e.what());
+        return 0;
+    }
+}
 
 sai_status_t saivs::find_attrib_in_list(
         _In_ uint32_t                       attr_count,

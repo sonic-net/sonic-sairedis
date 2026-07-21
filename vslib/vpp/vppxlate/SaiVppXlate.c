@@ -56,6 +56,9 @@
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_enum.h>
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_types.h>
 
+#include <vpp_plugins/sonic_ext/sonic_ext.api_enum.h>
+#include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
+
 #include <vlibmemory/vlib.api_types.h>
 #include <vlibmemory/memclnt.api_enum.h>
 
@@ -164,6 +167,24 @@
 
 #define vl_api_version(n, v) static u32 tunterm_api_version = v;
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api.h>
+#undef vl_api_version
+
+/* sonic_ext (RIF loopback) API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
 #undef vl_api_version
 
 /* interface API inclusion */
@@ -1376,6 +1397,13 @@ vl_api_tunterm_acl_interface_add_del_reply_t_handler(vl_api_tunterm_acl_interfac
 }
 
 static void
+vl_api_iface_loopback_set_action_reply_t_handler(vl_api_iface_loopback_set_action_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_bond_create_reply_t_handler (vl_api_bond_create_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1526,6 +1554,7 @@ static void vl_api_add_node_next_reply_t_handler(
 static u16 interface_msg_id_base, memclnt_msg_id_base, __plugin_msg_base;
 static u16 l2_msg_id_base, vxlan_msg_id_base, ipip_msg_id_base;
 static u16 tunterm_msg_id_base;
+static u16 iface_loopback_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
 static u16 bond_msg_id_base;
@@ -1706,6 +1735,9 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
 #define TUNTERM_MSG_ID(id) \
     (VL_API_##id + tunterm_msg_id_base)
 
+#define IFACE_LOOPBACK_MSG_ID(id) \
+    (VL_API_##id + iface_loopback_msg_id_base)
+
 #define VXLAN_MSG_ID(id) \
     (VL_API_##id + vxlan_msg_id_base)
 
@@ -1734,7 +1766,8 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     _(SFLOW_MSG_ID(SFLOW_ENABLE_DISABLE_REPLY), sflow_enable_disable_reply) \
     _(SFLOW_MSG_ID(SFLOW_SAMPLING_RATE_SET_REPLY), sflow_sampling_rate_set_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
-    _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply)
+    _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
+    _(IFACE_LOOPBACK_MSG_ID(IFACE_LOOPBACK_SET_ACTION_REPLY), iface_loopback_set_action_reply)
 
 static void vpp_plugin_vpe_init(void)
 {
@@ -1818,6 +1851,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "sflow_%08x%c", sflow_api_version, 0);
     sflow_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sflow_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "sonic_ext_%08x%c", sonic_ext_api_version, 0);
+    iface_loopback_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(iface_loopback_msg_id_base != (u16) ~0);
 }
 
 #define API_SOCKET_FILE "/run/vpp/api.sock"
@@ -2067,6 +2104,40 @@ static int __delete_loopback (vat_main_t *vam, const char *hwif_name, u32 instan
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s instance %u", __func__, ret, hwif_name, instance); }
     else { SAIVPP_INFO("%s %s instance %u", __func__, hwif_name, instance); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_iface_loopback_set_action (const char *hwif_name, int action)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_iface_loopback_set_action_t *mp;
+    u32 idx;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = iface_loopback_msg_id_base;
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get sw_index for %s", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    M (IFACE_LOOPBACK_SET_ACTION, mp);
+    mp->sw_if_index = htonl(idx);
+    mp->action = (u8) action;
+
+    S (mp);
+
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s action %d", __func__, ret, hwif_name, action); }
+    else { SAIVPP_INFO("%s %s action %d", __func__, hwif_name, action); }
 
     VPP_UNLOCK();
 

@@ -803,6 +803,38 @@ void SwitchVpp::setPortStats(
     debugSetStats(oid, stats);
 }
 
+void SwitchVpp::setRifStats(
+        _In_ sai_object_id_t oid)
+{
+    SWSS_LOG_ENTER();
+
+    std::string if_name;
+
+    // Resolve the RIF to its backing VPP interface: the port/LAG/sub-port
+    // hwif, or the bridge BVI (bvi<vlan-id>) for a VLAN RIF. Only these are
+    // backed by a VPP hardware interface whose counters we can read here.
+    if (!vpp_get_rif_hwif_name(oid, if_name))
+    {
+        return;
+    }
+
+    vpp_interface_stats_t rif_stats;
+
+    if (vpp_intf_stats_query(if_name.c_str(), &rif_stats) == 0)
+    {
+        std::map<sai_stat_id_t, uint64_t> stats;
+
+        stats[SAI_ROUTER_INTERFACE_STAT_IN_PACKETS] = rif_stats.rx;
+        stats[SAI_ROUTER_INTERFACE_STAT_IN_OCTETS] = rif_stats.rx_bytes;
+        stats[SAI_ROUTER_INTERFACE_STAT_OUT_PACKETS] = rif_stats.tx;
+        stats[SAI_ROUTER_INTERFACE_STAT_OUT_OCTETS] = rif_stats.tx_bytes;
+        stats[SAI_ROUTER_INTERFACE_STAT_IN_ERROR_PACKETS] = rif_stats.rx_error;
+        stats[SAI_ROUTER_INTERFACE_STAT_OUT_ERROR_PACKETS] = rif_stats.tx_error;
+
+        debugSetStats(oid, stats);
+    }
+}
+
 sai_status_t SwitchVpp::getRouteCounterStats(
         _In_ sai_object_id_t oid,
         _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
@@ -1162,6 +1194,10 @@ sai_status_t SwitchVpp::getStatsExt(
     if (object_type == SAI_OBJECT_TYPE_PORT)
     {
         setPortStats(object_id);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
+    {
+        setRifStats(object_id);
     }
     else if (object_type == SAI_OBJECT_TYPE_COUNTER)
     {
