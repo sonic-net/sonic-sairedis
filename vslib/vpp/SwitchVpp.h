@@ -1306,17 +1306,17 @@ namespace saivs
             std::map<sai_object_id_t, PortMirrorBinding> m_port_mirror_bindings;
 
         protected:
-                sai_status_t createMirrorSession(
-                        _In_ sai_object_id_t object_id,
-                        _In_ sai_object_id_t switch_id,
-                        _In_ uint32_t attr_count,
-                        _In_ const sai_attribute_t *attr_list);
+            sai_status_t createMirrorSession(
+                _In_ sai_object_id_t object_id,
+                _In_ sai_object_id_t switch_id,
+                _In_ uint32_t attr_count,
+                _In_ const sai_attribute_t *attr_list);
 
-                sai_status_t removeMirrorSession(_In_ sai_object_id_t object_id);
+            sai_status_t removeMirrorSession(_In_ sai_object_id_t object_id);
 
-                sai_status_t bindMirrorPort(
-                        _In_ sai_object_id_t portId,
-                        _In_ const sai_attribute_t* attr);
+            sai_status_t bindMirrorPort(
+                _In_ sai_object_id_t portId,
+                _In_ const sai_attribute_t* attr);
 
     };
 }
