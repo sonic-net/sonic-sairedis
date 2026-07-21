@@ -253,6 +253,7 @@ For a full 4-module matrix, prefer **`nohup`** (or an equivalent detached logger
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp
 mkdir -p results/xml
+rm -f results/xml/TEST-*.xml
 nohup docker run --rm --privileged -e PORT_COUNT=32 \
   -v "$PWD/results/xml:/test-results" \
   docker-sai-test-vpp:local \
