@@ -2709,6 +2709,8 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
             fib_path->type = htonl(FIB_API_PATH_TYPE_NORMAL);
         } else if (nexthop->type == VPP_NEXTHOP_LOCAL) {
             fib_path->type = htonl(FIB_API_PATH_TYPE_LOCAL);
+        } else if (nexthop->type == VPP_NEXTHOP_DROP) {
+            fib_path->type = htonl(FIB_API_PATH_TYPE_DROP);
         }
         fib_path->table_id = 0;
         fib_path->rpf_id = htonl((uint32_t)~0);
