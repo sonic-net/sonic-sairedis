@@ -206,6 +206,7 @@ PTF writes one JUnit-XML file per test into `/test-results`. By convention these
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp
 mkdir -p results/xml
+rm -f results/xml/TEST-*.xml
 docker run --rm --privileged -e PORT_COUNT=32 \
   -v "$PWD/results/xml:/test-results" \
   docker-sai-test-vpp:phase1 \
