@@ -744,7 +744,7 @@ run_ptf()
         [[ "${#targets[@]}" -gt 0 ]] && legacy_target="${targets[0]}"
         start_backend
         local legacy_rc=0
-        run_one_ptf "$legacy_target" "" || legacy_rc="$?"
+        run_one_ptf "$legacy_target" "" "legacy-0" || legacy_rc="$?"
         debug_hold
         exit "$legacy_rc"
     fi
@@ -781,7 +781,7 @@ run_ptf()
         log "Planning produced no targets; running full suite in one invocation"
         start_backend
         local suite_rc=0
-        run_one_ptf "" "false" || suite_rc="$?"
+        run_one_ptf "" "false" "suite-0" || suite_rc="$?"
         debug_hold
         exit "$suite_rc"
     fi
@@ -821,7 +821,7 @@ run_ptf()
 
         log "=== [${idx}/${total}] ${target} (group ${group}, common_configured=${common_configured}) ==="
         rc=0
-        run_one_ptf "$target" "$common_configured" || rc="$?"
+        run_one_ptf "$target" "$common_configured" "group-${group}-test-${idx}" || rc="$?"
         if [[ "$rc" -ne 0 ]]; then
             if (( rc > overall_rc )); then
                 overall_rc="$rc"
@@ -1002,6 +1002,35 @@ for gid, (sig, tlist) in enumerate(groups.items()):
 PY
 }
 
+# Copy one PTF invocation's JUnit XML into the shared results directory without
+# replacing an earlier invocation's same-named TEST-<module>.xml report.
+collect_xunit_results()
+{
+    local xunit_dir="$1"
+    local invocation_namespace="$2"
+    local xml_file
+    local xml_name
+    local namespaced_name
+    local -a xml_files
+
+    [[ -n "$TEST_RESULTS_DIR" ]] || return 0
+
+    mkdir -p "$TEST_RESULTS_DIR"
+    shopt -s nullglob
+    xml_files=("$xunit_dir"/*.xml)
+    shopt -u nullglob
+
+    for xml_file in "${xml_files[@]}"; do
+        xml_name="$(basename "$xml_file")"
+        if [[ "$xml_name" == TEST-* ]]; then
+            namespaced_name="TEST-${invocation_namespace}-${xml_name#TEST-}"
+        else
+            namespaced_name="TEST-${invocation_namespace}-${xml_name}"
+        fi
+        cp "$xml_file" "$TEST_RESULTS_DIR/$namespaced_name"
+    done
+}
+
 # Run a single ptf invocation for one target. Echoes PTF output through and
 # triggers the one-time veth bring-up on the framework's "Turn up ports..."
 # marker. Returns ptf's exit code.
@@ -1015,6 +1044,7 @@ run_one_ptf()
 {
     local test_target="$1"
     local common_configured="$2"
+    local invocation_namespace="$3"
     local test_rc
     local xunit_dir
 
@@ -1036,11 +1066,7 @@ run_one_ptf()
     test_rc="${PIPESTATUS[0]}"
     set -e
 
-    # Collect this invocation's JUnit XML into the shared results dir.
-    if [[ -n "$TEST_RESULTS_DIR" ]]; then
-        mkdir -p "$TEST_RESULTS_DIR"
-        cp -f "$xunit_dir"/*.xml "$TEST_RESULTS_DIR"/ 2>/dev/null || true
-    fi
+    collect_xunit_results "$xunit_dir" "$invocation_namespace"
     rm -rf "$xunit_dir"
 
     return "$test_rc"
