@@ -1197,7 +1197,7 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
     attr.id = SAI_SWITCH_ATTR_MAX_MIRROR_SESSION;
-    attr.value.u32 = 10;
+    attr.value.u32 = m_maxMirrorSessions;
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
     return set_switch_supported_object_types();

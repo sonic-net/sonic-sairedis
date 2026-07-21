@@ -1281,7 +1281,6 @@ namespace saivs
                 _Inout_ sai_s32_list_t *enum_values_capability) override;
 
         private: // VPP mirror
-            constexpr static const int m_maxMirrorSessions = 10;
             uint32_t m_mirror_session_count = 0;
             uint16_t m_next_erspan_session_id = 1;  // currently unused; for Phase II (ERSPAN)
 
