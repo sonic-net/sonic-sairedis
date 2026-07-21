@@ -96,6 +96,7 @@ ISOLATE_EACH_TEST="${ISOLATE_EACH_TEST:-1}"
 # this standalone bench has no teamd / IntfMgr. The remaining vars retarget the
 # helper's interface names / address patterns to this VPP bench.
 export SIMULATE_SONIC=1
+export SIMULATE_SONIC_IPV6_CONTROL_SRC_MAC="${SIMULATE_SONIC_IPV6_CONTROL_SRC_MAC:-00:77:66:55:44:00}"
 export LAG_RIF_IPS LAG_RIF_IPV4_PATTERN LAG_RIF_IPV6_PATTERN LAG_BE_TAP_PREFIX
 export SVI_RIF_IPS SVI_RIF_VLANS SVI_RIF_IPV4_PATTERN SVI_RIF_IPV6_PATTERN SVI_BVI_PREFIX
 # A VLAN SVI (BVI) has no host-interface netdev, so simulate_sonic cannot use "ip".
