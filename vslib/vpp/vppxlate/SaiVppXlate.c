@@ -1687,8 +1687,6 @@ static void vpp_ext_vpe_init(void)
 
     foreach_vpe_ext_api_reply_msg;
 #undef _
-
-
 }
 
 static void vl_api_lcp_itf_pair_add_del_reply_t_handler(vl_api_lcp_itf_pair_add_del_reply_t *msg)
