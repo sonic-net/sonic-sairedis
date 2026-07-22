@@ -16,6 +16,7 @@
 #include <net/if.h>
 #include <netinet/in.h>
 #include <stdint.h>
+#include <vector>
 
 #include "vppxlate/SaiVppXlate.h"
 
@@ -33,7 +34,7 @@ using namespace saivs;
         SWSS_LOG_ERROR("%s: status %d", buffer, status); \
         return _status; } }
 
-static void create_route_prefix_entry (
+void create_route_prefix_entry (
        sai_route_entry_t *route_entry,
        vpp_ip_route_t *ip_route)
 {
@@ -102,6 +103,45 @@ void create_vpp_nexthop_entry (
     vpp_nexthop->preference = 0;
 }
 
+const char* SwitchVpp::resolveNexthopMemberHwif(
+        _In_ const nexthop_grp_member_t *member,
+        _Out_ std::string &member_hwif)
+{
+    SWSS_LOG_ENTER();
+
+    member_hwif.clear();
+
+    if (member == NULL || member->rif_oid == SAI_NULL_OBJECT_ID)
+    {
+        return NULL;
+    }
+
+    sai_attribute_t rif_attr;
+    uint16_t vlan_id = 0;
+
+    rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS &&
+        rif_attr.value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+    {
+        sai_attribute_t vlan_attr;
+        vlan_attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &vlan_attr) == SAI_STATUS_SUCCESS)
+        {
+            vlan_id = vlan_attr.value.u16;
+        }
+    }
+
+    rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS &&
+        vpp_get_hwif_name(rif_attr.value.oid, vlan_id, member_hwif))
+    {
+        return member_hwif.c_str();
+    }
+
+    return NULL;
+}
+
 sai_status_t SwitchVpp::IpRouteAddRemove(
         _In_ const SaiObject* route_obj,
         _In_ bool is_add,
@@ -122,7 +162,35 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         packet_action = attr.value.s32;
     }
 
-    // We should program drop routes
+    sai_route_entry_t route_entry;
+    sai_deserialize_route_entry(serializedObjectId, route_entry);
+
+    if (packet_action == SAI_PACKET_ACTION_DROP) {
+        std::shared_ptr<IpVrfInfo> vrf = vpp_get_ip_vrf(route_entry.vr_id);
+        uint32_t vrf_id = vrf == nullptr ? 0 : vrf->m_vrf_id;
+        vpp_ip_route_t *ip_route = (vpp_ip_route_t *)
+            calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
+        if (!ip_route) {
+            return SAI_STATUS_FAILURE;
+        }
+
+        create_route_prefix_entry(&route_entry, ip_route);
+        ip_route->vrf_id = vrf_id;
+        ip_route->nexthop_cnt = 1;
+        ip_route->nexthop[0].addr.sa_family = ip_route->prefix_addr.sa_family;
+        ip_route->nexthop[0].sw_if_index = (uint32_t)~0;
+        ip_route->nexthop[0].weight = 1;
+        ip_route->nexthop[0].type = VPP_NEXTHOP_DROP;
+
+        ret = ip_route_add_del_get_stats(ip_route, is_add, is_add ? stats_index : NULL);
+        free(ip_route);
+
+        SWSS_LOG_NOTICE("%s drop route in VS %s status %d table %u",
+                        is_add ? "Add" : "Remove",
+                        serializedObjectId.c_str(), ret, vrf_id);
+        return ret == 0 ? SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
+    }
+
     if (packet_action != SAI_PACKET_ACTION_FORWARD) {
         SWSS_LOG_NOTICE("Ignoring ip route %s: action is not forward: %d",
                         serializedObjectId.c_str(), packet_action);
@@ -138,12 +206,9 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
     }
     next_hop_oid = attr.value.oid;
 
-    sai_route_entry_t route_entry;
     const char *hwif_name = NULL;
     vpp_nexthop_type_e nexthop_type = VPP_NEXTHOP_NORMAL;
     bool config_ip_route = false;
-
-    sai_deserialize_route_entry(serializedObjectId, route_entry);
 
     nexthop_grp_config_t *nxthop_group = NULL;
 
@@ -199,9 +264,25 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
         nxt_grp_member = nxthop_group->grp_members;
 
+        std::vector<std::string> member_hwif_storage;
+        member_hwif_storage.reserve(nxthop_group->nmembers);
+
         size_t i;
         for (i = 0; i < nxthop_group->nmembers; i++) {
-            create_vpp_nexthop_entry(nxt_grp_member, hwif_name, nexthop_type,  &ip_route->nexthop[i]);
+            const char *member_hwif = hwif_name;
+            std::string resolved_hwif;
+
+            if (member_hwif == NULL)
+            {
+                member_hwif = resolveNexthopMemberHwif(nxt_grp_member, resolved_hwif);
+                if (member_hwif != NULL)
+                {
+                    member_hwif_storage.push_back(std::move(resolved_hwif));
+                    member_hwif = member_hwif_storage.back().c_str();
+                }
+            }
+
+            create_vpp_nexthop_entry(nxt_grp_member, member_hwif, nexthop_type,  &ip_route->nexthop[i]);
             nxt_grp_member++;
         }
         ip_route->nexthop_cnt = nxthop_group->nmembers;
@@ -391,7 +472,10 @@ sai_status_t SwitchVpp::IpRoutePathAddRemove(
     ip_route->is_multipath = true;  // Tell VPP to add/remove a path, not replace the route
     ip_route->nexthop_cnt = 1;
 
-    create_vpp_nexthop_entry(member, NULL, VPP_NEXTHOP_NORMAL, &ip_route->nexthop[0]);
+    std::string member_hwif_str;
+    const char *member_hwif = resolveNexthopMemberHwif(member, member_hwif_str);
+
+    create_vpp_nexthop_entry(member, member_hwif, VPP_NEXTHOP_NORMAL, &ip_route->nexthop[0]);
 
     int ret = ip_route_add_del_get_stats(ip_route, is_add, stats_index);
 

@@ -14,6 +14,7 @@
 
 #include <vector>
 #include <string>
+#include <sstream>
 #include <cerrno>
 
 using namespace saivs;
@@ -152,6 +153,11 @@ sai_status_t SwitchVpp::create_qos_queues_per_port(
         attr.value.oid = port_id;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
+
+        attr.id = SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
     }
 
     attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
@@ -200,6 +206,11 @@ sai_status_t SwitchVpp::create_cpu_qos_queues(
 
         attr.id = SAI_QUEUE_ATTR_PORT;
         attr.value.oid = port_id;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
+
+        attr.id = SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
     }
@@ -739,6 +750,39 @@ bool SwitchVpp::port_to_hostif_list(
     //}
     //return(
     return getTapNameFromPortId(port_id, if_name);
+}
+
+bool SwitchVpp::getTapNameFromPortOrLagId(
+        _In_ sai_object_id_t obj_id,
+        _Out_ std::string& if_name)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_type_t ot = objectTypeQuery(obj_id);
+
+    if (ot == SAI_OBJECT_TYPE_PORT)
+    {
+        return getTapNameFromPortId(obj_id, if_name);
+    }
+
+    if (ot == SAI_OBJECT_TYPE_LAG)
+    {
+        platform_bond_info_t bond_info;
+        sai_status_t status = get_lag_bond_info(obj_id, bond_info);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+
+        std::ostringstream tap_stream;
+        tap_stream << "be" << bond_info.id;
+        if_name = tap_stream.str();
+
+        return true;
+    }
+
+    return false;
 }
 
 bool SwitchVpp::port_to_hwifname(
@@ -1303,6 +1347,8 @@ sai_status_t SwitchVpp::create(
 {
     SWSS_LOG_ENTER();
 
+    serviceDeferredOperStatusResync();
+
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
         sai_object_id_t object_id;
@@ -1657,6 +1703,8 @@ sai_status_t SwitchVpp::remove(
         _In_ const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
+
+    serviceDeferredOperStatusResync();
 
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
@@ -2016,6 +2064,8 @@ sai_status_t SwitchVpp::set(
         _In_ const sai_attribute_t* attr)
 {
     SWSS_LOG_ENTER();
+
+    serviceDeferredOperStatusResync();
 
     if (objectType == SAI_OBJECT_TYPE_PORT)
     {

@@ -1,0 +1,57 @@
+unix {
+  nodaemon
+  log __VPP_LOG__
+  full-coredump
+  cli-listen /run/vpp/cli.sock
+  poll-sleep-usec 100
+  exec __VPP_INIT_CLI__
+}
+
+api-trace {
+  on
+  nitems 32768
+}
+
+api-segment {
+  global-size 256M
+  api-size 64M
+}
+
+socksvr {
+  default
+}
+
+memory {
+  main-heap-size 4G
+}
+
+l3fib {
+  fib-entry-pool-size 256K
+  load-balance-pool-size 256K
+  ip4-mtrie-pool-size 256K
+}
+
+ip6 {
+  heap-size 128M
+}
+
+plugins {
+  plugin default { disable }
+  plugin af_packet_plugin.so { enable }
+  plugin tap_plugin.so { enable }
+  plugin linux_cp_plugin.so { enable }
+  plugin linux_nl_plugin.so { enable }
+  plugin acl_plugin.so { enable }
+  plugin vxlan_plugin.so { enable }
+  plugin tunterm_acl_plugin.so { enable }
+  plugin ip_validate_plugin.so { enable }
+  plugin sflow_plugin.so { enable }
+}
+
+linux-cp {
+  lcp-auto-subint
+}
+
+buffers {
+  buffers-per-numa __BUFFERS_PER_NUMA__
+}

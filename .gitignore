@@ -11,6 +11,9 @@
 
 # Packaging Files #
 ###################
+/*.buildinfo
+/*.changes
+/*.deb
 debian/*.debhelper.log
 debian/*.substvars
 debian/.debhelper/
@@ -18,6 +21,7 @@ debian/autoreconf.after
 debian/autoreconf.before
 debian/debhelper-build-stamp
 debian/files
+.azure-pipelines/docker-sai-test-vpp/debs/
 
 debian/python-pysairedis/
 debian/python3-pysairedis/

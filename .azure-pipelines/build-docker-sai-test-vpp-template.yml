@@ -1,0 +1,227 @@
+parameters:
+- name: timeout
+  type: number
+  default: 60
+
+- name: sairedis_artifact_name
+  type: string
+
+- name: swss_common_artifact_name
+  type: string
+
+- name: artifact_name
+  type: string
+
+- name: vpp_run_id
+  type: string
+
+jobs:
+- job: BuildSaiTestVppImage
+  displayName: Build docker-sai-test-vpp
+  timeoutInMinutes: ${{ parameters.timeout }}
+
+  pool:
+    vmImage: 'ubuntu-22.04'
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: ${{ parameters.sairedis_artifact_name }}
+      path: $(Build.ArtifactStagingDirectory)/download
+      patterns: |
+        **/libsairedis_*.deb
+        **/libsaivs_*.deb
+        **/libsaimetadata_*.deb
+        **/saiserverv2_*.deb
+        **/python-saithriftv2_*.deb
+    displayName: Download sonic sairedis deb packages
+
+  - task: DownloadPipelineArtifact@2
+    name: downloadSwssCommon
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-swss-common
+      artifact: ${{ parameters.swss_common_artifact_name }}
+      path: $(Build.ArtifactStagingDirectory)/download
+      runVersion: latestFromBranch
+      runBranch: refs/heads/$(BUILD_BRANCH)
+      allowPartiallySucceededBuilds: true
+      patterns: |
+        **/libswsscommon_*.deb
+        **/libswsscommon-dev_*.deb
+    displayName: Download sonic swss common deb packages
+
+  - task: DownloadPipelineArtifact@2
+    name: downloadCommonLib
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      artifact: common-lib
+      path: $(Build.ArtifactStagingDirectory)/download
+      runVersion: latestFromBranch
+      runBranch: refs/heads/$(BUILD_BRANCH)
+      patterns: |
+        **/target/debs/trixie/libyang3_*.deb
+        **/target/debs/trixie/libpcre3_*.deb
+    displayName: Download sonic-buildimage common packages
+
+  - task: DownloadPipelineArtifact@2
+    name: downloadVpp
+    inputs:
+      source: specific
+      project: build
+      pipeline: sonic-net.sonic-platform-vpp
+      artifact: vpp-trixie
+      path: $(Build.ArtifactStagingDirectory)/download
+      runVersion: specific
+      runId: ${{ parameters.vpp_run_id }}
+    displayName: Download resolved sonic platform-vpp packages
+
+  - script: |
+      set -euxo pipefail
+
+      download_dir="$(Build.ArtifactStagingDirectory)/download"
+      deb_dir="$(System.DefaultWorkingDirectory)/.azure-pipelines/docker-sai-test-vpp/debs"
+      context_dir="$(Build.ArtifactStagingDirectory)/docker-context"
+      image_tag="docker-sai-test-vpp:$(Build.DefinitionName).$(Build.BuildNumber)"
+      ptf_dir="$(System.DefaultWorkingDirectory)/SAI/test/ptf"
+      sai_revision="$(git -C SAI rev-parse HEAD)"
+      ptf_revision="$(git -C "$ptf_dir" rev-parse HEAD)"
+      ptf_describe="$(git -C "$ptf_dir" describe --tags --long --always HEAD)"
+      ptf_version="$(python3 .azure-pipelines/docker-sai-test-vpp/derive_ptf_version.py "$ptf_dir")"
+
+        if [[ "$(downloadVpp.BuildNumber)" != "${{ parameters.vpp_run_id }}" ]]; then
+          echo "Resolved VPP run ${{ parameters.vpp_run_id }}, downloaded $(downloadVpp.BuildNumber)" >&2
+          exit 1
+        fi
+
+      rm -rf "$deb_dir"
+      mkdir -p "$deb_dir"
+
+      copy_one_deb()
+      {
+          local pattern="$1"
+          mapfile -t matches < <(find "$download_dir" -type f -name "$pattern" | sort)
+          if [[ "${#matches[@]}" -ne 1 ]]; then
+              echo "Expected exactly one $pattern package, found ${#matches[@]}" >&2
+              printf '  %s\n' "${matches[@]}" >&2
+              exit 1
+          fi
+          cp -v "${matches[0]}" "$deb_dir/"
+      }
+
+      copy_optional_deb()
+      {
+          local pattern="$1"
+          mapfile -t matches < <(find "$download_dir" -type f -name "$pattern" | sort)
+          if [[ "${#matches[@]}" -gt 1 ]]; then
+              echo "Expected at most one $pattern package, found ${#matches[@]}" >&2
+              printf '  %s\n' "${matches[@]}" >&2
+              exit 1
+          fi
+          if [[ "${#matches[@]}" -eq 1 ]]; then
+              cp -v "${matches[0]}" "$deb_dir/"
+          fi
+      }
+
+      copy_one_deb 'libvppinfra_*_amd64.deb'
+      copy_one_deb 'vpp_*_amd64.deb'
+      copy_one_deb 'vpp-plugin-core_*_amd64.deb'
+      copy_one_deb 'vpp-plugin-dpdk_*_amd64.deb'
+      copy_one_deb 'libsaivs_*_amd64.deb'
+      copy_one_deb 'libsairedis_*_amd64.deb'
+      copy_one_deb 'libsaimetadata_*_amd64.deb'
+      copy_one_deb 'saiserverv2_*_amd64.deb'
+      copy_one_deb 'python-saithriftv2_*_amd64.deb'
+      copy_one_deb 'libswsscommon_*_amd64.deb'
+      copy_optional_deb 'libswsscommon-dev_*_amd64.deb'
+      copy_one_deb 'libyang3_*_amd64.deb'
+      copy_optional_deb 'libpcre3_*_amd64.deb'
+
+      provenance="$(Build.ArtifactStagingDirectory)/provenance.txt"
+      {
+          echo "build_definition=$(Build.DefinitionName)"
+          echo "build_number=$(Build.BuildNumber)"
+          echo "build_id=$(Build.BuildId)"
+          echo "source_version=$(Build.SourceVersion)"
+          echo "source_branch=$(Build.SourceBranch)"
+          echo "sai_revision=$sai_revision"
+          echo "ptf_revision=$ptf_revision"
+          echo "ptf_describe=$ptf_describe"
+          echo "ptf_version=$ptf_version"
+          echo "vpp_resolved_run_id=${{ parameters.vpp_run_id }}"
+          echo "vpp_downloaded_build=$(downloadVpp.BuildNumber)"
+          echo "swss_common_downloaded_build=$(downloadSwssCommon.BuildNumber)"
+          echo "common_lib_downloaded_build=$(downloadCommonLib.BuildNumber)"
+          echo
+          echo "packages:"
+          for deb in "$deb_dir"/*.deb; do
+              echo "File=$(basename "$deb")"
+              dpkg-deb -f "$deb" Package Version Architecture
+              sha256sum "$deb"
+          done
+      } > "$provenance"
+
+      rm -rf "$context_dir"
+      context_harness="$context_dir/.azure-pipelines/docker-sai-test-vpp"
+      mkdir -p "$context_harness" "$context_dir/SAI/test"
+      for harness_file in \
+          Dockerfile \
+          lanemap.ini \
+          port-map.ini \
+          ptf-port-map.ini \
+          run_test.sh \
+          sai.profile \
+          swss_log_stdout_preload.cpp \
+          vpp_startup.conf.template; do
+            cp -a ".azure-pipelines/docker-sai-test-vpp/$harness_file" "$context_harness/"
+      done
+      cp -a "$deb_dir" "$context_harness/"
+      cp -a SAI/test/ptf "$context_dir/SAI/test/"
+      cp -a SAI/test/sai_test "$context_dir/SAI/test/"
+
+      build_args=(
+          --no-cache
+          --build-arg "PTF_VERSION=$ptf_version"
+          --label com.sonic.saivpp-ci=true
+          -f "$context_harness/Dockerfile"
+          -t "$image_tag"
+      )
+      for proxy_var in http_proxy https_proxy HTTP_PROXY HTTPS_PROXY no_proxy NO_PROXY; do
+          if [[ -n "${!proxy_var:-}" ]]; then
+            build_args+=(--build-arg "$proxy_var=${!proxy_var}")
+          fi
+      done
+      docker build "${build_args[@]}" "$context_dir"
+
+      echo "$image_tag" > "$(Build.ArtifactStagingDirectory)/image-tag.txt"
+      docker save "$image_tag" | gzip -c > "$(Build.ArtifactStagingDirectory)/docker-sai-test-vpp.gz"
+      contract_dir="$(Build.ArtifactStagingDirectory)/ci-contract"
+      mkdir -p "$contract_dir"
+      for contract_file in \
+          ci-matrix-tests.txt \
+          ci-pass-tests.txt \
+          evaluate_ci_baseline.py \
+          gen_compatibility_matrix.py; do
+          cp -v ".azure-pipelines/docker-sai-test-vpp/$contract_file" "$contract_dir/"
+      done
+      (
+          cd "$(Build.ArtifactStagingDirectory)"
+          sha256sum \
+            docker-sai-test-vpp.gz \
+            image-tag.txt \
+            provenance.txt \
+            ci-contract/* > SHA256SUMS
+      )
+      rm -rf "$download_dir" "$context_dir"
+    displayName: Build ${{ parameters.artifact_name }}
+
+  - publish: $(Build.ArtifactStagingDirectory)/
+    artifact: ${{ parameters.artifact_name }}
+    displayName: Archive VPP SAI test image

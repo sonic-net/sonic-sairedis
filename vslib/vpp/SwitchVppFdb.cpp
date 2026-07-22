@@ -809,15 +809,40 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 	    return SAI_STATUS_FAILURE;
     }
 
-    auto attr_mac_addr = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS, attr_count, attr_list);
-    if (attr_mac_addr == NULL)
-    {
-	    SWSS_LOG_NOTICE("attr ROUTER INTERFACE MAC Address is not found");
-	    return SAI_STATUS_FAILURE;
-    }
-
     sai_mac_t mac_addr;
-    memcpy(mac_addr, attr_mac_addr->value.mac, sizeof(sai_mac_t));
+
+    auto attr_mac_addr = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS, attr_count, attr_list);
+    if (attr_mac_addr != NULL)
+    {
+	    memcpy(mac_addr, attr_mac_addr->value.mac, sizeof(sai_mac_t));
+    }
+    else
+    {
+	    // SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS is optional; per the SAI
+	    // spec its default is the switch source MAC. When a caller omits it
+	    // (e.g. the OCP sai_test PTF suite creates VLAN RIFs without a MAC,
+	    // unlike orchagent which always supplies the switch MAC), fall back to
+	    // SAI_SWITCH_ATTR_SRC_MAC_ADDRESS instead of failing the BVI create.
+	    // Without this the VLAN BVI is never created, so SVI ingress traffic
+	    // floods L2 instead of being routed - which broke every standalone L3
+	    // route/RIF test whose ingress is a VLAN access port. See
+	    // .azure-pipelines/docker-sai-test-vpp/devdocs/progress-6-17.md (Issue B).
+	    sai_attribute_t sw_attr;
+	    memset(&sw_attr, 0, sizeof(sw_attr));
+	    sw_attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+
+	    sai_status_t mac_status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &sw_attr);
+	    if (mac_status != SAI_STATUS_SUCCESS)
+	    {
+		    SWSS_LOG_ERROR("RIF src MAC not provided and failed to read switch src MAC on %s: %s",
+				    sai_serialize_object_id(m_switch_id).c_str(),
+				    sai_serialize_status(mac_status).c_str());
+		    return SAI_STATUS_FAILURE;
+	    }
+
+	    memcpy(mac_addr, sw_attr.value.mac, sizeof(sai_mac_t));
+	    SWSS_LOG_NOTICE("RIF src MAC not provided; using switch src MAC for BVI of vlan %u", vlan_id);
+    }
 
     //Create BVI interface
     create_bvi_interface(mac_addr,vlan_id);
@@ -1077,10 +1102,11 @@ sai_status_t SwitchVpp::vpp_create_lag(
     mode = VPP_BOND_API_MODE_XOR;
     lb = VPP_BOND_API_LB_ALGO_L34_INNER;
 
-    create_bond_interface(bond_id, mode, lb, &swif_idx);
-    if (swif_idx == static_cast<uint32_t>(~0))
+    int ret = create_bond_interface(bond_id, mode, lb, &swif_idx);
+    if (ret != 0 || swif_idx == static_cast<uint32_t>(~0) || swif_idx == 0)
     {
-        SWSS_LOG_ERROR("failed to create bond interface in VPP for %s", sai_serialize_object_id(lag_id).c_str());
+        SWSS_LOG_ERROR("failed to create bond interface in VPP for %s (ret=%d, swif_idx=%u)",
+                sai_serialize_object_id(lag_id).c_str(), ret, swif_idx);
         return SAI_STATUS_FAILURE;
     }
 
