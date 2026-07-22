@@ -1946,21 +1946,14 @@ sai_status_t SwitchVpp::setPort(
 {
     SWSS_LOG_ENTER();
 
-    UpdatePort(portId, 1, attr);
+    sai_status_t status = UpdatePort(portId, 1, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
 
     auto sid = sai_serialize_object_id(portId);
-
-    if(attr->id == SAI_PORT_ATTR_INGRESS_MIRROR_SESSION ||
-       attr->id == SAI_PORT_ATTR_EGRESS_MIRROR_SESSION)
-    {
-        auto rc = bindMirrorPort(portId, attr);
-        if(rc != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("Failed to bind mirror session to port %s, rc=%d",
-                    sid.c_str(), rc);
-            return rc;
-        }
-    }
 
     return set_internal(SAI_OBJECT_TYPE_PORT, sid, attr);
 }
