@@ -79,8 +79,7 @@ stages:
       debian_version: ${{ parameters.debian_version }}
 
 - stage: BuildArm
-  dependsOn: Build
-  condition: succeeded('Build')
+  dependsOn: []
   jobs:
   - template: .azure-pipelines/build-template.yml
     parameters:
@@ -103,8 +102,7 @@ stages:
       debian_version: ${{ parameters.debian_version }}
 
 - stage: BuildTrixie
-  dependsOn: BuildArm
-  condition: succeeded('BuildArm')
+  dependsOn: []
   jobs:
   - job: ResolveVpp
     displayName: Resolve VPP build
