@@ -18,6 +18,11 @@ sai_status_t SwitchVpp::createMirrorSession(
     uint32_t attr_index;
     MirrorSessionInfo info{};
 
+    if(m_mirror_session_count >= m_maxMirrorSessions) {
+        SWSS_LOG_ERROR("Cannot create mirror session %s: max mirror sessions reached (%d)", sai_serialize_object_id(object_id).c_str(), m_maxMirrorSessions);
+        return SAI_STATUS_INSUFFICIENT_RESOURCES;
+    }
+
     auto sid = sai_serialize_object_id(object_id);
 
     CHECK_STATUS(find_attrib_in_list(attr_count, attr_list, SAI_MIRROR_SESSION_ATTR_TYPE, &value, &attr_index));
@@ -65,6 +70,11 @@ sai_status_t SwitchVpp::removeMirrorSession(
 {
     SWSS_LOG_ENTER();
 
+    if(m_mirror_session_count == 0) {
+        SWSS_LOG_ERROR("No mirror sessions to remove (m_mirror_session_count is 0)");
+        return SAI_STATUS_FAILURE;
+    }
+
     auto it = m_mirror_sessions.find(object_id);
     if(it == m_mirror_sessions.end()) {
         SWSS_LOG_ERROR("Mirror session %s not found", sai_serialize_object_id(object_id).c_str());
@@ -104,7 +114,7 @@ sai_status_t SwitchVpp::bindMirrorPort(
             if(attr->value.objlist.count > 1) {
                 SWSS_LOG_WARN("Multiple destination interfaces given (not supported); only the first will be used");
             }
-            
+
             // bind
             sai_object_id_t session_oid = attr->value.objlist.list[0];
             auto it = m_mirror_sessions.find(session_oid);
