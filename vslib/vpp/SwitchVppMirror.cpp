@@ -187,16 +187,34 @@ sai_status_t SwitchVpp::bindMirrorPort(
             auto pmb_it = m_port_mirror_bindings.find(portId);
             if(pmb_it == m_port_mirror_bindings.end()) {
                 SWSS_LOG_WARN("No existing mirror session binding found for port %s; skipping VPP SPAN unprogramming", sid.c_str());
-            } else {
-                m_port_mirror_bindings.erase(pmb_it);
+                return SAI_STATUS_SUCCESS;
             }
 
-            // unbind: state = 0
-            SWSS_LOG_INFO("VPP span disable: src_sw_if=%u, src_hwif_name=%s", src_sw_if, src_hwif.c_str());
-            int ret = vpp_span_enable_disable(src_sw_if, ~0, 0, false);
-            if(ret != 0){
-                SWSS_LOG_ERROR("vpp span disable failed for port %s: src_sw_if=%u, ret=%d", sid.c_str(), src_sw_if, ret);
-                return SAI_STATUS_FAILURE;
+            PortMirrorBinding& pmb = pmb_it->second;
+
+            (attr->id == SAI_PORT_ATTR_INGRESS_MIRROR_SESSION) ? pmb.rx = false : pmb.tx = false;
+
+            // 1 = RX, 2 = TX, 3 = both, 0 = none
+            uint8_t state = (pmb.rx ? 1 : 0) | (pmb.tx ? 2 : 0);
+
+            if(state != 0) {
+                // Other direction still active: reprogram with the remaining state.
+                SWSS_LOG_INFO("VPP span update: src_sw_if=%u, src_hwif_name=%s, dst_sw_if=%u, state=%u", src_sw_if, src_hwif.c_str(), pmb.dst_sw_if_idx, state);
+                int ret = vpp_span_enable_disable(src_sw_if, pmb.dst_sw_if_idx, state, false);
+                if(ret != 0){
+                    SWSS_LOG_ERROR("vpp span update failed for port %s: src_sw_if=%u, dst_sw_if=%u, state=%u, ret=%d", sid.c_str(), src_sw_if, pmb.dst_sw_if_idx, state, ret);
+                    return SAI_STATUS_FAILURE;
+                }
+            } else {
+                // Both directions now off: fully disable SPAN and drop the binding.
+                m_port_mirror_bindings.erase(pmb_it);
+
+                SWSS_LOG_INFO("VPP span disable: src_sw_if=%u, src_hwif_name=%s", src_sw_if, src_hwif.c_str());
+                int ret = vpp_span_enable_disable(src_sw_if, ~0, 0, false);
+                if(ret != 0){
+                    SWSS_LOG_ERROR("vpp span disable failed for port %s: src_sw_if=%u, ret=%d", sid.c_str(), src_sw_if, ret);
+                    return SAI_STATUS_FAILURE;
+                }
             }
         }
     }
