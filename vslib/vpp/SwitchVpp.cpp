@@ -1145,6 +1145,12 @@ uint64_t SwitchVpp::getObjectTypeAvailability(
         return static_cast<uint64_t>(m_maxMySidEntries - m_srv6_my_sid_count);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_MIRROR_SESSION)
+    {
+        // Return available mirror sessions (max - used)
+        return static_cast<uint64_t>(m_maxMirrorSessions - m_mirror_session_count);
+    }
+
     // Return 0 for unsupported types
     return 0;
 }
@@ -1524,6 +1530,12 @@ sai_status_t SwitchVpp::create(
         return status;
     }
 
+    if(object_type == SAI_OBJECT_TYPE_MIRROR_SESSION) {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createMirrorSession(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
@@ -1891,6 +1903,12 @@ sai_status_t SwitchVpp::remove(
         return remove_internal(object_type, serializedObjectId);
     }
 
+    if(object_type == SAI_OBJECT_TYPE_MIRROR_SESSION) {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return removeMirrorSession(object_id);
+    }
+
     return remove_internal(object_type, serializedObjectId);
 }
 
@@ -1928,7 +1946,12 @@ sai_status_t SwitchVpp::setPort(
 {
     SWSS_LOG_ENTER();
 
-    UpdatePort(portId, 1, attr);
+    sai_status_t status = UpdatePort(portId, 1, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
 
     auto sid = sai_serialize_object_id(portId);
 
