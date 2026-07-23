@@ -105,7 +105,7 @@ sai_status_t SwitchVpp::bindMirrorPort(
         return SAI_STATUS_FAILURE;
     } else {
         uint32_t src_sw_if = get_sw_if_idx(src_hwif.c_str());
-        if(src_sw_if == ~0){
+        if(src_sw_if == (uint32_t)-1) {
             SWSS_LOG_ERROR("Failed to get sw_if_index for hwif %s", src_hwif.c_str());
             return SAI_STATUS_FAILURE;
         }
