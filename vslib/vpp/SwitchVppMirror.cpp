@@ -81,6 +81,38 @@ sai_status_t SwitchVpp::removeMirrorSession(
         return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
+    // Unprogram and erase any port mirror bindings that still reference this
+    // session, so no dangling binding is left pointing at a removed session.
+    for(auto pmb_it = m_port_mirror_bindings.begin(); pmb_it != m_port_mirror_bindings.end(); ) {
+        if(pmb_it->second.session_oid != object_id) {
+            ++pmb_it;
+            continue;
+        }
+
+        sai_object_id_t portId = pmb_it->first;
+        auto port_sid = sai_serialize_object_id(portId);
+
+        std::string src_hwif;
+        if(!vpp_get_hwif_name(portId, 0, src_hwif)) {
+            SWSS_LOG_WARN("Failed to get hwif name for port %s while removing mirror session %s; skipping VPP SPAN unprogramming",
+                port_sid.c_str(), sai_serialize_object_id(object_id).c_str());
+        } else {
+            uint32_t src_sw_if = get_sw_if_idx(src_hwif.c_str());
+            if(src_sw_if == (uint32_t)-1) {
+                SWSS_LOG_WARN("Failed to get sw_if_index for hwif %s while removing mirror session %s; skipping VPP SPAN unprogramming",
+                    src_hwif.c_str(), sai_serialize_object_id(object_id).c_str());
+            } else {
+                SWSS_LOG_INFO("VPP span disable: src_sw_if=%u, src_hwif_name=%s", src_sw_if, src_hwif.c_str());
+                int ret = vpp_span_enable_disable(src_sw_if, ~0, 0, false);
+                if(ret != 0){
+                    SWSS_LOG_ERROR("vpp span disable failed for port %s: src_sw_if=%u, ret=%d", port_sid.c_str(), src_sw_if, ret);
+                }
+            }
+        }
+
+        pmb_it = m_port_mirror_bindings.erase(pmb_it);
+    }
+
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_MIRROR_SESSION, sai_serialize_object_id(object_id)));
 
     m_mirror_sessions.erase(it);
