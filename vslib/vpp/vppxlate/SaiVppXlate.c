@@ -1223,6 +1223,20 @@ vl_api_bfd_udp_set_tos_reply_t_handler (vl_api_bfd_udp_set_tos_reply_t *msg)
 }
 
 static void
+vl_api_sflow_interface_sampling_rate_set_reply_t_handler(vl_api_sflow_interface_sampling_rate_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sflow_interface_direction_set_reply_t_handler(vl_api_sflow_interface_direction_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_bfd_udp_session_event_t_handler (vl_api_bfd_udp_session_event_t *msg)
 {
   bool multihop = (htonl(msg->sw_if_index) == (uint32_t)~0);
@@ -1733,6 +1747,8 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply) \
     _(SFLOW_MSG_ID(SFLOW_ENABLE_DISABLE_REPLY), sflow_enable_disable_reply) \
     _(SFLOW_MSG_ID(SFLOW_SAMPLING_RATE_SET_REPLY), sflow_sampling_rate_set_reply) \
+    _(SFLOW_MSG_ID(SFLOW_INTERFACE_SAMPLING_RATE_SET_REPLY), sflow_interface_sampling_rate_set_reply) \
+    _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
     _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply)
 
@@ -3138,6 +3154,88 @@ int vpp_ip_flow_hash_set (uint32_t vrf_id, uint32_t hash_mask, int addr_family)
     VPP_UNLOCK();
 
     return ret;
+}
+
+int vpp_sflow_interface_sampling_rate_set(const char *hwif_name, uint32_t sampling_n)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_interface_sampling_rate_set_t *mp;
+    int ret; 
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_INTERFACE_SAMPLING_RATE_SET, mp);
+
+    if(hwif_name){
+        u32 idx = get_swif_idx(vam, hwif_name);
+        if(idx != (u32) - 1){
+            mp->hw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        SAIVPP_ERROR("No hw_index provided");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->sampling_N = htonl(sampling_n);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s sampling_N %u", __func__, ret, hwif_name, sampling_n);
+    } else {
+        SAIVPP_INFO("%s %s sampling_N %u", __func__, hwif_name, sampling_n);
+    }
+
+    VPP_UNLOCK();
+    return ret; 
+}
+
+int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_interface_direction_set_t *mp;
+    int ret;
+    
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_INTERFACE_DIRECTION_SET, mp);
+
+    if(hwif_name){
+        u32 idx = get_swif_idx(vam, hwif_name);
+        if(idx != (u32) - 1){
+            mp->hw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        SAIVPP_ERROR("No hw_index provided");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->direction = htonl(direction);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s direction %u", __func__, ret, hwif_name, direction);
+    } else {
+        SAIVPP_INFO("%s %s direction %u", __func__, hwif_name, direction);
+    }
+
+    VPP_UNLOCK();
+    return ret; 
 }
 
 int interface_ip_address_add_del (const char *hwif_name, vpp_ip_route_t *prefix, bool is_add)

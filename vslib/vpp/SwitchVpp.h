@@ -823,7 +823,6 @@ namespace saivs
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
-            uint32_t m_sflow_sample_rate = 0;
 
         protected: // VPP
 
@@ -1111,6 +1110,16 @@ namespace saivs
 
              sai_status_t sflowHostifTableEntryRemove(
                      _In_ const std::string &serializedObjectId);
+
+             sai_status_t sflowInterfaceSamplingRateSet(
+                     _In_ sai_object_id_t port_id,
+                     _In_ uint32_t rate);
+
+             sai_status_t sflowInterfaceDirectionSet(
+                     _In_ sai_object_id_t port_id,
+                     _In_ uint32_t direction);
+                     
+        
 
 
         public: // VPP
