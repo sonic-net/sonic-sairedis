@@ -1490,15 +1490,21 @@ sai_status_t SwitchVpp::removeLagMember(
     // detach to avoid acting on a non-member; otherwise detach it from the bond now.
     sai_object_id_t port_oid = SAI_NULL_OBJECT_ID;
     bool egress_disabled = false;
+    bool rif_detached = false;
 
     if (get_lag_member_port(lag_member_oid, port_oid) == SAI_STATUS_SUCCESS)
     {
         egress_disabled = m_egress_disabled_lag_member_ports.count(port_oid) > 0;
+        rif_detached = m_rif_detached_lag_member_ports.count(port_oid) > 0;
     }
 
     if (egress_disabled)
     {
         m_egress_disabled_lag_member_ports.erase(port_oid);
+    }
+    else if (rif_detached)
+    {
+        m_rif_detached_lag_member_ports.erase(port_oid);
     }
     else
     {

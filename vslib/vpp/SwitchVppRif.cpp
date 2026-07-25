@@ -1565,6 +1565,39 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
         return SAI_STATUS_FAILURE;
     }
+
+    if (ot == SAI_OBJECT_TYPE_PORT)
+    {
+        auto object_hash_it = m_objectHash.find(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+        if (object_hash_it != m_objectHash.end())
+        {
+            for (const auto& lag_member : object_hash_it->second)
+            {
+                sai_object_id_t lag_member_oid;
+                sai_deserialize_object_id(lag_member.first, lag_member_oid);
+
+                sai_object_id_t lag_member_port_oid;
+                if (get_lag_member_port(lag_member_oid, lag_member_port_oid) != SAI_STATUS_SUCCESS ||
+                    lag_member_port_oid != obj_id)
+                {
+                    continue;
+                }
+
+                SWSS_LOG_NOTICE(
+                        "Detach port %s from VPP LAG member %s before creating its router interface",
+                        sai_serialize_object_id(obj_id).c_str(),
+                        lag_member.first.c_str());
+                if (m_egress_disabled_lag_member_ports.count(obj_id) == 0)
+                {
+                    CHECK_STATUS_QUIET(vpp_remove_lag_member(lag_member_oid));
+                    m_rif_detached_lag_member_ports.insert(obj_id);
+                }
+                break;
+            }
+        }
+    }
+
     auto attr_vlan_id = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID, attr_count, attr_list);
 
     uint16_t vlan_id = 0;
