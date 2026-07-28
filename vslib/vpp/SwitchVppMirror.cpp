@@ -59,7 +59,7 @@ sai_status_t SwitchVpp::createMirrorSession(
     m_mirror_sessions[object_id] = info;
     m_mirror_session_count++;
 
-    SWSS_LOG_NOTICE("Created mirror session %s, type=%d, sw_if_index=%u, is_erspan=%d, mirror session count: %d",
+    SWSS_LOG_NOTICE("Created mirror session %s, type=%d, sw_if_index=%u, is_erspan=%d, mirror session count: %u",
         sid.c_str(), mirror_type, info.sw_if_index, info.is_erspan, m_mirror_session_count);
 
     return SAI_STATUS_SUCCESS;
@@ -118,7 +118,7 @@ sai_status_t SwitchVpp::removeMirrorSession(
     m_mirror_sessions.erase(it);
     m_mirror_session_count--;
 
-    SWSS_LOG_NOTICE("Removed mirror session %s, mirror session count: %d", sai_serialize_object_id(object_id).c_str(), m_mirror_session_count);
+    SWSS_LOG_NOTICE("Removed mirror session %s, mirror session count: %u", sai_serialize_object_id(object_id).c_str(), m_mirror_session_count);
 
     return SAI_STATUS_SUCCESS;
 }
