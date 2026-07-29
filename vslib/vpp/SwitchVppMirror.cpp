@@ -173,7 +173,7 @@ sai_status_t SwitchVpp::bindMirrorPort(
                 (attr->id == SAI_PORT_ATTR_INGRESS_MIRROR_SESSION) ? pmb.rx = true : pmb.tx = true;
 
                 // 1 = RX, 2 = TX, 3 = both
-                uint8_t state = (pmb.rx ? 1 : 0) | (pmb.tx ? 2 : 0);
+                uint32_t state = (pmb.rx ? 1 : 0) | (pmb.tx ? 2 : 0);
 
                 SWSS_LOG_INFO("Port mirror binding info for port %s: session_oid=%s, rx=%d, tx=%d, dst_sw_if_idx=%u", sid.c_str(), sai_serialize_object_id(session_oid).c_str(), pmb.rx, pmb.tx, pmb.dst_sw_if_idx);
                 SWSS_LOG_INFO("VPP span enable: src_sw_if=%u, src_hwif_name=%s, dst_sw_if=%u, state=%u", src_sw_if, src_hwif.c_str(), it->second.sw_if_index, state);
@@ -195,7 +195,7 @@ sai_status_t SwitchVpp::bindMirrorPort(
             (attr->id == SAI_PORT_ATTR_INGRESS_MIRROR_SESSION) ? pmb.rx = false : pmb.tx = false;
 
             // 1 = RX, 2 = TX, 3 = both, 0 = none
-            uint8_t state = (pmb.rx ? 1 : 0) | (pmb.tx ? 2 : 0);
+            uint32_t state = (pmb.rx ? 1 : 0) | (pmb.tx ? 2 : 0);
 
             if(state != 0) {
                 // Other direction still active: reprogram with the remaining state.

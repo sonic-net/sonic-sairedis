@@ -5108,7 +5108,7 @@ int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src)
     return ret;
 }
 
-int vpp_span_enable_disable(uint32_t sw_if_index_from, uint32_t sw_if_index_to, uint8_t state, bool is_l2)
+int vpp_span_enable_disable(uint32_t sw_if_index_from, uint32_t sw_if_index_to, uint32_t state, bool is_l2)
 {
     vat_main_t *vam = &vat_main;
     vl_api_sw_interface_span_enable_disable_t *mp;
@@ -5122,7 +5122,7 @@ int vpp_span_enable_disable(uint32_t sw_if_index_from, uint32_t sw_if_index_to, 
 
     mp->sw_if_index_from = htonl(sw_if_index_from);
     mp->sw_if_index_to = htonl(sw_if_index_to);
-    mp->state = htonl((uint32_t)state);
+    mp->state = htonl(state);
     mp->is_l2 = is_l2;
 
     S (mp);
