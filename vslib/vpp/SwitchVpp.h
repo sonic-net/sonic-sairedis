@@ -434,6 +434,17 @@ namespace saivs
                     _In_ sai_object_type_t object_type,
                     _In_ sai_attr_id_t attr_id);
 
+            // True if VPP overrides the enum-values capability for this trim
+            // attribute, advertising only the single resolution mode the
+            // software admission shim honors (DSCP_VALUE for the DSCP mode,
+            // STATIC for the queue mode). On a match *value receives that enum;
+            // all other attributes fall through to the base metadata. Backs
+            // queryAttrEnumValuesCapability().
+            static bool getTrimEnumValuesCapability(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Out_ sai_int32_t *value);
+
             // Accumulate a switch-level packet-trim attribute into m_trim_policy
             // and push the resulting global policy to the VPP sonic_ext trim
             // plugin. Invoked from set() for the SAI_SWITCH_ATTR_PACKET_TRIM_*
@@ -442,8 +453,10 @@ namespace saivs
                     _In_ const sai_attribute_t *attr);
 
             // Send the current accumulated m_trim_policy to VPP via
-            // sonic_ext_trim_global_set (an idempotent full-state set).
-            void programTrimGlobal();
+            // sonic_ext_trim_global_set (an idempotent full-state set). Returns
+            // the VPP programming status (including the per-queue re-resolve
+            // when trimming is enabled).
+            sai_status_t programTrimGlobal();
 
             // --- Packet-trim per-queue datapath wiring ------------------------
             // Beyond the global policy, the VPP sonic_ext trim plugin needs a
@@ -458,7 +471,9 @@ namespace saivs
 
             // Re-resolve and re-push the whole trim datapath when trimming is
             // enabled and one of attr_list is trim-relevant (isTrimDataplaneAttr).
-            void refreshTrimDataplaneOnChange(
+            // Returns the VPP programming status (SUCCESS when no refresh is
+            // needed) so a SET can surface a dataplane push failure.
+            sai_status_t refreshTrimDataplaneOnChange(
                     _In_ sai_object_type_t object_type,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
@@ -471,7 +486,8 @@ namespace saivs
 
             // Re-resolve every port/queue admission state and the DSCP->queue
             // map from the SAI object graph and push them to the VPP plugin.
-            void refreshTrimDataplane();
+            // Returns the aggregate VPP programming status.
+            sai_status_t refreshTrimDataplane();
 
             // Build a queue OID -> parent (leaf) scheduler group OID map by
             // scanning SAI_SCHEDULER_GROUP child lists. SONiC applies per-queue
@@ -481,15 +497,17 @@ namespace saivs
                     _Out_ std::unordered_map<sai_object_id_t, sai_object_id_t> &queueToSg);
 
             // Resolve and push one queue's admission state (eligible + token
-            // bucket rate/capacity) for the given egress hwif.
-            void refreshTrimQueue(
+            // bucket rate/capacity) for the given egress hwif. Returns the VPP
+            // programming status (SUCCESS when the queue is skipped).
+            sai_status_t refreshTrimQueue(
                     _In_ const std::string &hwif_name,
                     _In_ sai_object_id_t queue_oid,
                     _In_ const std::unordered_map<sai_object_id_t, sai_object_id_t> &queueToSg);
 
             // Compose PORT DSCP_TO_TC o TC_TO_QUEUE into a switch-global
-            // dscp_to_queue[64] table and push it to the VPP plugin.
-            void refreshTrimDscpToQueueMap();
+            // dscp_to_queue[64] table and push it to the VPP plugin. Returns the
+            // VPP programming status (SUCCESS when no map is bound yet).
+            sai_status_t refreshTrimDscpToQueueMap();
 
             sai_status_t vpp_create_lag(
                     _In_ sai_object_id_t lag_id,
