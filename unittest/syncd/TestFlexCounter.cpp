@@ -1516,8 +1516,8 @@ TEST(FlexCounter, bulkChunksize)
     std::vector<std::vector<uint64_t>> valueRecord;
     sai_uint64_t counterSeed = 0;
     uint32_t unifiedBulkChunkSize = 0;
-    int32_t partialSupportingBulkObjectFactor;
-    bool runtimeReady = false;
+    int32_t partialSupportingBulkObjectFactor = 0;
+    std::atomic<bool> runtimeReady{false};
     sai->mock_bulkGetStats = [&](sai_object_id_t,
                                 sai_object_type_t,
                                 uint32_t object_count,
