@@ -620,6 +620,26 @@ typedef enum {
     } vpp_gre_tunnel_t;
 
     extern int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, uint32_t *sw_if_index);
+    /*
+     * SONiC-VPP packet-trimming (SAI DROP_AND_TRIM) control API.
+     * SAI-VPP programs the global trim policy, the composed DSCP->queue
+     * table, and the per-(port,queue) software admission parameters, and
+     * reads back the trim counters for SAI switch/port/queue statistics.
+     */
+    typedef struct vpp_sonic_ext_trim_counters_ {
+        uint64_t trim_sent;
+        uint64_t trim_drop;
+        uint64_t trim_admit_fail;
+    } vpp_sonic_ext_trim_counters_t;
+
+    extern int vpp_sonic_ext_trim_global_set(bool is_enable, uint16_t trim_size,
+                                             uint8_t dscp_mode, uint8_t dscp_value,
+                                             uint8_t tc_value, uint8_t trim_queue);
+    extern int vpp_sonic_ext_trim_dscp_map_set(const uint8_t dscp_to_queue[64]);
+    extern int vpp_sonic_ext_trim_queue_set(const char *hwif_name, uint8_t queue,
+                                            bool eligible, uint64_t rate_bytes_per_sec,
+                                            uint64_t capacity_bytes);
+    extern int vpp_sonic_ext_trim_counters_get(vpp_sonic_ext_trim_counters_t *out);
 #ifdef __cplusplus
 }
 #endif
