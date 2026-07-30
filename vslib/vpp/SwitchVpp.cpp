@@ -1128,6 +1128,18 @@ bool SwitchVpp::isTrimDataplaneAttr(
         case SAI_OBJECT_TYPE_SCHEDULER:
             return attr_id == SAI_SCHEDULER_ATTR_MAX_BANDWIDTH_RATE;
 
+        case SAI_OBJECT_TYPE_PORT:
+            // The DSCP->queue trim table is composed from the port's bound
+            // DSCP_TO_TC and TC_TO_QUEUE qos maps; a (re)bind or unbind at
+            // runtime must re-resolve it.
+            return attr_id == SAI_PORT_ATTR_QOS_DSCP_TO_TC_MAP ||
+                   attr_id == SAI_PORT_ATTR_QOS_TC_TO_QUEUE_MAP;
+
+        case SAI_OBJECT_TYPE_QOS_MAP:
+            // An in-place edit of a bound DSCP_TO_TC / TC_TO_QUEUE map likewise
+            // changes the resolved DSCP->queue table.
+            return attr_id == SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+
         default:
             return false;
     }
@@ -1175,14 +1187,14 @@ sai_status_t SwitchVpp::setSwitchTrimAttr(
             return SAI_STATUS_SUCCESS;
     }
 
-    programTrimGlobal();
-
-    return SAI_STATUS_SUCCESS;
+    return programTrimGlobal();
 }
 
-void SwitchVpp::programTrimGlobal()
+sai_status_t SwitchVpp::programTrimGlobal()
 {
     SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     int ret = vpp_sonic_ext_trim_global_set(
             m_trim_policy.enabled,
@@ -1198,6 +1210,7 @@ void SwitchVpp::programTrimGlobal()
                 ret, m_trim_policy.enabled, m_trim_policy.trim_size,
                 m_trim_policy.dscp_mode, m_trim_policy.dscp_value,
                 m_trim_policy.tc_value, m_trim_policy.trim_queue);
+        status = SAI_STATUS_FAILURE;
     }
 
     // The global policy just changed. Queues / buffer profiles / schedulers may
@@ -1206,11 +1219,18 @@ void SwitchVpp::programTrimGlobal()
     // state now that trimming is active.
     if (m_trim_policy.enabled)
     {
-        refreshTrimDataplane();
+        sai_status_t refresh_status = refreshTrimDataplane();
+
+        if (refresh_status != SAI_STATUS_SUCCESS)
+        {
+            status = refresh_status;
+        }
     }
+
+    return status;
 }
 
-void SwitchVpp::refreshTrimDataplaneOnChange(
+sai_status_t SwitchVpp::refreshTrimDataplaneOnChange(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -1219,17 +1239,18 @@ void SwitchVpp::refreshTrimDataplaneOnChange(
     // plugin bypasses all traffic regardless of the per-queue state.
     if (!m_trim_policy.enabled)
     {
-        return;
+        return SAI_STATUS_SUCCESS;
     }
 
     for (uint32_t i = 0; i < attr_count; i++)
     {
         if (isTrimDataplaneAttr(object_type, attr_list[i].id))
         {
-            refreshTrimDataplane();
-            return;
+            return refreshTrimDataplane();
         }
     }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 std::vector<sai_object_id_t> SwitchVpp::getTrimPortList() const
@@ -1261,7 +1282,7 @@ std::vector<sai_object_id_t> SwitchVpp::getTrimPortList() const
     return ports;
 }
 
-void SwitchVpp::refreshTrimDataplane()
+sai_status_t SwitchVpp::refreshTrimDataplane()
 {
     SWSS_LOG_ENTER();
 
@@ -1278,6 +1299,8 @@ void SwitchVpp::refreshTrimDataplane()
     // blocking detection can locate the bound scheduler.
     std::unordered_map<sai_object_id_t, sai_object_id_t> queue_to_sg;
     buildQueueSchedulerGroupMap(queue_to_sg);
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     for (auto port_oid : port_list)
     {
@@ -1312,11 +1335,23 @@ void SwitchVpp::refreshTrimDataplane()
 
         for (uint32_t i = 0; i < n; i++)
         {
-            refreshTrimQueue(hwif, queues[i], queue_to_sg);
+            sai_status_t queue_status = refreshTrimQueue(hwif, queues[i], queue_to_sg);
+
+            if (queue_status != SAI_STATUS_SUCCESS)
+            {
+                status = queue_status;
+            }
         }
     }
 
-    refreshTrimDscpToQueueMap();
+    sai_status_t map_status = refreshTrimDscpToQueueMap();
+
+    if (map_status != SAI_STATUS_SUCCESS)
+    {
+        status = map_status;
+    }
+
+    return status;
 }
 
 void SwitchVpp::buildQueueSchedulerGroupMap(
@@ -1373,7 +1408,7 @@ void SwitchVpp::buildQueueSchedulerGroupMap(
     }
 }
 
-void SwitchVpp::refreshTrimQueue(
+sai_status_t SwitchVpp::refreshTrimQueue(
         _In_ const std::string &hwif_name,
         _In_ sai_object_id_t queue_oid,
         _In_ const std::unordered_map<sai_object_id_t, sai_object_id_t> &queueToSg)
@@ -1389,14 +1424,14 @@ void SwitchVpp::refreshTrimQueue(
 
         if (qtype != SAI_QUEUE_TYPE_UNICAST && qtype != SAI_QUEUE_TYPE_ALL)
         {
-            return;
+            return SAI_STATUS_SUCCESS;
         }
     }
 
     attr.id = SAI_QUEUE_ATTR_INDEX;
     if (get(SAI_OBJECT_TYPE_QUEUE, queue_oid, 1, &attr) != SAI_STATUS_SUCCESS)
     {
-        return;
+        return SAI_STATUS_SUCCESS;
     }
     uint8_t queue_index = attr.value.u8;
 
@@ -1408,7 +1443,7 @@ void SwitchVpp::refreshTrimQueue(
     static const uint8_t VPP_TRIM_MAX_QUEUES = 8;
     if (queue_index >= VPP_TRIM_MAX_QUEUES)
     {
-        return;
+        return SAI_STATUS_SUCCESS;
     }
 
     // Eligibility: the queue's bound buffer profile uses DROP_AND_TRIM.
@@ -1489,10 +1524,20 @@ void SwitchVpp::refreshTrimQueue(
         capacity = UINT64_MAX;
     }
 
-    vpp_sonic_ext_trim_queue_set(hwif_name.c_str(), queue_index, eligible, rate, capacity);
+    int ret = vpp_sonic_ext_trim_queue_set(hwif_name.c_str(), queue_index, eligible, rate, capacity);
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("vpp_sonic_ext_trim_queue_set failed (ret=%d) hwif=%s queue=%u eligible=%d rate=%llu cap=%llu",
+                ret, hwif_name.c_str(), queue_index, (int)eligible,
+                (unsigned long long)rate, (unsigned long long)capacity);
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
-void SwitchVpp::refreshTrimDscpToQueueMap()
+sai_status_t SwitchVpp::refreshTrimDscpToQueueMap()
 {
     SWSS_LOG_ENTER();
 
@@ -1571,9 +1616,21 @@ void SwitchVpp::refreshTrimDscpToQueueMap()
             dscp_to_queue[d] = queue_by_tc[tc];
         }
 
-        vpp_sonic_ext_trim_dscp_map_set(dscp_to_queue);
-        return;
+        int ret = vpp_sonic_ext_trim_dscp_map_set(dscp_to_queue);
+
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("vpp_sonic_ext_trim_dscp_map_set failed (ret=%d)", ret);
+            return SAI_STATUS_FAILURE;
+        }
+
+        return SAI_STATUS_SUCCESS;
     }
+
+    // No port has both qos maps bound yet: nothing to push. The plugin keeps
+    // its last-good table (initially identity->queue 0) rather than being
+    // cleared to an all-zero map, which would collapse every DSCP onto queue 0.
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::queryAttributeCapability(
@@ -1596,6 +1653,42 @@ sai_status_t SwitchVpp::queryAttributeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+bool SwitchVpp::getTrimEnumValuesCapability(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_attr_id_t attr_id,
+        _Out_ sai_int32_t *value)
+{
+    // VPP's software admission shim honors only one resolution mode per trim
+    // enum: DSCP_VALUE for the DSCP resolution mode and STATIC for the queue
+    // resolution mode. The asymmetric FROM_TC / DYNAMIC modes are intentionally
+    // omitted so orchagent never programs a mode VPP cannot satisfy. All other
+    // (object_type, attr_id) pairs fall through to the base metadata.
+    if (object_type != SAI_OBJECT_TYPE_SWITCH)
+    {
+        return false;
+    }
+
+    switch (attr_id)
+    {
+        case SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE:
+            if (value)
+            {
+                *value = (sai_int32_t) SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE;
+            }
+            return true;
+
+        case SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE:
+            if (value)
+            {
+                *value = (sai_int32_t) SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC;
+            }
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 sai_status_t SwitchVpp::queryAttrEnumValuesCapability(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type,
@@ -1605,20 +1698,13 @@ sai_status_t SwitchVpp::queryAttrEnumValuesCapability(
     SWSS_LOG_ENTER();
 
     // Advertise only the trim resolution modes the VPP software admission shim
-    // actually honors: DSCP_VALUE for the DSCP resolution mode and STATIC for
-    // the queue resolution mode. The asymmetric FROM_TC / DYNAMIC modes are
-    // intentionally omitted so orchagent never programs a mode VPP cannot
-    // satisfy. The buffer-profile DROP_AND_TRIM admission-fail action is
-    // advertised as-is by the base metadata.
-    if (object_type == SAI_OBJECT_TYPE_SWITCH &&
-        (attr_id == SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE ||
-         attr_id == SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE))
-    {
-        sai_int32_t value =
-            (attr_id == SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE)
-                ? (sai_int32_t) SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE
-                : (sai_int32_t) SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC;
+    // actually honors (see getTrimEnumValuesCapability). The buffer-profile
+    // DROP_AND_TRIM admission-fail action is advertised as-is by the base
+    // metadata.
+    sai_int32_t value = 0;
 
+    if (getTrimEnumValuesCapability(object_type, attr_id, &value))
+    {
         if (enum_values_capability->count < 1)
         {
             enum_values_capability->count = 1;
@@ -2126,7 +2212,10 @@ sai_status_t SwitchVpp::create_internal(
 
     m_object_db.create_or_update(object_type, serializedObjectId, attr_count, attr_list, true /*is_create*/);
 
-    refreshTrimDataplaneOnChange(object_type, attr_count, attr_list);
+    // A trim-refresh push failure must not fail object creation (the SAI object
+    // is created regardless); the SET path is where a dataplane push failure is
+    // reported back to orchagent. Intentionally ignore the status here.
+    (void) refreshTrimDataplaneOnChange(object_type, attr_count, attr_list);
 
     return SAI_STATUS_SUCCESS;
 }
@@ -2561,6 +2650,8 @@ sai_status_t SwitchVpp::set(
 
     if (objectType == SAI_OBJECT_TYPE_SWITCH)
     {
+        sai_status_t trim_status = SAI_STATUS_SUCCESS;
+
         switch(attr->id)
         {
             case SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC:
@@ -2580,10 +2671,17 @@ sai_status_t SwitchVpp::set(
             case SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE:
             case SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_INDEX:
                 {
-                    setSwitchTrimAttr(attr);
+                    trim_status = setSwitchTrimAttr(attr);
                     break;
                 }
         }
+
+        // Persist the switch attribute in the object store, then surface any
+        // trim programming failure (setSwitchTrimAttr pushes the global policy
+        // and per-queue admission to VPP) to the caller.
+        sai_status_t store_status = set_internal(objectType, serializedObjectId, attr);
+
+        return (trim_status != SAI_STATUS_SUCCESS) ? trim_status : store_status;
     }
 
     if (objectType == SAI_OBJECT_TYPE_ACL_ENTRY)
@@ -2656,9 +2754,10 @@ sai_status_t SwitchVpp::set_internal(
     // set have only one attribute
     attrHash[a->getAttrMetadata()->attridname] = a;
 
-    refreshTrimDataplaneOnChange(objectType, 1, attr);
-
-    return SAI_STATUS_SUCCESS;
+    // Propagate a trim dataplane (re)program failure to the caller: a runtime
+    // qos/queue/buffer/scheduler set that could not be pushed to VPP must be
+    // reported, not silently swallowed. Returns SUCCESS for non-trim attrs.
+    return refreshTrimDataplaneOnChange(objectType, 1, attr);
 }
 
 sai_status_t SwitchVpp::get(
