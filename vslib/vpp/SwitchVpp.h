@@ -191,6 +191,12 @@ namespace saivs
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability) override;
 
+            virtual sai_status_t queryAttrEnumValuesCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Inout_ sai_s32_list_t *enum_values_capability) override;
+
             virtual sai_status_t queryStatsStCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
@@ -406,6 +412,72 @@ namespace saivs
                     _In_ bool current_attr_found,
                     _In_ bool current_egress_disable);
 
+            // True if a set/create on (object_type, attr_id) can change the
+            // resolved per-queue trim datapath -- the queue's buffer profile or
+            // scheduler binding, the buffer profile admission-fail action, or
+            // the scheduler PIR. Used to trigger an order-independent
+            // re-resolve of the VPP trim plugin state.
+            static bool isTrimDataplaneAttr(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id);
+
+            // Accumulate a switch-level packet-trim attribute into m_trim_policy
+            // and push the resulting global policy to the VPP sonic_ext trim
+            // plugin. Invoked from set() for the SAI_SWITCH_ATTR_PACKET_TRIM_*
+            // attributes.
+            sai_status_t setSwitchTrimAttr(
+                    _In_ const sai_attribute_t *attr);
+
+            // Send the current accumulated m_trim_policy to VPP via
+            // sonic_ext_trim_global_set (an idempotent full-state set).
+            void programTrimGlobal();
+
+            // --- Packet-trim per-queue datapath wiring ------------------------
+            // Beyond the global policy, the VPP sonic_ext trim plugin needs a
+            // per-(egress port, queue) admission state and a switch-global
+            // DSCP->queue table. Both are derived from the SAI QoS object graph:
+            // a queue whose buffer profile uses DROP_AND_TRIM is trim-eligible,
+            // and a queue whose scheduler imposes a PIR (SONiC
+            // SCHEDULER_BLOCK_DATA_PLANE) is treated as blocking so its software
+            // token bucket drains and yields a real admission failure. The
+            // resolve is recompute-all, so it is independent of the order in
+            // which orchagent programs the queue / buffer / scheduler objects.
+
+            // Re-resolve and re-push the whole trim datapath when trimming is
+            // enabled and one of attr_list is trim-relevant (isTrimDataplaneAttr).
+            void refreshTrimDataplaneOnChange(
+                    _In_ sai_object_type_t object_type,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            // Enumerate front-panel port OIDs from the authoritative ASIC
+            // object store (m_objectHash). On sonic-vpp ports are created
+            // dynamically via createPort() and never land in m_port_list, so
+            // trim programming must not rely on that cache.
+            std::vector<sai_object_id_t> getTrimPortList() const;
+
+            // Re-resolve every port/queue admission state and the DSCP->queue
+            // map from the SAI object graph and push them to the VPP plugin.
+            void refreshTrimDataplane();
+
+            // Build a queue OID -> parent (leaf) scheduler group OID map by
+            // scanning SAI_SCHEDULER_GROUP child lists. SONiC applies per-queue
+            // schedulers to the leaf scheduler group, so blocking detection must
+            // resolve a queue's scheduler through its group.
+            void buildQueueSchedulerGroupMap(
+                    _Out_ std::unordered_map<sai_object_id_t, sai_object_id_t> &queueToSg);
+
+            // Resolve and push one queue's admission state (eligible + token
+            // bucket rate/capacity) for the given egress hwif.
+            void refreshTrimQueue(
+                    _In_ const std::string &hwif_name,
+                    _In_ sai_object_id_t queue_oid,
+                    _In_ const std::unordered_map<sai_object_id_t, sai_object_id_t> &queueToSg);
+
+            // Compose PORT DSCP_TO_TC o TC_TO_QUEUE into a switch-global
+            // dscp_to_queue[64] table and push it to the VPP plugin.
+            void refreshTrimDscpToQueueMap();
+
             sai_status_t vpp_create_lag(
                     _In_ sai_object_id_t lag_id,
                     _In_ uint32_t attr_count,
@@ -572,6 +644,23 @@ namespace saivs
 
             SaiObjectDB m_object_db;
             TunnelManager m_tunnel_mgr;
+
+            // Accumulated switch-global packet-trim policy, mirrored to the VPP
+            // sonic_ext trim plugin via programTrimGlobal(). Active on VPP:
+            // queryAttributeCapability() reports the switch trim attributes as
+            // implemented and the resolution-mode enums advertise the modes the
+            // shim honors (DSCP_VALUE / STATIC), so orchagent programs the
+            // global policy and per-queue admission once trimming is configured.
+            struct TrimGlobalPolicy
+            {
+                bool     enabled    = false;   // derived from trim_size != 0
+                uint16_t trim_size  = 0;
+                uint8_t  dscp_mode  = 0;        // 0 = DSCP_VALUE, 1 = FROM_TC
+                uint8_t  dscp_value = 0;
+                uint8_t  tc_value   = 0;
+                uint8_t  trim_queue = 0;
+            };
+            TrimGlobalPolicy m_trim_policy;
 
         private: // VPP
 
