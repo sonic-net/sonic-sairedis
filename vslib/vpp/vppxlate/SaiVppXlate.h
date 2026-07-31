@@ -261,7 +261,12 @@ typedef enum {
 
     /* SONiC VNET decap-any: high bit of the wire decap_next_index used to flag
      * a source-independent decap term to the VPP vxlan patch. Must match
-     * VXLAN_DECAP_ANY_FLAG in the VPP 0014 patch (src/plugins/vxlan/vxlan.h). */
+     * VXLAN_DECAP_ANY_FLAG in the VPP 0017 patch (src/plugins/vxlan/vxlan.h).
+     * This encoding requires a VPP built with sonic-platform-vpp patch 0017:
+     * an older VPP without it reads decap_next_index = 0x80000001 as a raw next
+     * index (undefined behaviour) instead of failing cleanly, so saivpp and the
+     * VPP image must be built and version-locked together (see VPP_VERSION in
+     * sonic-platform-vpp rules/vpp.mk). */
 #define VPP_VXLAN_DECAP_ANY_FLAG (1u << 31)
     /* Default decap next index (VXLAN_INPUT_NEXT_L2_INPUT) sent alongside the
      * flag so the stripped low bits remain a valid next index. */

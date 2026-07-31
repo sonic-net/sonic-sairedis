@@ -644,6 +644,15 @@ TunnelManager::install_l3_vxlan_decap_terms(
 {
     SWSS_LOG_ENTER();
 
+    // Best-effort / idempotent by design: this is called both when the decap
+    // map entry is created and from the late-tunnel hook when a tunnel that
+    // references the mapper appears later, so a legitimately-incomplete
+    // intermediate state (mapper present but no tunnel yet, or vice-versa) is
+    // expected and must not fail the caller. Every early return here therefore
+    // yields SAI_STATUS_SUCCESS; the genuine-error paths (no VRF, per-tunnel
+    // decap create failure) log SWSS_LOG_ERROR and are skipped rather than
+    // propagated, because the term is re-attempted on the next hook and a hard
+    // failure would abort an otherwise valid tunnel-map-entry create.
     if (vni == 0 || tunnel_map_oid == SAI_NULL_OBJECT_ID) {
         return SAI_STATUS_SUCCESS;
     }
@@ -1039,7 +1048,7 @@ TunnelManager::vxlan_secondary_vtep_local_receive(
  * IPv6 use a non-zero, non-multicast placeholder derived from src: it is
  * guaranteed IPv6-classified and different from src. The dst is never used for
  * forwarding - decap matches the source-independent (src, vni) wildcard that
- * patch 0014 registers on tunnel add.
+ * patch 0017 registers on tunnel add.
  */
 static void
 vxlan_decap_term_set_dst(_In_ const vpp_ip_addr_t& src, _Out_ vpp_ip_addr_t& dst)
@@ -1050,9 +1059,16 @@ vxlan_decap_term_set_dst(_In_ const vpp_ip_addr_t& src, _Out_ vpp_ip_addr_t& dst
         dst.sa_family = AF_INET6;
         memcpy(&dst.addr.ip6.sin6_addr, &src.addr.ip6.sin6_addr,
                sizeof(struct in6_addr));
-        /* Flip a high-order byte so ip46_address_is_ip4(dst) stays false and
-         * dst != src, while remaining within the (non-multicast) src prefix. */
-        dst.addr.ip6.sin6_addr.s6_addr[8] ^= 0x01;
+        /* dst is a decap-only placeholder, never used for forwarding; it only
+         * has to pass VPP's family-match check, i.e. ip46_address_is_ip4(dst)
+         * must stay false (top 12 bytes not all zero) and dst != src. Flipping
+         * s6_addr[8] gives dst != src, but on its own it is not airtight: for a
+         * src whose top 12 bytes are zero except s6_addr[8] == 0x01 the flip
+         * would zero all 12 bytes and misclassify dst as IPv4. Also force a
+         * fixed non-zero, non-multicast high-order byte so the top 12 bytes can
+         * never collapse to zero regardless of src (correct by construction). */
+        dst.addr.ip6.sin6_addr.s6_addr[8] ^= 0x01;   /* guarantee dst != src */
+        dst.addr.ip6.sin6_addr.s6_addr[0]  = 0x20;   /* non-zero, non-multicast */
     } else {
         dst.sa_family = AF_INET;
         dst.addr.ip4.sin_addr.s_addr = 0;   /* 0.0.0.0 sentinel */
@@ -1192,10 +1208,7 @@ TunnelManager::create_vxlan_decap_term(
 
     if (create_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true) != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("VXLAN decap term: failed to create tunnel for VNI %u", vni);
-        delete_bvi_interface(hw_bvi_ifname);
-        m_switch_db->dynamic_bd_id_pool.free(bd_id);
-        refresh_interfaces_list();
-        vpp_bridge_domain_add_del(bd_id, false);
+        rollback_bd_bvi();
         return SAI_STATUS_FAILURE;
     }
 
@@ -1204,10 +1217,7 @@ TunnelManager::create_vxlan_decap_term(
                                             VPP_API_PORT_TYPE_NORMAL) != 0) {
         SWSS_LOG_ERROR("VXLAN decap term: failed to bridge tunnel for VNI %u", vni);
         remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
-        delete_bvi_interface(hw_bvi_ifname);
-        m_switch_db->dynamic_bd_id_pool.free(bd_id);
-        refresh_interfaces_list();
-        vpp_bridge_domain_add_del(bd_id, false);
+        rollback_bd_bvi();
         return SAI_STATUS_FAILURE;
     }
 
@@ -1220,10 +1230,7 @@ TunnelManager::create_vxlan_decap_term(
         set_sw_interface_l2_bridge_by_index(tunnel_data.sw_if_index, bd_id, false,
                                             VPP_API_PORT_TYPE_NORMAL);
         remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
-        delete_bvi_interface(hw_bvi_ifname);
-        m_switch_db->dynamic_bd_id_pool.free(bd_id);
-        refresh_interfaces_list();
-        vpp_bridge_domain_add_del(bd_id, false);
+        rollback_bd_bvi();
         return SAI_STATUS_FAILURE;
     }
 
