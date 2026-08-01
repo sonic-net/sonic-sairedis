@@ -4174,13 +4174,13 @@ sai_status_t SwitchStateBase::queryHashNativeHashFieldListCapability(
 {
     SWSS_LOG_ENTER();
 
-    if (enum_values_capability->count < 19)
+    if (enum_values_capability->count < 21)
     {
-        enum_values_capability->count = 19;
+        enum_values_capability->count = 21;
         return SAI_STATUS_BUFFER_OVERFLOW;
     }
 
-    enum_values_capability->count = 19;
+    enum_values_capability->count = 21;
     enum_values_capability->list[0] = SAI_NATIVE_HASH_FIELD_IN_PORT;
     enum_values_capability->list[1] = SAI_NATIVE_HASH_FIELD_DST_MAC;
     enum_values_capability->list[2] = SAI_NATIVE_HASH_FIELD_SRC_MAC;
@@ -4200,6 +4200,8 @@ sai_status_t SwitchStateBase::queryHashNativeHashFieldListCapability(
     enum_values_capability->list[16] = SAI_NATIVE_HASH_FIELD_INNER_L4_DST_PORT;
     enum_values_capability->list[17] = SAI_NATIVE_HASH_FIELD_INNER_L4_SRC_PORT;
     enum_values_capability->list[18] = SAI_NATIVE_HASH_FIELD_IPV6_FLOW_LABEL;
+    enum_values_capability->list[19] = SAI_NATIVE_HASH_FIELD_RDMA_BTH_OPCODE;
+    enum_values_capability->list[20] = SAI_NATIVE_HASH_FIELD_RDMA_BTH_DEST_QP;
 
     return SAI_STATUS_SUCCESS;
 }
