@@ -209,10 +209,23 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
             attr.id = SAI_NEXT_HOP_ATTR_LABELSTACK;
             attr.value.u32list.count = VPP_MPLS_MAX_LABELS;
             attr.value.u32list.list = lbuf;
-            if (get(SAI_OBJECT_TYPE_NEXT_HOP, next_hop_oid, 1, &attr) == SAI_STATUS_SUCCESS &&
-                attr.value.u32list.count > 0) {
-                uint32_t cnt = attr.value.u32list.count > VPP_MPLS_MAX_LABELS ?
-                               VPP_MPLS_MAX_LABELS : attr.value.u32list.count;
+
+            sai_status_t label_status = get(SAI_OBJECT_TYPE_NEXT_HOP, next_hop_oid, 1, &attr);
+
+            /*
+             * A stack deeper than the buffer yields SAI_STATUS_BUFFER_OVERFLOW
+             * with count set to the required size and nothing copied. Fail
+             * explicitly rather than programming a bare IP nexthop, which would
+             * silently drop the imposed labels.
+             */
+            if (label_status == SAI_STATUS_BUFFER_OVERFLOW) {
+                SWSS_LOG_ERROR("MPLS out-label stack of %u labels exceeds maximum %u",
+                        attr.value.u32list.count, VPP_MPLS_MAX_LABELS);
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
+
+            if (label_status == SAI_STATUS_SUCCESS && attr.value.u32list.count > 0) {
+                uint32_t cnt = attr.value.u32list.count;
                 nxt_grp_member->n_labels = (uint8_t)cnt;
                 for (uint32_t li = 0; li < cnt; li++) {
                     nxt_grp_member->label_stack[li] = attr.value.u32list.list[li];

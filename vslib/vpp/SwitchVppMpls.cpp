@@ -89,11 +89,27 @@ sai_status_t SwitchVpp::fillMplsNexthop(
         attr.id = SAI_NEXT_HOP_ATTR_LABELSTACK;
         attr.value.u32list.count = VPP_MPLS_MAX_LABELS;
         attr.value.u32list.list = label_buf;
-        if (nh_obj->get_attr(attr) == SAI_STATUS_SUCCESS && attr.value.u32list.count > 0) {
+
+        sai_status_t label_status = nh_obj->get_attr(attr);
+
+        /*
+         * A stack deeper than the buffer yields SAI_STATUS_BUFFER_OVERFLOW with
+         * count set to the required size and nothing copied. Fail explicitly:
+         * falling through with zero labels would turn a swap/push into a bare
+         * pop and silently misforward traffic.
+         */
+        if (label_status == SAI_STATUS_BUFFER_OVERFLOW) {
+            SWSS_LOG_ERROR("MPLS out-label stack of %u labels exceeds maximum %u",
+                    attr.value.u32list.count, VPP_MPLS_MAX_LABELS);
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+
+        /*
+         * Any other failure means the nexthop carries no label stack, which is
+         * a valid pop/disposition path.
+         */
+        if (label_status == SAI_STATUS_SUCCESS && attr.value.u32list.count > 0) {
             uint32_t cnt = attr.value.u32list.count;
-            if (cnt > VPP_MPLS_MAX_LABELS) {
-                cnt = VPP_MPLS_MAX_LABELS;
-            }
             vnh->n_labels = (uint8_t)cnt;
             for (uint32_t i = 0; i < cnt; i++) {
                 vnh->label_stack[i].label = attr.value.u32list.list[i];
@@ -215,11 +231,25 @@ sai_status_t SwitchVpp::MplsRouteAddRemove(
     eos_list[n_eos++] = 1;
 
     int ret = 0;
+    int programmed = 0;
     for (int e = 0; e < n_eos; e++) {
         route->eos = eos_list[e];
         ret = mpls_route_add_del(route, is_add);
         if (ret != 0) {
             break;
+        }
+        programmed++;
+    }
+
+    /*
+     * A multi-EOS add that fails part way through would leave an orphaned FIB
+     * entry behind that no SAI object refers to, because the caller aborts
+     * before recording the route. Undo the entries that did get programmed.
+     */
+    if (ret != 0 && is_add) {
+        for (int e = 0; e < programmed; e++) {
+            route->eos = eos_list[e];
+            mpls_route_add_del(route, false);
         }
     }
 
