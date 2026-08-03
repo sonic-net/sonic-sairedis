@@ -1,4 +1,8 @@
 parameters:
+- name: repo
+  type: string
+  default: self
+
 - name: arch
   type: string
   values:
@@ -40,6 +44,13 @@ parameters:
   type: boolean
   default: false
 
+- name: staged_upstreams
+  # List of {artifact: <current-run AZP artifact>, name: <upstream YAML name>}.
+  # Used when another pipeline reuses this template and must build sairedis
+  # against an artifact produced earlier in that same run.
+  type: object
+  default: []
+
 - name: debian_version
   type: string
 
@@ -63,185 +74,70 @@ jobs:
     options:  "--privileged"
 
   steps:
-  - checkout: self
+  - checkout: ${{ parameters.repo }}
     clean: true
     submodules: true
-  - task: DownloadPipelineArtifact@2
-    condition: eq('${{ parameters.arch }}', 'amd64')
-    inputs:
-      source: specific
-      project: build
-      pipeline: Azure.sonic-buildimage.common_libs
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
-      path: $(Build.ArtifactStagingDirectory)/download
-      artifact: common-lib
-      patterns: |
-          target/debs/${{ parameters.debian_version }}/libnl-3*.deb
-          target/debs/${{ parameters.debian_version }}/libnl-genl*.deb
-          target/debs/${{ parameters.debian_version }}/libnl-route*.deb
-          target/debs/${{ parameters.debian_version }}/libnl-nf*.deb
-    displayName: "Download libnl from common_libs"
-  - script: |
-      set -ex
-      sudo dpkg -i $(find ./download -name libnl-*_${{ parameters.arch }}.deb)
-    condition: eq('${{ parameters.arch }}', 'amd64')
-    workingDirectory: $(Build.ArtifactStagingDirectory)
-    displayName: "Install sonic libnl"
+    ${{ if ne(parameters.repo, 'self') }}:
+      path: s
+
+  # A consumer reusing this template can stage current-run upstream artifacts
+  # under the names used by build-env/upstream-artifacts.yaml.
+  - ${{ each up in parameters.staged_upstreams }}:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        artifact: ${{ up.artifact }}
+        path: $(Pipeline.Workspace)/staged/${{ up.name }}
+      displayName: "Stage current-run ${{ up.name }} for the cascade"
+
   - script: |
       set -ex
       sudo apt-get update
-      sudo apt-get install -qq -y \
-        libdbus-glib-1-dev \
-        libpcsclite-dev \
-        docbook-to-man \
-        docbook-utils \
-        aspell-en \
-        libhiredis-dev \
-        swig \
-        libzmq3-dev \
-        autoconf-archive
+      sudo apt-get install -qq -y python3-yaml python3-requests git
 
-      sudo apt-get install -y redis-server
-      sudo sed -ri 's/^# unixsocket/unixsocket/' /etc/redis/redis.conf
-      sudo sed -ri 's/^unixsocketperm .../unixsocketperm 777/' /etc/redis/redis.conf
-      sudo sed -ri 's/redis-server.sock/redis.sock/' /etc/redis/redis.conf
-      sudo service redis-server start
-      sudo mkdir -m 755 /var/run/sswsyncd
+      clone_swss_common() {
+        ref="$1"
+        for delay in 0 5 15; do
+          [ "$delay" -eq 0 ] || sleep "$delay"
+          rm -rf /tmp/sw-common
+          git clone --depth 1 --branch "$ref" \
+            https://github.com/sonic-net/sonic-swss-common /tmp/sw-common && return 0
+        done
+        return 1
+      }
 
-      sudo apt-get install -y rsyslog
-      sudo rsyslogd
-
-      cat /etc/apt/sources.list
-      dpkg --list | grep libnl
-
-    displayName: "Install dependencies"
-  - script: |
-      set -ex
-      sudo apt-get update
-      sudo apt-get install -qq -y \
-          libnl-3-dev \
-          libnl-genl-3-dev \
-          libnl-route-3-dev \
-          libnl-nf-3-dev \
-          libnl-cli-3-dev
-
-    condition: ne('${{ parameters.arch }}', 'amd64')
-    displayName: "Install libnl for arm dependencies"
-  - task: DownloadPipelineArtifact@2
-    # amd64 artifact name does not has arch suffix
-    condition: and(ne('${{ parameters.debian_version }}', 'trixie'), eq('${{ parameters.arch }}', 'amd64'))
-    inputs:
-      source: specific
-      project: build
-      pipeline: Azure.sonic-buildimage.common_libs
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
-      path: $(Build.ArtifactStagingDirectory)/download
-      artifact: common-lib
-      patterns: |
-        target/debs/${{ parameters.debian_version }}/libyang3_*.deb
-    displayName: "Download libyang from amd64 common lib"
-  - task: DownloadPipelineArtifact@2
-    condition: and(ne('${{ parameters.debian_version }}', 'trixie'), ne('${{ parameters.arch }}', 'amd64'))
-    inputs:
-      source: specific
-      project: build
-      pipeline: Azure.sonic-buildimage.common_libs
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
-      path: $(Build.ArtifactStagingDirectory)/download
-      artifact: common-lib.${{ parameters.arch }}
-      patterns: |
-        target/debs/${{ parameters.debian_version }}/libyang3_*.deb
-  - task: DownloadPipelineArtifact@2
-    condition: and(eq('${{ parameters.debian_version }}', 'trixie'), eq('${{ parameters.arch }}', 'amd64'))
-    inputs:
-      source: specific
-      project: build
-      pipeline: Azure.sonic-buildimage.common_libs
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
-      path: $(Build.ArtifactStagingDirectory)/download
-      artifact: common-lib
-      patterns: |
-        target/debs/${{ parameters.debian_version }}/libyang3_*.deb
-        target/debs/${{ parameters.debian_version }}/libpcre3_*.deb
-    displayName: "Download libyang from amd64 common lib"
-  - task: DownloadPipelineArtifact@2
-    condition: and(eq('${{ parameters.debian_version }}', 'trixie'), ne('${{ parameters.arch }}', 'amd64'))
-    inputs:
-      source: specific
-      project: build
-      pipeline: Azure.sonic-buildimage.common_libs
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
-      path: $(Build.ArtifactStagingDirectory)/download
-      artifact: common-lib.${{ parameters.arch }}
-      patterns: |
-        target/debs/${{ parameters.debian_version }}/libyang3_*.deb
-        target/debs/${{ parameters.debian_version }}/libpcre3_*.deb
-    displayName: "Download libyang from common lib"
-  - script: |
-      set -ex
-      sudo dpkg -i $(find ./download -name *.deb)
-    workingDirectory: $(Build.ArtifactStagingDirectory)
-    displayName: "Install libyang from common lib"
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      source: specific
-      project: build
-      pipeline: sonic-net.sonic-platform-vpp
-      artifact: vpp-${{ parameters.debian_version }}
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/master'
-      allowPartiallySucceededBuilds: true
-      path: $(Build.ArtifactStagingDirectory)/download
-    displayName: "Download sonic platform-vpp deb packages"
-    condition: eq('${{ parameters.arch }}', 'amd64')
-  - script: |
-      set -ex
-      sudo dpkg -i download/libvppinfra-dev_*_${{ parameters.arch }}.deb
-      sudo dpkg -i download/libvppinfra_*_${{ parameters.arch }}.deb
-      sudo dpkg -i download/vpp_*_${{ parameters.arch }}.deb
-      sudo dpkg -i download/vpp-crypto-engines_*_${{ parameters.arch }}.deb
-      sudo dpkg -i download/vpp-dbg_*_${{ parameters.arch }}.deb
-      sudo dpkg -i download/vpp-dev_*_${{ parameters.arch }}.deb
-      sudo dpkg -i download/vpp-plugin-core_*_${{ parameters.arch }}.deb
-      sudo dpkg -i download/vpp-plugin-devtools_*_${{ parameters.arch }}.deb
-      sudo dpkg -i download/vpp-plugin-dpdk_*_${{ parameters.arch }}.deb
-      sudo dpkg -i download/python3-vpp-api_*_${{ parameters.arch }}.deb
-    workingDirectory: $(Build.ArtifactStagingDirectory)
-    displayName: "Install sonic platform-vpp packages"
-    condition: eq('${{ parameters.arch }}', 'amd64')
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      source: specific
-      project: build
-      pipeline: Azure.sonic-swss-common
-      artifact: ${{ parameters.swss_common_artifact_name }}
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
-      allowPartiallySucceededBuilds: true
-      path: $(Build.ArtifactStagingDirectory)/download
-    displayName: "Download sonic swss common deb packages"
-  - script: |
-      set -ex
-      sudo dpkg -i download/libswsscommon_1.0.0_${{ parameters.arch }}.deb
-      sudo dpkg -i download/libswsscommon-dev_1.0.0_${{ parameters.arch }}.deb
-      rm -rf download
-    workingDirectory: $(Build.ArtifactStagingDirectory)
-    displayName: "Install sonic swss Common"
-  - script: |
-      set -ex
-      rm ../*.deb || true
-      ./autogen.sh
-      extraflags='--enable-code-coverage'
-      if [ '${{ parameters.asan }}' == True ]; then
-         extraflags='--enable-asan'
+      # Keep the shared tool and upstream artifacts on the same branch. Release
+      # and master builds fail closed; feature branches may fall back to master
+      # when there is no matching sonic-swss-common branch.
+      SETUP_BRANCH="$(BUILD_BRANCH)"
+      if ! clone_swss_common "$SETUP_BRANCH"; then
+        case "$(BUILD_BRANCH)" in
+          master|20[0-9][0-9][0-9][0-9])
+            echo "Failed to clone required sonic-swss-common branch $(BUILD_BRANCH)" >&2
+            exit 1
+            ;;
+          *)
+            echo "No matching swss-common feature branch; falling back to master"
+            clone_swss_common master
+            SETUP_BRANCH=master
+            ;;
+        esac
       fi
-      DEB_BUILD_OPTIONS=nocheck DEB_CONFIGURE_EXTRA_FLAGS=$extraflags dpkg-buildpackage -us -uc -b -Psyncd,vs,nopython2 -j$(nproc)
-      mv ../*.deb .
+
+      REQ_ARGS=$(python3 -c "import json,os; print(' '.join('--required-staged-upstream '+u['name'] for u in json.loads(os.environ.get('STAGED_UPSTREAMS_JSON','[]'))))")
+      PYTHONPATH=/tmp/sw-common/ci python3 -m buildenv_setup \
+        --repo-dir $(Build.SourcesDirectory) \
+        --scope build \
+        --arch ${{ parameters.arch }} \
+        --debian-version ${{ parameters.debian_version }} \
+        --branch "$SETUP_BRANCH" \
+        --upstream-staged-dir $(Pipeline.Workspace)/staged \
+        $REQ_ARGS
+    displayName: "Set up build environment (buildenv_setup)"
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      STAGED_UPSTREAMS_JSON: ${{ convertToJson(parameters.staged_upstreams) }}
+
+  - script: ASAN=${{ parameters.asan }} ./build-env/build.sh
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
       set -ex
