@@ -29,6 +29,8 @@ extern "C" {
 
     /* Maximum MPLS label stack depth carried on a single fib path (VPP API limit). */
 #define VPP_MPLS_MAX_LABELS 16
+    /* Default TTL for an imposed label; SAI carries no per-outsegment TTL. */
+#define MPLS_DEFAULT_OUT_TTL 64
 
 typedef struct vpp_ip_addr_ {
 	int sa_family;
@@ -47,6 +49,12 @@ typedef struct vpp_ip_addr_ {
 	vpp_nexthop_type_e type;
         uint32_t flags;
         uint8_t n_labels;
+        /*
+         * Labels imposed on an IP route. Only the label value is carried here:
+         * the TTL of an imposed label on an IP path is derived from the IP
+         * header (uniform mode), so unlike vpp_mpls_nexthop_t below there is no
+         * per-label ttl/exp to express.
+         */
         uint32_t label_stack[VPP_MPLS_MAX_LABELS];
     } vpp_ip_nexthop_t;
 
