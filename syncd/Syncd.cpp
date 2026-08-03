@@ -150,6 +150,7 @@ Syncd::Syncd(
     auto vso = std::make_shared<VendorSaiOptions>();
 
     vso->m_checkAttrVersion = m_commandLineOptions->m_enableAttrVersionCheck;
+    vso->m_enablePerPortCounterDiscovery = m_commandLineOptions->m_enablePerPortCounterDiscovery;
 
     m_vendorSai->setOptions(VendorSaiOptions::OPTIONS_KEY, vso);
 
