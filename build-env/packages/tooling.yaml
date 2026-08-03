@@ -33,6 +33,8 @@ post_install:
       if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
         SUDO=sudo
       fi
-      $SUDO rsyslogd
+      if ! pgrep -x rsyslogd >/dev/null; then
+        $SUDO rsyslogd
+      fi
     requires: [rsyslog]
     scopes: [build]
