@@ -26,8 +26,6 @@ using namespace saivs;
 #define MPLS_TABLE_ID 0
 /* Reserved MPLS implicit-null label (RFC 3032): pop and forward on the payload. */
 #define MPLS_IMPLICIT_NULL_LABEL 3
-/* Default TTL for an imposed label; SAI carries no per-outsegment TTL here. */
-#define MPLS_DEFAULT_OUT_TTL 64
 
 sai_status_t SwitchVpp::ensureMplsTable()
 {

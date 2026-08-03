@@ -3205,7 +3205,7 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
         fib_path->n_labels = nexthop->n_labels;
         for (uint8_t l = 0; l < nexthop->n_labels && l < VPP_MPLS_MAX_LABELS; l++) {
             fib_path->label_stack[l].label = htonl(nexthop->label_stack[l]);
-            fib_path->label_stack[l].ttl = 64;
+            fib_path->label_stack[l].ttl = MPLS_DEFAULT_OUT_TTL;
             fib_path->label_stack[l].exp = 0;
             fib_path->label_stack[l].is_uniform = 1;
         }
