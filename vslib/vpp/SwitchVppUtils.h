@@ -15,6 +15,15 @@ extern "C" {
 
 #define BONDETHERNET_PREFIX "BondEthernet"
 
+/*
+ * Kernel-only IP-in-IP mux tunnel interface created by swss tunnelmgrd on
+ * dual-ToR devices (must match TUNIF in sonic-swss cfgmgr/tunnelmgr.cpp).
+ * tunnelmgrd mirrors the Loopback3 address onto this netdev, so a prefix
+ * lookup can resolve to it instead of the real SONiC interface. It has no
+ * VPP representation and must never be selected for VPP IP programming.
+ */
+#define DUALTOR_TUNNEL_IF "tun0"
+
 #define CHECK_STATUS_W_MSG(status, msg, ...) {                                  \
     sai_status_t _status = (status);                            \
     if (_status != SAI_STATUS_SUCCESS) { \

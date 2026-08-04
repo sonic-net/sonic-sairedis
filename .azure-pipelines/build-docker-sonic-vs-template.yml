@@ -76,12 +76,8 @@ jobs:
       project: build
       pipeline: Azure.sonic-buildimage.official.vs
       artifact: sonic-buildimage.vs
-      # Temporarily pin to build 1141167 (20260617.1, commit f1d42c1a), the last
-      # master sonic-buildimage build before PR #26724 renamed the docker-sonic-vs
-      # supervisor program start.sh -> start and broke DVS readiness in vs tests.
-      # Revert to latestFromBranch once the upstream issue is resolved.
-      runVersion: 'specific'
-      runId: 1141167
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
       path: $(Build.ArtifactStagingDirectory)/download
       patterns: '**/target/${{ parameters.artifact_name }}.gz'
     displayName: "Download sonic-buildimage ${{ parameters.artifact_name }}"

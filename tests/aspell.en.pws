@@ -531,3 +531,6 @@ ifstream
 nlohmann
 reconciler
 truthy
+glibc
+getopt
+optind

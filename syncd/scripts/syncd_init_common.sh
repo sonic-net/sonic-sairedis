@@ -44,12 +44,18 @@ mkdir -p /var/log/sai_failure_dump/
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
 SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
 SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.swss_zmq')
+ASYNC_REC=$(sonic-db-cli CONFIG_DB hget "SYSTEM_DEFAULTS|async_rec" "status")
+
 if [ "$SWITCH_TYPE" == "dpu" ]; then
     CMD_ARGS+=" -z zmq_sync -x $CONTEXT_CONFIG_FILE"
 elif [ "$SOUTHBOUND_ZMQ" == "true" ]; then
     CMD_ARGS+=" -z zmq_sync"
     if [ -f "$CONTEXT_CONFIG_FILE" ]; then
         CMD_ARGS+=" -x $CONTEXT_CONFIG_FILE"
+    fi
+    # Enable async ASIC_DB writes only when ZMQ southbound is active and async_rec is opted in
+    if [ "$ASYNC_REC" == "enabled" ]; then
+        CMD_ARGS+=" -R"
     fi
 elif [ "$SYNC_MODE" == "enable" ]; then
     CMD_ARGS+=" -s"
@@ -613,6 +619,13 @@ config_syncd_marvell_teralynx()
 
 config_syncd_nvidia_bluefield()
 {
+    # SDK techsupport CT dump sentinel path. Keep in sync across:
+    #   sonic-utilities/config/plugins/nvidia_bluefield.py (SDK_TECHSUPPORT_CT_DUMP_SENTINEL)
+    #   sonic-utilities/scripts/generate_dump (sdk_techsupport_ct_dump_sentinel)
+    #   syncd/scripts/syncd_init_common.sh (config_syncd_nvidia_bluefield)
+    mkdir -p /var/run/sonic-platform-nvidia-bluefield
+    rm -f /var/run/sonic-platform-nvidia-bluefield/sdk-techsupport-ct-dump.enabled
+
     # Read MAC addresses
     base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
     hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')

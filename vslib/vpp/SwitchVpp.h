@@ -390,6 +390,21 @@ namespace saivs
             virtual sai_status_t setLag(
                     _In_ sai_object_id_t lagId,
                     _In_ const sai_attribute_t* attr);
+            virtual sai_status_t setLagMember(
+                    _In_ sai_object_id_t lagMemberId,
+                    _In_ const sai_attribute_t* attr);
+
+            enum class LagMemberEgressDisableAction
+            {
+                NONE,
+                DISABLE,
+                ENABLE,
+            };
+
+            static LagMemberEgressDisableAction getLagMemberEgressDisableAction(
+                    _In_ bool requested_egress_disable,
+                    _In_ bool current_attr_found,
+                    _In_ bool current_egress_disable);
 
             sai_status_t vpp_create_lag(
                     _In_ sai_object_id_t lag_id,
@@ -411,6 +426,17 @@ namespace saivs
                     _In_ sai_object_id_t lag_member_oid);
 	    sai_status_t vpp_remove_lag_member(
                     _In_ sai_object_id_t lag_member_oid);
+	    sai_status_t vpp_ensure_lag_lcp(
+                    _In_ sai_object_id_t lag_oid);
+	    sai_status_t vpp_set_lag_member_egress_disable(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _In_ bool egress_disable);
+	    sai_status_t get_lag_member_port(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _Out_ sai_object_id_t& port_oid);
+	    sai_status_t get_lag_member_bond_index(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _Out_ uint32_t& bond_sw_if_index);
 
             /* FDB Entry and Flush SAI Objects */
             sai_status_t FdbEntryadd(
@@ -799,9 +825,11 @@ namespace saivs
             std::chrono::steady_clock::time_point m_routeStatsCacheTime;
             bool m_routeStatsCacheValid = false;
             std::mutex m_routeStatsCacheMutex;
+            std::map<sai_object_id_t, sai_object_id_t> m_sflow_port_to_samplepacket;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
+            uint32_t m_sflow_sample_rate = 0;
 
         protected: // VPP
 
@@ -1048,6 +1076,49 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _Out_ sai_attribute_t *attr_list);
 
+            sai_status_t samplePacketCreate(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t samplePacketRemove(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t samplePacketSet(
+                    _In_ sai_object_id_t entry_id,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t sflowEnableDisable(
+                    _In_ sai_object_id_t port_id,
+                    _In_ bool enable);
+
+            sai_status_t sflowSamplingRateSet(
+                    _In_ uint32_t rate);
+
+            sai_status_t sflowHostifTrapSamplePacketCreate(
+                     _In_ sai_object_id_t object_id,
+                     _In_ sai_object_id_t switch_id,
+                     _In_ uint32_t attr_count,
+                     _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t sflowPortSamplePacketSet(
+                    _In_ sai_object_id_t portId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t sflowHostifTrapSamplePacketRemove(
+                     _In_ const std::string &serializedObjectId);
+
+            sai_status_t sflowHostifTableEntryCreate(
+                     _In_ sai_object_id_t object_id,
+                     _In_ sai_object_id_t switch_id,
+                     _In_ uint32_t attr_count,
+                     _In_ const sai_attribute_t *attr_list);
+
+             sai_status_t sflowHostifTableEntryRemove(
+                     _In_ const std::string &serializedObjectId);
+
+
         public: // VPP
 
             sai_status_t aclGetVppIndices(
@@ -1102,8 +1173,11 @@ namespace saivs
             std::shared_ptr<std::thread> m_vpp_thread;
 
         private: // VPP
+	    // m_lag_bond_map and m_egress_disabled_lag_member_ports are only accessed on
+	    // the LAG create/set/remove path, which the VS layer serializes through a
+	    // single queue, so they require no additional locking.
 	    std::map<sai_object_id_t, platform_bond_info_t> m_lag_bond_map;
-	    std::mutex LagMapMutex;
+	    std::set<sai_object_id_t> m_egress_disabled_lag_member_ports;
 
             static int currentMaxInstance;
 
@@ -1211,6 +1285,45 @@ namespace saivs
 
             virtual sai_status_t querySwitchHashAlgorithmCapability(
                 _Inout_ sai_s32_list_t *enum_values_capability) override;
+
+        private: // VPP mirror
+            uint32_t m_mirror_session_count = 0;
+            uint16_t m_next_erspan_session_id = 1;  // currently unused; for Phase II (ERSPAN)
+
+            struct MirrorSessionInfo {
+                uint32_t sw_if_index;
+
+                // Fields for Phase II (ERSPAN) support; currently unused
+                bool is_erspan;
+                vpp_ip_addr_t src_ip;
+                vpp_ip_addr_t dst_ip;
+                uint16_t session_id;
+            };
+
+            std::map<sai_object_id_t, MirrorSessionInfo> m_mirror_sessions;
+
+            struct PortMirrorBinding {
+                sai_object_id_t session_oid;
+                bool rx;
+                bool tx;
+                uint32_t dst_sw_if_idx;
+            };
+
+            // port id to PortMirrorBinding
+            std::map<sai_object_id_t, PortMirrorBinding> m_port_mirror_bindings;
+
+        protected:
+            sai_status_t createMirrorSession(
+                _In_ sai_object_id_t object_id,
+                _In_ sai_object_id_t switch_id,
+                _In_ uint32_t attr_count,
+                _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeMirrorSession(_In_ sai_object_id_t object_id);
+
+            sai_status_t bindMirrorPort(
+                _In_ sai_object_id_t portId,
+                _In_ const sai_attribute_t* attr);
 
     };
 }
