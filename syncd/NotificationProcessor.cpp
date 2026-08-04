@@ -280,7 +280,8 @@ bool NotificationProcessor::check_fdb_event_notification_data(
 
         if (!m_translator->checkRidExists(attr.value.oid, true))
         {
-            SWSS_LOG_WARN("RID 0x%" PRIx64 " on %s is not present on local ASIC DB", attr.value.oid, meta->attridname);
+            SWSS_LOG_WARN("RID 0x%" PRIx64 " on %s is not present on local ASIC DB: %s", attr.value.oid, meta->attridname,
+                    sai_serialize_fdb_entry(data.fdb_entry).c_str());
 
             result = false;
         }
@@ -314,17 +315,16 @@ void NotificationProcessor::process_on_fdb_event(
 
     SWSS_LOG_INFO("fdb event count: %u", count);
 
-    bool sendntf = true;
+    std::vector<sai_fdb_event_notification_data_t> validEntries;
 
     for (uint32_t i = 0; i < count; i++)
     {
         sai_fdb_event_notification_data_t *fdb = &data[i];
 
-        sendntf &= check_fdb_event_notification_data(*fdb);
-
-        if (!sendntf)
+        if (!check_fdb_event_notification_data(*fdb))
         {
-            SWSS_LOG_ERROR("invalid OIDs in fdb notifications, NOT translating and NOT storing in ASIC DB");
+            SWSS_LOG_ERROR("invalid OIDs in fdb notification entry %u, NOT translating and NOT storing in ASIC DB: %s",
+                    i, sai_serialize_fdb_event_ntf(1, fdb).c_str());
             continue;
         }
 
@@ -343,17 +343,21 @@ void NotificationProcessor::process_on_fdb_event(
          */
 
         redisPutFdbEntryToAsicView(fdb);
+
+        validEntries.push_back(*fdb);
     }
 
-    if (sendntf)
+    if (!validEntries.empty())
     {
-        std::string s = sai_serialize_fdb_event_ntf(count, data);
+        std::string s = sai_serialize_fdb_event_ntf((uint32_t)validEntries.size(), validEntries.data());
 
         sendNotification(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s);
     }
-    else
+
+    if (validEntries.size() != count)
     {
-        SWSS_LOG_ERROR("FDB notification was not sent since it contain invalid OIDs, bug?");
+        SWSS_LOG_ERROR("FDB notification contained %u invalid entries out of %u total; only valid entries were stored in ASIC DB and forwarded",
+                count - (uint32_t)validEntries.size(), count);
     }
 }
 
