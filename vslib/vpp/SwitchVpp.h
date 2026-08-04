@@ -426,6 +426,8 @@ namespace saivs
                     _In_ sai_object_id_t lag_member_oid);
 	    sai_status_t vpp_remove_lag_member(
                     _In_ sai_object_id_t lag_member_oid);
+	    void restorePortTapMac(
+                    _In_ sai_object_id_t port_oid);
 	    sai_status_t vpp_ensure_lag_lcp(
                     _In_ sai_object_id_t lag_oid);
 	    sai_status_t vpp_set_lag_member_egress_disable(

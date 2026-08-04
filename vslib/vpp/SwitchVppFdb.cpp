@@ -1505,11 +1505,64 @@ sai_status_t SwitchVpp::removeLagMember(
         CHECK_STATUS_QUIET(vpp_remove_lag_member(lag_member_oid));
     }
 
+    // teamd restores the member tap's permanent MAC when the port leaves the PortChannel while
+    // VPP keeps the switch MAC, so the routed port would drop L3 traffic sent to the tap MAC.
+    if (port_oid != SAI_NULL_OBJECT_ID)
+    {
+        restorePortTapMac(port_oid);
+    }
+
     auto sid = sai_serialize_object_id(lag_member_oid);
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid));
 
     return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::restorePortTapMac(
+        _In_ sai_object_id_t port_oid)
+{
+    SWSS_LOG_ENTER();
+
+    // Best effort repair, the caller must still drop the SAI LAG member because the VPP
+    // detach already happened and failing here would leave the object model inconsistent.
+    std::string if_name;
+
+    if (getTapNameFromPortId(port_oid, if_name) == false)
+    {
+        SWSS_LOG_ERROR("no tap found for port %s, switch MAC not restored",
+                sai_serialize_object_id(port_oid).c_str());
+        return;
+    }
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+
+    sai_status_t status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get SAI_SWITCH_ATTR_SRC_MAC_ADDRESS on switch %s: %s, "
+                "switch MAC not restored on %s",
+                sai_serialize_object_id(m_switch_id).c_str(),
+                sai_serialize_status(status).c_str(),
+                if_name.c_str());
+        return;
+    }
+
+    if (vs_set_dev_mac_address(if_name.c_str(), attr.value.mac) < 0)
+    {
+        SWSS_LOG_ERROR("failed to set MAC address %s on tap %s, the routed port will drop "
+                "traffic addressed to its tap MAC",
+                sai_serialize_mac(attr.value.mac).c_str(),
+                if_name.c_str());
+        return;
+    }
+
+    SWSS_LOG_NOTICE("restored switch MAC %s on tap %s after LAG member removal",
+            sai_serialize_mac(attr.value.mac).c_str(),
+            if_name.c_str());
 }
 
 sai_status_t SwitchVpp::vpp_remove_lag_member(
