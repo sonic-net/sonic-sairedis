@@ -31,35 +31,17 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
 
     sai_deserialize_neighbor_entry(serializedObjectId, nbr_entry);
 
-    attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-
-    CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
-
-    auto port_obj_type = objectTypeQuery(attr.value.oid);
-    if (port_obj_type != SAI_OBJECT_TYPE_PORT && port_obj_type != SAI_OBJECT_TYPE_LAG)
+    // Resolve the VPP interface backing this RIF. vpp_get_rif_hwif_name handles
+    // PORT, LAG, SUB_PORT (hwif.vlan) and VLAN (bvi<vlan-id>) RIFs. The previous
+    // logic only accepted a PORT/LAG PORT_ID with PORT/SUB_PORT type, so VLAN RIF
+    // neighbors were silently skipped and never programmed into VPP -- the DUT then
+    // ARPed instead of forwarding looped traffic on a VLAN RIF.
+    std::string hwif_name;
+    if (vpp_get_rif_hwif_name(nbr_entry.rif_id, hwif_name) == false)
     {
+        SWSS_LOG_NOTICE("Skipping neighbor add: no VPP hwif for rif %s",
+                sai_serialize_object_id(nbr_entry.rif_id).c_str());
         return SAI_STATUS_SUCCESS;
-    }
-    auto port_oid = attr.value.oid;
-
-    attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
-
-    CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
-    if (attr.value.s32 != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT &&
-        attr.value.s32 != SAI_ROUTER_INTERFACE_TYPE_PORT)
-    {
-        SWSS_LOG_NOTICE("Skipping neighbor add for attr type %d", attr.value.s32);
-
-        return SAI_STATUS_SUCCESS;
-    }
-
-    uint16_t vlan_id = 0;
-    if (attr.value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
-    {
-        attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
-
-        CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
-        vlan_id = attr.value.u16;
     }
 
     sai_mac_t nbr_mac;
@@ -92,14 +74,6 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
     if (no_mac == true)
     {
         SWSS_LOG_ERROR("No mac address passed for neighbor %s", serializedObjectId.c_str());
-        return SAI_STATUS_FAILURE;
-    }
-
-    std::string hwif_name;
-    bool found = vpp_get_hwif_name(port_oid, vlan_id, hwif_name);
-    if (found == false)
-    {
-        SWSS_LOG_ERROR("hw interface for port/lag id %s not found", serializedObjectId.c_str());
         return SAI_STATUS_FAILURE;
     }
 

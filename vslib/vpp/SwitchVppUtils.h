@@ -38,6 +38,16 @@ extern "C" {
 
 namespace saivs
 {
+    /*
+     * Parse a decimal integer, guarding against std::stoi throwing on malformed
+     * input. An uncaught std::invalid_argument/out_of_range here propagates to
+     * Syncd::run's handler, which drops syncd into shutdown-wait mode and stops
+     * answering any request. On failure this logs and returns 0; callers that
+     * cannot tolerate a 0 fallback must validate the input before calling.
+     * 'tag' is a short descriptive context string for the error log.
+     */
+    int vpp_safe_stoi(const std::string& s, const char* tag);
+
     sai_status_t find_attrib_in_list(
             _In_ uint32_t                       attr_count,
             _In_ const sai_attribute_t         *attr_list,
