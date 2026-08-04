@@ -311,7 +311,11 @@ TunnelManager::create_vpp_vxlan_encap(
          * Ethernet header using the tunnel interface's hardware MAC as the source.
          * Without this, the inner source MAC is VPP's auto MAC (02:fe:..) instead
          * of the router MAC that HW ASICs (and the VNET decap test) expect. */
-        sw_interface_set_mac_by_index(sw_if_index, bvi_mac);
+        if (sw_interface_set_mac_by_index(sw_if_index, bvi_mac) != 0) {
+            SWSS_LOG_ERROR("Failed to set router MAC on vxlan tunnel sw_if %u; "
+                           "inner source MAC will remain VPP's auto MAC (02:fe:..)",
+                           sw_if_index);
+        }
     }
 
     SWSS_LOG_INFO("successfully created encap for vxlan tunnel %d", sw_if_index);
@@ -453,8 +457,12 @@ TunnelManager::remove_vpp_vxlan_decap(
     // Detach the vxlan tunnel interface from the BD before deleting the BD. The
     // tunnel itself is deleted later by remove_vpp_vxlan_encap; if it is still a
     // member here, vpp_bridge_domain_add_del(is_add=0) fails with -120 (BD in use).
-    set_sw_interface_l2_bridge_by_index(tunnel_data.sw_if_index, tunnel_data.bd_id,
-                                        false, VPP_API_PORT_TYPE_NORMAL);
+    if (set_sw_interface_l2_bridge_by_index(tunnel_data.sw_if_index, tunnel_data.bd_id,
+                                            false, VPP_API_PORT_TYPE_NORMAL) != 0) {
+        SWSS_LOG_ERROR("VXLAN decap remove: failed to detach tunnel sw_if %u from BD %u; "
+                       "subsequent BD delete may fail with -120 (BD in use)",
+                       tunnel_data.sw_if_index, tunnel_data.bd_id);
+    }
 
     m_switch_db->dynamic_bd_id_pool.free(tunnel_data.bd_id);
     refresh_interfaces_list();
@@ -659,9 +667,17 @@ TunnelManager::install_l3_vxlan_decap_terms(
 
     sai_object_id_t term_oid;
     sai_deserialize_object_id(map_entry_serialized_oid, term_oid);
-    if (m_vxlan_decap_term_map.find(term_oid) != m_vxlan_decap_term_map.end()) {
-        return SAI_STATUS_SUCCESS;   // already installed
-    }
+
+    // Per-(map entry, VTEP) idempotency. The decap terms recorded under this
+    // map entry are per-tunnel (one per VTEP src IP), so we must NOT early-
+    // return on the entry as a whole: a tunnel created AFTER this entry was
+    // first processed (e.g. a second VTEP tunnel referencing the same mapper)
+    // still needs its own decap term. Only VTEPs already recorded are skipped
+    // in the loop below; a newly-appearing VTEP is installed and appended to
+    // the entry's vector.
+    auto existing_it = m_vxlan_decap_term_map.find(term_oid);
+    const std::vector<TunnelVPPData>* existing =
+        (existing_it != m_vxlan_decap_term_map.end()) ? &existing_it->second : nullptr;
 
     // The map entry VR -> VPP VRF that routes the decapped inner packet.
     sai_attribute_t attr;
@@ -689,6 +705,18 @@ TunnelManager::install_l3_vxlan_decap_terms(
     }
 
     std::vector<TunnelVPPData> created;
+
+    // A VTEP already has a decap term if it is recorded under this entry from a
+    // prior hook (existing) or was installed earlier in this same loop pass.
+    auto vtep_already_termed = [](const std::vector<TunnelVPPData>* vec,
+                                  const sai_ip_address_t& vtep) -> bool {
+        if (!vec) return false;
+        for (const auto& t : *vec) {
+            if (sai_ip_address_equal(t.src_ip, vtep)) return true;
+        }
+        return false;
+    };
+
     for (auto& tunnel_pair : *tunnels) {
         auto tunnel_obj = tunnel_pair.second;
 
@@ -699,6 +727,13 @@ TunnelManager::install_l3_vxlan_decap_terms(
         attr.id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
         if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) continue;
         sai_ip_address_t vtep_ip = attr.value.ipaddr;
+
+        // Skip VTEPs that already have a decap term under this map entry so a
+        // newly-appearing tunnel still gets one (per-VTEP idempotency).
+        if (vtep_already_termed(existing, vtep_ip) ||
+            vtep_already_termed(&created, vtep_ip)) {
+            continue;
+        }
 
         TunnelVPPData td;
         bool skipped = false;
@@ -714,7 +749,8 @@ TunnelManager::install_l3_vxlan_decap_terms(
     }
 
     if (!created.empty()) {
-        m_vxlan_decap_term_map[term_oid] = created;
+        auto& vec = m_vxlan_decap_term_map[term_oid];
+        vec.insert(vec.end(), created.begin(), created.end());
     }
     return SAI_STATUS_SUCCESS;
 }
