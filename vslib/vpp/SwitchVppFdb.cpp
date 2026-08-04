@@ -1511,6 +1511,11 @@ sai_status_t SwitchVpp::removeLagMember(
     {
         restorePortTapMac(port_oid);
     }
+    else
+    {
+        SWSS_LOG_WARN("no port found for LAG member %s, tap MAC not restored",
+                sai_serialize_object_id(lag_member_oid).c_str());
+    }
 
     auto sid = sai_serialize_object_id(lag_member_oid);
 
