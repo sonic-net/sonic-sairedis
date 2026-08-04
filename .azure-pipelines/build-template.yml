@@ -74,8 +74,6 @@ jobs:
   - checkout: ${{ parameters.repo }}
     clean: true
     submodules: true
-    ${{ if ne(parameters.repo, 'self') }}:
-      path: s
 
   # A consumer reusing this template can stage current-run upstream artifacts
   # under the names used by build-env/upstream-artifacts.yaml.
@@ -120,7 +118,10 @@ jobs:
         esac
       fi
 
-      REQ_ARGS=$(python3 -c "import json,os; print(' '.join('--required-staged-upstream '+u['name'] for u in json.loads(os.environ.get('STAGED_UPSTREAMS_JSON','[]'))))")
+      REQ_ARGS=$(echo "$STAGED_UPSTREAMS_JSON" \
+        | jq -r '.[] | .name' \
+        | xargs -I{} echo --required-staged-upstream {} \
+        | tr '\n' ' ')
       PYTHONPATH=/tmp/sw-common/ci python3 -m buildenv_setup \
         --repo-dir $(Build.SourcesDirectory) \
         --scope build \
