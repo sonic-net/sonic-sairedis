@@ -618,6 +618,32 @@ sai_status_t SwitchVpp::UpdatePort(
         }
     }
 
+    attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_INGRESS_MIRROR_SESSION, attr_count, attr_list);
+
+    if (attr_type != NULL)
+    {
+        sai_status_t status = bindMirrorPort(object_id, attr_type);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to bind ingress mirror session to port %s, rc=%d",
+                    sai_serialize_object_id(object_id).c_str(), status);
+            return status;
+        }
+    }
+
+    attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_EGRESS_MIRROR_SESSION, attr_count, attr_list);
+
+    if (attr_type != NULL)
+    {
+        sai_status_t status = bindMirrorPort(object_id, attr_type);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to bind egress mirror session to port %s, rc=%d",
+                    sai_serialize_object_id(object_id).c_str(), status);
+            return status;
+        }
+    }
+
     if (is_ip_nbr_active() == false) {
         return SAI_STATUS_SUCCESS;
     }
