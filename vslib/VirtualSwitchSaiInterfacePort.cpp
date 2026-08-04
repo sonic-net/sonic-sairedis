@@ -56,6 +56,16 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
             return SAI_STATUS_FAILURE;
         }
 
+        if (sw->hasNativePacketSampling())
+        {
+            // VPP samples natively via SwitchVpp::sflowPortSamplePacketSet (PSAMPLE groups 3/4).
+            // Skip the legacy kernel tc(1) 'action sample group 1' sampler, which would otherwise
+            // add a second ingress sampler and double ingress flow samples at the collector.
+            SWSS_LOG_INFO("native packet sampling; skipping kernel tc sampler for port %s",
+                    sai_serialize_object_id(port_id).c_str());
+            return SAI_STATUS_SUCCESS;
+        }
+
         if (sw->getTapNameFromPortId(port_id, if_name) == false)
         {
             SWSS_LOG_ERROR("tap interface name corresponding to the port id %s is not found",

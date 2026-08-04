@@ -54,6 +54,9 @@ namespace saivs
 
             virtual ~SwitchStateBase();
 
+            // VPP programs packet sampling in the dataplane, base VS uses a kernel tc(1) sampler.
+            virtual bool hasNativePacketSampling() const { return false; }
+
         protected:
 
             virtual sai_status_t set_switch_mac_address();
