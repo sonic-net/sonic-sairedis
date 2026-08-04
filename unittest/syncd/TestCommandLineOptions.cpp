@@ -7,7 +7,7 @@
 using namespace syncd;
 
 const std::string expected_usage =
-R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-h]
+R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-G] [-h]
     -d --diag
         Enable diagnostic shell
     -p --profile profile
@@ -40,6 +40,8 @@ R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [
         Watchdog time span (in microseconds) for init phase (default: same as -w)
     -B --supportingBulkCounters
         Counter groups those support bulk polling
+    -G --enablePerPortCounterDiscovery
+        Enable counter-group discovery during counter add operations
     -a --enableAttrVersionCheck
         Enable attribute SAI version check when performing SAI discovery
     -h --help
@@ -55,7 +57,8 @@ TEST(CommandLineOptions, getCommandLineString)
     EXPECT_EQ(str, " EnableDiagShell=NO EnableTempView=NO DisableExitSleep=NO EnableUnittests=NO"
             " EnableConsistencyCheck=NO EnableSyncMode=NO RedisCommunicationMode=redis_async"
             " EnableSaiBulkSuport=NO StartType=cold ProfileMapFile= GlobalContext=0 ContextConfig= BreakConfig="
-            " WatchdogWarnTimeSpan=30000000 WatchdogInitTimeSpan=30000000 SupportingBulkCounters= EnableAttrVersionCheck=NO");
+            " WatchdogWarnTimeSpan=30000000 WatchdogInitTimeSpan=30000000 SupportingBulkCounters="
+            " EnablePerPortCounterDiscovery=NO EnableAttrVersionCheck=NO");
 }
 
 TEST(CommandLineOptions, startTypeStringToStartType)
@@ -83,12 +86,14 @@ TEST(CommandLineOptionsParser, parseCommandLine)
     char arg3[] = "1000";
     char arg4[] = "-B";
     char arg5[] = "WATERMARK";
-    std::vector<char *> args = {arg1, arg2, arg3, arg4, arg5};
+    char arg6[] = "-G";
+    std::vector<char *> args = {arg1, arg2, arg3, arg4, arg5, arg6};
 
     auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
     EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 1000);
     EXPECT_EQ(opt->m_watchdogInitTimeSpan, 1000);
     EXPECT_EQ(opt->m_supportingBulkCounterGroups, "WATERMARK");
+    EXPECT_TRUE(opt->m_enablePerPortCounterDiscovery);
 }
 
 TEST(CommandLineOptionsParser, parseCommandLineInitTimeout)
