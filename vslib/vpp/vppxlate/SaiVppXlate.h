@@ -312,6 +312,7 @@ typedef enum {
     extern int ip_route_add_del(vpp_ip_route_t *prefix, bool is_add);
     extern int ip_route_add_del_get_stats(vpp_ip_route_t *prefix, bool is_add, uint32_t *stats_index);
     extern int vpp_ip_flow_hash_set(uint32_t vrf_id, uint32_t mask, int addr_family);
+    extern int vpp_ip_flow_hash_router_id_set(uint32_t router_id);
 
     extern int vpp_acl_add_replace(vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace);
     extern int vpp_acl_del(uint32_t acl_index);
@@ -390,6 +391,13 @@ typedef enum {
     extern int vpp_sidlist_del(vpp_ip_addr_t *bsid);
     extern int vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del);
     extern int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src);
+
+    /* SPAN (port mirroring) */
+    extern int vpp_span_enable_disable(uint32_t sw_if_index_from,
+                                    uint32_t sw_if_index_to,
+                                    uint32_t state, /* 0 = disable */
+                                    bool is_l2);
+
     extern int vpp_sflow_enable_disable(const char *hwif_name, bool enable);
     extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);

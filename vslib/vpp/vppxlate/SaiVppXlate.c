@@ -417,6 +417,29 @@
 #include <vnet/bfd/bfd.api.h>
 #undef vl_api_version
 
+/* SPAN API inclusion */
+#include <vnet/span/span.api_enum.h>
+#include <vnet/span/span.api_types.h>
+
+#define vl_typedefs
+#include <vnet/span/span.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vnet/span/span.api.h>
+#undef vl_endianfun
+
+#define vl_printfun
+#include <vnet/span/span.api.h>
+#undef vl_printfun
+
+#define vl_calcsizefun
+#include <vnet/span/span.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 span_api_version = v;
+#include <vnet/span/span.api.h>
+#undef vl_api_version
 
 void classify_get_trace_chain(void ){}
 void os_exit(int code) {}
@@ -1046,6 +1069,13 @@ vl_api_set_ip_flow_hash_v2_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg
 }
 
 static void
+vl_api_set_ip_flow_hash_router_id_reply_t_handler (vl_api_set_ip_flow_hash_router_id_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_ip_neighbor_add_del_reply_t_handler (vl_api_ip_neighbor_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1463,6 +1493,16 @@ vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *m
     set_reply_status(retval);
 }
 
+static void
+vl_api_sw_interface_span_enable_disable_reply_t_handler(vl_api_sw_interface_span_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (retval) { SAIVPP_ERROR("span enable/disable failed(%d)", retval); }
+    else { SAIVPP_INFO("span enable/disable successful"); }
+}
+
 /* classify API reply handlers */
 
 static void vl_api_classify_add_del_table_reply_t_handler(
@@ -1543,6 +1583,7 @@ static u16 tunterm_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
 static u16 bond_msg_id_base;
+static u16 span_msg_id_base;
 static u16 classify_msg_id_base;
 static u16 vlib_msg_id_base;
 
@@ -1581,11 +1622,15 @@ static void vpp_base_vpe_init(void)
 #define BFD_MSG_ID(id) \
     (VL_API_##id + bfd_msg_id_base)
 
+#define SPAN_MSG_ID(id) \
+    (VL_API_##id + span_msg_id_base)
+
 #define CLASSIFY_MSG_ID(id) \
     (VL_API_##id + classify_msg_id_base)
 
 #define VLIB_API_MSG_ID(id) \
     (VL_API_##id + vlib_msg_id_base)
+
 #define SFLOW_MSG_ID(id) \
     (VL_API_##id + sflow_msg_id_base)
 
@@ -1610,6 +1655,7 @@ static void vpp_base_vpe_init(void)
     _(IP_MSG_ID(IP_ROUTE_ADD_DEL_REPLY), ip_route_add_del_reply) \
     _(IP_MSG_ID(SW_INTERFACE_IP6_ENABLE_DISABLE_REPLY), sw_interface_ip6_enable_disable_reply) \
     _(IP_MSG_ID(SET_IP_FLOW_HASH_V2_REPLY), set_ip_flow_hash_v2_reply)        \
+    _(IP_MSG_ID(SET_IP_FLOW_HASH_ROUTER_ID_REPLY), set_ip_flow_hash_router_id_reply) \
     _(IP_MSG_ID(IP_ADDRESS_DETAILS), ip_address_details) \
     _(IP_NBR_MSG_ID(IP_NEIGHBOR_ADD_DEL_REPLY), ip_neighbor_add_del_reply) \
     _(L2_MSG_ID(BRIDGE_DOMAIN_ADD_DEL_REPLY), bridge_domain_add_del_reply) \
@@ -1636,6 +1682,7 @@ static void vpp_base_vpe_init(void)
     _(BFD_MSG_ID(WANT_BFD_EVENTS_REPLY), want_bfd_events_reply) \
     _(BFD_MSG_ID(BFD_UDP_ENABLE_MULTIHOP_REPLY), bfd_udp_enable_multihop_reply) \
     _(BFD_MSG_ID(BFD_UDP_SET_TOS_REPLY), bfd_udp_set_tos_reply) \
+    _(SPAN_MSG_ID(SW_INTERFACE_SPAN_ENABLE_DISABLE_REPLY), sw_interface_span_enable_disable_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_TABLE_REPLY), classify_add_del_table_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_SESSION_REPLY), classify_add_del_session_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_SET_INTERFACE_L2_TABLES_REPLY), classify_set_interface_l2_tables_reply) \
@@ -1822,6 +1869,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "tunterm_acl_%08x%c", tunterm_api_version, 0);
     tunterm_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(tunterm_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "span_%08x%c", span_api_version, 0);
+    span_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(span_msg_id_base != (u16) ~0);
 
     msg_base_lookup_name = format (0, "classify_%08x%c", classify_api_version, 0);
     classify_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
@@ -3236,6 +3287,35 @@ int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction)
 
     VPP_UNLOCK();
     return ret; 
+/*
+ * Set the global ECMP flow-hash "router ID" -- the per-router value VPP mixes
+ * into the IPv4/IPv6 ECMP flow hash (see ip4_inlines.h / ip6_inlines.h:
+ * "a ^= ip_flow_hash_router_id"). This is the natural backend for the SAI
+ * switch attribute SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED: changing it
+ * re-distributes ECMP/LAG path selection without touching any per-flow state.
+ */
+int vpp_ip_flow_hash_router_id_set (uint32_t router_id)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_set_ip_flow_hash_router_id_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = ip_msg_id_base;
+
+    M (SET_IP_FLOW_HASH_ROUTER_ID, mp);
+    mp->router_id = htonl(router_id);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) router_id %u", __func__, ret, router_id); }
+    else { SAIVPP_INFO("%s router_id %u", __func__, router_id); }
+
+    VPP_UNLOCK();
+
+    return ret;
 }
 
 int interface_ip_address_add_del (const char *hwif_name, vpp_ip_route_t *prefix, bool is_add)
@@ -4813,6 +4893,17 @@ const char * vpp_get_swif_name (const u32 swif_idx)
     return get_swif_name(vam, swif_idx);
 }
 
+int get_sw_if_idx(const char *ifname)
+{
+    vat_main_t *vam = &vat_main;
+
+    VPP_LOCK();
+    u32 idx = get_swif_idx(vam, ifname);
+    VPP_UNLOCK();
+
+    return (int)idx;
+}
+
 
 int delete_bond_member(const char * hwif_name)
 {
@@ -5146,6 +5237,33 @@ int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src)
     } else {
 	SAIVPP_INFO("%s", __func__);
     }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_span_enable_disable(uint32_t sw_if_index_from, uint32_t sw_if_index_to, uint32_t state, bool is_l2)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_span_enable_disable_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = span_msg_id_base;
+
+    M (SW_INTERFACE_SPAN_ENABLE_DISABLE, mp);
+
+    mp->sw_if_index_from = htonl(sw_if_index_from);
+    mp->sw_if_index_to = htonl(sw_if_index_to);
+    mp->state = htonl(state);
+    mp->is_l2 = is_l2;
+
+    S (mp);
+    WR (ret);
+
+    SAIVPP_INFO("span enable/disable: from=%d to=%d state=%d is_l2=%d ret=%d", sw_if_index_from, sw_if_index_to, state, is_l2, ret);
 
     VPP_UNLOCK();
 
