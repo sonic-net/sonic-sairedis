@@ -251,9 +251,14 @@ sai_status_t SwitchVpp::MplsRouteAddRemove(
         }
     }
 
+    /*
+     * Report the SAI-visible out-label count, not route->nexthop[0].n_labels:
+     * the pop case injects an implicit-null label and sets n_labels to 1, which
+     * would otherwise log a pop as having one out-label.
+     */
     SWSS_LOG_NOTICE("%s inseg label %u out_labels %u status %d",
                     (is_add ? "Add" : "Remove"), inseg_entry.label,
-                    route->nexthop[0].n_labels, ret);
+                    (has_outlabels ? route->nexthop[0].n_labels : 0), ret);
 
     free(route);
 

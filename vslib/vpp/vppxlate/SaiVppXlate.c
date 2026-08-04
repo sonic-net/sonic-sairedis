@@ -3202,8 +3202,15 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
         fib_path->rpf_id = htonl((uint32_t)~0);
         fib_path->weight = nexthop->weight;
         fib_path->preference = nexthop->preference;
-        fib_path->n_labels = nexthop->n_labels;
-        for (uint8_t l = 0; l < nexthop->n_labels && l < VPP_MPLS_MAX_LABELS; l++) {
+        /*
+         * Clamp before assigning: only VPP_MPLS_MAX_LABELS entries are ever
+         * populated below, so an unclamped n_labels would tell VPP the message
+         * carries more labels than it actually does.
+         */
+        uint8_t n_labels = nexthop->n_labels > VPP_MPLS_MAX_LABELS ?
+                           VPP_MPLS_MAX_LABELS : nexthop->n_labels;
+        fib_path->n_labels = n_labels;
+        for (uint8_t l = 0; l < n_labels; l++) {
             fib_path->label_stack[l].label = htonl(nexthop->label_stack[l]);
             fib_path->label_stack[l].ttl = MPLS_DEFAULT_OUT_TTL;
             fib_path->label_stack[l].exp = 0;
