@@ -1,6 +1,7 @@
 #include "RedisSelectableChannel.h"
 
 #include "swss/logger.h"
+#include "swss/msgpackconsumertable.h"
 
 using namespace sairedis;
 
@@ -16,7 +17,23 @@ RedisSelectableChannel::RedisSelectableChannel(
 {
     SWSS_LOG_ENTER();
 
-    m_asicState = std::make_shared<swss::ConsumerTable>(m_dbAsic.get(), asicStateTable);
+    // WS2: when ASIC_DB_MSGPACK_ENABLED is set, use MsgPackConsumerTable
+    // (loads consumer_table_pops_msgpack.lua with byte-sniffing) instead of
+    // ConsumerTable (JSON-only consumer_table_pops.lua) for ASIC_STATE.
+    // MsgPackConsumerTable inherits from ConsumerTable, so m_asicState
+    // (shared_ptr<ConsumerTable>) holds either type.
+    const char* msgpackEnv = std::getenv("ASIC_DB_MSGPACK_ENABLED");
+    bool useMsgpack = msgpackEnv && std::string(msgpackEnv) == "true";
+
+    if (useMsgpack)
+    {
+        SWSS_LOG_NOTICE("ASIC_DB msgpack decoding enabled for ASIC_STATE consumer");
+        m_asicState = std::make_shared<swss::MsgPackConsumerTable>(m_dbAsic.get(), asicStateTable);
+    }
+    else
+    {
+        m_asicState = std::make_shared<swss::ConsumerTable>(m_dbAsic.get(), asicStateTable);
+    }
 
     m_asicState->setModifyRedis(m_modifyRedis);
 

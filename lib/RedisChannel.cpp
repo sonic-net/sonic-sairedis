@@ -6,6 +6,7 @@
 
 #include "swss/logger.h"
 #include "swss/select.h"
+#include "swss/msgpackproducertable.h"
 
 using namespace sairedis;
 
@@ -21,7 +22,24 @@ RedisChannel::RedisChannel(
 
     m_db                    = std::make_shared<swss::DBConnector>(dbAsic, 0);
     m_redisPipeline         = std::make_shared<swss::RedisPipeline>(m_db.get()); // enable default pipeline 128
-    m_asicState             = std::make_shared<swss::ProducerTable>(m_redisPipeline.get(), ASIC_STATE_TABLE, true);
+
+    // WS2: when ASIC_DB_MSGPACK_ENABLED is set, use MsgPackProducerTable
+    // (msgpack encoding) instead of ProducerTable (JSON) for ASIC_STATE.
+    // The env var is exported by orchagent.sh from CONFIG_DB
+    // DEVICE_METADATA|localhost asic_db_msgpack_enabled. Default: JSON.
+    const char* msgpackEnv = std::getenv("ASIC_DB_MSGPACK_ENABLED");
+    bool useMsgpack = msgpackEnv && std::string(msgpackEnv) == "true";
+
+    if (useMsgpack)
+    {
+        SWSS_LOG_NOTICE("ASIC_DB msgpack encoding enabled for ASIC_STATE producer");
+        m_asicState = std::make_shared<swss::MsgPackProducerTable>(m_redisPipeline.get(), ASIC_STATE_TABLE, true);
+    }
+    else
+    {
+        m_asicState = std::make_shared<swss::ProducerTable>(m_redisPipeline.get(), ASIC_STATE_TABLE, true);
+    }
+
     m_getConsumer           = std::make_shared<swss::ConsumerTable>(m_db.get(), REDIS_TABLE_GETRESPONSE);
 
     m_dbNtf                 = std::make_shared<swss::DBConnector>(dbAsic, 0);
