@@ -890,6 +890,106 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchVpp::vpp_update_bvi_interface(
+        _In_ sai_object_id_t rif_obj_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    // A VLAN RIF is realized in VPP as a BVI named "bvi<vlan_id>". The VLAN id
+    // is not part of the update attribute list, so resolve it from the RIF's
+    // stored SAI_ROUTER_INTERFACE_ATTR_VLAN_ID (mirrors vpp_create_bvi_interface).
+    sai_attribute_t attr;
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+
+    sai_status_t status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_obj_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get vlan id for router interface %s (status %d)",
+                       sai_serialize_object_id(rif_obj_id).c_str(), status);
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_object_id_t vlan_oid = attr.value.oid;
+
+    if (objectTypeQuery(vlan_oid) != SAI_OBJECT_TYPE_VLAN)
+    {
+        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_VLAN_ID=%s is not a VLAN object",
+                       sai_serialize_object_id(vlan_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    status = get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get SAI_VLAN_ATTR_VLAN_ID for VLAN %s (router interface %s, status %d)",
+                       sai_serialize_object_id(vlan_oid).c_str(),
+                       sai_serialize_object_id(rif_obj_id).c_str(), status);
+        return status;
+    }
+
+    uint32_t vlan_id = attr.value.u16;
+
+    if (vlan_id == 0)
+    {
+        SWSS_LOG_ERROR("Unable to resolve VLAN id for router interface %s",
+                       sai_serialize_object_id(rif_obj_id).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    char hwif_name[32];
+    snprintf(hwif_name, sizeof(hwif_name), "bvi%u", vlan_id);
+
+    auto sid = sai_serialize_object_id(rif_obj_id);
+
+    // Apply the source MAC update
+    auto attr_mac = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS, attr_count, attr_list);
+
+    if (attr_mac != NULL)
+    {
+        sai_mac_t mac_addr;
+        memcpy(mac_addr, attr_mac->value.mac, sizeof(sai_mac_t));
+
+        int ret = sw_interface_set_mac(hwif_name, mac_addr);
+
+        if (ret < 0)
+        {
+            SWSS_LOG_ERROR("failed to set MAC %s on BVI %s (ret %d)",
+                           sai_serialize_mac(attr_mac->value.mac).c_str(), hwif_name, ret);
+            return SAI_STATUS_FAILURE;
+        }
+
+        SWSS_LOG_INFO("Set MAC %s on BVI %s",
+                      sai_serialize_mac(attr_mac->value.mac).c_str(), hwif_name);
+        set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_mac);
+    }
+
+    // Apply the MTU update
+    auto attr_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
+
+    if (attr_mtu != NULL)
+    {
+        int ret = sw_interface_set_mtu(hwif_name, attr_mtu->value.u32);
+
+        if (ret < 0)
+        {
+            SWSS_LOG_ERROR("failed to set MTU %u on BVI %s (ret %d)",
+                           attr_mtu->value.u32, hwif_name, ret);
+            return SAI_STATUS_FAILURE;
+        }
+
+        SWSS_LOG_INFO("Set MTU %u on BVI %s", attr_mtu->value.u32, hwif_name);
+
+        set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_mtu);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::vpp_delete_bvi_interface(
         _In_ sai_object_id_t bvi_obj_id)
 {

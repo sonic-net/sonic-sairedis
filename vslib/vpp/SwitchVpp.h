@@ -382,6 +382,12 @@ namespace saivs
 
             sai_status_t vpp_delete_bvi_interface(
                     _In_ sai_object_id_t bvi_obj_id);
+
+            sai_status_t vpp_update_bvi_interface(
+                    _In_ sai_object_id_t rif_obj_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
             sai_status_t createLag(
                     _In_ sai_object_id_t object_id,
                     _In_ sai_object_id_t switch_id,

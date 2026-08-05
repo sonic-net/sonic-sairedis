@@ -1856,6 +1856,11 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
     }
     rif_type = attr.value.s32;
 
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+    {
+        return vpp_update_bvi_interface(object_id, attr_count, attr_list);
+    }
+
     attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
     status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &attr);
 
