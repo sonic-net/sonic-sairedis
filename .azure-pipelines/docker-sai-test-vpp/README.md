@@ -251,7 +251,6 @@ In `--debug` the container leaves the dataplane running after the test so you ca
 |---|---|---|
 | `PORT_COUNT` | 32 | number of `OEthernetX`/`OEthX_peer` veth pairs |
 | `COMMON_CONFIGURED_REUSE` | 1 | 1 = config-signature grouping + reuse; 0 = legacy single ptf invocation |
-| `KEEP_VETHS_UP_SECONDS` | 120 | how long the per-group watchdog keeps VPP host-interfaces/veths up |
 | `LAG_RIF_IPS` | 1 | enable LAG RIF connected-IP assignment in sai_test setUp (`SIMULATE_SONIC`) |
 | `SVI_RIF_IPS` | 1 | enable SVI RIF connected-IP assignment in sai_test setUp |
 | `SIMULATE_SONIC` | 1 | set by `run_test.sh`; enables sai_test's SONiC control-plane simulation (PortChannel netdevs + LAG/SVI RIF IPs) |

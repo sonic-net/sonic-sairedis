@@ -48,8 +48,6 @@ REDIS_SOCKET="${REDIS_SOCKET:-/var/run/redis/redis.sock}"
 REDIS_LOG="${REDIS_LOG:-/var/log/redis.log}"
 LINKS_UP_MARKER="${LINKS_UP_MARKER:-/tmp/sai-vpp-links-up}"
 LINK_UP_TRIGGER="${LINK_UP_TRIGGER:-Turn up ports...}"
-KEEP_VETHS_UP_SECONDS="${KEEP_VETHS_UP_SECONDS:-120}"
-KEEP_VETHS_UP_INTERVAL="${KEEP_VETHS_UP_INTERVAL:-3}"
 
 # Port admin-up wait tuning, consumed by the OCP test framework's
 # turn_up_and_get_checked_ports() (SAI/test/sai_test/config/port_configer.py).
@@ -120,7 +118,6 @@ SAISERVER_PID=""
 REDIS_PID=""
 VPP_CONF=""
 VPP_INIT_CLI=""
-KEEP_VETHS_UP_PID=""
 
 log()
 {
@@ -361,36 +358,6 @@ bring_up_veths()
     done
 
     : > "$LINKS_UP_MARKER"
-}
-
-# VPP host-interfaces (host-OEthernetX) are created administratively DOWN by the
-# SAI hostif-creation path. While a host-interface is admin-DOWN, linux_cp keeps
-# the paired kernel netdev (OEthernetX) in NO-CARRIER/M-DOWN, which drops the
-# carrier on the PTF-side veth peer (OEthX_peer) and makes the dataplane unusable
-# ("Network is down" on transmit/receive).
-#
-# Empirically, a single `set interface state host-OEthernetX up` in VPP is enough:
-# VPP comes up, linux_cp propagates the state to the kernel netdev (takes a few
-# seconds to settle) and brings the peer carrier up, and it stays up afterwards
-# (no flapping). Setting the state again is idempotent. So run a short-lived
-# background watchdog that re-asserts admin-up for all host-interfaces across the
-# host-interface-creation window; interfaces that do not exist yet are simply
-# reported as errors by vppctl and ignored.
-keep_vpp_veths_up()
-{
-    local deadline=$((SECONDS + KEEP_VETHS_UP_SECONDS))
-    local vpp_up_cmds
-    vpp_up_cmds="$(mktemp /tmp/vpp-sai-test-keepup.XXXXXX.cmds)"
-    for ((port_index = 0; port_index < PORT_COUNT; port_index++)); do
-        echo "set interface state host-OEthernet${port_index} up" >> "$vpp_up_cmds"
-    done
-
-    while [[ "$SECONDS" -lt "$deadline" ]]; do
-        timeout "$VPPCTL_TIMEOUT" vppctl exec "$vpp_up_cmds" >/dev/null 2>&1 || true
-        sleep "$KEEP_VETHS_UP_INTERVAL"
-    done
-
-    rm -f "$vpp_up_cmds"
 }
 
 create_sonic_vpp_ifmap()
@@ -695,9 +662,6 @@ cleanup()
     local status="$?"
 
     set +e
-    if [[ -n "$KEEP_VETHS_UP_PID" ]]; then
-        kill "$KEEP_VETHS_UP_PID" >/dev/null 2>&1 || true
-    fi
     if [[ "$status" -ne 0 || "$DEBUG" -eq 1 ]]; then
         print_debug_state
     fi
@@ -825,7 +789,7 @@ run_ptf()
     exit "$overall_rc"
 }
 
-# Start the runtime backend (Redis + VPP + saiserver + veth-up watchdog). VPP and
+# Start the runtime backend (Redis + VPP + saiserver). VPP and
 # saiserver are fresh processes each time this is called, so a subsequent group's
 # common_configured=false config build runs in a clean saiserver and does not hit
 # the duplicate-create crash. Veth netdevs persist across backend restarts;
@@ -836,8 +800,6 @@ start_backend()
     start_redis
     start_vpp
     start_saiserver
-    keep_vpp_veths_up &
-    KEEP_VETHS_UP_PID="$!"
 }
 
 # Stop the runtime backend and reset per-run state so the next group starts clean.
@@ -855,16 +817,11 @@ start_backend()
 # config build starts from clean VPP state. See devdocs/progress-7-3-hostif-removal.md.
 stop_backend()
 {
-    if [[ -n "$KEEP_VETHS_UP_PID" ]]; then
-        kill "$KEEP_VETHS_UP_PID" >/dev/null 2>&1 || true
-        wait "$KEEP_VETHS_UP_PID" 2>/dev/null || true
-        KEEP_VETHS_UP_PID=""
-    fi
     terminate_process saiserver "$SAISERVER_PID"; SAISERVER_PID=""
     terminate_process vpp "$VPP_PID"; VPP_PID=""
     terminate_process redis "$REDIS_PID"; REDIS_PID=""
     # Drop persisted SAI object IDs and the link-up marker so the next group's
-    # first test rebuilds (and re-persists) its own config and re-asserts veths.
+    # first test rebuilds (and re-persists) its own config and brings up veths.
     rm -rf /tmp/sai_model 2>/dev/null || true
     rm -f "$LINKS_UP_MARKER" 2>/dev/null || true
 }
