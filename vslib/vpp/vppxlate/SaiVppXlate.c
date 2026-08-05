@@ -2670,17 +2670,6 @@ int configure_lcp_interface (const char *hwif_name, const char *hostif_name, boo
     return config_lcp_hostif(vam, idx, hostif_name, is_add);
 }
 
-int get_sw_if_idx (const char *ifname)
-{
-    vat_main_t *vam = &vat_main;
-    u32 idx = get_swif_idx(vam, ifname);
-
-    if (idx == (u32) -1) {
-        return -1;
-    }
-    return (int) idx;
-}
-
 int create_loopback_instance (const char *hwif_name, u32 instance)
 {
     vat_main_t *vam = &vat_main;
