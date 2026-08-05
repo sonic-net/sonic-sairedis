@@ -333,8 +333,6 @@ In `--debug` the container leaves the dataplane running after the test so you ca
 | `SAI_PORT_UP_SHARED_WAIT` | 1 | 1 = poll all ports together in `port_configer.py` (seconds, not ~64s serial) |
 | `SAI_PORT_UP_RETRIES` | 2 | shared-wait retry count (with `SAI_PORT_UP_SHARED_WAIT=1`) |
 | `SAI_PORT_UP_POLL_INTERVAL` | 1 | seconds between shared-wait polls |
-| `KEEP_VETHS_UP_SECONDS` | 120 | how long the per-group watchdog keeps VPP host-interfaces/veths up |
-| `KEEP_VETHS_UP_INTERVAL` | 3 | seconds between watchdog `vppctl set interface state` batches |
 | `LAG_COUNT` | 4 | PortChannel netdevs torn down at container exit |
 | `MTU` | 9100 | veth MTU |
 | `STARTUP_TIMEOUT` | 60 | seconds to wait for VPP / saiserver readiness |
