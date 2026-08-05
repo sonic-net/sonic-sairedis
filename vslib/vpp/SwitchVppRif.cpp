@@ -336,6 +336,60 @@ void SwitchVpp::vpp_intf_remove_prefix_entry (const std::string& intf_name)
     m_intf_prefix_map.erase(it);
 }
 
+bool SwitchVpp::getPortHwifNameFromLane(
+      _In_ sai_object_id_t port_id,
+      _Out_ std::string& if_name)
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_switchConfig || !m_switchConfig->m_laneMap)
+    {
+        SWSS_LOG_DEBUG("lane map unavailable for port %s",
+                sai_serialize_object_id(port_id).c_str());
+        return false;
+    }
+
+    uint32_t lanes[8] = {};
+    sai_attribute_t attr = {};
+    attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+    attr.value.u32list.count = sizeof(lanes) / sizeof(lanes[0]);
+    attr.value.u32list.list = lanes;
+
+    if (get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr) != SAI_STATUS_SUCCESS ||
+        attr.value.u32list.count == 0)
+    {
+        SWSS_LOG_DEBUG("lane list unavailable for port %s",
+                sai_serialize_object_id(port_id).c_str());
+        return false;
+    }
+
+    const std::string lane_ifname =
+            m_switchConfig->m_laneMap->getInterfaceFromLaneNumber(lanes[0]);
+    if (lane_ifname.empty())
+    {
+        SWSS_LOG_DEBUG("lane %u is not mapped for port %s", lanes[0],
+                sai_serialize_object_id(port_id).c_str());
+        return false;
+    }
+
+    std::string candidates[2] = {lane_ifname, "host-" + lane_ifname};
+    for (const auto& candidate : candidates)
+    {
+        if (vpp_get_swif_idx_by_name(candidate.c_str()) != static_cast<uint32_t>(-1))
+        {
+            if_name = candidate;
+            SWSS_LOG_DEBUG("resolved port %s lane %u to VPP interface %s",
+                    sai_serialize_object_id(port_id).c_str(), lanes[0],
+                    if_name.c_str());
+            return true;
+        }
+    }
+
+    SWSS_LOG_DEBUG("no VPP interface found for port %s lane interface %s",
+            sai_serialize_object_id(port_id).c_str(), lane_ifname.c_str());
+    return false;
+}
+
 bool SwitchVpp::vpp_get_hwif_name (
       _In_ sai_object_id_t object_id,
       _In_ uint32_t vlan_id,
@@ -343,42 +397,51 @@ bool SwitchVpp::vpp_get_hwif_name (
 {
     SWSS_LOG_ENTER();
 
-    const char *hwifname = nullptr;
-    char hw_bondifname[32];
-
-    if (objectTypeQuery(object_id) == SAI_OBJECT_TYPE_LAG) {
+    std::string hwifname;
+    if (objectTypeQuery(object_id) == SAI_OBJECT_TYPE_PORT &&
+        getPortHwifNameFromLane(object_id, hwifname))
+    {
+        SWSS_LOG_DEBUG("using lane-based VPP interface %s for port %s",
+                hwifname.c_str(), sai_serialize_object_id(object_id).c_str());
+    }
+    else if (objectTypeQuery(object_id) == SAI_OBJECT_TYPE_LAG)
+    {
         platform_bond_info_t bond_info;
         sai_status_t status = get_lag_bond_info(object_id, bond_info);
         if (status != SAI_STATUS_SUCCESS)
         {
             return false;
         }
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
-        hwifname = hw_bondifname;
-    } else {
-        std::string if_name;
-        bool found = getTapNameFromPortId(object_id, if_name);
 
-        if (found == false)
+        char hw_bondifname[32];
+        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
+        hwifname = std::string(hw_bondifname);
+    }
+    else
+    {
+        std::string if_name;
+
+        if (getTapNameFromPortId(object_id, if_name) == false)
         {
             SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(object_id).c_str());
             return false;
         }
-        hwifname = tap_to_hwif_name(if_name.c_str());
+
+        const char *mapped_hwifname = tap_to_hwif_name(if_name.c_str());
+
+        if (mapped_hwifname == NULL || strcmp(mapped_hwifname, "Unknown") == 0)
+        {
+            return false;
+        }
+
+        hwifname = mapped_hwifname;
     }
-
-    if (!hwifname) return false;
-
-    char hw_subifname[64];
-    const char *hw_ifname;
 
     if (vlan_id) {
-        snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
-        hw_ifname = hw_subifname;
+        ifname = hwifname + "." + std::to_string(vlan_id);
     } else {
-        hw_ifname = hwifname;
+        ifname = hwifname;
     }
-    ifname = std::string(hw_ifname);
 
     return true;
 }

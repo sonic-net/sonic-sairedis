@@ -1051,6 +1051,9 @@ namespace saivs
 
             void populate_if_mapping();
 
+            bool getPortHwifNameFromLane(
+                    _In_ sai_object_id_t port_id,
+                    _Out_ std::string& if_name);
             const char *tap_to_hwif_name(const char *name);
 
             const char *hwif_to_tap_name(const char *name);
