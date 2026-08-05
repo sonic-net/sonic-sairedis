@@ -168,6 +168,8 @@ sai_status_t SwitchVpp::sflowPortSamplePacketSet(
     _In_ sai_object_id_t portId,
     _In_ const sai_attribute_t *attr)
 {
+    SWSS_LOG_ENTER();
+
    /*
     * SAI updates ingress and egress sampling independently, while VPP
     * expects one combined per-port direction mask. Use the incoming
@@ -176,8 +178,6 @@ sai_status_t SwitchVpp::sflowPortSamplePacketSet(
     * programming the exact sampling rate and direction into VPP.
     */
 
-    SWSS_LOG_ENTER();
-
     if(attr->id != SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE && attr->id != SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE)
     {
         SWSS_LOG_ERROR("Unexpected sFlow port attribute ID %u", attr->id);
@@ -185,15 +185,14 @@ sai_status_t SwitchVpp::sflowPortSamplePacketSet(
     }
 
     bool updating_ingress = attr->id == SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
-    sai_object_id_t updated_oid = attr->value.oid; 
+    sai_object_id_t updated_oid = attr->value.oid;
 
     sai_attribute_t other_attr{};
 
     other_attr.id = updating_ingress
         ? SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE
         : SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
-   
-    sai_object_id_t other_oid = SAI_NULL_OBJECT_ID;    
+    sai_object_id_t other_oid = SAI_NULL_OBJECT_ID;
 
     if (get(SAI_OBJECT_TYPE_PORT, portId, 1, &other_attr) == SAI_STATUS_SUCCESS)
     {
@@ -239,8 +238,8 @@ sai_status_t SwitchVpp::sflowPortSamplePacketSet(
 }
 
 sai_status_t SwitchVpp::sflowInterfaceSamplingRateSet(
-    _In_ sai_object_id_t port_id, 
-    _In_ uint32_t rate )
+    _In_ sai_object_id_t port_id,
+    _In_ uint32_t rate)
 {
     SWSS_LOG_ENTER();
 
@@ -260,7 +259,7 @@ sai_status_t SwitchVpp::sflowInterfaceSamplingRateSet(
     }
 
     SWSS_LOG_NOTICE("Changed sampling rate to 1-in-%d for port %s", rate, sai_serialize_object_id(port_id).c_str());
-    
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -286,6 +285,6 @@ sai_status_t SwitchVpp::sflowInterfaceDirectionSet(
     }
 
     SWSS_LOG_NOTICE("Changed direction for port %s", sai_serialize_object_id(port_id).c_str());
-    
+
     return SAI_STATUS_SUCCESS;
 }

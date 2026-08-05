@@ -3211,7 +3211,7 @@ int vpp_sflow_interface_sampling_rate_set(const char *hwif_name, uint32_t sampli
 {
     vat_main_t *vam = &vat_main;
     vl_api_sflow_interface_sampling_rate_set_t *mp;
-    int ret; 
+    int ret;
 
     VPP_LOCK();
 
@@ -3245,7 +3245,7 @@ int vpp_sflow_interface_sampling_rate_set(const char *hwif_name, uint32_t sampli
     }
 
     VPP_UNLOCK();
-    return ret; 
+    return ret;
 }
 
 int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction)
@@ -3253,7 +3253,7 @@ int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction)
     vat_main_t *vam = &vat_main;
     vl_api_sflow_interface_direction_set_t *mp;
     int ret;
-    
+
     VPP_LOCK();
 
     __plugin_msg_base = sflow_msg_id_base;
@@ -3286,7 +3286,8 @@ int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction)
     }
 
     VPP_UNLOCK();
-    return ret; 
+    return ret;
+}
 /*
  * Set the global ECMP flow-hash "router ID" -- the per-router value VPP mixes
  * into the IPv4/IPv6 ECMP flow hash (see ip4_inlines.h / ip6_inlines.h:
