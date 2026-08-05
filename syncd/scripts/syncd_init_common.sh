@@ -66,6 +66,14 @@ if [ "$SUPPORTING_BULK_COUNTER_GROUPS" != "" ]; then
     CMD_ARGS+=" -B $SUPPORTING_BULK_COUNTER_GROUPS"
 fi
 
+# Enable per-port counter capability discovery (see sonic-buildimage#28460, #1774).
+# Add ASIC types that needs this feature here
+case "$SONIC_ASIC_TYPE" in
+    broadcom)
+        CMD_ARGS+=" -G"
+        ;;
+esac
+
 case "$(cat /proc/cmdline)" in
   *SONIC_BOOT_TYPE=fastfast*)
     if [ -e /var/warmboot/warm-starting ]; then
