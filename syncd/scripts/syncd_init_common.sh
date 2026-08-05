@@ -44,12 +44,18 @@ mkdir -p /var/log/sai_failure_dump/
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
 SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
 SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.swss_zmq')
+ASYNC_REC=$(sonic-db-cli CONFIG_DB hget "SYSTEM_DEFAULTS|async_rec" "status")
+
 if [ "$SWITCH_TYPE" == "dpu" ]; then
     CMD_ARGS+=" -z zmq_sync -x $CONTEXT_CONFIG_FILE"
 elif [ "$SOUTHBOUND_ZMQ" == "true" ]; then
     CMD_ARGS+=" -z zmq_sync"
     if [ -f "$CONTEXT_CONFIG_FILE" ]; then
         CMD_ARGS+=" -x $CONTEXT_CONFIG_FILE"
+    fi
+    # Enable async ASIC_DB writes only when ZMQ southbound is active and async_rec is opted in
+    if [ "$ASYNC_REC" == "enabled" ]; then
+        CMD_ARGS+=" -R"
     fi
 elif [ "$SYNC_MODE" == "enable" ]; then
     CMD_ARGS+=" -s"
@@ -59,6 +65,14 @@ SUPPORTING_BULK_COUNTER_GROUPS=$(echo $SYNCD_VARS | jq -r '.supporting_bulk_coun
 if [ "$SUPPORTING_BULK_COUNTER_GROUPS" != "" ]; then
     CMD_ARGS+=" -B $SUPPORTING_BULK_COUNTER_GROUPS"
 fi
+
+# Enable per-port counter capability discovery (see sonic-buildimage#28460, #1774).
+# Add ASIC types that needs this feature here
+case "$SONIC_ASIC_TYPE" in
+    broadcom)
+        CMD_ARGS+=" -G"
+        ;;
+esac
 
 case "$(cat /proc/cmdline)" in
   *SONIC_BOOT_TYPE=fastfast*)
@@ -566,7 +580,45 @@ config_syncd_soda()
 
 config_syncd_marvell_teralynx()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    if [ -f $HWSKU_DIR/common_config_support ]; then
+
+        MRVL_CMN_DIR=/usr/share/sonic/device/x86_64-marvell_common
+        SDK_CONFIG_DIR=/tmp/sdk_config
+        MRVL_MERGE_INFRA_SCRIPT=/usr/local/bin/mrvl_merge_infra_script.sh
+
+        # Cleanup older merged config
+        [ -d "$SDK_CONFIG_DIR" ] && rm -rf "$SDK_CONFIG_DIR/"
+        mkdir $SDK_CONFIG_DIR
+
+        # Prepare new sai.profile which points to merged sdk config
+        cp "$HWSKU_DIR/sai.profile" "$SDK_CONFIG_DIR/sai.profile"
+
+        # Invoke merge infra script
+        bash "${MRVL_MERGE_INFRA_SCRIPT}" "$HWSKU_DIR" "$MRVL_CMN_DIR" "$SDK_CONFIG_DIR"
+
+        # Replace the value in the copied sai.profile to point to the merged config
+        sed -i "s|SAI_INIT_CONFIG_FILE=.*|SAI_INIT_CONFIG_FILE=$SDK_CONFIG_DIR/ivm.sai.config.yaml|" $SDK_CONFIG_DIR/sai.profile
+
+        # copy the final config files to the shared folder for 'show tech'
+
+        [[ -f $SDK_CONFIG_DIR/sai.profile ]] \
+            && { cp -f $SDK_CONFIG_DIR/sai.profile /var/run/syncd/ && echo "Copied sai.profile"; } \
+            || echo "Missing $SDK_CONFIG_DIR/sai.profile"
+
+        if compgen -G "$SDK_CONFIG_DIR/*.yaml" > /dev/null; then
+            cp -f $SDK_CONFIG_DIR/*.yaml /var/run/syncd/
+            echo "Copied YAML files"
+        else
+            echo "No YAML files found in $SDK_CONFIG_DIR/"
+        fi
+
+        [[ -f "$SDK_CONFIG_DIR/sai.profile" ]] \
+            && CMD_ARGS+=" -p $SDK_CONFIG_DIR/sai.profile" \
+            || echo "Missing: $SDK_CONFIG_DIR/sai.profile"
+    else
+        CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    fi
+
     ulimit -s 65536
     export II_ROOT="/var/log/mrvl_teralynx"
     export II_APPEND_LOG=1
@@ -575,6 +627,13 @@ config_syncd_marvell_teralynx()
 
 config_syncd_nvidia_bluefield()
 {
+    # SDK techsupport CT dump sentinel path. Keep in sync across:
+    #   sonic-utilities/config/plugins/nvidia_bluefield.py (SDK_TECHSUPPORT_CT_DUMP_SENTINEL)
+    #   sonic-utilities/scripts/generate_dump (sdk_techsupport_ct_dump_sentinel)
+    #   syncd/scripts/syncd_init_common.sh (config_syncd_nvidia_bluefield)
+    mkdir -p /var/run/sonic-platform-nvidia-bluefield
+    rm -f /var/run/sonic-platform-nvidia-bluefield/sdk-techsupport-ct-dump.enabled
+
     # Read MAC addresses
     base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
     hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')

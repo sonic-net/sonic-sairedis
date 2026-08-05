@@ -297,8 +297,10 @@ typedef enum {
     extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
     extern int interface_ip_address_del_all(const char *hwif_name);
     extern int interface_set_state (const char *hwif_name, bool is_up);
+    extern int interface_set_promiscuous (const char *hwif_name, bool enable);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
+    extern int sw_interface_set_link_speed(const char *hwif_name, uint32_t link_speed);
     extern int sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address);
     extern int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable);
     extern int ip_vrf_add(uint32_t vrf_id, const char *vrf_name, bool is_ipv6);
@@ -311,6 +313,7 @@ typedef enum {
     extern int ip_route_add_del(vpp_ip_route_t *prefix, bool is_add);
     extern int ip_route_add_del_get_stats(vpp_ip_route_t *prefix, bool is_add, uint32_t *stats_index);
     extern int vpp_ip_flow_hash_set(uint32_t vrf_id, uint32_t mask, int addr_family);
+    extern int vpp_ip_flow_hash_router_id_set(uint32_t router_id);
 
     extern int vpp_acl_add_replace(vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace);
     extern int vpp_acl_del(uint32_t acl_index);
@@ -323,6 +326,7 @@ typedef enum {
     extern int vpp_tunterm_acl_interface_add_del (uint32_t tunterm_index,
                                            bool is_bind, const char *hwif_name);
     extern int interface_get_state(const char *hwif_name, bool *link_is_up);
+    extern int vpp_refresh_interface_speed(const char *hwif_name);
     extern int vpp_get_interface_speed(const char *hwif_name, uint32_t *speed);
     extern int vpp_sync_for_events();
     extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
@@ -342,11 +346,45 @@ typedef enum {
     extern int l2fib_flush_all();
     extern int l2fib_flush_int(const char *hwif_name);
     extern int l2fib_flush_bd(uint32_t bd_id);
+
+    /* MAC event action codes from VPP l2_macs_event */
+    typedef enum {
+        VPP_MAC_ACTION_ADD    = 0,  /* newly learned */
+        VPP_MAC_ACTION_DELETE = 1,  /* aged out */
+        VPP_MAC_ACTION_MOVE   = 2,  /* moved to a different port */
+    } vpp_mac_action_t;
+
+    /* MAC event callback types for push-based FDB notification via WANT_L2_MACS_EVENTS2 */
+    typedef struct {
+        uint8_t  mac[6];
+        uint32_t sw_if_index;
+        uint8_t  action; /* vpp_mac_action_t */
+    } vpp_mac_event_t;
+
+    /* Batch callback: invoked once per l2_macs_event message with all entries.
+     * Called on the VPP API receive thread — must NOT acquire m_apimutex. */
+    typedef void (*vpp_mac_event_cb_fn)(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
+
+    /* Register/deregister for push-based MAC learn/age/move events from VPP.
+     * cb is invoked on the VPP API receive thread — implementations MUST NOT
+     * acquire the saivpp main mutex (m_apimutex) directly; enqueue the event
+     * and process it from a thread that safely holds the mutex. */
+    extern int vpp_want_l2_macs_events2(bool enable, vpp_mac_event_cb_fn cb, void *ctx);
+
+    /* Set the L2 FIB scan delay (in units of 10ms, default=10 → 100ms).
+     * Reduces the interval between VPP scanning for aged/moved MACs. */
+    extern int vpp_l2fib_set_scan_delay(uint16_t delay_10ms);
+
+    /* Reverse-lookup: return the VPP sw_if_index for a given hw interface name,
+     * or ~0u if not found. */
+    extern uint32_t vpp_get_swif_idx_by_name(const char *hwif_name);
+
     extern int bfd_udp_add(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr, uint8_t detect_mult,
                            uint32_t desired_min_tx, uint32_t required_min_rx);
     extern int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr);
+    extern int bfd_udp_set_tos(uint8_t tos);
 
     extern int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add,  uint32_t *sw_if_index);
     extern int vpp_ip_addr_t_to_string(vpp_ip_addr_t *ip_addr, char *buffer, size_t maxlen);
@@ -355,6 +393,15 @@ typedef enum {
     extern int vpp_sidlist_del(vpp_ip_addr_t *bsid);
     extern int vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del);
     extern int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src);
+
+    /* SPAN (port mirroring) */
+    extern int vpp_span_enable_disable(uint32_t sw_if_index_from,
+                                    uint32_t sw_if_index_to,
+                                    uint32_t state, /* 0 = disable */
+                                    bool is_l2);
+
+    extern int vpp_sflow_enable_disable(const char *hwif_name, bool enable);
+    extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
     extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
     extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
@@ -362,6 +409,27 @@ typedef enum {
     extern int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip,
                                            uint32_t vrf_id,
                                            uint32_t *out_sw_if_index);
+
+    /* VPP Classify API for L2 punt */
+    extern int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
+                                         uint32_t skip_n_vectors, uint32_t match_n_vectors,
+                                         uint32_t next_table_index, uint32_t miss_next_index,
+                                         const uint8_t *mask, uint32_t mask_len,
+                                         uint32_t *new_table_index);
+    extern int vpp_classify_table_delete(uint32_t table_index);
+    extern int vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+                                        const uint8_t *match, uint32_t match_len,
+                                        uint32_t opaque_index, int32_t advance,
+                                        uint8_t action);
+    extern int vpp_classify_session_del(uint32_t table_index,
+                                        const uint8_t *match, uint32_t match_len);
+    extern int vpp_classify_set_interface_l2_tables(const char *hwif_name,
+                                                    uint32_t ip4_table_index,
+                                                    uint32_t ip6_table_index,
+                                                    uint32_t other_table_index,
+                                                    bool is_input);
+    extern int vpp_add_node_next(const char *node_name, const char *next_name,
+                                       uint32_t *next_index);
 #ifdef __cplusplus
 }
 #endif

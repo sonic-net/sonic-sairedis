@@ -521,3 +521,16 @@ setOpAllowList
 setStatsLabel
 HWM
 allowlist
+Cmdline
+cmdline
+codebase
+enablement
+guid
+hasn
+ifstream
+nlohmann
+reconciler
+truthy
+glibc
+getopt
+optind

@@ -1,5 +1,8 @@
 #include "SwitchVpp.h"
 
+#include <mutex>
+#include <queue>
+
 #include "meta/sai_serialize.h"
 
 #include "swss/logger.h"
@@ -11,6 +14,7 @@
 
 #include <vector>
 #include <string>
+#include <sstream>
 #include <cerrno>
 
 using namespace saivs;
@@ -73,6 +77,10 @@ SwitchVpp::~SwitchVpp()
 {
     SWSS_LOG_ENTER();
 
+    // Deregister VPP MAC events before stopping the thread so no callback
+    // fires against a partially-destroyed object during join().
+    deinitFdbEventHandling();
+
     // Signal the vpp events thread to stop
     m_run_vpp_events_thread = false;
 
@@ -82,6 +90,33 @@ SwitchVpp::~SwitchVpp()
     }
 
     SWSS_LOG_NOTICE("SwitchVpp destructor completed");
+}
+
+void SwitchVpp::deinitFdbEventHandling()
+{
+    SWSS_LOG_ENTER();
+
+    // Deregister MAC event callback before destroying state.
+    // Without this, VPP may deliver a batch after destruction and
+    // staticMacEventCb will dereference a dangling `this`.
+    vpp_want_l2_macs_events2(false, nullptr, nullptr);
+    m_fdbAgingWakeFn = nullptr;
+}
+
+void SwitchVpp::initFdbEventHandling(std::function<void()> fn)
+{
+    // Store the functor first — staticMacEventCb may fire immediately after
+    // vpp_want_l2_macs_events2() returns, so m_fdbAgingWakeFn must be set
+    // before we register with VPP.
+    m_fdbAgingWakeFn = std::move(fn);
+
+    vpp_l2fib_set_scan_delay(1);  /* scan interval = 1 unit = 10ms */
+    int ret = vpp_want_l2_macs_events2(true, &SwitchVpp::staticMacEventCb, this);
+    if (ret == 0)
+        SWSS_LOG_NOTICE("FDB: registered for VPP L2 MAC push events");
+    else
+        SWSS_LOG_ERROR("FDB: vpp_want_l2_macs_events2 failed (%d), "
+                       "FDB event generation will be inactive", ret);
 }
 
 sai_status_t SwitchVpp::create_qos_queues_per_port(
@@ -116,6 +151,11 @@ sai_status_t SwitchVpp::create_qos_queues_per_port(
 
         attr.id = SAI_QUEUE_ATTR_PORT;
         attr.value.oid = port_id;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
+
+        attr.id = SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
     }
@@ -166,6 +206,11 @@ sai_status_t SwitchVpp::create_cpu_qos_queues(
 
         attr.id = SAI_QUEUE_ATTR_PORT;
         attr.value.oid = port_id;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
+
+        attr.id = SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
     }
@@ -707,6 +752,39 @@ bool SwitchVpp::port_to_hostif_list(
     return getTapNameFromPortId(port_id, if_name);
 }
 
+bool SwitchVpp::getTapNameFromPortOrLagId(
+        _In_ sai_object_id_t obj_id,
+        _Out_ std::string& if_name)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_type_t ot = objectTypeQuery(obj_id);
+
+    if (ot == SAI_OBJECT_TYPE_PORT)
+    {
+        return getTapNameFromPortId(obj_id, if_name);
+    }
+
+    if (ot == SAI_OBJECT_TYPE_LAG)
+    {
+        platform_bond_info_t bond_info;
+        sai_status_t status = get_lag_bond_info(obj_id, bond_info);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+
+        std::ostringstream tap_stream;
+        tap_stream << "be" << bond_info.id;
+        if_name = tap_stream.str();
+
+        return true;
+    }
+
+    return false;
+}
+
 bool SwitchVpp::port_to_hwifname(
         _In_ sai_object_id_t port_id,
         _Inout_ std::string& if_name)
@@ -1111,6 +1189,12 @@ uint64_t SwitchVpp::getObjectTypeAvailability(
         return static_cast<uint64_t>(m_maxMySidEntries - m_srv6_my_sid_count);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_MIRROR_SESSION)
+    {
+        // Return available mirror sessions (max - used)
+        return static_cast<uint64_t>(m_maxMirrorSessions - m_mirror_session_count);
+    }
+
     // Return 0 for unsupported types
     return 0;
 }
@@ -1156,7 +1240,108 @@ void SwitchVpp::processFdbEntriesForAging()
 {
     SWSS_LOG_ENTER();
 
-    return;
+    /*
+     * Drain the MAC event queue populated by the VPP API receive thread.
+     * We hold MUTEX() here (called from Sai::processFdbEntriesForAging which
+     * acquires m_apimutex before calling into vslib), so it is safe to call
+     * the generate* helpers.
+     */
+    std::queue<VppMacEvent> events;
+    {
+        std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
+        std::swap(events, m_mac_event_queue);
+    }
+
+    if (events.empty())
+    {
+        SWSS_LOG_DEBUG("FDB: no MAC events from VPP");
+        return;
+    }
+
+    SWSS_LOG_DEBUG("FDB: draining %zu queued MAC events", events.size());
+
+    while (!events.empty()) {
+        const VppMacEvent &ev = events.front();
+
+        auto bd_it = m_swif_to_bdid.find(ev.sw_if_index);
+        if (bd_it == m_swif_to_bdid.end()) {
+            SWSS_LOG_DEBUG("FDB: unknown sw_if_index %u in MAC event, skipping",
+                           ev.sw_if_index);
+            events.pop();
+            continue;
+        }
+
+        VppFdbKey key;
+        memcpy(key.mac, ev.mac, 6);
+        key.bd_id = bd_it->second;
+
+        switch (ev.action) {
+        case VPP_MAC_ACTION_ADD:
+            if (m_vpp_fdb_entries.find(key) == m_vpp_fdb_entries.end()) {
+                if (generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_LEARNED)) {
+                    m_vpp_fdb_entries[key] = ev.sw_if_index;
+                }
+            } else {
+                SWSS_LOG_INFO("FDB: ADD for already-known MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u, skipping",
+                              key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                              key.bd_id, ev.sw_if_index);
+            }
+            break;
+
+        case VPP_MAC_ACTION_DELETE:
+            if (m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end()) {
+                if (generateFdbAgedEvent(key)) {
+                    m_vpp_fdb_entries.erase(key);
+                }
+            } else {
+                SWSS_LOG_INFO("FDB: DELETE for unknown MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u, skipping",
+                              key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                              key.bd_id);
+            }
+            break;
+
+        case VPP_MAC_ACTION_MOVE:
+            if (generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_MOVE)) {
+                m_vpp_fdb_entries[key] = ev.sw_if_index;
+            }
+            break;
+
+        default:
+            SWSS_LOG_WARN("FDB: unknown MAC event action %u", ev.action);
+            break;
+        }
+
+        events.pop();
+    }
+}
+
+/*
+ * Static trampoline: called on the VPP API receive thread when VPP pushes a
+ * batch of MAC learn/age/move events.  Must NOT acquire m_apimutex — just
+ * enqueue for safe dispatch by processFdbEntriesForAging() under the mutex.
+ *
+ * TODO: MAC events currently arrive on the shared VPP API socket and are
+ * dispatched synchronously inside the WR() polling loop. Move to a separate
+ * event socket in the future.
+ */
+void SwitchVpp::staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx)
+{
+    SWSS_LOG_ENTER();
+
+    auto *self = static_cast<SwitchVpp *>(ctx);
+    {
+        std::lock_guard<std::mutex> lock(self->m_mac_event_queue_mutex);
+        for (uint32_t i = 0; i < n; i++) {
+            VppMacEvent mev;
+            memcpy(mev.mac, evs[i].mac, 6);
+            mev.sw_if_index = evs[i].sw_if_index;
+            mev.action = evs[i].action;
+            self->m_mac_event_queue.push(mev);
+        }
+    }
+    // Wake the FDB aging thread once for the entire batch
+    if (self->m_fdbAgingWakeFn)
+        self->m_fdbAgingWakeFn();
 }
 
 sai_status_t SwitchVpp::create(
@@ -1167,6 +1352,8 @@ sai_status_t SwitchVpp::create(
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    serviceDeferredOperStatusResync();
 
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
@@ -1282,6 +1469,27 @@ sai_status_t SwitchVpp::create(
         return createAclGrpMbr(object_id, switch_id, attr_count, attr_list);
     }
 
+    if(object_type == SAI_OBJECT_TYPE_SAMPLEPACKET)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return samplePacketCreate(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return sflowHostifTrapSamplePacketCreate(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return sflowHostifTableEntryCreate(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
     {
         sai_object_id_t object_id;
@@ -1366,6 +1574,12 @@ sai_status_t SwitchVpp::create(
         SWSS_LOG_INFO("L2 VXLAN tunnel create for %s: status=%d sw_if_index=%u",
             serializedObjectId.c_str(), status, sw_if_index);
         return status;
+    }
+
+    if(object_type == SAI_OBJECT_TYPE_MIRROR_SESSION) {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createMirrorSession(object_id, switch_id, attr_count, attr_list);
     }
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
@@ -1502,6 +1716,8 @@ sai_status_t SwitchVpp::remove(
 {
     SWSS_LOG_ENTER();
 
+    serviceDeferredOperStatusResync();
+
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
         sai_object_id_t objectId;
@@ -1623,6 +1839,21 @@ sai_status_t SwitchVpp::remove(
         return status;
     }
 
+    if (object_type == SAI_OBJECT_TYPE_SAMPLEPACKET)
+    {
+        return samplePacketRemove(serializedObjectId);
+    }
+
+    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        return sflowHostifTrapSamplePacketRemove(serializedObjectId);
+    }
+
+    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY)
+    {
+        return sflowHostifTableEntryRemove(serializedObjectId);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_ACL_ENTRY)
     {
         return removeAclEntry(serializedObjectId);
@@ -1720,6 +1951,12 @@ sai_status_t SwitchVpp::remove(
         return remove_internal(object_type, serializedObjectId);
     }
 
+    if(object_type == SAI_OBJECT_TYPE_MIRROR_SESSION) {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return removeMirrorSession(object_id);
+    }
+
     return remove_internal(object_type, serializedObjectId);
 }
 
@@ -1757,7 +1994,12 @@ sai_status_t SwitchVpp::setPort(
 {
     SWSS_LOG_ENTER();
 
-    UpdatePort(portId, 1, attr);
+    sai_status_t status = UpdatePort(portId, 1, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
 
     auto sid = sai_serialize_object_id(portId);
 
@@ -1846,6 +2088,8 @@ sai_status_t SwitchVpp::set(
 {
     SWSS_LOG_ENTER();
 
+    serviceDeferredOperStatusResync();
+
     if (objectType == SAI_OBJECT_TYPE_PORT)
     {
         sai_object_id_t objectId;
@@ -1886,6 +2130,23 @@ sai_status_t SwitchVpp::set(
                     m_tunnel_mgr.set_vxlan_port(attr);
                     break;
                 }
+            case SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED:
+                {
+                    // VPP mixes a global "router id" into the IPv4/IPv6 ECMP
+                    // flow hash (ip4_inlines.h / ip6_inlines.h). Map the SAI
+                    // ECMP hash seed onto it so that changing the seed
+                    // re-distributes ECMP/LAG path selection. Fall through to
+                    // set_internal() below so the attribute is also cached.
+                    uint32_t seed = attr->value.u32;
+                    int rc = vpp_ip_flow_hash_router_id_set(seed);
+                    if (rc != 0)
+                    {
+                        SWSS_LOG_ERROR("VPP set ECMP default hash seed=%u failed rc=%d", seed, rc);
+                        return SAI_STATUS_FAILURE;
+                    }
+                    SWSS_LOG_NOTICE("VPP set ECMP default hash seed=%u", seed);
+                    break;
+                }
         }
     }
 
@@ -1903,11 +2164,25 @@ sai_status_t SwitchVpp::set(
         return setMACsecSA(objectId, attr);
     }
 
+    if(objectType == SAI_OBJECT_TYPE_SAMPLEPACKET)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return samplePacketSet(objectId,attr);
+    }
+
     if (objectType == SAI_OBJECT_TYPE_LAG)
     {
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setLag(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_LAG_MEMBER)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setLagMember(objectId, attr);
     }
 
     return set_internal(objectType, serializedObjectId, attr);
@@ -2613,6 +2888,8 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
         {
             /* VPP reports link_speed in Kbps, SAI uses Mbps */
             attr.value.u32 = vpp_speed_kbps / 1000;
+            SWSS_LOG_NOTICE("port oper speed from VPP: %s %u Kbps -> %u Mbps",
+                            hwif_name.c_str(), vpp_speed_kbps, attr.value.u32);
         }
         else
         {
@@ -2620,6 +2897,8 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
             attr.id = SAI_PORT_ATTR_SPEED;
 
             CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+            SWSS_LOG_NOTICE("port oper speed fallback to configured: %s %u Mbps",
+                            hwif_name.c_str(), attr.value.u32);
         }
     }
 
@@ -2628,4 +2907,29 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
     return SAI_STATUS_SUCCESS;
+}
+
+/*
+ * Resolve a VPP sw_if_index to a SAI port OID via the 3-step lookup chain:
+ * sw_if_index -> VPP hw interface name -> Linux tap/SONiC port name -> SAI port OID.
+ * Returns SAI_NULL_OBJECT_ID on any lookup failure.
+ */
+sai_object_id_t SwitchVpp::getPortIdFromSwIfIndex(uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+    const char *hwifname = vpp_get_swif_name(sw_if_index);
+    if (!hwifname)
+    {
+        SWSS_LOG_WARN("FDB: cannot get hwif name for sw_if_index %u", sw_if_index);
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    const char *tapname = hwif_to_tap_name(hwifname);
+    if (!tapname)
+    {
+        SWSS_LOG_WARN("FDB: cannot get tap name for hwif %s", hwifname);
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    return getPortIdFromIfName(std::string(tapname));
 }

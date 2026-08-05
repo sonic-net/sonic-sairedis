@@ -17,7 +17,10 @@
 #include <map>
 #include <unordered_map>
 #include <mutex>
+#include <atomic>
 #include <chrono>
+#include <functional>
+#include <queue>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -209,6 +212,23 @@ namespace saivs
 
         public:
 
+            // Key for the m_vpp_fdb_entries snapshot map.
+            // Uniquely identifies an L2FIB entry within VPP: a MAC address
+            // learned on a specific bridge domain (bd_id == SAI VLAN ID).
+            // Used to detect LEARNED/AGED/MOVE events by diffing VPP push
+            // notifications against the previously-known state.
+            struct VppFdbKey {
+                uint8_t mac[6];   // source MAC address
+                uint32_t bd_id;   // VPP bridge domain ID (equals SAI VLAN ID)
+                bool operator<(const VppFdbKey &o) const {
+                    int r = memcmp(mac, o.mac, 6);
+                    if (r != 0) return r < 0;
+                    return bd_id < o.bd_id;
+                }
+            };
+
+        public:
+
             virtual sai_status_t create(
                     _In_ sai_object_type_t object_type,
                     _In_ const std::string &serializedObjectId,
@@ -371,6 +391,21 @@ namespace saivs
             virtual sai_status_t setLag(
                     _In_ sai_object_id_t lagId,
                     _In_ const sai_attribute_t* attr);
+            virtual sai_status_t setLagMember(
+                    _In_ sai_object_id_t lagMemberId,
+                    _In_ const sai_attribute_t* attr);
+
+            enum class LagMemberEgressDisableAction
+            {
+                NONE,
+                DISABLE,
+                ENABLE,
+            };
+
+            static LagMemberEgressDisableAction getLagMemberEgressDisableAction(
+                    _In_ bool requested_egress_disable,
+                    _In_ bool current_attr_found,
+                    _In_ bool current_egress_disable);
 
             sai_status_t vpp_create_lag(
                     _In_ sai_object_id_t lag_id,
@@ -392,6 +427,19 @@ namespace saivs
                     _In_ sai_object_id_t lag_member_oid);
 	    sai_status_t vpp_remove_lag_member(
                     _In_ sai_object_id_t lag_member_oid);
+	    void restorePortTapMac(
+                    _In_ sai_object_id_t port_oid);
+	    sai_status_t vpp_ensure_lag_lcp(
+                    _In_ sai_object_id_t lag_oid);
+	    sai_status_t vpp_set_lag_member_egress_disable(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _In_ bool egress_disable);
+	    sai_status_t get_lag_member_port(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _Out_ sai_object_id_t& port_oid);
+	    sai_status_t get_lag_member_bond_index(
+                    _In_ sai_object_id_t lag_member_oid,
+                    _Out_ uint32_t& bond_sw_if_index);
 
             /* FDB Entry and Flush SAI Objects */
             sai_status_t FdbEntryadd(
@@ -664,6 +712,12 @@ namespace saivs
                     _In_ uint32_t vlan_id,
                     _In_ uint32_t mtu);
 
+            // set ethernet interface link speed
+            sai_status_t vpp_set_port_speed (
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t vlan_id,
+                    _In_ uint32_t speed);
+
             sai_status_t UpdatePort(
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t attr_count,
@@ -679,7 +733,9 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _In_ bool program_adjacency = true,
+                    _In_ bool program_host_route = false);
 
             sai_status_t addIpNbr(
                     _In_ const std::string &serializedObjectId,
@@ -730,6 +786,10 @@ namespace saivs
                     _In_ bool is_add,
                     _Out_ uint32_t *stats_index = nullptr);
 
+            const char* resolveNexthopMemberHwif(
+                    _In_ const nexthop_grp_member_t *member,
+                    _Out_ std::string &member_hwif);
+
             sai_status_t updateIpRoute(
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t *attr_list);
@@ -774,9 +834,11 @@ namespace saivs
             std::chrono::steady_clock::time_point m_routeStatsCacheTime;
             bool m_routeStatsCacheValid = false;
             std::mutex m_routeStatsCacheMutex;
+            std::map<sai_object_id_t, sai_object_id_t> m_sflow_port_to_samplepacket;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
+            uint32_t m_sflow_sample_rate = 0;
 
         protected: // VPP
 
@@ -1023,6 +1085,49 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _Out_ sai_attribute_t *attr_list);
 
+            sai_status_t samplePacketCreate(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t samplePacketRemove(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t samplePacketSet(
+                    _In_ sai_object_id_t entry_id,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t sflowEnableDisable(
+                    _In_ sai_object_id_t port_id,
+                    _In_ bool enable);
+
+            sai_status_t sflowSamplingRateSet(
+                    _In_ uint32_t rate);
+
+            sai_status_t sflowHostifTrapSamplePacketCreate(
+                     _In_ sai_object_id_t object_id,
+                     _In_ sai_object_id_t switch_id,
+                     _In_ uint32_t attr_count,
+                     _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t sflowPortSamplePacketSet(
+                    _In_ sai_object_id_t portId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t sflowHostifTrapSamplePacketRemove(
+                     _In_ const std::string &serializedObjectId);
+
+            sai_status_t sflowHostifTableEntryCreate(
+                     _In_ sai_object_id_t object_id,
+                     _In_ sai_object_id_t switch_id,
+                     _In_ uint32_t attr_count,
+                     _In_ const sai_attribute_t *attr_list);
+
+             sai_status_t sflowHostifTableEntryRemove(
+                     _In_ const std::string &serializedObjectId);
+
+
         public: // VPP
 
             sai_status_t aclGetVppIndices(
@@ -1042,6 +1147,10 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) override;
 
+            // Set the callback to wake the FDB aging thread immediately on MAC events.
+            void initFdbEventHandling(std::function<void()> fn) override;
+            void deinitFdbEventHandling() override;
+
         protected: // VPP
             typedef struct platform_bond_info_ {
                 uint32_t sw_if_index;
@@ -1054,6 +1163,9 @@ namespace saivs
             bool getPortHwifNameFromLane(
                     _In_ sai_object_id_t port_id,
                     _Out_ std::string& if_name);
+            bool getTapNameFromPortOrLagId(
+                    _In_ sai_object_id_t obj_id,
+                    _Out_ std::string& if_name);
             const char *tap_to_hwif_name(const char *name);
 
             const char *hwif_to_tap_name(const char *name);
@@ -1064,6 +1176,17 @@ namespace saivs
 
             void vppProcessEvents ();
 
+            void resyncPortOperStatus();
+
+            // Run a deferred oper-status resync on the command thread if the
+            // event thread has requested one. resyncPortOperStatus() issues VPP
+            // binary-API calls (interface_get_state) which allocate on VPP's
+            // non-thread-safe clib heap; running them on the background event
+            // thread races the command thread's clib allocations and crashes
+            // (os_panic in clib_mem_heap_realloc_aligned). So the event thread
+            // only flags that a resync is due and the command thread performs it.
+            void serviceDeferredOperStatusResync();
+
             void startVppEventsThread();
 
         private: // VPP
@@ -1072,12 +1195,16 @@ namespace saivs
             std::map<std::string, std::string> m_hwif_hostif_map;
             int mapping_init = 0;
             bool m_run_vpp_events_thread = true;
+            std::atomic<bool> m_operResyncDue { false };
             bool VppEventsThreadStarted = false;
             std::shared_ptr<std::thread> m_vpp_thread;
 
         private: // VPP
+	    // m_lag_bond_map and m_egress_disabled_lag_member_ports are only accessed on
+	    // the LAG create/set/remove path, which the VS layer serializes through a
+	    // single queue, so they require no additional locking.
 	    std::map<sai_object_id_t, platform_bond_info_t> m_lag_bond_map;
-	    std::mutex LagMapMutex;
+	    std::set<sai_object_id_t> m_egress_disabled_lag_member_ports;
 
             static int currentMaxInstance;
 
@@ -1089,9 +1216,75 @@ namespace saivs
 
             BitResourcePool dynamic_bd_id_pool = BitResourcePool(dynamic_bd_id_pool_size, dynamic_bd_id_base);
 
-            std::set<FdbInfo> m_fdb_info_set;
+            // Snapshot of VPP L2FIB: {mac, bd_id} -> sw_if_index.
+            // Kept in sync with MAC events from VPP to support flush operations
+            // and de-duplication of events.
+            std::map<VppFdbKey, uint32_t> m_vpp_fdb_entries;
+
+            // Cache: VPP sw_if_index -> SAI port OID, built from FDB learn events.
+            // Avoids per-entry VPP API calls in vpp_fdb_entries_invalidate_by_port().
+            // Invalidated per sw_if_index on port-leave via swif_bdid_untrack(),
+            // since VPP recycles sw_if_index values after an interface is deleted.
+            std::unordered_map<uint32_t, sai_object_id_t> m_swif_to_port_id;
+
+            // Maps VPP sw_if_index -> bridge domain ID.
+            // Maintained when ports are added/removed from bridge domains.
+            // Required because l2_macs_event carries sw_if_index but not bd_id.
+            std::map<uint32_t, uint32_t> m_swif_to_bdid;
+
+            // MAC event queue — thread boundary between VPP and saivpp.
+            //
+            // Producer: VPP API receive thread via staticMacEventCb()
+            //   -> vl_api_l2_macs_event_t_handler (holds VPP_LOCK, not m_apimutex)
+            //   -> onVppMacEvent() pushes to queue and signals m_fdbAgingWakeEvent
+            //
+            // Consumer: FDB aging thread via processFdbEntriesForAging()
+            //   -> woken by m_fdbAgingWakeEvent (~10ms after VPP event)
+            //   -> drains queue under m_apimutex
+            //   -> calls generateFdbLearnedOrMoveEvent / generateFdbAgedEvent
+            //
+            // Protected by m_mac_event_queue_mutex (separate from m_apimutex).
+            struct VppMacEvent {
+                uint8_t  mac[6];
+                uint32_t sw_if_index;
+                uint8_t  action; // 0=ADD(learn), 1=DELETE(age), 2=MOVE
+            };
+            std::mutex              m_mac_event_queue_mutex;
+            std::queue<VppMacEvent> m_mac_event_queue;
+
+            // Called from VPP API receive thread via vpp_want_l2_macs_events2 callback.
+            // Enqueues events for safe processing under m_apimutex.
+
+            // Static trampoline registered as vpp_mac_event_cb_fn.
+            // Receives the entire batch from a single l2_macs_event message.
+            static void staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
+
+            // Optional callback to wake the FDB aging thread immediately when
+            // MAC events are enqueued (set by Sai after starting aging thread).
+            std::function<void()> m_fdbAgingWakeFn;
+
+            bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
+            bool generateFdbAgedEvent(const VppFdbKey &key);
+            sai_object_id_t getPortIdFromSwIfIndex(uint32_t sw_if_index);
+
+            // Cache-first resolution of sw_if_index -> SAI port OID.
+            // On a cache miss, falls back to the VPP API lookup and memoizes the result.
+            // Defined inline in SwitchVppFdb.cpp (its only translation unit).
+            sai_object_id_t resolvePortIdFromSwIfIndex(uint32_t sw_if_index);
+
+            void vpp_fdb_entries_invalidate_all();
+            void vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id);
+            void vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id);
+
+            // Track/untrack sw_if_index→bd_id when ports join/leave bridge domains.
+            // Untrack also invalidates the m_swif_to_port_id cache for that
+            // sw_if_index, since both per-swif caches share the same lifecycle.
+            void swif_bdid_track(const char *hwif_name, uint32_t bd_id);
+            void swif_bdid_untrack(const char *hwif_name);
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
+
+            std::map<std::string, bool> m_last_oper_up;
 
             CRMTracker m_crmTracker;
 
@@ -1121,6 +1314,45 @@ namespace saivs
 
             virtual sai_status_t querySwitchHashAlgorithmCapability(
                 _Inout_ sai_s32_list_t *enum_values_capability) override;
+
+        private: // VPP mirror
+            uint32_t m_mirror_session_count = 0;
+            uint16_t m_next_erspan_session_id = 1;  // currently unused; for Phase II (ERSPAN)
+
+            struct MirrorSessionInfo {
+                uint32_t sw_if_index;
+
+                // Fields for Phase II (ERSPAN) support; currently unused
+                bool is_erspan;
+                vpp_ip_addr_t src_ip;
+                vpp_ip_addr_t dst_ip;
+                uint16_t session_id;
+            };
+
+            std::map<sai_object_id_t, MirrorSessionInfo> m_mirror_sessions;
+
+            struct PortMirrorBinding {
+                sai_object_id_t session_oid;
+                bool rx;
+                bool tx;
+                uint32_t dst_sw_if_idx;
+            };
+
+            // port id to PortMirrorBinding
+            std::map<sai_object_id_t, PortMirrorBinding> m_port_mirror_bindings;
+
+        protected:
+            sai_status_t createMirrorSession(
+                _In_ sai_object_id_t object_id,
+                _In_ sai_object_id_t switch_id,
+                _In_ uint32_t attr_count,
+                _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeMirrorSession(_In_ sai_object_id_t object_id);
+
+            sai_status_t bindMirrorPort(
+                _In_ sai_object_id_t portId,
+                _In_ const sai_attribute_t* attr);
 
     };
 }
