@@ -107,39 +107,74 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
 
     int32_t rif_type = attr.value.s32;
 
-    if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT &&
-        rif_type != SAI_ROUTER_INTERFACE_TYPE_PORT)
+    std::string hwif_name;
+
+    // SONiC owns the neighbor lifecycle for a VLAN/BVI RIF, so program a static
+    // adjacency that VPP will not age out while the host is quiet. PORT/LAG
+    // neighbors keep their existing dynamic behavior.
+    bool is_static = (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN);
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+    {
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+
+        CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
+
+        sai_object_id_t vlan_oid = attr.value.oid;
+
+        if (objectTypeQuery(vlan_oid) != SAI_OBJECT_TYPE_VLAN)
+        {
+            SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_VLAN_ID=%s is not a VLAN object",
+                           sai_serialize_object_id(vlan_oid).c_str());
+            return SAI_STATUS_FAILURE;
+        }
+
+        attr.id = SAI_VLAN_ATTR_VLAN_ID;
+        CHECK_STATUS(get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &attr));
+        uint16_t vlan_id = attr.value.u16;
+
+        if (vlan_id == 0)
+        {
+            SWSS_LOG_ERROR("unable to resolve VLAN id for router interface %s",
+                           sai_serialize_object_id(nbr_entry.rif_id).c_str());
+            return SAI_STATUS_FAILURE;
+        }
+
+        hwif_name = std::string("bvi") + std::to_string(vlan_id);
+    }
+    else if (rif_type == SAI_ROUTER_INTERFACE_TYPE_PORT ||
+             rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+    {
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+
+        CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
+
+        auto port_obj_type = objectTypeQuery(attr.value.oid);
+        if (port_obj_type != SAI_OBJECT_TYPE_PORT && port_obj_type != SAI_OBJECT_TYPE_LAG)
+        {
+            return SAI_STATUS_SUCCESS;
+        }
+        auto port_oid = attr.value.oid;
+
+        uint16_t vlan_id = 0;
+        if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+        {
+            attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+
+            CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
+            vlan_id = attr.value.u16;
+        }
+
+        if (vpp_get_hwif_name(port_oid, vlan_id, hwif_name) == false)
+        {
+            SWSS_LOG_ERROR("hw interface for port/lag id %s not found", serializedObjectId.c_str());
+            return SAI_STATUS_FAILURE;
+        }
+    }
+    else
     {
         SWSS_LOG_NOTICE("Skipping neighbor VPP programming for RIF type %d", rif_type);
         return SAI_STATUS_SUCCESS;
-    }
-
-    attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-
-    CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
-
-    auto port_obj_type = objectTypeQuery(attr.value.oid);
-    if (port_obj_type != SAI_OBJECT_TYPE_PORT && port_obj_type != SAI_OBJECT_TYPE_LAG)
-    {
-        return SAI_STATUS_SUCCESS;
-    }
-    auto port_oid = attr.value.oid;
-
-    uint16_t vlan_id = 0;
-    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
-    {
-        attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
-
-        CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
-        vlan_id = attr.value.u16;
-    }
-
-    std::string hwif_name;
-    bool found = vpp_get_hwif_name(port_oid, vlan_id, hwif_name);
-    if (found == false)
-    {
-        SWSS_LOG_ERROR("hw interface for port/lag id %s not found", serializedObjectId.c_str());
-        return SAI_STATUS_FAILURE;
     }
 
     if (program_host_route)
@@ -251,7 +286,7 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
             sin.sin_family = AF_INET;
             sin.sin_addr.s_addr = nbr_entry.ip_address.addr.ip4;
 
-            ip4_nbr_add_del(vpp_ifname, ~0, &sin, false, false, nbr_mac, is_add);
+            ip4_nbr_add_del(vpp_ifname, ~0, &sin, is_static, false, nbr_mac, is_add);
 
             break;
 
@@ -261,7 +296,7 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
             sin6.sin6_family = AF_INET6;
             memcpy(sin6.sin6_addr.s6_addr, nbr_entry.ip_address.addr.ip6, sizeof(sin6.sin6_addr.s6_addr));
 
-            ip6_nbr_add_del(vpp_ifname, ~0, &sin6, false, false, nbr_mac, is_add);
+            ip6_nbr_add_del(vpp_ifname, ~0, &sin6, is_static, false, nbr_mac, is_add);
 
             break;
         }
