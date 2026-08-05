@@ -1189,6 +1189,12 @@ uint64_t SwitchVpp::getObjectTypeAvailability(
         return static_cast<uint64_t>(m_maxMySidEntries - m_srv6_my_sid_count);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_MIRROR_SESSION)
+    {
+        // Return available mirror sessions (max - used)
+        return static_cast<uint64_t>(m_maxMirrorSessions - m_mirror_session_count);
+    }
+
     // Return 0 for unsupported types
     return 0;
 }
@@ -1570,6 +1576,12 @@ sai_status_t SwitchVpp::create(
         return status;
     }
 
+    if(object_type == SAI_OBJECT_TYPE_MIRROR_SESSION) {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createMirrorSession(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
@@ -1939,6 +1951,12 @@ sai_status_t SwitchVpp::remove(
         return remove_internal(object_type, serializedObjectId);
     }
 
+    if(object_type == SAI_OBJECT_TYPE_MIRROR_SESSION) {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return removeMirrorSession(object_id);
+    }
+
     return remove_internal(object_type, serializedObjectId);
 }
 
@@ -1976,7 +1994,12 @@ sai_status_t SwitchVpp::setPort(
 {
     SWSS_LOG_ENTER();
 
-    UpdatePort(portId, 1, attr);
+    sai_status_t status = UpdatePort(portId, 1, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
 
     auto sid = sai_serialize_object_id(portId);
 
@@ -2105,6 +2128,23 @@ sai_status_t SwitchVpp::set(
             case SAI_SWITCH_ATTR_VXLAN_DEFAULT_PORT:
                 {
                     m_tunnel_mgr.set_vxlan_port(attr);
+                    break;
+                }
+            case SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED:
+                {
+                    // VPP mixes a global "router id" into the IPv4/IPv6 ECMP
+                    // flow hash (ip4_inlines.h / ip6_inlines.h). Map the SAI
+                    // ECMP hash seed onto it so that changing the seed
+                    // re-distributes ECMP/LAG path selection. Fall through to
+                    // set_internal() below so the attribute is also cached.
+                    uint32_t seed = attr->value.u32;
+                    int rc = vpp_ip_flow_hash_router_id_set(seed);
+                    if (rc != 0)
+                    {
+                        SWSS_LOG_ERROR("VPP set ECMP default hash seed=%u failed rc=%d", seed, rc);
+                        return SAI_STATUS_FAILURE;
+                    }
+                    SWSS_LOG_NOTICE("VPP set ECMP default hash seed=%u", seed);
                     break;
                 }
         }
@@ -2848,6 +2888,8 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
         {
             /* VPP reports link_speed in Kbps, SAI uses Mbps */
             attr.value.u32 = vpp_speed_kbps / 1000;
+            SWSS_LOG_NOTICE("port oper speed from VPP: %s %u Kbps -> %u Mbps",
+                            hwif_name.c_str(), vpp_speed_kbps, attr.value.u32);
         }
         else
         {
@@ -2855,6 +2897,8 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
             attr.id = SAI_PORT_ATTR_SPEED;
 
             CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+            SWSS_LOG_NOTICE("port oper speed fallback to configured: %s %u Mbps",
+                            hwif_name.c_str(), attr.value.u32);
         }
     }
 

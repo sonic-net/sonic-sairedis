@@ -511,6 +511,12 @@ void SwitchVpp::vppProcessEvents ()
         }
         while ((evp = vpp_ev_dequeue())) {
             if (evp->type == VPP_INTF_LINK_STATUS) {
+                if (evp->data.intf_status.link_up) {
+                    /* Refresh cached link speed from VPP on link-up.
+                     * The initial sw_interface_dump may have cached speed=0
+                     * if the link was down at startup. */
+                    vpp_refresh_interface_speed(evp->data.intf_status.hwif_name);
+                }
                 asyncIntfStateUpdate(evp->data.intf_status.hwif_name,
                                      evp->data.intf_status.link_up);
                 SWSS_LOG_NOTICE("Received port link event for %s state %s",
@@ -705,6 +711,31 @@ sai_status_t SwitchVpp::vpp_set_interface_mtu (
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchVpp::vpp_set_port_speed (
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t vlan_id,
+        _In_ uint32_t speed)
+{
+    SWSS_LOG_ENTER();
+
+    if (is_ip_nbr_active() == false) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string ifname;
+
+    if (vpp_get_hwif_name(object_id, vlan_id, ifname) == true) {
+        const char *hwif_name = ifname.c_str();
+
+        // SAI port speed is in Mbps, VPP link speed is in Kbps
+        uint32_t link_speed = speed * 1000;
+
+        sw_interface_set_link_speed(hwif_name, link_speed);
+        SWSS_LOG_NOTICE("Updating port %s speed to %u Mbps", hwif_name, speed);
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::UpdatePort(
         _In_ sai_object_id_t object_id,
         _In_ uint32_t attr_count,
@@ -751,6 +782,32 @@ sai_status_t SwitchVpp::UpdatePort(
         }
     }
 
+    attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_INGRESS_MIRROR_SESSION, attr_count, attr_list);
+
+    if (attr_type != NULL)
+    {
+        sai_status_t status = bindMirrorPort(object_id, attr_type);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to bind ingress mirror session to port %s, rc=%d",
+                    sai_serialize_object_id(object_id).c_str(), status);
+            return status;
+        }
+    }
+
+    attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_EGRESS_MIRROR_SESSION, attr_count, attr_list);
+
+    if (attr_type != NULL)
+    {
+        sai_status_t status = bindMirrorPort(object_id, attr_type);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to bind egress mirror session to port %s, rc=%d",
+                    sai_serialize_object_id(object_id).c_str(), status);
+            return status;
+        }
+    }
+
     if (is_ip_nbr_active() == false) {
         return SAI_STATUS_SUCCESS;
     }
@@ -767,6 +824,13 @@ sai_status_t SwitchVpp::UpdatePort(
     if (attr_type != NULL)
     {
         vpp_set_port_mtu(object_id, 0, attr_type->value.u32);
+    }
+
+    attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_SPEED, attr_count, attr_list);
+
+    if (attr_type != NULL)
+    {
+        vpp_set_port_speed(object_id, 0, attr_type->value.u32);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1743,7 +1807,6 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     {
         snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
 
-        /* The host(tap) subinterface is also created as part of the vpp subinterface creation */
         const char *parent_hwif;
         char hw_subif_parent[32];
         if (ot == SAI_OBJECT_TYPE_LAG) {
@@ -1753,6 +1816,18 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
             parent_hwif = tap_to_hwif_name(dev);
         }
         create_sub_interface(parent_hwif, vlan_id, vlan_id);
+
+        /*
+         * lcp-auto-subint is disabled in VPP startup config (vlan-bvi HLD §3.6),
+         * so the VPP sub-interface does NOT get an automatic linux-cp pair.
+         * Explicitly create the LCP pair binding <parent>.<vlan_id> (VPP side)
+         * to the kernel sub-vlan netdev (<dev>.<vlan_id>). Without this the
+         * sub-interface will not show up in `vppctl show lcp` and host punt
+         * will not work for the SUB_PORT RIF.
+         */
+        char vpp_subif_name[64];
+        snprintf(vpp_subif_name, sizeof(vpp_subif_name), "%s.%u", parent_hwif, vlan_id);
+        configure_lcp_interface(vpp_subif_name, host_subifname, true);
 
         /* Get new list of physical interfaces from VS */
         refresh_interfaces_list();
@@ -2074,16 +2149,21 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     } else {
         parent_hwif = tap_to_hwif_name(dev);
     }
+
+    /*
+     * Tear down the explicit LCP pair created in vpp_create_router_interface for
+     * SUB_PORT (lcp-auto-subint is disabled, HLD §3.6). hostif name is ignored by
+     * the LCP plugin on delete, but pass the symmetric value for log clarity.
+     */
+    char vpp_subif_name[64];
+    char host_subifname[64];
+    snprintf(vpp_subif_name, sizeof(vpp_subif_name), "%s.%u", parent_hwif, vlan_id);
+    snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
+    configure_lcp_interface(vpp_subif_name, host_subifname, false);
+
     delete_sub_interface(parent_hwif, vlan_id);
     /* Get new list of physical interfaces from VS */
     refresh_interfaces_list();
-
-/*
-    char host_subifname[32], hwif_name[32];
-    snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
-    snprintf(hwif_name, sizeof(hwif_name), "%s.%u", tap_to_hwif_name(dev), vlan_id);
-    configure_lcp_interface(tap_to_hwif_name(dev), host_subifname);
-*/
 
     return SAI_STATUS_SUCCESS;
 }
