@@ -17,6 +17,7 @@
 #include <map>
 #include <unordered_map>
 #include <mutex>
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <queue>
@@ -426,6 +427,8 @@ namespace saivs
                     _In_ sai_object_id_t lag_member_oid);
 	    sai_status_t vpp_remove_lag_member(
                     _In_ sai_object_id_t lag_member_oid);
+	    void restorePortTapMac(
+                    _In_ sai_object_id_t port_oid);
 	    sai_status_t vpp_ensure_lag_lcp(
                     _In_ sai_object_id_t lag_oid);
 	    sai_status_t vpp_set_lag_member_egress_disable(
@@ -709,6 +712,12 @@ namespace saivs
                     _In_ uint32_t vlan_id,
                     _In_ uint32_t mtu);
 
+            // set ethernet interface link speed
+            sai_status_t vpp_set_port_speed (
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t vlan_id,
+                    _In_ uint32_t speed);
+
             sai_status_t UpdatePort(
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t attr_count,
@@ -724,7 +733,9 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list,
-                    _In_ bool is_add);
+                    _In_ bool is_add,
+                    _In_ bool program_adjacency = true,
+                    _In_ bool program_host_route = false);
 
             sai_status_t addIpNbr(
                     _In_ const std::string &serializedObjectId,
@@ -774,6 +785,10 @@ namespace saivs
                     _In_ nexthop_grp_member_t *member,
                     _In_ bool is_add,
                     _Out_ uint32_t *stats_index = nullptr);
+
+            const char* resolveNexthopMemberHwif(
+                    _In_ const nexthop_grp_member_t *member,
+                    _Out_ std::string &member_hwif);
 
             sai_status_t updateIpRoute(
                     _In_ const std::string &serializedObjectId,
@@ -1145,6 +1160,10 @@ namespace saivs
 
             void populate_if_mapping();
 
+            bool getTapNameFromPortOrLagId(
+                    _In_ sai_object_id_t obj_id,
+                    _Out_ std::string& if_name);
+
             const char *tap_to_hwif_name(const char *name);
 
             const char *hwif_to_tap_name(const char *name);
@@ -1155,6 +1174,17 @@ namespace saivs
 
             void vppProcessEvents ();
 
+            void resyncPortOperStatus();
+
+            // Run a deferred oper-status resync on the command thread if the
+            // event thread has requested one. resyncPortOperStatus() issues VPP
+            // binary-API calls (interface_get_state) which allocate on VPP's
+            // non-thread-safe clib heap; running them on the background event
+            // thread races the command thread's clib allocations and crashes
+            // (os_panic in clib_mem_heap_realloc_aligned). So the event thread
+            // only flags that a resync is due and the command thread performs it.
+            void serviceDeferredOperStatusResync();
+
             void startVppEventsThread();
 
         private: // VPP
@@ -1163,6 +1193,7 @@ namespace saivs
             std::map<std::string, std::string> m_hwif_hostif_map;
             int mapping_init = 0;
             bool m_run_vpp_events_thread = true;
+            std::atomic<bool> m_operResyncDue { false };
             bool VppEventsThreadStarted = false;
             std::shared_ptr<std::thread> m_vpp_thread;
 
@@ -1251,6 +1282,8 @@ namespace saivs
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
+            std::map<std::string, bool> m_last_oper_up;
+
             CRMTracker m_crmTracker;
 
             bool isIPv4Route(const std::string &serializedObjectId);
@@ -1279,6 +1312,45 @@ namespace saivs
 
             virtual sai_status_t querySwitchHashAlgorithmCapability(
                 _Inout_ sai_s32_list_t *enum_values_capability) override;
+
+        private: // VPP mirror
+            uint32_t m_mirror_session_count = 0;
+            uint16_t m_next_erspan_session_id = 1;  // currently unused; for Phase II (ERSPAN)
+
+            struct MirrorSessionInfo {
+                uint32_t sw_if_index;
+
+                // Fields for Phase II (ERSPAN) support; currently unused
+                bool is_erspan;
+                vpp_ip_addr_t src_ip;
+                vpp_ip_addr_t dst_ip;
+                uint16_t session_id;
+            };
+
+            std::map<sai_object_id_t, MirrorSessionInfo> m_mirror_sessions;
+
+            struct PortMirrorBinding {
+                sai_object_id_t session_oid;
+                bool rx;
+                bool tx;
+                uint32_t dst_sw_if_idx;
+            };
+
+            // port id to PortMirrorBinding
+            std::map<sai_object_id_t, PortMirrorBinding> m_port_mirror_bindings;
+
+        protected:
+            sai_status_t createMirrorSession(
+                _In_ sai_object_id_t object_id,
+                _In_ sai_object_id_t switch_id,
+                _In_ uint32_t attr_count,
+                _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeMirrorSession(_In_ sai_object_id_t object_id);
+
+            sai_status_t bindMirrorPort(
+                _In_ sai_object_id_t portId,
+                _In_ const sai_attribute_t* attr);
 
     };
 }

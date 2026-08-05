@@ -14,6 +14,7 @@
 
 #include <vector>
 #include <string>
+#include <sstream>
 #include <cerrno>
 
 using namespace saivs;
@@ -152,6 +153,11 @@ sai_status_t SwitchVpp::create_qos_queues_per_port(
         attr.value.oid = port_id;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
+
+        attr.id = SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
     }
 
     attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
@@ -200,6 +206,11 @@ sai_status_t SwitchVpp::create_cpu_qos_queues(
 
         attr.id = SAI_QUEUE_ATTR_PORT;
         attr.value.oid = port_id;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
+
+        attr.id = SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
     }
@@ -741,6 +752,39 @@ bool SwitchVpp::port_to_hostif_list(
     return getTapNameFromPortId(port_id, if_name);
 }
 
+bool SwitchVpp::getTapNameFromPortOrLagId(
+        _In_ sai_object_id_t obj_id,
+        _Out_ std::string& if_name)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_type_t ot = objectTypeQuery(obj_id);
+
+    if (ot == SAI_OBJECT_TYPE_PORT)
+    {
+        return getTapNameFromPortId(obj_id, if_name);
+    }
+
+    if (ot == SAI_OBJECT_TYPE_LAG)
+    {
+        platform_bond_info_t bond_info;
+        sai_status_t status = get_lag_bond_info(obj_id, bond_info);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+
+        std::ostringstream tap_stream;
+        tap_stream << "be" << bond_info.id;
+        if_name = tap_stream.str();
+
+        return true;
+    }
+
+    return false;
+}
+
 bool SwitchVpp::port_to_hwifname(
         _In_ sai_object_id_t port_id,
         _Inout_ std::string& if_name)
@@ -1145,6 +1189,12 @@ uint64_t SwitchVpp::getObjectTypeAvailability(
         return static_cast<uint64_t>(m_maxMySidEntries - m_srv6_my_sid_count);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_MIRROR_SESSION)
+    {
+        // Return available mirror sessions (max - used)
+        return static_cast<uint64_t>(m_maxMirrorSessions - m_mirror_session_count);
+    }
+
     // Return 0 for unsupported types
     return 0;
 }
@@ -1302,6 +1352,8 @@ sai_status_t SwitchVpp::create(
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    serviceDeferredOperStatusResync();
 
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
@@ -1524,6 +1576,12 @@ sai_status_t SwitchVpp::create(
         return status;
     }
 
+    if(object_type == SAI_OBJECT_TYPE_MIRROR_SESSION) {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createMirrorSession(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
@@ -1657,6 +1715,8 @@ sai_status_t SwitchVpp::remove(
         _In_ const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
+
+    serviceDeferredOperStatusResync();
 
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
@@ -1891,6 +1951,12 @@ sai_status_t SwitchVpp::remove(
         return remove_internal(object_type, serializedObjectId);
     }
 
+    if(object_type == SAI_OBJECT_TYPE_MIRROR_SESSION) {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return removeMirrorSession(object_id);
+    }
+
     return remove_internal(object_type, serializedObjectId);
 }
 
@@ -1928,7 +1994,12 @@ sai_status_t SwitchVpp::setPort(
 {
     SWSS_LOG_ENTER();
 
-    UpdatePort(portId, 1, attr);
+    sai_status_t status = UpdatePort(portId, 1, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
 
     auto sid = sai_serialize_object_id(portId);
 
@@ -2017,6 +2088,8 @@ sai_status_t SwitchVpp::set(
 {
     SWSS_LOG_ENTER();
 
+    serviceDeferredOperStatusResync();
+
     if (objectType == SAI_OBJECT_TYPE_PORT)
     {
         sai_object_id_t objectId;
@@ -2055,6 +2128,23 @@ sai_status_t SwitchVpp::set(
             case SAI_SWITCH_ATTR_VXLAN_DEFAULT_PORT:
                 {
                     m_tunnel_mgr.set_vxlan_port(attr);
+                    break;
+                }
+            case SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED:
+                {
+                    // VPP mixes a global "router id" into the IPv4/IPv6 ECMP
+                    // flow hash (ip4_inlines.h / ip6_inlines.h). Map the SAI
+                    // ECMP hash seed onto it so that changing the seed
+                    // re-distributes ECMP/LAG path selection. Fall through to
+                    // set_internal() below so the attribute is also cached.
+                    uint32_t seed = attr->value.u32;
+                    int rc = vpp_ip_flow_hash_router_id_set(seed);
+                    if (rc != 0)
+                    {
+                        SWSS_LOG_ERROR("VPP set ECMP default hash seed=%u failed rc=%d", seed, rc);
+                        return SAI_STATUS_FAILURE;
+                    }
+                    SWSS_LOG_NOTICE("VPP set ECMP default hash seed=%u", seed);
                     break;
                 }
         }
@@ -2798,6 +2888,8 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
         {
             /* VPP reports link_speed in Kbps, SAI uses Mbps */
             attr.value.u32 = vpp_speed_kbps / 1000;
+            SWSS_LOG_NOTICE("port oper speed from VPP: %s %u Kbps -> %u Mbps",
+                            hwif_name.c_str(), vpp_speed_kbps, attr.value.u32);
         }
         else
         {
@@ -2805,6 +2897,8 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
             attr.id = SAI_PORT_ATTR_SPEED;
 
             CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+            SWSS_LOG_NOTICE("port oper speed fallback to configured: %s %u Mbps",
+                            hwif_name.c_str(), attr.value.u32);
         }
     }
 

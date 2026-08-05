@@ -26,9 +26,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     bool initTimeSpanSeen = false;
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lRrm:h";
+    const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lGRrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lRh";
+    const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lGRh";
 #endif // SAITHRIFT
 
     while (true)
@@ -52,6 +52,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "watchdogWarnTimeSpan",    optional_argument, 0, 'w' },
             { "watchdogInitTimeSpan",    optional_argument, 0, 'W' },
             { "supportingBulkCounters",  required_argument, 0, 'B' },
+            { "enablePerPortCounterDiscovery", no_argument, 0, 'G' },
             { "enableAttrVersionCheck",  no_argument,       0, 'a' },
 #ifdef SAITHRIFT
             { "rpcserver",               no_argument,       0, 'r' },
@@ -157,6 +158,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 options->m_supportingBulkCounterGroups = std::string(optarg);
                 break;
 
+            case 'G':
+                options->m_enablePerPortCounterDiscovery = true;
+                break;
+
             case 'a':
                 options->m_enableAttrVersionCheck = true;
                 break;
@@ -190,9 +195,9 @@ void CommandLineOptionsParser::printUsage()
     SWSS_LOG_ENTER();
 
 #ifdef SAITHRIFT
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-R] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-r] [-m portmap] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-R] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-G] [-r] [-m portmap] [-h]" << std::endl;
 #else
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-R] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-R] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-G] [-h]" << std::endl;
 #endif // SAITHRIFT
 
     std::cout << "    -d --diag" << std::endl;
@@ -229,6 +234,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Watchdog time span (in microseconds) for init phase (default: same as -w)" << std::endl;
     std::cout << "    -B --supportingBulkCounters" << std::endl;
     std::cout << "        Counter groups those support bulk polling" << std::endl;
+    std::cout << "    -G --enablePerPortCounterDiscovery" << std::endl;
+    std::cout << "        Enable counter-group discovery during counter add operations" << std::endl;
     std::cout << "    -a --enableAttrVersionCheck" << std::endl;
     std::cout << "        Enable attribute SAI version check when performing SAI discovery" << std::endl;
 

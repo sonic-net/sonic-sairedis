@@ -66,9 +66,15 @@ if [ "$SUPPORTING_BULK_COUNTER_GROUPS" != "" ]; then
     CMD_ARGS+=" -B $SUPPORTING_BULK_COUNTER_GROUPS"
 fi
 
-ENABLE_PER_PORT_COUNTER_DISCOVERY=$(echo $SYNCD_VARS | jq -r '.enable_per_port_counter_discovery')
+ENABLE_PER_PORT_COUNTER_DISCOVERY=$(echo $SYNCD_VARS | jq -r 'if has("enable_per_port_counter_discovery") then .enable_per_port_counter_discovery else "" end')
 if [ "$ENABLE_PER_PORT_COUNTER_DISCOVERY" == "true" ]; then
     CMD_ARGS+=" -G"
+elif [ -z "$ENABLE_PER_PORT_COUNTER_DISCOVERY" ]; then
+    case "$SONIC_ASIC_TYPE" in
+        broadcom)
+            CMD_ARGS+=" -G"
+            ;;
+    esac
 fi
 
 case "$(cat /proc/cmdline)" in
@@ -624,6 +630,13 @@ config_syncd_marvell_teralynx()
 
 config_syncd_nvidia_bluefield()
 {
+    # SDK techsupport CT dump sentinel path. Keep in sync across:
+    #   sonic-utilities/config/plugins/nvidia_bluefield.py (SDK_TECHSUPPORT_CT_DUMP_SENTINEL)
+    #   sonic-utilities/scripts/generate_dump (sdk_techsupport_ct_dump_sentinel)
+    #   syncd/scripts/syncd_init_common.sh (config_syncd_nvidia_bluefield)
+    mkdir -p /var/run/sonic-platform-nvidia-bluefield
+    rm -f /var/run/sonic-platform-nvidia-bluefield/sdk-techsupport-ct-dump.enabled
+
     # Read MAC addresses
     base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
     hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')
