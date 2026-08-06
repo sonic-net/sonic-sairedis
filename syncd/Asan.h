@@ -4,8 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Testable ASAN helpers for syncd. Production builds enable them via the
- * constructor in AsanCtor.cpp; unit tests call asan_init_impl() with injected
- * dependencies and leave AsanCtor.cpp out of the link.
+ * constructor in AsanCtor.cpp; unit tests call asan_init_impl() /
+ * asan_sigterm_handler_impl() with injected dependencies and leave
+ * AsanCtor.cpp out of the link.
  */
 
 #pragma once
@@ -25,10 +26,21 @@ using AsanAccessFn = int (*)(const char *, int);
 using AsanMallocFn = void *(*)(size_t);
 // __lsan_do_leak_check() from sanitizer/lsan_interface.h
 using AsanLsanLeakCheckFn = void (*)(void);
+// raise() from csignal
+using AsanRaiseFn = int (*)(int);
 
-// SIGTERM handler installed by asan_init_impl(). Exposed so tests can verify
-// the handler pointer that was passed to signal().
+// SIGTERM handler installed by asan_init_impl(). Thin wrapper around
+// asan_sigterm_handler_impl() that passes g_lsan_leak_check and the real
+// libc entry points. Exposed so tests can verify the handler pointer that was
+// passed to signal().
 void asan_sigterm_handler(int signo);
+
+// Testable SIGTERM-handler body. Production wrapper passes g_lsan_leak_check,
+// ::signal, and ::raise; unit tests inject doubles.
+void asan_sigterm_handler_impl(int signo,
+                               AsanLsanLeakCheckFn leak_check_fn,
+                               AsanSignalFn signal_fn,
+                               AsanRaiseFn raise_fn);
 
 // Allocate (and never free) the intentional test leak via malloc_fn.
 void asan_inject_test_leak(AsanMallocFn malloc_fn);

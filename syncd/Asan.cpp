@@ -6,7 +6,8 @@
  *
  * ENABLE_ASAN=y syncd builds also link AsanCtor.cpp, whose constructor calls
  * asan_init_impl() before main(). Unit tests leave AsanCtor.cpp out and call
- * asan_init_impl() with test-double functions for the dependencies.
+ * asan_init_impl() / asan_sigterm_handler_impl() with test-double functions for
+ * the dependencies.
  */
 
 #include "Asan.h"
@@ -69,17 +70,25 @@ void asan_inject_test_leak(AsanMallocFn malloc_fn)
     asm volatile("" : : "r"(probe) : "memory");
 }
 
-void asan_sigterm_handler(int signo)
+void asan_sigterm_handler_impl(int signo,
+                               AsanLsanLeakCheckFn leak_check_fn,
+                               AsanSignalFn signal_fn,
+                               AsanRaiseFn raise_fn)
 {
     SWSS_LOG_ENTER();
 
-    if (g_lsan_leak_check)
+    if (leak_check_fn)
     {
-        g_lsan_leak_check();
+        leak_check_fn();
     }
 
-    signal(signo, SIG_DFL);
-    raise(signo);
+    signal_fn(signo, SIG_DFL);
+    raise_fn(signo);
+}
+
+void asan_sigterm_handler(int signo)
+{
+    asan_sigterm_handler_impl(signo, g_lsan_leak_check, ::signal, ::raise);
 }
 
 bool asan_init_impl(AsanSignalFn signal_fn,

@@ -10,12 +10,20 @@
 namespace
 {
 
+struct AsanSignalState
+{
+    // When true, mock_signal returns SIG_ERR.
+    bool fail = false;
+
+    int calls = 0;
+    int last_sig = 0;
+    // Last handler passed to signal() (init install or handler restore).
+    sighandler_t last_set = SIG_DFL;
+};
+
 struct AsanTestState
 {
-    int signal_calls = 0;
-    bool signal_fail = false;
-    int last_sig = 0;
-    sighandler_t installed = SIG_DFL;
+    AsanSignalState signal;
 
     int access_calls = 0;
     int access_rc = -1;
@@ -23,8 +31,14 @@ struct AsanTestState
 
     int malloc_calls = 0;
     size_t malloc_size = 0;
+    // When true, mock_malloc returns nullptr. Otherwise it returns storage.data().
     bool malloc_fail = false;
     std::vector<unsigned char> storage;
+
+    int leak_check_calls = 0;
+
+    int raise_calls = 0;
+    int raise_signo = -1;
 };
 
 AsanTestState *g_state = nullptr;
@@ -32,10 +46,11 @@ AsanTestState *g_state = nullptr;
 sighandler_t mock_signal(int sig, sighandler_t handler)
 {
     EXPECT_NE(g_state, nullptr);
-    g_state->signal_calls++;
-    g_state->last_sig = sig;
-    g_state->installed = handler;
-    return g_state->signal_fail ? SIG_ERR : SIG_DFL;
+    auto& sigst = g_state->signal;
+    sigst.calls++;
+    sigst.last_sig = sig;
+    sigst.last_set = handler;
+    return sigst.fail ? SIG_ERR : SIG_DFL;
 }
 
 int mock_access(const char *path, int mode)
@@ -62,6 +77,21 @@ void *mock_malloc(size_t size)
 
 void mock_leak_check(void)
 {
+    EXPECT_NE(g_state, nullptr);
+    g_state->leak_check_calls++;
+}
+
+int mock_raise(int signo)
+{
+    EXPECT_NE(g_state, nullptr);
+    g_state->raise_calls++;
+    g_state->raise_signo = signo;
+    return 0;
+}
+
+void invoke_handler_impl()
+{
+    asan_sigterm_handler_impl(SIGTERM, mock_leak_check, mock_signal, mock_raise);
 }
 
 } // namespace
@@ -89,9 +119,9 @@ TEST_F(AsanInitTest, InstallsSigtermHandler)
 
     ASSERT_TRUE(asan_init_impl(mock_signal, mock_access, mock_malloc, mock_leak_check));
 
-    EXPECT_EQ(state_.signal_calls, 1);
-    EXPECT_EQ(state_.last_sig, SIGTERM);
-    EXPECT_EQ(state_.installed, asan_sigterm_handler);
+    EXPECT_EQ(state_.signal.calls, 1);
+    EXPECT_EQ(state_.signal.last_sig, SIGTERM);
+    EXPECT_EQ(state_.signal.last_set, asan_sigterm_handler);
     EXPECT_EQ(state_.access_calls, 1);
     EXPECT_EQ(state_.access_path, "/etc/sonic/inject_asan_test_leak_enabled");
     EXPECT_EQ(state_.malloc_calls, 0);
@@ -99,11 +129,11 @@ TEST_F(AsanInitTest, InstallsSigtermHandler)
 
 TEST_F(AsanInitTest, SignalFailureReturnsFalse)
 {
-    state_.signal_fail = true;
+    state_.signal.fail = true;
 
     EXPECT_FALSE(asan_init_impl(mock_signal, mock_access, mock_malloc, mock_leak_check));
 
-    EXPECT_EQ(state_.signal_calls, 1);
+    EXPECT_EQ(state_.signal.calls, 1);
     EXPECT_EQ(state_.access_calls, 0);
     EXPECT_EQ(state_.malloc_calls, 0);
 }
@@ -173,4 +203,44 @@ TEST(AsanInjectTest, NullMallocIsANoOp)
     EXPECT_TRUE(state.storage.empty());
 
     g_state = nullptr;
+}
+
+class AsanSigtermHandlerTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        state_ = {};
+        g_state = &state_;
+    }
+
+    void TearDown() override
+    {
+        g_state = nullptr;
+    }
+
+    AsanTestState state_;
+};
+
+TEST_F(AsanSigtermHandlerTest, RunsLeakCheckRestoresDefaultAndRaises)
+{
+    invoke_handler_impl();
+
+    EXPECT_EQ(state_.leak_check_calls, 1);
+    EXPECT_EQ(state_.signal.calls, 1);
+    EXPECT_EQ(state_.signal.last_sig, SIGTERM);
+    EXPECT_EQ(state_.signal.last_set, SIG_DFL);
+    EXPECT_EQ(state_.raise_calls, 1);
+    EXPECT_EQ(state_.raise_signo, SIGTERM);
+}
+
+TEST_F(AsanSigtermHandlerTest, NullLeakCheckDoesNotCrash)
+{
+    asan_sigterm_handler_impl(SIGTERM, nullptr, mock_signal, mock_raise);
+
+    EXPECT_EQ(state_.leak_check_calls, 0);
+    EXPECT_EQ(state_.signal.calls, 1);
+    EXPECT_EQ(state_.signal.last_set, SIG_DFL);
+    EXPECT_EQ(state_.raise_calls, 1);
+    EXPECT_EQ(state_.raise_signo, SIGTERM);
 }
