@@ -2598,27 +2598,33 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-            std::vector<sai_attribute_t> attrs(attrIds.size());
+            std::vector<sai_attribute_t> attrs = {};
             PortPhyAttributeData attrData;
 
             SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
 
-            bool attrDataInitialized = true;
             for (size_t i = 0; i < attrIds.size(); i++)
             {
-                attrs[i].id = attrIds[i];
-                if (!initAttrData(rid, &attrs[i], &attrData))
+                sai_attribute_t attr = {};
+                attr.id = attrIds[i];
+                if (!initAttrData(rid, &attr, &attrData))
                 {
-                    SWSS_LOG_WARN("PORT_PHY_ATTR: Failed to initialize attribute %d for RID:0x%" PRIx64 ", skipping object",
-                                  attrIds[i], rid);
-                    attrDataInitialized = false;
-                    break;
+                    SWSS_LOG_WARN(
+                        "PORT_PHY_ATTR: Failed to initialize attribute"
+                        " %d for RID:0x%" PRIx64 ", "
+                        "skipping this attribute only",
+                        attrIds[i], rid);
+                    continue;
                 }
+                attrs.push_back(attr);
             }
 
-            if (!attrDataInitialized)
+            if (attrs.empty())
             {
+                SWSS_LOG_WARN(
+                    "PORT_PHY_ATTR: No attributes could be initialized"
+                    " for RID:0x%" PRIx64 ", skipping object", rid);
                 continue;
             }
 
@@ -2626,7 +2632,7 @@ public:
             sai_status_t status = Base::m_vendorSai->get(
                     Base::m_objectType,
                     rid,
-                    static_cast<uint32_t>(attrIds.size()),
+                    static_cast<uint32_t>(attrs.size()),
                     attrs.data());
 
             if (status != SAI_STATUS_SUCCESS)
@@ -2639,7 +2645,7 @@ public:
             // Store in PORT_PHY_ATTR table using VID as key
             std::string vid_str = sai_serialize_object_id(vid);
 
-            for (size_t i = 0; i != attrIds.size(); i++)
+            for (size_t i = 0; i != attrs.size(); i++)
             {
                 auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
                 if (!meta)
@@ -2648,10 +2654,10 @@ public:
                     continue;
                 }
 
-                auto it = m_attrAliases.find(attrIds[i]);
+                auto it = m_attrAliases.find(static_cast<sai_port_attr_t>(attrs[i].id));
                 if (it == m_attrAliases.end())
                 {
-                    SWSS_LOG_ERROR("Unsupported PORT_PHY_ATTR: %d", attrIds[i]);
+                    SWSS_LOG_ERROR("Unsupported PORT_PHY_ATTR: %d", attrs[i].id);
                     continue;
                 }
 
@@ -2661,10 +2667,10 @@ public:
                 if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST)
                 {
                     // Compare current lane values with previous and update metadata
-                    updateLatchedLaneMetadata(vid, attrIds[i], attrs[i]);
+                    updateLatchedLaneMetadata(vid, static_cast<sai_port_attr_t>(attrs[i].id), attrs[i]);
 
                     // Serialize with timestamp and count per lane
-                    attr_value = buildLatchStatusWithMetadata(vid, attrIds[i], attrs[i]);
+                    attr_value = buildLatchStatusWithMetadata(vid, static_cast<sai_port_attr_t>(attrs[i].id), attrs[i]);
                 }
                 else
                 {
@@ -3135,36 +3141,45 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-
-            std::vector<sai_attribute_t> attrs(attrIds.size());
+            std::vector<sai_attribute_t> attrs = {};
             PortPhySerdesAttributeData attrData;
 
-            SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
-                           attrIds.size(), vid, rid);
+            SWSS_LOG_DEBUG(
+                "PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes "
+                "with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
+                attrIds.size(), vid, rid);
 
-            // Initialize all attributes - if any fail, skip this object
-            bool attrDataInitialized = true;
+            // Initialize attributes - only collect successfully initialized ones
             for (size_t i = 0; i < attrIds.size(); i++)
             {
-                attrs[i].id = attrIds[i];
-                if (!initAttrData(rid, &attrs[i], &attrData))
+                sai_attribute_t attr = {};
+                attr.id = attrIds[i];
+                if (!initAttrData(rid, &attr, &attrData))
                 {
-                    SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Failed to initialize attribute %s for RID:0x%" PRIx64 ", skipping object",
-                                  sai_serialize_port_serdes_attr(attrIds[i]).c_str(), rid);
-                    attrDataInitialized = false;
-                    break;
+                    SWSS_LOG_WARN(
+                        "PORT_PHY_SERDES_ATTR: Failed to initialize "
+                        "attribute %s for RID:0x%" PRIx64 ", "
+                        "skipping this attribute only",
+                        sai_serialize_port_serdes_attr(attrIds[i]).c_str(),
+                        rid);
+                    continue;
                 }
+                attrs.push_back(attr);
             }
 
-            if (!attrDataInitialized)
+            if (attrs.empty())
             {
+                SWSS_LOG_WARN(
+                    "PORT_PHY_SERDES_ATTR: No attributes could be "
+                    "initialized for RID:0x%" PRIx64 ", "
+                    "skipping object", rid);
                 continue;
             }
 
             sai_status_t status = Base::m_vendorSai->get(
                     Base::m_objectType,
                     rid,
-                    static_cast<uint32_t>(attrIds.size()),
+                    static_cast<uint32_t>(attrs.size()),
                     attrs.data());
 
             if (status != SAI_STATUS_SUCCESS)
@@ -3184,7 +3199,7 @@ public:
 
             std::string port_vid_str = sai_serialize_object_id(port_it->second.port_vid);
 
-            for (size_t i = 0; i != attrIds.size(); i++)
+            for (size_t i = 0; i != attrs.size(); i++)
             {
                 auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
                 if (!meta)
@@ -3193,10 +3208,10 @@ public:
                     continue;
                 }
 
-                auto it = m_attrAliases.find(attrIds[i]);
+                auto it = m_attrAliases.find(static_cast<sai_port_serdes_attr_t>(attrs[i].id));
                 if (it == m_attrAliases.end())
                 {
-                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Unsupported PORT_SERDES_ATTR: %d", attrIds[i]);
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Unsupported PORT_SERDES_ATTR: %d", attrs[i].id);
                     continue;
                 }
 
