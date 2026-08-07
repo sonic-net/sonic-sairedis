@@ -43,12 +43,27 @@ parameters:
 - name: debian_version
   type: string
 
+- name: saithrift_v2
+  type: boolean
+  default: false
+
+- name: depends_on
+  type: object
+  default: []
+
+- name: vpp_run_id
+  type: string
+  default: ''
+
 jobs:
 - job:
+  dependsOn: ${{ parameters.depends_on }}
   displayName: ${{ parameters.arch }}
   timeoutInMinutes: ${{ parameters.timeout }}
   variables:
     DIFF_COVER_CHECK_THRESHOLD: 80
+    ${{ if ne(parameters.vpp_run_id, '') }}:
+      VPP_RUN_ID: $[ dependencies.ResolveVpp.outputs['resolveVppRun.VPP_RUN_ID'] ]
     ${{ if eq(parameters.run_unit_test, true) }}:
       DIFF_COVER_ENABLE: 'true'
 
@@ -187,18 +202,32 @@ jobs:
       sudo dpkg -i $(find ./download -name *.deb)
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install libyang from common lib"
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      source: specific
-      project: build
-      pipeline: sonic-net.sonic-platform-vpp
-      artifact: vpp-${{ parameters.debian_version }}
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/master'
-      allowPartiallySucceededBuilds: true
-      path: $(Build.ArtifactStagingDirectory)/download
-    displayName: "Download sonic platform-vpp deb packages"
-    condition: eq('${{ parameters.arch }}', 'amd64')
+  - ${{ if eq(parameters.vpp_run_id, '') }}:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        source: specific
+        project: build
+        pipeline: sonic-net.sonic-platform-vpp
+        artifact: vpp-${{ parameters.debian_version }}
+        runVersion: 'latestFromBranch'
+        runBranch: 'refs/heads/master'
+        allowPartiallySucceededBuilds: true
+        path: $(Build.ArtifactStagingDirectory)/download
+      displayName: "Download sonic platform-vpp deb packages"
+      condition: eq('${{ parameters.arch }}', 'amd64')
+  - ${{ if ne(parameters.vpp_run_id, '') }}:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        source: specific
+        project: build
+        pipeline: sonic-net.sonic-platform-vpp
+        artifact: vpp-${{ parameters.debian_version }}
+        runVersion: specific
+        runId: ${{ parameters.vpp_run_id }}
+        allowPartiallySucceededBuilds: true
+        path: $(Build.ArtifactStagingDirectory)/download
+      displayName: "Download specified sonic platform-vpp deb packages"
+      condition: eq('${{ parameters.arch }}', 'amd64')
   - script: |
       set -ex
       sudo dpkg -i download/libvppinfra-dev_*_${{ parameters.arch }}.deb
@@ -273,6 +302,33 @@ jobs:
         gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" -e "vslib/vpp/.*" --exclude-unreachable-branches --json-pretty -o coverage-all.json
         gcovr -a "coverage-*.json" -x --xml-pretty -o coverage.xml
       displayName: "Run sonic sairedis unit tests"
+  - ${{ if eq(parameters.saithrift_v2, true) }}:
+    - script: |
+        set -euxo pipefail
+
+        sudo apt-get update
+        sudo apt-get install -qq -y \
+            dh-exec \
+            libthrift-dev \
+            python3-setuptools \
+            python3-thrift \
+            thrift-compiler
+
+        sudo apt-get install -y \
+            ./libsaimetadata_1.0.0_${{ parameters.arch }}.deb \
+            ./libsaimetadata-dev_1.0.0_${{ parameters.arch }}.deb \
+            ./libsaivs_1.0.0_${{ parameters.arch }}.deb \
+            ./libsaivs-dev_1.0.0_${{ parameters.arch }}.deb
+
+        rm -f ./*saithriftv2*.deb ./saiserverv2*.deb
+        pushd SAI
+        SAITHRIFTV2=true SAITHRIFT_VER=v2 platform=vpp \
+            dpkg-buildpackage -us -uc -b -j$(nproc)
+        popd
+
+        test -s saiserverv2_0.9.4_${{ parameters.arch }}.deb
+        test -s python-saithriftv2_0.9.4_${{ parameters.arch }}.deb
+      displayName: "Build VPP SAI Thrift v2 packages"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: ${{ parameters.artifact_name }}
     displayName: "Archive sonic sairedis debian packages"

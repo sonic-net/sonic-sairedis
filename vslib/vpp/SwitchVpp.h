@@ -275,6 +275,11 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) override;
 
+            sai_status_t create_port_dependencies(
+                    _In_ sai_object_id_t port_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
             virtual sai_status_t setPort(
                     _In_ sai_object_id_t portId,
                     _In_ const sai_attribute_t* attr) override;
@@ -706,12 +711,16 @@ namespace saivs
             sai_status_t vpp_set_interface_state (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
-                    _In_ bool is_up);
+                    _In_ bool is_up,
+                    _In_ uint32_t attr_count = 0,
+                    _In_ const sai_attribute_t *attr_list = nullptr);
             // set ethernet interface mtu including L2 header
             sai_status_t vpp_set_port_mtu (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
-                    _In_ uint32_t mtu);
+                    _In_ uint32_t mtu,
+                    _In_ uint32_t attr_count = 0,
+                    _In_ const sai_attribute_t *attr_list = nullptr);
             // set sw interface mtu excluding L2 header
             sai_status_t vpp_set_interface_mtu (
                     _In_ sai_object_id_t object_id,
@@ -722,7 +731,9 @@ namespace saivs
             sai_status_t vpp_set_port_speed (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
-                    _In_ uint32_t speed);
+                    _In_ uint32_t speed,
+                    _In_ uint32_t attr_count = 0,
+                    _In_ const sai_attribute_t *attr_list = nullptr);
 
             sai_status_t UpdatePort(
                     _In_ sai_object_id_t object_id,
@@ -1145,7 +1156,9 @@ namespace saivs
             bool vpp_get_hwif_name (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
-                    _Out_ std::string& ifname);
+                    _Out_ std::string& ifname,
+                    _In_ uint32_t attr_count = 0,
+                    _In_ const sai_attribute_t *attr_list = nullptr);
 
         public:
 
@@ -1166,6 +1179,15 @@ namespace saivs
 
             void populate_if_mapping();
 
+            bool getPortHwifNameFromLane(
+                    _In_ sai_object_id_t port_id,
+                    _Out_ std::string& if_name);
+
+            bool getPortHwifNameFromLane(
+                    _In_ sai_object_id_t port_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _Out_ std::string& if_name);
             bool getTapNameFromPortOrLagId(
                     _In_ sai_object_id_t obj_id,
                     _Out_ std::string& if_name);

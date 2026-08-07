@@ -4,6 +4,7 @@
 #include "VirtualSwitchSaiInterface.h"
 #include "SwitchStateBase.h"
 #include "LaneMapFileParser.h"
+#include "PortConfigFileParser.h"
 #include "HostInterfaceInfo.h"
 #include "SwitchConfigContainer.h"
 #include "ResourceLimiterParser.h"
@@ -25,6 +26,12 @@
 #include <map>
 
 using namespace saivs;
+
+namespace
+{
+    constexpr const char *DEFAULT_PORT_CONFIG_FILE =
+            "/usr/share/sonic/hwsku/port_config.ini";
+}
 
 #define VS_CHECK_API_INITIALIZED()                                          \
     if (!m_apiInitialized) {                                                \
@@ -172,6 +179,16 @@ sai_status_t Sai::apiInitialize(
         return SAI_STATUS_FAILURE;
     }
 
+    std::shared_ptr<PortConfigMap> portConfigMap;
+    if (switchType == SAI_VS_SWITCH_TYPE_VPP)
+    {
+        auto portConfigFile = profileMap.find(SAI_KEY_VS_PORT_CONFIG_FILE);
+        const std::string portConfigPath = portConfigFile == profileMap.end()
+                ? DEFAULT_PORT_CONFIG_FILE
+                : portConfigFile->second;
+        portConfigMap = PortConfigFileParser::parse(portConfigPath);
+    }
+
     const char *use_tap_dev = service_method_table->profile_get_value(0, SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE);
 
     auto useTapDevice = SwitchConfig::parseBool(use_tap_dev);
@@ -270,6 +287,7 @@ sai_status_t Sai::apiInitialize(
         sc->m_eventQueue = m_eventQueue;
         sc->m_resourceLimiter = m_resourceLimiterContainer->getResourceLimiter(sc->m_switchIndex);
         sc->m_corePortIndexMap = m_corePortIndexMapContainer->getCorePortIndexMap(sc->m_switchIndex);
+        sc->m_portConfigMap = portConfigMap;
         sc->m_profileMap = profileMap;
     }
 

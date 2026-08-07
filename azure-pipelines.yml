@@ -38,6 +38,9 @@ parameters:
   - name: debian_version
     type: string
     default: bookworm
+  - name: vpp_run_id
+    type: string
+    default: ''
 variables:
   - name: BUILD_BRANCH
     ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
@@ -76,8 +79,7 @@ stages:
       debian_version: ${{ parameters.debian_version }}
 
 - stage: BuildArm
-  dependsOn: Build
-  condition: succeeded('Build')
+  dependsOn: []
   jobs:
   - template: .azure-pipelines/build-template.yml
     parameters:
@@ -100,17 +102,57 @@ stages:
       debian_version: ${{ parameters.debian_version }}
 
 - stage: BuildTrixie
-  dependsOn: BuildArm
-  condition: succeeded('BuildArm')
+  dependsOn: []
   jobs:
+  - job: ResolveVpp
+    displayName: Resolve VPP build
+    pool:
+      vmImage: 'ubuntu-22.04'
+    steps:
+    - ${{ if eq(parameters.vpp_run_id, '') }}:
+      - task: DownloadPipelineArtifact@2
+        name: downloadVpp
+        inputs:
+          source: specific
+          project: build
+          pipeline: sonic-net.sonic-platform-vpp
+          artifact: vpp-trixie
+          path: $(Build.ArtifactStagingDirectory)/vpp-resolution
+          patterns: '**/libvppinfra_*_amd64.deb'
+          runVersion: latestFromBranch
+          runBranch: refs/heads/master
+          allowPartiallySucceededBuilds: true
+        displayName: Resolve latest successful sonic platform-vpp build
+    - ${{ if eq(parameters.vpp_run_id, '') }}:
+      - script: |
+          set -euo pipefail
+          vpp_run_id="$(downloadVpp.BuildNumber)"
+          test -n "$vpp_run_id"
+          echo "Resolved sonic platform-vpp run ID: $vpp_run_id"
+          echo "##vso[task.setvariable variable=VPP_RUN_ID;isOutput=true]$vpp_run_id"
+        name: resolveVppRun
+        displayName: Publish resolved VPP run ID
+    - ${{ if ne(parameters.vpp_run_id, '') }}:
+      - script: |
+          set -euo pipefail
+          vpp_run_id="${{ parameters.vpp_run_id }}"
+          test -n "$vpp_run_id"
+          echo "Using requested sonic platform-vpp run ID: $vpp_run_id"
+          echo "##vso[task.setvariable variable=VPP_RUN_ID;isOutput=true]$vpp_run_id"
+        name: resolveVppRun
+        displayName: Publish requested VPP run ID
+
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
+      depends_on: ResolveVpp
       swss_common_artifact_name: sonic-swss-common-trixie
       artifact_name: sonic-sairedis-trixie
       syslog_artifact_name: sonic-sairedis-trixie.syslog
       run_unit_test: true
+      saithrift_v2: true
       debian_version: trixie
+      vpp_run_id: $(VPP_RUN_ID)
 
   - template: .azure-pipelines/build-template.yml
     parameters:
@@ -131,6 +173,29 @@ stages:
       artifact_name: sonic-sairedis-trixie.arm64
       syslog_artifact_name: sonic-sairedis-trixie.syslog.arm64
       debian_version: trixie
+
+- stage: BuildSaiTestVpp
+  dependsOn: BuildTrixie
+  condition: succeeded('BuildTrixie')
+  variables:
+    VPP_RUN_ID: $[ stageDependencies.BuildTrixie.ResolveVpp.outputs['resolveVppRun.VPP_RUN_ID'] ]
+  jobs:
+  - template: .azure-pipelines/build-docker-sai-test-vpp-template.yml
+    parameters:
+      timeout: 90
+      sairedis_artifact_name: sonic-sairedis-trixie
+      swss_common_artifact_name: sonic-swss-common-trixie
+      artifact_name: docker-sai-test-vpp
+      vpp_run_id: $(VPP_RUN_ID)
+
+- stage: TestSaiVpp
+  dependsOn: BuildSaiTestVpp
+  condition: succeeded('BuildSaiTestVpp')
+  jobs:
+  - template: .azure-pipelines/test-sai-vpp-template.yml
+    parameters:
+      image_artifact_name: docker-sai-test-vpp
+      log_artifact_name: sai-vpp-test-results
 
 - stage: BuildSwss
   dependsOn: Build

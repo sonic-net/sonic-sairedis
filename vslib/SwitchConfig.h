@@ -4,6 +4,7 @@
 #include "EventQueue.h"
 #include "ResourceLimiter.h"
 #include "CorePortIndexMap.h"
+#include "PortConfigMap.h"
 
 #include <map>
 #include <string>
@@ -102,6 +103,8 @@ namespace saivs
             std::shared_ptr<ResourceLimiter> m_resourceLimiter;
 
             std::shared_ptr<CorePortIndexMap> m_corePortIndexMap;
+
+            std::shared_ptr<PortConfigMap> m_portConfigMap;
 
             std::map<std::string, std::string> m_profileMap;
     };

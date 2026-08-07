@@ -25,6 +25,8 @@
 #include <cstring>
 #include <regex>
 #include <fstream>
+#include <algorithm>
+#include <set>
 
 using namespace saivs;
 
@@ -339,39 +341,162 @@ void SwitchVpp::vpp_intf_remove_prefix_entry (const std::string& intf_name)
     m_intf_prefix_map.erase(it);
 }
 
-bool SwitchVpp::vpp_get_hwif_name (
-      _In_ sai_object_id_t object_id,
-      _In_ uint32_t vlan_id,
-      _Out_ std::string& ifname)
+bool SwitchVpp::getPortHwifNameFromLane(
+      _In_ sai_object_id_t port_id,
+      _Out_ std::string& if_name)
 {
     SWSS_LOG_ENTER();
 
-    std::string tap_name;
+    return getPortHwifNameFromLane(port_id, 0, nullptr, if_name);
+}
 
-    if (getTapNameFromPortOrLagId(object_id, tap_name) == false)
+bool SwitchVpp::getPortHwifNameFromLane(
+      _In_ sai_object_id_t port_id,
+      _In_ uint32_t attr_count,
+      _In_ const sai_attribute_t *attr_list,
+      _Out_ std::string& if_name)
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_switchConfig || !m_switchConfig->m_portConfigMap)
     {
-        SWSS_LOG_ERROR("host interface for port/lag id %s not found",
-                sai_serialize_object_id(object_id).c_str());
+        SWSS_LOG_DEBUG("port config map unavailable for port %s",
+                sai_serialize_object_id(port_id).c_str());
         return false;
     }
 
-    const char *hwifname = tap_to_hwif_name(tap_name.c_str());
-
-    if (hwifname == NULL || strcmp(hwifname, "Unknown") == 0)
+    uint32_t lanes[8] = {};
+    uint32_t lane_count = 0;
+    const sai_attribute_t *lane_attr = nullptr;
+    if (attr_list != nullptr)
     {
+        lane_attr = sai_metadata_get_attr_by_id(
+                SAI_PORT_ATTR_HW_LANE_LIST, attr_count, attr_list);
+    }
+
+    if (lane_attr != nullptr)
+    {
+        lane_count = lane_attr->value.u32list.count;
+        if (lane_count > sizeof(lanes) / sizeof(lanes[0]))
+        {
+            SWSS_LOG_WARN("too many lanes for port %s",
+                    sai_serialize_object_id(port_id).c_str());
+            return false;
+        }
+        if (lane_count != 0 && lane_attr->value.u32list.list == nullptr)
+        {
+            SWSS_LOG_WARN("port %s has a null lane list",
+                sai_serialize_object_id(port_id).c_str());
+            return false;
+        }
+        if (lane_count != 0)
+        {
+            std::copy(lane_attr->value.u32list.list,
+                lane_attr->value.u32list.list + lane_count, lanes);
+        }
+    }
+    else
+    {
+        sai_attribute_t attr = {};
+        attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+        attr.value.u32list.count = sizeof(lanes) / sizeof(lanes[0]);
+        attr.value.u32list.list = lanes;
+
+        if (get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr) != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_DEBUG("lane list unavailable for port %s",
+                    sai_serialize_object_id(port_id).c_str());
+            return false;
+        }
+        lane_count = attr.value.u32list.count;
+    }
+
+    if (lane_count == 0 || lane_count > sizeof(lanes) / sizeof(lanes[0]))
+    {
+        SWSS_LOG_DEBUG("lane list unavailable for port %s",
+                sai_serialize_object_id(port_id).c_str());
         return false;
     }
 
-    char hw_subifname[64];
-    const char *hw_ifname;
+    std::set<uint32_t> lane_set(lanes, lanes + lane_count);
+    if (lane_set.size() != lane_count)
+    {
+        SWSS_LOG_DEBUG("duplicate lanes in port %s lane list",
+                sai_serialize_object_id(port_id).c_str());
+        return false;
+    }
+    const std::string port_name =
+            m_switchConfig->m_portConfigMap->getPortName(lane_set);
+    if (port_name.empty())
+    {
+        SWSS_LOG_DEBUG("lane set does not map to a port for %s",
+                sai_serialize_object_id(port_id).c_str());
+        return false;
+    }
+
+    const char *mapped_hwifname = tap_to_hwif_name(port_name.c_str());
+    if (mapped_hwifname == nullptr || strcmp(mapped_hwifname, "Unknown") == 0)
+    {
+        SWSS_LOG_DEBUG("port %s has no VPP mapping", port_name.c_str());
+        return false;
+    }
+
+    if (vpp_get_swif_idx_by_name(mapped_hwifname) == static_cast<uint32_t>(-1))
+    {
+        SWSS_LOG_DEBUG("VPP interface %s is not present for port %s",
+                mapped_hwifname, port_name.c_str());
+        return false;
+    }
+
+    if_name = mapped_hwifname;
+    SWSS_LOG_DEBUG("resolved port %s lane set to %s/%s",
+            sai_serialize_object_id(port_id).c_str(), port_name.c_str(),
+            if_name.c_str());
+    return true;
+}
+
+bool SwitchVpp::vpp_get_hwif_name (
+      _In_ sai_object_id_t object_id,
+      _In_ uint32_t vlan_id,
+    _Out_ std::string& ifname,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    std::string hwifname;
+    if (objectTypeQuery(object_id) == SAI_OBJECT_TYPE_PORT &&
+                getPortHwifNameFromLane(object_id, attr_count, attr_list, hwifname))
+    {
+        SWSS_LOG_DEBUG("using lane-based VPP interface %s for port %s",
+                hwifname.c_str(), sai_serialize_object_id(object_id).c_str());
+    }
+    else
+    {
+        std::string tap_name;
+
+        if (getTapNameFromPortOrLagId(object_id, tap_name) == false)
+        {
+            SWSS_LOG_ERROR("host interface for port/lag id %s not found",
+                    sai_serialize_object_id(object_id).c_str());
+            return false;
+        }
+
+        const char *mapped_hwifname = tap_to_hwif_name(tap_name.c_str());
+
+        if (mapped_hwifname == NULL || strcmp(mapped_hwifname, "Unknown") == 0)
+        {
+            return false;
+        }
+
+        hwifname = mapped_hwifname;
+    }
 
     if (vlan_id) {
-        snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
-        hw_ifname = hw_subifname;
+        ifname = hwifname + "." + std::to_string(vlan_id);
     } else {
-        hw_ifname = hwifname;
+        ifname = hwifname;
     }
-    ifname = std::string(hw_ifname);
 
     return true;
 }
@@ -585,7 +710,9 @@ sai_status_t SwitchVpp::asyncIntfStateUpdate(const char *hwif_name, bool link_up
 sai_status_t SwitchVpp::vpp_set_interface_state (
         _In_ sai_object_id_t object_id,
         _In_ uint32_t vlan_id,
-        _In_ bool is_up)
+    _In_ bool is_up,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -595,7 +722,8 @@ sai_status_t SwitchVpp::vpp_set_interface_state (
 
     std::string ifname;
 
-    if (vpp_get_hwif_name(object_id, vlan_id, ifname) == true) {
+    if (vpp_get_hwif_name(object_id, vlan_id, ifname, attr_count, attr_list))
+    {
         const char *hwif_name = ifname.c_str();
 
         interface_set_state(hwif_name, is_up);
@@ -608,7 +736,9 @@ sai_status_t SwitchVpp::vpp_set_interface_state (
 sai_status_t SwitchVpp::vpp_set_port_mtu (
         _In_ sai_object_id_t object_id,
         _In_ uint32_t vlan_id,
-        _In_ uint32_t mtu)
+    _In_ uint32_t mtu,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -618,7 +748,8 @@ sai_status_t SwitchVpp::vpp_set_port_mtu (
 
     std::string ifname;
 
-    if (vpp_get_hwif_name(object_id, vlan_id, ifname) == true) {
+    if (vpp_get_hwif_name(object_id, vlan_id, ifname, attr_count, attr_list))
+    {
         const char *hwif_name = ifname.c_str();
 
         hw_interface_set_mtu(hwif_name, mtu);
@@ -653,7 +784,9 @@ sai_status_t SwitchVpp::vpp_set_interface_mtu (
 sai_status_t SwitchVpp::vpp_set_port_speed (
         _In_ sai_object_id_t object_id,
         _In_ uint32_t vlan_id,
-        _In_ uint32_t speed)
+    _In_ uint32_t speed,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -663,7 +796,8 @@ sai_status_t SwitchVpp::vpp_set_port_speed (
 
     std::string ifname;
 
-    if (vpp_get_hwif_name(object_id, vlan_id, ifname) == true) {
+    if (vpp_get_hwif_name(object_id, vlan_id, ifname, attr_count, attr_list))
+    {
         const char *hwif_name = ifname.c_str();
 
         // SAI port speed is in Mbps, VPP link speed is in Kbps
@@ -755,21 +889,24 @@ sai_status_t SwitchVpp::UpdatePort(
 
     if (attr_type != NULL)
     {
-        vpp_set_interface_state(object_id, 0, attr_type->value.booldata);
+        vpp_set_interface_state(object_id, 0, attr_type->value.booldata,
+            attr_count, attr_list);
     }
 
     attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_MTU, attr_count, attr_list);
 
     if (attr_type != NULL)
     {
-        vpp_set_port_mtu(object_id, 0, attr_type->value.u32);
+        vpp_set_port_mtu(object_id, 0, attr_type->value.u32,
+            attr_count, attr_list);
     }
 
     attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_SPEED, attr_count, attr_list);
 
     if (attr_type != NULL)
     {
-        vpp_set_port_speed(object_id, 0, attr_type->value.u32);
+        vpp_set_port_speed(object_id, 0, attr_type->value.u32,
+            attr_count, attr_list);
     }
 
     return SAI_STATUS_SUCCESS;

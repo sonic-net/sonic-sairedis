@@ -1426,9 +1426,15 @@ sai_status_t SwitchStateBase::create_ports()
     {
         SWSS_LOG_DEBUG("create port index %u", i);
 
+        std::vector<uint32_t> lanes = lanesVector.at(i);
+        sai_attribute_t lane_attr = {};
+        lane_attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+        lane_attr.value.u32list.count = static_cast<uint32_t>(lanes.size());
+        lane_attr.value.u32list.list = lanes.data();
+
         sai_object_id_t port_id;
 
-        CHECK_STATUS(create(SAI_OBJECT_TYPE_PORT, &port_id, m_switch_id, 0, NULL));
+        CHECK_STATUS(create(SAI_OBJECT_TYPE_PORT, &port_id, m_switch_id, 1, &lane_attr));
         m_port_list.push_back(port_id);
 
         sai_attribute_t attr;
@@ -1445,14 +1451,6 @@ sai_status_t SwitchStateBase::create_ports()
 
         attr.id = SAI_PORT_ATTR_SPEED;
         attr.value.u32 = 40 * 1000;     // TODO from config
-
-        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
-
-        std::vector<uint32_t> lanes = lanesVector.at(i);
-
-        attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
-        attr.value.u32list.count = (uint32_t)lanes.size();
-        attr.value.u32list.list = lanes.data();
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
