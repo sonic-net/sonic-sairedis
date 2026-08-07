@@ -23,7 +23,7 @@
 /* ASAN test-leak injection
  *
  * When ASAN is enabled and /etc/sonic/inject_asan_test_leak_enabled exists,
- * allocate a block and deliberately never free it so LSAN has a known leak to
+ * allocate a block and deliberately never free it so LSan has a known leak to
  * report on process exit or in the SIGTERM handler. This is useful for
  * verifying that the ASAN build, configuration, and SIGTERM handlers are
  * working as expected.
