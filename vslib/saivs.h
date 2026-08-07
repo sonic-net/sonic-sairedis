@@ -27,8 +27,8 @@ extern "C" {
  * @def SAI_KEY_VS_PORT_CONFIG_FILE
  *
  * Optional path to the SONiC port configuration used to resolve a port lane
- * set to its SONiC interface name. The deployed VPP default is
- * /usr/share/sonic/hwsku/port_config.ini.
+ * set to its SONiC interface name. The default port configuration is used when
+ * this setting is omitted.
  */
 #define SAI_KEY_VS_PORT_CONFIG_FILE          "SAI_VS_PORT_CONFIG_FILE"
 
