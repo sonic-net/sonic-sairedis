@@ -173,6 +173,8 @@ void FdbInfo::setTimestamp(
 
 uint32_t FdbInfo::currentEpochTimeSec()
 {
+    SWSS_LOG_ENTER();
+
     time_t now = time(nullptr);
 
     if (now > static_cast<time_t>(UINT32_MAX))
