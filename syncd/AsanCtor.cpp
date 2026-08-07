@@ -18,13 +18,15 @@
 
 #include "Asan.h"
 
-#include <unistd.h>
+#include "swss/logger.h"
 
 #include <cstdlib>
 #include <sanitizer/lsan_interface.h>
+#include <unistd.h>
 
 extern "C" {
     const char* __lsan_default_suppressions() {
+        // SWSS_LOG_ENTER(); // disabled
         return "leak:__static_initialization_and_destruction_0\n";
     }
 }
@@ -32,6 +34,8 @@ extern "C" {
 __attribute__((constructor))
 static void asan_init()
 {
+    SWSS_LOG_ENTER();
+
     if (!asan_init_impl(::signal, ::access, std::malloc, __lsan_do_leak_check))
     {
         exit(EXIT_FAILURE);

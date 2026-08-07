@@ -1,11 +1,9 @@
 #include "Asan.h"
 
-#include <unistd.h>
-
 #include <gtest/gtest.h>
-
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 namespace
 {
@@ -45,6 +43,7 @@ AsanTestState *g_state = nullptr;
 
 sighandler_t mock_signal(int sig, sighandler_t handler)
 {
+    // SWSS_LOG_ENTER(); // disabled
     EXPECT_NE(g_state, nullptr);
     auto& sigst = g_state->signal;
     sigst.calls++;
@@ -55,6 +54,7 @@ sighandler_t mock_signal(int sig, sighandler_t handler)
 
 int mock_access(const char *path, int mode)
 {
+    // SWSS_LOG_ENTER(); // disabled
     EXPECT_NE(g_state, nullptr);
     EXPECT_EQ(mode, F_OK);
     g_state->access_calls++;
@@ -64,6 +64,7 @@ int mock_access(const char *path, int mode)
 
 void *mock_malloc(size_t size)
 {
+    // SWSS_LOG_ENTER(); // disabled
     EXPECT_NE(g_state, nullptr);
     g_state->malloc_calls++;
     g_state->malloc_size = size;
@@ -77,12 +78,14 @@ void *mock_malloc(size_t size)
 
 void mock_leak_check(void)
 {
+    // SWSS_LOG_ENTER(); // disabled
     EXPECT_NE(g_state, nullptr);
     g_state->leak_check_calls++;
 }
 
 int mock_raise(int signo)
 {
+    // SWSS_LOG_ENTER(); // disabled
     EXPECT_NE(g_state, nullptr);
     g_state->raise_calls++;
     g_state->raise_signo = signo;
@@ -91,6 +94,7 @@ int mock_raise(int signo)
 
 void invoke_handler_impl()
 {
+    // SWSS_LOG_ENTER(); // disabled
     asan_sigterm_handler_impl(SIGTERM, mock_leak_check, mock_signal, mock_raise);
 }
 

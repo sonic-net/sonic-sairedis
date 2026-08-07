@@ -11,8 +11,8 @@
 
 #pragma once
 
-#include <cstddef>
 #include <csignal>
+#include <cstddef>
 
 // Unique size to identify the intentional ASAN test-leak allocation in reports.
 static constexpr size_t ASAN_TEST_LEAK_SIZE = 9861842;

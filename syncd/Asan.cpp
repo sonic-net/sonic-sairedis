@@ -14,12 +14,11 @@
 
 #include "swss/logger.h"
 
-#include <unistd.h>
-
 #include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <thread>
+#include <unistd.h>
 
 /* ASAN test-leak injection
  *
@@ -54,6 +53,8 @@ static AsanLsanLeakCheckFn g_lsan_leak_check = nullptr;
 __attribute__((noinline))
 void asan_inject_test_leak(AsanMallocFn malloc_fn)
 {
+    SWSS_LOG_ENTER();
+
     void *probe = malloc_fn(ASAN_TEST_LEAK_SIZE);
     if (!probe)
     {
@@ -88,6 +89,8 @@ void asan_sigterm_handler_impl(int signo,
 
 void asan_sigterm_handler(int signo)
 {
+    SWSS_LOG_ENTER();
+
     asan_sigterm_handler_impl(signo, g_lsan_leak_check, ::signal, ::raise);
 }
 
