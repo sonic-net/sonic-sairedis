@@ -345,6 +345,8 @@ In `--debug` the container leaves the dataplane running after the test so you ca
 
 These are read by `run_test.sh` at container start (defaults shown).
 
+The VPP SAI profile resolves port lane sets through `port_config.ini`. The product default is `/usr/share/sonic/hwsku/port_config.ini`; this UT profile overrides it with `/etc/sai/port_config.ini`, which is installed from the harness fixture.
+
 ### Logs inside the container
 
 - `/var/log/saiserver.log` — saiserver stdout/stderr **plus** `libsaivs` `SWSS_LOG_*` lines. After the SAI change that removed `swss::Logger` setup from `saiserver.cpp`, the harness routes `SWSS_LOG_*` to **stderr** via an `LD_PRELOAD` shim (`swss_log_stdout_preload.cpp` → `/usr/local/lib/libswss_log_stdout.so`; the `.so` name is historical). `run_test.sh` redirects saiserver `2>&1` into this file so backend traces still land here. Routing to stderr (not stdout) keeps `SWSS_LOG_ENTER` lines out of `swss::exec()` captured stdout (e.g. the `find_new_bond_id` shell pipeline used during LAG create).

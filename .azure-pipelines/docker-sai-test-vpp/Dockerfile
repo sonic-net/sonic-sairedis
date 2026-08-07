@@ -130,6 +130,7 @@ RUN install -d \
         /var/log && \
     install -m 0644 /opt/docker-sai-test-vpp/sai.profile /etc/sai/sai.profile && \
     install -m 0644 /opt/docker-sai-test-vpp/lanemap.ini /etc/sai/lanemap.ini && \
+    install -m 0644 /opt/docker-sai-test-vpp/port_config.ini /etc/sai/port_config.ini && \
     install -m 0644 /opt/docker-sai-test-vpp/port-map.ini /etc/sai/port-map.ini && \
     install -m 0644 /opt/docker-sai-test-vpp/ptf-port-map.ini /etc/sai/ptf-port-map.ini && \
     install -m 0755 /opt/docker-sai-test-vpp/run_test.sh /usr/local/bin/run_test.sh && \

@@ -1681,7 +1681,7 @@ sai_status_t SwitchVpp::createPort(
 {
     SWSS_LOG_ENTER();
 
-    UpdatePort(object_id, attr_count, attr_list);
+    CHECK_STATUS(UpdatePort(object_id, attr_count, attr_list));
 
     auto sid = sai_serialize_object_id(object_id);
 
@@ -1706,7 +1706,7 @@ sai_status_t SwitchVpp::createPort(
         CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id, attr_count, attr_list));
     }
 
-    return create_port_dependencies(object_id);
+    return create_port_dependencies(object_id, attr_count, attr_list);
 }
 
 

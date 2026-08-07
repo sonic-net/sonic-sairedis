@@ -143,7 +143,9 @@ namespace saivs
         protected:
 
             virtual sai_status_t create_port_dependencies(
-                    _In_ sai_object_id_t port_id);
+                    _In_ sai_object_id_t port_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
 
             sai_status_t initialize_voq_switch_objects(
                     _In_ uint32_t attr_count,
