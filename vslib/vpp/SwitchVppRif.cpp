@@ -360,7 +360,7 @@ bool SwitchVpp::getPortHwifNameFromLane(
 
     if (!m_portConfigMap)
     {
-        SWSS_LOG_DEBUG("port config map unavailable for port %s",
+        SWSS_LOG_ERROR("port config map unavailable for port %s",
                 sai_serialize_object_id(port_id).c_str());
         return false;
     }
@@ -379,13 +379,13 @@ bool SwitchVpp::getPortHwifNameFromLane(
         lane_count = lane_attr->value.u32list.count;
         if (lane_count > sizeof(lanes) / sizeof(lanes[0]))
         {
-            SWSS_LOG_WARN("too many lanes for port %s",
+            SWSS_LOG_ERROR("too many lanes for port %s",
                     sai_serialize_object_id(port_id).c_str());
             return false;
         }
         if (lane_count != 0 && lane_attr->value.u32list.list == nullptr)
         {
-            SWSS_LOG_WARN("port %s has a null lane list",
+            SWSS_LOG_ERROR("port %s has a null lane list",
                 sai_serialize_object_id(port_id).c_str());
             return false;
         }
@@ -404,7 +404,7 @@ bool SwitchVpp::getPortHwifNameFromLane(
 
         if (get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr) != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_DEBUG("lane list unavailable for port %s",
+            SWSS_LOG_ERROR("lane list unavailable for port %s",
                     sai_serialize_object_id(port_id).c_str());
             return false;
         }
@@ -413,7 +413,7 @@ bool SwitchVpp::getPortHwifNameFromLane(
 
     if (lane_count == 0 || lane_count > sizeof(lanes) / sizeof(lanes[0]))
     {
-        SWSS_LOG_DEBUG("lane list unavailable for port %s",
+        SWSS_LOG_ERROR("lane list unavailable for port %s",
                 sai_serialize_object_id(port_id).c_str());
         return false;
     }
@@ -421,7 +421,7 @@ bool SwitchVpp::getPortHwifNameFromLane(
     std::set<uint32_t> lane_set(lanes, lanes + lane_count);
     if (lane_set.size() != lane_count)
     {
-        SWSS_LOG_DEBUG("duplicate lanes in port %s lane list",
+        SWSS_LOG_ERROR("duplicate lanes in port %s lane list",
                 sai_serialize_object_id(port_id).c_str());
         return false;
     }
@@ -429,7 +429,7 @@ bool SwitchVpp::getPortHwifNameFromLane(
             m_portConfigMap->getPortName(lane_set);
     if (port_name.empty())
     {
-        SWSS_LOG_DEBUG("lane set does not map to a port for %s",
+        SWSS_LOG_ERROR("lane set does not map to a port for %s",
                 sai_serialize_object_id(port_id).c_str());
         return false;
     }
@@ -437,19 +437,19 @@ bool SwitchVpp::getPortHwifNameFromLane(
     const char *mapped_hwifname = tap_to_hwif_name(port_name.c_str());
     if (mapped_hwifname == nullptr || strcmp(mapped_hwifname, "Unknown") == 0)
     {
-        SWSS_LOG_DEBUG("port %s has no VPP mapping", port_name.c_str());
+        SWSS_LOG_ERROR("port %s has no VPP mapping", port_name.c_str());
         return false;
     }
 
     if (vpp_get_swif_idx_by_name(mapped_hwifname) == static_cast<uint32_t>(-1))
     {
-        SWSS_LOG_DEBUG("VPP interface %s is not present for port %s",
+        SWSS_LOG_ERROR("VPP interface %s is not present for port %s",
                 mapped_hwifname, port_name.c_str());
         return false;
     }
 
     if_name = mapped_hwifname;
-    SWSS_LOG_DEBUG("resolved port %s lane set to %s/%s",
+    SWSS_LOG_INFO("resolved port %s lane set to %s/%s",
             sai_serialize_object_id(port_id).c_str(), port_name.c_str(),
             if_name.c_str());
     return true;
