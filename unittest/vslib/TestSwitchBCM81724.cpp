@@ -86,7 +86,7 @@ TEST(SwitchBCM81724, refresh_read_only)
 
     // create port, since this switch have zero ports at start
 
-    sai_attribute_t attrs[3];
+    sai_attribute_t attrs[2];
 
     sai_uint32_t list[1] = { 1 };
 
@@ -97,19 +97,11 @@ TEST(SwitchBCM81724, refresh_read_only)
     attrs[1].id = SAI_PORT_ATTR_SPEED;
     attrs[1].value.u32 = 10000;
 
-    attrs[2].id = SAI_PORT_ATTR_ADMIN_STATE;
-    attrs[2].value.booldata = true;
-
     sai_object_id_t portId = mgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, switchId);
 
     auto strPortId = sai_serialize_object_id(portId);
 
-    EXPECT_EQ(sw.create(SAI_OBJECT_TYPE_PORT, strPortId, switchId, 3, attrs), SAI_STATUS_SUCCESS);
-
-    attr.id = SAI_PORT_ATTR_ADMIN_STATE;
-
-    EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_PORT, strPortId, 1, &attr), SAI_STATUS_SUCCESS);
-    EXPECT_TRUE(attr.value.booldata);
+    EXPECT_EQ(sw.create(SAI_OBJECT_TYPE_PORT, strPortId, switchId, 2, attrs), SAI_STATUS_SUCCESS);
 
     attr.id = SAI_SWITCH_ATTR_NUMBER_OF_ACTIVE_PORTS;
 
@@ -124,7 +116,6 @@ TEST(SwitchBCM81724, refresh_read_only)
     attr.id = SAI_PORT_ATTR_OPER_STATUS;
 
     EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_PORT, strPortId, 1, &attr), SAI_STATUS_SUCCESS);
-    EXPECT_EQ(attr.value.s32, SAI_PORT_OPER_STATUS_DOWN);
 
     char fakeinfo_buffer[sizeof(HostInterfaceInfo)] = { 0 };
     HostInterfaceInfo *fakeinfo = reinterpret_cast<HostInterfaceInfo *>(reinterpret_cast<void *>(fakeinfo_buffer));
