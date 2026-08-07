@@ -9,6 +9,7 @@
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
 #include "CRMTracker.h"
+#include "PortConfigMap.h"
 
 #include "vppxlate/SaiVppXlate.h"
 #include "vppxlate/SaiRouteStats.h"
@@ -1209,6 +1210,9 @@ namespace saivs
             void startVppEventsThread();
 
         private: // VPP
+            void loadPortConfig();
+
+            std::shared_ptr<PortConfigMap> m_portConfigMap;
 
             std::map<std::string, std::string> m_hostif_hwif_map;
             std::map<std::string, std::string> m_hwif_hostif_map;

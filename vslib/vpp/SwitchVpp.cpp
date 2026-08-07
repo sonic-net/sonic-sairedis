@@ -10,7 +10,9 @@
 #include "vppxlate/SaiIntfStats.h"
 #include "vppxlate/SaiRouteStats.h"
 
+#include "PortConfigFileParser.h"
 #include "SwitchVppUtils.h"
+#include "saivs.h"
 
 #include <vector>
 #include <string>
@@ -21,6 +23,9 @@ using namespace saivs;
 
 namespace
 {
+    constexpr const char *DEFAULT_PORT_CONFIG_FILE =
+            "/usr/share/sonic/hwsku/port_config.ini";
+
     constexpr uint64_t ROUTE_COUNTER_RESET_DELTA_THRESHOLD = 1ULL << 60;
 
     // TTL for the route-stats full-dump cache. Must be shorter than the
@@ -54,6 +59,8 @@ SwitchVpp::SwitchVpp(
 {
     SWSS_LOG_ENTER();
 
+    loadPortConfig();
+
     vpp_dp_initialize();
 }
 
@@ -69,6 +76,8 @@ SwitchVpp::SwitchVpp(
     m_tunnel_mgr_ipip(this)
 {
     SWSS_LOG_ENTER();
+
+    loadPortConfig();
 
     vpp_dp_initialize();
 }
@@ -90,6 +99,19 @@ SwitchVpp::~SwitchVpp()
     }
 
     SWSS_LOG_NOTICE("SwitchVpp destructor completed");
+}
+
+void SwitchVpp::loadPortConfig()
+{
+    SWSS_LOG_ENTER();
+
+    const auto &profileMap = m_switchConfig->m_profileMap;
+    const auto portConfigFile = profileMap.find(SAI_KEY_VS_PORT_CONFIG_FILE);
+    const std::string portConfigPath = portConfigFile == profileMap.end()
+            ? DEFAULT_PORT_CONFIG_FILE
+            : portConfigFile->second;
+
+    m_portConfigMap = PortConfigFileParser::parse(portConfigPath);
 }
 
 void SwitchVpp::deinitFdbEventHandling()
