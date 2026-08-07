@@ -36,7 +36,9 @@ SwitchBCM81724::~SwitchBCM81724()
 }
 
 sai_status_t SwitchBCM81724::create_port_dependencies(
-        _In_ sai_object_id_t port_id)
+    _In_ sai_object_id_t port_id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -48,20 +50,29 @@ sai_status_t SwitchBCM81724::create_port_dependencies(
 
     // default admin state is down as defined in SAI
 
-    attr.id = SAI_PORT_ATTR_ADMIN_STATE;
-    attr.value.booldata = false;
+    if (sai_metadata_get_attr_by_id(SAI_PORT_ATTR_ADMIN_STATE, attr_count, attr_list) == nullptr)
+    {
+        attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+        attr.value.booldata = false;
 
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
 
-    attr.id = SAI_PORT_ATTR_OPER_STATUS;
-    attr.value.s32 = SAI_PORT_OPER_STATUS_DOWN;
+    if (sai_metadata_get_attr_by_id(SAI_PORT_ATTR_OPER_STATUS, attr_count, attr_list) == nullptr)
+    {
+        attr.id = SAI_PORT_ATTR_OPER_STATUS;
+        attr.value.s32 = SAI_PORT_OPER_STATUS_DOWN;
 
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
 
-    attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
-    attr.value.oid = SAI_NULL_OBJECT_ID;
+    if (sai_metadata_get_attr_by_id(SAI_PORT_ATTR_PORT_SERDES_ID, attr_count, attr_list) == nullptr)
+    {
+        attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
 
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
 
     return SAI_STATUS_SUCCESS;
 }

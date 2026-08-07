@@ -362,7 +362,7 @@ sai_status_t SwitchStateBase::createPort(
 
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id, attr_count, attr_list));
 
-    return create_port_dependencies(object_id);
+    return create_port_dependencies(object_id, attr_count, attr_list);
 }
 
 sai_status_t SwitchStateBase::removePort(
@@ -1426,9 +1426,15 @@ sai_status_t SwitchStateBase::create_ports()
     {
         SWSS_LOG_DEBUG("create port index %u", i);
 
+        std::vector<uint32_t> lanes = lanesVector.at(i);
+        sai_attribute_t lane_attr = {};
+        lane_attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+        lane_attr.value.u32list.count = static_cast<uint32_t>(lanes.size());
+        lane_attr.value.u32list.list = lanes.data();
+
         sai_object_id_t port_id;
 
-        CHECK_STATUS(create(SAI_OBJECT_TYPE_PORT, &port_id, m_switch_id, 0, NULL));
+        CHECK_STATUS(create(SAI_OBJECT_TYPE_PORT, &port_id, m_switch_id, 1, &lane_attr));
         m_port_list.push_back(port_id);
 
         sai_attribute_t attr;
@@ -1445,14 +1451,6 @@ sai_status_t SwitchStateBase::create_ports()
 
         attr.id = SAI_PORT_ATTR_SPEED;
         attr.value.u32 = 40 * 1000;     // TODO from config
-
-        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
-
-        std::vector<uint32_t> lanes = lanesVector.at(i);
-
-        attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
-        attr.value.u32list.count = (uint32_t)lanes.size();
-        attr.value.u32list.list = lanes.data();
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
@@ -2053,7 +2051,9 @@ sai_status_t SwitchStateBase::initialize_default_objects(
 }
 
 sai_status_t SwitchStateBase::create_port_dependencies(
-        _In_ sai_object_id_t port_id)
+    _In_ sai_object_id_t port_id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -2067,20 +2067,29 @@ sai_status_t SwitchStateBase::create_port_dependencies(
 
     // default admin state is down as defined in SAI
 
-    attr.id = SAI_PORT_ATTR_ADMIN_STATE;
-    attr.value.booldata = false;
+    if (sai_metadata_get_attr_by_id(SAI_PORT_ATTR_ADMIN_STATE, attr_count, attr_list) == nullptr)
+    {
+        attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+        attr.value.booldata = false;
 
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
 
-    attr.id = SAI_PORT_ATTR_HOST_TX_READY_STATUS;
-    attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
+    if (sai_metadata_get_attr_by_id(SAI_PORT_ATTR_HOST_TX_READY_STATUS, attr_count, attr_list) == nullptr)
+    {
+        attr.id = SAI_PORT_ATTR_HOST_TX_READY_STATUS;
+        attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
 
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
 
-    attr.id = SAI_PORT_ATTR_AUTO_NEG_MODE;
-    attr.value.booldata = true;
+    if (sai_metadata_get_attr_by_id(SAI_PORT_ATTR_AUTO_NEG_MODE, attr_count, attr_list) == nullptr)
+    {
+        attr.id = SAI_PORT_ATTR_AUTO_NEG_MODE;
+        attr.value.booldata = true;
 
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
 
     // attributes are not required since they will be set outside this function
 
