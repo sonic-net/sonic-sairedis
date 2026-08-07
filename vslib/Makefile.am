@@ -60,6 +60,7 @@ libSaiVS_a_SOURCES = \
 					  SwitchContainer.cpp \
 					  Switch.cpp \
 					  SwitchMLNX2700.cpp \
+					  SwitchMicas48CON2SFP.cpp \
 					  SwitchNokiaVS.cpp \
 					  SwitchNvdaMBF2H536C.cpp \
 					  SwitchStateBase.cpp \
