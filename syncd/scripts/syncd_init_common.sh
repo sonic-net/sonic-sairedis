@@ -731,7 +731,7 @@ config_syncd()
 
     cleanup_stale_flow_dump_files
 
-    if [ "$SONIC_ASIC_TYPE" == "cisco-8000" ]; then
+    if [ "$SONIC_ASIC_TYPE" == "cisco-8000" ] || [ "$SONIC_ASIC_TYPE" == "cisco" ]; then
         config_syncd_cisco_8000
     elif [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
         config_syncd_bcm
