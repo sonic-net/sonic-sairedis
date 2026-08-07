@@ -13,8 +13,11 @@
 #include "vppxlate/SaiVppXlate.h"
 #include "vppxlate/SaiRouteStats.h"
 
+#include "swss/ipaddress.h"
+
 #include <list>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <mutex>
 #include <atomic>
@@ -846,6 +849,9 @@ namespace saivs
             bool m_acl_default_created = false;
             uint32_t m_sflow_sample_rate = 0;
 
+            std::set<swss::IpAddress> m_local_ips;         // Local RIF addresses
+            std::set<sai_object_id_t> m_local_deny_tables; // ACL tables that contain a deny rule
+
         protected: // VPP
 
             sai_status_t createAclEntry(
@@ -867,6 +873,34 @@ namespace saivs
 
             sai_status_t AclTblConfig(
                     _In_ sai_object_id_t tbl_oid);
+
+            /**
+             * @brief Records or drops a local host address as router
+             * interface IPs are added/removed, and refreshes any ACL table that
+             * has a deny rule so its prepended local permits stay in sync.
+             *
+             * @param[in] prefix VPP interface prefix just programmed; only the
+             * host address is used (matched later as /32 or /128).
+             * @param[in] is_add True when the address was added, false on remove.
+             */
+            void trackLocalIp(
+                    _In_ const vpp_ip_route_t *prefix,
+                    _In_ bool is_add);
+
+            /**
+             * @brief If the assembled rule list contains any deny (drop) rule
+             * -- e.g. the dual-ToR mux drop -- prepend permit rules for the
+             * switch's own local addresses so local (for-us) traffic bypasses the
+             * deny and is punted at ip4-local.
+             *
+             * @param[in] tbl_oid ACL table being (re)configured.
+             * @param[in,out] acl_rules Ordered rule list; local permits are
+             * spliced onto the front when a deny rule is present.
+             * @return Number of permit rules prepended (0 if none).
+             */
+            size_t injectLocalPermits(
+                    _In_ sai_object_id_t tbl_oid,
+                    _Inout_ std::list<vpp_acl_rule_t> &acl_rules);
 
             sai_status_t AclTblRemove(
                     _In_ sai_object_id_t tbl_oid);

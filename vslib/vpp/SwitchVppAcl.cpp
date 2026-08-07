@@ -21,10 +21,47 @@
 #include <list>
 #include <vector>
 #include <algorithm>
+#include <cstring>
 
 using namespace saivs;
 
 #define DEFAULT_PERMIT_RULES 2
+
+static bool acl_rule_is_deny(const vpp_acl_rule_t &r)
+{
+    return r.action == VPP_ACL_ACTION_API_DENY;
+}
+
+static vpp_acl_rule_t make_local_permit(const swss::IpAddress &ip)
+{
+    vpp_acl_rule_t rule = {};
+
+    rule.action = VPP_ACL_ACTION_API_PERMIT;
+
+    // VPP requires src and dst prefixes of an ACL rule to share the same address
+    // family, so set a same-family wildcard source (0.0.0.0/0 or ::/0). Leaving
+    // src unset defaults it to IPv4 in the xlate, which for an IPv6 dst yields a
+    // family mismatch that VPP rejects with VNET_API_ERROR_INVALID_SRC_ADDRESS.
+    if (ip.isV4()) {
+        rule.src_prefix.sa_family = AF_INET;        // src 0.0.0.0/0
+        rule.src_prefix_mask.sa_family = AF_INET;
+
+        rule.dst_prefix.sa_family = AF_INET;
+        rule.dst_prefix.addr.ip4.sin_addr.s_addr = ip.getV4Addr();
+        rule.dst_prefix_mask.sa_family = AF_INET;
+        rule.dst_prefix_mask.addr.ip4.sin_addr.s_addr = 0xFFFFFFFF; // /32
+    } else {
+        rule.src_prefix.sa_family = AF_INET6;       // src ::/0
+        rule.src_prefix_mask.sa_family = AF_INET6;
+
+        rule.dst_prefix.sa_family = AF_INET6;
+        memcpy(rule.dst_prefix.addr.ip6.sin6_addr.s6_addr, ip.getV6Addr(), 16);
+        rule.dst_prefix_mask.sa_family = AF_INET6;
+        memset(rule.dst_prefix_mask.addr.ip6.sin6_addr.s6_addr, 0xFF, 16); // /128
+    }
+
+    return rule;
+}
 
 static sai_status_t acl_ip_field_to_vpp_acl(
     _In_ sai_acl_entry_attr_t         attr_id,
@@ -1163,6 +1200,90 @@ sai_status_t SwitchVpp::tunterm_acl_delete(sai_object_id_t tbl_oid, bool table_d
     return status;
 }
 
+void SwitchVpp::trackLocalIp(
+    _In_ const vpp_ip_route_t *prefix,
+    _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    if (prefix == NULL) {
+        return;
+    }
+
+    swss::ip_addr_t a;
+    memset(&a, 0, sizeof(a));
+
+    if (prefix->prefix_addr.sa_family == AF_INET) {
+        a.family = AF_INET;
+        a.ip_addr.ipv4_addr = prefix->prefix_addr.addr.ip4.sin_addr.s_addr;
+    } else if (prefix->prefix_addr.sa_family == AF_INET6) {
+        a.family = AF_INET6;
+        memcpy(a.ip_addr.ipv6_addr, prefix->prefix_addr.addr.ip6.sin6_addr.s6_addr, 16);
+    } else {
+        return;
+    }
+
+    swss::IpAddress ip(a);
+    bool changed = is_add ? m_local_ips.insert(ip).second
+                          : (m_local_ips.erase(ip) > 0);
+
+    if (!changed || m_local_deny_tables.empty()) {
+        return;
+    }
+
+    std::vector<sai_object_id_t> tables_to_refresh(m_local_deny_tables.begin(),
+                                                   m_local_deny_tables.end());
+    for (auto tbl_oid : tables_to_refresh) {
+        SWSS_LOG_NOTICE("Local address %s %s, refreshing ACL table %s (has deny rule)",
+                        ip.to_string().c_str(),
+                        is_add ? "added" : "removed",
+                        sai_serialize_object_id(tbl_oid).c_str());
+        AclTblConfig(tbl_oid);
+    }
+}
+
+size_t SwitchVpp::injectLocalPermits(
+    _In_ sai_object_id_t tbl_oid,
+    _Inout_ std::list<vpp_acl_rule_t> &acl_rules)
+{
+    SWSS_LOG_ENTER();
+
+    bool has_deny = false;
+    for (const auto &rule : acl_rules) {
+        if (acl_rule_is_deny(rule)) {
+            has_deny = true;
+            break;
+        }
+    }
+
+    if (!has_deny) {
+        m_local_deny_tables.erase(tbl_oid);
+        return 0;
+    }
+
+    m_local_deny_tables.insert(tbl_oid);
+
+    // Prepend a /32 (or /128) permit for every local address. Rules within one
+    // VPP ACL are evaluated first-match-wins, and a permit ahead of the deny (in
+    // the same ACL) also wins over a deny in any later-bound ACL, so local
+    // (for-us) traffic reaches ip4-local for punt while everything else still
+    // hits the table's rules unchanged.
+    std::list<vpp_acl_rule_t> permits;
+    for (const auto &ip : m_local_ips) {
+        permits.push_back(make_local_permit(ip));
+    }
+
+    size_t n_permits = permits.size();
+    if (n_permits) {
+        acl_rules.splice(acl_rules.begin(), permits);
+    }
+
+    SWSS_LOG_INFO("Local permit injection: table %s has a deny rule, prepended %zu local permit(s)",
+                  sai_serialize_object_id(tbl_oid).c_str(), n_permits);
+
+    return n_permits;
+}
+
 sai_status_t SwitchVpp::AclTblConfig(
     _In_ sai_object_id_t tbl_oid)
 {
@@ -1197,6 +1318,13 @@ sai_status_t SwitchVpp::AclTblConfig(
 
     SWSS_LOG_INFO("Generated %ld regular ACL rules and %ld tunterm ACL rules",
                     acl_rules.size(), tunterm_acl_rules.size());
+
+    size_t n_local = injectLocalPermits(tbl_oid, acl_rules);
+    if (n_local) {
+        for (auto &ace : ordered_aces) {
+            ace.vpp_rule_base_index += (uint32_t) n_local;
+        }
+    }
 
     // Create and populate regular ACL if we have rules
     if (!acl_rules.empty()) {
