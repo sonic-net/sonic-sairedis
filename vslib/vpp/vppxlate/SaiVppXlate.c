@@ -73,6 +73,8 @@
 
 #include <vnet/srv6/sr.api_enum.h>
 #include <vnet/srv6/sr.api_types.h>
+#include <vnet/mpls/mpls.api_enum.h>
+#include <vnet/mpls/mpls.api_types.h>
 
 #include <vnet/ipip/ipip.api_enum.h>
 #include <vnet/ipip/ipip.api_types.h>
@@ -207,6 +209,24 @@
 
 #define vl_api_version(n, v) static u32 sr_api_version = v;
 #include <vnet/srv6/sr.api.h>
+#undef vl_api_version
+
+/* MPLS API inclusion */
+
+#define vl_typedefs
+#include <vnet/mpls/mpls.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vnet/mpls/mpls.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vnet/mpls/mpls.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 mpls_api_version = v;
+#include <vnet/mpls/mpls.api.h>
 #undef vl_api_version
 
 /* ipv4 API inclusion */
@@ -1775,6 +1795,7 @@ static u16 l2_msg_id_base, vxlan_msg_id_base, ipip_msg_id_base;
 static u16 tunterm_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
+static u16 mpls_msg_id_base;
 static u16 bond_msg_id_base;
 static u16 span_msg_id_base;
 static u16 classify_msg_id_base;
@@ -1951,6 +1972,26 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     set_reply_status(retval);
 }
 
+static void
+vl_api_sw_interface_set_mpls_enable_reply_t_handler (vl_api_sw_interface_set_mpls_enable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_mpls_table_add_del_reply_t_handler (vl_api_mpls_table_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
 
 #define LCP_MSG_ID(id) \
     (VL_API_##id + lcp_msg_id_base)
@@ -1969,6 +2010,9 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
 
 #define SR_MSG_ID(id) \
     (VL_API_##id + sr_msg_id_base)
+
+#define MPLS_MSG_ID(id) \
+    (VL_API_##id + mpls_msg_id_base)
 
 #define foreach_vpe_plugin_api_reply_msg                                \
     _(LCP_MSG_ID(LCP_ITF_PAIR_ADD_DEL_REPLY), lcp_itf_pair_add_del_reply) \
@@ -1989,7 +2033,10 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     _(SFLOW_MSG_ID(SFLOW_ENABLE_DISABLE_REPLY), sflow_enable_disable_reply) \
     _(SFLOW_MSG_ID(SFLOW_SAMPLING_RATE_SET_REPLY), sflow_sampling_rate_set_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
-    _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply)
+    _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
+    _(MPLS_MSG_ID(SW_INTERFACE_SET_MPLS_ENABLE_REPLY), sw_interface_set_mpls_enable_reply) \
+    _(MPLS_MSG_ID(MPLS_TABLE_ADD_DEL_REPLY), mpls_table_add_del_reply) \
+    _(MPLS_MSG_ID(MPLS_ROUTE_ADD_DEL_REPLY), mpls_route_add_del_reply)
 
 static void vpp_plugin_vpe_init(void)
 {
@@ -2047,6 +2094,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "sr_%08x%c", sr_api_version, 0);
     sr_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sr_msg_id_base != (u16) ~0);
+    msg_base_lookup_name = format (0, "mpls_%08x%c", mpls_api_version, 0);
+    mpls_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(mpls_msg_id_base != (u16) ~0);
+
 
     memclnt_msg_id_base = 0;
 
@@ -2874,6 +2925,172 @@ int ip6_nbr_add_del (const char *hwif_name, uint32_t sw_if_index, struct sockadd
     return ip_nbr_add_del(hwif_name, sw_if_index, (struct sockaddr *) addr, is_static, no_fib_entry, mac, is_add);
 }
 
+int sw_interface_set_mpls_enable (const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_mpls_enable_t *mp;
+    u32 sw_if_index;
+    int ret;
+
+    VPP_LOCK();
+
+    sw_if_index = get_swif_idx(vam, hwif_name);
+    if (sw_if_index == (u32) -1) {
+        SAIVPP_ERROR("%s: unknown interface %s", __func__, hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    __plugin_msg_base = mpls_msg_id_base;
+
+    M (SW_INTERFACE_SET_MPLS_ENABLE, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->enable = enable;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) intf %s enable %d", __func__, ret, hwif_name, enable); }
+    else { SAIVPP_INFO("%s intf %s enable %d", __func__, hwif_name, enable); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int mpls_table_add_del (uint32_t table_id, bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_mpls_table_add_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = mpls_msg_id_base;
+
+    M (MPLS_TABLE_ADD_DEL, mp);
+    mp->mt_is_add = is_add;
+    mp->mt_table.mt_table_id = htonl(table_id);
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u is_add %d", __func__, ret, table_id, is_add); }
+    else { SAIVPP_INFO("%s table %u is_add %d", __func__, table_id, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int mpls_route_add_del (vpp_mpls_route_t *route, bool is_add)
+{
+    u32 idx, path_count;
+    vat_main_t *vam = &vat_main;
+    vl_api_mpls_route_t *mr;
+    vl_api_mpls_route_add_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    path_count = route->nexthop_cnt;
+
+    /*
+     * Validate every path before allocating the API message: the message is
+     * only freed once it is sent, so an early return afterwards would leak it.
+     */
+    for (unsigned int i = 0; i < path_count; i++) {
+        if (route->nexthop[i].addr.sa_family != AF_INET &&
+            route->nexthop[i].addr.sa_family != AF_INET6) {
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+        if (route->nexthop[i].n_labels > VPP_MPLS_MAX_LABELS) {
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    }
+
+    __plugin_msg_base = mpls_msg_id_base;
+
+    M22 (MPLS_ROUTE_ADD_DEL, mp, sizeof (vl_api_fib_path_t) * path_count);
+    mr = &mp->mr_route;
+
+    mr->mr_table_id = htonl(route->table_id);
+    mr->mr_label = htonl(route->label);
+    mr->mr_eos = route->eos;
+    mr->mr_eos_proto = (u8)((route->eos_proto_af == AF_INET6) ?
+        FIB_API_PATH_NH_PROTO_IP6 : FIB_API_PATH_NH_PROTO_IP4);
+    mr->mr_is_multicast = false;
+    mr->mr_n_paths = (u8)path_count;
+
+    for (unsigned int i = 0; i < path_count; i++) {
+        vpp_mpls_nexthop_t *nexthop = &route->nexthop[i];
+        vl_api_fib_path_t *fib_path = &mr->mr_paths[i];
+        vl_api_address_union_t *nh_addr = &fib_path->nh.address;
+        vpp_ip_addr_t *addr = &nexthop->addr;
+
+        memset(fib_path, 0, sizeof(*fib_path));
+
+        if (nexthop->sw_if_index != (u32) -1) {
+            fib_path->sw_if_index = htonl(nexthop->sw_if_index);
+        } else if (nexthop->hwif_name) {
+            idx = get_swif_idx(vam, nexthop->hwif_name);
+            fib_path->sw_if_index = htonl(idx != (u32) -1 ? idx : (uint32_t)~0);
+        } else {
+            fib_path->sw_if_index = htonl((uint32_t)~0);
+        }
+
+        if (addr->sa_family == AF_INET) {
+            struct sockaddr_in *ip4 = &addr->addr.ip4;
+            memcpy(nh_addr->ip4, &ip4->sin_addr.s_addr, sizeof(nh_addr->ip4));
+            fib_path->proto = htonl(FIB_API_PATH_NH_PROTO_IP4);
+        } else if (addr->sa_family == AF_INET6) {
+            struct sockaddr_in6 *ip6 = &addr->addr.ip6;
+            memcpy(nh_addr->ip6, &ip6->sin6_addr.s6_addr, sizeof(nh_addr->ip6));
+            fib_path->proto = htonl(FIB_API_PATH_NH_PROTO_IP6);
+        }
+
+        if (nexthop->type == VPP_NEXTHOP_LOCAL) {
+            fib_path->type = htonl(FIB_API_PATH_TYPE_LOCAL);
+        } else {
+            fib_path->type = htonl(FIB_API_PATH_TYPE_NORMAL);
+        }
+
+        fib_path->table_id = 0;
+        fib_path->rpf_id = htonl((uint32_t)~0);
+        fib_path->weight = nexthop->weight;
+        fib_path->preference = nexthop->preference;
+
+        fib_path->n_labels = nexthop->n_labels;
+        for (uint8_t l = 0; l < nexthop->n_labels && l < VPP_MPLS_MAX_LABELS; l++) {
+            fib_path->label_stack[l].label = htonl(nexthop->label_stack[l].label);
+            fib_path->label_stack[l].ttl = nexthop->label_stack[l].ttl;
+            fib_path->label_stack[l].exp = nexthop->label_stack[l].exp;
+            fib_path->label_stack[l].is_uniform = nexthop->label_stack[l].is_uniform;
+        }
+    }
+
+    mp->mr_is_add = is_add;
+    mp->mr_is_multipath = route->is_multipath;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) label %u eos %u is_add %d", __func__, ret, route->label, route->eos, is_add); }
+    else { SAIVPP_INFO("%s label %u eos %u paths %u is_add %d", __func__, route->label, route->eos, path_count, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
 int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *stats_index)
 {
     u32 idx, path_count = 1;
@@ -2974,7 +3191,20 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
         fib_path->rpf_id = htonl((uint32_t)~0);
         fib_path->weight = nexthop->weight;
         fib_path->preference = nexthop->preference;
-        fib_path->n_labels = 0;
+        /*
+         * Clamp before assigning: only VPP_MPLS_MAX_LABELS entries are ever
+         * populated below, so an unclamped n_labels would tell VPP the message
+         * carries more labels than it actually does.
+         */
+        uint8_t n_labels = nexthop->n_labels > VPP_MPLS_MAX_LABELS ?
+                           VPP_MPLS_MAX_LABELS : nexthop->n_labels;
+        fib_path->n_labels = n_labels;
+        for (uint8_t l = 0; l < n_labels; l++) {
+            fib_path->label_stack[l].label = htonl(nexthop->label_stack[l]);
+            fib_path->label_stack[l].ttl = MPLS_DEFAULT_OUT_TTL;
+            fib_path->label_stack[l].exp = 0;
+            fib_path->label_stack[l].is_uniform = 1;
+        }
     }
     ip_route->table_id = htonl(prefix->vrf_id);
 

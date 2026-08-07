@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vppxlate/SaiVppXlate.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -10,6 +12,8 @@ typedef struct nexthop_grp_member_ {
     uint32_t weight;
     uint32_t seq_id;
     uint32_t sw_if_index;
+    uint8_t n_labels;
+    uint32_t label_stack[VPP_MPLS_MAX_LABELS];
 } nexthop_grp_member_t;
 
 typedef struct nexthop_grp_config_ {

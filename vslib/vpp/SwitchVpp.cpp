@@ -1393,6 +1393,11 @@ sai_status_t SwitchVpp::create(
         return status;
     }
 
+    if (object_type == SAI_OBJECT_TYPE_INSEG_ENTRY)
+    {
+        return addMplsRoute(serializedObjectId, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
     {
         sai_status_t status = m_tunnel_mgr_srv6.create_my_sid_entry(serializedObjectId, switch_id, attr_count, attr_list);
@@ -1775,6 +1780,11 @@ sai_status_t SwitchVpp::remove(
         // by counter OID) need cleanup here.
         m_routeCounterStatsBaseMap.erase(objectId);
         m_routeCounterStatsCarryMap.erase(objectId);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_INSEG_ENTRY)
+    {
+        return removeMplsRoute(serializedObjectId);
     }
 
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)

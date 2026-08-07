@@ -174,7 +174,8 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
     attr.id = SAI_NEXT_HOP_ATTR_TYPE;
     CHECK_STATUS_QUIET(nh_obj->get_mandatory_attr(attr));
     int32_t next_hop_type = attr.value.s32;
-    if (next_hop_type != SAI_NEXT_HOP_TYPE_IP && next_hop_type != SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
+    if (next_hop_type != SAI_NEXT_HOP_TYPE_IP && next_hop_type != SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP &&
+        next_hop_type != SAI_NEXT_HOP_TYPE_MPLS) {
         return SAI_STATUS_NOT_IMPLEMENTED;
     }
 
@@ -187,12 +188,65 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
     nxt_grp_member->weight = next_hop_weight;
     nxt_grp_member->seq_id = next_hop_sequence;
     nxt_grp_member->sw_if_index = ~0;
+    nxt_grp_member->n_labels = 0;
+
+    bool have_rif = false;
 
     switch (next_hop_type) {
+    case SAI_NEXT_HOP_TYPE_MPLS:
     case SAI_NEXT_HOP_TYPE_IP:
         attr.id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
-        if (get(SAI_OBJECT_TYPE_NEXT_HOP, next_hop_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
+        have_rif = (get(SAI_OBJECT_TYPE_NEXT_HOP, next_hop_oid, 1, &attr) == SAI_STATUS_SUCCESS);
+        if (have_rif) {
             nxt_grp_member->rif_oid = attr.value.oid;
+        }
+        if (next_hop_type == SAI_NEXT_HOP_TYPE_MPLS) {
+            /*
+             * Read the imposed (push) label stack. LABELSTACK is a list
+             * attribute, so the output buffer must be supplied before the get.
+             */
+            uint32_t lbuf[VPP_MPLS_MAX_LABELS];
+            attr.id = SAI_NEXT_HOP_ATTR_LABELSTACK;
+            attr.value.u32list.count = VPP_MPLS_MAX_LABELS;
+            attr.value.u32list.list = lbuf;
+
+            sai_status_t label_status = get(SAI_OBJECT_TYPE_NEXT_HOP, next_hop_oid, 1, &attr);
+
+            /*
+             * A stack deeper than the buffer yields SAI_STATUS_BUFFER_OVERFLOW
+             * with count set to the required size and nothing copied. Fail
+             * explicitly rather than programming a bare IP nexthop, which would
+             * silently drop the imposed labels.
+             */
+            if (label_status == SAI_STATUS_BUFFER_OVERFLOW) {
+                SWSS_LOG_ERROR("MPLS out-label stack of %u labels exceeds maximum %u",
+                        attr.value.u32list.count, VPP_MPLS_MAX_LABELS);
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
+
+            if (label_status == SAI_STATUS_SUCCESS && attr.value.u32list.count > 0) {
+                uint32_t cnt = attr.value.u32list.count;
+                nxt_grp_member->n_labels = (uint8_t)cnt;
+                for (uint32_t li = 0; li < cnt; li++) {
+                    nxt_grp_member->label_stack[li] = attr.value.u32list.list[li];
+                }
+            }
+            /*
+             * Program an attached path (resolve the router interface to its VPP
+             * egress hwif) so VPP actually imposes the label; a recursive
+             * labelled path is dropped at the MPLS DROP DPO.
+             */
+            std::string mpls_hwif;
+            sai_attribute_t port_attr;
+            port_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+            if (have_rif &&
+                get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nxt_grp_member->rif_oid, 1, &port_attr) == SAI_STATUS_SUCCESS &&
+                vpp_get_hwif_name(port_attr.value.oid, 0, mpls_hwif)) {
+                int idx = get_sw_if_idx(mpls_hwif.c_str());
+                if (idx >= 0) {
+                    nxt_grp_member->sw_if_index = (uint32_t)idx;
+                }
+            }
         }
         break;
     case SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP: {

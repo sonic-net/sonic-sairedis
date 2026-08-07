@@ -762,6 +762,22 @@ namespace saivs
             sai_status_t removeIpRoute(
                     _In_ const std::string &serializedObjectId);
 
+            sai_status_t addMplsRoute(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+            sai_status_t removeMplsRoute(
+                    _In_ const std::string &serializedObjectId);
+            sai_status_t MplsRouteAddRemove(
+                    _In_ const SaiObject *inseg_obj,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ bool is_add);
+            sai_status_t fillMplsNexthop(
+                    _In_ const SaiObject *nh_obj,
+                    _Out_ vpp_mpls_nexthop_t *vnh);
+            sai_status_t ensureMplsTable();
+
             sai_status_t IpRouteNexthopEntry(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list,
@@ -1300,6 +1316,7 @@ namespace saivs
             // SRv6 object tracking for CRM
             constexpr static const int m_maxMySidEntries = 1000;
             uint32_t m_srv6_my_sid_count = 0;
+            bool m_mpls_table_created = false;
 
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
 
