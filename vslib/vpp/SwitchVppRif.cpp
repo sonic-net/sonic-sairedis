@@ -358,7 +358,7 @@ bool SwitchVpp::getPortHwifNameFromLane(
 {
     SWSS_LOG_ENTER();
 
-    if (!m_switchConfig || !m_switchConfig->m_portConfigMap)
+    if (!m_portConfigMap)
     {
         SWSS_LOG_DEBUG("port config map unavailable for port %s",
                 sai_serialize_object_id(port_id).c_str());
@@ -426,7 +426,7 @@ bool SwitchVpp::getPortHwifNameFromLane(
         return false;
     }
     const std::string port_name =
-            m_switchConfig->m_portConfigMap->getPortName(lane_set);
+            m_portConfigMap->getPortName(lane_set);
     if (port_name.empty())
     {
         SWSS_LOG_DEBUG("lane set does not map to a port for %s",
