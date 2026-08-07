@@ -1319,10 +1319,16 @@ sai_status_t SwitchVpp::AclTblConfig(
     SWSS_LOG_INFO("Generated %ld regular ACL rules and %ld tunterm ACL rules",
                     acl_rules.size(), tunterm_acl_rules.size());
 
+    // Prepending local permits shifts every regular ACE forward in the VPP ACL,
+    // so offset the recorded rule base index to keep ACL counters mapped. Tunterm
+    // ACE base indices are relative to the separate tunnel-termination ACL, which
+    // does not gain these leading rules, so they must not be shifted.
     size_t n_local = injectLocalPermits(tbl_oid, acl_rules);
     if (n_local) {
         for (auto &ace : ordered_aces) {
-            ace.vpp_rule_base_index += (uint32_t) n_local;
+            if (!ace.is_tunterm) {
+                ace.vpp_rule_base_index += (uint32_t) n_local;
+            }
         }
     }
 
