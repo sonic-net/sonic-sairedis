@@ -40,7 +40,10 @@ jobs:
   - script: |
       set -ex
       cd sonic-swss
-      git checkout $(BUILD_BRANCH)
+      # TEMPORARY (PoC): check out `master` instead of $(BUILD_BRANCH). sonic-swss
+      # has no lawlee/ci-unify branch on the sonic-net remote. Restore $(BUILD_BRANCH)
+      # before merge.
+      git checkout master
     displayName: Set up sonic-swss branch
   - task: DownloadPipelineArtifact@2
     inputs:
@@ -55,7 +58,10 @@ jobs:
       artifact: sonic-swss-common.amd64.ubuntu22_04
       path: $(Build.ArtifactStagingDirectory)/download
       runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      # TEMPORARY (PoC): resolve the swss-common cascade artifact from lawlee/ci-unify.
+      # BUILD_BRANCH = Build.SourceBranchName = "ci-unify" (last ref segment only), which
+      # can't find the lawlee/ci-unify run. Restore refs/heads/$(BUILD_BRANCH) before merge.
+      runBranch: 'refs/heads/lawlee/ci-unify'
       allowPartiallySucceededBuilds: true
     displayName: "Download sonic swss common deb packages"
   - task: DownloadPipelineArtifact@2
@@ -64,13 +70,19 @@ jobs:
       project: build
       pipeline: Azure.sonic-buildimage.common_libs
       runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      # TEMPORARY (PoC): pin to refs/heads/master; the common_libs pipeline has no
+      # lawlee/ci-unify branch. Restore refs/heads/$(BUILD_BRANCH) before merge.
+      runBranch: 'refs/heads/master'
       path: $(Build.ArtifactStagingDirectory)/download
       artifact: common-lib
       patterns: |
+        target/debs/${{ parameters.debian_version }}/libnl-3-200_*.deb
+        target/debs/${{ parameters.debian_version }}/libnl-genl-3-200_*.deb
+        target/debs/${{ parameters.debian_version }}/libnl-route-3-200_*.deb
+        target/debs/${{ parameters.debian_version }}/libnl-nf-3-200_*.deb
         target/debs/${{ parameters.debian_version }}/libyang3_*.deb
         target/debs/${{ parameters.debian_version }}/libyang-dev_3*.deb
-    displayName: "Download libyang from common lib"
+    displayName: "Download libnl + libyang from common lib"
   - task: DownloadPipelineArtifact@2
     inputs:
       source: specific
@@ -78,7 +90,10 @@ jobs:
       pipeline: sonic-net.sonic-buildimage-ubuntu22.04
       artifact: sonic-buildimage.amd64.ubuntu22_04
       runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      # TEMPORARY (PoC): pin to refs/heads/master; the sonic-buildimage-ubuntu22.04
+      # pipeline has no lawlee/ci-unify branch. Restore refs/heads/$(BUILD_BRANCH)
+      # before merge.
+      runBranch: 'refs/heads/master'
       path: $(Build.ArtifactStagingDirectory)/download
     displayName: "Download sonic buildimage ubuntu deb packages"
 
@@ -104,6 +119,17 @@ jobs:
           uuid-dev
 
       sudo sonic-sairedis/.azure-pipelines/build_and_install_module.sh
+
+      # Install SONiC-patched libnl (3.7.0-0.2+b1sonicN) from common-lib BEFORE the
+      # swss-common deb. The jammy swss-common .deb (built by the ubuntu-22.04 job
+      # against common-lib libnl) depends on the +b1sonicN libnl, which the 22.04
+      # host's apt does not have. Use apt so the bookworm libnl runtime debs'
+      # dependencies resolve on the jammy host (same as the libyang install below).
+      sudo apt-get install -y \
+          $(Build.ArtifactStagingDirectory)/download/target/debs/${{ parameters.debian_version }}/libnl-3-200_*.deb \
+          $(Build.ArtifactStagingDirectory)/download/target/debs/${{ parameters.debian_version }}/libnl-genl-3-200_*.deb \
+          $(Build.ArtifactStagingDirectory)/download/target/debs/${{ parameters.debian_version }}/libnl-route-3-200_*.deb \
+          $(Build.ArtifactStagingDirectory)/download/target/debs/${{ parameters.debian_version }}/libnl-nf-3-200_*.deb
 
       # Install libyang packages from downloaded artifacts. Use apt rather
       # than `dpkg -i` so libyang-dev's libpcre2-dev dep is auto-resolved

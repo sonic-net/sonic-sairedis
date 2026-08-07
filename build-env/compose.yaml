@@ -1,0 +1,33 @@
+# Local-dev convenience for building sonic-sairedis in a CI-like container.
+#
+# Usage:
+#   cd build-env
+#   DEBIAN_VERSION=bookworm docker compose run --rm build     # build the .debs
+#   DEBIAN_VERSION=bookworm docker compose run --rm shell     # interactive shell
+#
+# The repo is mounted live at /workspace, so edits on the host are immediately
+# visible in the container without rebuilding the image (only a change to
+# build-env/ dependency declarations requires an image rebuild). Set ASAN=true to
+# build with AddressSanitizer instead of gcov.
+
+services:
+  build:
+    build:
+      context: ..
+      dockerfile: build-env/Dockerfile
+      args:
+        DEBIAN_VERSION: ${DEBIAN_VERSION:-bookworm}
+        BUILD_BRANCH: ${BUILD_BRANCH:-master}
+        SWSS_COMMON_REF: ${SWSS_COMMON_REF:-lawlee/ci-unify}
+    privileged: true
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    environment:
+      ASAN: ${ASAN:-false}
+    command: ["./build-env/build.sh"]
+
+  shell:
+    extends:
+      service: build
+    command: ["/bin/bash"]

@@ -1,0 +1,29 @@
+# sonic-sairedis Build-stage-only tooling (does NOT cascade downstream).
+#
+# Packages/config needed by sonic-sairedis' own build + unit tests but not by
+# repos that merely build against libsairedis. Consumed by
+# `buildenv_setup --scope build`.
+
+packages:
+  # man-page / doc generation used during the sairedis build
+  - docbook-to-man
+  - docbook-utils
+  - aspell-en
+  # syslog used by the unit tests
+  - rsyslog
+
+post_install:
+  # syncd unit tests expect this runtime directory to exist.
+  - name: mkdir-sswsyncd
+    script: |
+      sudo mkdir -m 755 -p /var/run/sswsyncd
+    scopes: [build]
+
+  # Start rsyslog so tests that log to syslog work. (The post-build
+  # "Update rsyslog.conf" step in build-template.yml swaps in azsyslog.conf and
+  # restarts rsyslogd; that stays in the template as it runs after the build.)
+  - name: start-rsyslog
+    script: |
+      sudo rsyslogd || true
+    requires: [rsyslog]
+    scopes: [build]
