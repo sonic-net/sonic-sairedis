@@ -1,11 +1,12 @@
 #include <iostream>
 #include <sstream>
 #include <ctime>
-#include <sstream>
 
 #include <unistd.h>
 #include <getopt.h>
+#include <cstring>
 
+#include "ProfileMap.h"
 #include "swss/logger.h"
 
 extern "C" {
@@ -15,6 +16,8 @@ extern "C" {
 // TODO split to multiple cpp
 
 std::string sai_profile = "/tmp/sai.profile";
+
+static ProfileMap g_profileMap;
 
 void print_usage()
 {
@@ -46,7 +49,7 @@ const char* profile_get_value(
 {
     SWSS_LOG_ENTER();
 
-    return sai_profile.c_str();
+    return g_profileMap.getValue(variable);
 }
 
 int profile_get_next_value(
@@ -55,7 +58,8 @@ int profile_get_next_value(
         _Out_ const char** value)
 {
     SWSS_LOG_ENTER();
-    return -1;
+
+    return g_profileMap.getNextValue(variable, value);
 }
 
 sai_service_method_table_t test_services = {
@@ -118,6 +122,11 @@ int main(int argc, char **argv)
         strStream << "/tmp/saisdkdump_" << now->tm_mday << "_" << now->tm_mon + 1 << "_" << now->tm_year + 1900 << "_" << now->tm_hour << "_" << now->tm_min << "_" << now->tm_sec;
         fileName = strStream.str();
         SWSS_LOG_INFO("The dump file is not specified, generated \"%s\" file name", fileName.c_str());
+    }
+
+    if (!g_profileMap.loadFromFile(sai_profile))
+    {
+        exit(EXIT_FAILURE);
     }
 
     sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
