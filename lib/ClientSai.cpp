@@ -107,6 +107,16 @@ sai_status_t ClientSai::apiUninitialize(void)
     return SAI_STATUS_SUCCESS;
 }
 
+void ClientSai::shutdown()
+{
+    SWSS_LOG_ENTER();
+
+    if (m_communicationChannel)
+    {
+        m_communicationChannel->setShutdown();
+    }
+}
+
 // QUAD API
 
 sai_status_t ClientSai::create(
