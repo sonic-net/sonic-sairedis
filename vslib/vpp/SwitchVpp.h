@@ -13,8 +13,11 @@
 #include "vppxlate/SaiVppXlate.h"
 #include "vppxlate/SaiRouteStats.h"
 
+#include "swss/ipaddress.h"
+
 #include <list>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <mutex>
 #include <atomic>
@@ -846,6 +849,9 @@ namespace saivs
             bool m_acl_default_created = false;
             uint32_t m_sflow_sample_rate = 0;
 
+            std::set<swss::IpAddress> m_local_ips;         // Mux-reachable local addresses (BVI SVI + loopback)
+            std::set<sai_object_id_t> m_local_deny_tables; // Mux drop ACL tables (IN_PORTS-scoped DROP)
+
         protected: // VPP
 
             sai_status_t createAclEntry(
@@ -867,6 +873,44 @@ namespace saivs
 
             sai_status_t AclTblConfig(
                     _In_ sai_object_id_t tbl_oid);
+
+            /**
+             * @brief Records or drops a mux-reachable local host address as
+             * router interface IPs are added/removed, and refreshes the mux drop
+             * ACL table so its prepended local permits stay in sync. Only VLAN SVI
+             * (BVI) and loopback addresses are tracked; routed port/portchannel
+             * (uplink) addresses never traverse a mux port and are skipped, which
+             * keeps the injected permit count bounded regardless of fabric size.
+             *
+             * @param[in] prefix VPP interface prefix just programmed; only the
+             * host address is used (matched later as /32 or /128).
+             * @param[in] vpp_ifname VPP interface the address was programmed on,
+             * used to classify whether it is mux-reachable (a "bvi" or "loop"
+             * interface).
+             * @param[in] is_add True when the address was added, false on remove.
+             */
+            void trackLocalIp(
+                    _In_ const vpp_ip_route_t *prefix,
+                    _In_ const char *vpp_ifname,
+                    _In_ bool is_add);
+
+            /**
+             * @brief If the table is the dual-ToR mux drop (a DROP ACE scoped by
+             * SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS), prepend permit rules for the
+             * switch's mux-reachable local addresses so for-us traffic bypasses
+             * the deny and is punted at ip4-local. Other deny ACLs are untouched.
+             *
+             * @param[in] tbl_oid ACL table being (re)configured.
+             * @param[in] is_mux_drop_table True if the table carries an
+             * IN_PORTS-scoped DROP ACE.
+             * @param[in,out] acl_rules Ordered rule list; local permits are
+             * spliced onto the front when is_mux_drop_table is true.
+             * @return Number of permit rules prepended (0 if none).
+             */
+            size_t injectLocalPermits(
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool is_mux_drop_table,
+                    _Inout_ std::list<vpp_acl_rule_t> &acl_rules);
 
             sai_status_t AclTblRemove(
                     _In_ sai_object_id_t tbl_oid);
