@@ -259,6 +259,19 @@ typedef enum {
   VPP_BOND_API_LB_ALGO_L34_INNER = 6,
 }  vpp_bond_lb_algo;
 
+    /* SONiC VNET decap-any: high bit of the wire decap_next_index used to flag
+     * a source-independent decap term to the VPP vxlan patch. Must match
+     * VXLAN_DECAP_ANY_FLAG in the VPP 0017 patch (src/plugins/vxlan/vxlan.h).
+     * This encoding requires a VPP built with sonic-platform-vpp patch 0017:
+     * an older VPP without it reads decap_next_index = 0x80000001 as a raw next
+     * index (undefined behaviour) instead of failing cleanly, so saivpp and the
+     * VPP image must be built and version-locked together (see VPP_VERSION in
+     * sonic-platform-vpp rules/vpp.mk). */
+#define VPP_VXLAN_DECAP_ANY_FLAG (1u << 31)
+    /* Default decap next index (VXLAN_INPUT_NEXT_L2_INPUT) sent alongside the
+     * flag so the stripped low bits remain a valid next index. */
+#define VPP_VXLAN_DECAP_NEXT_L2_INPUT 1u
+
     typedef struct  _vpp_vxlan_tunnel {
         vpp_ip_addr_t src_address;
         vpp_ip_addr_t dst_address;
@@ -270,6 +283,10 @@ typedef enum {
         uint32_t      encap_vrf_id;
         uint32_t      decap_next_index;
         bool          is_l3;
+        /* SONiC VNET decap-any: mark this as a secondary-VTEP source-independent
+         * decap term. Emitted to VPP in the high bit of the wire decap_next_index
+         * (VPP_VXLAN_DECAP_ANY_FLAG); the VPP patch decodes and strips it. */
+        bool          decap_any;
      } vpp_vxlan_tunnel_t;
 
     typedef struct _vpp_ipip_tunnel {
@@ -302,6 +319,7 @@ typedef enum {
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_link_speed(const char *hwif_name, uint32_t link_speed);
     extern int sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address);
+    extern int sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address);
     extern int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable);
     extern int ip_vrf_add(uint32_t vrf_id, const char *vrf_name, bool is_ipv6);
     extern int ip_vrf_del(uint32_t vrf_id, const char *vrf_name, bool is_ipv6);
