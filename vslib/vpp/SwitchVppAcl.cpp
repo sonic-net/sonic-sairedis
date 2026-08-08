@@ -27,9 +27,35 @@ using namespace saivs;
 
 #define DEFAULT_PERMIT_RULES 2
 
-static bool acl_rule_is_deny(const vpp_acl_rule_t &r)
+// The dual-ToR mux drop ACL is the one case this feature must compensate for:
+// MuxOrch scopes it to the standby mux ports via SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS
+// and sets the action to DROP. VPP cannot represent an in-port match, so the rule
+// degrades to a port-wide deny that also blackholes for-us traffic. Matching this
+// exact signature (a DROP ACE carrying IN_PORTS) keeps the injected local permits
+// out of ordinary security/data ACLs -- whose denies are not IN_PORTS-scoped -- and
+// out of platforms with no mux drop at all (e.g. t1-lag), where nothing is injected.
+static bool ace_is_inports_scoped_drop(const acl_tbl_entries_t *ace)
 {
-    return r.action == VPP_ACL_ACTION_API_DENY;
+    bool is_drop = false;
+    bool has_in_ports = false;
+
+    for (uint32_t i = 0; i < ace->attrs_count; i++) {
+        const sai_attribute_t *attr = &ace->attrs[i];
+
+        if (attr->id == SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION) {
+            if (attr->value.aclaction.enable &&
+                attr->value.aclaction.parameter.s32 == SAI_PACKET_ACTION_DROP) {
+                is_drop = true;
+            }
+        } else if (attr->id == SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS ||
+                   attr->id == SAI_ACL_ENTRY_ATTR_FIELD_IN_PORT) {
+            if (attr->value.aclfield.enable) {
+                has_in_ports = true;
+            }
+        }
+    }
+
+    return is_drop && has_in_ports;
 }
 
 static vpp_acl_rule_t make_local_permit(const swss::IpAddress &ip)
@@ -1202,11 +1228,23 @@ sai_status_t SwitchVpp::tunterm_acl_delete(sai_object_id_t tbl_oid, bool table_d
 
 void SwitchVpp::trackLocalIp(
     _In_ const vpp_ip_route_t *prefix,
+    _In_ const char *vpp_ifname,
     _In_ bool is_add)
 {
     SWSS_LOG_ENTER();
 
-    if (prefix == NULL) {
+    if (prefix == NULL || vpp_ifname == NULL) {
+        return;
+    }
+
+    // Only addresses reachable via the mux bridge-domain L2 path can be dropped by
+    // the mux ingress ACL and thus need a compensating permit: the VLAN SVI (BVI)
+    // gateway and the loopbacks reached through it. Routed port/portchannel
+    // (uplink) interface addresses never traverse a mux port, so skip them to keep
+    // the injected permit count bounded (independent of fabric/uplink count).
+    bool mux_reachable = (strncmp(vpp_ifname, "bvi", 3) == 0) ||
+                         (strncmp(vpp_ifname, "loop", 4) == 0);
+    if (!mux_reachable) {
         return;
     }
 
@@ -1234,7 +1272,7 @@ void SwitchVpp::trackLocalIp(
     std::vector<sai_object_id_t> tables_to_refresh(m_local_deny_tables.begin(),
                                                    m_local_deny_tables.end());
     for (auto tbl_oid : tables_to_refresh) {
-        SWSS_LOG_NOTICE("Local address %s %s, refreshing ACL table %s (has deny rule)",
+        SWSS_LOG_NOTICE("Local address %s %s, refreshing mux drop ACL table %s",
                         ip.to_string().c_str(),
                         is_add ? "added" : "removed",
                         sai_serialize_object_id(tbl_oid).c_str());
@@ -1244,30 +1282,23 @@ void SwitchVpp::trackLocalIp(
 
 size_t SwitchVpp::injectLocalPermits(
     _In_ sai_object_id_t tbl_oid,
+    _In_ bool is_mux_drop_table,
     _Inout_ std::list<vpp_acl_rule_t> &acl_rules)
 {
     SWSS_LOG_ENTER();
 
-    bool has_deny = false;
-    for (const auto &rule : acl_rules) {
-        if (acl_rule_is_deny(rule)) {
-            has_deny = true;
-            break;
-        }
-    }
-
-    if (!has_deny) {
+    if (!is_mux_drop_table) {
         m_local_deny_tables.erase(tbl_oid);
         return 0;
     }
 
     m_local_deny_tables.insert(tbl_oid);
 
-    // Prepend a /32 (or /128) permit for every local address. Rules within one
-    // VPP ACL are evaluated first-match-wins, and a permit ahead of the deny (in
-    // the same ACL) also wins over a deny in any later-bound ACL, so local
-    // (for-us) traffic reaches ip4-local for punt while everything else still
-    // hits the table's rules unchanged.
+    // Prepend a /32 (or /128) permit for every mux-reachable local address. Rules
+    // within one VPP ACL are evaluated first-match-wins, and a permit ahead of the
+    // deny (in the same ACL) also wins over a deny in any later-bound ACL, so
+    // local (for-us) traffic reaches ip4-local for punt while everything else
+    // still hits the table's rules unchanged.
     std::list<vpp_acl_rule_t> permits;
     for (const auto &ip : m_local_ips) {
         permits.push_back(make_local_permit(ip));
@@ -1278,7 +1309,7 @@ size_t SwitchVpp::injectLocalPermits(
         acl_rules.splice(acl_rules.begin(), permits);
     }
 
-    SWSS_LOG_INFO("Local permit injection: table %s has a deny rule, prepended %zu local permit(s)",
+    SWSS_LOG_INFO("Local permit injection: table %s is an IN_PORTS-scoped drop, prepended %zu local permit(s)",
                   sai_serialize_object_id(tbl_oid).c_str(), n_permits);
 
     return n_permits;
@@ -1319,11 +1350,24 @@ sai_status_t SwitchVpp::AclTblConfig(
     SWSS_LOG_INFO("Generated %ld regular ACL rules and %ld tunterm ACL rules",
                     acl_rules.size(), tunterm_acl_rules.size());
 
-    // Prepending local permits shifts every regular ACE forward in the VPP ACL,
-    // so offset the recorded rule base index to keep ACL counters mapped. Tunterm
-    // ACE base indices are relative to the separate tunnel-termination ACL, which
-    // does not gain these leading rules, so they must not be shifted.
-    size_t n_local = injectLocalPermits(tbl_oid, acl_rules);
+    // Option A (issue #28884): if this table is the dual-ToR mux drop (a DROP ACE
+    // scoped by IN_PORTS, which VPP renders as a port-wide deny), prepend permits
+    // for the switch's mux-reachable local addresses so control/for-us traffic is
+    // punted at ip4-local instead of being dropped at the L2 ACL. Restricting to
+    // the IN_PORTS-scoped drop leaves ordinary security ACLs (and platforms with
+    // no mux drop, e.g. t1-lag) untouched. Prepending shifts every regular ACE
+    // forward in the VPP ACL, so offset the recorded rule base index to keep ACL
+    // counters mapped. Tunterm ACE base indices are relative to the separate
+    // tunnel-termination ACL, which does not gain these leading rules.
+    bool is_mux_drop_table = false;
+    for (const auto &ace : ordered_aces) {
+        if (ace_is_inports_scoped_drop(&aces[ace.index])) {
+            is_mux_drop_table = true;
+            break;
+        }
+    }
+
+    size_t n_local = injectLocalPermits(tbl_oid, is_mux_drop_table, acl_rules);
     if (n_local) {
         for (auto &ace : ordered_aces) {
             if (!ace.is_tunterm) {
