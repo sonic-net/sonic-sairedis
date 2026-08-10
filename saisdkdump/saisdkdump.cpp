@@ -4,6 +4,7 @@
 
 #include <unistd.h>
 #include <getopt.h>
+#include <cerrno>
 #include <cstring>
 
 #include "ProfileMap.h"
@@ -26,7 +27,8 @@ void print_usage()
     std::cerr << "Following SAI dump options can be specified:" << std::endl;
     std::cerr << "-------------------------------------------" << std::endl;
     std::cerr << "--dump_file -f   Full path for dump file" << std::endl;
-    std::cerr << "--profile -p     Full path to SAI profile file [ default is " << sai_profile << " ]" << std::endl;
+    std::cerr << "--profile -p     Full path to SAI profile file [ default is " << sai_profile
+              << "; if missing, an empty profile is used ]" << std::endl;
     std::cerr << "--help  -h       usage" << std::endl;
 }
 
@@ -81,6 +83,7 @@ int main(int argc, char **argv)
     };
 
     bool fileSpecified = false;
+    bool profileSpecified = false;
     std::string fileName;
     int option_index = 0;
     int c = 0;
@@ -100,6 +103,7 @@ int main(int argc, char **argv)
                 if (optarg != NULL)
                 {
                     sai_profile = std::string(optarg);
+                    profileSpecified = true;
                 }
                 break;
 
@@ -122,6 +126,14 @@ int main(int argc, char **argv)
         strStream << "/tmp/saisdkdump_" << now->tm_mday << "_" << now->tm_mon + 1 << "_" << now->tm_year + 1900 << "_" << now->tm_hour << "_" << now->tm_min << "_" << now->tm_sec;
         fileName = strStream.str();
         SWSS_LOG_INFO("The dump file is not specified, generated \"%s\" file name", fileName.c_str());
+    }
+
+    if (!profileSpecified && access(sai_profile.c_str(), F_OK) != 0 && errno == ENOENT)
+    {
+        SWSS_LOG_NOTICE("default SAI profile '%s' does not exist, using empty profile",
+                sai_profile.c_str());
+
+        sai_profile.clear();
     }
 
     if (!g_profileMap.loadFromFile(sai_profile))

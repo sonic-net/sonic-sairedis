@@ -42,7 +42,12 @@ bool ProfileMap::loadFromFile(const std::string& profileMapFile)
             line.pop_back();
         }
 
-        if (line.size() > 0 && (line[0] == '#' || line[0] == ';'))
+        if (line.find_first_not_of(" \t") == std::string::npos)
+        {
+            continue;
+        }
+
+        if (line[0] == '#' || line[0] == ';')
         {
             continue;
         }

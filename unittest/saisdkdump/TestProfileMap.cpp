@@ -124,6 +124,24 @@ TEST(ProfileMap, skipsMalformedLines)
     EXPECT_STREQ("true", profileMap.getValue("CT_TABLE_DUMP_ENABLE"));
 }
 
+TEST(ProfileMap, skipsWhitespaceOnlyLines)
+{
+    SWSS_LOG_ENTER();
+
+    ProfileMap profileMap;
+    const TempProfile profile(
+            "VALID=yes\n"
+            "\n"
+            "   \n"
+            "\t\t\n"
+            " \t \r\n"
+            "CT_TABLE_DUMP_ENABLE=true\n");
+
+    EXPECT_TRUE(profileMap.loadFromFile(profile.path()));
+    EXPECT_STREQ("yes", profileMap.getValue("VALID"));
+    EXPECT_STREQ("true", profileMap.getValue("CT_TABLE_DUMP_ENABLE"));
+}
+
 TEST(ProfileMap, getNextValueIteratesAndResets)
 {
     SWSS_LOG_ENTER();
