@@ -33,6 +33,8 @@ libSaiVS_a_SOURCES = \
 					  LaneMapContainer.cpp \
 					  LaneMap.cpp \
 					  LaneMapFileParser.cpp \
+					  PortConfigMap.cpp \
+					  PortConfigFileParser.cpp \
 					  MACsecAttr.cpp \
 					  MACsecFilterStateGuard.cpp \
 					  MACsecEgressFilter.cpp \
