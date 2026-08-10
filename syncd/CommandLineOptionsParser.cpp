@@ -18,7 +18,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
     auto options = std::make_shared<CommandLineOptions>();
 
-    optind = 1;
+    optind = 0;
 
     bool initTimeSpanSeen = false;
 
