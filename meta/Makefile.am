@@ -42,6 +42,7 @@ libsaimeta_la_SOURCES = \
 				NotificationFlowBulkGetSessionEvent.cpp \
 				NotificationTwampSessionEvent.cpp \
 				NotificationPortHostTxReadyEvent.cpp \
+				NotificationMetaFdbDebug.cpp \
 				NotificationTamTelTypeConfigChange.cpp \
 				NotificationSwitchMacsecPostStatus.cpp \
 				NotificationMacsecPostStatus.cpp \

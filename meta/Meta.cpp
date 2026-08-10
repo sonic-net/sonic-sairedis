@@ -12,6 +12,7 @@
 #include <boost/algorithm/string/join.hpp>
 
 #include <set>
+#include <exception>
 
 // TODO add validation for all oids belong to the same switch
 
@@ -6637,8 +6638,11 @@ void Meta::meta_sai_on_fdb_event_single(
 
             if (m_saiObjectCollection.objectExists(meta_key_fdb))
             {
-                SWSS_LOG_WARN("object key %s already exists, but received LEARNED event",
-                        sai_serialize_object_meta_key(meta_key_fdb).c_str());
+                m_fdbDesyncStats.learnedButExists++;
+                SWSS_LOG_WARN("FDB desync: object key %s already exists, but received LEARNED event (%s) [learnedButExists=%lu]",
+                        sai_serialize_object_meta_key(meta_key_fdb).c_str(),
+                        meta_fdb_event_desc(data).c_str(),
+                        (unsigned long)m_fdbDesyncStats.learnedButExists);
                 break;
             }
 
@@ -6680,8 +6684,11 @@ void Meta::meta_sai_on_fdb_event_single(
 
             if (!m_saiObjectCollection.objectExists(meta_key_fdb))
             {
-                SWSS_LOG_WARN("object key %s doesn't exist but received AGED event",
-                        sai_serialize_object_meta_key(meta_key_fdb).c_str());
+                m_fdbDesyncStats.agedButMissing++;
+                SWSS_LOG_WARN("FDB desync: object key %s doesn't exist but received AGED event (%s) [agedButMissing=%lu]",
+                        sai_serialize_object_meta_key(meta_key_fdb).c_str(),
+                        meta_fdb_event_desc(data).c_str(),
+                        (unsigned long)m_fdbDesyncStats.agedButMissing);
                 break;
             }
 
@@ -6699,8 +6706,11 @@ void Meta::meta_sai_on_fdb_event_single(
 
             if (!m_saiObjectCollection.objectExists(meta_key_fdb))
             {
-                SWSS_LOG_WARN("object key %s doesn't exist but received FLUSHED event",
-                        sai_serialize_object_meta_key(meta_key_fdb).c_str());
+                m_fdbDesyncStats.flushedButMissing++;
+                SWSS_LOG_WARN("FDB desync: object key %s doesn't exist but received FLUSHED event (%s) [flushedButMissing=%lu]",
+                        sai_serialize_object_meta_key(meta_key_fdb).c_str(),
+                        meta_fdb_event_desc(data).c_str(),
+                        (unsigned long)m_fdbDesyncStats.flushedButMissing);
                 break;
             }
 
@@ -6712,8 +6722,11 @@ void Meta::meta_sai_on_fdb_event_single(
 
             if (!m_saiObjectCollection.objectExists(meta_key_fdb))
             {
-                SWSS_LOG_WARN("object key %s doesn't exist but received FDB MOVE event",
-                        sai_serialize_object_meta_key(meta_key_fdb).c_str());
+                m_fdbDesyncStats.moveButMissing++;
+                SWSS_LOG_WARN("FDB desync: object key %s doesn't exist but received FDB MOVE event (%s) [moveButMissing=%lu]",
+                        sai_serialize_object_meta_key(meta_key_fdb).c_str(),
+                        meta_fdb_event_desc(data).c_str(),
+                        (unsigned long)m_fdbDesyncStats.moveButMissing);
                 break;
             }
 
@@ -6742,6 +6755,99 @@ void Meta::meta_sai_on_fdb_event_single(
 
             SWSS_LOG_ERROR("got FDB_ENTRY notification with unknown event_type %d, bug?", data.event_type);
             break;
+    }
+}
+
+std::string Meta::meta_fdb_event_desc(
+        _In_ const sai_fdb_event_notification_data_t& data) const
+{
+    SWSS_LOG_ENTER();
+
+    std::string bridgePort = "n/a";
+    std::string type = "n/a";
+
+    for (uint32_t i = 0; i < data.attr_count; i++)
+    {
+        switch (data.attr[i].id)
+        {
+            case SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID:
+                bridgePort = sai_serialize_object_id(data.attr[i].value.oid);
+                break;
+
+            case SAI_FDB_ENTRY_ATTR_TYPE:
+                type = std::to_string(data.attr[i].value.s32);
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    return "event_type=" + std::to_string((int)data.event_type)
+        + " bridge_port=" + bridgePort
+        + " type=" + type
+        + " attr_count=" + std::to_string((unsigned)data.attr_count);
+}
+
+void Meta::dumpFdb() const
+{
+    SWSS_LOG_ENTER();
+
+    // Read-only. Called under the sairedis API mutex.
+
+    SWSS_LOG_NOTICE("meta FDB dump: desync counters: learnedButExists=%lu agedButMissing=%lu flushedButMissing=%lu moveButMissing=%lu",
+            (unsigned long)m_fdbDesyncStats.learnedButExists,
+            (unsigned long)m_fdbDesyncStats.agedButMissing,
+            (unsigned long)m_fdbDesyncStats.flushedButMissing,
+            (unsigned long)m_fdbDesyncStats.moveButMissing);
+
+    size_t fdbCount = 0;
+
+    for (auto& mk: m_saiObjectCollection.getAllKeys())
+    {
+        if (mk.objecttype != SAI_OBJECT_TYPE_FDB_ENTRY)
+        {
+            continue;
+        }
+
+        fdbCount++;
+
+        SWSS_LOG_NOTICE("meta FDB entry: %s",
+                sai_serialize_object_meta_key(mk).c_str());
+    }
+
+    SWSS_LOG_NOTICE("meta FDB dump: %zu FDB entries tracked in meta mirror", fdbCount);
+}
+
+void Meta::processDebugCommand(
+        _In_ const std::string& op,
+        _In_ const std::string& data)
+{
+    SWSS_LOG_ENTER();
+
+    // Tolerant operator command handler. Called under the sairedis API mutex.
+    // MUST NEVER let an exception escape: malformed operator input must not
+    // disturb runtime. All parsing is wrapped in try/catch.
+
+    try
+    {
+        if (op == "dump")
+        {
+            dumpFdb();
+            return;
+        }
+
+        SWSS_LOG_WARN("meta debug: unknown op '%s' ignored", op.c_str());
+    }
+    catch (const std::exception& e)
+    {
+        SWSS_LOG_WARN("meta debug command op='%s' data='%s' failed and was ignored: %s",
+                op.c_str(), data.c_str(), e.what());
+    }
+    catch (...)
+    {
+        SWSS_LOG_WARN("meta debug command op='%s' data='%s' failed and was ignored: unknown exception",
+                op.c_str(), data.c_str());
     }
 }
 

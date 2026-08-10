@@ -308,4 +308,5 @@ AC_OUTPUT(Makefile
           unittest/saidump/Makefile
           pyext/Makefile
           pyext/py2/Makefile
-          pyext/py3/Makefile)
+          pyext/py3/Makefile
+          scripts/Makefile)

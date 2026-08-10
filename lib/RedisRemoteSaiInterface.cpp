@@ -9,6 +9,7 @@
 #include "sairediscommon.h"
 
 #include "meta/NotificationFactory.h"
+#include "meta/NotificationMetaFdbDebug.h"
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
 #include "meta/PerformanceIntervalTimer.h"
@@ -100,7 +101,8 @@ sai_status_t RedisRemoteSaiInterface::apiInitialize(
     {
         m_communicationChannel = std::make_shared<RedisChannel>(
                 m_contextConfig->m_dbAsic,
-                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3),
+                std::bind(&RedisRemoteSaiInterface::handleMetaDebug, this, _1, _2, _3));
     }
 
     m_responseTimeoutMs = m_communicationChannel->getResponseTimeout();
@@ -407,7 +409,8 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
                     m_communicationChannel = std::make_shared<RedisChannel>(
                             m_contextConfig->m_dbAsic,
-                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3),
+                            std::bind(&RedisRemoteSaiInterface::handleMetaDebug, this, _1, _2, _3));
 
                     m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
@@ -423,7 +426,8 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
                     m_communicationChannel = std::make_shared<RedisChannel>(
                             m_contextConfig->m_dbAsic,
-                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3),
+                            std::bind(&RedisRemoteSaiInterface::handleMetaDebug, this, _1, _2, _3));
 
                     m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
@@ -446,7 +450,8 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
                         m_communicationChannel = std::make_shared<RedisChannel>(
                                 m_contextConfig->m_dbAsic,
-                                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3),
+                                std::bind(&RedisRemoteSaiInterface::handleMetaDebug, this, _1, _2, _3));
 
                         m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
@@ -2340,6 +2345,24 @@ void RedisRemoteSaiInterface::handleNotification(
 
         notification->executeCallback(sn);
     }
+}
+
+void RedisRemoteSaiInterface::handleMetaDebug(
+        _In_ const std::string &op,
+        _In_ const std::string &data,
+        _In_ const std::vector<swss::FieldValueTuple> &values)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("meta debug: op=%s data=%s", op.c_str(), data.c_str());
+
+    // Route the operator command through the existing notification callback so
+    // that Meta::processDebugCommand executes under the sairedis API mutex, the
+    // same as every real notification.
+
+    auto notification = std::make_shared<NotificationMetaFdbDebug>(op, data);
+
+    m_notificationCallback(notification);
 }
 
 sai_object_type_t RedisRemoteSaiInterface::objectTypeQuery(
