@@ -29,7 +29,12 @@ extern "C" {
 
     /* Maximum MPLS label stack depth carried on a single fib path (VPP API limit). */
 #define VPP_MPLS_MAX_LABELS 16
-    /* Default TTL for an imposed label; SAI carries no per-outsegment TTL. */
+    /*
+     * TTL used for an imposed label when the SAI next hop does not carry an
+     * explicit one, i.e. when SAI_NEXT_HOP_ATTR_OUTSEG_TTL_MODE is UNIFORM (the
+     * SAI default) and the TTL is therefore taken from the payload rather than
+     * from SAI_NEXT_HOP_ATTR_OUTSEG_TTL_VALUE.
+     */
 #define MPLS_DEFAULT_OUT_TTL 64
 
 typedef struct vpp_ip_addr_ {
@@ -50,12 +55,16 @@ typedef struct vpp_ip_addr_ {
         uint32_t flags;
         uint8_t n_labels;
         /*
-         * Labels imposed on an IP route. Only the label value is carried here:
-         * the TTL of an imposed label on an IP path is derived from the IP
-         * header (uniform mode), so unlike vpp_mpls_nexthop_t below there is no
-         * per-label ttl/exp to express.
+         * Labels imposed on an IP route (ingress LER). SAI models the TTL and
+         * EXP treatment per next hop rather than per label
+         * (SAI_NEXT_HOP_ATTR_OUTSEG_{TTL,EXP}_{MODE,VALUE}), so the label
+         * values are carried here and the treatment below is applied to every
+         * label in the stack when the VPP fib path is built.
          */
         uint32_t label_stack[VPP_MPLS_MAX_LABELS];
+        uint8_t out_ttl;         /* TTL for imposed labels (PIPE mode uses the SAI value) */
+        uint8_t out_exp;         /* EXP for imposed labels */
+        uint8_t out_is_uniform;  /* 1 = UNIFORM (derive from payload), 0 = PIPE */
     } vpp_ip_nexthop_t;
 
     typedef struct vpp_ip_route_ {

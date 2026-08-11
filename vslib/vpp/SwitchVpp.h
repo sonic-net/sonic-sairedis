@@ -788,6 +788,11 @@ namespace saivs
             sai_status_t fillMplsNexthop(
                     _In_ const SaiObject *nh_obj,
                     _Out_ vpp_mpls_nexthop_t *vnh);
+            void getOutsegTtl(
+                    _In_ const SaiObject *nh_obj,
+                    _Out_ uint8_t *ttl,
+                    _Out_ uint8_t *exp,
+                    _Out_ uint8_t *is_uniform);
             sai_status_t ensureMplsTable();
 
             sai_status_t IpRouteNexthopEntry(

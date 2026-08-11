@@ -27,6 +27,48 @@ using namespace saivs;
 /* Reserved MPLS implicit-null label (RFC 3032): pop and forward on the payload. */
 #define MPLS_IMPLICIT_NULL_LABEL 3
 
+void SwitchVpp::getOutsegTtl(
+        _In_ const SaiObject *nh_obj,
+        _Out_ uint8_t *ttl,
+        _Out_ uint8_t *exp,
+        _Out_ uint8_t *is_uniform)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * SAI models the imposed-label treatment per next hop. Both attributes
+     * default to UNIFORM, and the explicit TTL/EXP values are only valid in
+     * PIPE mode (@validonly in sainexthop.h), so read the mode first and only
+     * take the value when it applies. Attributes that were never set come back
+     * as ITEM_NOT_FOUND, which leaves the SAI defaults in place.
+     */
+    sai_attribute_t attr;
+
+    *is_uniform = 1;
+    *ttl = MPLS_DEFAULT_OUT_TTL;
+    *exp = 0;
+
+    attr.id = SAI_NEXT_HOP_ATTR_OUTSEG_TTL_MODE;
+    if (nh_obj->get_attr(attr) == SAI_STATUS_SUCCESS &&
+        attr.value.s32 == SAI_OUTSEG_TTL_MODE_PIPE) {
+        *is_uniform = 0;
+
+        attr.id = SAI_NEXT_HOP_ATTR_OUTSEG_TTL_VALUE;
+        if (nh_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+            *ttl = attr.value.u8;
+        }
+    }
+
+    attr.id = SAI_NEXT_HOP_ATTR_OUTSEG_EXP_MODE;
+    if (nh_obj->get_attr(attr) == SAI_STATUS_SUCCESS &&
+        attr.value.s32 == SAI_OUTSEG_EXP_MODE_PIPE) {
+        attr.id = SAI_NEXT_HOP_ATTR_OUTSEG_EXP_VALUE;
+        if (nh_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+            *exp = attr.value.u8;
+        }
+    }
+}
+
 sai_status_t SwitchVpp::ensureMplsTable()
 {
     SWSS_LOG_ENTER();
@@ -108,12 +150,16 @@ sai_status_t SwitchVpp::fillMplsNexthop(
          */
         if (label_status == SAI_STATUS_SUCCESS && attr.value.u32list.count > 0) {
             uint32_t cnt = attr.value.u32list.count;
+            uint8_t out_ttl, out_exp, out_is_uniform;
+
+            getOutsegTtl(nh_obj, &out_ttl, &out_exp, &out_is_uniform);
+
             vnh->n_labels = (uint8_t)cnt;
             for (uint32_t i = 0; i < cnt; i++) {
                 vnh->label_stack[i].label = attr.value.u32list.list[i];
-                vnh->label_stack[i].ttl = MPLS_DEFAULT_OUT_TTL;
-                vnh->label_stack[i].exp = 0;
-                vnh->label_stack[i].is_uniform = 1;
+                vnh->label_stack[i].ttl = out_ttl;
+                vnh->label_stack[i].exp = out_exp;
+                vnh->label_stack[i].is_uniform = out_is_uniform;
             }
         }
     }

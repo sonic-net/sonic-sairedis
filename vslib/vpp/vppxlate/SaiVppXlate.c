@@ -3201,9 +3201,9 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
         fib_path->n_labels = n_labels;
         for (uint8_t l = 0; l < n_labels; l++) {
             fib_path->label_stack[l].label = htonl(nexthop->label_stack[l]);
-            fib_path->label_stack[l].ttl = MPLS_DEFAULT_OUT_TTL;
-            fib_path->label_stack[l].exp = 0;
-            fib_path->label_stack[l].is_uniform = 1;
+            fib_path->label_stack[l].ttl = nexthop->out_ttl;
+            fib_path->label_stack[l].exp = nexthop->out_exp;
+            fib_path->label_stack[l].is_uniform = nexthop->out_is_uniform;
         }
     }
     ip_route->table_id = htonl(prefix->vrf_id);

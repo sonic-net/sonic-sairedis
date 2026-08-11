@@ -229,6 +229,11 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
 
             if (label_status == SAI_STATUS_SUCCESS && attr.value.u32list.count > 0) {
                 uint32_t cnt = attr.value.u32list.count;
+
+                getOutsegTtl(nh_obj.get(), &nxt_grp_member->out_ttl,
+                             &nxt_grp_member->out_exp,
+                             &nxt_grp_member->out_is_uniform);
+
                 nxt_grp_member->n_labels = (uint8_t)cnt;
                 for (uint32_t li = 0; li < cnt; li++) {
                     nxt_grp_member->label_stack[li] = attr.value.u32list.list[li];
