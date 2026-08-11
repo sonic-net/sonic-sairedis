@@ -781,7 +781,7 @@ namespace saivs
                     _In_ const sai_attribute_t *attr_list);
             sai_status_t removeMplsRoute(
                     _In_ const std::string &serializedObjectId);
-            sai_status_t MplsRouteAddRemove(
+            sai_status_t mplsRouteAddRemove(
                     _In_ const SaiObject *inseg_obj,
                     _In_ const std::string &serializedObjectId,
                     _In_ bool is_add);

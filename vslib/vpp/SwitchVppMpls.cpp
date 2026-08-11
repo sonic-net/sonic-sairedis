@@ -167,7 +167,7 @@ sai_status_t SwitchVpp::fillMplsNexthop(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchVpp::MplsRouteAddRemove(
+sai_status_t SwitchVpp::mplsRouteAddRemove(
         _In_ const SaiObject *inseg_obj,
         _In_ const std::string &serializedObjectId,
         _In_ bool is_add)
@@ -343,7 +343,7 @@ sai_status_t SwitchVpp::addMplsRoute(
     bool route_programmed = false;
 
     if (is_ip_nbr_active() == true) {
-        CHECK_STATUS(MplsRouteAddRemove(&inseg_obj, serializedObjectId, true));
+        CHECK_STATUS(mplsRouteAddRemove(&inseg_obj, serializedObjectId, true));
         route_programmed = true;
     }
 
@@ -353,7 +353,7 @@ sai_status_t SwitchVpp::addMplsRoute(
         // The entry was not committed, so undo the VPP programming to keep the
         // MPLS FIB in sync with the SAI object database.
         if (route_programmed) {
-            MplsRouteAddRemove(&inseg_obj, serializedObjectId, false);
+            mplsRouteAddRemove(&inseg_obj, serializedObjectId, false);
         }
         return status;
     }
@@ -368,7 +368,7 @@ sai_status_t SwitchVpp::removeMplsRoute(
 
     auto inseg_obj = get_sai_object(SAI_OBJECT_TYPE_INSEG_ENTRY, serializedObjectId);
     if (inseg_obj && is_ip_nbr_active() == true) {
-        CHECK_STATUS(MplsRouteAddRemove(inseg_obj.get(), serializedObjectId, false));
+        CHECK_STATUS(mplsRouteAddRemove(inseg_obj.get(), serializedObjectId, false));
     }
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_INSEG_ENTRY, serializedObjectId));
