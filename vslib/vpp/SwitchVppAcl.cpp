@@ -20,6 +20,7 @@
 
 #include <list>
 #include <vector>
+#include <tuple>
 #include <algorithm>
 
 using namespace saivs;
@@ -1198,21 +1199,6 @@ sai_status_t SwitchVpp::AclTblConfig(
     SWSS_LOG_INFO("Generated %ld regular ACL rules and %ld tunterm ACL rules",
                     acl_rules.size(), tunterm_acl_rules.size());
 
-    // ip2me: record whether this table now carries a DROP/deny rule so the
-    // feature can be (dis)enabled on the interfaces it is bound to. A table
-    // with a deny rule can discard ip2me (for-us) traffic on the l2-input
-    // arc before it is punted, which is exactly what the ip2me node guards.
-    {
-        bool has_deny = false;
-        for (const auto &rule : acl_rules) {
-            if (rule.action == VPP_ACL_ACTION_API_DENY) {
-                has_deny = true;
-                break;
-            }
-        }
-        ip2meUpdateDropTable(tbl_oid, has_deny);
-    }
-
     // Create and populate regular ACL if we have rules
     if (!acl_rules.empty()) {
         auto tbl_sid = sai_serialize_object_id(tbl_oid);
@@ -1271,6 +1257,23 @@ sai_status_t SwitchVpp::AclTblConfig(
     } else if (status != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("ACL plugin operation failed, skipping tunterm "
                        "configuration. status %d", status);
+    }
+
+    // ip2me: only once the ACL has actually been (re)programmed in VPP do we
+    // record whether this table now carries a DROP/deny rule, so the in-memory
+    // drop-table state can never diverge from what VPP is enforcing if the
+    // programming above failed. A table with a deny rule can discard ip2me
+    // (for-us) traffic on the l2-input arc before it is punted, which is
+    // exactly what the ip2me node guards.
+    if (status == SAI_STATUS_SUCCESS) {
+        bool has_deny = false;
+        for (const auto &rule : acl_rules) {
+            if (rule.action == VPP_ACL_ACTION_API_DENY) {
+                has_deny = true;
+                break;
+            }
+        }
+        ip2meUpdateDropTable(tbl_oid, has_deny);
     }
 
     cleanup_acl_tbl_config(aces, ordered_aces, acl, tunterm_acl);
@@ -1993,8 +1996,8 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
         return SAI_STATUS_FAILURE;
     }
 
-    // Build a vector of (priority, acl_swindex) for sorting
-    std::vector<std::pair<uint32_t, uint32_t>> sorted_members;
+    // Build a vector of (priority, acl_swindex, tbl_oid) for sorting
+    std::vector<std::tuple<uint32_t, uint32_t, sai_object_id_t>> sorted_members;
 
     for (auto member_oid: member_list) {
         sai_attribute_t attr;
@@ -2017,10 +2020,6 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
         }
         auto acl_swindex = vpp_idx_it->second;
 
-        // Track this (interface, table) ingress binding for the ip2me
-        // feature and enable/disable it as needed.
-        ip2meUpdatePortBinding(hwif_name, tbl_oid, is_input, is_bind);
-
         // Get member priority
         attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_PRIORITY;
         uint32_t priority = 0;
@@ -2028,18 +2027,21 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
             priority = attr.value.u32;
         }
 
-        sorted_members.push_back({priority, acl_swindex});
+        sorted_members.push_back({priority, acl_swindex, tbl_oid});
     }
 
     // Sort by priority in descending order (higher priority first)
     std::sort(sorted_members.begin(), sorted_members.end(),
-              [](const std::pair<uint32_t, uint32_t>& a, const std::pair<uint32_t, uint32_t>& b) {
-                  return a.first > b.first;
+              [](const std::tuple<uint32_t, uint32_t, sai_object_id_t>& a,
+                 const std::tuple<uint32_t, uint32_t, sai_object_id_t>& b) {
+                  return std::get<0>(a) > std::get<0>(b);
               });
 
     // Bind/unbind each ACL in sorted order
     for (const auto& member : sorted_members) {
-        uint32_t acl_swindex = member.second;
+        uint32_t priority = std::get<0>(member);
+        uint32_t acl_swindex = std::get<1>(member);
+        sai_object_id_t tbl_oid = std::get<2>(member);
         int ret;
 
         if (is_bind)
@@ -2053,7 +2055,12 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
             return SAI_STATUS_FAILURE;
         }
         SWSS_LOG_NOTICE("ACL swindex %u %s to port %s (priority %u)", acl_swindex,
-                        is_bind ? "bound" : "unbound", hwif_name.c_str(), member.first);
+                        is_bind ? "bound" : "unbound", hwif_name.c_str(), priority);
+
+        // ip2me: only now that the (un)bind actually succeeded in VPP do we
+        // track this (interface, table) ingress binding and enable/disable
+        // the feature, so the tracked state matches what VPP is enforcing.
+        ip2meUpdatePortBinding(hwif_name, tbl_oid, is_input, is_bind);
     }
 
     // Handle the shared default ACL
