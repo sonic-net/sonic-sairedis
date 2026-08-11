@@ -863,6 +863,23 @@ namespace saivs
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_mbr_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
+
+            // ip2me (receive-DPO check before ACL) tracking.
+            //
+            // A table is an "ip2me drop table" if it carries at least one
+            // DROP/deny rule and could therefore discard ip2me (for-us)
+            // traffic; the set is kept current by AclTblConfig.
+            // m_ip2me_port_tables records, per VPP interface, the set of
+            // ingress ACL tables currently bound to it (drop or not), so a
+            // table whose drop-ness flips after it is bound can still be
+            // re-evaluated. The sonic_ext ip2me feature is enabled on an
+            // interface while any of its bound tables is a drop table, and
+            // disabled otherwise; m_ip2me_enabled_ports records the last
+            // programmed state to keep the enable/disable calls idempotent.
+            std::set<sai_object_id_t> m_ip2me_drop_tables;
+            std::map<std::string, std::set<sai_object_id_t>> m_ip2me_port_tables;
+            std::set<std::string> m_ip2me_enabled_ports;
+
             std::map<std::string, uint32_t> m_routeStatsIndexMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsBaseMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsCarryMap;
@@ -1118,6 +1135,25 @@ namespace saivs
                     _In_ sai_object_id_t tbl_grp_oid,
                     _In_ sai_object_id_t tbl_oid,
                     _In_ bool is_bind);
+
+            /*
+             * ip2me (receive-DPO check before ACL) helpers -- see
+             * SwitchVppAcl.cpp. They keep the sonic_ext ip2me feature enabled
+             * on exactly the VPP interfaces that have an ingress drop ACL
+             * bound, so ip2me (for-us) traffic can bypass it.
+             */
+            void ip2meUpdateDropTable(
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool has_deny);
+
+            void ip2meUpdatePortBinding(
+                    _In_ const std::string &hwif_name,
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool is_input,
+                    _In_ bool is_bind);
+
+            void ip2meRefreshPort(
+                    _In_ const std::string &hwif_name);
 
             sai_status_t getAclEntryStats(
                     _In_ sai_object_id_t ace_cntr_oid,

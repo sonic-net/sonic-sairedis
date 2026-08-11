@@ -1198,6 +1198,21 @@ sai_status_t SwitchVpp::AclTblConfig(
     SWSS_LOG_INFO("Generated %ld regular ACL rules and %ld tunterm ACL rules",
                     acl_rules.size(), tunterm_acl_rules.size());
 
+    // ip2me: record whether this table now carries a DROP/deny rule so the
+    // feature can be (dis)enabled on the interfaces it is bound to. A table
+    // with a deny rule can discard ip2me (for-us) traffic on the l2-input
+    // arc before it is punted, which is exactly what the ip2me node guards.
+    {
+        bool has_deny = false;
+        for (const auto &rule : acl_rules) {
+            if (rule.action == VPP_ACL_ACTION_API_DENY) {
+                has_deny = true;
+                break;
+            }
+        }
+        ip2meUpdateDropTable(tbl_oid, has_deny);
+    }
+
     // Create and populate regular ACL if we have rules
     if (!acl_rules.empty()) {
         auto tbl_sid = sai_serialize_object_id(tbl_oid);
@@ -1441,6 +1456,11 @@ sai_status_t SwitchVpp::AclTblRemove(
         }
         m_acl_tbl_rules_map.erase(it);
     }
+
+    // ip2me: the table is going away -- clear its drop-table state and
+    // re-evaluate any interfaces that still reference it (defensive; the
+    // per-port unbind normally runs before the table is deleted).
+    ip2meUpdateDropTable(tbl_oid, false);
 
     status = tunterm_acl_delete(tbl_oid, true);
 
@@ -1824,6 +1844,118 @@ sai_status_t SwitchVpp::addRemovePortTblGrp(
     return SAI_STATUS_SUCCESS;
 }
 
+/*
+ * ip2me (receive-DPO check before ACL) -- sonic_ext plugin hook.
+ *
+ * Keep the sonic_ext ip2me feature enabled on exactly the VPP interfaces
+ * that have an ingress ACL containing a DROP/deny rule bound, so ip2me
+ * (destined-to-this-switch) traffic can bypass that drop ACL and still be
+ * punted (mirrors hardware CoPP-before-ACL). The feature is a no-op on
+ * every other interface and consumes zero ACL rules.
+ *
+ * State is split so the enable decision is robust to event ordering:
+ *   - m_ip2me_drop_tables   : tables that currently carry a deny rule
+ *                             (updated by AclTblConfig on every rule change).
+ *   - m_ip2me_port_tables   : per interface, the ingress tables bound to it
+ *                             (drop or not), so a table whose drop-ness flips
+ *                             after it was bound can be re-evaluated.
+ *   - m_ip2me_enabled_ports : interfaces where the feature is programmed on,
+ *                             so the vpp enable/disable stays idempotent.
+ */
+void SwitchVpp::ip2meRefreshPort(
+        _In_ const std::string &hwif_name)
+{
+    SWSS_LOG_ENTER();
+
+    // Desired state: enabled iff any ingress table bound to this interface
+    // is currently a drop table.
+    bool want_enable = false;
+    auto pit = m_ip2me_port_tables.find(hwif_name);
+    if (pit != m_ip2me_port_tables.end()) {
+        for (auto tbl_oid : pit->second) {
+            if (m_ip2me_drop_tables.count(tbl_oid)) {
+                want_enable = true;
+                break;
+            }
+        }
+    }
+
+    bool is_enabled = (m_ip2me_enabled_ports.count(hwif_name) != 0);
+    if (want_enable == is_enabled) {
+        return; // already in the desired state
+    }
+
+    int ret = vpp_sonic_ext_ip2me_enable_disable(hwif_name.c_str(), want_enable);
+    if (ret != 0) {
+        SWSS_LOG_ERROR("ip2me %s failed (%d) for interface %s",
+                       want_enable ? "enable" : "disable", ret, hwif_name.c_str());
+        return; // leave tracked state unchanged so a later refresh retries
+    }
+
+    if (want_enable) {
+        m_ip2me_enabled_ports.insert(hwif_name);
+    } else {
+        m_ip2me_enabled_ports.erase(hwif_name);
+    }
+    SWSS_LOG_NOTICE("ip2me skip ACL %s on interface %s",
+                    want_enable ? "enabled" : "disabled", hwif_name.c_str());
+}
+
+void SwitchVpp::ip2meUpdateDropTable(
+        _In_ sai_object_id_t tbl_oid,
+        _In_ bool has_deny)
+{
+    SWSS_LOG_ENTER();
+
+    bool was_drop = (m_ip2me_drop_tables.count(tbl_oid) != 0);
+    if (has_deny == was_drop) {
+        return; // drop-ness unchanged
+    }
+
+    if (has_deny) {
+        m_ip2me_drop_tables.insert(tbl_oid);
+    } else {
+        m_ip2me_drop_tables.erase(tbl_oid);
+    }
+
+    // Drop-ness flipped: re-evaluate every interface that currently has this
+    // table bound (the bind may have happened before the rules were added,
+    // or the last deny rule was just removed).
+    for (auto &kv : m_ip2me_port_tables) {
+        if (kv.second.count(tbl_oid)) {
+            ip2meRefreshPort(kv.first);
+        }
+    }
+}
+
+void SwitchVpp::ip2meUpdatePortBinding(
+        _In_ const std::string &hwif_name,
+        _In_ sai_object_id_t tbl_oid,
+        _In_ bool is_input,
+        _In_ bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    // ip2me runs on the l2-input arc, so only ingress binds are relevant.
+    if (!is_input) {
+        return;
+    }
+
+    if (is_bind) {
+        m_ip2me_port_tables[hwif_name].insert(tbl_oid);
+    } else {
+        auto pit = m_ip2me_port_tables.find(hwif_name);
+        if (pit != m_ip2me_port_tables.end()) {
+            pit->second.erase(tbl_oid);
+            if (pit->second.empty()) {
+                m_ip2me_port_tables.erase(pit);
+            }
+        }
+    }
+
+    ip2meRefreshPort(hwif_name);
+}
+
 sai_status_t SwitchVpp::aclBindUnbindPort(
         _In_ sai_object_id_t port_oid,
         _In_ sai_object_id_t tbl_grp_oid,
@@ -1884,6 +2016,10 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
             return SAI_STATUS_FAILURE;
         }
         auto acl_swindex = vpp_idx_it->second;
+
+        // Track this (interface, table) ingress binding for the ip2me
+        // feature and enable/disable it as needed.
+        ip2meUpdatePortBinding(hwif_name, tbl_oid, is_input, is_bind);
 
         // Get member priority
         attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_PRIORITY;
@@ -2040,6 +2176,9 @@ sai_status_t SwitchVpp::aclBindUnbindPorts(
         }
         SWSS_LOG_NOTICE("ACL table %s %s port %s", sai_serialize_object_id(tbl_oid).c_str(),
                         is_bind ? "bound to": "unbound from", hwif_name.c_str());
+
+        // Keep ip2me in sync for this (interface, table) ingress binding.
+        ip2meUpdatePortBinding(hwif_name, tbl_oid, is_input, is_bind);
     }
     return SAI_STATUS_SUCCESS;
 }
