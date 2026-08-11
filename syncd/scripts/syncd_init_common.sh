@@ -37,6 +37,13 @@ mkdir -p /var/log/sai_failure_dump/
 # currently disabled since most vendors don't support that yet
 # CMD_ARGS+=" -l"
 
+# WS2: Enable msgpack encoding on the ASIC_DB channel (consumer side).
+# Must match the producer-side setting in orchagent.sh (swss container).
+ASIC_DB_MSGPACK=$(sonic-db-cli CONFIG_DB hget "DEVICE_METADATA|localhost" "asic_db_msgpack_enabled" 2>/dev/null)
+if [[ x"${ASIC_DB_MSGPACK}" == x"true" ]]; then
+    CMD_ARGS+=" -P"
+fi
+
 # Set zmq mode by default for smartswitch DPU
 # Otherwise, set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')

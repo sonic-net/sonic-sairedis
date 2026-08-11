@@ -5,6 +5,7 @@
 #include "swss/logger.h"
 
 #include <getopt.h>
+#include <cstdlib>
 
 #include <iostream>
 
@@ -19,9 +20,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lrm:h";
+    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lrm:hP";
 #else
-    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lh";
+    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lhP";
 #endif // SAITHRIFT
 
     while (true)
@@ -48,6 +49,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
 #endif // SAITHRIFT
+            { "enableMsgPack",           no_argument,       0, 'P' },
             { "help",                    no_argument,       0, 'h' },
             { 0,                         0,                 0,  0  }
         };
@@ -141,6 +143,13 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
             case 'a':
                 options->m_enableAttrVersionCheck = true;
+                break;
+
+            case 'P':
+                options->m_enableAsicDbMsgpack = true;
+                // Set env var so RedisSelectableChannel picks it up
+                setenv("ASIC_DB_MSGPACK_ENABLED", "true", 1);
+                SWSS_LOG_NOTICE("ASIC_DB msgpack decoding enabled (-P)");
                 break;
 
             case 'h':

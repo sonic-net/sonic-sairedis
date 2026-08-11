@@ -47,6 +47,7 @@ CommandLineOptions::CommandLineOptions()
     m_supportingBulkCounterGroups = "";
 
     m_enableAttrVersionCheck = false;
+    m_enableAsicDbMsgpack = false;
 }
 
 std::string CommandLineOptions::getCommandLineString() const
@@ -71,6 +72,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " WatchdogWarnTimeSpan=" << m_watchdogWarnTimeSpan;
     ss << " SupportingBulkCounters=" << m_supportingBulkCounterGroups;
     ss << " EnableAttrVersionCheck=" << (m_enableAttrVersionCheck ? "YES" : "NO");
+    ss << " EnableAsicDbMsgpack=" << (m_enableAsicDbMsgpack ? "YES" : "NO");
 
 #ifdef SAITHRIFT
 

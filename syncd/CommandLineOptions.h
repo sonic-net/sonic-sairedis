@@ -101,5 +101,14 @@ namespace syncd
             std::string m_supportingBulkCounterGroups;
 
             bool m_enableAttrVersionCheck;
+
+            /**
+             * @brief Enable msgpack encoding on the ASIC_DB channel.
+             *
+             * When enabled, syncd creates MsgPackConsumerTable instead of
+             * ConsumerTable for ASIC_STATE, loading the msgpack-aware Lua
+             * pops script. Must match the producer-side setting in orchagent.
+             */
+            bool m_enableAsicDbMsgpack;
     };
 }
