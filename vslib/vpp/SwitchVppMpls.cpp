@@ -253,18 +253,30 @@ sai_status_t SwitchVpp::MplsRouteAddRemove(
     if (!has_outlabels) {
         /*
          * Pop/disposition case (no out labels). Inject an implicit-null out
-         * label with uniform LSP mode so VPP builds a UNIFORM-mode MPLS
-         * disposition: the popped inner IP TTL is derived from the popped MPLS
-         * TTL (mpls_ttl - 1). This matches the SAI default POP TTL mode
-         * (SAI_INSEG_ENTRY_POP_TTL_MODE_UNIFORM) and typical hardware. Without
-         * it VPP defaults the disposition to PIPE (inner TTL left untouched and
-         * only decremented once by the IP forwarding stage).
+         * label so VPP builds an MPLS disposition rather than leaving the
+         * default. The LSP mode follows SAI_INSEG_ENTRY_ATTR_POP_TTL_MODE:
+         *
+         *   UNIFORM (SAI default) -> is_uniform=1: the popped inner IP TTL is
+         *       derived from the MPLS TTL (mpls_ttl - 1), matching typical
+         *       hardware.
+         *   PIPE                  -> is_uniform=0: the inner TTL is left
+         *       untouched and only decremented once by the IP stage.
+         *
+         * Without the injected label VPP defaults the disposition to PIPE.
          */
+        int32_t pop_ttl_mode = SAI_INSEG_ENTRY_POP_TTL_MODE_UNIFORM;
+        sai_attribute_t ttl_attr;
+        ttl_attr.id = SAI_INSEG_ENTRY_ATTR_POP_TTL_MODE;
+        if (inseg_obj->get_attr(ttl_attr) == SAI_STATUS_SUCCESS) {
+            pop_ttl_mode = ttl_attr.value.s32;
+        }
+
         route->nexthop[0].n_labels = 1;
         route->nexthop[0].label_stack[0].label = MPLS_IMPLICIT_NULL_LABEL;
         route->nexthop[0].label_stack[0].ttl = 0;
         route->nexthop[0].label_stack[0].exp = 0;
-        route->nexthop[0].label_stack[0].is_uniform = 1;
+        route->nexthop[0].label_stack[0].is_uniform =
+            (pop_ttl_mode == SAI_INSEG_ENTRY_POP_TTL_MODE_PIPE) ? 0 : 1;
     }
 
     /*
