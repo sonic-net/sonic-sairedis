@@ -207,13 +207,20 @@ sai_status_t SwitchVpp::MplsRouteAddRemove(
     route->label = inseg_entry.label;
     route->is_multipath = false;
     route->nexthop_cnt = 1;
-    route->eos_proto_af = AF_INET;
 
     sai_status_t status = fillMplsNexthop(nh_obj.get(), &route->nexthop[0]);
     if (status != SAI_STATUS_SUCCESS) {
         free(route);
         return status;
     }
+
+    /*
+     * Protocol of the payload exposed once the end-of-stack label is popped.
+     * The SAI INSEG entry does not carry it, so derive it from the resolved
+     * next hop's address family. Must run after fillMplsNexthop() has populated
+     * the address.
+     */
+    route->eos_proto_af = route->nexthop[0].addr.sa_family;
 
     bool has_outlabels = (route->nexthop[0].n_labels > 0);
 
