@@ -190,15 +190,18 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
     nxt_grp_member->sw_if_index = ~0;
     nxt_grp_member->n_labels = 0;
 
-    bool have_rif = false;
+    std::shared_ptr<SaiDBObject> rif_obj;
 
     switch (next_hop_type) {
     case SAI_NEXT_HOP_TYPE_MPLS:
     case SAI_NEXT_HOP_TYPE_IP:
-        attr.id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
-        have_rif = (get(SAI_OBJECT_TYPE_NEXT_HOP, next_hop_oid, 1, &attr) == SAI_STATUS_SUCCESS);
-        if (have_rif) {
-            nxt_grp_member->rif_oid = attr.value.oid;
+        rif_obj = nh_obj->get_linked_object(SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                                            SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID);
+        if (rif_obj) {
+            attr.id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
+            if (nh_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+                nxt_grp_member->rif_oid = attr.value.oid;
+            }
         }
         if (next_hop_type == SAI_NEXT_HOP_TYPE_MPLS) {
             /*
@@ -239,8 +242,8 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
             std::string mpls_hwif;
             sai_attribute_t port_attr;
             port_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-            if (have_rif &&
-                get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nxt_grp_member->rif_oid, 1, &port_attr) == SAI_STATUS_SUCCESS &&
+            if (rif_obj &&
+                rif_obj->get_attr(port_attr) == SAI_STATUS_SUCCESS &&
                 vpp_get_hwif_name(port_attr.value.oid, 0, mpls_hwif)) {
                 int idx = get_sw_if_idx(mpls_hwif.c_str());
                 if (idx >= 0) {
