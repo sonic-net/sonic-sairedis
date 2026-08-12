@@ -1,0 +1,127 @@
+parameters:
+- name: timeout
+  type: number
+  default: 360
+
+- name: image_artifact_name
+  type: string
+
+- name: log_artifact_name
+  type: string
+
+jobs:
+- job: RunSaiVppMatrix
+  displayName: Run VPP SAI compatibility tests
+  timeoutInMinutes: ${{ parameters.timeout }}
+
+  pool: sonictest
+
+  steps:
+  - checkout: self
+    clean: true
+    displayName: Checkout sonic-sairedis
+
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: ${{ parameters.image_artifact_name }}
+      path: $(Build.ArtifactStagingDirectory)/download
+    displayName: Download pre-stage built VPP SAI test image
+
+  - script: |
+      set -u
+      mapfile -t stale_containers < <(sudo docker ps -aq --filter label=com.sonic.saivpp-ci=true)
+      if [[ "${#stale_containers[@]}" -gt 0 ]]; then
+        sudo docker rm -f "${stale_containers[@]}"
+      fi
+      mapfile -t stale_images < <(sudo docker image ls -q --filter label=com.sonic.saivpp-ci=true | sort -u)
+      if [[ "${#stale_images[@]}" -gt 0 ]]; then
+        sudo docker image rm -f "${stale_images[@]}"
+      fi
+    displayName: Clean stale VPP SAI test resources
+
+  - script: |
+      set -euxo pipefail
+
+      download_dir="$(Build.ArtifactStagingDirectory)/download"
+      results_dir="$(Build.ArtifactStagingDirectory)/sai-vpp-results"
+      xml_dir="$results_dir/xml"
+      log_dir="$results_dir/log"
+      image_tag="$(cat "$download_dir/image-tag.txt")"
+
+      mkdir -p "$xml_dir" "$log_dir"
+      chmod 0777 "$xml_dir" "$log_dir"
+      sudo docker load -i "$download_dir/docker-sai-test-vpp.gz"
+      sudo docker image inspect "$image_tag" > "$results_dir/image-inspect.json"
+
+      set +e
+      sudo docker run --rm --privileged \
+          --name "saivpp-ci-$(Build.BuildId)-$(System.JobAttempt)" \
+          --label com.sonic.saivpp-ci=true \
+          -e PORT_COUNT=32 \
+          -e ISOLATE_EACH_TEST=1 \
+          -e STARTUP_TIMEOUT=180 \
+          -v "$xml_dir:/test-results" \
+          -v "$log_dir:/var/log" \
+          "$image_tag" \
+          sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test \
+          2>&1 | tee "$results_dir/run.log"
+      matrix_rc=${PIPESTATUS[0]}
+      set -e
+
+      echo "$matrix_rc" > "$results_dir/matrix.rc"
+      sudo chown -R "$(id -u):$(id -g)" "$results_dir"
+      chmod -R a+rX "$results_dir"
+      echo "VPP SAI matrix exit code: $matrix_rc"
+    displayName: Run VPP SAI full matrix
+
+  - script: |
+      set -euxo pipefail
+
+      results_dir="$(Build.ArtifactStagingDirectory)/sai-vpp-results"
+      harness_dir="$(System.DefaultWorkingDirectory)/.azure-pipelines/docker-sai-test-vpp"
+      matrix_rc="$(cat "$results_dir/matrix.rc")"
+
+      python3 -c 'import defusedxml' 2>/dev/null || sudo uv pip install --system defusedxml
+      python3 "$harness_dir/gen_compatibility_matrix.py" \
+          "$results_dir/xml" "$results_dir/compatibility-matrix.md"
+      python3 "$harness_dir/evaluate_ci_baseline.py" \
+          --xml-dir "$results_dir/xml" \
+          --baseline "$harness_dir/ci-pass-tests.txt" \
+          --expected "$harness_dir/ci-matrix-tests.txt" \
+          --matrix-rc "$matrix_rc" \
+          --report "$results_dir/baseline-report.txt"
+    displayName: Evaluate VPP SAI stable baseline
+
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFormat: JUnit
+      searchFolder: $(Build.ArtifactStagingDirectory)/sai-vpp-results/xml
+      testResultsFiles: 'TEST-*.xml'
+      testRunTitle: VPP SAI PTF
+      failTaskOnFailedTests: false
+      failTaskOnMissingResultsFile: true
+    condition: always()
+
+  - script: |
+      set -euxo pipefail
+      cp -v "$(Build.ArtifactStagingDirectory)/download/provenance.txt" \
+          "$(Build.ArtifactStagingDirectory)/sai-vpp-results/"
+      cp -v "$(Build.ArtifactStagingDirectory)/download/SHA256SUMS" \
+          "$(Build.ArtifactStagingDirectory)/sai-vpp-results/"
+    displayName: Collect VPP SAI provenance
+    condition: always()
+
+  - publish: $(Build.ArtifactStagingDirectory)/sai-vpp-results
+    artifact: ${{ parameters.log_artifact_name }}@$(System.JobAttempt)
+    displayName: Publish VPP SAI logs and results
+    condition: always()
+
+  - script: |
+      set -u
+      tag_file="$(Build.ArtifactStagingDirectory)/download/image-tag.txt"
+      if [[ -f "$tag_file" ]]; then
+          image_tag="$(cat "$tag_file")"
+          sudo docker image rm "$image_tag" || true
+      fi
+    displayName: Clean VPP SAI test image
+    condition: always()
