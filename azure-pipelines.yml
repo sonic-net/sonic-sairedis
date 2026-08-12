@@ -102,9 +102,68 @@ stages:
   dependsOn: BuildArm
   condition: succeeded('BuildArm')
   jobs:
+  - job: ResolveVpp
+    displayName: Resolve VPP build
+    pool:
+      vmImage: 'ubuntu-22.04'
+    steps:
+    - ${{ if eq(parameters.vpp_run_id, '') }}:
+      - task: DownloadPipelineArtifact@2
+        name: downloadVpp
+        inputs:
+          source: specific
+          project: build
+          pipeline: sonic-net.sonic-platform-vpp
+          artifact: vpp-trixie
+          path: $(Build.ArtifactStagingDirectory)/vpp-resolution
+          runVersion: latestFromBranch
+          runBranch: refs/heads/master
+          allowPartiallySucceededBuilds: true
+        displayName: Resolve latest successful sonic platform-vpp build
+    - ${{ if ne(parameters.vpp_run_id, '') }}:
+      - task: DownloadPipelineArtifact@2
+        name: downloadVpp
+        inputs:
+          source: specific
+          project: build
+          pipeline: sonic-net.sonic-platform-vpp
+          artifact: vpp-trixie
+          path: $(Build.ArtifactStagingDirectory)/vpp-resolution
+          runVersion: specific
+          runId: ${{ parameters.vpp_run_id }}
+          allowPartiallySucceededBuilds: true
+        displayName: Download requested sonic platform-vpp build
+    - ${{ if eq(parameters.vpp_run_id, '') }}:
+      - script: |
+          set -euo pipefail
+          vpp_run_id="$(downloadVpp.BuildNumber)"
+          test -n "$vpp_run_id"
+          printf '%s\n' "$vpp_run_id" > "$(Build.ArtifactStagingDirectory)/vpp-resolution/vpp-source-build-id.txt"
+          echo "Resolved sonic platform-vpp run ID: $vpp_run_id"
+          echo "##vso[task.setvariable variable=VPP_RUN_ID;isOutput=true]$vpp_run_id"
+        name: resolveVppRun
+        displayName: Publish resolved VPP run ID
+    - ${{ if ne(parameters.vpp_run_id, '') }}:
+      - script: |
+          set -euo pipefail
+          vpp_run_id="${{ parameters.vpp_run_id }}"
+          test -n "$vpp_run_id"
+          printf '%s\n' "$vpp_run_id" > "$(Build.ArtifactStagingDirectory)/vpp-resolution/vpp-source-build-id.txt"
+          echo "Using requested sonic platform-vpp run ID: $vpp_run_id"
+          echo "##vso[task.setvariable variable=VPP_RUN_ID;isOutput=true]$vpp_run_id"
+        name: resolveVppRun
+        displayName: Publish requested VPP run ID
+    - publish: $(Build.ArtifactStagingDirectory)/vpp-resolution
+      artifact: vpp-resolved-trixie
+      displayName: Archive resolved VPP packages
+
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
+      depends_on: ResolveVpp
+      staged_upstreams:
+      - artifact: vpp-resolved-trixie
+        name: vpp
       artifact_name: sonic-sairedis-trixie
       syslog_artifact_name: sonic-sairedis-trixie.syslog
       run_unit_test: true
@@ -132,14 +191,17 @@ stages:
 - stage: BuildSaiTestVpp
   dependsOn: BuildTrixie
   condition: succeeded('BuildTrixie')
+  variables:
+    VPP_RUN_ID: $[ stageDependencies.BuildTrixie.ResolveVpp.outputs['resolveVppRun.VPP_RUN_ID'] ]
   jobs:
   - template: .azure-pipelines/build-docker-sai-test-vpp-template.yml
     parameters:
       timeout: 90
       sairedis_artifact_name: sonic-sairedis-trixie
       swss_common_artifact_name: sonic-swss-common-trixie
+      vpp_artifact_name: vpp-resolved-trixie
       artifact_name: docker-sai-test-vpp
-      vpp_run_id: ${{ parameters.vpp_run_id }}
+      vpp_run_id: $(VPP_RUN_ID)
 
 - stage: TestSaiVpp
   dependsOn: BuildSaiTestVpp
