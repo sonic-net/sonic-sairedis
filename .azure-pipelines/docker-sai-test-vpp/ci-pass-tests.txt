@@ -3,10 +3,7 @@ sai_ecmp_test.EcmpLagDisableTestV4
 sai_ecmp_test.EcmpLagDisableTestV6
 sai_ecmp_test.EcmpReuseLagRouteV4
 sai_ecmp_test.EcmpReuseLagRouteV6
-sai_ecmp_test.ReAddLagEcmpTestV4
 sai_ecmp_test.RemoveAllNextHopMemeberTestV4
-sai_ecmp_test.RemoveLagEcmpTestV4
-sai_ecmp_test.RemoveLagEcmpTestV6
 sai_ecmp_test.RemoveNexthopGroupTestV4
 sai_neighbor_test.AddHostRouteTest
 sai_neighbor_test.AddHostRouteTestV6
