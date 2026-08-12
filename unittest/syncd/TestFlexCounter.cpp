@@ -267,7 +267,8 @@ void testAddRemoveCounter(
         bool bulkChunkSizeAfterPort = true,
         const std::string pluginName = "",
         bool immediatelyRemoveBulkChunkSizePerCounter = false,
-        bool forceSingleCreate = false)
+        bool forceSingleCreate = false,
+        const std::string secondaryPollFactor = "")
 {
     SWSS_LOG_ENTER();
 
@@ -280,7 +281,10 @@ void testAddRemoveCounter(
 
     std::vector<swss::FieldValueTuple> values;
     values.emplace_back(POLL_INTERVAL_FIELD, "1000");
-    values.emplace_back(SECONDARY_POLL_FACTOR_FIELD, "2");
+    if (!secondaryPollFactor.empty())
+    {
+        values.emplace_back(SECONDARY_POLL_FACTOR_FIELD, secondaryPollFactor);
+    }
     values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
     values.emplace_back(STATS_MODE_FIELD, statsMode);
     std::vector<swss::FieldValueTuple> fcValues = values;
@@ -1692,7 +1696,8 @@ TEST(FlexCounter, bulkChunksize)
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
     EXPECT_TRUE(allObjectIds.empty());
 
-    // set bulk chunk size + per counter bulk chunk size first and then create ports
+    // Set the secondary poll factor explicitly. Other calls omit it to cover
+    // the legacy/default behavior.
     initialCheckCount = 6;
     testAddRemoveCounter(
         6,
@@ -1709,7 +1714,8 @@ TEST(FlexCounter, bulkChunksize)
         false,
         PORT_PLUGIN_FIELD,
         false,
-        true);
+        true,
+        "2");
     EXPECT_TRUE(allObjectIds.empty());
 
     // Remove per counter bulk chunk size after initializing it
