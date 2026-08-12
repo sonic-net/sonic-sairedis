@@ -44,16 +44,16 @@ This lets one container run any mix of tests correctly in a single invocation.
 
 ### Supported tests
 
-The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last strict validation **2026-07-21** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
+The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-07-14** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test` on `sai_vpp_ut_phase3`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
 
 | Module | Passing test classes |
 |---|---|
-| `sai_ecmp_test` | `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `RemoveAllNextHopMemeberTestV4`, `RemoveNexthopGroupTestV4` |
-| `sai_neighbor_test` | `AddHostRouteTestV6`, `NhopDiffPrefixRemoveLonger`, `NhopDiffPrefixRemoveLongerV6`, `NhopDiffPrefixRemoveShorter`, `NhopDiffPrefixRemoveShorterV6` |
-| `sai_rif_test` | — |
-| `sai_route_test` | `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteSameSipDipv6Test`, `StaicSviMacFloodingTest` |
+| `sai_ecmp_test` | `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `ReAddLagEcmpTestV4`, `RemoveAllNextHopMemeberTestV4`, `RemoveLagEcmpTestV4`, `RemoveLagEcmpTestV6`, `RemoveNexthopGroupTestV4` |
+| `sai_neighbor_test` | `AddHostRouteTest`, `AddHostRouteTestV6`, `NhopDiffPrefixRemoveLonger`, `NhopDiffPrefixRemoveLongerV6`, `NhopDiffPrefixRemoveShorter`, `NhopDiffPrefixRemoveShorterV6`, `NoHostRouteTestV6` |
+| `sai_rif_test` | `IngressDisableTestV4`, `IngressDisableTestV6` |
+| `sai_route_test` | `DefaultRouteV4Test`, `DefaultRouteV6Test`, `DropRouteTest`, `DropRoutev6Test`, `LagMultipleRouteTest`, `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteRifTest`, `RouteRifv6Test`, `RouteSameSipDipv4Test`, `RouteSameSipDipv6Test`, `RouteUpdateTest`, `RouteUpdatev6Test`, `StaicSviMacFloodingTest`, `StaicSviMacFloodingV6Test` |
 
-**19** classes passing (of 91 JUnit rows in the last strict full matrix run).
+**37** classes passing (of 89 executed in the last full matrix run).
 
 ## b) Building the framework
 
@@ -206,7 +206,6 @@ PTF writes one JUnit-XML file per test into `/test-results`. By convention these
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp
 mkdir -p results/xml
-rm -f results/xml/TEST-*.xml
 docker run --rm --privileged -e PORT_COUNT=32 \
   -v "$PWD/results/xml:/test-results" \
   docker-sai-test-vpp:phase1 \
@@ -251,14 +250,13 @@ In `--debug` the container leaves the dataplane running after the test so you ca
 |---|---|---|
 | `PORT_COUNT` | 32 | number of `OEthernetX`/`OEthX_peer` veth pairs |
 | `COMMON_CONFIGURED_REUSE` | 1 | 1 = config-signature grouping + reuse; 0 = legacy single ptf invocation |
+| `KEEP_VETHS_UP_SECONDS` | 120 | how long the per-group watchdog keeps VPP host-interfaces/veths up |
 | `LAG_RIF_IPS` | 1 | enable LAG RIF connected-IP assignment in sai_test setUp (`SIMULATE_SONIC`) |
 | `SVI_RIF_IPS` | 1 | enable SVI RIF connected-IP assignment in sai_test setUp |
 | `SIMULATE_SONIC` | 1 | set by `run_test.sh`; enables sai_test's SONiC control-plane simulation (PortChannel netdevs + LAG/SVI RIF IPs) |
 | `TEST_FILTER` | — | alternative way to pass a single selector via env |
 
 These are read by `run_test.sh` at container start (defaults shown).
-
-The VPP SAI profile resolves port lane sets through `port_config.ini`. The product default is `/usr/share/sonic/hwsku/port_config.ini`; this UT profile overrides it with `/etc/sai/port_config.ini`, which is installed from the harness fixture.
 
 ### Logs inside the container
 
