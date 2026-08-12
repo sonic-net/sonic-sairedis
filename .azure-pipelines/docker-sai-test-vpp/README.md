@@ -57,7 +57,7 @@ The table below lists OCP `sai_test` classes that **pass** on the current VPP SA
 
 ## b) Building the framework
 
-The image bundles pre-built `.deb` packages from `debs/` (git-ignored locally). You only need to regenerate `.deb`s when the corresponding source changes. All examples below use the local image tag **`docker-sai-test-vpp:local`** (the `build_harness.sh` default).
+The image bundles pre-built `.deb` packages from `debs/` (git-ignored locally). You only need to regenerate `.deb`s when the corresponding source changes. All examples below use **`docker-sai-test-vpp:latest`**, the tag `build_harness.sh` applies by default. Because `latest` is Docker's implicit tag you can also drop it and write just `docker-sai-test-vpp`; CI images are tagged with the pipeline definition and build number instead, so they never collide with a locally built one.
 
 ### Use cases
 
@@ -103,7 +103,7 @@ All of these are staged in [`debs/`](debs/) (local-only). The Dockerfile install
 
 ### Build script (use case 1)
 
-`build_harness.sh` automates staging from `sonic-buildimage` and building the image as **`docker-sai-test-vpp:local`**. It validates that all required runtime `.deb`s are present in `debs/` before `docker build`. If sonic-sairedis packages are missing, it runs the trixie `make` targets automatically (disable with `--no-auto-build`). VPP, `libswsscommon`, and `libyang`/`libyang3` are not auto-built — the script fails with hints if they are absent.
+`build_harness.sh` automates staging from `sonic-buildimage` and building the image as **`docker-sai-test-vpp:latest`**. It validates that all required runtime `.deb`s are present in `debs/` before `docker build`. If sonic-sairedis packages are missing, it runs the trixie `make` targets automatically (disable with `--no-auto-build`). VPP, `libswsscommon`, and `libyang`/`libyang3` are not auto-built — the script fails with hints if they are absent.
 
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp
@@ -160,7 +160,7 @@ cd <sonic-buildimage>/src/sonic-sairedis
 
 docker build --no-cache \
   -f .azure-pipelines/docker-sai-test-vpp/Dockerfile \
-  -t docker-sai-test-vpp:local .
+  -t docker-sai-test-vpp:latest .
 ```
 
 If you are behind a proxy, pass it through (both lower- and upper-case):
@@ -171,7 +171,7 @@ docker build --no-cache \
   --build-arg HTTP_PROXY=$http_proxy   --build-arg HTTPS_PROXY=$https_proxy \
   --build-arg no_proxy=$no_proxy       --build-arg NO_PROXY=$no_proxy \
   -f .azure-pipelines/docker-sai-test-vpp/Dockerfile \
-  -t docker-sai-test-vpp:local .
+  -t docker-sai-test-vpp:latest .
 ```
 
 > Rebuild scope: editing only `run_test.sh` / `sai_test/**` / harness templates needs an **image rebuild** only (fast). Editing `vslib/` C++ needs a **`.deb` rebuild** (above) first, then the image.
@@ -197,14 +197,14 @@ The OCP `sai_test` suite is baked into the image at `/sai_test` (copied from `SA
 
 ```bash
 docker run --rm --privileged -e PORT_COUNT=32 \
-  docker-sai-test-vpp:local sai_route_test.RouteRifTest
+  docker-sai-test-vpp:latest sai_route_test.RouteRifTest
 ```
 
 ### Run several tests (one container, grouped or isolated per env)
 
 ```bash
 docker run --rm --privileged -e PORT_COUNT=32 \
-  docker-sai-test-vpp:local \
+  docker-sai-test-vpp:latest \
   sai_route_test.RouteRifTest sai_ecmp_test.EcmpHashFieldSportTestV4
 ```
 
@@ -215,14 +215,14 @@ With default `ISOLATE_EACH_TEST=1`, each selector still gets its own fresh backe
 ```bash
 # whole modules (default isolation: ~45-50 min for all four)
 docker run --rm --privileged -e PORT_COUNT=32 \
-  docker-sai-test-vpp:local sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test
+  docker-sai-test-vpp:latest sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test
 
 # faster grouped mode (~9x; fewer passes without upstream workarounds)
 docker run --rm --privileged -e PORT_COUNT=32 -e ISOLATE_EACH_TEST=0 \
-  docker-sai-test-vpp:local sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test
+  docker-sai-test-vpp:latest sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test
 
 # every discovered test class (no args)
-docker run --rm --privileged -e PORT_COUNT=32 docker-sai-test-vpp:local
+docker run --rm --privileged -e PORT_COUNT=32 docker-sai-test-vpp:latest
 ```
 
 ### Collecting results (JUnit XML) and updating the supported-test list
@@ -237,7 +237,7 @@ mkdir -p results/xml
 rm -f results/xml/TEST-*.xml
 nohup docker run --rm --privileged -e PORT_COUNT=32 \
   -v "$PWD/results/xml:/test-results" \
-  docker-sai-test-vpp:local \
+  docker-sai-test-vpp:latest \
   sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test \
   > results/run.log 2>&1 &
 tail -f results/run.log
@@ -251,7 +251,7 @@ While a matrix run is in progress (from the `docker-sai-test-vpp/` directory):
 |---|---|
 | **Log** | `results/run.log` (or whatever path you passed to `nohup` / `tee`) |
 | **Progress** | `grep -oE '\[[0-9]+/87\]' results/run.log \| tail -1` |
-| **Container** | `docker ps --filter ancestor=docker-sai-test-vpp:local` |
+| **Container** | `docker ps --filter ancestor=docker-sai-test-vpp:latest` |
 
 The `87` in the progress grep matches the four-module isolation plan (`sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test`). For other selectors, use `grep -oE '\[[0-9]+/[0-9]+\]'` instead.
 
@@ -282,7 +282,7 @@ Debug hold mode, environment variables, in-container log paths, and common pitfa
 ```bash
 docker rm -f officesai-debug 2>/dev/null
 docker run -d --name officesai-debug --privileged -e PORT_COUNT=32 \
-  docker-sai-test-vpp:local --debug sai_route_test.RouteRifTest
+  docker-sai-test-vpp:latest --debug sai_route_test.RouteRifTest
 
 # while the test runs, inspect VPP state:
 docker exec officesai-debug vppctl show interface
