@@ -38,6 +38,7 @@ ip6 {
 plugins {
   plugin default { disable }
   plugin af_packet_plugin.so { enable }
+  plugin tap_plugin.so { enable }
   plugin linux_cp_plugin.so { enable }
   plugin linux_nl_plugin.so { enable }
   plugin acl_plugin.so { enable }
