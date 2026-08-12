@@ -55,8 +55,17 @@ parameters:
   type: boolean
   default: false
 
+- name: depends_on
+  type: object
+  default: []
+
+- name: vpp_run_id
+  type: string
+  default: ''
+
 jobs:
 - job:
+  dependsOn: ${{ parameters.depends_on }}
   displayName: ${{ parameters.arch }}
   timeoutInMinutes: ${{ parameters.timeout }}
   variables:

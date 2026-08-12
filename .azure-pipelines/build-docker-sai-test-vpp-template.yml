@@ -9,12 +9,14 @@ parameters:
 - name: swss_common_artifact_name
   type: string
 
+- name: vpp_artifact_name
+  type: string
+
 - name: artifact_name
   type: string
 
 - name: vpp_run_id
   type: string
-  default: ''
 
 jobs:
 - job: BuildSaiTestVppImage
@@ -72,31 +74,11 @@ jobs:
         **/target/debs/trixie/libpcre3_*.deb
     displayName: Download sonic-buildimage common packages
 
-  - ${{ if eq(parameters.vpp_run_id, '') }}:
-    - task: DownloadPipelineArtifact@2
-      name: downloadVpp
-      inputs:
-        source: specific
-        project: build
-        pipeline: sonic-net.sonic-platform-vpp
-        artifact: vpp-trixie
-        path: $(Build.ArtifactStagingDirectory)/download
-        runVersion: latestFromBranch
-        runBranch: refs/heads/master
-      displayName: Download latest successful sonic platform-vpp packages
-
-  - ${{ if ne(parameters.vpp_run_id, '') }}:
-    - task: DownloadPipelineArtifact@2
-      name: downloadVpp
-      inputs:
-        source: specific
-        project: build
-        pipeline: sonic-net.sonic-platform-vpp
-        artifact: vpp-trixie
-        path: $(Build.ArtifactStagingDirectory)/download
-        runVersion: specific
-        runId: ${{ parameters.vpp_run_id }}
-      displayName: Download specified sonic platform-vpp packages
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: ${{ parameters.vpp_artifact_name }}
+      path: $(Build.ArtifactStagingDirectory)/download
+    displayName: Download resolved sonic platform-vpp packages
 
   - script: |
       set -euxo pipefail
@@ -165,8 +147,8 @@ jobs:
           echo "ptf_revision=$ptf_revision"
           echo "ptf_describe=$ptf_describe"
           echo "ptf_version=$ptf_version"
-          echo "vpp_requested_run_id=${{ parameters.vpp_run_id }}"
-          echo "vpp_downloaded_build=$(downloadVpp.BuildNumber)"
+          echo "vpp_resolved_run_id=${{ parameters.vpp_run_id }}"
+          echo "vpp_artifact_name=${{ parameters.vpp_artifact_name }}"
           echo "swss_common_downloaded_build=$(downloadSwssCommon.BuildNumber)"
           echo "common_lib_downloaded_build=$(downloadCommonLib.BuildNumber)"
           echo
