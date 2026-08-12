@@ -2846,11 +2846,12 @@ public:
             swss::DBConnector db("ASIC_DB", 0, m_isTcpConn);
 
             std::string vid_str = sai_serialize_object_id(port_vid);
-            std::string rid_str;
 
-            if (db.hget("VIDTORID", vid_str, rid_str))
+            auto rid_str = db.hget("VIDTORID", vid_str);
+
+            if (rid_str)
             {
-                sai_deserialize_object_id(rid_str, port_rid);
+                sai_deserialize_object_id(*rid_str, port_rid);
                 return true;
             }
 
