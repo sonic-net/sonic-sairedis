@@ -10,7 +10,9 @@ static void route_swss_log_to_stdout()
 {
     SWSS_LOG_ENTER();
     swss::Logger::setMinPrio(swss::Logger::SWSS_DEBUG);
-    swss::Logger::swssOutputNotify("saiserver", "STDOUT");
+    // STDERR keeps SWSS_LOG_ENTER/EXIT out of swss::exec() captured stdout (e.g.
+    // find_new_bond_id's ip|awk pipeline). run_test.sh redirects 2>&1 to SAISERVER_LOG.
+    swss::Logger::swssOutputNotify("saiserver", "STDERR");
 }
 
 } // namespace
