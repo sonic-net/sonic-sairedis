@@ -89,6 +89,7 @@ The framework is designed to support three distinct deployment and testing scena
 #### **Use case 2: `sonic-sairedis` PR CI**
 - **What changes:** `vslib/` C++ backend, harness files, or OCP tests.
 - **How dependencies are supplied:** The pipeline's **Build** stage compiles and produces fresh `libsairedis` / `libsaivs` / `saiserver` / `python-saithrift` artifacts. Other runtime `.deb`s (`libswsscommon`, `libyang`, VPP) must be downloaded from existing pipeline artifacts — following the same pattern as `.azure-pipelines/build-docker-sonic-vs-template.yml` (swss-common pipeline, sonic-platform-vpp `vpp-trixie`, buildimage common libs).
+- **VPP selection:** `BuildTrixie` resolves the latest successful VPP master run once, or uses the optional root `vpp_run_id` override. The resolved immutable run ID is used for both the compile-time VPP packages and the runtime packages installed by `BuildSaiTestVpp`.
 - **Status:** Pipeline wiring is implemented by `BuildSaiTestVpp` and `TestSaiVpp`; Azure artifact authorization and burn-in are required before making the check mandatory.
 - **Required runtime packages and typical artifact sources:**
 
