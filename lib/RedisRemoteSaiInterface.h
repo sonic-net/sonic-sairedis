@@ -436,6 +436,10 @@ namespace sairedis
                     _In_ sai_object_id_t objectId,
                     _In_ const sai_redis_flex_counter_parameter_t *flexCounterParam);
 
+            sai_status_t notifyCounterGroupSecondaryPollFactor(
+                    _In_ sai_object_id_t objectId,
+                    _In_ const sai_redis_flex_counter_group_secondary_poll_factor_parameter_t *param);
+
         private:
 
             sai_status_t sai_redis_notify_syncd(
