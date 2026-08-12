@@ -17,9 +17,12 @@ COPY .azure-pipelines/docker-sai-test-vpp /opt/docker-sai-test-vpp
 COPY SAI/test/ptf /opt/ptf
 COPY SAI/test/sai_test /sai_test
 
+ARG PTF_VERSION
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         bash \
+        build-essential \
         ca-certificates \
         iproute2 \
         libboost-serialization1.83.0 \
@@ -28,6 +31,7 @@ RUN apt-get update && \
         libzmq5 \
         procps \
         python3 \
+        python3-dev \
         python3-pip \
         python3-setuptools \
         python3-thrift \
@@ -37,8 +41,12 @@ RUN apt-get update && \
         tcpdump && \
     rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install --no-cache-dir scapy==2.5.0 unittest-xml-reporting==3.2.0 && \
-    python3 -m pip install --no-cache-dir --ignore-installed /opt/ptf
+RUN test -n "${PTF_VERSION}" && \
+    python3 -m pip install --no-cache-dir scapy==2.5.0 unittest-xml-reporting==3.2.0 && \
+    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PTF="${PTF_VERSION}" \
+        python3 -m pip install --no-cache-dir --ignore-installed /opt/ptf && \
+    apt-get purge -y build-essential python3-dev && \
+    apt-get autoremove -y
 
 RUN set -eux; \
     deb_dir=/opt/docker-sai-test-vpp/debs; \
