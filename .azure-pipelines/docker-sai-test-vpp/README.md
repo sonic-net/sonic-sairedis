@@ -102,9 +102,9 @@ The framework is designed to support three distinct deployment and testing scena
 
 #### **Use case 3: `sonic-platform-vpp` PR CI**
 - **What changes:** VPP `.deb`s only.
-- **How dependencies are supplied:** Pull a pre-built `docker-sai-test-vpp` image from the `sonic-sairedis` pipeline artifact, then rebuild/replace only the VPP packages inside `debs/` (or `docker build` with updated VPP debs on top of the cached layers).
-- **Status:** Documented intent; requires Use Case 2 image publish first.
-- **Workflow:** After the harness image is published as a pipeline artifact in Use Case 2, a platform-vpp job can `docker load` that image, overlay freshly built VPP `.deb`s into `debs/`, and rebuild only the package-install layer (or run tests in a container with VPP packages swapped in).
+- **How dependencies are supplied:** Pull an approved `docker-sai-test-vpp` image and its CI contract from the `sonic-sairedis` pipeline artifact, then build a derivative image that reinstalls only the VPP runtime packages produced by the current `sonic-platform-vpp` run.
+- **Status:** The producer artifact includes `ci-contract/` for the platform-vpp consumer; the consumer pipeline implementation and hosted validation are owned by `sonic-platform-vpp`.
+- **Workflow:** The platform-vpp pipeline loads the approved image, overlays fresh `libvppinfra`, `vpp`, `vpp-plugin-core`, and `vpp-plugin-dpdk` packages, verifies that every non-VPP Debian package is unchanged, and runs the artifact's matrix and baseline evaluator.
 
 ### Required `.deb` packages (validated by the Dockerfile)
 
