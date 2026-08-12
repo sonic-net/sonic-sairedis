@@ -3719,7 +3719,7 @@ void FlexCounter::setSecondaryPollFactor(
         m_secondaryPollFactor = secondaryPollFactor;
         m_cvSleep.notify_all();
 
-        SWSS_LOG_INFO("SET SECONDARY POLL INTERVAL %d for FC %s", secondaryPollFactor, m_instanceId.c_str());
+        SWSS_LOG_INFO("Set SECONDARY POLL FACTOR %u for FC %s", secondaryPollFactor, m_instanceId.c_str());
     }
 }
 
