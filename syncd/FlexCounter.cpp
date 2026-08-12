@@ -2831,22 +2831,38 @@ public:
         SWSS_LOG_ENTER();
     }
 
-    bool getPortRidFromPortSerdesRid(sai_object_id_t port_serdes_rid, sai_object_id_t &port_rid)
+    /*
+     * Resolve port_vid -> port_rid by reading ASIC_DB's VIDTORID hash directly.
+     *
+     * VIDTORID on ASIC_DB is maintained by syncd itself at object create time
+     * and is authoritative for any port whose VID we already know.
+     */
+    bool getPortRidFromPortVid(sai_object_id_t port_vid, sai_object_id_t &port_rid)
     {
         SWSS_LOG_ENTER();
 
-        sai_attribute_t attr;
-        attr.id = SAI_PORT_SERDES_ATTR_PORT_ID;
-        sai_status_t status = Base::m_vendorSai->get(Base::m_objectType, port_serdes_rid, 1, &attr);
-
-        if (status == SAI_STATUS_SUCCESS)
+        try
         {
-            port_rid = attr.value.oid;
-            return true;
+            swss::DBConnector db("ASIC_DB", 0, m_isTcpConn);
+
+            std::string vid_str = sai_serialize_object_id(port_vid);
+            std::string rid_str;
+
+            if (db.hget("VIDTORID", vid_str, rid_str))
+            {
+                sai_deserialize_object_id(rid_str, port_rid);
+                return true;
+            }
+
+            SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: port_vid:0x%" PRIx64
+                          " not found in ASIC_DB VIDTORID", port_vid);
+        }
+        catch (const std::exception &e)
+        {
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Exception while querying "
+                           "ASIC_DB VIDTORID: %s", e.what());
         }
 
-        SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port RID for port serdes RID:0x%" PRIx64 ", status:%d",
-                      port_serdes_rid, status);
         return false;
     }
 
@@ -2879,25 +2895,36 @@ public:
         return false;
     }
 
-    void updatePortSerdesIdToPortIdMap(sai_object_id_t port_serdes_rid, sai_object_id_t port_serdes_vid)
+    /*
+     * Populate m_portSerdesIdToPortIdMap for a newly created/registered port_serdes.
+     *
+     * The lookup goes:
+     *   port_serdes_vid --(COUNTERS_DB COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP,
+     *                      written by orchagent as part of the same enrollment)--> port_vid
+     *   port_vid        --(ASIC_DB VIDTORID, written by syncd at PORT create time)-> port_rid
+     *
+     */
+    void updatePortSerdesIdToPortIdMap(sai_object_id_t port_serdes_rid,
+                                       sai_object_id_t port_serdes_vid)
     {
         SWSS_LOG_ENTER();
 
         sai_object_id_t port_rid = SAI_NULL_OBJECT_ID;
         sai_object_id_t port_vid = SAI_NULL_OBJECT_ID;
 
-        if (getPortRidFromPortSerdesRid(port_serdes_rid, port_rid) &&
-            getPortVidFromPortSerdesVid(port_serdes_vid, port_vid))
+        if (!getPortVidFromPortSerdesVid(port_serdes_vid, port_vid) ||
+            !getPortRidFromPortVid(port_vid, port_rid))
         {
-            m_portSerdesIdToPortIdMap[port_serdes_rid] = PortIdInfo(port_rid, port_vid);
-            SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Mapped port_serdes_rid:0x%" PRIx64 " -> port_rid:0x%" PRIx64 ", port_vid:0x%" PRIx64,
-                          port_serdes_rid, port_rid, port_vid);
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to resolve port for "
+                           "port_serdes_vid:0x%" PRIx64, port_serdes_vid);
+            return;
         }
-        else
-        {
-            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to map port_serdes_rid:0x%" PRIx64 " - could not retrieve port RID or VID", port_serdes_rid);
-            m_portSerdesIdToPortIdMap.erase(port_serdes_rid);
-        }
+
+        SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Mapped port_serdes_rid:0x%" PRIx64
+                       " -> port_rid:0x%" PRIx64 ", port_vid:0x%" PRIx64,
+                       port_serdes_rid, port_rid, port_vid);
+
+        m_portSerdesIdToPortIdMap[port_serdes_rid] = PortIdInfo(port_rid, port_vid);
     }
 
     void updatePortSerdesIdToLaneCountMap(sai_object_id_t port_serdes_rid)
