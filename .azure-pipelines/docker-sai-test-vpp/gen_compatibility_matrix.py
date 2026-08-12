@@ -23,7 +23,7 @@ Example workflow:
     mkdir -p results/xml
     docker run --rm --privileged -e PORT_COUNT=32 \
         -v "$PWD/results/xml:/test-results" \
-        docker-sai-test-vpp:phase1 \
+        docker-sai-test-vpp:local \
         sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test \
         2>&1 | tee results/run.log
     python3 gen_compatibility_matrix.py        # writes results/compatibility-matrix.md
