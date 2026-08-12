@@ -162,7 +162,35 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         packet_action = attr.value.s32;
     }
 
-    // We should program drop routes
+    sai_route_entry_t route_entry;
+    sai_deserialize_route_entry(serializedObjectId, route_entry);
+
+    if (packet_action == SAI_PACKET_ACTION_DROP) {
+        std::shared_ptr<IpVrfInfo> vrf = vpp_get_ip_vrf(route_entry.vr_id);
+        uint32_t vrf_id = vrf == nullptr ? 0 : vrf->m_vrf_id;
+        vpp_ip_route_t *ip_route = (vpp_ip_route_t *)
+            calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
+        if (!ip_route) {
+            return SAI_STATUS_FAILURE;
+        }
+
+        create_route_prefix_entry(&route_entry, ip_route);
+        ip_route->vrf_id = vrf_id;
+        ip_route->nexthop_cnt = 1;
+        ip_route->nexthop[0].addr.sa_family = ip_route->prefix_addr.sa_family;
+        ip_route->nexthop[0].sw_if_index = (uint32_t)~0;
+        ip_route->nexthop[0].weight = 1;
+        ip_route->nexthop[0].type = VPP_NEXTHOP_DROP;
+
+        ret = ip_route_add_del_get_stats(ip_route, is_add, is_add ? stats_index : NULL);
+        free(ip_route);
+
+        SWSS_LOG_NOTICE("%s drop route in VS %s status %d table %u",
+                        is_add ? "Add" : "Remove",
+                        serializedObjectId.c_str(), ret, vrf_id);
+        return ret == 0 ? SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
+    }
+
     if (packet_action != SAI_PACKET_ACTION_FORWARD) {
         SWSS_LOG_NOTICE("Ignoring ip route %s: action is not forward: %d",
                         serializedObjectId.c_str(), packet_action);
@@ -178,12 +206,9 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
     }
     next_hop_oid = attr.value.oid;
 
-    sai_route_entry_t route_entry;
     const char *hwif_name = NULL;
     vpp_nexthop_type_e nexthop_type = VPP_NEXTHOP_NORMAL;
     bool config_ip_route = false;
-
-    sai_deserialize_route_entry(serializedObjectId, route_entry);
 
     nexthop_grp_config_t *nxthop_group = NULL;
 
