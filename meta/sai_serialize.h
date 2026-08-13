@@ -330,6 +330,10 @@ std::string sai_serialize_port_snr_list(
         _In_ const sai_port_snr_list_t& snr_list,
         _In_ bool countOnly);
 
+std::string sai_serialize_port_ilt_lane_training_status_list(
+        _In_ const sai_port_ilt_lane_training_status_list_t& status_list,
+        _In_ bool countOnly);
+
 std::string sai_serialize_taps_list(
         _In_ const sai_taps_list_t& port_serdes_taps_list,
         _In_ bool countOnly);
@@ -796,6 +800,11 @@ void sai_deserialize_stats_st_capability_list(
 void sai_deserialize_port_snr_list(
         _In_ const std::string& s,
         _Out_ sai_port_snr_list_t& snr_list,
+        _In_ bool countOnly);
+
+void sai_deserialize_port_ilt_lane_training_status_list(
+        _In_ const std::string& s,
+        _Out_ sai_port_ilt_lane_training_status_list_t& status_list,
         _In_ bool countOnly);
 
 void sai_deserialize_taps_list(
