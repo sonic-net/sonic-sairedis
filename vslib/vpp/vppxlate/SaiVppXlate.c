@@ -3786,6 +3786,8 @@ int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable)
             return -EINVAL;
         }
     } else {
+        SAIVPP_ERROR("%s: hwif_name is NULL, cannot %s ip2me", __func__,
+                     enable ? "enable" : "disable");
         VPP_UNLOCK();
         return -EINVAL;
     }
