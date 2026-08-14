@@ -6,6 +6,7 @@
 #include <mutex>
 
 #include "FlexCounter.h"
+#include "VendorSaiOptions.h"
 #include "VidManager.h"
 
 #include <chrono>
@@ -2597,27 +2598,33 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-            std::vector<sai_attribute_t> attrs(attrIds.size());
+            std::vector<sai_attribute_t> attrs = {};
             PortPhyAttributeData attrData;
 
             SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
 
-            bool attrDataInitialized = true;
             for (size_t i = 0; i < attrIds.size(); i++)
             {
-                attrs[i].id = attrIds[i];
-                if (!initAttrData(rid, &attrs[i], &attrData))
+                sai_attribute_t attr = {};
+                attr.id = attrIds[i];
+                if (!initAttrData(rid, &attr, &attrData))
                 {
-                    SWSS_LOG_WARN("PORT_PHY_ATTR: Failed to initialize attribute %d for RID:0x%" PRIx64 ", skipping object",
-                                  attrIds[i], rid);
-                    attrDataInitialized = false;
-                    break;
+                    SWSS_LOG_WARN(
+                        "PORT_PHY_ATTR: Failed to initialize attribute"
+                        " %d for RID:0x%" PRIx64 ", "
+                        "skipping this attribute only",
+                        attrIds[i], rid);
+                    continue;
                 }
+                attrs.push_back(attr);
             }
 
-            if (!attrDataInitialized)
+            if (attrs.empty())
             {
+                SWSS_LOG_WARN(
+                    "PORT_PHY_ATTR: No attributes could be initialized"
+                    " for RID:0x%" PRIx64 ", skipping object", rid);
                 continue;
             }
 
@@ -2625,7 +2632,7 @@ public:
             sai_status_t status = Base::m_vendorSai->get(
                     Base::m_objectType,
                     rid,
-                    static_cast<uint32_t>(attrIds.size()),
+                    static_cast<uint32_t>(attrs.size()),
                     attrs.data());
 
             if (status != SAI_STATUS_SUCCESS)
@@ -2638,7 +2645,7 @@ public:
             // Store in PORT_PHY_ATTR table using VID as key
             std::string vid_str = sai_serialize_object_id(vid);
 
-            for (size_t i = 0; i != attrIds.size(); i++)
+            for (size_t i = 0; i != attrs.size(); i++)
             {
                 auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
                 if (!meta)
@@ -2647,10 +2654,10 @@ public:
                     continue;
                 }
 
-                auto it = m_attrAliases.find(attrIds[i]);
+                auto it = m_attrAliases.find(static_cast<sai_port_attr_t>(attrs[i].id));
                 if (it == m_attrAliases.end())
                 {
-                    SWSS_LOG_ERROR("Unsupported PORT_PHY_ATTR: %d", attrIds[i]);
+                    SWSS_LOG_ERROR("Unsupported PORT_PHY_ATTR: %d", attrs[i].id);
                     continue;
                 }
 
@@ -2660,10 +2667,10 @@ public:
                 if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST)
                 {
                     // Compare current lane values with previous and update metadata
-                    updateLatchedLaneMetadata(vid, attrIds[i], attrs[i]);
+                    updateLatchedLaneMetadata(vid, static_cast<sai_port_attr_t>(attrs[i].id), attrs[i]);
 
                     // Serialize with timestamp and count per lane
-                    attr_value = buildLatchStatusWithMetadata(vid, attrIds[i], attrs[i]);
+                    attr_value = buildLatchStatusWithMetadata(vid, static_cast<sai_port_attr_t>(attrs[i].id), attrs[i]);
                 }
                 else
                 {
@@ -3134,36 +3141,45 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-
-            std::vector<sai_attribute_t> attrs(attrIds.size());
+            std::vector<sai_attribute_t> attrs = {};
             PortPhySerdesAttributeData attrData;
 
-            SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
-                           attrIds.size(), vid, rid);
+            SWSS_LOG_DEBUG(
+                "PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes "
+                "with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
+                attrIds.size(), vid, rid);
 
-            // Initialize all attributes - if any fail, skip this object
-            bool attrDataInitialized = true;
+            // Initialize attributes - only collect successfully initialized ones
             for (size_t i = 0; i < attrIds.size(); i++)
             {
-                attrs[i].id = attrIds[i];
-                if (!initAttrData(rid, &attrs[i], &attrData))
+                sai_attribute_t attr = {};
+                attr.id = attrIds[i];
+                if (!initAttrData(rid, &attr, &attrData))
                 {
-                    SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Failed to initialize attribute %s for RID:0x%" PRIx64 ", skipping object",
-                                  sai_serialize_port_serdes_attr(attrIds[i]).c_str(), rid);
-                    attrDataInitialized = false;
-                    break;
+                    SWSS_LOG_WARN(
+                        "PORT_PHY_SERDES_ATTR: Failed to initialize "
+                        "attribute %s for RID:0x%" PRIx64 ", "
+                        "skipping this attribute only",
+                        sai_serialize_port_serdes_attr(attrIds[i]).c_str(),
+                        rid);
+                    continue;
                 }
+                attrs.push_back(attr);
             }
 
-            if (!attrDataInitialized)
+            if (attrs.empty())
             {
+                SWSS_LOG_WARN(
+                    "PORT_PHY_SERDES_ATTR: No attributes could be "
+                    "initialized for RID:0x%" PRIx64 ", "
+                    "skipping object", rid);
                 continue;
             }
 
             sai_status_t status = Base::m_vendorSai->get(
                     Base::m_objectType,
                     rid,
-                    static_cast<uint32_t>(attrIds.size()),
+                    static_cast<uint32_t>(attrs.size()),
                     attrs.data());
 
             if (status != SAI_STATUS_SUCCESS)
@@ -3183,7 +3199,7 @@ public:
 
             std::string port_vid_str = sai_serialize_object_id(port_it->second.port_vid);
 
-            for (size_t i = 0; i != attrIds.size(); i++)
+            for (size_t i = 0; i != attrs.size(); i++)
             {
                 auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
                 if (!meta)
@@ -3192,10 +3208,10 @@ public:
                     continue;
                 }
 
-                auto it = m_attrAliases.find(attrIds[i]);
+                auto it = m_attrAliases.find(static_cast<sai_port_serdes_attr_t>(attrs[i].id));
                 if (it == m_attrAliases.end())
                 {
-                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Unsupported PORT_SERDES_ATTR: %d", attrIds[i]);
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Unsupported PORT_SERDES_ATTR: %d", attrs[i].id);
                     continue;
                 }
 
@@ -4411,6 +4427,10 @@ void FlexCounter::addCounter(
     std::vector<std::string> counterIds;
 
     std::string statsMode;
+    auto vso = std::dynamic_pointer_cast<VendorSaiOptions>(
+            m_vendorSai->getOptions(VendorSaiOptions::OPTIONS_KEY));
+    const bool enablePerPortCounterDiscovery =
+            vso && vso->m_enablePerPortCounterDiscovery;
 
     for (const auto& valuePair: values)
     {
@@ -4422,27 +4442,19 @@ void FlexCounter::addCounter(
         const auto &counterGroupRef = m_objectTypeField2CounterType.find({objectType, field});
         if (counterGroupRef != m_objectTypeField2CounterType.end())
         {
-            try {
-                getCounterContext(counterGroupRef->second)->addObjectWithCounterGroups(
-                        vid,
-                        rid,
-                        idStrings,
-                        "");
+            auto counterContext = getCounterContext(counterGroupRef->second);
 
-            }
-            catch (const std::exception& e)
+            if (enablePerPortCounterDiscovery)
             {
-                SWSS_LOG_WARN("Error initializing SAI objects with counter groups: %s, falling back", e.what());
-                getCounterContext(counterGroupRef->second)->addObject(
+                counterContext->addObjectWithCounterGroups(
                         vid,
                         rid,
                         idStrings,
                         "");
             }
-            catch (...) {
-                SWSS_LOG_WARN("Unknown error initializing SAI objects with counter groups, falling back");
-
-                getCounterContext(counterGroupRef->second)->addObject(
+            else
+            {
+                counterContext->addObject(
                         vid,
                         rid,
                         idStrings,
@@ -4493,6 +4505,10 @@ void FlexCounter::bulkAddCounter(
     std::vector<std::string> counterIds;
 
     std::string statsMode;
+    auto vso = std::dynamic_pointer_cast<VendorSaiOptions>(
+            m_vendorSai->getOptions(VendorSaiOptions::OPTIONS_KEY));
+    const bool enablePerPortCounterDiscovery =
+            vso && vso->m_enablePerPortCounterDiscovery;
 
     for (const auto& valuePair: values)
     {
@@ -4504,33 +4520,24 @@ void FlexCounter::bulkAddCounter(
         const auto &counterGroupRef = m_objectTypeField2CounterType.find({objectType, field});
         if (counterGroupRef != m_objectTypeField2CounterType.end())
         {
-            try
-            {
-                getCounterContext(counterGroupRef->second)->bulkAddObjectWithCounterGroups(
-                        vids,
-                        rids,
-                        idStrings,
-                        "");
-            }
-            catch (const std::exception& e)
-            {
-                SWSS_LOG_WARN("Error initializing SAI objects with counter groups: %s, falling back", e.what());
-                getCounterContext(counterGroupRef->second)->bulkAddObject(
-                        vids,
-                        rids,
-                        idStrings,
-                        "");
-            }
-            catch (...)
-            {
-                SWSS_LOG_WARN("Unknown error initializing SAI objects with counter groups, falling back");
-                getCounterContext(counterGroupRef->second)->bulkAddObject(
-                        vids,
-                        rids,
-                        idStrings,
-                        "");
-            }
+            auto counterContext = getCounterContext(counterGroupRef->second);
 
+            if (enablePerPortCounterDiscovery)
+            {
+               counterContext->bulkAddObjectWithCounterGroups(
+                        vids,
+                        rids,
+                        idStrings,
+                        "");
+            }
+            else
+            {
+                counterContext->bulkAddObject(
+                        vids,
+                        rids,
+                        idStrings,
+                        "");
+            }
         }
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
         {
@@ -4552,33 +4559,23 @@ void FlexCounter::bulkAddCounter(
 
     if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && counterIds.size())
     {
-        try
-        {
-            getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObjectWithCounterGroups(
-                    vids,
-                    rids,
-                    counterIds,
-                    statsMode);
+        auto counterContext = getCounterContext(COUNTER_TYPE_BUFFER_POOL);
 
-        }
-        catch (const std::exception& e)
+        if (enablePerPortCounterDiscovery)
         {
-            SWSS_LOG_WARN("Error initializing SAI objects with counter groups: %s, falling back", e.what());
-            getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObject(
+            counterContext->bulkAddObjectWithCounterGroups(
                     vids,
                     rids,
                     counterIds,
                     statsMode);
         }
-        catch (...)
+        else
         {
-            SWSS_LOG_WARN("Unknown error initializing SAI objects with counter groups, falling back");
-            getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObject(
+            counterContext->bulkAddObject(
                     vids,
                     rids,
                     counterIds,
                     statsMode);
-
         }
     }
 

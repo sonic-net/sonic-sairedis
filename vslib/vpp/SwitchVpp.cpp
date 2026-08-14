@@ -10,16 +10,22 @@
 #include "vppxlate/SaiIntfStats.h"
 #include "vppxlate/SaiRouteStats.h"
 
+#include "PortConfigFileParser.h"
 #include "SwitchVppUtils.h"
+#include "saivs.h"
 
 #include <vector>
 #include <string>
+#include <sstream>
 #include <cerrno>
 
 using namespace saivs;
 
 namespace
 {
+    constexpr const char *DEFAULT_PORT_CONFIG_FILE =
+            "/usr/share/sonic/hwsku/port_config.ini";
+
     constexpr uint64_t ROUTE_COUNTER_RESET_DELTA_THRESHOLD = 1ULL << 60;
 
     // TTL for the route-stats full-dump cache. Must be shorter than the
@@ -53,6 +59,8 @@ SwitchVpp::SwitchVpp(
 {
     SWSS_LOG_ENTER();
 
+    loadPortConfig();
+
     vpp_dp_initialize();
 }
 
@@ -68,6 +76,8 @@ SwitchVpp::SwitchVpp(
     m_tunnel_mgr_ipip(this)
 {
     SWSS_LOG_ENTER();
+
+    loadPortConfig();
 
     vpp_dp_initialize();
 }
@@ -89,6 +99,19 @@ SwitchVpp::~SwitchVpp()
     }
 
     SWSS_LOG_NOTICE("SwitchVpp destructor completed");
+}
+
+void SwitchVpp::loadPortConfig()
+{
+    SWSS_LOG_ENTER();
+
+    const auto &profileMap = m_switchConfig->m_profileMap;
+    const auto portConfigFile = profileMap.find(SAI_KEY_VS_PORT_CONFIG_FILE);
+    const std::string portConfigPath = portConfigFile == profileMap.end()
+            ? DEFAULT_PORT_CONFIG_FILE
+            : portConfigFile->second;
+
+    m_portConfigMap = PortConfigFileParser::parse(portConfigPath);
 }
 
 void SwitchVpp::deinitFdbEventHandling()
@@ -152,6 +175,11 @@ sai_status_t SwitchVpp::create_qos_queues_per_port(
         attr.value.oid = port_id;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
+
+        attr.id = SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
     }
 
     attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
@@ -200,6 +228,11 @@ sai_status_t SwitchVpp::create_cpu_qos_queues(
 
         attr.id = SAI_QUEUE_ATTR_PORT;
         attr.value.oid = port_id;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
+
+        attr.id = SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
     }
@@ -741,6 +774,39 @@ bool SwitchVpp::port_to_hostif_list(
     return getTapNameFromPortId(port_id, if_name);
 }
 
+bool SwitchVpp::getTapNameFromPortOrLagId(
+        _In_ sai_object_id_t obj_id,
+        _Out_ std::string& if_name)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_type_t ot = objectTypeQuery(obj_id);
+
+    if (ot == SAI_OBJECT_TYPE_PORT)
+    {
+        return getTapNameFromPortId(obj_id, if_name);
+    }
+
+    if (ot == SAI_OBJECT_TYPE_LAG)
+    {
+        platform_bond_info_t bond_info;
+        sai_status_t status = get_lag_bond_info(obj_id, bond_info);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+
+        std::ostringstream tap_stream;
+        tap_stream << "be" << bond_info.id;
+        if_name = tap_stream.str();
+
+        return true;
+    }
+
+    return false;
+}
+
 bool SwitchVpp::port_to_hwifname(
         _In_ sai_object_id_t port_id,
         _Inout_ std::string& if_name)
@@ -1177,6 +1243,12 @@ uint64_t SwitchVpp::getObjectTypeAvailability(
         return static_cast<uint64_t>(m_maxMySidEntries - m_srv6_my_sid_count);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_MIRROR_SESSION)
+    {
+        // Return available mirror sessions (max - used)
+        return static_cast<uint64_t>(m_maxMirrorSessions - m_mirror_session_count);
+    }
+
     // Return 0 for unsupported types
     return 0;
 }
@@ -1339,6 +1411,8 @@ sai_status_t SwitchVpp::create(
 {
     SWSS_LOG_ENTER();
 
+    serviceDeferredOperStatusResync();
+
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
         sai_object_id_t object_id;
@@ -1375,6 +1449,11 @@ sai_status_t SwitchVpp::create(
             m_crmTracker.onRouteCreated(isIPv4Route(serializedObjectId));
         }
         return status;
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_INSEG_ENTRY)
+    {
+        return addMplsRoute(serializedObjectId, switch_id, attr_count, attr_list);
     }
 
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
@@ -1560,6 +1639,12 @@ sai_status_t SwitchVpp::create(
         return status;
     }
 
+    if(object_type == SAI_OBJECT_TYPE_MIRROR_SESSION) {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createMirrorSession(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
@@ -1651,6 +1736,49 @@ sai_status_t SwitchVpp::create_internal(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchVpp::create_port_dependencies(
+        _In_ sai_object_id_t port_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_WARN("check attributes and set, FIXME");
+
+    sai_attribute_t attr;
+
+    if (sai_metadata_get_attr_by_id(SAI_PORT_ATTR_ADMIN_STATE, attr_count, attr_list) == nullptr)
+    {
+        attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+        attr.value.booldata = false;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
+
+    if (sai_metadata_get_attr_by_id(SAI_PORT_ATTR_HOST_TX_READY_STATUS, attr_count, attr_list) == nullptr)
+    {
+        attr.id = SAI_PORT_ATTR_HOST_TX_READY_STATUS;
+        attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
+
+    if (sai_metadata_get_attr_by_id(SAI_PORT_ATTR_AUTO_NEG_MODE, attr_count, attr_list) == nullptr)
+    {
+        attr.id = SAI_PORT_ATTR_AUTO_NEG_MODE;
+        attr.value.booldata = true;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
+
+    CHECK_STATUS(create_ingress_priority_groups_per_port(port_id));
+    CHECK_STATUS(create_qos_queues_per_port(port_id));
+    CHECK_STATUS(create_scheduler_groups_per_port(port_id));
+    CHECK_STATUS(create_port_serdes_per_port(port_id));
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::createPort(
         _In_ sai_object_id_t object_id,
         _In_ sai_object_id_t switch_id,
@@ -1659,7 +1787,7 @@ sai_status_t SwitchVpp::createPort(
 {
     SWSS_LOG_ENTER();
 
-    UpdatePort(object_id, attr_count, attr_list);
+    CHECK_STATUS(UpdatePort(object_id, attr_count, attr_list));
 
     auto sid = sai_serialize_object_id(object_id);
 
@@ -1684,7 +1812,7 @@ sai_status_t SwitchVpp::createPort(
         CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id, attr_count, attr_list));
     }
 
-    return create_port_dependencies(object_id);
+    return create_port_dependencies(object_id, attr_count, attr_list);
 }
 
 
@@ -1693,6 +1821,8 @@ sai_status_t SwitchVpp::remove(
         _In_ const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
+
+    serviceDeferredOperStatusResync();
 
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
@@ -1751,6 +1881,11 @@ sai_status_t SwitchVpp::remove(
         // by counter OID) need cleanup here.
         m_routeCounterStatsBaseMap.erase(objectId);
         m_routeCounterStatsCarryMap.erase(objectId);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_INSEG_ENTRY)
+    {
+        return removeMplsRoute(serializedObjectId);
     }
 
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
@@ -1927,6 +2062,12 @@ sai_status_t SwitchVpp::remove(
         return remove_internal(object_type, serializedObjectId);
     }
 
+    if(object_type == SAI_OBJECT_TYPE_MIRROR_SESSION) {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return removeMirrorSession(object_id);
+    }
+
     return remove_internal(object_type, serializedObjectId);
 }
 
@@ -1964,7 +2105,12 @@ sai_status_t SwitchVpp::setPort(
 {
     SWSS_LOG_ENTER();
 
-    UpdatePort(portId, 1, attr);
+    sai_status_t status = UpdatePort(portId, 1, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
 
     auto sid = sai_serialize_object_id(portId);
 
@@ -2053,6 +2199,8 @@ sai_status_t SwitchVpp::set(
 {
     SWSS_LOG_ENTER();
 
+    serviceDeferredOperStatusResync();
+
     if (objectType == SAI_OBJECT_TYPE_PORT)
     {
         sai_object_id_t objectId;
@@ -2091,6 +2239,23 @@ sai_status_t SwitchVpp::set(
             case SAI_SWITCH_ATTR_VXLAN_DEFAULT_PORT:
                 {
                     m_tunnel_mgr.set_vxlan_port(attr);
+                    break;
+                }
+            case SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED:
+                {
+                    // VPP mixes a global "router id" into the IPv4/IPv6 ECMP
+                    // flow hash (ip4_inlines.h / ip6_inlines.h). Map the SAI
+                    // ECMP hash seed onto it so that changing the seed
+                    // re-distributes ECMP/LAG path selection. Fall through to
+                    // set_internal() below so the attribute is also cached.
+                    uint32_t seed = attr->value.u32;
+                    int rc = vpp_ip_flow_hash_router_id_set(seed);
+                    if (rc != 0)
+                    {
+                        SWSS_LOG_ERROR("VPP set ECMP default hash seed=%u failed rc=%d", seed, rc);
+                        return SAI_STATUS_FAILURE;
+                    }
+                    SWSS_LOG_NOTICE("VPP set ECMP default hash seed=%u", seed);
                     break;
                 }
         }
@@ -2834,6 +2999,8 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
         {
             /* VPP reports link_speed in Kbps, SAI uses Mbps */
             attr.value.u32 = vpp_speed_kbps / 1000;
+            SWSS_LOG_NOTICE("port oper speed from VPP: %s %u Kbps -> %u Mbps",
+                            hwif_name.c_str(), vpp_speed_kbps, attr.value.u32);
         }
         else
         {
@@ -2841,6 +3008,8 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
             attr.id = SAI_PORT_ATTR_SPEED;
 
             CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+            SWSS_LOG_NOTICE("port oper speed fallback to configured: %s %u Mbps",
+                            hwif_name.c_str(), attr.value.u32);
         }
     }
 
