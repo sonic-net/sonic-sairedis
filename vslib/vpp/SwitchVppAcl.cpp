@@ -1246,8 +1246,15 @@ sai_status_t SwitchVpp::AclTblConfig(
         SWSS_LOG_INFO("Allocated tunterm ACL with %u rules", tunterm_acl->count);
     }
 
-    // Apply the ACL configurations
-    if (acl != NULL) {
+    // Apply the ACL configurations. acl is NULL when the table has no regular
+    // rules left - e.g. the mux drop entry is deleted when a port transitions
+    // standby -> active. In that case acl_add_replace() replaces the previously
+    // programmed VPP ACL with an empty placeholder (see its acl == NULL branch),
+    // so a stale rule such as deny 0/0->0/0 is not left bound to the mux ports
+    // and silently dropping for-us/punt traffic. Only route a NULL acl through
+    // acl_add_replace() when the table was already programmed in VPP, otherwise
+    // there is nothing to clear and vpp_acl_add_replace() must not see a NULL.
+    if (acl != NULL || m_acl_swindex_map.find(tbl_oid) != m_acl_swindex_map.end()) {
         status = acl_add_replace(acl, tbl_oid, aces, ordered_aces);
     }
 
