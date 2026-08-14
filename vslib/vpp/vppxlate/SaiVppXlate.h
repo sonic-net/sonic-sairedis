@@ -24,7 +24,8 @@ extern "C" {
 
     typedef enum {
 	VPP_NEXTHOP_NORMAL = 1,
-	VPP_NEXTHOP_LOCAL = 2
+    VPP_NEXTHOP_LOCAL = 2,
+    VPP_NEXTHOP_DROP = 3
     } vpp_nexthop_type_e;
 
     /* Maximum MPLS label stack depth carried on a single fib path (VPP API limit). */
