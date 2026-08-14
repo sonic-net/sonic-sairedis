@@ -3228,7 +3228,7 @@ int vpp_sflow_interface_sampling_rate_set(const char *hwif_name, uint32_t sampli
             return -EINVAL;
         }
     } else {
-        SAIVPP_ERROR("No hw_index provided");
+        SAIVPP_ERROR("No hwif_name provided");
         VPP_UNLOCK();
         return -EINVAL;
     }

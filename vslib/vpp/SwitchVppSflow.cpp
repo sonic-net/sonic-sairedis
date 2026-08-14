@@ -185,33 +185,22 @@ sai_status_t SwitchVpp::sflowPortSamplePacketSet(
     }
 
     bool updating_ingress = attr->id == SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
-    sai_object_id_t updated_oid = attr->value.oid;
 
-    sai_attribute_t other_attr{};
+    SaiModDBObject port_obj(this, SAI_OBJECT_TYPE_PORT, sai_serialize_object_id(portId), 1, attr);
 
-    other_attr.id = updating_ingress
-        ? SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE
-        : SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
-    sai_object_id_t other_oid = SAI_NULL_OBJECT_ID;
-
-    if (get(SAI_OBJECT_TYPE_PORT, portId, 1, &other_attr) == SAI_STATUS_SUCCESS)
-    {
-        other_oid = other_attr.value.oid;
-    }
-
-    sai_object_id_t ingress_oid = updating_ingress ? updated_oid : other_oid;
-    sai_object_id_t egress_oid = updating_ingress ? other_oid : updated_oid;
+    auto ingress_sp = port_obj.get_linked_object(SAI_OBJECT_TYPE_SAMPLEPACKET, SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE);
+    auto egress_sp  = port_obj.get_linked_object(SAI_OBJECT_TYPE_SAMPLEPACKET, SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE);
 
     constexpr uint32_t SFLOW_DIRECTION_INGRESS = 1U;
     constexpr uint32_t SFLOW_DIRECTION_EGRESS = 2U;
     uint32_t direction = 0;
 
-    if(ingress_oid != SAI_NULL_OBJECT_ID)
+    if(ingress_sp)
     {
         direction |= SFLOW_DIRECTION_INGRESS;
     }
 
-    if(egress_oid != SAI_NULL_OBJECT_ID)
+    if(egress_sp)
     {
         direction |= SFLOW_DIRECTION_EGRESS;
     }
@@ -221,17 +210,22 @@ sai_status_t SwitchVpp::sflowPortSamplePacketSet(
         return sflowEnableDisable(portId, false);
     }
 
-    sai_object_id_t active_oid = updated_oid != SAI_NULL_OBJECT_ID ? updated_oid : other_oid;
-
-    auto serialized_id = sai_serialize_object_id(active_oid);
+    /*
+    * VPP has a single per-interface sampling rate, so one samplepacket has to
+    * supply it: the one named by this update, or if the update cleared this
+    * direction, the one still bound to the opposite direction.
+    */
+    const auto& updated_sp = updating_ingress ? ingress_sp : egress_sp;
+    const auto& other_sp   = updating_ingress ? egress_sp  : ingress_sp;
+    const auto& sp_obj     = updated_sp ? updated_sp : other_sp;
 
     sai_attribute_t rate_attr{};
     rate_attr.id = SAI_SAMPLEPACKET_ATTR_SAMPLE_RATE;
 
-    CHECK_STATUS(get(SAI_OBJECT_TYPE_SAMPLEPACKET, serialized_id, 1, &rate_attr));
+    CHECK_STATUS_QUIET(sp_obj->get_mandatory_attr(rate_attr));
 
     uint32_t rate = rate_attr.value.u32;
-
+    
     CHECK_STATUS(sflowInterfaceSamplingRateSet(portId, rate));
     CHECK_STATUS(sflowInterfaceDirectionSet(portId, direction));
     return sflowEnableDisable(portId, true);
