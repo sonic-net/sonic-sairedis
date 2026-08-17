@@ -413,6 +413,10 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
     const char *hwif_name = tap_to_hwif_name(dev);
 
     configure_lcp_interface(hwif_name, dev, true);
+    if (refresh_interfaces_list() != 0)
+    {
+        SWSS_LOG_ERROR("failed to refresh VPP interface map after creating %s", hwif_name);
+    }
     interface_set_promiscuous(hwif_name, true);
 
     /*
