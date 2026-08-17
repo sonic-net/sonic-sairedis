@@ -809,15 +809,40 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 	    return SAI_STATUS_FAILURE;
     }
 
-    auto attr_mac_addr = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS, attr_count, attr_list);
-    if (attr_mac_addr == NULL)
-    {
-	    SWSS_LOG_NOTICE("attr ROUTER INTERFACE MAC Address is not found");
-	    return SAI_STATUS_FAILURE;
-    }
-
     sai_mac_t mac_addr;
-    memcpy(mac_addr, attr_mac_addr->value.mac, sizeof(sai_mac_t));
+
+    auto attr_mac_addr = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS, attr_count, attr_list);
+    if (attr_mac_addr != NULL)
+    {
+	    memcpy(mac_addr, attr_mac_addr->value.mac, sizeof(sai_mac_t));
+    }
+    else
+    {
+	    // SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS is optional; per the SAI
+	    // spec its default is the switch source MAC. When a caller omits it
+	    // (e.g. the OCP sai_test PTF suite creates VLAN RIFs without a MAC,
+	    // unlike orchagent which always supplies the switch MAC), fall back to
+	    // SAI_SWITCH_ATTR_SRC_MAC_ADDRESS instead of failing the BVI create.
+	    // Without this the VLAN BVI is never created, so SVI ingress traffic
+	    // floods L2 instead of being routed - which broke every standalone L3
+	    // route/RIF test whose ingress is a VLAN access port. See
+	    // .azure-pipelines/docker-sai-test-vpp/devdocs/progress-6-17.md (Issue B).
+	    sai_attribute_t sw_attr;
+	    memset(&sw_attr, 0, sizeof(sw_attr));
+	    sw_attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+
+	    sai_status_t mac_status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &sw_attr);
+	    if (mac_status != SAI_STATUS_SUCCESS)
+	    {
+		    SWSS_LOG_ERROR("RIF src MAC not provided and failed to read switch src MAC on %s: %s",
+				    sai_serialize_object_id(m_switch_id).c_str(),
+				    sai_serialize_status(mac_status).c_str());
+		    return SAI_STATUS_FAILURE;
+	    }
+
+	    memcpy(mac_addr, sw_attr.value.mac, sizeof(sai_mac_t));
+	    SWSS_LOG_NOTICE("RIF src MAC not provided; using switch src MAC for BVI of vlan %u", vlan_id);
+    }
 
     //Create BVI interface
     create_bvi_interface(mac_addr,vlan_id);
@@ -860,6 +885,106 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 
         refresh_interfaces_list();
         interface_set_state(tap_name.c_str(), true);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::vpp_update_bvi_interface(
+        _In_ sai_object_id_t rif_obj_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    // A VLAN RIF is realized in VPP as a BVI named "bvi<vlan_id>". The VLAN id
+    // is not part of the update attribute list, so resolve it from the RIF's
+    // stored SAI_ROUTER_INTERFACE_ATTR_VLAN_ID (mirrors vpp_create_bvi_interface).
+    sai_attribute_t attr;
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+
+    sai_status_t status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_obj_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get vlan id for router interface %s (status %d)",
+                       sai_serialize_object_id(rif_obj_id).c_str(), status);
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_object_id_t vlan_oid = attr.value.oid;
+
+    if (objectTypeQuery(vlan_oid) != SAI_OBJECT_TYPE_VLAN)
+    {
+        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_VLAN_ID=%s is not a VLAN object",
+                       sai_serialize_object_id(vlan_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    status = get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get SAI_VLAN_ATTR_VLAN_ID for VLAN %s (router interface %s, status %d)",
+                       sai_serialize_object_id(vlan_oid).c_str(),
+                       sai_serialize_object_id(rif_obj_id).c_str(), status);
+        return status;
+    }
+
+    uint32_t vlan_id = attr.value.u16;
+
+    if (vlan_id == 0)
+    {
+        SWSS_LOG_ERROR("Unable to resolve VLAN id for router interface %s",
+                       sai_serialize_object_id(rif_obj_id).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    char hwif_name[32];
+    snprintf(hwif_name, sizeof(hwif_name), "bvi%u", vlan_id);
+
+    auto sid = sai_serialize_object_id(rif_obj_id);
+
+    // Apply the source MAC update
+    auto attr_mac = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS, attr_count, attr_list);
+
+    if (attr_mac != NULL)
+    {
+        sai_mac_t mac_addr;
+        memcpy(mac_addr, attr_mac->value.mac, sizeof(sai_mac_t));
+
+        int ret = sw_interface_set_mac(hwif_name, mac_addr);
+
+        if (ret < 0)
+        {
+            SWSS_LOG_ERROR("failed to set MAC %s on BVI %s (ret %d)",
+                           sai_serialize_mac(attr_mac->value.mac).c_str(), hwif_name, ret);
+            return SAI_STATUS_FAILURE;
+        }
+
+        SWSS_LOG_INFO("Set MAC %s on BVI %s",
+                      sai_serialize_mac(attr_mac->value.mac).c_str(), hwif_name);
+        set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_mac);
+    }
+
+    // Apply the MTU update
+    auto attr_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
+
+    if (attr_mtu != NULL)
+    {
+        int ret = sw_interface_set_mtu(hwif_name, attr_mtu->value.u32);
+
+        if (ret < 0)
+        {
+            SWSS_LOG_ERROR("failed to set MTU %u on BVI %s (ret %d)",
+                           attr_mtu->value.u32, hwif_name, ret);
+            return SAI_STATUS_FAILURE;
+        }
+
+        SWSS_LOG_INFO("Set MTU %u on BVI %s", attr_mtu->value.u32, hwif_name);
+
+        set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_mtu);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1077,10 +1202,11 @@ sai_status_t SwitchVpp::vpp_create_lag(
     mode = VPP_BOND_API_MODE_XOR;
     lb = VPP_BOND_API_LB_ALGO_L34_INNER;
 
-    create_bond_interface(bond_id, mode, lb, &swif_idx);
-    if (swif_idx == static_cast<uint32_t>(~0))
+    int ret = create_bond_interface(bond_id, mode, lb, &swif_idx);
+    if (ret != 0 || swif_idx == static_cast<uint32_t>(~0) || swif_idx == 0)
     {
-        SWSS_LOG_ERROR("failed to create bond interface in VPP for %s", sai_serialize_object_id(lag_id).c_str());
+        SWSS_LOG_ERROR("failed to create bond interface in VPP for %s (ret=%d, swif_idx=%u)",
+                sai_serialize_object_id(lag_id).c_str(), ret, swif_idx);
         return SAI_STATUS_FAILURE;
     }
 
@@ -1239,6 +1365,13 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
         return SAI_STATUS_FAILURE;
     }
 
+    // Enslaving a port into the bond clears its promiscuous flag in VPP, so
+    // re-apply it here. Traffic forwarded over the PortChannel arrives with the
+    // common SONiC router MAC (different from the member's hardware MAC), and
+    // PortChannel sub-interface traffic is VLAN tagged against the bond rather
+    // than the member, neither of which the member accepts unless promiscuous.
+    interface_set_promiscuous(hwifname, true);
+
     CHECK_STATUS(vpp_ensure_lag_lcp(lag_oid));
 
     return SAI_STATUS_SUCCESS;
@@ -1271,14 +1404,17 @@ sai_status_t SwitchVpp::vpp_ensure_lag_lcp(
 
     configure_lcp_interface(hw_ifname, tap.c_str(), true);
 
-    std::string portchannel = std::string("PortChannel") + std::to_string(bond_id);
-    std::string be = std::string("be") + std::to_string(bond_id);
-    CHECK_STATUS(add_tc_filter_redirect(be, portchannel));
-
+    /*
+     * Control-plane punt for the port channel is handled by the sonic_ext
+     * plugin's punt-via-member path (sonic-ext-capture + aggr-tap-redirect),
+     * which steers the punted copy to the originating member tap. The legacy
+     * be<id> -> PortChannel<id> tc mirred redirect is no longer needed and is
+     * intentionally not installed (SONiC PR #2440 §5.3).
+     */
     bond_info.lcp_created = true;
     m_lag_bond_map[lag_oid] = bond_info;
 
-    SWSS_LOG_NOTICE("Created LCP and tc redirect for LAG %s", sai_serialize_object_id(lag_oid).c_str());
+    SWSS_LOG_NOTICE("Created LCP for LAG %s", sai_serialize_object_id(lag_oid).c_str());
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1471,6 +1607,9 @@ sai_status_t SwitchVpp::vpp_set_lag_member_egress_disable(
     }
     else
     {
+        // Re-attaching enslaves the port again, which clears its promiscuous
+        // flag in VPP, so re-apply it just like vpp_create_lag_member() does.
+        interface_set_promiscuous(hwif_name, true);
         m_egress_disabled_lag_member_ports.erase(port_oid);
     }
 
@@ -1505,11 +1644,69 @@ sai_status_t SwitchVpp::removeLagMember(
         CHECK_STATUS_QUIET(vpp_remove_lag_member(lag_member_oid));
     }
 
+    // teamd restores the member tap's permanent MAC when the port leaves the PortChannel while
+    // VPP keeps the switch MAC, so the routed port would drop L3 traffic sent to the tap MAC.
+    if (port_oid != SAI_NULL_OBJECT_ID)
+    {
+        restorePortTapMac(port_oid);
+    }
+    else
+    {
+        SWSS_LOG_WARN("no port found for LAG member %s, tap MAC not restored",
+                sai_serialize_object_id(lag_member_oid).c_str());
+    }
+
     auto sid = sai_serialize_object_id(lag_member_oid);
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_LAG_MEMBER, sid));
 
     return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::restorePortTapMac(
+        _In_ sai_object_id_t port_oid)
+{
+    SWSS_LOG_ENTER();
+
+    // Best effort repair, the caller must still drop the SAI LAG member because the VPP
+    // detach already happened and failing here would leave the object model inconsistent.
+    std::string if_name;
+
+    if (getTapNameFromPortId(port_oid, if_name) == false)
+    {
+        SWSS_LOG_ERROR("no tap found for port %s, switch MAC not restored",
+                sai_serialize_object_id(port_oid).c_str());
+        return;
+    }
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+
+    sai_status_t status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get SAI_SWITCH_ATTR_SRC_MAC_ADDRESS on switch %s: %s, "
+                "switch MAC not restored on %s",
+                sai_serialize_object_id(m_switch_id).c_str(),
+                sai_serialize_status(status).c_str(),
+                if_name.c_str());
+        return;
+    }
+
+    if (vs_set_dev_mac_address(if_name.c_str(), attr.value.mac) < 0)
+    {
+        SWSS_LOG_ERROR("failed to set MAC address %s on tap %s, the routed port will drop "
+                "traffic addressed to its tap MAC",
+                sai_serialize_mac(attr.value.mac).c_str(),
+                if_name.c_str());
+        return;
+    }
+
+    SWSS_LOG_NOTICE("restored switch MAC %s on tap %s after LAG member removal",
+            sai_serialize_mac(attr.value.mac).c_str(),
+            if_name.c_str());
 }
 
 sai_status_t SwitchVpp::vpp_remove_lag_member(

@@ -33,6 +33,8 @@ libSaiVS_a_SOURCES = \
 					  LaneMapContainer.cpp \
 					  LaneMap.cpp \
 					  LaneMapFileParser.cpp \
+					  PortConfigMap.cpp \
+					  PortConfigFileParser.cpp \
 					  MACsecAttr.cpp \
 					  MACsecFilterStateGuard.cpp \
 					  MACsecEgressFilter.cpp \
@@ -90,6 +92,7 @@ libSaiVS_a_SOURCES +=\
 					  vpp/SwitchVppSRv6.cpp \
 					  vpp/SwitchVppMirror.cpp \
 					  vpp/SwitchVppSflow.cpp \
+					  vpp/SwitchVppMpls.cpp \
 					  vpp/TunnelManager.cpp \
 					  vpp/SaiVppLog.cpp \
 					  vpp/vppxlate/SaiVppXlate.c \

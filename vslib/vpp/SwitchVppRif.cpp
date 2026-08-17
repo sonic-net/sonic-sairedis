@@ -21,9 +21,12 @@
 #include "vppxlate/SaiVppXlate.h"
 
 #include <iostream>
+#include <sstream>
 #include <cstring>
 #include <regex>
 #include <fstream>
+#include <algorithm>
+#include <set>
 
 using namespace saivs;
 
@@ -338,51 +341,206 @@ void SwitchVpp::vpp_intf_remove_prefix_entry (const std::string& intf_name)
     m_intf_prefix_map.erase(it);
 }
 
-bool SwitchVpp::vpp_get_hwif_name (
-      _In_ sai_object_id_t object_id,
-      _In_ uint32_t vlan_id,
-      _Out_ std::string& ifname)
+bool SwitchVpp::getPortHwifNameFromLane(
+      _In_ sai_object_id_t port_id,
+      _Out_ std::string& if_name)
 {
     SWSS_LOG_ENTER();
 
-    const char *hwifname = nullptr;
-    char hw_bondifname[32];
+    return getPortHwifNameFromLane(port_id, 0, nullptr, if_name);
+}
 
-    if (objectTypeQuery(object_id) == SAI_OBJECT_TYPE_LAG) {
-        platform_bond_info_t bond_info;
-        sai_status_t status = get_lag_bond_info(object_id, bond_info);
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            return false;
-        }
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
-        hwifname = hw_bondifname;
-    } else {
-        std::string if_name;
-        bool found = getTapNameFromPortId(object_id, if_name);
+bool SwitchVpp::getPortHwifNameFromLane(
+      _In_ sai_object_id_t port_id,
+      _In_ uint32_t attr_count,
+      _In_ const sai_attribute_t *attr_list,
+      _Out_ std::string& if_name)
+{
+    SWSS_LOG_ENTER();
 
-        if (found == false)
-        {
-            SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(object_id).c_str());
-            return false;
-        }
-        hwifname = tap_to_hwif_name(if_name.c_str());
+    if (!m_portConfigMap)
+    {
+        SWSS_LOG_ERROR("port config map unavailable for port %s",
+                sai_serialize_object_id(port_id).c_str());
+        return false;
     }
 
-    if (!hwifname) return false;
+    uint32_t lanes[8] = {};
+    uint32_t lane_count = 0;
+    const sai_attribute_t *lane_attr = nullptr;
+    if (attr_list != nullptr)
+    {
+        lane_attr = sai_metadata_get_attr_by_id(
+                SAI_PORT_ATTR_HW_LANE_LIST, attr_count, attr_list);
+    }
 
-    char hw_subifname[64];
-    const char *hw_ifname;
+    if (lane_attr != nullptr)
+    {
+        lane_count = lane_attr->value.u32list.count;
+        if (lane_count > sizeof(lanes) / sizeof(lanes[0]))
+        {
+            SWSS_LOG_ERROR("too many lanes for port %s",
+                    sai_serialize_object_id(port_id).c_str());
+            return false;
+        }
+        if (lane_count != 0 && lane_attr->value.u32list.list == nullptr)
+        {
+            SWSS_LOG_ERROR("port %s has a null lane list",
+                sai_serialize_object_id(port_id).c_str());
+            return false;
+        }
+        if (lane_count != 0)
+        {
+            std::copy(lane_attr->value.u32list.list,
+                lane_attr->value.u32list.list + lane_count, lanes);
+        }
+    }
+    else
+    {
+        sai_attribute_t attr = {};
+        attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+        attr.value.u32list.count = sizeof(lanes) / sizeof(lanes[0]);
+        attr.value.u32list.list = lanes;
 
+        if (get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr) != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("lane list unavailable for port %s",
+                    sai_serialize_object_id(port_id).c_str());
+            return false;
+        }
+        lane_count = attr.value.u32list.count;
+    }
+
+    if (lane_count == 0 || lane_count > sizeof(lanes) / sizeof(lanes[0]))
+    {
+        SWSS_LOG_ERROR("lane list unavailable for port %s",
+                sai_serialize_object_id(port_id).c_str());
+        return false;
+    }
+
+    std::set<uint32_t> lane_set(lanes, lanes + lane_count);
+    if (lane_set.size() != lane_count)
+    {
+        SWSS_LOG_ERROR("duplicate lanes in port %s lane list",
+                sai_serialize_object_id(port_id).c_str());
+        return false;
+    }
+    const std::string port_name =
+            m_portConfigMap->getPortName(lane_set);
+    if (port_name.empty())
+    {
+        SWSS_LOG_ERROR("lane set does not map to a port for %s",
+                sai_serialize_object_id(port_id).c_str());
+        return false;
+    }
+
+    const char *mapped_hwifname = tap_to_hwif_name(port_name.c_str());
+    if (mapped_hwifname == nullptr || strcmp(mapped_hwifname, "Unknown") == 0)
+    {
+        SWSS_LOG_ERROR("port %s has no VPP mapping", port_name.c_str());
+        return false;
+    }
+
+    if (vpp_get_swif_idx_by_name(mapped_hwifname) == static_cast<uint32_t>(-1))
+    {
+        SWSS_LOG_ERROR("VPP interface %s is not present for port %s",
+                mapped_hwifname, port_name.c_str());
+        return false;
+    }
+
+    if_name = mapped_hwifname;
+    SWSS_LOG_INFO("resolved port %s lane set to %s/%s",
+            sai_serialize_object_id(port_id).c_str(), port_name.c_str(),
+            if_name.c_str());
+    return true;
+}
+
+bool SwitchVpp::vpp_get_hwif_name (
+      _In_ sai_object_id_t object_id,
+      _In_ uint32_t vlan_id,
+    _Out_ std::string& ifname,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    std::string tap_name;
+    std::string hwifname;
+    if (objectTypeQuery(object_id) == SAI_OBJECT_TYPE_PORT &&
+                getPortHwifNameFromLane(object_id, attr_count, attr_list, hwifname))
+    {
+        SWSS_LOG_DEBUG("using lane-based VPP interface %s for port %s",
+                hwifname.c_str(), sai_serialize_object_id(object_id).c_str());
+    }
+    else
+    {
+        if (getTapNameFromPortOrLagId(object_id, tap_name) == false)
+        {
+            SWSS_LOG_ERROR("host interface for port/lag id %s not found",
+                    sai_serialize_object_id(object_id).c_str());
+            return false;
+        }
+
+        const char *mapped_hwifname = tap_to_hwif_name(tap_name.c_str());
+
+        if (mapped_hwifname == NULL || strcmp(mapped_hwifname, "Unknown") == 0)
+        {
+            return false;
+        }
+
+        hwifname = mapped_hwifname;
+    }
     if (vlan_id) {
-        snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
-        hw_ifname = hw_subifname;
+        ifname = hwifname + "." + std::to_string(vlan_id);
     } else {
-        hw_ifname = hwifname;
+        ifname = hwifname;
     }
-    ifname = std::string(hw_ifname);
 
     return true;
+}
+
+void SwitchVpp::resyncPortOperStatus()
+{
+    SWSS_LOG_ENTER();
+
+    for (auto& kvp: m_hostif_info_map)
+    {
+        const std::string& tapname = kvp.first;
+        auto& info = kvp.second;
+
+        if (!info)
+        {
+            continue;
+        }
+
+        const char* dev = tapname.c_str();
+        const char* hwif_name = tap_to_hwif_name(dev);
+
+        bool link_up = false;
+
+        if (interface_get_state(hwif_name, &link_up) != 0)
+        {
+            continue;
+        }
+
+        auto prev_it = m_last_oper_up.find(tapname);
+        bool have_prev = (prev_it != m_last_oper_up.end());
+
+        if (have_prev && prev_it->second == link_up)
+        {
+            continue;
+        }
+
+        m_last_oper_up[tapname] = link_up;
+
+        auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
+
+        send_port_oper_status_notification(info->m_portId, state, false);
+
+        SWSS_LOG_NOTICE("resync oper-status %s(%s) %s",
+                        hwif_name, dev,
+                        link_up ? "UP" : "DOWN");
+    }
 }
 
 void SwitchVpp::vppProcessEvents ()
@@ -393,12 +551,34 @@ void SwitchVpp::vppProcessEvents ()
     vpp_event_info_t *evp;
     int ret;
 
+    // One-shot level oper-status resync at startup: recover the current link
+    // state of any interface whose state was set before we subscribed to
+    // interface events (edge-only delivery would otherwise miss it).
+    m_operResyncDue.store(true, std::memory_order_relaxed);
+
     while(m_run_vpp_events_thread) {
         nanosleep(&req, NULL);
         ret = vpp_sync_for_events();
         SWSS_LOG_NOTICE("Checking for any VS events status %d", ret);
+        if (ret < 0)
+        {
+            SWSS_LOG_WARN("vpp_sync_for_events failed (%d); event socket reconnect attempted", ret);
+            // The read failure triggers an event-socket reconnect inside
+            // vpp_sync_for_events. VPP only re-delivers *future* edges after
+            // re-subscribe, so schedule a one-shot level resync to recover any
+            // edge missed during the outage (e.g. reboot/config-reload) - the
+            // exact case resyncPortOperStatus was added for. This is event-driven
+            // (not a periodic poll), so it does not exhaust the VPP client clib heap.
+            m_operResyncDue.store(true, std::memory_order_relaxed);
+        }
         while ((evp = vpp_ev_dequeue())) {
             if (evp->type == VPP_INTF_LINK_STATUS) {
+                if (evp->data.intf_status.link_up) {
+                    /* Refresh cached link speed from VPP on link-up.
+                     * The initial sw_interface_dump may have cached speed=0
+                     * if the link was down at startup. */
+                    vpp_refresh_interface_speed(evp->data.intf_status.hwif_name);
+                }
                 asyncIntfStateUpdate(evp->data.intf_status.hwif_name,
                                      evp->data.intf_status.link_up);
                 SWSS_LOG_NOTICE("Received port link event for %s state %s",
@@ -414,6 +594,27 @@ void SwitchVpp::vppProcessEvents ()
             }
             vpp_ev_free(evp);
         }
+        // No periodic resync here. resyncPortOperStatus() issues per-interface
+        // SW_INTERFACE_DUMPs; doing that every cycle exhausted VPP's client clib
+        // heap (os_panic in clib_mem_heap_realloc_aligned). Resync is instead
+        // requested only at startup and after a reconnect (above), and executed
+        // on the command thread via serviceDeferredOperStatusResync().
+    }
+}
+
+void SwitchVpp::serviceDeferredOperStatusResync()
+{
+    SWSS_LOG_ENTER();
+
+    // Runs on the command thread (from the create/set/remove entry points).
+    // resyncPortOperStatus() issues VPP binary-API SW_INTERFACE_DUMPs; the event
+    // thread only *requests* a resync (m_operResyncDue) on startup and after an
+    // event-socket reconnect - never on a periodic timer - so this performs at
+    // most a handful of level reads over the switch lifetime, avoiding the VPP
+    // client clib-heap exhaustion that a continuous poll caused.
+    if (m_operResyncDue.exchange(false, std::memory_order_relaxed))
+    {
+        resyncPortOperStatus();
     }
 }
 
@@ -507,7 +708,9 @@ sai_status_t SwitchVpp::asyncIntfStateUpdate(const char *hwif_name, bool link_up
 sai_status_t SwitchVpp::vpp_set_interface_state (
         _In_ sai_object_id_t object_id,
         _In_ uint32_t vlan_id,
-        _In_ bool is_up)
+    _In_ bool is_up,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -517,7 +720,8 @@ sai_status_t SwitchVpp::vpp_set_interface_state (
 
     std::string ifname;
 
-    if (vpp_get_hwif_name(object_id, vlan_id, ifname) == true) {
+    if (vpp_get_hwif_name(object_id, vlan_id, ifname, attr_count, attr_list))
+    {
         const char *hwif_name = ifname.c_str();
 
         interface_set_state(hwif_name, is_up);
@@ -530,7 +734,9 @@ sai_status_t SwitchVpp::vpp_set_interface_state (
 sai_status_t SwitchVpp::vpp_set_port_mtu (
         _In_ sai_object_id_t object_id,
         _In_ uint32_t vlan_id,
-        _In_ uint32_t mtu)
+    _In_ uint32_t mtu,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -540,7 +746,8 @@ sai_status_t SwitchVpp::vpp_set_port_mtu (
 
     std::string ifname;
 
-    if (vpp_get_hwif_name(object_id, vlan_id, ifname) == true) {
+    if (vpp_get_hwif_name(object_id, vlan_id, ifname, attr_count, attr_list))
+    {
         const char *hwif_name = ifname.c_str();
 
         hw_interface_set_mtu(hwif_name, mtu);
@@ -568,6 +775,34 @@ sai_status_t SwitchVpp::vpp_set_interface_mtu (
 
         sw_interface_set_mtu(hwif_name, mtu);
         SWSS_LOG_NOTICE("Updating router interface mtu %s to %u", hwif_name, mtu);
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::vpp_set_port_speed (
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t vlan_id,
+    _In_ uint32_t speed,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    if (is_ip_nbr_active() == false) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string ifname;
+
+    if (vpp_get_hwif_name(object_id, vlan_id, ifname, attr_count, attr_list))
+    {
+        const char *hwif_name = ifname.c_str();
+
+        // SAI port speed is in Mbps, VPP link speed is in Kbps
+        uint32_t link_speed = speed * 1000;
+
+        sw_interface_set_link_speed(hwif_name, link_speed);
+        SWSS_LOG_NOTICE("Updating port %s speed to %u Mbps", hwif_name, speed);
     }
     return SAI_STATUS_SUCCESS;
 }
@@ -659,14 +894,24 @@ sai_status_t SwitchVpp::UpdatePort(
 
     if (attr_type != NULL)
     {
-        vpp_set_interface_state(object_id, 0, attr_type->value.booldata);
+        vpp_set_interface_state(object_id, 0, attr_type->value.booldata,
+            attr_count, attr_list);
     }
 
     attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_MTU, attr_count, attr_list);
 
     if (attr_type != NULL)
     {
-        vpp_set_port_mtu(object_id, 0, attr_type->value.u32);
+        vpp_set_port_mtu(object_id, 0, attr_type->value.u32,
+            attr_count, attr_list);
+    }
+
+    attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_SPEED, attr_count, attr_list);
+
+    if (attr_type != NULL)
+    {
+        vpp_set_port_speed(object_id, 0, attr_type->value.u32,
+            attr_count, attr_list);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -713,12 +958,21 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         return SAI_STATUS_SUCCESS;
     }
 
-    if (ot != SAI_OBJECT_TYPE_PORT)
+    std::string if_name;
+
+    if (ot != SAI_OBJECT_TYPE_PORT && ot != SAI_OBJECT_TYPE_LAG)
     {
-        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                 sai_serialize_object_id(obj_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
 
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (getTapNameFromPortOrLagId(obj_id, if_name) == false)
+    {
+        SWSS_LOG_ERROR("host interface for port/lag id %s not found",
+                sai_serialize_object_id(obj_id).c_str());
         return SAI_STATUS_FAILURE;
     }
 
@@ -736,14 +990,6 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
     if (status == SAI_STATUS_SUCCESS)
     {
         vlan_id = attr.value.u16;
-    }
-
-    std::string if_name;
-    bool found = getTapNameFromPortId(obj_id, if_name);
-    if (found == false)
-    {
-        SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(obj_id).c_str());
-        return SAI_STATUS_FAILURE;
     }
 
     swss::IpPrefix intf_ip_prefix;
@@ -831,9 +1077,14 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         }
     }
 
-    const char *hwifname = tap_to_hwif_name(if_name.c_str());
-    char hw_subifname[32];
     const char *hw_ifname;
+    char hw_subifname[32];
+    const char *hwifname = tap_to_hwif_name(if_name.c_str());
+
+    if (hwifname == NULL || strcmp(hwifname, "Unknown") == 0)
+    {
+        return SAI_STATUS_FAILURE;
+    }
 
     if (vlan_id) {
         snprintf(hw_subifname, sizeof(hw_subifname), "%s.%u", hwifname, vlan_id);
@@ -1057,8 +1308,19 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
        snprintf(hw_bviifname, sizeof(hw_bviifname), "%s%d","bvi",vlan_id);
        hw_ifname = hw_bviifname;
     } else if (full_if_name.compare(0, strlen(PORTCHANNEL_PREFIX), PORTCHANNEL_PREFIX) == 0) {
-        uint32_t bond_id = std::stoi(full_if_name.substr(strlen(PORTCHANNEL_PREFIX)));
-        snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_id);
+        /* full_if_name is PortChannel<id>[.<vlan>]; get_intf_vlanid() above
+         * already split it into if_name / vlan_id.  Parse the id from the
+         * name *without* the VLAN suffix: std::stoi("1.20") stops at the
+         * '.' and silently yields 1, which used to drop the sub-interface
+         * and program the address onto the bond main interface. */
+        uint32_t bond_id = std::stoi(if_name.substr(strlen(PORTCHANNEL_PREFIX)));
+        if (vlan_id) {
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u.%u",
+                     BONDETHERNET_PREFIX, bond_id, vlan_id);
+        } else {
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u",
+                     BONDETHERNET_PREFIX, bond_id);
+        }
         hw_ifname = hw_bondifname;
     } else {
        hwifname = tap_to_hwif_name(if_name.c_str());
@@ -1639,11 +1901,22 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
         const char *parent_hwif;
         char hw_subif_parent[32];
+        char lcp_host_subif[64];
         if (ot == SAI_OBJECT_TYPE_LAG) {
             snprintf(hw_subif_parent, sizeof(hw_subif_parent), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
             parent_hwif = hw_subif_parent;
+            /*
+             * For a port-channel sub-port the LCP host tap must be be<id>.<vlan>
+             * (a VLAN netdev on the be<id> bond tap), NOT PortChannel<id>.<vlan>:
+             * that name collides with the kernel 8021q netdev owned by the Linux
+             * bond/team stack. linux-cp-punt-xc lands on be<id>.<vlan> and the
+             * sonic_ext aggr-tap-redirect steers the punted copy to the
+             * originating member tap (SONiC PR #2440 §5.3).
+             */
+            snprintf(lcp_host_subif, sizeof(lcp_host_subif), "be%u.%u", bond_info.id, vlan_id);
         } else {
             parent_hwif = tap_to_hwif_name(dev);
+            snprintf(lcp_host_subif, sizeof(lcp_host_subif), "%s", host_subifname);
         }
         create_sub_interface(parent_hwif, vlan_id, vlan_id);
 
@@ -1651,13 +1924,28 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
          * lcp-auto-subint is disabled in VPP startup config (vlan-bvi HLD §3.6),
          * so the VPP sub-interface does NOT get an automatic linux-cp pair.
          * Explicitly create the LCP pair binding <parent>.<vlan_id> (VPP side)
-         * to the kernel sub-vlan netdev (<dev>.<vlan_id>). Without this the
-         * sub-interface will not show up in `vppctl show lcp` and host punt
-         * will not work for the SUB_PORT RIF.
+         * to its host tap (Ethernet<n>.<vlan> for a port, be<id>.<vlan> for a
+         * port-channel). Without this the sub-interface will not show up in
+         * `vppctl show lcp` and host punt will not work for the SUB_PORT RIF.
          */
         char vpp_subif_name[64];
         snprintf(vpp_subif_name, sizeof(vpp_subif_name), "%s.%u", parent_hwif, vlan_id);
-        configure_lcp_interface(vpp_subif_name, host_subifname, true);
+        configure_lcp_interface(vpp_subif_name, lcp_host_subif, true);
+
+        /*
+         * lcp-auto-subint is disabled and linux-cp lcp-sync is off, so nothing
+         * brings the freshly created kernel sub-interface host netdev UP: it is
+         * created admin-down and stays down. A down host netdev drops the
+         * for-us punt (the kernel never processes it / generates no reply), so
+         * SUB_PORT datapath silently breaks. Explicitly bring the host tap UP
+         * here (SAI-driven, consistent with the no-lcp-sync design).
+         */
+        if (vs_set_dev_admin_up(lcp_host_subif, true) < 0)
+        {
+            SWSS_LOG_ERROR("Failed to bring host sub-interface %s admin up; "
+                           "for-us traffic punted to this SUB_PORT RIF will be dropped",
+                           lcp_host_subif);
+        }
 
         /* Get new list of physical interfaces from VS */
         refresh_interfaces_list();
@@ -1703,6 +1991,28 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         vpp_set_interface_mtu(obj_id, vlan_id, attr_type_mtu->value.u32);
     }
 
+    auto attr_type_mpls = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_MPLS_STATE, attr_count, attr_list);
+
+    if (attr_type_mpls != NULL)
+    {
+        std::string mpls_hwif_name;
+        if (vpp_get_hwif_name(obj_id, vlan_id, mpls_hwif_name))
+        {
+            CHECK_STATUS(ensureMplsTable());
+            int mpls_ret = sw_interface_set_mpls_enable(mpls_hwif_name.c_str(), attr_type_mpls->value.booldata);
+            if (mpls_ret != 0)
+            {
+                SWSS_LOG_ERROR("Failed to %s MPLS on router interface %s: %d",
+                               attr_type_mpls->value.booldata ? "enable" : "disable",
+                               mpls_hwif_name.c_str(), mpls_ret);
+                return SAI_STATUS_FAILURE;
+            }
+            SWSS_LOG_NOTICE("MPLS %s on router interface %s",
+                            attr_type_mpls->value.booldata ? "enabled" : "disabled",
+                            mpls_hwif_name.c_str());
+        }
+    }
+
     bool v4_is_up = false, v6_is_up = false;
 
     auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
@@ -1746,6 +2056,11 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
         return SAI_STATUS_FAILURE;
     }
     rif_type = attr.value.s32;
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+    {
+        return vpp_update_bvi_interface(object_id, attr_count, attr_list);
+    }
 
     attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
     status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &attr);
@@ -1798,6 +2113,28 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
     if (attr_type_mtu != NULL)
     {
         vpp_set_interface_mtu(obj_id, vlan_id, attr_type_mtu->value.u32);
+    }
+
+    auto attr_type_mpls = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_MPLS_STATE, attr_count, attr_list);
+
+    if (attr_type_mpls != NULL)
+    {
+        std::string mpls_hwif_name;
+        if (vpp_get_hwif_name(obj_id, vlan_id, mpls_hwif_name))
+        {
+            CHECK_STATUS(ensureMplsTable());
+            int mpls_ret = sw_interface_set_mpls_enable(mpls_hwif_name.c_str(), attr_type_mpls->value.booldata);
+            if (mpls_ret != 0)
+            {
+                SWSS_LOG_ERROR("Failed to %s MPLS on router interface %s: %d",
+                               attr_type_mpls->value.booldata ? "enable" : "disable",
+                               mpls_hwif_name.c_str(), mpls_ret);
+                return SAI_STATUS_FAILURE;
+            }
+            SWSS_LOG_NOTICE("MPLS %s on router interface %s",
+                            attr_type_mpls->value.booldata ? "enabled" : "disabled",
+                            mpls_hwif_name.c_str());
+        }
     }
 
     bool v4_is_up = false, v6_is_up = false;
@@ -1988,7 +2325,15 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     char vpp_subif_name[64];
     char host_subifname[64];
     snprintf(vpp_subif_name, sizeof(vpp_subif_name), "%s.%u", parent_hwif, vlan_id);
-    snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        /* Symmetric with create (SONiC PR #2440 §5.3): the host tap is
+         * be<id>.<vlan>. The host name is ignored by the LCP plugin on
+         * delete (the pair is keyed by the VPP sub-if), but keep it
+         * symmetric for log clarity. */
+        snprintf(host_subifname, sizeof(host_subifname), "be%u.%u", bond_info.id, vlan_id);
+    } else {
+        snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
+    }
     configure_lcp_interface(vpp_subif_name, host_subifname, false);
 
     delete_sub_interface(parent_hwif, vlan_id);

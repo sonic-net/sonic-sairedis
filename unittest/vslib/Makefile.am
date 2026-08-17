@@ -18,6 +18,7 @@ tests_SOURCES = main.cpp \
 				TestLaneMap.cpp \
 				TestLaneMapContainer.cpp \
 				TestLaneMapFileParser.cpp \
+				TestPortConfigFileParser.cpp \
 				TestMACsecAttr.cpp \
 				TestMACsecEgressFilter.cpp \
 				TestMACsecForwarder.cpp \
