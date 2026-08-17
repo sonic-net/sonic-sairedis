@@ -58,9 +58,9 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
 
         if (sw->hasNativePacketSampling())
         {
-            // VPP samples natively via SwitchVpp::sflowPortSamplePacketSet (PSAMPLE groups 3/4).
-            // Skip the legacy kernel tc(1) 'action sample group 1' sampler, which would otherwise
-            // add a second ingress sampler and double ingress flow samples at the collector.
+            // Do not install the kernel sampling action when the selected switch
+            // performs packet sampling directly. Enabling both paths would export
+            // each ingress sample twice.
             SWSS_LOG_INFO("native packet sampling; skipping kernel tc sampler for port %s",
                     sai_serialize_object_id(port_id).c_str());
             return SAI_STATUS_SUCCESS;

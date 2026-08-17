@@ -51,8 +51,8 @@ namespace saivs
 
             virtual ~SwitchVpp();
 
-            // VPP samples packets natively in the dataplane (SwitchVpp::sflowPortSamplePacketSet)
-            // so the base-class kernel tc(1) sampler in preSetPort must be skipped.
+            // This switch performs packet sampling directly in its data plane.
+            // Skip the base virtual switch kernel sampler to avoid duplicate ingress samples.
             bool hasNativePacketSampling() const override { return true; }
 
         protected:

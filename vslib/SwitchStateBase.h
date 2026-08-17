@@ -54,7 +54,8 @@ namespace saivs
 
             virtual ~SwitchStateBase();
 
-            // VPP programs packet sampling in the dataplane, base VS uses a kernel tc(1) sampler.
+            // Derived switch implementations may perform packet sampling directly.
+            // The base virtual switch keeps the kernel sampling path enabled.
             virtual bool hasNativePacketSampling() const { return false; }
 
         protected:

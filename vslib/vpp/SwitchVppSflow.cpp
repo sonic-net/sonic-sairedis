@@ -225,7 +225,7 @@ sai_status_t SwitchVpp::sflowPortSamplePacketSet(
     CHECK_STATUS_QUIET(sp_obj->get_mandatory_attr(rate_attr));
 
     uint32_t rate = rate_attr.value.u32;
-    
+
     CHECK_STATUS(sflowInterfaceSamplingRateSet(portId, rate));
     CHECK_STATUS(sflowInterfaceDirectionSet(portId, direction));
     return sflowEnableDisable(portId, true);
