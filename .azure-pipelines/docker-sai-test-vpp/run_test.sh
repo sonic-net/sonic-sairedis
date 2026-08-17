@@ -537,6 +537,11 @@ build_ptf_args()
         test_params="${test_params};common_configured='${common_configured}'"
     fi
 
+    if [[ "$test_target" == "sai_notification_test" || \
+          "$test_target" == sai_notification_test.* ]]; then
+        test_params="${test_params};vpp_notification_test='true'"
+    fi
+
     PTF_ARGS=(--test-dir "$SAI_TEST_DIR")
 
     for ((port_index = 0; port_index < PORT_COUNT; port_index++)); do

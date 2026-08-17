@@ -64,6 +64,7 @@ jobs:
           -v "$log_dir:/var/log" \
           "$image_tag" \
           sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test \
+          sai_notification_test \
           2>&1 | tee "$results_dir/run.log"
       matrix_rc=${PIPESTATUS[0]}
       set -e

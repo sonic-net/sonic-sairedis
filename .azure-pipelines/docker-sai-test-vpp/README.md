@@ -36,7 +36,7 @@ The framework exercises SAI operations (create/set/get/remove of ports, RIFs, ro
 
 The VPP SAI backend can build the switch + host-interfaces **once per saiserver process**. The OCP framework is built to configure a common T0 setup once and have subsequent tests reuse it (`common_configured=true`). But different test classes ask `T0TestBase.setUp` for *different* common configs (e.g. ECMP tests need next-hop groups), and rebuilding the full T0 config twice in one saiserver process can crash the backend.
 
-**Default (`ISOLATE_EACH_TEST=1`):** every requested test class runs in its **own** config group. Before each test, `run_test.sh` tears down and restarts Redis + VPP + saiserver, waits for the old VPP process to be fully reaped, then starts a fresh backend. Each test rebuilds its own common config (`common_configured=false`). This eliminates cross-test state contamination (ECMP `-6`/`-7` reuse artifacts, ordering-dependent flakes) at the cost of ~45–50 minutes for the full 4-module matrix (87 tests × ~30s recycle+rebuild each).
+**Default (`ISOLATE_EACH_TEST=1`):** every requested test class runs in its **own** config group. Before each test, `run_test.sh` tears down and restarts Redis + VPP + saiserver, waits for the old VPP process to be fully reaped, then starts a fresh backend. Each test rebuilds its own common config (`common_configured=false`). This eliminates cross-test state contamination (ECMP `-6`/`-7` reuse artifacts, ordering-dependent flakes) at the cost of ~50–55 minutes for the full 5-module matrix (92 tests × ~30s recycle+rebuild each).
 
 **Grouped mode (`ISOLATE_EACH_TEST=0`):** `run_test.sh` parses each test class's `setUp` (resolving config kwargs through the class **inheritance chain**) to compute a common-config "signature", groups tests by signature, and for each group restarts the backend once: the first test in the group builds + persists that group's config, the rest reuse it (`common_configured=true`). This is ~9× faster but passes fewer tests when upstream workarounds are not present.
 
@@ -52,8 +52,9 @@ The table below lists OCP `sai_test` classes that **pass** on the current VPP SA
 | `sai_neighbor_test` | `AddHostRouteTest`, `AddHostRouteTestV6`, `NhopDiffPrefixRemoveLonger`, `NhopDiffPrefixRemoveLongerV6`, `NhopDiffPrefixRemoveShorter`, `NhopDiffPrefixRemoveShorterV6`, `NoHostRouteTestV6` |
 | `sai_rif_test` | — |
 | `sai_route_test` | `DefaultRouteV4Test`, `DefaultRouteV6Test`, `LagMultipleRouteTest`, `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteRifTest`, `RouteRifv6Test`, `RouteSameSipDipv4Test`, `RouteSameSipDipv6Test`, `RouteUpdateTest`, `RouteUpdatev6Test`, `StaicSviMacFloodingTest`, `StaicSviMacFloodingV6Test` |
+| `sai_notification_test` | — |
 
-**30** classes are required to pass the PR check (`ci-pass-tests.txt`). The harness plans **87** test targets across the four modules above; `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries.
+**30** classes are required to pass the PR check (`ci-pass-tests.txt`). The harness plans **92** test targets across the five modules above; `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries. The five notification tests are VPP-harness opt-in and remain ungated until repeated runtime runs establish a stable pass.
 
 #### Flaky L3-over-LAG ECMP tests (run, not gated)
 
@@ -67,11 +68,11 @@ Promote one of these into `ci-pass-tests.txt` only after repeated clean runs sho
 
 ### CI regression baseline
 
-`ci-matrix-tests.txt` is the expected set of 85 runnable selectors from the four-module plan (the 87 planned classes include two non-runnable base classes). `ci-pass-tests.txt` is the **30-selector** stable-pass subset used by the PR check. CI requires the observed JUnit selector set to match the matrix contract, then leaves failures outside the stable baseline visible while failing on a missing, failed, errored, or skipped baseline selector.
+`ci-matrix-tests.txt` is the expected set of 90 runnable selectors from the five-module plan (the 92 planned classes include two non-runnable base classes). `ci-pass-tests.txt` is the **30-selector** stable-pass subset used by the PR check. CI requires the observed JUnit selector set to match the matrix contract, then leaves failures outside the stable baseline visible while failing on a missing, failed, errored, or skipped baseline selector.
 
 `evaluate_ci_baseline.py` compares the JUnit directory with the baseline, reports newly passing selectors as promotion candidates, and treats missing or malformed results and harness exit codes of 2 or greater as infrastructure failures. Baseline changes are reviewed explicitly; CI never updates the file automatically.
 
-When a runnable test class is added, removed, or renamed in one of the four CI modules, update the sorted, fully qualified selectors in `ci-matrix-tests.txt` in the same reviewed change.
+When a runnable test class is added, removed, or renamed in one of the five CI modules, update the sorted, fully qualified selectors in `ci-matrix-tests.txt` in the same reviewed change.
 
 ## b) Building the framework
 
@@ -232,13 +233,13 @@ With default `ISOLATE_EACH_TEST=1`, each selector still gets its own fresh backe
 ### Run whole modules, or everything
 
 ```bash
-# whole modules (default isolation: ~45-50 min for all four)
+# whole modules (default isolation: ~50-55 min for all five)
 docker run --rm --privileged -e PORT_COUNT=32 \
-  docker-sai-test-vpp:latest sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test
+  docker-sai-test-vpp:latest sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test sai_notification_test
 
 # faster grouped mode (~9x; fewer passes without upstream workarounds)
 docker run --rm --privileged -e PORT_COUNT=32 -e ISOLATE_EACH_TEST=0 \
-  docker-sai-test-vpp:latest sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test
+  docker-sai-test-vpp:latest sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test sai_notification_test
 
 # every discovered test class (no args)
 docker run --rm --privileged -e PORT_COUNT=32 docker-sai-test-vpp:latest
@@ -248,7 +249,7 @@ docker run --rm --privileged -e PORT_COUNT=32 docker-sai-test-vpp:latest
 
 PTF writes one JUnit-XML file per test into `/test-results`. By convention these land in the local-only `results/` tree (git-ignored; not published to the remote). Run from the `docker-sai-test-vpp/` directory and bind-mount `results/xml` out.
 
-For a full 4-module matrix, prefer **`nohup`** (or an equivalent detached logger) so a dropped SSH/IDE session does not kill the container mid-run. Tail the log file for progress — long runs produce megabytes of output and some IDE terminals stop updating while the run continues.
+For a full 5-module matrix, prefer **`nohup`** (or an equivalent detached logger) so a dropped SSH/IDE session does not kill the container mid-run. Tail the log file for progress — long runs produce megabytes of output and some IDE terminals stop updating while the run continues.
 
 ```bash
 cd <sonic-buildimage>/src/sonic-sairedis/.azure-pipelines/docker-sai-test-vpp
@@ -257,7 +258,7 @@ rm -f results/xml/TEST-*.xml
 nohup docker run --rm --privileged -e PORT_COUNT=32 \
   -v "$PWD/results/xml:/test-results" \
   docker-sai-test-vpp:latest \
-  sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test \
+  sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test sai_notification_test \
   > results/run.log 2>&1 &
 tail -f results/run.log
 ```
@@ -269,10 +270,10 @@ While a matrix run is in progress (from the `docker-sai-test-vpp/` directory):
 | | |
 |---|---|
 | **Log** | `results/run.log` (or whatever path you passed to `nohup` / `tee`) |
-| **Progress** | `grep -oE '\[[0-9]+/87\]' results/run.log \| tail -1` |
+| **Progress** | `grep -oE '\[[0-9]+/92\]' results/run.log \| tail -1` |
 | **Container** | `docker ps --filter ancestor=docker-sai-test-vpp:latest` |
 
-The `87` in the progress grep matches the four-module isolation plan (`sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test`). For other selectors, use `grep -oE '\[[0-9]+/[0-9]+\]'` instead.
+The `92` in the progress grep matches the five-module isolation plan (`sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test sai_notification_test`). For other selectors, use `grep -oE '\[[0-9]+/[0-9]+\]'` instead.
 
 Monitor progress without the full firehose:
 
