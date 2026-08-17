@@ -867,6 +867,36 @@ namespace saivs
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_mbr_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
+
+            // Generic per-port ACL table bookkeeping.
+            //
+            // m_port_acl_tables records, per VPP interface (hwif name), the set
+            // of ACL tables currently bound to it in each direction. It is not
+            // specific to any feature: it provides a forward (port -> tables)
+            // and, via getPortsWithAclTable(), a reverse (table -> ports)
+            // lookup for anything that needs to map ports to ACL tables (the
+            // ip2me hook today, egress features tomorrow).
+            struct PortAclTables
+            {
+                std::set<sai_object_id_t> ingress;
+                std::set<sai_object_id_t> egress;
+            };
+            std::map<std::string, PortAclTables> m_port_acl_tables;
+
+            // ip2me (receive-DPO check before ACL) tracking.
+            //
+            // A table is an "ip2me drop table" if it carries at least one
+            // DROP/deny rule and could therefore discard ip2me (for-us)
+            // traffic; the set is kept current by AclTblConfig. A table whose
+            // drop-ness flips after it is bound is re-evaluated against the
+            // ingress bindings in m_port_acl_tables. The sonic_ext ip2me
+            // feature is enabled on an interface while any of its bound ingress
+            // tables is a drop table, and disabled otherwise;
+            // m_ip2me_enabled_ports records the last programmed state to keep
+            // the enable/disable calls idempotent.
+            std::set<sai_object_id_t> m_ip2me_drop_tables;
+            std::set<std::string> m_ip2me_enabled_ports;
+
             std::map<std::string, uint32_t> m_routeStatsIndexMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsBaseMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsCarryMap;
@@ -1122,6 +1152,34 @@ namespace saivs
                     _In_ sai_object_id_t tbl_grp_oid,
                     _In_ sai_object_id_t tbl_oid,
                     _In_ bool is_bind);
+
+            /*
+             * Generic port <-> ACL-table binding bookkeeping (both
+             * directions), backing m_port_acl_tables. Not specific to ip2me --
+             * see SwitchVppAcl.cpp.
+             */
+            void updatePortAclTableBinding(
+                    _In_ const std::string &hwif_name,
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool is_input,
+                    _In_ bool is_bind);
+
+            std::vector<std::string> getPortsWithAclTable(
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool is_input);
+
+            /*
+             * ip2me (receive-DPO check before ACL) helpers -- see
+             * SwitchVppAcl.cpp. They keep the sonic_ext ip2me feature enabled
+             * on exactly the VPP interfaces that have an ingress drop ACL
+             * bound, so ip2me (for-us) traffic can bypass it.
+             */
+            void ip2meUpdateDropTable(
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool has_deny);
+
+            void ip2meRefreshPort(
+                    _In_ const std::string &hwif_name);
 
             sai_status_t getAclEntryStats(
                     _In_ sai_object_id_t ace_cntr_oid,
