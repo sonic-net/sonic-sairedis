@@ -23,6 +23,10 @@ parameters:
 - name: artifact_name
   type: string
 
+- name: debian_version
+  type: string
+  default: bookworm
+
 - name: asan
   type: boolean
   default: false
@@ -68,7 +72,7 @@ jobs:
       runVersion: 'latestFromBranch'
       runBranch: 'refs/heads/$(BUILD_BRANCH)'
       path: $(Build.ArtifactStagingDirectory)/download
-      patterns: '**/target/debs/*/libnexthopgroup_*.deb'
+      patterns: 'target/debs/${{ parameters.debian_version }}/libnexthopgroup_*.deb'
     displayName: "Download sonic-buildimage libnexthopgroup package"
   - task: DownloadPipelineArtifact@2
     inputs:
@@ -117,7 +121,7 @@ jobs:
       mkdir -p .azure-pipelines/docker-sonic-vs/debs
 
       cp -v $(Build.ArtifactStagingDirectory)/download/*.deb .azure-pipelines/docker-sonic-vs/debs
-      find $(Build.ArtifactStagingDirectory)/download -name 'libnexthopgroup_*.deb' -exec cp "{}" .azure-pipelines/docker-sonic-vs/debs \;
+      cp -v $(Build.ArtifactStagingDirectory)/download/target/debs/${{ parameters.debian_version }}/libnexthopgroup_*.deb .azure-pipelines/docker-sonic-vs/debs
 
       pushd .azure-pipelines
 
