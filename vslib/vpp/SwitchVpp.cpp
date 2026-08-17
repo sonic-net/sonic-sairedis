@@ -1287,8 +1287,12 @@ void SwitchVpp::processFdbEntriesForAging()
 
         auto bd_it = m_swif_to_bdid.find(ev.sw_if_index);
         if (bd_it == m_swif_to_bdid.end()) {
-            SWSS_LOG_DEBUG("FDB: unknown sw_if_index %u in MAC event, skipping",
-                           ev.sw_if_index);
+            SWSS_LOG_WARN("FDB: dropping MAC event for untracked sw_if_index %u "
+                          "(action %u, MAC %02x:%02x:%02x:%02x:%02x:%02x); "
+                          "VPP L2FIB will desync from ASIC_DB/STATE_DB",
+                          ev.sw_if_index, ev.action,
+                          ev.mac[0], ev.mac[1], ev.mac[2],
+                          ev.mac[3], ev.mac[4], ev.mac[5]);
             events.pop();
             continue;
         }
