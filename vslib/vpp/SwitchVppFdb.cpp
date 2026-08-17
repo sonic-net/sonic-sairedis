@@ -1202,10 +1202,11 @@ sai_status_t SwitchVpp::vpp_create_lag(
     mode = VPP_BOND_API_MODE_XOR;
     lb = VPP_BOND_API_LB_ALGO_L34_INNER;
 
-    create_bond_interface(bond_id, mode, lb, &swif_idx);
-    if (swif_idx == static_cast<uint32_t>(~0))
+    int ret = create_bond_interface(bond_id, mode, lb, &swif_idx);
+    if (ret != 0 || swif_idx == static_cast<uint32_t>(~0) || swif_idx == 0)
     {
-        SWSS_LOG_ERROR("failed to create bond interface in VPP for %s", sai_serialize_object_id(lag_id).c_str());
+        SWSS_LOG_ERROR("failed to create bond interface in VPP for %s (ret=%d, swif_idx=%u)",
+                sai_serialize_object_id(lag_id).c_str(), ret, swif_idx);
         return SAI_STATUS_FAILURE;
     }
 
@@ -1364,6 +1365,13 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
         return SAI_STATUS_FAILURE;
     }
 
+    // Enslaving a port into the bond clears its promiscuous flag in VPP, so
+    // re-apply it here. Traffic forwarded over the PortChannel arrives with the
+    // common SONiC router MAC (different from the member's hardware MAC), and
+    // PortChannel sub-interface traffic is VLAN tagged against the bond rather
+    // than the member, neither of which the member accepts unless promiscuous.
+    interface_set_promiscuous(hwifname, true);
+
     CHECK_STATUS(vpp_ensure_lag_lcp(lag_oid));
 
     return SAI_STATUS_SUCCESS;
@@ -1396,14 +1404,17 @@ sai_status_t SwitchVpp::vpp_ensure_lag_lcp(
 
     configure_lcp_interface(hw_ifname, tap.c_str(), true);
 
-    std::string portchannel = std::string("PortChannel") + std::to_string(bond_id);
-    std::string be = std::string("be") + std::to_string(bond_id);
-    CHECK_STATUS(add_tc_filter_redirect(be, portchannel));
-
+    /*
+     * Control-plane punt for the port channel is handled by the sonic_ext
+     * plugin's punt-via-member path (sonic-ext-capture + aggr-tap-redirect),
+     * which steers the punted copy to the originating member tap. The legacy
+     * be<id> -> PortChannel<id> tc mirred redirect is no longer needed and is
+     * intentionally not installed (SONiC PR #2440 §5.3).
+     */
     bond_info.lcp_created = true;
     m_lag_bond_map[lag_oid] = bond_info;
 
-    SWSS_LOG_NOTICE("Created LCP and tc redirect for LAG %s", sai_serialize_object_id(lag_oid).c_str());
+    SWSS_LOG_NOTICE("Created LCP for LAG %s", sai_serialize_object_id(lag_oid).c_str());
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1596,6 +1607,9 @@ sai_status_t SwitchVpp::vpp_set_lag_member_egress_disable(
     }
     else
     {
+        // Re-attaching enslaves the port again, which clears its promiscuous
+        // flag in VPP, so re-apply it just like vpp_create_lag_member() does.
+        interface_set_promiscuous(hwif_name, true);
         m_egress_disabled_lag_member_ports.erase(port_oid);
     }
 

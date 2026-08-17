@@ -38,12 +38,14 @@ ip6 {
 plugins {
   plugin default { disable }
   plugin af_packet_plugin.so { enable }
+  plugin tap_plugin.so { enable }
   plugin linux_cp_plugin.so { enable }
   plugin linux_nl_plugin.so { enable }
   plugin acl_plugin.so { enable }
   plugin vxlan_plugin.so { enable }
   plugin tunterm_acl_plugin.so { enable }
   plugin ip_validate_plugin.so { enable }
+  plugin sflow_plugin.so { enable }
 }
 
 linux-cp {
