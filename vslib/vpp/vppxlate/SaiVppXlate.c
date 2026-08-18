@@ -3745,6 +3745,8 @@ int vpp_sflow_enable_disable(const char *hwif_name, bool enable)
     S(mp);
     WR(ret);
 
+    ret = vpp_normalize_ret(ret, false, __func__);
+
     if (ret) {
         SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable);
     } else {
