@@ -582,6 +582,20 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
+    /* Disable unknown-unicast flooding on this bridge domain.
+     *
+     * VPP auto-creates the bridge domain (with all flooding enabled by
+     * default) when the first member is added above. Clearing UU_FLOOD makes
+     * VPP drop unknown-unicast frames (destination MAC not in the L2FIB)
+     * instead of flooding them to all BD members. Broadcast/multicast
+     * flooding (VPP_BD_FLAG_FLOOD) is left enabled so ARP/ND still work.
+     *
+     * Best-effort: on failure the member still comes up, only unknown-unicast
+     * flooding remains enabled.
+     */
+    if (set_bridge_domain_flags(bridge_id, VPP_BD_FLAG_UU_FLOOD, false) != 0) {
+        SWSS_LOG_WARN("Failed to disable UU flood on bridge domain %u", bridge_id);
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -2012,6 +2026,27 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
 
     uint32_t bd_id = attr.value.u16; /* bd_id is same as VLAN ID for .1Q bridge */
 
+    /*
+     * Remove any stale entry from the m_vpp_fdb_entries dedup snapshot.
+     * This snapshot is used to suppress duplicate LEARNED notifications in
+     * processFdbEntriesForAging(). If we delete the L2FIB entry here (or
+     * orchagent removes it) but leave the snapshot key behind, a subsequent
+     * VPP re-learn of the same MAC is treated as "already known" and no
+     * LEARNED notification is generated -- leaving ASIC_DB/STATE_DB out of
+     * sync with the VPP dataplane until an explicit fdb flush.
+     */
+    VppFdbKey snap_key;
+    memcpy(snap_key.mac, fdb_entry.mac_address, sizeof(snap_key.mac));
+    snap_key.bd_id = bd_id;
+
+    auto snap_it = m_vpp_fdb_entries.find(snap_key);
+    if (snap_it != m_vpp_fdb_entries.end())
+    {
+        m_vpp_fdb_entries.erase(snap_it);
+        SWSS_LOG_INFO("FDB: removed stale snapshot entry for MAC %s bd %u on delete",
+                sai_serialize_mac(fdb_entry.mac_address).c_str(), bd_id);
+    }
+
     std::string ifname;
 
     if (vpp_get_hwif_name(port_id, 0, ifname) == true)
@@ -2332,6 +2367,19 @@ void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)
     if (swif != (uint32_t)~0u)
     {
         m_swif_to_bdid[swif] = bd_id;
+        SWSS_LOG_NOTICE("FDB: tracking sw_if_index %u -> bd %u for %s",
+                        swif, bd_id, hwif_name);
+    }
+    else
+    {
+        // vpp_get_swif_idx_by_name() resolves against a locally cached
+        // interface table populated by sw_interface_dump. A miss here means
+        // every MAC learn/age event VPP reports for this interface will be
+        // dropped (its sw_if_index never enters m_swif_to_bdid), silently
+        // desyncing the VPP L2FIB from ASIC_DB/STATE_DB.
+        SWSS_LOG_ERROR("FDB: cannot resolve sw_if_index for %s (bd %u); "
+                       "MAC events for this interface will be dropped",
+                       hwif_name, bd_id);
     }
 }
 

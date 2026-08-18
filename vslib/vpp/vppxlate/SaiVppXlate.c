@@ -1436,7 +1436,20 @@ vl_api_l2_macs_event_t_handler (vl_api_l2_macs_event_t *mp)
             vl_api_mac_entry_t *e = &mp->mac[off + i];
             memcpy(g_mac_event_batch[i].mac, e->mac_addr, 6);
             g_mac_event_batch[i].sw_if_index = ntohl(e->sw_if_index);
-            g_mac_event_batch[i].action = (uint8_t)e->action;
+            /*
+             * mac_entry.action is a 4-byte vl_api_mac_event_action_t that VPP
+             * sends in network byte order, exactly like sw_if_index above:
+             *   l2fib_scan(): mp->mac[evt_idx].action = htonl(...action);
+             * Casting the raw field to uint8_t without ntohl() truncates to the
+             * least significant byte, which on little-endian hosts is 0 for every
+             * non-zero action:
+             *   ADD    (0) -> htonl(0) = 0x00000000 -> 0 -> ADD    (correct by luck)
+             *   DELETE (1) -> htonl(1) = 0x01000000 -> 0 -> ADD    (WRONG)
+             *   MOVE   (2) -> htonl(2) = 0x02000000 -> 0 -> ADD    (WRONG)
+             * i.e. aged-out and flushed MACs were reported to SONiC as LEARNED,
+             * repopulating ASIC_DB/STATE_DB with entries VPP had just deleted.
+             */
+            g_mac_event_batch[i].action = (uint8_t)ntohl((uint32_t)e->action);
         }
         g_mac_event_cb(g_mac_event_batch, chunk, g_mac_event_ctx);
     }
