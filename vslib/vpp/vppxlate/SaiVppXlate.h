@@ -24,10 +24,21 @@ extern "C" {
 
     typedef enum {
 	VPP_NEXTHOP_NORMAL = 1,
-	VPP_NEXTHOP_LOCAL = 2
+    VPP_NEXTHOP_LOCAL = 2,
+    VPP_NEXTHOP_DROP = 3
     } vpp_nexthop_type_e;
 
-    typedef struct vpp_ip_addr_ {
+    /* Maximum MPLS label stack depth carried on a single fib path (VPP API limit). */
+#define VPP_MPLS_MAX_LABELS 16
+    /*
+     * TTL used for an imposed label when the SAI next hop does not carry an
+     * explicit one, i.e. when SAI_NEXT_HOP_ATTR_OUTSEG_TTL_MODE is UNIFORM (the
+     * SAI default) and the TTL is therefore taken from the payload rather than
+     * from SAI_NEXT_HOP_ATTR_OUTSEG_TTL_VALUE.
+     */
+#define MPLS_DEFAULT_OUT_TTL 64
+
+typedef struct vpp_ip_addr_ {
 	int sa_family;
 	union {
 	    struct sockaddr_in ip4;
@@ -43,6 +54,18 @@ extern "C" {
         uint8_t preference;
 	vpp_nexthop_type_e type;
         uint32_t flags;
+        uint8_t n_labels;
+        /*
+         * Labels imposed on an IP route (ingress LER). SAI models the TTL and
+         * EXP treatment per next hop rather than per label
+         * (SAI_NEXT_HOP_ATTR_OUTSEG_{TTL,EXP}_{MODE,VALUE}), so the label
+         * values are carried here and the treatment below is applied to every
+         * label in the stack when the VPP fib path is built.
+         */
+        uint32_t label_stack[VPP_MPLS_MAX_LABELS];
+        uint8_t out_ttl;         /* TTL for imposed labels (PIPE mode uses the SAI value) */
+        uint8_t out_exp;         /* EXP for imposed labels */
+        uint8_t out_is_uniform;  /* 1 = UNIFORM (derive from payload), 0 = PIPE */
     } vpp_ip_nexthop_t;
 
     typedef struct vpp_ip_route_ {
@@ -179,6 +202,35 @@ extern "C" {
         uint32_t fib_table;
         vpp_prefix_t prefix;
     } vpp_sr_steer_t;
+
+    typedef struct vpp_mpls_label_ {
+        uint32_t label;
+        uint8_t  ttl;
+        uint8_t  exp;
+        uint8_t  is_uniform;
+    } vpp_mpls_label_t;
+
+    typedef struct vpp_mpls_nexthop_ {
+        vpp_ip_addr_t addr;
+        uint32_t      sw_if_index;
+        const char   *hwif_name;
+        uint8_t       weight;
+        uint8_t       preference;
+        vpp_nexthop_type_e type;
+        uint8_t       n_labels;
+        vpp_mpls_label_t label_stack[VPP_MPLS_MAX_LABELS];
+    } vpp_mpls_nexthop_t;
+
+    typedef struct vpp_mpls_route_ {
+        uint32_t      table_id;
+        uint32_t      label;
+        uint8_t       eos;
+        int           eos_proto_af;   /* AF_INET / AF_INET6 for post-pop lookup proto */
+        bool          is_multipath;
+        unsigned int  nexthop_cnt;
+        vpp_mpls_nexthop_t nexthop[0];
+    } vpp_mpls_route_t;
+
 
     typedef struct vpp_event_info_ {
 	struct vpp_event_info_ *next;
@@ -402,6 +454,8 @@ typedef enum {
 
     extern int vpp_sflow_enable_disable(const char *hwif_name, bool enable);
     extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
+
+    extern int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable);
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
     extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
     extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
@@ -430,6 +484,9 @@ typedef enum {
                                                     bool is_input);
     extern int vpp_add_node_next(const char *node_name, const char *next_name,
                                        uint32_t *next_index);
+    extern int sw_interface_set_mpls_enable(const char *hwif_name, bool enable);
+    extern int mpls_table_add_del(uint32_t table_id, bool is_add);
+    extern int mpls_route_add_del(vpp_mpls_route_t *route, bool is_add);
 #ifdef __cplusplus
 }
 #endif

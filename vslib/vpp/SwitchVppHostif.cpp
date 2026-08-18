@@ -98,6 +98,60 @@ int SwitchVpp::vs_set_dev_mac_address(
     return err;
 }
 
+int SwitchVpp::vs_set_dev_admin_up(
+        _In_ const char *dev,
+        _In_ bool up)
+{
+    SWSS_LOG_ENTER();
+
+    int s = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (s < 0)
+    {
+        SWSS_LOG_ERROR("failed to create socket, errno: %d", errno);
+
+        return -1;
+    }
+
+    struct ifreq ifr;
+
+    memset(&ifr, 0, sizeof(ifr));
+
+    strncpy(ifr.ifr_name, dev, MAX_INTERFACE_NAME_LEN);
+
+    int err = ioctl(s, SIOCGIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCGIFFLAGS on %s failed, err %d", dev, err);
+
+        close(s);
+
+        return err;
+    }
+
+    if (up)
+    {
+        ifr.ifr_flags |= IFF_UP;
+    }
+    else
+    {
+        ifr.ifr_flags &= ~IFF_UP;
+    }
+
+    err = ioctl(s, SIOCSIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCSIFFLAGS %s on %s failed, err %d",
+                (up ? "UP" : "DOWN"), dev, err);
+    }
+
+    close(s);
+
+    return err;
+}
+
 int SwitchVpp::promisc(
         _In_ const char *dev)
 {

@@ -101,6 +101,13 @@ void create_vpp_nexthop_entry (
     vpp_nexthop->sw_if_index = nxt_grp_member->sw_if_index;
     vpp_nexthop->weight = (uint8_t) nxt_grp_member->weight;
     vpp_nexthop->preference = 0;
+    vpp_nexthop->n_labels = nxt_grp_member->n_labels;
+    vpp_nexthop->out_ttl = nxt_grp_member->out_ttl;
+    vpp_nexthop->out_exp = nxt_grp_member->out_exp;
+    vpp_nexthop->out_is_uniform = nxt_grp_member->out_is_uniform;
+    for (uint8_t li = 0; li < nxt_grp_member->n_labels && li < VPP_MPLS_MAX_LABELS; li++) {
+        vpp_nexthop->label_stack[li] = nxt_grp_member->label_stack[li];
+    }
 }
 
 const char* SwitchVpp::resolveNexthopMemberHwif(
@@ -162,7 +169,35 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         packet_action = attr.value.s32;
     }
 
-    // We should program drop routes
+    sai_route_entry_t route_entry;
+    sai_deserialize_route_entry(serializedObjectId, route_entry);
+
+    if (packet_action == SAI_PACKET_ACTION_DROP) {
+        std::shared_ptr<IpVrfInfo> vrf = vpp_get_ip_vrf(route_entry.vr_id);
+        uint32_t vrf_id = vrf == nullptr ? 0 : vrf->m_vrf_id;
+        vpp_ip_route_t *ip_route = (vpp_ip_route_t *)
+            calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
+        if (!ip_route) {
+            return SAI_STATUS_FAILURE;
+        }
+
+        create_route_prefix_entry(&route_entry, ip_route);
+        ip_route->vrf_id = vrf_id;
+        ip_route->nexthop_cnt = 1;
+        ip_route->nexthop[0].addr.sa_family = ip_route->prefix_addr.sa_family;
+        ip_route->nexthop[0].sw_if_index = (uint32_t)~0;
+        ip_route->nexthop[0].weight = 1;
+        ip_route->nexthop[0].type = VPP_NEXTHOP_DROP;
+
+        ret = ip_route_add_del_get_stats(ip_route, is_add, is_add ? stats_index : NULL);
+        free(ip_route);
+
+        SWSS_LOG_NOTICE("%s drop route in VS %s status %d table %u",
+                        is_add ? "Add" : "Remove",
+                        serializedObjectId.c_str(), ret, vrf_id);
+        return ret == 0 ? SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
+    }
+
     if (packet_action != SAI_PACKET_ACTION_FORWARD) {
         SWSS_LOG_NOTICE("Ignoring ip route %s: action is not forward: %d",
                         serializedObjectId.c_str(), packet_action);
@@ -178,12 +213,9 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
     }
     next_hop_oid = attr.value.oid;
 
-    sai_route_entry_t route_entry;
     const char *hwif_name = NULL;
     vpp_nexthop_type_e nexthop_type = VPP_NEXTHOP_NORMAL;
     bool config_ip_route = false;
-
-    sai_deserialize_route_entry(serializedObjectId, route_entry);
 
     nexthop_grp_config_t *nxthop_group = NULL;
 
@@ -233,7 +265,14 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         }
         create_route_prefix_entry(&route_entry, ip_route);
         ip_route->vrf_id = vrf_id;
-        ip_route->is_multipath = (nxthop_group->nmembers > 1) ? true : false;
+        // Single-NH routes: replace on add (authoritative) but retract only this
+        // path on remove. A host route (/32, /128) can share its FIB prefix with a
+        // coexisting neighbor host route in dual-ToR; deleting the whole prefix on
+        // remove (is_multipath=0) would clobber that coexisting route. Removing only
+        // this path leaves any other contributor intact, and is equivalent to a
+        // whole-prefix delete when this is the only path. ECMP (nmembers>1) is
+        // already path-based on both add and remove.
+        ip_route->is_multipath = (nxthop_group->nmembers > 1) || !is_add;
 
         nexthop_grp_member_t *nxt_grp_member;
 
