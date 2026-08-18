@@ -265,7 +265,14 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         }
         create_route_prefix_entry(&route_entry, ip_route);
         ip_route->vrf_id = vrf_id;
-        ip_route->is_multipath = (nxthop_group->nmembers > 1) ? true : false;
+        // Single-NH routes: replace on add (authoritative) but retract only this
+        // path on remove. A host route (/32, /128) can share its FIB prefix with a
+        // coexisting neighbor host route in dual-ToR; deleting the whole prefix on
+        // remove (is_multipath=0) would clobber that coexisting route. Removing only
+        // this path leaves any other contributor intact, and is equivalent to a
+        // whole-prefix delete when this is the only path. ECMP (nmembers>1) is
+        // already path-based on both add and remove.
+        ip_route->is_multipath = (nxthop_group->nmembers > 1) || !is_add;
 
         nexthop_grp_member_t *nxt_grp_member;
 
