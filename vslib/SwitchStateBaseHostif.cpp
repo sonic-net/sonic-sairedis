@@ -140,7 +140,7 @@ void SwitchStateBase::send_port_oper_status_notification(
 {
     SWSS_LOG_ENTER();
 
-    sai_port_oper_status_notification_t data;
+    sai_port_oper_status_notification_t data = {};
 
     data.port_id = portId;
     data.port_state = status;
@@ -186,6 +186,13 @@ void SwitchStateBase::send_port_oper_status_notification(
         }
     }
 
+    // Record the new state before deciding whether anyone is listening. The
+    // check above suppresses a notification when SAI_PORT_ATTR_OPER_STATUS
+    // already matches, so leaving the attribute stale while no callback is
+    // registered would make the next genuine transition look like a no-op and
+    // swallow it.
+    update_port_oper_status(portId, data.port_state);
+
     attr.id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
 
     if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
@@ -204,10 +211,6 @@ void SwitchStateBase::send_port_oper_status_notification(
     sai_switch_notifications_t sn = { };
 
     sn.on_port_state_change = (sai_port_state_change_notification_fn)attr.value.ptr;
-
-    attr.id = SAI_PORT_ATTR_OPER_STATUS;
-
-    update_port_oper_status(portId, data.port_state);
 
     SWSS_LOG_NOTICE("send event SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY for port %s: %s",
             sai_serialize_object_id(data.port_id).c_str(),
