@@ -36,7 +36,7 @@ The framework exercises SAI operations (create/set/get/remove of ports, RIFs, ro
 
 The VPP SAI backend can build the switch + host-interfaces **once per saiserver process**. The OCP framework is built to configure a common T0 setup once and have subsequent tests reuse it (`common_configured=true`). But different test classes ask `T0TestBase.setUp` for *different* common configs (e.g. ECMP tests need next-hop groups), and rebuilding the full T0 config twice in one saiserver process can crash the backend.
 
-**Default (`ISOLATE_EACH_TEST=1`):** every requested test class runs in its **own** config group. Before each test, `run_test.sh` tears down and restarts Redis + VPP + saiserver, waits for the old VPP process to be fully reaped, then starts a fresh backend. Each test rebuilds its own common config (`common_configured=false`). This eliminates cross-test state contamination (ECMP `-6`/`-7` reuse artifacts, ordering-dependent flakes) at the cost of ~50–55 minutes for the full 5-module matrix (92 tests × ~30s recycle+rebuild each).
+**Default (`ISOLATE_EACH_TEST=1`):** every requested test class runs in its **own** config group. Before each test, `run_test.sh` tears down and restarts Redis + VPP + saiserver, waits for the old VPP process to be fully reaped, then starts a fresh backend. Each test rebuilds its own common config (`common_configured=false`). This eliminates cross-test state contamination (ECMP `-6`/`-7` reuse artifacts, ordering-dependent flakes) at the cost of ~50–55 minutes for the full 5-module matrix (90 tests × ~30s recycle+rebuild each).
 
 **Grouped mode (`ISOLATE_EACH_TEST=0`):** `run_test.sh` parses each test class's `setUp` (resolving config kwargs through the class **inheritance chain**) to compute a common-config "signature", groups tests by signature, and for each group restarts the backend once: the first test in the group builds + persists that group's config, the rest reuse it (`common_configured=true`). This is ~9× faster but passes fewer tests when upstream workarounds are not present.
 
@@ -44,7 +44,7 @@ Set `COMMON_CONFIGURED_REUSE=0` only for legacy single-invocation debugging (one
 
 ### Supported tests
 
-The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-07-21** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test` on `sai_vpp_ut_phase3`, `ISOLATE_EACH_TEST=1`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
+The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-08-19** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test sai_notification_test` on `sai_vpp_ut_phase4`, `ISOLATE_EACH_TEST=1`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
 
 | Module | Passing test classes (CI required) |
 |---|---|
@@ -52,9 +52,9 @@ The table below lists OCP `sai_test` classes that **pass** on the current VPP SA
 | `sai_neighbor_test` | `AddHostRouteTest`, `AddHostRouteTestV6`, `NhopDiffPrefixRemoveLonger`, `NhopDiffPrefixRemoveLongerV6`, `NhopDiffPrefixRemoveShorter`, `NhopDiffPrefixRemoveShorterV6`, `NoHostRouteTestV6` |
 | `sai_rif_test` | — |
 | `sai_route_test` | `DefaultRouteV4Test`, `DefaultRouteV6Test`, `LagMultipleRouteTest`, `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteRifTest`, `RouteRifv6Test`, `RouteSameSipDipv4Test`, `RouteSameSipDipv6Test`, `RouteUpdateTest`, `RouteUpdatev6Test`, `StaicSviMacFloodingTest`, `StaicSviMacFloodingV6Test` |
-| `sai_notification_test` | — |
+| `sai_notification_test` | `BfdMultihopTest`, `BfdSessionDownTest`, `BfdSessionUpTest`, `PortStateChangeTest`, `PortStateRecoveryTest` |
 
-**30** classes are required to pass the PR check (`ci-pass-tests.txt`). The harness plans **92** test targets across the five modules above; `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries. The five notification tests are VPP-harness opt-in and remain ungated until repeated runtime runs establish a stable pass.
+**35** classes are required to pass the PR check (`ci-pass-tests.txt`). The harness plans **90** test targets across the five modules above — the runnable classes only, since `run_test.sh` applies ptf's own `runTest` discovery rule and skips helper and intermediate base classes. `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries. The five notification tests are VPP-harness opt-in; they were promoted after three consecutive clean module runs plus a clean full-matrix run.
 
 #### Flaky L3-over-LAG ECMP tests (run, not gated)
 
@@ -68,7 +68,7 @@ Promote one of these into `ci-pass-tests.txt` only after repeated clean runs sho
 
 ### CI regression baseline
 
-`ci-matrix-tests.txt` is the expected set of 90 runnable selectors from the five-module plan (the 92 planned classes include two non-runnable base classes). `ci-pass-tests.txt` is the **30-selector** stable-pass subset used by the PR check. CI requires the observed JUnit selector set to match the matrix contract, then leaves failures outside the stable baseline visible while failing on a missing, failed, errored, or skipped baseline selector.
+`ci-matrix-tests.txt` is the expected set of 90 runnable selectors from the five-module plan, and matches the planner output exactly. `ci-pass-tests.txt` is the **35-selector** stable-pass subset used by the PR check. CI requires the observed JUnit selector set to match the matrix contract, then leaves failures outside the stable baseline visible while failing on a missing, failed, errored, or skipped baseline selector.
 
 `evaluate_ci_baseline.py` compares the JUnit directory with the baseline, reports newly passing selectors as promotion candidates, and treats missing or malformed results and harness exit codes of 2 or greater as infrastructure failures. Baseline changes are reviewed explicitly; CI never updates the file automatically.
 
@@ -270,10 +270,10 @@ While a matrix run is in progress (from the `docker-sai-test-vpp/` directory):
 | | |
 |---|---|
 | **Log** | `results/run.log` (or whatever path you passed to `nohup` / `tee`) |
-| **Progress** | `grep -oE '\[[0-9]+/92\]' results/run.log \| tail -1` |
+| **Progress** | `grep -oE '\[[0-9]+/90\]' results/run.log \| tail -1` |
 | **Container** | `docker ps --filter ancestor=docker-sai-test-vpp:latest` |
 
-The `92` in the progress grep matches the five-module isolation plan (`sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test sai_notification_test`). For other selectors, use `grep -oE '\[[0-9]+/[0-9]+\]'` instead.
+The `90` in the progress grep matches the five-module isolation plan (`sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test sai_notification_test`). For other selectors, use `grep -oE '\[[0-9]+/[0-9]+\]'` instead.
 
 Monitor progress without the full firehose:
 
@@ -363,5 +363,5 @@ The VPP SAI profile resolves port lane sets through `port_config.ini`. The produ
 - The VPP SAI backend can build the switch once per saiserver process; `run_test.sh` restarts the backend per test (default) or per config-signature group — do not expect to re-run a full config build inside a single long-lived saiserver.
 - **`stop_backend()` waits for child exit:** `terminate_process()` calls `wait` on VPP/saiserver/redis PIDs after they die so the next `start_vpp()` cannot overlap with a dying instance (avoids transient `Killed vpp` during per-test recycle).
 - **`Set port...` / `Turn up ports...` looks hung:** each test's T0 common-config build spends ~10–20s on port admin-up and veth bring-up with little console output; this is normal, not a deadlock.
-- **Long matrix runs:** use `nohup` + `tail -f results/run.log`; do not rely on IDE agent terminals for live progress on 87-test isolation runs.
+- **Long matrix runs:** use `nohup` + `tail -f results/run.log`; do not rely on IDE agent terminals for live progress on 90-test isolation runs.
 - A benign `buffer: numa[1] falling back to non-hugepage backed buffer pool` line at teardown is a host hugepage-availability warning, not a test failure.
