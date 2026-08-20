@@ -156,6 +156,12 @@ typedef struct _sai_redis_flex_counter_group_parameter_t
 
 } sai_redis_flex_counter_group_parameter_t;
 
+typedef struct _sai_redis_flex_counter_group_secondary_poll_factor_parameter_t
+{
+    sai_s8_list_t counter_group_name;
+    sai_s8_list_t secondary_poll_factor;
+} sai_redis_flex_counter_group_secondary_poll_factor_parameter_t;
+
 typedef struct _sai_redis_flex_counter_parameter_t
 {
     /**
@@ -363,6 +369,15 @@ typedef enum _sai_redis_switch_attr_t
      * @default 0
      */
     SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER,
+
+    /**
+    * @brief Set secondary poll factor for a flex counter group
+    *
+    * @type sai_redis_flex_counter_group_secondary_poll_factor_parameter_t
+    * @flags CREATE_AND_SET
+    * @default 0
+    */
+    SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP_SECONDARY_POLL_FACTOR,
 
 } sai_redis_switch_attr_t;
 

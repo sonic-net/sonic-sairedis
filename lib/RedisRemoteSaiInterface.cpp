@@ -531,6 +531,10 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
             return notifyCounterOperations(objectId,
                                            reinterpret_cast<sai_redis_flex_counter_parameter_t*>(attr->value.ptr));
 
+        case SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP_SECONDARY_POLL_FACTOR:
+            return notifyCounterGroupSecondaryPollFactor(objectId,
+                                                         reinterpret_cast<sai_redis_flex_counter_group_secondary_poll_factor_parameter_t*>(attr->value.ptr));
+
         default:
             break;
     }
@@ -735,6 +739,41 @@ sai_status_t RedisRemoteSaiInterface::notifyCounterOperations(
 
     m_recorder->recordGenericCounterPolling(key, entries);
     m_communicationChannel->set(key, entries, command);
+
+    return waitForResponse(SAI_COMMON_API_SET);
+}
+
+sai_status_t RedisRemoteSaiInterface::notifyCounterGroupSecondaryPollFactor(
+        _In_ sai_object_id_t objectId,
+        _In_ const sai_redis_flex_counter_group_secondary_poll_factor_parameter_t *param)
+{
+    SWSS_LOG_ENTER();
+
+    if (param == nullptr ||
+        !isSaiS8ListValidString(param->counter_group_name) ||
+        !isSaiS8ListValidString(param->secondary_poll_factor))
+    {
+        SWSS_LOG_ERROR("Invalid secondary poll factor parameters");
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    std::string key(
+        reinterpret_cast<const char *>(param->counter_group_name.list),
+        param->counter_group_name.count);
+
+    std::vector<swss::FieldValueTuple> entries;
+
+    emplaceStrings(
+        SECONDARY_POLL_FACTOR_FIELD,
+        param->secondary_poll_factor,
+        entries);
+
+    m_recorder->recordGenericCounterPolling(key, entries);
+
+    m_communicationChannel->set(
+        key,
+        entries,
+        REDIS_FLEX_COUNTER_COMMAND_SET_GROUP);
 
     return waitForResponse(SAI_COMMON_API_SET);
 }

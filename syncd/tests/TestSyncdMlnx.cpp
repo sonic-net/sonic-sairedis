@@ -273,7 +273,7 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
 
     // Counter operations based on the created port
     // 1. Enable counter polling for port stat counter group
-    sai_redis_flex_counter_group_parameter_t flexCounterGroupParam;
+    sai_redis_flex_counter_group_parameter_t flexCounterGroupParam{};
 
     std::string group("PORT_STAT_COUNTER");
     std::string poll_interval = "10000";
