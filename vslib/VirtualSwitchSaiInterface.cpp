@@ -14,6 +14,7 @@
 #include "SwitchBCM56850.h"
 #include "SwitchBCM56971B0.h"
 #include "SwitchMLNX2700.h"
+#include "SwitchMicas48CON2SFP.h"
 #include "SwitchNvdaMBF2H536C.h"
 #include "SwitchNokiaVS.h"
 #ifdef USE_VPP
@@ -608,6 +609,11 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
         case SAI_VS_SWITCH_TYPE_NOKIA_VS:
 
             m_switchStateMap[switch_id] = std::make_shared<SwitchNokiaVS>(switch_id, m_realObjectIdManager, config, warmBootState);
+            break;
+
+        case SAI_VS_SWITCH_TYPE_MICAS_48CON2SFP:
+
+            m_switchStateMap[switch_id] = std::make_shared<SwitchMicas48CON2SFP>(switch_id, m_realObjectIdManager, config, warmBootState);
             break;
 
         case SAI_VS_SWITCH_TYPE_VPP:
