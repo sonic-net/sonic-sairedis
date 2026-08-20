@@ -357,6 +357,7 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
     const char *hwif_name = tap_to_hwif_name(dev);
 
     configure_lcp_interface(hwif_name, dev, true);
+    interface_set_promiscuous(hwif_name, true);
 
     {
         bool link_up = false;
