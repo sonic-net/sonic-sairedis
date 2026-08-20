@@ -692,7 +692,18 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
     }
 
     std::string if_name;
-    bool found = getTapNameFromPortId(obj_id, if_name);
+    platform_bond_info_t bond_info;
+    bool found;
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        status = get_lag_bond_info(obj_id, bond_info);
+        if (status != SAI_STATUS_SUCCESS) {
+            return status;
+        }
+        if_name = std::string(BONDETHERNET_PREFIX) + std::to_string(bond_info.id);
+        found = true;
+    } else {
+        found = getTapNameFromPortId(obj_id, if_name);
+    }
     if (found == false)
     {
         SWSS_LOG_ERROR("host interface for port id %s not found", sai_serialize_object_id(obj_id).c_str());
