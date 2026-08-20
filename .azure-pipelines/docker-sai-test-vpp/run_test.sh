@@ -539,7 +539,7 @@ build_ptf_args()
 
     if [[ "$test_target" == "sai_notification_test" || \
           "$test_target" == sai_notification_test.* ]]; then
-        test_params="${test_params};vpp_notification_test='true'"
+        test_params="${test_params};notification_test='true';platform='vpp'"
     fi
 
     PTF_ARGS=(--test-dir "$SAI_TEST_DIR")
