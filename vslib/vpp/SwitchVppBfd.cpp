@@ -258,14 +258,21 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
             BFD_MUTEX;
 
             // store bfd attributes to sai oid mapping
-            vpp_bfd_info_t bfd_info;
+            vpp_bfd_info_t bfd_info = {};
             bfd_info.multihop = multihop;
             memcpy(&bfd_info.local_addr, &local_addr, sizeof(local_addr));
             memcpy(&bfd_info.peer_addr, &peer_addr, sizeof(peer_addr));
 
             m_bfd_info_map[bfd_info] = bfd_oid;
+
+            SWSS_LOG_NOTICE("Tracking bfd object %s for multihop %d local %s peer %s",
+                sai_serialize_object_id(bfd_oid).c_str(),
+                bfd_info.multihop,
+                sai_serialize_ip_address(bfd_info.local_addr).c_str(),
+                sai_serialize_ip_address(bfd_info.peer_addr).c_str());
         } else {
             SWSS_LOG_ERROR("BFD session create request FAILED");
+            return SAI_STATUS_FAILURE;
         }
     }
 
@@ -367,7 +374,7 @@ sai_status_t SwitchVpp::vpp_bfd_session_del(
             BFD_MUTEX;
 
             // remove bfd attributes to sai oid mapping
-            vpp_bfd_info_t bfd_info;
+            vpp_bfd_info_t bfd_info = {};
             bfd_info.multihop = multihop;
             memcpy(&bfd_info.local_addr, &local_addr, sizeof(local_addr));
             memcpy(&bfd_info.peer_addr, &peer_addr, sizeof(peer_addr));

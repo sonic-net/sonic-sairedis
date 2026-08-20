@@ -663,7 +663,10 @@ sai_status_t SwitchVpp::asyncBfdStateUpdate(vpp_bfd_state_notif_t *bfd_notif)
             sai_serialize_object_type(obj_type).c_str());
         send_bfd_state_change_notification(bfd_oid, sai_state, false);
     } else {
-        SWSS_LOG_NOTICE("Existing bfd object not found");
+        SWSS_LOG_NOTICE("Existing bfd object not found for multihop %d local %s peer %s",
+            bfd_info.multihop,
+            sai_serialize_ip_address(bfd_info.local_addr).c_str(),
+            sai_serialize_ip_address(bfd_info.peer_addr).c_str());
     }
 
     return SAI_STATUS_SUCCESS;

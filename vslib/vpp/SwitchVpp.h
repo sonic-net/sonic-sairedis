@@ -521,11 +521,41 @@ namespace saivs
                 bool multihop; sai_ip_address_t local_addr;
                 sai_ip_address_t peer_addr;
 
+                /*
+                 * Only the bytes that the address family actually defines may
+                 * take part in the comparison. Callers populate sai_ip_address_t
+                 * from Thrift or VPP payloads that leave the rest of the union
+                 * untouched, so comparing the whole struct would key entries on
+                 * indeterminate padding and the event lookup would miss.
+                 */
+                static int compare_addr(
+                        const sai_ip_address_t& left,
+                        const sai_ip_address_t& right)
+                {
+                    // SWSS_LOG_ENTER is omitted: this runs on every map comparison.
+                    if (left.addr_family != right.addr_family)
+                    {
+                        return left.addr_family < right.addr_family ? -1 : 1;
+                    }
+
+                    if (left.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+                    {
+                        if (left.addr.ip4 == right.addr.ip4)
+                        {
+                            return 0;
+                        }
+
+                        return left.addr.ip4 < right.addr.ip4 ? -1 : 1;
+                    }
+
+                    return std::memcmp(left.addr.ip6, right.addr.ip6, sizeof(left.addr.ip6));
+                }
+
                 // Define the < operator for comparison
                 bool operator<(const _vpp_bfd_info_t& other) const
                 {
                     // compare local IP address first
-                    int cmp = std::memcmp(&local_addr, &other.local_addr, sizeof(sai_ip_address_t));
+                    int cmp = compare_addr(local_addr, other.local_addr);
 
                     if (cmp != 0)
                     {
@@ -533,7 +563,7 @@ namespace saivs
                     }
 
                     // compare peer IP address
-                    cmp = std::memcmp(&peer_addr, &other.peer_addr, sizeof(sai_ip_address_t));
+                    cmp = compare_addr(peer_addr, other.peer_addr);
 
                     if (cmp != 0)
                     {

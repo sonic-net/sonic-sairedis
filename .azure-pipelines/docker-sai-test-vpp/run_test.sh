@@ -94,6 +94,7 @@ ISOLATE_EACH_TEST="${ISOLATE_EACH_TEST:-1}"
 # this standalone bench has no teamd / IntfMgr. The remaining vars retarget the
 # helper's interface names / address patterns to this VPP bench.
 export SIMULATE_SONIC=1
+export SIMULATE_SONIC_IPV6_CONTROL_SRC_MAC="${SIMULATE_SONIC_IPV6_CONTROL_SRC_MAC:-00:77:66:55:44:00}"
 export LAG_RIF_IPS LAG_RIF_IPV4_PATTERN LAG_RIF_IPV6_PATTERN LAG_BE_TAP_PREFIX
 export SVI_RIF_IPS SVI_RIF_VLANS SVI_RIF_IPV4_PATTERN SVI_RIF_IPV6_PATTERN SVI_BVI_PREFIX
 # A VLAN SVI (BVI) has no host-interface netdev, so simulate_sonic cannot use "ip".
@@ -536,6 +537,11 @@ build_ptf_args()
         test_params="${test_params};common_configured='${common_configured}'"
     fi
 
+    if [[ "$test_target" == "sai_notification_test" || \
+          "$test_target" == sai_notification_test.* ]]; then
+        test_params="${test_params};vpp_notification_test='true'"
+    fi
+
     PTF_ARGS=(--test-dir "$SAI_TEST_DIR")
 
     for ((port_index = 0; port_index < PORT_COUNT; port_index++)); do
@@ -787,7 +793,9 @@ run_ptf()
         rc=0
         run_one_ptf "$target" "$common_configured" "group-${group}-test-${idx}" || rc="$?"
         if [[ "$rc" -ne 0 ]]; then
-            overall_rc="$rc"
+            if (( rc > overall_rc )); then
+                overall_rc="$rc"
+            fi
             log "test target '${target}' returned rc=${rc}"
         fi
     done <<< "$plan"
@@ -871,15 +879,35 @@ for mod in sorted(mod_file):
         bases = [b.id for b in node.bases if isinstance(b, ast.Name)]
         setup = next((m for m in node.body
                       if isinstance(m, ast.FunctionDef) and m.name == "setUp"), None)
+        runtest = any(isinstance(m, ast.FunctionDef) and m.name == "runTest"
+                      for m in node.body)
         # last definition wins if duplicated
-        registry[node.name] = {"bases": bases, "setup": setup, "module": mod}
+        registry[node.name] = {"bases": bases, "setup": setup, "module": mod,
+                               "runtest": runtest}
     mod_classes[mod] = names
+
+def runnable(clsname, seen=None):
+    """Mirror ptf's discovery rule: a class is a test only if it or one of its
+    ancestors defines runTest. Planning a helper or intermediate base instead
+    makes ptf abort that invocation with "did not match any tests" after the
+    harness has already paid for a backend restart."""
+    if seen is None:
+        seen = set()
+    if clsname in seen or clsname not in registry:
+        return False
+    seen.add(clsname)
+    info = registry[clsname]
+    if info["runtest"]:
+        return True
+    return any(runnable(b, seen) for b in info["bases"])
 
 def _kwargs_from_setup_call(setup):
     """Return (kwargs_str_or_None, base_to_recurse_or_None) for a class's setUp.
     kwargs_str: config signature if this setUp passes config kwargs.
     base_to_recurse: if setUp only chains to super()/Base.setUp() without config
     kwargs, the class name to resolve the signature from."""
+    best = None
+    fallback = None
     for sub in ast.walk(setup):
         if not (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
                 and sub.func.attr == "setUp"):
@@ -894,15 +922,26 @@ def _kwargs_from_setup_call(setup):
                 val = "?"
             kws.append("%s=%s" % (kw.arg, val))
         if kws:
-            return ("|".join(sorted(kws)), None)
-        # No config kwargs: figure out which base this chains to.
-        f = sub.func.value
-        if isinstance(f, ast.Call) and isinstance(f.func, ast.Name) \
-                and f.func.id == "super":
-            return (None, "__super__")          # super().setUp()
-        if isinstance(f, ast.Name):
-            return (None, f.id)                 # <Base>.setUp(self, ...)
-        return (None, "__super__")
+            # A setUp may guard an early return with a bare super().setUp(
+            # skip_reason=...) before reaching the configured call, so keep the
+            # most specific call rather than the first one walk() happens to hit.
+            if best is None or len(kws) > len(best):
+                best = kws
+            continue
+        if fallback is None:
+            # No config kwargs: figure out which base this chains to.
+            f = sub.func.value
+            if isinstance(f, ast.Call) and isinstance(f.func, ast.Name) \
+                    and f.func.id == "super":
+                fallback = "__super__"          # super().setUp()
+            elif isinstance(f, ast.Name):
+                fallback = f.id                 # <Base>.setUp(self, ...)
+            else:
+                fallback = "__super__"
+    if best is not None:
+        return ("|".join(sorted(best)), None)
+    if fallback is not None:
+        return (None, fallback)
     return ("()", None)
 
 def signature(clsname, seen=None):
@@ -933,7 +972,8 @@ pairs = []
 if not targets:
     for mod in mod_classes:
         for c in mod_classes[mod]:
-            pairs.append((mod, c))
+            if runnable(c):
+                pairs.append((mod, c))
 else:
     for t in targets:
         if "." in t:
@@ -941,7 +981,8 @@ else:
             pairs.append((mod, cls))
         elif t in mod_classes:
             for c in mod_classes[t]:
-                pairs.append((t, c))
+                if runnable(c):
+                    pairs.append((t, c))
         else:
             pairs.append((t, ""))   # unknown selector: run as-is, default group
 
