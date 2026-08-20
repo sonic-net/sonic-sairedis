@@ -38,6 +38,8 @@ The VPP SAI backend can build the switch + host-interfaces **once per saiserver 
 
 **Default (`ISOLATE_EACH_TEST=1`):** every requested test class runs in its **own** config group. Before each test, `run_test.sh` tears down and restarts Redis + VPP + saiserver, waits for the old VPP process to be fully reaped, then starts a fresh backend. Each test rebuilds its own common config (`common_configured=false`). This eliminates cross-test state contamination (ECMP `-6`/`-7` reuse artifacts, ordering-dependent flakes) at the cost of ~50–55 minutes for the full 5-module matrix (90 tests × ~30s recycle+rebuild each).
 
+The notification module always uses per-test isolation, even when `ISOLATE_EACH_TEST=0` or `COMMON_CONFIGURED_REUSE=0` is requested. Its callback queue, BFD sessions, and temporary router interfaces are deliberately test-owned and cannot be safely reused by a later test in the same saiserver process.
+
 **Grouped mode (`ISOLATE_EACH_TEST=0`):** `run_test.sh` parses each test class's `setUp` (resolving config kwargs through the class **inheritance chain**) to compute a common-config "signature", groups tests by signature, and for each group restarts the backend once: the first test in the group builds + persists that group's config, the rest reuse it (`common_configured=true`). This is ~9× faster but passes fewer tests when upstream workarounds are not present.
 
 Set `COMMON_CONFIGURED_REUSE=0` only for legacy single-invocation debugging (one ptf process, no grouping).

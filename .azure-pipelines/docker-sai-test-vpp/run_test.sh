@@ -89,6 +89,21 @@ COMMON_CONFIGURED_REUSE="${COMMON_CONFIGURED_REUSE:-1}"
 # runs, but tests then share a backend within a group).
 ISOLATE_EACH_TEST="${ISOLATE_EACH_TEST:-1}"
 
+notification_tests_requested()
+{
+    local target
+
+    for target in "$@"; do
+        case "$target" in
+            sai_notification_test|sai_notification_test.*)
+                return 0
+                ;;
+        esac
+    done
+
+    return 1
+}
+
 # Turn on sai_test's SONiC control-plane simulation (config/simulate_sonic.py):
 # create PortChannel netdevs and assign LAG/SVI RIF IPs from the test setUp, since
 # this standalone bench has no teamd / IntfMgr. The remaining vars retarget the
@@ -705,6 +720,16 @@ run_ptf()
         targets=("${TEST_FILTERS[@]}")
     elif [[ -n "$TEST_FILTER" ]]; then
         targets=("$TEST_FILTER")
+    fi
+
+    # Notification tests create and remove per-test callback, BFD, and router
+    # interface state, so they must not reuse a saiserver process. Keep the
+    # generic port tests and VPP-specific BFD tests correct in every invocation
+    # mode, including explicit legacy/grouped runs and a full-suite run.
+    if [[ "${#targets[@]}" -eq 0 ]] || notification_tests_requested "${targets[@]}"; then
+        COMMON_CONFIGURED_REUSE=1
+        ISOLATE_EACH_TEST=1
+        log "Notification tests requested: forcing per-test backend isolation"
     fi
 
     # Legacy single invocation (reuse disabled): start the backend once and run
