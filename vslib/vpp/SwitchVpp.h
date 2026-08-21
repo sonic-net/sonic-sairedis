@@ -390,6 +390,40 @@ namespace saivs
             sai_status_t vpp_remove_vlan_member(
                     _In_ sai_object_id_t vlan_member_oid);
 
+            // Handles SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE and
+            // SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE, which
+            // orchagent sets when proxy ARP is toggled on a VLAN interface.
+            sai_status_t vpp_set_vlan_attribute(
+                    _In_ sai_object_id_t vlan_oid,
+                    _In_ const sai_attribute_t *attr);
+
+            // True if the given VLAN flood-control attribute is currently
+            // stored as SAI_VLAN_FLOOD_CONTROL_TYPE_NONE, i.e. the matching
+            // classify punt should be installed. The stored VLAN object is the
+            // single source of truth; an attribute that was never set falls
+            // back to the SAI default of ALL (no punt).
+            bool vlan_flood_punt_enabled(
+                    _In_ sai_object_id_t vlan_oid,
+                    _In_ sai_attr_id_t attr_id);
+
+            // Resolves SAI_BRIDGE_PORT_ATTR_PORT_ID on a bridge port. Returns
+            // false, rather than throwing or dereferencing a null attribute,
+            // if the bridge port or the attribute is not in the object store.
+            bool bridge_port_to_port_id(
+                    _In_ sai_object_id_t br_port_oid,
+                    _Out_ sai_object_id_t &port_id);
+
+            // Resolves a VLAN member to the VPP interface that actually is the
+            // bridge domain member (the parent for an untagged member,
+            // <parent>.<vid> for a tagged one) and its tagging mode. Returns
+            // false for members with no VPP interface, e.g. tunnel bridge
+            // ports, or if the interface name cannot be resolved.
+            bool vlan_member_hwif(
+                    _In_ const SaiObject &vlan_member,
+                    _In_ uint16_t vlan_id,
+                    _Out_ std::string &hwif_name,
+                    _Out_ bool &is_tagged);
+
             sai_status_t vpp_create_bvi_interface(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
