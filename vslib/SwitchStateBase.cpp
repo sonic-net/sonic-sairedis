@@ -755,11 +755,11 @@ sai_status_t SwitchStateBase::get(
 
         if (ait == attrHash.end())
         {
-            SWSS_LOG_WARN("%s not implemented on %s",
+            SWSS_LOG_DEBUG("%s not found in %s",
                     meta->attridname,
                     serializedObjectId.c_str());
 
-            return SAI_STATUS_NOT_IMPLEMENTED;
+            return SAI_STATUS_ITEM_NOT_FOUND;
         }
 
         auto attr = ait->second->getAttr();

@@ -64,9 +64,24 @@ using namespace saivs;
  * the BD via the same linux-cp-punt-xc shortcut.  Only untagged LLDP
  * (which arrives on a parent that IS in the BD) needs the classifier.
  *
- * ARP is handled by the sonic_ext VPP plugin via the arp arc ->
- * sonic-ext-aggr-tap-redirect on the BVI tap.  See
- * platform/vpp/vppbld/plugins/sonic_ext/.
+ * ARP and IPv6 ND are normally handled by the sonic_ext VPP plugin via
+ * the arp arc -> sonic-ext-aggr-tap-redirect on the BVI tap.  See
+ * platform/vpp/vppbld/plugins/sonic_ext/.  That path depends on the
+ * BD flood copy reaching the BVI, so the BD flood bit is never cleared,
+ * not even when orchagent asks for FLOOD_CONTROL_TYPE_NONE: VPP shares
+ * one L2INPUT_FEAT_FLOOD bit between broadcast and multicast, so it
+ * cannot express either SAI attribute without also applying the other.
+ * Instead the members of such a VLAN are switched over to the punting
+ * table variants below.  A classify hit is terminal, so each punt
+ * suppresses the flood for exactly its own traffic class:
+ *
+ *   SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE        == NONE
+ *       -> *_arp_table   (dst ff:ff:ff:ff:ff:ff, ethertype 0x0806)
+ *   SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE == NONE
+ *       -> *_ip6mc_table (dst 33:33:*)
+ *
+ * The two are independent knobs.  See
+ * SwitchVpp::vpp_set_vlan_attribute().
  *
  * Slot selection in l2-input-classify (vnet/l2/l2_input_classify.c):
  * VPP picks the per-interface table by *outer* ethertype at
@@ -79,24 +94,40 @@ using namespace saivs;
  *
  *   Untagged member  (wire ethertype is the inner protocol):
  *     IP4 slot   <- untag_ip4_table   (DHCPv4 broadcast match)
+ *     IP6 slot   <- untag_ip6mc_table (33:33 DA prefix), else ~0
  *     OTHER slot <- untag_other_table (LLDP match)
- *     No chain between the two: DHCPv4 only ever reaches the IP4
- *     slot; LLDP only ever reaches OTHER.
+ *     No chain between them: DHCPv4 only ever reaches the IP4 slot,
+ *     IPv6 only the IP6 slot, LLDP only OTHER.  The ARP and IPv6
+ *     punts therefore never interact on an untagged member.
  *
  *   Tagged member (wire ethertype is 0x8100 -> OTHER slot):
  *     IP4 slot   <- ~0
+ *     IP6 slot   <- ~0   (tagged IPv6 lands in OTHER, not here)
  *     OTHER slot <- tag_dhcp_table (DHCPv4 over .1Q match)
  *                       |  on miss
  *                       v
  *                   continue normal L2 path
  *     (LLDP is never tagged, so no tagged-LLDP table is needed.)
  *
+ *   With flood suppression configured, the punting variants take over.
+ *   Untagged, each simply owns its own slot:
+ *     ARP   -> OTHER slot <- untag_arp_table -> untag_other_table
+ *     IPv6  -> IP6 slot   <- untag_ip6mc_table
+ *   Tagged, everything shares the OTHER slot, so the head of the
+ *   miss-chain encodes the combination:
+ *     both     -> tag_ip6mc_table      -> tag_arp_table -> tag_dhcp_table
+ *     IPv6only -> tag_ip6mc_only_table ->                  tag_dhcp_table
+ *     ARP only -> tag_arp_table        ->                  tag_dhcp_table
+ *     neither  -> tag_dhcp_table
+ *
  * Hit-next graph slots out of l2-input-classify, resolved once via
  * vpp_add_node_next():
- *   - linux-cp-punt          : LLDP + untagged DHCPv4
- *   - sonic-ext-l2-trap-fixup: tagged DHCPv4 only (rewrites VLIB_RX
- *     from bridged sub-if to parent phys before handing to linux-
- *     cp-punt, because a bridged sub-if has no LCP pair).
+ *   - linux-cp-punt          : LLDP, untagged DHCPv4, untagged ARP and
+ *     untagged IPv6 multicast
+ *   - sonic-ext-l2-trap-fixup: tagged DHCPv4, tagged ARP and tagged IPv6
+ *     multicast (rewrites VLIB_RX from bridged sub-if to parent phys
+ *     before handing to linux-cp-punt, because a bridged sub-if has no
+ *     LCP pair).
  * Untagged DHCP does not need the fixup node: VLIB_RX on an untagged
  * bridge member is already the parent phys, so linux-cp-punt resolves
  * the right LCP pair directly.
@@ -113,12 +144,24 @@ static uint32_t s_trap_fixup_next_index = ~0; /* sonic-ext-l2-trap-fixup (tagged
  * families select different slots in l2-input-classify). */
 static uint32_t s_untag_other_table = ~0;     /* LLDP by ethertype */
 static uint32_t s_untag_ip4_table   = ~0;     /* DHCPv4 client broadcast */
+static uint32_t s_untag_arp_table   = ~0;     /* broadcast ARP (bcast flood NONE) */
+static uint32_t s_untag_ip6mc_table = ~0;     /* IPv6 multicast, IP6 slot (mcast flood NONE) */
 
 /* Tagged member table: outer ethertype is 0x8100, so EVERY tagged
  * frame (including IPv4-inside-VLAN) lands in the other slot.  LLDP is
  * never tagged, so only the DHCPv4-over-.1Q table is needed; it is
- * attached directly to the tagged member's OTHER slot. */
-static uint32_t s_tag_dhcp_table = ~0;        /* DHCPv4 broadcast over .1Q */
+ * attached directly to the tagged member's OTHER slot.
+ *
+ * The ARP and IPv6-multicast punts are independent knobs, but a tagged
+ * member has only the one OTHER slot to bind, so they have to share a
+ * miss-chain.  A classify table's next_table_index is fixed at creation,
+ * so the IPv6-multicast head exists in two variants -- one that chains
+ * through the ARP table and one that skips it -- to cover all four
+ * on/off combinations. */
+static uint32_t s_tag_dhcp_table  = ~0;       /* DHCPv4 broadcast over .1Q */
+static uint32_t s_tag_arp_table   = ~0;       /* broadcast ARP over .1Q -> s_tag_dhcp_table */
+static uint32_t s_tag_ip6mc_table = ~0;       /* IPv6 mcast over .1Q -> s_tag_arp_table */
+static uint32_t s_tag_ip6mc_only_table = ~0;  /* IPv6 mcast over .1Q -> s_tag_dhcp_table */
 
 /*
  * DHCPv4 client→server broadcast match.  We match on:
@@ -246,6 +289,112 @@ static int l2_punt_classify_init()
                                  m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
     }
 
+    /* --- Untagged OTHER-slot variant that ALSO punts broadcast ARP ---
+     *
+     * Bound to members of a VLAN with
+     * SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE ==
+     * SAI_VLAN_FLOOD_CONTROL_TYPE_NONE.
+     *
+     * This table *is* the implementation of that attribute: a classify
+     * hit is terminal (l2-input-classify dispatches straight to the
+     * session's next node and never re-enters the L2 feature arc), so
+     * matching here both delivers the request to the control plane and
+     * stops it reaching l2-flood.  That is exactly what the attribute
+     * asks for, and it is why the BD's L2_FLOOD bit is left alone --
+     * VPP shares that bit between broadcast and multicast, so clearing
+     * it would also strip L2INPUT_FEAT_FWD from IPv6 ND and kill it at
+     * feature-bitmap-drop, with no proxy-NDP in SONiC to answer in its
+     * place.
+     *
+     * The effect mirrors the ASIC's SAI_HOSTIF_TRAP_TYPE_ARP_REQUEST,
+     * exactly as the DHCP sessions above emulate SAI_PACKET_ACTION_TRAP.
+     * linux-cp-punt delivers it to the member's LCP host tap, the kernel
+     * bridge lifts it to the Vlan netdev, and proxy_arp answers there.
+     *
+     * Only dst=ff:ff:ff:ff:ff:ff is matched.  Unicast ARP (replies, and
+     * requests aimed at a known MAC) is forwarded normally from the
+     * L2FIB and is not broadcast in the first place, so there is no
+     * reason to steal it from the data path.
+     *
+     * On miss this chains to s_untag_other_table so LLDP punt keeps
+     * working while this table owns the untagged OTHER slot.
+     *
+     * A separate table -- rather than adding/removing an ARP session on
+     * the shared LLDP table -- keeps the behavior per VLAN.  The classify
+     * tables are global, but they are bound per interface and every
+     * bridge member belongs to exactly one VLAN, so VLANs without proxy
+     * ARP keep the LLDP-only table and continue to flood ARP normally.
+     */
+    {
+        uint8_t mask[16] = {0};
+        mask[0] = mask[1] = mask[2] = mask[3] = mask[4] = mask[5] = 0xFF;
+        mask[12] = 0xFF; mask[13] = 0xFF;
+
+        if (vpp_classify_table_create(
+                8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
+                0 /*skip*/, 1 /*match_n_vectors*/,
+                s_untag_other_table /*next_table: chain to LLDP on miss*/,
+                ~0 /*miss_next=continue*/,
+                mask, 16, &s_untag_arp_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: untag_arp table create failed");
+            s_untag_arp_table = ~0;
+        } else {
+            uint8_t m[16] = {0};
+            m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
+            m[12] = 0x08; m[13] = 0x06;        /* ARP */
+            vpp_classify_session_add(s_untag_arp_table, s_punt_next_index,
+                                     m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        }
+    }
+
+    /* --- Untagged IP6-slot table: IPv6 multicast ---
+     *
+     * Bound to members of a VLAN with
+     * SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE ==
+     * SAI_VLAN_FLOOD_CONTROL_TYPE_NONE.  Like the ARP table above, this is
+     * the implementation of the attribute rather than a workaround: the
+     * classify hit is terminal, so the frame never reaches l2-flood and is
+     * not delivered to the other bridge members, which is what "do not
+     * flood unknown multicast" asks for.  Whether the control plane does
+     * anything useful with the punted copy is a separate question -- the
+     * flood suppression is required either way.
+     *
+     * Match is the 33:33 DA prefix, i.e. all IPv6 multicast (RFC 2464):
+     * NS/DAD (33:33:ff:xx:xx:xx), RS (33:33:00:00:00:02), MLD and
+     * all-nodes (33:33:00:00:00:01).
+     *
+     * The ethertype is deliberately NOT part of the match: this table is
+     * bound to the IP6 slot, and l2-input-classify only selects that slot
+     * for outer ethertype 0x86DD, so it is already implied.
+     *
+     * Deliberately scoped to IPv6 rather than "all multicast" (mask 0x01
+     * on byte 0): there is no CoPP/policer on this path, so a multicast
+     * data stream would reach the host tap at line rate.
+     *
+     * The IP6 slot carries nothing else, so no chaining is needed and the
+     * LLDP/DHCP/ARP tables are untouched -- which is precisely why the
+     * untagged IPv6 punt is fully independent of the untagged ARP punt.
+     */
+    {
+        uint8_t mask[16] = {0};
+        mask[0] = 0xFF; mask[1] = 0xFF;
+
+        if (vpp_classify_table_create(
+                8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
+                0 /*skip*/, 1 /*match_n_vectors*/,
+                ~0 /*next_table=none*/,
+                ~0 /*miss_next=continue*/,
+                mask, 16, &s_untag_ip6mc_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: untag_ip6mc table create failed");
+            s_untag_ip6mc_table = ~0;
+        } else {
+            uint8_t m[16] = {0};
+            m[0] = 0x33; m[1] = 0x33;          /* IPv6 multicast DA prefix */
+            vpp_classify_session_add(s_untag_ip6mc_table, s_punt_next_index,
+                                     m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        }
+    }
+
     /* --- Tagged DHCP table.  Frame at l2-input-classify on a tagged
      *     sub-if still carries the outer 802.1Q tag (VTR pop has not
      *     yet run), so all post-L2 offsets shift by +4.
@@ -289,17 +438,134 @@ static int l2_punt_classify_init()
         }
     }
 
+    /* --- Tagged broadcast-ARP-over-.1Q table (proxy-ARP VLANs only) ---
+     *
+     * Same purpose as s_untag_arp_table, for tagged members.  At
+     * l2-input-classify the frame still carries the outer 802.1Q tag
+     * (VTR pop has not run yet), so the inner ethertype sits at 16..17.
+     *
+     * Match span: 0..17 -> skip=0, match=2 (32-byte vector).
+     *   bytes  0..5  -> dst MAC = ff:ff:ff:ff:ff:ff
+     *   bytes 16..17 -> inner ethertype = 0x0806 (ARP)
+     *
+     * Chains to s_tag_dhcp_table on miss so tagged DHCPv4 punt keeps
+     * working while this table owns the tagged OTHER slot.
+     *
+     * hit_next is sonic-ext-l2-trap-fixup, not linux-cp-punt: a bridged
+     * sub-if has no LCP pair, so VLIB_RX must first be rewritten to the
+     * parent phys (same constraint as tagged DHCP above).
+     */
+    if (s_trap_fixup_next_index != ~0u) {
+        uint8_t mask[32] = {0};
+        mask[0] = mask[1] = mask[2] = mask[3] = mask[4] = mask[5] = 0xFF;
+        mask[16] = 0xFF; mask[17] = 0xFF;
+
+        if (vpp_classify_table_create(
+                8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
+                0 /*skip*/, 2 /*match_n_vectors*/,
+                s_tag_dhcp_table /*next_table: chain to DHCP on miss*/,
+                ~0 /*miss_next=continue*/,
+                mask, 32, &s_tag_arp_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: tag_arp table create failed");
+            s_tag_arp_table = ~0;
+        } else {
+            uint8_t m[32] = {0};
+            m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
+            m[16] = 0x08; m[17] = 0x06;
+            vpp_classify_session_add(s_tag_arp_table, s_trap_fixup_next_index,
+                                     m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        }
+    }
+
+    /* --- Tagged IPv6-multicast-over-.1Q tables ---
+     *
+     * Same purpose as s_untag_ip6mc_table, for tagged members.  A tagged
+     * frame has outer ethertype 0x8100, so it lands in the OTHER slot
+     * rather than the IP6 slot and has to share the tagged miss-chain with
+     * the ARP and DHCP tables.
+     *
+     * Because next_table_index is fixed when a table is created, and the
+     * ARP punt can be on or off independently of this one, two variants
+     * are built so l2_punt_classify_apply() can pick a head that produces
+     * the right chain:
+     *
+     *     s_tag_ip6mc_table      -> s_tag_arp_table -> s_tag_dhcp_table
+     *     s_tag_ip6mc_only_table ->                    s_tag_dhcp_table
+     *
+     * They are otherwise identical (same mask, same session).
+     *
+     * Match span: 0..17 -> skip=0, match=2 (32-byte vector).
+     *   bytes  0..1  -> dst MAC prefix = 33:33
+     *   bytes 16..17 -> inner ethertype = 0x86DD (IPv6)
+     * Unlike the untagged case the ethertype IS matched here, because the
+     * OTHER slot carries every tagged frame regardless of inner protocol.
+     *
+     * hit_next is sonic-ext-l2-trap-fixup for the usual reason: a bridged
+     * sub-if has no LCP pair.
+     */
+    if (s_trap_fixup_next_index != ~0u) {
+        uint8_t mask[32] = {0};
+        mask[0] = 0xFF; mask[1] = 0xFF;
+        mask[16] = 0xFF; mask[17] = 0xFF;
+
+        uint8_t m[32] = {0};
+        m[0] = 0x33; m[1] = 0x33;
+        m[16] = 0x86; m[17] = 0xDD;
+
+        struct {
+            uint32_t next_table;
+            uint32_t *out;
+            const char *name;
+        } variants[] = {
+            { s_tag_arp_table,  &s_tag_ip6mc_table,      "tag_ip6mc"      },
+            { s_tag_dhcp_table, &s_tag_ip6mc_only_table, "tag_ip6mc_only" },
+        };
+
+        for (auto &v: variants) {
+            if (vpp_classify_table_create(
+                    8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
+                    0 /*skip*/, 2 /*match_n_vectors*/,
+                    v.next_table,
+                    ~0 /*miss_next=continue*/,
+                    mask, 32, v.out) != 0) {
+                SWSS_LOG_ERROR("l2_punt_classify_init: %s table create failed", v.name);
+                *v.out = ~0;
+            } else {
+                vpp_classify_session_add(*v.out, s_trap_fixup_next_index,
+                                         m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+            }
+        }
+    }
+
     s_l2_punt_classify_inited = true;
     SWSS_LOG_NOTICE("L2 punt classify tables initialized: "
-                    "untag_ip4=%u untag_other=%u tag_dhcp=%u "
+                    "untag_ip4=%u untag_other=%u untag_arp=%u untag_ip6mc=%u "
+                    "tag_dhcp=%u tag_arp=%u tag_ip6mc=%u tag_ip6mc_only=%u "
                     "punt_next=%u trap_fixup_next=%u",
-                    s_untag_ip4_table, s_untag_other_table,
-                    s_tag_dhcp_table,
+                    s_untag_ip4_table, s_untag_other_table, s_untag_arp_table,
+                    s_untag_ip6mc_table,
+                    s_tag_dhcp_table, s_tag_arp_table, s_tag_ip6mc_table,
+                    s_tag_ip6mc_only_table,
                     s_punt_next_index, s_trap_fixup_next_index);
     return 0;
 }
 
-static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged)
+/*
+ * punt_arp and punt_ip6mc select the punting variants of the classify tables.
+ * They are independent knobs driven by two independent SAI attributes:
+ *
+ *   punt_arp   <- SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE        == NONE
+ *   punt_ip6mc <- SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE == NONE
+ *
+ * A classify hit is terminal -- l2-input-classify dispatches straight to the
+ * session's next node and never re-enters the L2 feature arc -- so each punt
+ * suppresses flooding for its own traffic class without affecting the other,
+ * and without touching the bridge domain's shared L2_FLOOD bit.  See the
+ * s_untag_arp_table and s_untag_ip6mc_table comments in
+ * l2_punt_classify_init().
+ */
+static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
+                                  bool punt_arp, bool punt_ip6mc)
 {
     SWSS_LOG_ENTER();
     if (l2_punt_classify_init() != 0) {
@@ -307,19 +573,72 @@ static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged)
         return -1;
     }
 
-    /* Tagged frames carry outer ethertype 0x8100 -> OTHER slot only.
-     * LLDP is never tagged, so the tagged OTHER slot only needs the
-     * DHCPv4-over-.1Q table.  Untagged frames carry the inner ethertype
-     * on the wire, so DHCPv4 (0x0800) lands in the IP4 slot and LLDP
-     * (0x88CC) in the OTHER slot; install both. */
-    uint32_t ip4_tbl   = is_tagged ? (uint32_t)~0u : s_untag_ip4_table;
-    uint32_t other_tbl = is_tagged ? s_tag_dhcp_table : s_untag_other_table;
+    /* Tagged frames carry outer ethertype 0x8100, so they all land in the
+     * OTHER slot and every tagged punt has to share one miss-chain.
+     * Untagged frames carry the inner ethertype on the wire, so DHCPv4
+     * (0x0800) lands in the IP4 slot, IPv6 (0x86DD) in the IP6 slot and
+     * LLDP (0x88CC) in the OTHER slot -- three separate slots, so the
+     * untagged punts do not interact at all. */
+    uint32_t ip4_tbl = is_tagged ? (uint32_t)~0u : s_untag_ip4_table;
+    uint32_t ip6_tbl = (!is_tagged && punt_ip6mc) ? s_untag_ip6mc_table : (uint32_t)~0u;
+    uint32_t other_tbl;
+
+    bool arp_ok   = false;
+    bool ip6mc_ok = false;
+
+    if (is_tagged) {
+        /* Pick the chain head that yields the requested combination:
+         *   ip6mc + arp -> s_tag_ip6mc_table      -> arp -> dhcp
+         *   ip6mc only  -> s_tag_ip6mc_only_table ->        dhcp
+         *   arp only    -> s_tag_arp_table        ->        dhcp
+         *   neither     -> s_tag_dhcp_table
+         * Falling back to a shorter chain when a table failed to create
+         * degrades to "not punted" for that class, never to a wrong one. */
+        if (punt_ip6mc && punt_arp && s_tag_ip6mc_table != ~0u && s_tag_arp_table != ~0u) {
+            other_tbl = s_tag_ip6mc_table;
+            arp_ok = ip6mc_ok = true;
+        } else if (punt_ip6mc && !punt_arp && s_tag_ip6mc_only_table != ~0u) {
+            other_tbl = s_tag_ip6mc_only_table;
+            ip6mc_ok = true;
+        } else if (punt_arp && s_tag_arp_table != ~0u) {
+            other_tbl = s_tag_arp_table;
+            arp_ok = true;
+        } else if (punt_ip6mc && s_tag_ip6mc_only_table != ~0u) {
+            other_tbl = s_tag_ip6mc_only_table;
+            ip6mc_ok = true;
+        } else {
+            other_tbl = s_tag_dhcp_table;
+        }
+    } else {
+        /* s_untag_arp_table chains to s_untag_other_table (LLDP) on miss. */
+        if (punt_arp && s_untag_arp_table != ~0u) {
+            other_tbl = s_untag_arp_table;
+            arp_ok = true;
+        } else {
+            other_tbl = s_untag_other_table;
+        }
+        ip6mc_ok = (ip6_tbl != ~0u);
+    }
+
+    if (punt_arp && !arp_ok) {
+        SWSS_LOG_WARN("l2_punt_classify_apply: ARP punt requested for %s but no "
+                      "suitable ARP table is available; broadcast ARP will keep "
+                      "flooding", hwif_name);
+    }
+
+    if (punt_ip6mc && !ip6mc_ok) {
+        SWSS_LOG_WARN("l2_punt_classify_apply: IPv6 multicast punt requested for %s "
+                      "but no suitable table is available; IPv6 multicast will keep "
+                      "flooding", hwif_name);
+    }
 
     int rc = vpp_classify_set_interface_l2_tables(
-        hwif_name, ip4_tbl, ~0 /*ip6*/, other_tbl, true /*is_input*/);
+        hwif_name, ip4_tbl, ip6_tbl, other_tbl, true /*is_input*/);
     if (rc == 0) {
-        SWSS_LOG_NOTICE("l2_punt_classify_apply: %s tagged=%d ip4=%u other=%u",
-                        hwif_name, is_tagged, ip4_tbl, other_tbl);
+        SWSS_LOG_NOTICE("l2_punt_classify_apply: %s tagged=%d punt_arp=%d punt_ip6mc=%d "
+                        "ip4=%u ip6=%u other=%u",
+                        hwif_name, is_tagged, punt_arp, punt_ip6mc,
+                        ip4_tbl, ip6_tbl, other_tbl);
     } else {
         SWSS_LOG_ERROR("l2_punt_classify_apply: set_interface_l2_tables failed(%d) for %s",
                        rc, hwif_name);
@@ -392,6 +711,56 @@ sai_status_t SwitchVpp::createVlanMember(
 
 }
 
+/*
+ * Resolves SAI_BRIDGE_PORT_ATTR_PORT_ID on a bridge port.
+ *
+ * Every caller used to open-code this as
+ *
+ *     m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(serialized_oid)
+ *         [meta->attridname]->getAttr()->value.oid
+ *
+ * which is unsafe twice over: .at() throws std::out_of_range if the bridge
+ * port is not in the store, and operator[] default-inserts a null attribute
+ * that is then dereferenced. Going through SaiObject turns both into plain
+ * error returns.
+ *
+ * Note that tunnel bridge ports have no port id at all, so callers are still
+ * expected to filter them out with is_tunnel_bridge_port() first rather than
+ * relying on the error path here.
+ */
+bool SwitchVpp::bridge_port_to_port_id(
+        _In_ sai_object_id_t br_port_oid,
+        _Out_ sai_object_id_t &port_id)
+{
+    SWSS_LOG_ENTER();
+
+    port_id = SAI_NULL_OBJECT_ID;
+
+    auto br_port = get_sai_object(SAI_OBJECT_TYPE_BRIDGE_PORT,
+            sai_serialize_object_id(br_port_oid));
+
+    if (!br_port)
+    {
+        SWSS_LOG_ERROR("bridge port %s not found",
+                sai_serialize_object_id(br_port_oid).c_str());
+        return false;
+    }
+
+    sai_attribute_t attr;
+    attr.id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+
+    if (br_port->get_attr(attr) != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("attr SAI_BRIDGE_PORT_ATTR_PORT_ID is not present on bridge port %s",
+                sai_serialize_object_id(br_port_oid).c_str());
+        return false;
+    }
+
+    port_id = attr.value.oid;
+
+    return true;
+}
+
 sai_status_t SwitchVpp::vpp_create_vlan_member(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -433,10 +802,13 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
     const char *hwifname = nullptr;
     uint32_t lag_swif_idx;
 
-    auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
-    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
-    auto bp_attr = br_port_attrs[meta->attridname];
-    auto port_id = bp_attr->getAttr()->value.oid;
+    sai_object_id_t port_id;
+
+    if (!bridge_port_to_port_id(br_port_id, port_id))
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
     obj_type = objectTypeQuery(port_id);
 
     if (obj_type != SAI_OBJECT_TYPE_PORT && obj_type != SAI_OBJECT_TYPE_LAG )
@@ -498,6 +870,15 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
     const char *hw_ifname;
     char host_subifname[32];
 
+    /* If this VLAN already has flood suppression configured, the new member
+     * must join with the matching punting classify tables so its broadcast
+     * ARP / IPv6 multicast is punted rather than flooded to the other
+     * members. */
+    bool punt_arp = vlan_flood_punt_enabled(
+            vlan_oid, SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE);
+    bool punt_ip6mc = vlan_flood_punt_enabled(
+            vlan_oid, SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE);
+
     if (attr_tag_mode == NULL)
     {
         SWSS_LOG_ERROR("attr SAI_VLAN_MEMBER_ATTR_VLAN_ID was not passed");
@@ -547,7 +928,7 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * Treated as best-effort: on failure the member still comes
          * up, but control-plane punt on this member is not enabled.
          */
-        if (l2_punt_classify_apply(hw_ifname, true /*tagged*/) != 0) {
+        if (l2_punt_classify_apply(hw_ifname, true /*tagged*/, punt_arp, punt_ip6mc) != 0) {
             SWSS_LOG_WARN("l2_punt_classify_apply failed for tagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
         }
@@ -572,7 +953,7 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          *
          * Treated as best-effort; see the tagged branch above.
          */
-        if (l2_punt_classify_apply(hw_ifname, false /*untagged*/) != 0) {
+        if (l2_punt_classify_apply(hw_ifname, false /*untagged*/, punt_arp, punt_ip6mc) != 0) {
             SWSS_LOG_WARN("l2_punt_classify_apply failed for untagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
         }
@@ -683,11 +1064,14 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
     }
 
     const char *hw_ifname = nullptr;
-    auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_oid));
 
-    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
-    auto bp_attr = br_port_attrs[meta->attridname];
-    auto port_id = bp_attr->getAttr()->value.oid;
+    sai_object_id_t port_id;
+
+    if (!bridge_port_to_port_id(br_port_oid, port_id))
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
     obj_type = objectTypeQuery(port_id);
 
     if (obj_type != SAI_OBJECT_TYPE_PORT && obj_type != SAI_OBJECT_TYPE_LAG)
@@ -779,6 +1163,9 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
+    /* hw_ifname now names the actual BD member (parent for untagged,
+     * <parent>.<vid> for tagged). */
+
     //Check if the bridge has zero ports left, if so remove the bridge as well
     uint32_t member_count = 0;
     bridge_domain_get_member_count (bridge_id, &member_count);
@@ -786,6 +1173,306 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
     {
         vpp_bridge_domain_add_del(bridge_id, false);
     }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+/*
+ * Reads a VLAN flood-control attribute straight out of the stored SAI object,
+ * so there is no shadow copy of it to keep in sync.
+ *
+ * m_objectHash is read directly rather than through get(): get() logs a
+ * warning for an attribute that is not present, and absence is the normal
+ * case here -- orchagent only ever sets these two attributes when proxy ARP
+ * is toggled, so a VLAN that has never had it enabled simply has no entry.
+ * That case is the SAI default, FLOOD_CONTROL_TYPE_ALL, i.e. no punt.
+ */
+bool SwitchVpp::vlan_flood_punt_enabled(
+        _In_ sai_object_id_t vlan_oid,
+        _In_ sai_attr_id_t attr_id)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_VLAN, attr_id);
+
+    if (meta == NULL)
+    {
+        return false;
+    }
+
+    auto &vlans = m_objectHash.at(SAI_OBJECT_TYPE_VLAN);
+
+    auto vit = vlans.find(sai_serialize_object_id(vlan_oid));
+
+    if (vit == vlans.end())
+    {
+        return false;
+    }
+
+    auto ait = vit->second.find(meta->attridname);
+
+    if (ait == vit->second.end())
+    {
+        return false;
+    }
+
+    return ait->second->getAttr()->value.s32 == SAI_VLAN_FLOOD_CONTROL_TYPE_NONE;
+}
+
+/*
+ * Resolves a VLAN member to the VPP interface that is the actual bridge domain
+ * member, mirroring how vpp_create_vlan_member() named it: the parent hwif for
+ * an untagged member, <parent>.<vid> for a tagged one.
+ *
+ * This is what lets the flood-control handler walk the members of a VLAN
+ * straight out of SaiObjectDB instead of keeping a shadow member list.
+ */
+bool SwitchVpp::vlan_member_hwif(
+        _In_ const SaiObject &vlan_member,
+        _In_ uint16_t vlan_id,
+        _Out_ std::string &hwif_name,
+        _Out_ bool &is_tagged)
+{
+    SWSS_LOG_ENTER();
+
+    /* get_linked_object() also validates that the attribute really points at a
+     * bridge port, so the object type does not have to be checked again. */
+    auto br_port = vlan_member.get_linked_object(
+            SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID);
+
+    if (!br_port)
+    {
+        SWSS_LOG_WARN("Cannot resolve bridge port of vlan member %s",
+                vlan_member.get_id().c_str());
+        return false;
+    }
+
+    sai_object_id_t br_port_oid;
+    sai_deserialize_object_id(br_port->get_id(), br_port_oid);
+
+    /* Tunnel bridge ports have no physical interface, so there is nothing to
+     * bind classify tables to. vpp_create_vlan_member() skips them too. */
+    if (is_tunnel_bridge_port(br_port_oid))
+    {
+        return false;
+    }
+
+    sai_object_id_t port_id;
+
+    if (!bridge_port_to_port_id(br_port_oid, port_id))
+    {
+        return false;
+    }
+
+    sai_object_type_t obj_type = objectTypeQuery(port_id);
+
+    const char *hwifname = nullptr;
+
+    if (obj_type == SAI_OBJECT_TYPE_PORT)
+    {
+        std::string if_name;
+
+        if (!getTapNameFromPortId(port_id, if_name))
+        {
+            return false;
+        }
+
+        hwifname = tap_to_hwif_name(if_name.c_str());
+    }
+    else if (obj_type == SAI_OBJECT_TYPE_LAG)
+    {
+        platform_bond_info_t bond_info;
+
+        if (get_lag_bond_info(port_id, bond_info) != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+
+        hwifname = vpp_get_swif_name(bond_info.sw_if_index);
+    }
+    else
+    {
+        return false;
+    }
+
+    /* tap_to_hwif_name() reports a lookup miss by returning the literal
+     * "Unknown" rather than NULL, so both have to be rejected -- otherwise we
+     * would try to bind classify tables to an interface named "Unknown". */
+    if (hwifname == NULL || strcmp(hwifname, "Unknown") == 0)
+    {
+        SWSS_LOG_WARN("No VPP interface for vlan member %s",
+                vlan_member.get_id().c_str());
+        return false;
+    }
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
+
+    if (vlan_member.get_attr(attr) != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_WARN("attr SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE is not present on %s",
+                vlan_member.get_id().c_str());
+        return false;
+    }
+
+    is_tagged = (attr.value.s32 == SAI_VLAN_TAGGING_MODE_TAGGED);
+
+    if (is_tagged)
+    {
+        char subifname[32];
+        snprintf(subifname, sizeof(subifname), "%s.%u", hwifname, vlan_id);
+        hwif_name = subifname;
+    }
+    else
+    {
+        hwif_name = hwifname;
+    }
+
+    return true;
+}
+
+/*
+ * SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE /
+ * SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE handler.
+ *
+ * orchagent sets both to SAI_VLAN_FLOOD_CONTROL_TYPE_NONE when proxy ARP is
+ * enabled on a VLAN interface (IntfsOrch::setIntfProxyArp ->
+ * setIntfVlanFloodType) and back to SAI_VLAN_FLOOD_CONTROL_TYPE_ALL when it is
+ * disabled, but SAI keeps them independent and they are honoured independently
+ * here.
+ *
+ * Both are implemented purely with the l2-input-classify punt tables; the
+ * bridge domain's L2INPUT_FEAT_FLOOD bit is deliberately left alone.
+ *
+ * Why the classifier and not the flood bit: a classify hit is terminal.
+ * l2-input-classify dispatches the frame straight to the session's next node
+ * and clears only L2INPUT_FEAT_INPUT_CLASSIFY -- it never calls
+ * vnet_l2_feature_next(), so the frame leaves the L2 feature arc and l2-flood
+ * is never reached.  Punting a traffic class therefore *is* flood suppression
+ * for that class, and it is per class, which is exactly the granularity SAI
+ * asks for.  The flood bit cannot do this: VPP has a single
+ * L2INPUT_FEAT_FLOOD covering broadcast *and* multicast, so clearing it would
+ * apply both attributes at once, and it would additionally make l2-input strip
+ * L2INPUT_FEAT_FWD from every frame whose DA has the multicast bit set,
+ * dropping them at feature-bitmap-drop instead of punting them.
+ *
+ *   broadcast NONE         -> punt broadcast ARP (dst ff:ff:ff:ff:ff:ff)
+ *   unknown multicast NONE -> punt IPv6 multicast (dst 33:33:*)
+ *
+ * The punted copy is delivered to the member's LCP host tap.  Whether the
+ * control plane acts on it is independent of this: the flood suppression the
+ * attribute asks for happens either way.
+ *
+ * Traffic outside those two matches still floods, so NONE is honoured for the
+ * control-plane classes rather than literally.  Widening the matches is
+ * deliberately avoided -- there is no CoPP/policer on the punt path, so a
+ * broad match would let a data-plane stream reach the host tap at line rate.
+ */
+sai_status_t SwitchVpp::vpp_set_vlan_attribute(
+        _In_ sai_object_id_t vlan_oid,
+        _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (attr == NULL ||
+        (attr->id != SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE &&
+         attr->id != SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    bool is_bcast = (attr->id == SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE);
+    const char *attr_name = is_bcast ? "broadcast" : "unknown-multicast";
+
+    sai_attribute_t vid_attr;
+    vid_attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+    sai_status_t status = get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &vid_attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("attr SAI_VLAN_ATTR_VLAN_ID is not present for %s",
+                sai_serialize_object_id(vlan_oid).c_str());
+        return status;
+    }
+
+    uint32_t bridge_id = (uint32_t)vid_attr.value.u16;
+    int32_t flood_type = attr->value.s32;
+    bool punt;
+
+    switch (flood_type)
+    {
+        case SAI_VLAN_FLOOD_CONTROL_TYPE_ALL:
+            punt = false;
+            break;
+
+        case SAI_VLAN_FLOOD_CONTROL_TYPE_NONE:
+            punt = true;
+            break;
+
+        default:
+            /* L2MC_GROUP / COMBINED need L2 multicast group support, which the
+             * VPP platform does not implement.  Rejected before set_internal()
+             * caches it, so the stored object never holds a value this code
+             * cannot act on. */
+            SWSS_LOG_WARN("VLAN %u %s flood control type %d is not supported on VPP; "
+                          "leaving flooding unchanged", bridge_id, attr_name, flood_type);
+            return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    /* This runs before set_internal(), so the attribute being set is not in
+     * the stored object yet -- take it from attr and read only the other one
+     * back. */
+    bool punt_arp = is_bcast
+        ? punt
+        : vlan_flood_punt_enabled(vlan_oid, SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE);
+
+    bool punt_ip6mc = is_bcast
+        ? vlan_flood_punt_enabled(vlan_oid, SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE)
+        : punt;
+
+    /* Walk the VLAN's members through SaiObjectDB. The VLAN only appears as a
+     * parent object once it has at least one member, so a null lookup here
+     * just means there is nothing to re-bind yet; members created later pick
+     * the punt configuration up from the stored attributes in
+     * vpp_create_vlan_member(). */
+    auto vlan_db_obj = get_sai_object(SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(vlan_oid));
+
+    if (vlan_db_obj)
+    {
+        auto members = vlan_db_obj->get_child_objs(SAI_OBJECT_TYPE_VLAN_MEMBER);
+
+        if (members != nullptr)
+        {
+            for (auto &member: *members)
+            {
+                std::string member_hwif;
+                bool member_tagged = false;
+
+                if (!member.second ||
+                    !vlan_member_hwif(*member.second, vid_attr.value.u16, member_hwif, member_tagged))
+                {
+                    continue;
+                }
+
+                if (l2_punt_classify_apply(member_hwif.c_str(), member_tagged,
+                                           punt_arp, punt_ip6mc) != 0)
+                {
+                    SWSS_LOG_WARN("Failed to update punt classify tables on %s (vlan %u)",
+                            member_hwif.c_str(), bridge_id);
+                }
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("VLAN %u %s flood control set to %s: ARP punt %s, "
+            "IPv6 multicast punt %s (bridge domain flooding left enabled)",
+            bridge_id,
+            attr_name,
+            punt ? "NONE" : "ALL",
+            punt_arp ? "enabled" : "disabled",
+            punt_ip6mc ? "enabled" : "disabled");
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1882,10 +2569,11 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
         return SAI_STATUS_SUCCESS;
     }
 
-    auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
-    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
-    auto bp_attr = br_port_attrs[meta->attridname];
-    port_id = bp_attr->getAttr()->value.oid;
+    if (!bridge_port_to_port_id(br_port_id, port_id))
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
     obj_type = objectTypeQuery(port_id);
 
     if (obj_type != SAI_OBJECT_TYPE_PORT)
@@ -1997,10 +2685,11 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
         return SAI_STATUS_SUCCESS;
     }
 
-    auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
-    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
-    auto bp_attr = br_port_attrs[meta->attridname];
-    port_id = bp_attr->getAttr()->value.oid;
+    if (!bridge_port_to_port_id(br_port_id, port_id))
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
     obj_type = objectTypeQuery(port_id);
 
     if (obj_type != SAI_OBJECT_TYPE_PORT)
@@ -2149,10 +2838,11 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
                     break;
                 }
 
-                auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
-                auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
-                auto bp_attr = br_port_attrs[meta->attridname];
-                port_id = bp_attr->getAttr()->value.oid;
+                if (!bridge_port_to_port_id(br_port_id, port_id))
+                {
+                    return SAI_STATUS_FAILURE;
+                }
+
                 sai_object_type_t obj_type = objectTypeQuery(port_id);
 
                 if (obj_type != SAI_OBJECT_TYPE_PORT)
