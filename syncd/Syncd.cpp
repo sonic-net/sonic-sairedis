@@ -1808,7 +1808,7 @@ sai_status_t Syncd::processFdbFlush(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_NOTICE("fdb flush succeeded, updating redis database");
+        SWSS_LOG_INFO("fdb flush succeeded, updating redis database");
 
         // update database right after fdb flush success (not in notification)
         // build artificial notification here to reuse code
