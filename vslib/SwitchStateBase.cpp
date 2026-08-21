@@ -759,7 +759,7 @@ sai_status_t SwitchStateBase::get(
                     meta->attridname,
                     serializedObjectId.c_str());
 
-            return SAI_STATUS_ITEM_NOT_FOUND;
+            return SAI_STATUS_NOT_IMPLEMENTED;
         }
 
         auto attr = ait->second->getAttr();
