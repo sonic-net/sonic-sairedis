@@ -2948,7 +2948,7 @@ void SwitchStateBase::processFdbEntriesForAging()
 
     SWSS_LOG_DEBUG("fdb infos to process: %zu", m_fdb_info_set.size());
 
-    uint32_t current = (uint32_t)time(NULL);
+    uint32_t current = FdbInfo::currentEpochTimeSec();
 
     sai_attribute_t attr;
 
