@@ -1093,6 +1093,14 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
         hw_ifname = hwifname;
     }
 
+    if (is_add &&
+        rif_type == SAI_ROUTER_INTERFACE_TYPE_PORT &&
+        ot == SAI_OBJECT_TYPE_PORT)
+    {
+        // Reassert the tap MAC immediately before the port starts carrying L3 traffic.
+        CHECK_STATUS(restorePortTapMac(obj_id));
+    }
+
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);
 
     if (ret == 0)
