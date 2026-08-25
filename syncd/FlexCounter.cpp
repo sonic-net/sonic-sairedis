@@ -1509,7 +1509,8 @@ public:
         SWSS_LOG_ENTER();
 
         auto iter = m_objectIdsMap.find(vid);
-        if (iter != m_objectIdsMap.end())
+        const bool removedFromObjectMap = iter != m_objectIdsMap.end();
+        if (removedFromObjectMap)
         {
             auto rid = iter->second->rid;
             m_failedPolls.erase({rid, vid});
@@ -1518,7 +1519,9 @@ public:
 
         // An object can be in both m_objectIdsMap and the bulk context
         // when bulk polling is supported by some counter prefixes but unsupported by some others
-        if (!removeBulkStatsContext(vid) && log)
+        const bool removedFromBulkContext = removeBulkStatsContext(vid);
+
+        if (!removedFromObjectMap && !removedFromBulkContext && log)
         {
             SWSS_LOG_NOTICE("Trying to remove nonexisting %s %s",
                             sai_serialize_object_type(m_objectType).c_str(),
