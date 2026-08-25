@@ -801,7 +801,23 @@ sai_status_t SwitchVpp::vpp_set_port_speed (
         // SAI port speed is in Mbps, VPP link speed is in Kbps
         uint32_t link_speed = speed * 1000;
 
-        sw_interface_set_link_speed(hwif_name, link_speed);
+        int status = sw_interface_set_link_speed(hwif_name, link_speed);
+
+        if (status != 0)
+        {
+            SWSS_LOG_ERROR("Failed to update port %s speed to %u Mbps: %d",
+                           hwif_name, speed, status);
+            return SAI_STATUS_FAILURE;
+        }
+
+        /* Refresh SAI-VPP's cached speed before the set operation returns.
+         * SONiC queries operational speed before bringing the port back up. */
+        if (vpp_refresh_interface_speed(hwif_name) != 0)
+        {
+            SWSS_LOG_WARN("Failed to refresh VPP speed for %s after setting %u Mbps",
+                          hwif_name, speed);
+        }
+
         SWSS_LOG_NOTICE("Updating port %s speed to %u Mbps", hwif_name, speed);
     }
     return SAI_STATUS_SUCCESS;
