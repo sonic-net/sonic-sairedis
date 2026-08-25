@@ -102,6 +102,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
+      pool: sonicso1ES-amd64
       artifact_name: sonic-sairedis-trixie
       syslog_artifact_name: sonic-sairedis-trixie.syslog
       run_unit_test: true
