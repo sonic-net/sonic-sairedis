@@ -52,7 +52,7 @@ Set `COMMON_CONFIGURED_REUSE=0` only for legacy single-invocation debugging (one
 
 ### Supported tests
 
-The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-08-20** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test sai_notification_test` on `sai_vpp_ut_phase4`, `ISOLATE_EACH_TEST=1`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
+The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-08-25** against `sai_notification_test` on `sai_vpp_ut_phase4`, with the extracted VPP fixture and per-test isolation). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
 
 | Module | Passing test classes (CI required) |
 |---|---|
@@ -62,7 +62,7 @@ The table below lists OCP `sai_test` classes that **pass** on the current VPP SA
 | `sai_route_test` | `DefaultRouteV4Test`, `DefaultRouteV6Test`, `LagMultipleRouteTest`, `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteRifTest`, `RouteRifv6Test`, `RouteSameSipDipv4Test`, `RouteSameSipDipv6Test`, `RouteUpdateTest`, `RouteUpdatev6Test`, `StaicSviMacFloodingTest`, `StaicSviMacFloodingV6Test` |
 | `sai_notification_test` | `BfdMultihopTest`, `BfdSessionDownTest`, `BfdSessionUpTest`, `PortStateChangeTest`, `PortStateRecoveryTest` |
 
-**35** classes are required to pass the PR check (`ci-pass-tests.txt`). The harness plans **90** test targets across the five modules above — the runnable classes only, since `run_test.sh` applies ptf's own `runTest` discovery rule and skips helper and intermediate base classes. `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries. The five notification tests are VPP-harness opt-in; they passed three consecutive clean module runs and the follow-up full matrix. The full matrix may still exit 1 for known non-baseline selectors while the stable baseline remains 35/35 with zero regressions.
+**35** classes are required to pass the PR check (`ci-pass-tests.txt`). The harness plans **90** test targets across the five modules above — the runnable classes only, since `run_test.sh` applies ptf's own `runTest` discovery rule and skips helper and intermediate base classes. `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries. The five notification tests are VPP-harness opt-in through `bfd_fixture='fixtures.vpp_bfd_fixture'` for BFD; the complete module passed once with default isolation and once with grouped mode requested (which forced five isolated groups). The full matrix may still exit 1 for known non-baseline selectors while the stable baseline remains 35/35 with zero regressions.
 
 #### Flaky L3-over-LAG ECMP tests (run, not gated)
 
