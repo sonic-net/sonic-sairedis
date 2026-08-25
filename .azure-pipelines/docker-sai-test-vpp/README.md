@@ -32,6 +32,12 @@ The framework exercises SAI operations (create/set/get/remove of ports, RIFs, ro
 - **PTF** runs the OCP `sai_test` Python suite and does packet I/O on the `OEthX_peer` ends.
 - **`run_test.sh`** is the container entrypoint and orchestrator: Redis → veth topology → VPP → saiserver → PTF. It writes the SONiC-to-VPP interface map to `/usr/share/sonic/hwsku/sonic_vpp_ifmap.ini`. PortChannel netdevs and LAG/SVI connected IPs are set up in sai_test `setUp()` via sai_test's `SIMULATE_SONIC` helper (`config/simulate_sonic.py`), not in `run_test.sh`.
 
+### Notification fixture injection
+
+The shared `sai_notification_test.py` module keeps notification polling, SAI object assertions, and BFD transition orchestration platform-neutral. BFD topology, peer packets, Linux interface mapping, and VPP corroboration are supplied by a harness fixture selected with the generic PTF parameter `bfd_fixture`.
+
+For this image, `run_test.sh` adds `/opt/docker-sai-test-vpp` with PTF's `--pypath` option and passes `bfd_fixture='fixtures.vpp_bfd_fixture'` when the notification module is requested. The provider under `fixtures/` owns the VPP LAG/RIF/address/route/neighbor setup, Scapy responder, path break, and cleanup. A missing or unsupported provider is reported as a skipped BFD test rather than making other notification consumers depend on VPP.
+
 ### Key design point — per-test isolation (default) and config-signature grouping
 
 The VPP SAI backend can build the switch + host-interfaces **once per saiserver process**. The OCP framework is built to configure a common T0 setup once and have subsequent tests reuse it (`common_configured=true`). But different test classes ask `T0TestBase.setUp` for *different* common configs (e.g. ECMP tests need next-hop groups), and rebuilding the full T0 config twice in one saiserver process can crash the backend.
@@ -213,7 +219,7 @@ The container entrypoint is `run_test.sh`. Test selectors are PTF targets: `modu
 
 ### Where the tests come from
 
-The OCP `sai_test` suite is baked into the image at `/sai_test` (copied from `SAI/test/sai_test/` in the repo). PTF and the SAI Thrift client come from `SAI/test/ptf` and the `python-saithrift` / `python-saithriftv2` package. `run_test.sh` discovers test classes under `/sai_test` automatically.
+The OCP `sai_test` suite is baked into the image at `/sai_test` (copied from `SAI/test/sai_test/` in the repo). PTF and the SAI Thrift client come from `SAI/test/ptf` and the `python-saithrift` / `python-saithriftv2` package. Harness providers are baked in under `/opt/docker-sai-test-vpp/fixtures` and exposed with PTF's `--pypath` option. `run_test.sh` discovers test classes under `/sai_test` automatically.
 
 ### Run a single test
 

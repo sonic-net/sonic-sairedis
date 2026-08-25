@@ -554,10 +554,10 @@ build_ptf_args()
 
     if [[ "$test_target" == "sai_notification_test" || \
           "$test_target" == sai_notification_test.* ]]; then
-        test_params="${test_params};notification_test='true';platform='vpp'"
+        test_params="${test_params};notification_test='true';bfd_fixture='fixtures.vpp_bfd_fixture'"
     fi
 
-    PTF_ARGS=(--test-dir "$SAI_TEST_DIR")
+    PTF_ARGS=(--test-dir "$SAI_TEST_DIR" --pypath "$HARNESS_DIR")
 
     for ((port_index = 0; port_index < PORT_COUNT; port_index++)); do
         PTF_ARGS+=(--interface "${port_index}@$(ptf_interface_name "$port_index")")
