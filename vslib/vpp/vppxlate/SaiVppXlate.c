@@ -3478,48 +3478,24 @@ int sw_interface_set_mtu (const char *hwif_name, uint32_t mtu)
 int sw_interface_set_mac (const char *hwif_name, uint8_t *mac_address)
 {
     vat_main_t *vam = &vat_main;
-    vl_api_sw_interface_set_mac_address_t *mp;
-    int ret;
+    u32 idx;
+
+    if (hwif_name == NULL) {
+        SAIVPP_ERROR("hwif_name cannot be NULL");
+        return -EINVAL;
+    }
 
     VPP_LOCK();
-
-    __plugin_msg_base = interface_msg_id_base;
-
-    M (SW_INTERFACE_SET_MAC_ADDRESS, mp);
-
-    if (hwif_name) {
-        u32 idx;
-        idx = get_swif_idx(vam, hwif_name);
-        if (idx != (u32) -1) {
-            mp->sw_if_index = htonl(idx);
-        } else {
-            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
-            VPP_UNLOCK();
-            return -EINVAL;
-        }
-    } else {
-        SAIVPP_ERROR("hwif_name cannot be NULL");
-        VPP_UNLOCK();
-        return -EINVAL;
-    }
-
-    if (mac_address == NULL) {
-        SAIVPP_ERROR("mac address can't be NULL");
-        VPP_UNLOCK();
-        return -EINVAL;
-    }
-    memcpy(mp->mac_address, mac_address, sizeof(mp->mac_address));
-
-    S (mp);
-
-    WR (ret);
-
-    if (ret) { SAIVPP_ERROR("%s failed(%d) %s", __func__, ret, hwif_name); }
-    else { SAIVPP_INFO("%s %s", __func__, hwif_name); }
-
+    idx = get_swif_idx(vam, hwif_name);
     VPP_UNLOCK();
 
-    return ret;
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+        return -EINVAL;
+    }
+
+    /* Reuse the index based implementation for the actual VPP API call. */
+    return sw_interface_set_mac_by_index(idx, mac_address);
 }
 
 int sw_interface_set_mac_by_index (uint32_t sw_if_index, uint8_t *mac_address)
