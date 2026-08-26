@@ -1,1 +1,0 @@
-"""Platform-specific fixtures for the VPP SAI test harness."""

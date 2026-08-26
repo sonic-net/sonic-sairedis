@@ -175,7 +175,6 @@ jobs:
           vpp_startup.conf.template; do
             cp -a ".azure-pipelines/docker-sai-test-vpp/$harness_file" "$context_harness/"
       done
-      cp -a ".azure-pipelines/docker-sai-test-vpp/fixtures" "$context_harness/"
       cp -a "$deb_dir" "$context_harness/"
       cp -a SAI/test/ptf "$context_dir/SAI/test/"
       cp -a SAI/test/sai_test "$context_dir/SAI/test/"
