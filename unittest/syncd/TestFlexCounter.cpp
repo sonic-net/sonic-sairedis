@@ -751,7 +751,7 @@ TEST(FlexCounter, addRemoveCounter)
         {"SAI_ACL_COUNTER_ATTR_PACKETS"},
         {"1000"},
         counterVerifyFunc,
-        false);
+        true);
 
     // Bulk create mode to satisfy the coverage requirement
     testAddRemoveCounter(
@@ -761,7 +761,7 @@ TEST(FlexCounter, addRemoveCounter)
         {"SAI_ACL_COUNTER_ATTR_PACKETS"},
         {"1000"},
         counterVerifyFunc,
-        false,
+        true,
         STATS_MODE_READ,
         true);
 
