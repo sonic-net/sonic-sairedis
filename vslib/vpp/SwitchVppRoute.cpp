@@ -229,7 +229,7 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         status = route_obj->get_attr(attr);
 
         if (status == SAI_STATUS_SUCCESS && SAI_PACKET_ACTION_FORWARD == attr.value.s32) {
-            vpp_add_del_intf_ip_addr_norif(serializedObjectId, route_entry, is_add);
+            return vpp_add_del_intf_ip_addr_norif(serializedObjectId, route_entry, is_add);
         }
     }
     else if (SAI_OBJECT_TYPE_NEXT_HOP == RealObjectIdManager::objectTypeQuery(next_hop_oid))
