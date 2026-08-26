@@ -168,6 +168,24 @@ namespace saivs
             _In_ sai_object_id_t tunnel_oid);
 
         /**
+         * @brief Symmetric teardown for L3 VXLAN VNET decap terms (defense in depth).
+         *
+         * Called before a TUNNEL is removed from the SAI DB. Normal VNET teardown
+         * deletes the TUNNEL_MAP_ENTRYs first, and handle_l2_vxlan_tunnel_map_entry_removal
+         * frees the decap terms then. If instead a TUNNEL is deleted while its
+         * TUNNEL_MAP_ENTRYs are kept, nothing would sweep the terms this tunnel's
+         * VTEP owns, leaking them. This hook runs before remove_internal, so the
+         * tunnel and its DECAP_MAPPERS links are still resolvable. It is refcount
+         * aware: a term is freed only once no surviving VXLAN tunnel still
+         * references the same decap mapper with the same VTEP source IP.
+         *
+         * @param tunnel_oid The tunnel object ID about to be removed.
+         * @return SAI_STATUS_SUCCESS on success or if not applicable.
+         */
+        sai_status_t handle_l3_vxlan_tunnel_removal(
+            _In_ sai_object_id_t tunnel_oid);
+
+        /**
          * @brief Handle late tunnel map entry for L2 VXLAN.
          *
          * Called when a VNI-to-VLAN mapper entry is created after a P2P tunnel

@@ -812,6 +812,109 @@ TunnelManager::handle_l3_vxlan_tunnel_create(
 
 
 sai_status_t
+TunnelManager::handle_l3_vxlan_tunnel_removal(
+    _In_ sai_object_id_t tunnel_oid)
+{
+    SWSS_LOG_ENTER();
+
+    // Defense in depth (mirror of handle_l3_vxlan_tunnel_create): sweep the L3
+    // VNET decap terms this tunnel's VTEP owns. Normal teardown removes the
+    // TUNNEL_MAP_ENTRYs first and handle_l2_vxlan_tunnel_map_entry_removal frees
+    // the terms; this covers the case where the TUNNEL is deleted while its map
+    // entries are kept. Runs before remove_internal, so the tunnel and its
+    // DECAP_MAPPERS links are still in the DB.
+    auto tunnel_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL,
+        sai_serialize_object_id(tunnel_oid));
+    if (!tunnel_obj) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    sai_attribute_t attr;
+    attr.id = SAI_TUNNEL_ATTR_TYPE;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS ||
+        attr.value.s32 != SAI_TUNNEL_TYPE_VXLAN) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // The VTEP whose decap terms this tunnel owns is its ENCAP_SRC_IP.
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        return SAI_STATUS_SUCCESS;
+    }
+    sai_ip_address_t deleted_vtep = attr.value.ipaddr;
+
+    // Refcount guard: install_l3_vxlan_decap_terms deduplicates one term per
+    // (map entry, VTEP src) across all tunnels that reference the mapper, so the
+    // term must survive as long as any OTHER VXLAN tunnel still references this
+    // mapper with the same VTEP source. The tunnel being deleted is still linked
+    // at this point, so exclude it by OID.
+    auto vtep_still_referenced =
+        [&](const std::shared_ptr<SaiDBObject>& mapper) -> bool {
+        auto tunnels = mapper->get_child_objs(SAI_OBJECT_TYPE_TUNNEL);
+        if (!tunnels) return false;
+        for (auto& tp : *tunnels) {
+            auto t = tp.second;
+            sai_object_id_t t_oid;
+            sai_deserialize_object_id(t->get_id(), t_oid);
+            if (t_oid == tunnel_oid) continue;
+            sai_attribute_t a;
+            a.id = SAI_TUNNEL_ATTR_TYPE;
+            if (t->get_attr(a) != SAI_STATUS_SUCCESS ||
+                a.value.s32 != SAI_TUNNEL_TYPE_VXLAN) continue;
+            a.id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+            if (t->get_attr(a) != SAI_STATUS_SUCCESS) continue;
+            if (sai_ip_address_equal(a.value.ipaddr, deleted_vtep)) return true;
+        }
+        return false;
+    };
+
+    auto decap_mappers = tunnel_obj->get_linked_objects(
+        SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_DECAP_MAPPERS);
+
+    for (auto mapper : decap_mappers) {
+        attr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+        if (mapper->get_attr(attr) != SAI_STATUS_SUCCESS) continue;
+        if (attr.value.s32 != SAI_TUNNEL_MAP_TYPE_VNI_TO_VIRTUAL_ROUTER_ID) continue;
+
+        // A surviving tunnel with the same VTEP src still needs this mapper's
+        // shared decap terms; leave them in place.
+        if (vtep_still_referenced(mapper)) {
+            continue;
+        }
+
+        auto entries = mapper->get_child_objs(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY);
+        if (!entries) continue;
+
+        for (auto& entry_pair : *entries) {
+            auto entry = entry_pair.second;
+            sai_object_id_t term_oid;
+            sai_deserialize_object_id(entry->get_id(), term_oid);
+
+            auto term_it = m_vxlan_decap_term_map.find(term_oid);
+            if (term_it == m_vxlan_decap_term_map.end()) continue;
+
+            // Free only the terms this tunnel's VTEP src owns; a map entry can
+            // hold terms for several VTEP sources.
+            auto& vec = term_it->second;
+            for (auto it = vec.begin(); it != vec.end();) {
+                if (sai_ip_address_equal(it->src_ip, deleted_vtep)) {
+                    remove_vxlan_decap_term(*it);
+                    it = vec.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            if (vec.empty()) {
+                m_vxlan_decap_term_map.erase(term_it);
+            }
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+
+sai_status_t
 TunnelManager::handle_l2_vxlan_tunnel_map_entry(
     _In_ const std::string& serializedObjectId,
     _In_ uint32_t attr_count,

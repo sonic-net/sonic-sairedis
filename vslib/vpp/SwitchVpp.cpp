@@ -1879,6 +1879,18 @@ sai_status_t SwitchVpp::remove(
         return status;
     }
 
+    if (object_type == SAI_OBJECT_TYPE_TUNNEL)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+
+        // Defense in depth: sweep any L3 VNET decap terms this tunnel's VTEP owns
+        // before the SAI object and its DECAP_MAPPERS links are torn down, in case
+        // the TUNNEL is deleted while its TUNNEL_MAP_ENTRYs are still present.
+        m_tunnel_mgr.handle_l3_vxlan_tunnel_removal(object_id);
+        return remove_internal(object_type, serializedObjectId);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
         m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry_removal(serializedObjectId);
