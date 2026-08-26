@@ -473,6 +473,13 @@ sai_status_t acl_rule_field_update(
         // NOOP here - these are either handled elsewhere or not currently applicable
         break;
 
+    case SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS:
+        /*
+         * Not a per rule field: it names several ports, so it is applied by
+         * fanning the generated rules out over them in fill_acl_rules().
+         */
+        break;
+
     default:
         SWSS_LOG_ERROR("Unhandled ACL entry attribute ID: %d", attr_id);
         break;
@@ -936,6 +943,51 @@ sai_status_t SwitchVpp::fill_acl_rules(
                 rules_added++;
             }
 
+            /*
+             * SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS restricts the entry to the
+             * ports it names. A VPP ACL rule matches one interface, so the
+             * rules generated above are fanned out - one copy per named port -
+             * the same way a port based entry with no protocol fans out into a
+             * UDP and a TCP rule. They stay contiguous from
+             * ace.vpp_rule_base_index, so the counter of the entry still sums
+             * over ace.num_rules and needs no special handling.
+             */
+            std::set<std::string> in_hwifs;
+            bool                  in_ports_scoped = false;
+
+            status = acl_entry_in_ports_get(p_ace, ace.ace_oid, in_ports_scoped, in_hwifs);
+
+            if (status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to resolve IN_PORTS of ACL entry %s, status: %d",
+                               sai_serialize_object_id(ace.ace_oid).c_str(), status);
+                return SAI_STATUS_FAILURE;
+            }
+
+            if (in_ports_scoped) {
+
+                std::list<vpp_acl_rule_t> base_rules;
+
+                for (uint32_t n = 0; n < rules_added; n++) {
+                    base_rules.push_front(acl_rules.back());
+                    acl_rules.pop_back();
+                }
+
+                rules_added = 0;
+
+                for (const auto &hwif_name : in_hwifs) {
+                    for (auto scoped_rule : base_rules) {
+                        snprintf(scoped_rule.in_hwif_name, sizeof(scoped_rule.in_hwif_name),
+                                 "%s", hwif_name.c_str());
+                        acl_rules.push_back(scoped_rule);
+                        rules_added++;
+                    }
+                }
+
+                SWSS_LOG_INFO("ACL entry %s scoped to %zu interface(s): %u rule(s)",
+                              sai_serialize_object_id(ace.ace_oid).c_str(),
+                              in_hwifs.size(), rules_added);
+            }
+
             ace.num_rules = rules_added;
             acl_rule_index += rules_added;
 
@@ -971,6 +1023,88 @@ void SwitchVpp::cleanup_acl_tbl_config(
         tunterm_acl = NULL;
     }
     ordered_aces.clear();
+}
+
+sai_status_t SwitchVpp::acl_entry_in_ports_get(
+    _In_ const acl_tbl_entries_t *ace,
+    _In_ sai_object_id_t ace_oid,
+    _Out_ bool &scoped,
+    _Out_ std::set<std::string> &hwifs)
+{
+    SWSS_LOG_ENTER();
+
+    scoped = false;
+    hwifs.clear();
+
+    const sai_attribute_t *found = NULL;
+
+    for (uint32_t i = 0; i < ace->attrs_count; i++) {
+        if (ace->attrs[i].id == SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS) {
+            found = &ace->attrs[i];
+            break;
+        }
+    }
+
+    if (found == NULL || !found->value.aclfield.enable) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    scoped = true;
+
+    /*
+     * The attributes were read with a zero capacity object list, so only its
+     * count came back and its list is still null. Read the entry again, now
+     * with somewhere to put the ports.
+     */
+    uint32_t count = found->value.aclfield.data.objlist.count;
+
+    if (count == 0) {
+        /*
+         * The field is on but names no port, so no ingress interface can be in
+         * the list and the entry matches nothing. Leaving hwifs empty makes the
+         * caller emit no rule for it, which comes to the same thing.
+         */
+        SWSS_LOG_WARN("ACL entry %s has an enabled but empty IN_PORTS list",
+                      sai_serialize_object_id(ace_oid).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::vector<sai_object_id_t> ports(count);
+    sai_attribute_t              attr;
+
+    attr.id = SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS;
+    attr.value.aclfield.enable = true;
+    attr.value.aclfield.data.objlist.count = count;
+    attr.value.aclfield.data.objlist.list = ports.data();
+
+    if (get(SAI_OBJECT_TYPE_ACL_ENTRY, ace_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to read IN_PORTS list of ACL entry %s",
+                       sai_serialize_object_id(ace_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    for (uint32_t i = 0; i < attr.value.aclfield.data.objlist.count; i++) {
+
+        std::string hwif_name;
+
+        if (!vpp_get_hwif_name(ports[i], 0, hwif_name)) {
+            SWSS_LOG_WARN("No VPP interface for port %s named by IN_PORTS of ACL entry %s",
+                          sai_serialize_object_id(ports[i]).c_str(),
+                          sai_serialize_object_id(ace_oid).c_str());
+            continue;
+        }
+
+        hwifs.insert(hwif_name);
+    }
+
+    if (hwifs.empty()) {
+        SWSS_LOG_ERROR("None of the %u port(s) named by IN_PORTS of ACL entry %s resolve "
+                       "to a VPP interface",
+                       count, sai_serialize_object_id(ace_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::acl_add_replace(

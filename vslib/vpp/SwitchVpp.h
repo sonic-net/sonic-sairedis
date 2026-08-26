@@ -15,6 +15,8 @@
 #include "vppxlate/SaiRouteStats.h"
 
 #include <list>
+#include <set>
+#include <vector>
 #include <map>
 #include <unordered_map>
 #include <mutex>
@@ -1044,6 +1046,27 @@ namespace saivs
                     _In_ sai_object_id_t tbl_oid,
                     _In_ acl_tbl_entries_t *aces,
                     _In_ std::list<ordered_ace_list_t> &ordered_aces);
+
+            /**
+             * @brief Reads SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS of an entry.
+             *
+             * @param[in] ace The ACL entry.
+             * @param[in] ace_oid Object ID of the entry, needed to re-read the port list.
+             * @param[out] scoped True if the entry is restricted to the ports it names,
+             * false if it applies to every port the table is bound to.
+             * @param[out] hwifs VPP interface names the entry is restricted to. Only
+             * meaningful when scoped is true, where an empty set means the entry names
+             * no port and so matches nothing.
+             * @return SAI_STATUS_SUCCESS if the scope of the entry was determined. An
+             * error if the port list could not be read or none of the ports it names
+             * resolve to a VPP interface; the scope is unknown in that case, so the
+             * caller has to fail instead of programming rules with the wrong scope.
+             */
+            sai_status_t acl_entry_in_ports_get(
+                    _In_ const acl_tbl_entries_t *ace,
+                    _In_ sai_object_id_t ace_oid,
+                    _Out_ bool &scoped,
+                    _Out_ std::set<std::string> &hwifs);
 
             /**
              * @brief Counts the total number of ACL rules and tunnel termination ACL rules, and sets is_tunterm in the ordered ACE list.

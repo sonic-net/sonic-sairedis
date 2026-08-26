@@ -3404,6 +3404,25 @@ int vpp_acl_add_replace (vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace
         vpp_rule->dstport_or_icmpcode_first = htons(in_rule->dstport_or_icmpcode_first);
         vpp_rule->dstport_or_icmpcode_last = htons(in_rule->dstport_or_icmpcode_last);
 
+        /*
+         * Ingress interface match. Resolved here rather than by the caller so
+         * the SAI layer keeps working in interface names, as it does for
+         * binding. 0 means any, which is what the ACL plugin expects.
+         */
+        if (in_rule->in_hwif_name[0] != '\0') {
+            u32 in_idx = get_swif_idx(vam, in_rule->in_hwif_name);
+
+            if (in_idx == (u32) -1) {
+                SAIVPP_ERROR("Unable to get sw_index for %s in acl rule\n",
+                             in_rule->in_hwif_name);
+                VPP_UNLOCK();
+                return -EINVAL;
+            }
+            vpp_rule->in_sw_if_index = htonl(in_idx);
+        } else {
+            vpp_rule->in_sw_if_index = 0;
+        }
+
         if (vpp_rule->proto != 0) {
             if (vpp_rule->srcport_or_icmptype_first == 0 && vpp_rule->srcport_or_icmptype_last == 0) {
                 vpp_rule->srcport_or_icmptype_first = htons(0);
