@@ -775,7 +775,8 @@ const char* SwitchVpp::hwif_to_tap_name(
 
     if (it == m_hwif_hostif_map.end())
     {
-        // not all hwif are mapped to hostif, e.g. vxlan tunnel interface, bvi interface.
+        // not all hwif are mapped to hostif, e.g. vxlan tunnel interface, bvi interface,
+        // and BondEthernet<N> (LAG) which has no SAI hostif tap.
         SWSS_LOG_NOTICE("failed to find hostif info entry for hwif device: %s", tap_name.c_str());
 
         return "Unknown";

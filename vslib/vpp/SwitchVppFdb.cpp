@@ -1386,9 +1386,59 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
     // than the member, neither of which the member accepts unless promiscuous.
     interface_set_promiscuous(hwifname, true);
 
+    // vs_create_hostif_tap_interface() unconditionally enables IPv6 on every port
+    // hwif to give it a link-local address. IPv4 has no such explicit enable, it is
+    // refcounted by VPP and drops away on its own when the member's RIF addresses
+    // are removed on joining the PortChannel. IPv6 has to be turned off explicitly
+    // so the member does not keep a link-local and an active ip6 config while L3 is
+    // owned by the bond. It stays disabled for as long as the port is a member,
+    // including across egress-disable detach/re-attach, and is restored in
+    // removeLagMember().
+    vpp_set_lag_member_ip6(lag_port_oid, false);
+
     CHECK_STATUS(vpp_ensure_lag_lcp(lag_oid));
 
     return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::vpp_set_lag_member_ip6(
+        _In_ sai_object_id_t port_oid,
+        _In_ bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    // Best effort, the caller must still complete the LAG member add/remove because
+    // the VPP bond membership change already happened and failing here would leave
+    // the object model inconsistent.
+    std::string if_name;
+
+    if (getTapNameFromPortId(port_oid, if_name) == false)
+    {
+        SWSS_LOG_ERROR("no tap found for port %s, IPv6 not %s",
+                sai_serialize_object_id(port_oid).c_str(),
+                enable ? "enabled" : "disabled");
+        return;
+    }
+
+    const char *hwif_name = tap_to_hwif_name(if_name.c_str());
+
+    if (hwif_name == nullptr)
+    {
+        SWSS_LOG_ERROR("no hwif found for tap %s, IPv6 not %s",
+                if_name.c_str(),
+                enable ? "enabled" : "disabled");
+        return;
+    }
+
+    if (sw_interface_ip6_enable_disable(hwif_name, enable) < 0)
+    {
+        SWSS_LOG_ERROR("failed to %s IPv6 on %s",
+                enable ? "enable" : "disable", hwif_name);
+        return;
+    }
+
+    SWSS_LOG_NOTICE("%s IPv6 on LAG member %s",
+            enable ? "Enabled" : "Disabled", hwif_name);
 }
 
 sai_status_t SwitchVpp::vpp_ensure_lag_lcp(
@@ -1663,10 +1713,16 @@ sai_status_t SwitchVpp::removeLagMember(
     if (port_oid != SAI_NULL_OBJECT_ID)
     {
         restorePortTapMac(port_oid);
+
+        // Undo the disable done in vpp_create_lag_member(), the port is a routed port
+        // again and needs the link-local address that vs_create_hostif_tap_interface()
+        // gave it. Done here rather than in vpp_remove_lag_member() so it also covers
+        // an egress-disabled member, which skips the bond detach above.
+        vpp_set_lag_member_ip6(port_oid, true);
     }
     else
     {
-        SWSS_LOG_WARN("no port found for LAG member %s, tap MAC not restored",
+        SWSS_LOG_WARN("no port found for LAG member %s, tap MAC and IPv6 not restored",
                 sai_serialize_object_id(lag_member_oid).c_str());
     }
 
@@ -2217,6 +2273,31 @@ inline sai_object_id_t SwitchVpp::resolvePortIdFromSwIfIndex(uint32_t sw_if_inde
         return it->second;
 
     sai_object_id_t port_id = getPortIdFromSwIfIndex(sw_if_index);
+
+    if (port_id == SAI_NULL_OBJECT_ID)
+    {
+        /*
+         * A LAG (BondEthernet<N>) is created directly via create_bond_interface()
+         * and has no SAI hostif tap, so it is absent from the hwif->hostif ifmap
+         * that getPortIdFromSwIfIndex() relies on. Resolve it from the bond map
+         * instead: SAI_BRIDGE_PORT_ATTR_PORT_ID of a PortChannel bridge port is
+         * the LAG OID, which is exactly what findBridgeVlanForPortVlan() matches
+         * on. Without this, every MAC learned on a PortChannel is dropped and
+         * never reaches ASIC_DB/STATE_DB (invisible to fdbshow).
+         */
+        for (const auto &kv : m_lag_bond_map)
+        {
+            if (kv.second.sw_if_index == sw_if_index)
+            {
+                port_id = kv.first;
+                SWSS_LOG_NOTICE("FDB: resolved sw_if_index %u to LAG %s (bond %u)",
+                                sw_if_index, sai_serialize_object_id(port_id).c_str(),
+                                kv.second.id);
+                break;
+            }
+        }
+    }
+
     if (port_id != SAI_NULL_OBJECT_ID)
         m_swif_to_port_id[sw_if_index] = port_id;
 
