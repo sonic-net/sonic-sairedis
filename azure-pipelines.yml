@@ -161,7 +161,6 @@ stages:
       debug_pkg: libsairedis-dbgsym
       include_gcov: false
       include_vpp: true
-      include_nexthopgroup: true
 
 - stage: BuildDockerAsan
   dependsOn:
@@ -181,7 +180,6 @@ stages:
       debug_pkg: libsairedis-dbgsym
       include_gcov: false
       include_vpp: true
-      include_nexthopgroup: true
       asan: true
 
 - stage: Test
