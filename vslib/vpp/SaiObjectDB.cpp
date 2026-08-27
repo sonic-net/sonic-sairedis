@@ -31,6 +31,12 @@ std::map<sai_object_type_t, std::vector<SaiChildRelation>> sai_child_relation_de
     {SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, {{SAI_OBJECT_TYPE_NEXT_HOP_GROUP, SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID, SAI_ATTR_VALUE_TYPE_OBJECT_ID}}},
     {SAI_OBJECT_TYPE_ROUTE_ENTRY, {{SAI_OBJECT_TYPE_NEXT_HOP_GROUP, SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID, SAI_ATTR_VALUE_TYPE_OBJECT_ID},
                                    {SAI_OBJECT_TYPE_COUNTER, SAI_ROUTE_ENTRY_ATTR_COUNTER_ID, SAI_ATTR_VALUE_TYPE_OBJECT_ID}}},
+    /*
+     * Lets a VLAN enumerate its members, which the flood-control handler needs
+     * in order to re-bind the L2 punt classify tables on every member when
+     * SAI_VLAN_ATTR_{BROADCAST,UNKNOWN_MULTICAST}_FLOOD_CONTROL_TYPE changes.
+     */
+    {SAI_OBJECT_TYPE_VLAN_MEMBER, {{SAI_OBJECT_TYPE_VLAN, SAI_VLAN_MEMBER_ATTR_VLAN_ID, SAI_ATTR_VALUE_TYPE_OBJECT_ID}}},
 };
 
 static std::vector<std::string>

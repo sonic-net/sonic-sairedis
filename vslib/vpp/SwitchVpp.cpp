@@ -2264,6 +2264,21 @@ sai_status_t SwitchVpp::set(
         return setLagMember(objectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_VLAN)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+
+        sai_status_t vlan_status = vpp_set_vlan_attribute(objectId, attr);
+
+        if (vlan_status != SAI_STATUS_SUCCESS)
+        {
+            return vlan_status;
+        }
+
+        // Fall through to set_internal() below so the attribute is also cached
+    }
+
     return set_internal(objectType, serializedObjectId, attr);
 }
 
