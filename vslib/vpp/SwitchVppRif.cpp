@@ -801,7 +801,23 @@ sai_status_t SwitchVpp::vpp_set_port_speed (
         // SAI port speed is in Mbps, VPP link speed is in Kbps
         uint32_t link_speed = speed * 1000;
 
-        sw_interface_set_link_speed(hwif_name, link_speed);
+        int status = sw_interface_set_link_speed(hwif_name, link_speed);
+
+        if (status != 0)
+        {
+            SWSS_LOG_ERROR("Failed to update port %s speed to %u Mbps: %d",
+                           hwif_name, speed, status);
+            return SAI_STATUS_FAILURE;
+        }
+
+        /* Refresh SAI-VPP's cached speed before the set operation returns.
+         * SONiC queries operational speed before bringing the port back up. */
+        if (vpp_refresh_interface_speed(hwif_name) != 0)
+        {
+            SWSS_LOG_WARN("Failed to refresh VPP speed for %s after setting %u Mbps",
+                          hwif_name, speed);
+        }
+
         SWSS_LOG_NOTICE("Updating port %s speed to %u Mbps", hwif_name, speed);
     }
     return SAI_STATUS_SUCCESS;
@@ -1194,6 +1210,7 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     std::string full_if_name;
     std::string ip_prefix_str;
+    std::string intf_data;
 
     if (is_add)
     {
@@ -1204,8 +1221,6 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
             return SAI_STATUS_FAILURE;
         }
     } else {
-        std::string intf_data;
-
         if (vpp_intf_get_prefix_entry(ip_prefix_key, intf_data) == false)
         {
             SWSS_LOG_DEBUG("No interface ip address found for %s", ip_prefix_key.c_str());
@@ -1248,14 +1263,11 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
         copy(saiIpPrefix, intf_ip_prefix);
 
-        std::string intf_data;
         std::string sai_prefix;
 
         sai_prefix = sai_serialize_ip_prefix(saiIpPrefix);
 
         vpp_serialize_intf_data(full_if_name, sai_prefix, intf_data);
-
-        m_intf_prefix_map[ip_prefix_key] = intf_data;
     } else {
         sai_ip_prefix_t saiIpPrefix;
 
@@ -1264,8 +1276,6 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
         sai_deserialize_ip_prefix(ip_prefix_str, saiIpPrefix);
 
         intf_ip_prefix = getIpPrefixFromSaiPrefix(saiIpPrefix);
-
-        vpp_intf_remove_prefix_entry(ip_prefix_key);
     }
 
     vpp_ip_route_t vpp_ip_prefix;
@@ -1333,12 +1343,35 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
     }
     SWSS_LOG_NOTICE("Setting ip on hw_ifname %s", hw_ifname);
 
+    if (is_add)
+    {
+        sai_object_id_t port_oid = getPortIdFromIfName(full_if_name);
+
+        if (port_oid != SAI_NULL_OBJECT_ID)
+        {
+            SWSS_LOG_NOTICE("reconciling tap MAC for %s before IP programming",
+                    full_if_name.c_str());
+            CHECK_STATUS(restorePortTapMac(port_oid));
+        }
+        else
+        {
+            SWSS_LOG_DEBUG("tap MAC reconciliation is not applicable to %s",
+                    full_if_name.c_str());
+        }
+    }
+
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);
 
     if (ret == 0)
     {
-        if (is_add) {
+        if (is_add)
+        {
+            m_intf_prefix_map[ip_prefix_key] = intf_data;
             m_tunnel_mgr_ipip.retry_pending_unnumbered(vpp_ip_prefix.prefix_addr);
+        }
+        else
+        {
+            vpp_intf_remove_prefix_entry(ip_prefix_key);
         }
         return SAI_STATUS_SUCCESS;
     }
