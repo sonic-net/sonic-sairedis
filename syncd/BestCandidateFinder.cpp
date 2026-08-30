@@ -1886,6 +1886,9 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
                 soci.equal_attributes);
 
         candidateObjects.push_back(soci);
+        if (soci.equal_attributes == attrs.size()
+            && (object_type == SAI_OBJECT_TYPE_VLAN || object_type == SAI_OBJECT_TYPE_VLAN_MEMBER))
+            break;
     }
 
     SWSS_LOG_INFO("number candidate objects for %s is %zu",
