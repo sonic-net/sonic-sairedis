@@ -207,7 +207,18 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
 
         create_route_prefix_entry(&route_entry, ip_route);
         ip_route->vrf_id = vrf_id;
-        ip_route->is_multipath = false;
+        // The neighbor host route (<ip>/32 or /128 via the BVI) can share its VPP
+        // FIB prefix with a dual-ToR tunnel-encap route that MuxOrch installs for the
+        // same server IP. VPP's ip_route_add_del() deletes the ENTIRE prefix (all
+        // paths) when is_multipath=0 on remove, so removing the neighbor with
+        // is_multipath=false clobbers a coexisting tunnel route.
+        // MuxOrch always adds the new contributor before removing the old one, so:
+        //   add    -> is_multipath=false: authoritatively (re)install this single
+        //             attached path, replacing whatever occupied the prefix.
+        //   remove -> is_multipath=true : retract only the neighbor's own path; if a
+        //             tunnel route has already replaced it the remove is a harmless
+        //             no-op, so the tunnel route is preserved.
+        ip_route->is_multipath = !is_add;
         ip_route->nexthop_cnt = 1;
 
         nexthop_grp_member_t member;

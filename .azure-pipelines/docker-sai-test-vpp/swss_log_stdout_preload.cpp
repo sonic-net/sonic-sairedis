@@ -10,7 +10,9 @@ static void route_swss_log_to_stdout()
 {
     SWSS_LOG_ENTER();
     swss::Logger::setMinPrio(swss::Logger::SWSS_DEBUG);
-    swss::Logger::swssOutputNotify("saiserver", "STDOUT");
+    // Standard error keeps function entry and exit logs out of captured standard
+    // output. The harness redirects both streams to the SAI server log.
+    swss::Logger::swssOutputNotify("saiserver", "STDERR");
 }
 
 } // namespace

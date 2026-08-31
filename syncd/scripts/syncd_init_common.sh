@@ -435,9 +435,29 @@ config_syncd_mlnx()
     awk -F= '!seen[$1]++' /tmp/sai-temp.profile > /tmp/sai.profile
     rm -f /tmp/sai-temp.profile
 
-    # Update sai.profile with MAC_ADDRESS and WARM_BOOT settings
+    # Update sai.profile with MAC_ADDRESS settings
     echo "DEVICE_MAC_ADDRESS=$MAC_ADDRESS" >> /tmp/sai.profile
-    echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
+
+    # Derive warm-boot paths from SAI XML <issu-enabled> (0/1/2)
+    # NVIDIA warmboot (2): isolate under /var/warmboot/sai_warmboot_nvda/
+    # NVIDIA fastfast (1) / disabled (0) / unset: keep legacy /var/warmboot/
+    SAI_INIT_CONFIG_FILE=$(awk -F= '/^SAI_INIT_CONFIG_FILE=/{print $2; exit}' /tmp/sai.profile)
+    ISSU_ENABLED=""
+    if [[ -f "${SAI_INIT_CONFIG_FILE}" ]]; then
+        ISSU_ENABLED=$(
+            sed -n 's:.*<issu-enabled>\([0-9]*\)</issu-enabled>.*:\1:p' "${SAI_INIT_CONFIG_FILE}" |
+            head -n1
+        )
+    fi
+
+    # Update sai.profile with WARM_BOOT settings
+    if [[ "${ISSU_ENABLED}" == "2" ]]; then
+        WARM_BOOT_FILE="/var/warmboot/sai_warmboot_nvda/"
+        echo "SAI_WARM_BOOT_WRITE_FILE=${WARM_BOOT_FILE}" >> /tmp/sai.profile
+        echo "SAI_WARM_BOOT_READ_FILE=${WARM_BOOT_FILE}" >> /tmp/sai.profile
+    else
+        echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
+    fi
 
     if [[ "$DUAL_TOR" == "enable" ]] && [[ "$DSCP_REMAPPING" == "enable" ]]; then
        echo "SAI_DSCP_REMAPPING_ENABLED=1" >> /tmp/sai.profile

@@ -1323,8 +1323,12 @@ void SwitchVpp::processFdbEntriesForAging()
 
         auto bd_it = m_swif_to_bdid.find(ev.sw_if_index);
         if (bd_it == m_swif_to_bdid.end()) {
-            SWSS_LOG_DEBUG("FDB: unknown sw_if_index %u in MAC event, skipping",
-                           ev.sw_if_index);
+            SWSS_LOG_WARN("FDB: dropping MAC event for untracked sw_if_index %u "
+                          "(action %u, MAC %02x:%02x:%02x:%02x:%02x:%02x); "
+                          "VPP L2FIB will desync from ASIC_DB/STATE_DB",
+                          ev.sw_if_index, ev.action,
+                          ev.mac[0], ev.mac[1], ev.mac[2],
+                          ev.mac[3], ev.mac[4], ev.mac[5]);
             events.pop();
             continue;
         }
@@ -2294,6 +2298,21 @@ sai_status_t SwitchVpp::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setLagMember(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_VLAN)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+
+        sai_status_t vlan_status = vpp_set_vlan_attribute(objectId, attr);
+
+        if (vlan_status != SAI_STATUS_SUCCESS)
+        {
+            return vlan_status;
+        }
+
+        // Fall through to set_internal() below so the attribute is also cached
     }
 
     return set_internal(objectType, serializedObjectId, attr);

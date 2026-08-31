@@ -53,6 +53,10 @@ namespace saivs
 
             virtual ~SwitchVpp();
 
+            // This switch performs packet sampling directly in its data plane.
+            // Skip the base virtual switch kernel sampler to avoid duplicate ingress samples.
+            bool hasNativePacketSampling() const override { return true; }
+
         protected:
 
             virtual sai_status_t create_cpu_qos_queues(
@@ -332,6 +336,10 @@ namespace saivs
                     _In_ const char *dev,
                     _In_ const sai_mac_t& mac);
 
+            static int vs_set_dev_admin_up(
+                    _In_ const char *dev,
+                    _In_ bool up);
+
             static int promisc(
                     _In_ const char *dev);
 
@@ -384,6 +392,40 @@ namespace saivs
 
             sai_status_t vpp_remove_vlan_member(
                     _In_ sai_object_id_t vlan_member_oid);
+
+            // Handles SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE and
+            // SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE, which
+            // orchagent sets when proxy ARP is toggled on a VLAN interface.
+            sai_status_t vpp_set_vlan_attribute(
+                    _In_ sai_object_id_t vlan_oid,
+                    _In_ const sai_attribute_t *attr);
+
+            // True if the given VLAN flood-control attribute is currently
+            // stored as SAI_VLAN_FLOOD_CONTROL_TYPE_NONE, i.e. the matching
+            // classify punt should be installed. The stored VLAN object is the
+            // single source of truth; an attribute that was never set falls
+            // back to the SAI default of ALL (no punt).
+            bool vlan_flood_punt_enabled(
+                    _In_ sai_object_id_t vlan_oid,
+                    _In_ sai_attr_id_t attr_id);
+
+            // Resolves SAI_BRIDGE_PORT_ATTR_PORT_ID on a bridge port. Returns
+            // false, rather than throwing or dereferencing a null attribute,
+            // if the bridge port or the attribute is not in the object store.
+            bool bridge_port_to_port_id(
+                    _In_ sai_object_id_t br_port_oid,
+                    _Out_ sai_object_id_t &port_id);
+
+            // Resolves a VLAN member to the VPP interface that actually is the
+            // bridge domain member (the parent for an untagged member,
+            // <parent>.<vid> for a tagged one) and its tagging mode. Returns
+            // false for members with no VPP interface, e.g. tunnel bridge
+            // ports, or if the interface name cannot be resolved.
+            bool vlan_member_hwif(
+                    _In_ const SaiObject &vlan_member,
+                    _In_ uint16_t vlan_id,
+                    _Out_ std::string &hwif_name,
+                    _Out_ bool &is_tagged);
 
             sai_status_t vpp_create_bvi_interface(
                     _In_ uint32_t attr_count,
@@ -442,8 +484,11 @@ namespace saivs
                     _In_ sai_object_id_t lag_member_oid);
 	    sai_status_t vpp_remove_lag_member(
                     _In_ sai_object_id_t lag_member_oid);
-	    void restorePortTapMac(
+	    sai_status_t restorePortTapMac(
                     _In_ sai_object_id_t port_oid);
+	    void vpp_set_lag_member_ip6(
+                    _In_ sai_object_id_t port_oid,
+                    _In_ bool enable);
 	    sai_status_t vpp_ensure_lag_lcp(
                     _In_ sai_object_id_t lag_oid);
 	    sai_status_t vpp_set_lag_member_egress_disable(
@@ -883,6 +928,36 @@ namespace saivs
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_mbr_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
+
+            // Generic per-port ACL table bookkeeping.
+            //
+            // m_port_acl_tables records, per VPP interface (hwif name), the set
+            // of ACL tables currently bound to it in each direction. It is not
+            // specific to any feature: it provides a forward (port -> tables)
+            // and, via getPortsWithAclTable(), a reverse (table -> ports)
+            // lookup for anything that needs to map ports to ACL tables (the
+            // ip2me hook today, egress features tomorrow).
+            struct PortAclTables
+            {
+                std::set<sai_object_id_t> ingress;
+                std::set<sai_object_id_t> egress;
+            };
+            std::map<std::string, PortAclTables> m_port_acl_tables;
+
+            // ip2me (receive-DPO check before ACL) tracking.
+            //
+            // A table is an "ip2me drop table" if it carries at least one
+            // DROP/deny rule and could therefore discard ip2me (for-us)
+            // traffic; the set is kept current by AclTblConfig. A table whose
+            // drop-ness flips after it is bound is re-evaluated against the
+            // ingress bindings in m_port_acl_tables. The sonic_ext ip2me
+            // feature is enabled on an interface while any of its bound ingress
+            // tables is a drop table, and disabled otherwise;
+            // m_ip2me_enabled_ports records the last programmed state to keep
+            // the enable/disable calls idempotent.
+            std::set<sai_object_id_t> m_ip2me_drop_tables;
+            std::set<std::string> m_ip2me_enabled_ports;
+
             std::map<std::string, uint32_t> m_routeStatsIndexMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsBaseMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsCarryMap;
@@ -897,7 +972,6 @@ namespace saivs
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
-            uint32_t m_sflow_sample_rate = 0;
 
         protected: // VPP
 
@@ -1139,6 +1213,34 @@ namespace saivs
                     _In_ sai_object_id_t tbl_oid,
                     _In_ bool is_bind);
 
+            /*
+             * Generic port <-> ACL-table binding bookkeeping (both
+             * directions), backing m_port_acl_tables. Not specific to ip2me --
+             * see SwitchVppAcl.cpp.
+             */
+            void updatePortAclTableBinding(
+                    _In_ const std::string &hwif_name,
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool is_input,
+                    _In_ bool is_bind);
+
+            std::vector<std::string> getPortsWithAclTable(
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool is_input);
+
+            /*
+             * ip2me (receive-DPO check before ACL) helpers -- see
+             * SwitchVppAcl.cpp. They keep the sonic_ext ip2me feature enabled
+             * on exactly the VPP interfaces that have an ingress drop ACL
+             * bound, so ip2me (for-us) traffic can bypass it.
+             */
+            void ip2meUpdateDropTable(
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool has_deny);
+
+            void ip2meRefreshPort(
+                    _In_ const std::string &hwif_name);
+
             sai_status_t getAclEntryStats(
                     _In_ sai_object_id_t ace_cntr_oid,
                     _In_ uint32_t attr_count,
@@ -1186,6 +1288,13 @@ namespace saivs
              sai_status_t sflowHostifTableEntryRemove(
                      _In_ const std::string &serializedObjectId);
 
+             sai_status_t sflowInterfaceSamplingRateSet(
+                     _In_ sai_object_id_t port_id,
+                     _In_ uint32_t rate);
+
+             sai_status_t sflowInterfaceDirectionSet(
+                     _In_ sai_object_id_t port_id,
+                     _In_ uint32_t direction);
 
         public: // VPP
 

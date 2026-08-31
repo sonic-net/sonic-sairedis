@@ -24,7 +24,8 @@ extern "C" {
 
     typedef enum {
 	VPP_NEXTHOP_NORMAL = 1,
-	VPP_NEXTHOP_LOCAL = 2
+    VPP_NEXTHOP_LOCAL = 2,
+    VPP_NEXTHOP_DROP = 3
     } vpp_nexthop_type_e;
 
     /* Maximum MPLS label stack depth carried on a single fib path (VPP API limit). */
@@ -453,6 +454,8 @@ typedef enum {
 
     extern int vpp_sflow_enable_disable(const char *hwif_name, bool enable);
     extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
+
+    extern int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable);
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
     extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
     extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
@@ -461,6 +464,8 @@ typedef enum {
                                            uint32_t vrf_id,
                                            uint32_t *out_sw_if_index);
     extern int vpp_iface_loopback_set_action(const char *hwif_name, int action);
+    extern int vpp_sflow_interface_sampling_rate_set(const char *hwif_name, uint32_t sampling_n);
+    extern int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction);
 
     /* VPP Classify API for L2 punt */
     extern int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,

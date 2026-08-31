@@ -226,6 +226,130 @@ TEST(SaiSerialize, sai_deserialize_port_snr_list)
     EXPECT_EQ(snr_list.list, nullptr);
 }
 
+TEST(SaiSerialize, sai_serialize_port_ilt_lane_training_status_list)
+{
+    sai_ilt_lane_training_status_t list[2];
+
+    list[0].lane = 0;
+    list[0].training_status = SAI_PORT_ILT_LANE_TRAINING_STATUS_OK;
+
+    list[1].lane = 1;
+    list[1].training_status = SAI_PORT_ILT_LANE_TRAINING_STATUS_FAIL;
+
+    sai_port_ilt_lane_training_status_list_t status_list;
+
+    status_list.count = 2;
+    status_list.list = list;
+
+    auto s = sai_serialize_port_ilt_lane_training_status_list(status_list, false);
+
+    std::string expected =
+        R"({"0":"SAI_PORT_ILT_LANE_TRAINING_STATUS_OK","1":"SAI_PORT_ILT_LANE_TRAINING_STATUS_FAIL"})";
+
+    EXPECT_EQ(s, expected);
+
+    // A count only request and a null list both serialize to an empty object
+
+    EXPECT_EQ(sai_serialize_port_ilt_lane_training_status_list(status_list, true), "{}");
+
+    status_list.list = nullptr;
+
+    EXPECT_EQ(sai_serialize_port_ilt_lane_training_status_list(status_list, false), "{}");
+}
+
+TEST(SaiSerialize, sai_deserialize_port_ilt_lane_training_status_list)
+{
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_ILT_LANE_TRAINING_STATUS_LIST);
+    attr.id = SAI_PORT_ATTR_ILT_LANE_TRAINING_STATUS_LIST;
+
+    std::string json_str =
+        R"({"0":"SAI_PORT_ILT_LANE_TRAINING_STATUS_OK","3":"SAI_PORT_ILT_LANE_TRAINING_STATUS_IN_PROGRESS"})";
+
+    sai_deserialize_attr_value(json_str, *meta, attr, false);
+
+    EXPECT_EQ(attr.value.port_ilt_lane_training_status_list.count, 2);
+    ASSERT_NE(attr.value.port_ilt_lane_training_status_list.list, nullptr);
+
+    EXPECT_EQ(attr.value.port_ilt_lane_training_status_list.list[0].lane, 0);
+    EXPECT_EQ(attr.value.port_ilt_lane_training_status_list.list[0].training_status,
+            SAI_PORT_ILT_LANE_TRAINING_STATUS_OK);
+
+    EXPECT_EQ(attr.value.port_ilt_lane_training_status_list.list[1].lane, 3);
+    EXPECT_EQ(attr.value.port_ilt_lane_training_status_list.list[1].training_status,
+            SAI_PORT_ILT_LANE_TRAINING_STATUS_IN_PROGRESS);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+
+    std::string empty_json_str = R"({})";
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_ILT_LANE_TRAINING_STATUS_LIST;
+
+    sai_deserialize_attr_value(empty_json_str, *meta, attr, false);
+    EXPECT_EQ(attr.value.port_ilt_lane_training_status_list.count, 0);
+    EXPECT_EQ(attr.value.port_ilt_lane_training_status_list.list, nullptr);
+}
+
+TEST(SaiSerialize, sai_deserialize_port_ilt_lane_training_status_list_count_only)
+{
+    std::string json_str =
+        R"({"0":"SAI_PORT_ILT_LANE_TRAINING_STATUS_OK","3":"SAI_PORT_ILT_LANE_TRAINING_STATUS_TRAINED"})";
+
+    sai_port_ilt_lane_training_status_list_t status_list;
+    memset(&status_list, 0, sizeof(status_list));
+
+    sai_deserialize_port_ilt_lane_training_status_list(json_str, status_list, true);
+
+    EXPECT_EQ(status_list.count, 2);
+    EXPECT_EQ(status_list.list, nullptr);
+}
+
+TEST(SaiSerialize, sai_deserialize_port_ilt_lane_training_status_list_malformed)
+{
+    sai_port_ilt_lane_training_status_list_t status_list;
+
+    // A non string status is skipped, but the lane it belongs to is still
+    // reported so the caller never reads an uninitialized entry
+
+    memset(&status_list, 0, sizeof(status_list));
+
+    sai_deserialize_port_ilt_lane_training_status_list(
+            R"({"0":7,"1":"SAI_PORT_ILT_LANE_TRAINING_STATUS_FAIL"})", status_list, false);
+
+    EXPECT_EQ(status_list.count, 2);
+    ASSERT_NE(status_list.list, nullptr);
+
+    EXPECT_EQ(status_list.list[0].lane, 0);
+    EXPECT_EQ(status_list.list[0].training_status, SAI_PORT_ILT_LANE_TRAINING_STATUS_RESERVED);
+
+    EXPECT_EQ(status_list.list[1].lane, 1);
+    EXPECT_EQ(status_list.list[1].training_status, SAI_PORT_ILT_LANE_TRAINING_STATUS_FAIL);
+
+    delete[] status_list.list;
+
+    // Input that is not an object, that fails to parse, or that carries a non
+    // numeric lane key yields an empty list instead of throwing
+
+    memset(&status_list, 0, sizeof(status_list));
+    sai_deserialize_port_ilt_lane_training_status_list(R"(["a"])", status_list, false);
+    EXPECT_EQ(status_list.count, 0);
+    EXPECT_EQ(status_list.list, nullptr);
+
+    memset(&status_list, 0, sizeof(status_list));
+    sai_deserialize_port_ilt_lane_training_status_list("{not json", status_list, false);
+    EXPECT_EQ(status_list.count, 0);
+    EXPECT_EQ(status_list.list, nullptr);
+
+    memset(&status_list, 0, sizeof(status_list));
+    sai_deserialize_port_ilt_lane_training_status_list(
+            R"({"lane0":"SAI_PORT_ILT_LANE_TRAINING_STATUS_OK"})", status_list, false);
+    EXPECT_EQ(status_list.count, 0);
+    EXPECT_EQ(status_list.list, nullptr);
+}
+
 TEST(SaiSerialize, sai_serialize_attr_value)
 {
     sai_attribute_t attr;
@@ -1299,8 +1423,8 @@ TEST(SaiSerialize, serialize_qos_map)
     attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
 
     sai_qos_map_t qm = {
-        .key   = { .tc = 1, .dscp = 2, .dot1p = 3, .prio = 4, .pg = 5, .queue_index = 6, .color = SAI_PACKET_COLOR_RED, .mpls_exp = 0, .fc = 2 },
-        .value = { .tc = 11, .dscp = 22, .dot1p = 33, .prio = 44, .pg = 55, .queue_index = 66, .color = SAI_PACKET_COLOR_GREEN, .mpls_exp = 0, .fc = 2 } };
+        .key   = { .tc = 1, .dscp = 2, .dot1p = 3, .prio = 4, .pg = 5, .queue_index = 6, .color = SAI_PACKET_COLOR_RED, .mpls_exp = 0, .fc = 2, .dei = 0, .vc = 0 },
+        .value = { .tc = 11, .dscp = 22, .dot1p = 33, .prio = 44, .pg = 55, .queue_index = 66, .color = SAI_PACKET_COLOR_GREEN, .mpls_exp = 0, .fc = 2, .dei = 0, .vc = 0 } };
 
     attr.value.qosmap.count = 1;
     attr.value.qosmap.list = &qm;

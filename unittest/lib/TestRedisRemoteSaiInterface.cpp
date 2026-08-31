@@ -33,7 +33,22 @@ public:
       return SAI_STATUS_SUCCESS;
     }
 
+  void set(
+      _In_ const string &key,
+      _In_ const vector<FieldValueTuple> &values,
+      _In_ const string &command) override
+    {
+      SWSS_LOG_ENTER();
+
+      m_set_key = key;
+      m_set_values = values;
+      m_set_command = command;
+    }
+
   function<sai_status_t(const string &command, KeyOpFieldsValuesTuple &kco)> m_wait_mock;
+  string m_set_key;
+  vector<FieldValueTuple> m_set_values;
+  string m_set_command;
 };
 
 // Helper: build a ContextConfig with a given zmq state and unique IPC
@@ -64,6 +79,58 @@ TEST(RedisRemoteSaiInterface, queryStatsCapabilityNegative)
               sai.queryStatsCapability(0,
                 SAI_OBJECT_TYPE_NULL,
                 0));
+}
+
+TEST(RedisRemoteSaiInterface, setSecondaryPollFactor)
+{
+    auto ctx = ContextConfigContainer::loadFromFile("foo");
+    auto rec = make_shared<Recorder>();
+    RedisRemoteSaiInterface sai(ctx->get(0), nullptr, rec);
+
+    auto channel = make_shared<TestRedisRemoteSaiInterfaceMockChannel>(
+            sai.m_contextConfig->m_dbAsic,
+            std::bind(&RedisRemoteSaiInterface::handleNotification,
+                      &sai,
+                      placeholders::_1,
+                      placeholders::_2,
+                      placeholders::_3));
+    sai.m_communicationChannel = channel;
+
+    string group = "PORT_STAT_COUNTER";
+    string factor = "2";
+    sai_redis_flex_counter_group_secondary_poll_factor_parameter_t param{};
+    param.counter_group_name.list =
+        reinterpret_cast<int8_t *>(const_cast<char *>(group.c_str()));
+    param.counter_group_name.count = static_cast<uint32_t>(group.size());
+    param.secondary_poll_factor.list =
+        reinterpret_cast<int8_t *>(const_cast<char *>(factor.c_str()));
+    param.secondary_poll_factor.count = static_cast<uint32_t>(factor.size());
+
+    sai_attribute_t attr{};
+    attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP_SECONDARY_POLL_FACTOR;
+    attr.value.ptr = &param;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              sai.set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr));
+    EXPECT_EQ(group, channel->m_set_key);
+    EXPECT_EQ(REDIS_FLEX_COUNTER_COMMAND_SET_GROUP, channel->m_set_command);
+    ASSERT_EQ(1u, channel->m_set_values.size());
+    EXPECT_EQ(SECONDARY_POLL_FACTOR_FIELD, fvField(channel->m_set_values[0]));
+    EXPECT_EQ(factor, fvValue(channel->m_set_values[0]));
+}
+
+TEST(RedisRemoteSaiInterface, setSecondaryPollFactorNullPayload)
+{
+    auto ctx = ContextConfigContainer::loadFromFile("foo");
+    auto rec = make_shared<Recorder>();
+    RedisRemoteSaiInterface sai(ctx->get(0), nullptr, rec);
+
+    sai_attribute_t attr{};
+    attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP_SECONDARY_POLL_FACTOR;
+    attr.value.ptr = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+              sai.set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr));
 }
 
 TEST(RedisRemoteSaiInterface, queryStatsStCapability)

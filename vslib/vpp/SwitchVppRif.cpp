@@ -841,6 +841,17 @@ sai_status_t SwitchVpp::vpp_apply_loopback_action (
 {
     SWSS_LOG_ENTER();
 
+    // Only FORWARD and DROP are supported for the RIF loopback packet action;
+    // the VPP dataplane has no trap/copy path for hairpin packets. Reject any
+    // other sai_packet_action_t instead of silently treating it as forward.
+    if (packet_action != SAI_PACKET_ACTION_FORWARD &&
+        packet_action != SAI_PACKET_ACTION_DROP)
+    {
+        SWSS_LOG_ERROR("Unsupported RIF loopback packet action %d on %s",
+                       packet_action, ifname.c_str());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
     const char *hwif_name = ifname.c_str();
     int action = (packet_action == SAI_PACKET_ACTION_DROP) ? 1 : 0;
 
@@ -910,7 +921,23 @@ sai_status_t SwitchVpp::vpp_set_port_speed (
         // SAI port speed is in Mbps, VPP link speed is in Kbps
         uint32_t link_speed = speed * 1000;
 
-        sw_interface_set_link_speed(hwif_name, link_speed);
+        int status = sw_interface_set_link_speed(hwif_name, link_speed);
+
+        if (status != 0)
+        {
+            SWSS_LOG_ERROR("Failed to update port %s speed to %u Mbps: %d",
+                           hwif_name, speed, status);
+            return SAI_STATUS_FAILURE;
+        }
+
+        /* Refresh SAI-VPP's cached speed before the set operation returns.
+         * SONiC queries operational speed before bringing the port back up. */
+        if (vpp_refresh_interface_speed(hwif_name) != 0)
+        {
+            SWSS_LOG_WARN("Failed to refresh VPP speed for %s after setting %u Mbps",
+                          hwif_name, speed);
+        }
+
         SWSS_LOG_NOTICE("Updating port %s speed to %u Mbps", hwif_name, speed);
     }
     return SAI_STATUS_SUCCESS;
@@ -942,6 +969,13 @@ sai_status_t SwitchVpp::UpdatePort(
     attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE, attr_count, attr_list);
 
     if (attr_type != NULL)
+    {
+        sflowPortSamplePacketSet(object_id, attr_type);
+    }
+
+    attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE, attr_count, attr_list);
+
+    if(attr_type != NULL)
     {
         sflowPortSamplePacketSet(object_id, attr_type);
     }
@@ -1296,6 +1330,7 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     std::string full_if_name;
     std::string ip_prefix_str;
+    std::string intf_data;
 
     if (is_add)
     {
@@ -1306,8 +1341,6 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
             return SAI_STATUS_FAILURE;
         }
     } else {
-        std::string intf_data;
-
         if (vpp_intf_get_prefix_entry(ip_prefix_key, intf_data) == false)
         {
             SWSS_LOG_DEBUG("No interface ip address found for %s", ip_prefix_key.c_str());
@@ -1350,14 +1383,11 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
         copy(saiIpPrefix, intf_ip_prefix);
 
-        std::string intf_data;
         std::string sai_prefix;
 
         sai_prefix = sai_serialize_ip_prefix(saiIpPrefix);
 
         vpp_serialize_intf_data(full_if_name, sai_prefix, intf_data);
-
-        m_intf_prefix_map[ip_prefix_key] = intf_data;
     } else {
         sai_ip_prefix_t saiIpPrefix;
 
@@ -1366,8 +1396,6 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
         sai_deserialize_ip_prefix(ip_prefix_str, saiIpPrefix);
 
         intf_ip_prefix = getIpPrefixFromSaiPrefix(saiIpPrefix);
-
-        vpp_intf_remove_prefix_entry(ip_prefix_key);
     }
 
     vpp_ip_route_t vpp_ip_prefix;
@@ -1410,15 +1438,18 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
        snprintf(hw_bviifname, sizeof(hw_bviifname), "%s%d","bvi",vlan_id);
        hw_ifname = hw_bviifname;
     } else if (full_if_name.compare(0, strlen(PORTCHANNEL_PREFIX), PORTCHANNEL_PREFIX) == 0) {
-        uint32_t bond_id = (uint32_t)vpp_safe_stoi(full_if_name.substr(strlen(PORTCHANNEL_PREFIX)), "portchannel_bond_id");
+        /* full_if_name is PortChannel<id>[.<vlan>]; get_intf_vlanid() above
+         * already split it into if_name / vlan_id.  Parse the id from the
+         * name *without* the VLAN suffix: std::stoi("1.20") stops at the
+         * '.' and silently yields 1, which used to drop the sub-interface
+         * and program the address onto the bond main interface. */
+        uint32_t bond_id = std::stoi(if_name.substr(strlen(PORTCHANNEL_PREFIX)));
         if (vlan_id) {
-            // PortChannel sub-port RIF (e.g. PortChannel54.54): the IP must be added on the
-            // bond sub-interface (BondEthernet<id>.<vlan>), not the base bond. Without the
-            // .<vlan> suffix the connected route/adjacency is never programmed, leaving the
-            // FIB entry UNRESOLVED and traffic dropped.
-            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u.%d", BONDETHERNET_PREFIX, bond_id, vlan_id);
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u.%u",
+                     BONDETHERNET_PREFIX, bond_id, vlan_id);
         } else {
-            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u", BONDETHERNET_PREFIX, bond_id);
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%u",
+                     BONDETHERNET_PREFIX, bond_id);
         }
         hw_ifname = hw_bondifname;
     } else if (full_if_name.compare(0, 2, "Po") == 0 && full_if_name.length() > 2 &&
@@ -1445,12 +1476,35 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
     }
     SWSS_LOG_NOTICE("Setting ip on hw_ifname %s", hw_ifname);
 
+    if (is_add)
+    {
+        sai_object_id_t port_oid = getPortIdFromIfName(full_if_name);
+
+        if (port_oid != SAI_NULL_OBJECT_ID)
+        {
+            SWSS_LOG_NOTICE("reconciling tap MAC for %s before IP programming",
+                    full_if_name.c_str());
+            CHECK_STATUS(restorePortTapMac(port_oid));
+        }
+        else
+        {
+            SWSS_LOG_DEBUG("tap MAC reconciliation is not applicable to %s",
+                    full_if_name.c_str());
+        }
+    }
+
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);
 
     if (ret == 0)
     {
-        if (is_add) {
+        if (is_add)
+        {
+            m_intf_prefix_map[ip_prefix_key] = intf_data;
             m_tunnel_mgr_ipip.retry_pending_unnumbered(vpp_ip_prefix.prefix_addr);
+        }
+        else
+        {
+            vpp_intf_remove_prefix_entry(ip_prefix_key);
         }
         return SAI_STATUS_SUCCESS;
     }
@@ -2013,11 +2067,22 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
         const char *parent_hwif;
         char hw_subif_parent[32];
+        char lcp_host_subif[64];
         if (ot == SAI_OBJECT_TYPE_LAG) {
             snprintf(hw_subif_parent, sizeof(hw_subif_parent), "%s%u", BONDETHERNET_PREFIX, bond_info.id);
             parent_hwif = hw_subif_parent;
+            /*
+             * For a port-channel sub-port the LCP host tap must be be<id>.<vlan>
+             * (a VLAN netdev on the be<id> bond tap), NOT PortChannel<id>.<vlan>:
+             * that name collides with the kernel 8021q netdev owned by the Linux
+             * bond/team stack. linux-cp-punt-xc lands on be<id>.<vlan> and the
+             * sonic_ext aggr-tap-redirect steers the punted copy to the
+             * originating member tap (SONiC PR #2440 §5.3).
+             */
+            snprintf(lcp_host_subif, sizeof(lcp_host_subif), "be%u.%u", bond_info.id, vlan_id);
         } else {
             parent_hwif = tap_to_hwif_name(dev);
+            snprintf(lcp_host_subif, sizeof(lcp_host_subif), "%s", host_subifname);
         }
         create_sub_interface(parent_hwif, vlan_id, vlan_id);
 
@@ -2025,13 +2090,28 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
          * lcp-auto-subint is disabled in VPP startup config (vlan-bvi HLD §3.6),
          * so the VPP sub-interface does NOT get an automatic linux-cp pair.
          * Explicitly create the LCP pair binding <parent>.<vlan_id> (VPP side)
-         * to the kernel sub-vlan netdev (<dev>.<vlan_id>). Without this the
-         * sub-interface will not show up in `vppctl show lcp` and host punt
-         * will not work for the SUB_PORT RIF.
+         * to its host tap (Ethernet<n>.<vlan> for a port, be<id>.<vlan> for a
+         * port-channel). Without this the sub-interface will not show up in
+         * `vppctl show lcp` and host punt will not work for the SUB_PORT RIF.
          */
         char vpp_subif_name[64];
         snprintf(vpp_subif_name, sizeof(vpp_subif_name), "%s.%u", parent_hwif, vlan_id);
-        configure_lcp_interface(vpp_subif_name, host_subifname, true);
+        configure_lcp_interface(vpp_subif_name, lcp_host_subif, true);
+
+        /*
+         * lcp-auto-subint is disabled and linux-cp lcp-sync is off, so nothing
+         * brings the freshly created kernel sub-interface host netdev UP: it is
+         * created admin-down and stays down. A down host netdev drops the
+         * for-us punt (the kernel never processes it / generates no reply), so
+         * SUB_PORT datapath silently breaks. Explicitly bring the host tap UP
+         * here (SAI-driven, consistent with the no-lcp-sync design).
+         */
+        if (vs_set_dev_admin_up(lcp_host_subif, true) < 0)
+        {
+            SWSS_LOG_ERROR("Failed to bring host sub-interface %s admin up; "
+                           "for-us traffic punted to this SUB_PORT RIF will be dropped",
+                           lcp_host_subif);
+        }
 
         /* Get new list of physical interfaces from VS */
         refresh_interfaces_list();
@@ -2440,7 +2520,15 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     char vpp_subif_name[64];
     char host_subifname[64];
     snprintf(vpp_subif_name, sizeof(vpp_subif_name), "%s.%u", parent_hwif, vlan_id);
-    snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
+    if (ot == SAI_OBJECT_TYPE_LAG) {
+        /* Symmetric with create (SONiC PR #2440 §5.3): the host tap is
+         * be<id>.<vlan>. The host name is ignored by the LCP plugin on
+         * delete (the pair is keyed by the VPP sub-if), but keep it
+         * symmetric for log clarity. */
+        snprintf(host_subifname, sizeof(host_subifname), "be%u.%u", bond_info.id, vlan_id);
+    } else {
+        snprintf(host_subifname, sizeof(host_subifname), "%s.%u", dev, vlan_id);
+    }
     configure_lcp_interface(vpp_subif_name, host_subifname, false);
 
     delete_sub_interface(parent_hwif, vlan_id);
