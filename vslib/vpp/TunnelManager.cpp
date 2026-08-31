@@ -153,6 +153,18 @@ TunnelManager::tunnel_encap_nexthop_action(
 
     dst_ip = attr.value.ipaddr;
 
+    // SAI_TUNNEL_ATTR_PEER_MODE is CREATE_ONLY with a SAI default of P2MP.
+    // decap_any (source-independent decap) is only correct for a P2MP tunnel;
+    // a P2P tunnel has a single fixed remote peer (SAI marks ENCAP_DST_IP
+    // validonly when PEER_MODE == P2P) and must keep exact outer-source
+    // validation. Soft-read and default to P2MP so an omitted attribute
+    // (get_attr returns SAI_STATUS_ITEM_NOT_FOUND) does not regress creation.
+    bool tunnel_is_p2mp = true;
+    attr.id = SAI_TUNNEL_ATTR_PEER_MODE;
+    if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+        tunnel_is_p2mp = (attr.value.s32 == SAI_TUNNEL_PEER_MODE_P2MP);
+    }
+
     // Iterate tunnel encap mapper
     auto tunnel_encap_mappers = tunnel_obj->get_linked_objects(SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_ENCAP_MAPPERS);
 
@@ -187,10 +199,12 @@ TunnelManager::tunnel_encap_nexthop_action(
             // Primary-VTEP L3 VNET decap is source-independent by design: the
             // underlay may deliver VXLAN frames to the local VTEP IP from any
             // outer source. This path only handles VIRTUAL_ROUTER_ID_TO_VNI
-            // (L3 VNET) mappers, so request the source-independent decap term.
-            // L2 EVPN tunnels (create_l2_vxlan_tunnel_for_vni) intentionally
-            // leave decap_any unset to keep exact outer-source validation.
-            req.decap_any = true;
+            // (L3 VNET) mappers. Source-independent decap is only correct for a
+            // P2MP tunnel (no single fixed peer); a P2P tunnel's outer source is
+            // the fixed remote VTEP, so keep exact outer-source validation.
+            // L2 EVPN tunnels (create_l2_vxlan_tunnel_for_vni) likewise leave
+            // decap_any unset.
+            req.decap_any = tunnel_is_p2mp;
 
             attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_VALUE;
             CHECK_STATUS_W_MSG(tunnel_encap_mapper_entry->get_attr(attr),
@@ -1234,6 +1248,10 @@ TunnelManager::create_vxlan_decap_term(
     // Primary-VTEP guard: if this VTEP IP already belongs to one of our own
     // interfaces (switch Loopback0), decap is already handled by the
     // nexthop-driven decap path; do nothing to avoid disturbing it.
+    // In the standard SONiC VNET model ENCAP_SRC_IP is always the local
+    // Loopback0 VTEP (the address advertised by BGP), so this guard always
+    // fires and the explicit "secondary VTEP" term below is a defensive path
+    // for a non-local ENCAP_SRC_IP that a single-loopback config never hits.
     refresh_interfaces_list();
     {
         vpp_ip_addr_t    probe_ip;
