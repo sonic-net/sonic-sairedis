@@ -2042,6 +2042,14 @@ void Meta::meta_generic_validation_post_remove(
                 // no special action required
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+            case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+                // no special action required
+                break;
+
             default:
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
@@ -3840,6 +3848,26 @@ sai_status_t Meta::meta_generic_validation_create(
                 VALIDATION_LIST(md, value.portserdestaps);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
+                // primitive PRBS RX state
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+                VALIDATION_LIST(md, value.prbs_rx_status_list);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+                VALIDATION_LIST(md, value.prbs_rx_state_list);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+                // primitive PRBS BER
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+                VALIDATION_LIST(md, value.prbs_ber_list);
+                break;
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -4497,6 +4525,26 @@ sai_status_t Meta::meta_generic_validation_set(
             VALIDATION_LIST(md, value.portserdestaps);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
+            // primitive PRBS RX state
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+            VALIDATION_LIST(md, value.prbs_rx_status_list);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+            VALIDATION_LIST(md, value.prbs_rx_state_list);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+            // primitive PRBS BER
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+            VALIDATION_LIST(md, value.prbs_ber_list);
+            break;
+
         default:
 
             META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -4911,6 +4959,26 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.portserdestaps);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
+                // primitive PRBS RX state
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+                VALIDATION_LIST(md, value.prbs_rx_status_list);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+                VALIDATION_LIST(md, value.prbs_rx_state_list);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+                // primitive PRBS BER
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+                VALIDATION_LIST(md, value.prbs_ber_list);
+                break;
+
             default:
 
                 // acl capability will is more complex since is in/out we need to check stage
@@ -5231,6 +5299,26 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
                 VALIDATION_LIST_GET(md, value.portserdestaps);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
+                // primitive PRBS RX state
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+                VALIDATION_LIST_GET(md, value.prbs_rx_status_list);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+                VALIDATION_LIST_GET(md, value.prbs_rx_state_list);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+                // primitive PRBS BER
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+                VALIDATION_LIST_GET(md, value.prbs_ber_list);
                 break;
 
             default:
@@ -6135,6 +6223,14 @@ void Meta::meta_generic_validation_post_create(
                 // no special action required
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+            case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+                // no special action required
+                break;
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -6382,6 +6478,14 @@ void Meta::meta_generic_validation_post_set(
             break;
 
         case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+            // no special action required
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+        case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
             // no special action required
             break;
 
