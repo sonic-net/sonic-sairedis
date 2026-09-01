@@ -219,11 +219,7 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
     nexthop_grp_config_t *nxthop_group = NULL;
 
-    if (SAI_OBJECT_TYPE_ROUTER_INTERFACE == RealObjectIdManager::objectTypeQuery(next_hop_oid))
-    {
-        // vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, is_add);
-    }
-    else if (SAI_OBJECT_TYPE_PORT == RealObjectIdManager::objectTypeQuery(next_hop_oid))
+    if (SAI_OBJECT_TYPE_PORT == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
         attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
         status = route_obj->get_attr(attr);

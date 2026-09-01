@@ -193,7 +193,21 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
             SWSS_LOG_INFO("Port attribute not passed as parameter: get if name from ip address");
             if (vpp_get_ifname_from_ip_address(local_addr, ifname) == true)
             {
-                hwif_name = tap_to_hwif_name(ifname.c_str());
+                /*
+                 * ifname comes from "ip addr show", so it is a kernel netdev
+                 * name: "Ethernet0", but equally "PortChannel102" or "Vlan200".
+                 * Resolving it is not optional -- an unresolved name used to
+                 * reach bfd_udp_add() as the literal "Unknown".
+                 */
+                hwif_name = osif_name_to_hwif_name(ifname.c_str());
+
+                if (hwif_name == nullptr)
+                {
+                    SWSS_LOG_ERROR("BFD session create request FAILED, no hwif for interface %s",
+                            ifname.c_str());
+                    return SAI_STATUS_FAILURE;
+                }
+
                 SWSS_LOG_INFO("interface name for BFD session create is %s", hwif_name);
             }
             else
@@ -347,7 +361,15 @@ sai_status_t SwitchVpp::vpp_bfd_session_del(
             */
             std::string ifname = "";
             if (vpp_get_ifname_from_ip_address(local_addr, ifname) == true) {
-                hwif_name = tap_to_hwif_name(ifname.c_str());
+                hwif_name = osif_name_to_hwif_name(ifname.c_str());
+
+                if (hwif_name == nullptr)
+                {
+                    SWSS_LOG_ERROR("BFD session delete request FAILED, no hwif for interface %s",
+                            ifname.c_str());
+                    return SAI_STATUS_FAILURE;
+                }
+
                 SWSS_LOG_NOTICE("interface name for BFD session delete is %s", hwif_name);
             }
             else

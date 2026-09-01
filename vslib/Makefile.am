@@ -79,6 +79,7 @@ if USE_VPP
 libSaiVS_a_SOURCES +=\
 					  vpp/CRMTracker.cpp \
 					  vpp/SaiObjectDB.cpp \
+					  vpp/VppInterfaceRegistry.cpp \
 					  vpp/SwitchVpp.cpp \
 					  vpp/SwitchVppAcl.cpp \
 					  vpp/SwitchVppNexthop.cpp \

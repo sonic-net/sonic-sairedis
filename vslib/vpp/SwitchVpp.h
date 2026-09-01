@@ -10,6 +10,7 @@
 #include "SwitchVppAcl.h"
 #include "CRMTracker.h"
 #include "PortConfigMap.h"
+#include "VppInterfaceRegistry.h"
 
 #include "vppxlate/SaiVppXlate.h"
 #include "vppxlate/SaiRouteStats.h"
@@ -704,14 +705,6 @@ namespace saivs
             sai_status_t vpp_remove_router_interface(
                     _In_ sai_object_id_t objectId);
 
-            sai_status_t vpp_router_interface_remove_vrf(
-                    _In_ sai_object_id_t obj_id);
-
-            sai_status_t vpp_add_del_intf_ip_addr (
-                    _In_ sai_ip_prefix_t& ip_prefix,
-                    _In_ sai_object_id_t nexthop_oid,
-                    _In_ bool is_add);
-
             sai_status_t vpp_add_del_intf_ip_addr_norif (
                     _In_ const std::string& ip_prefix_key,
                     _In_ sai_route_entry_t& route_entry,
@@ -732,11 +725,6 @@ namespace saivs
 
             sai_status_t vpp_del_lpb_intf_ip_addr (
                     _In_ const std::string &serializedObjectId);
-
-            sai_status_t vpp_get_router_intf_name (
-                    _In_ sai_ip_prefix_t& ip_prefix,
-                    _In_ sai_object_id_t rif_id,
-                    std::string& nexthop_ifname);
 
             int getNextLoopbackInstance();
 
@@ -1322,9 +1310,26 @@ namespace saivs
             bool getTapNameFromPortOrLagId(
                     _In_ sai_object_id_t obj_id,
                     _Out_ std::string& if_name);
-            const char *tap_to_hwif_name(const char *name);
 
-            const char *hwif_to_tap_name(const char *name);
+            bool getOsIfFromPortOrLagId(
+                    _In_ sai_object_id_t obj_id,
+                    _Out_ std::string& if_name);
+
+            /*
+             * Resolve a host OS interface name ("Ethernet0", "PortChannel1",
+             * "PortChannel1.100", "Vlan200") to the VPP hardware interface
+             * name. The input is the SONiC-side netdev name as produced by
+             * getOsIfFromPortOrLagId(); a bond LCP tap name ("be1") is not
+             * accepted. Returns nullptr when the name cannot be resolved.
+             *
+             * Callers MUST check for nullptr: the result is routinely passed
+             * straight to a VPP call or a "%s" format, so an unchecked miss is
+             * a null dereference rather than, as before, a VPP call against the
+             * literal string "Unknown" that failed somewhere further down.
+             */
+            const char *osif_name_to_hwif_name(const char *name);
+
+            const char *hwif_to_osif_name(const char *name);
 
             uint32_t find_new_bond_id();
             sai_status_t get_lag_bond_info(const sai_object_id_t lag_id, platform_bond_info_t &bond_info);
@@ -1350,8 +1355,16 @@ namespace saivs
 
             std::shared_ptr<PortConfigMap> m_portConfigMap;
 
-            std::map<std::string, std::string> m_hostif_hwif_map;
-            std::map<std::string, std::string> m_hwif_hostif_map;
+            /*
+             * Single owner of interface identity: hwif name, SONiC name, host
+             * tap, PORT/LAG oid, sw_if_index and bridge domain, for every kind
+             * of VPP interface. Being filled in alongside the older per-fact
+             * maps below; those are read from until the migration is complete.
+             */
+            VppInterfaceRegistry m_ifaceRegistry;
+
+            std::map<std::string, std::string> m_osif_to_hwif_map;
+            std::map<std::string, std::string> m_hwif_to_osif_map;
             int mapping_init = 0;
             bool m_run_vpp_events_thread = true;
             std::atomic<bool> m_operResyncDue { false };
