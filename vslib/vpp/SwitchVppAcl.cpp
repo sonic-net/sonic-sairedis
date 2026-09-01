@@ -818,6 +818,7 @@ void SwitchVpp::count_tunterm_acl_rules(
 }
 
 sai_status_t SwitchVpp::fill_acl_rules(
+    sai_object_id_t tbl_oid,
     acl_tbl_entries_t *aces,
     std::list<ordered_ace_list_t> &ordered_aces,
     std::list<vpp_acl_rule_t> &acl_rules,
@@ -829,6 +830,39 @@ sai_status_t SwitchVpp::fill_acl_rules(
     acl_tbl_entries_t *p_ace = NULL;
     uint32_t acl_rule_index = 0;
     uint32_t tunterm_rule_index = 0;
+
+    // An IN_PORTS scope is compiled into the rule's in_sw_if_index, which the
+    // ACL plugin compares against sw_if_index[VLIB_RX] only for an ACL bound
+    // inbound; bound outbound the same 5-tuple slot holds sw_if_index[VLIB_TX].
+    // Programming an ingress scope into an egress table would therefore match
+    // the egress port while still reporting the ingress port that was asked for.
+    //
+    // Resolved lazily, and only for an entry that actually carries IN_PORTS, so
+    // a table with no scoped entry keeps behaving exactly as it did before this
+    // feature.  An unreadable stage is treated as not-egress: the attribute is
+    // MANDATORY_ON_CREATE on a table we are in the middle of programming, so
+    // this should be unreachable, and failing here would take the whole table
+    // down for a check that is only a guard.
+    enum { STAGE_UNKNOWN, STAGE_EGRESS, STAGE_NOT_EGRESS } tbl_stage = STAGE_UNKNOWN;
+
+    auto table_is_egress = [&]() -> bool {
+        if (tbl_stage == STAGE_UNKNOWN) {
+            sai_attribute_t attr;
+
+            attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
+            if (get(SAI_OBJECT_TYPE_ACL_TABLE, tbl_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to get stage of ACL table %s carrying an IN_PORTS entry, "
+                               "assuming ingress",
+                               sai_serialize_object_id(tbl_oid).c_str());
+                tbl_stage = STAGE_NOT_EGRESS;
+            } else {
+                tbl_stage = (attr.value.s32 == SAI_ACL_STAGE_EGRESS) ? STAGE_EGRESS
+                                                                     : STAGE_NOT_EGRESS;
+            }
+        }
+
+        return (tbl_stage == STAGE_EGRESS);
+    };
 
     for (auto &ace: ordered_aces) {
         SWSS_LOG_INFO("Acl entry index %u priority %u", ace.index, ace.priority);
@@ -964,6 +998,23 @@ sai_status_t SwitchVpp::fill_acl_rules(
             }
 
             if (in_ports_scoped) {
+
+                if (table_is_egress()) {
+                    /*
+                     * The scope would silently become an egress one here, so
+                     * emit no rule for this entry rather than a rule that
+                     * enforces something other than what was asked for. The
+                     * rest of the table still programs: failing it outright
+                     * would take the table's unrelated entries down with it,
+                     * and the entry cannot be un-programmed afterwards.
+                     */
+                    SWSS_LOG_ERROR("ACL entry %s in egress table %s carries IN_PORTS, which "
+                                   "would match the egress interface rather than the ingress "
+                                   "one; no rule is emitted for this entry",
+                                   sai_serialize_object_id(ace.ace_oid).c_str(),
+                                   sai_serialize_object_id(tbl_oid).c_str());
+                    in_hwifs.clear();
+                }
 
                 std::list<vpp_acl_rule_t> base_rules;
 
@@ -1328,7 +1379,7 @@ sai_status_t SwitchVpp::AclTblConfig(
     SWSS_LOG_INFO("Total ACL entries: %ld", n_total_entries);
 
     // Fill ACL rules - this returns converted rule lists
-    CHECK_STATUS_ACLTBLCONFIG(fill_acl_rules(aces, ordered_aces, acl_rules, tunterm_acl_rules));
+    CHECK_STATUS_ACLTBLCONFIG(fill_acl_rules(tbl_oid, aces, ordered_aces, acl_rules, tunterm_acl_rules));
 
     SWSS_LOG_INFO("Generated %ld regular ACL rules and %ld tunterm ACL rules",
                     acl_rules.size(), tunterm_acl_rules.size());

@@ -1027,6 +1027,7 @@ namespace saivs
              * @note If protocol is not set but port or port_range is set, creates 2 rules: one with UDP and one with TCP.
              */
             sai_status_t fill_acl_rules(
+                    _In_ sai_object_id_t tbl_oid,
                     _In_ acl_tbl_entries_t *aces,
                     _In_ std::list<ordered_ace_list_t> &ordered_aces,
                     _Out_ std::list<vpp_acl_rule_t> &acl_rules,
