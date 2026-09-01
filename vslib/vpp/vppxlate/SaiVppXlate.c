@@ -14,6 +14,7 @@
  */
 
 #include <stdio.h>
+#include <stdint.h>
 #include <endian.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -24,6 +25,7 @@
 #include <vlibapi/api.h>
 #include <vlibmemory/api.h>
 #include <vppinfra/error.h>
+#include <vnet/api_errno.h>
 
 #include "SaiVppXlate.h"
 
@@ -48,8 +50,14 @@
 #include <vpp_plugins/acl/acl.api_enum.h>
 #include <vpp_plugins/acl/acl.api_types.h>
 
+#include <vpp_plugins/sflow/sflow.api_enum.h>
+#include <vpp_plugins/sflow/sflow.api_types.h>
+
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_enum.h>
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_types.h>
+
+#include <vpp_plugins/sonic_ext/sonic_ext.api_enum.h>
+#include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
 
 #include <vlibmemory/vlib.api_types.h>
 #include <vlibmemory/memclnt.api_enum.h>
@@ -68,6 +76,17 @@
 
 #include <vnet/srv6/sr.api_enum.h>
 #include <vnet/srv6/sr.api_types.h>
+#include <vnet/mpls/mpls.api_enum.h>
+#include <vnet/mpls/mpls.api_types.h>
+
+#include <vnet/ipip/ipip.api_enum.h>
+#include <vnet/ipip/ipip.api_types.h>
+
+#include <vnet/classify/classify.api_enum.h>
+#include <vnet/classify/classify.api_types.h>
+
+#include <vlibmemory/vlib.api_enum.h>
+#include <vlibmemory/vlib.api_types.h>
 
 /* l2 API inclusion */
 
@@ -90,6 +109,48 @@
 
 #define vl_api_version(n, v) static u32 l2_api_version = v;
 #include <vnet/l2/l2.api.h>
+#undef vl_api_version
+
+/* classify API inclusion */
+
+#define vl_typedefs
+#include <vnet/classify/classify.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vnet/classify/classify.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vnet/classify/classify.api.h>
+#undef vl_calcsizefun
+
+#define vl_print(handle, ...)  vlib_cli_output (handle, __VA_ARGS__)
+#define vl_printfun
+#include <vnet/classify/classify.api.h>
+#undef vl_printfun
+
+#define vl_api_version(n, v) static u32 classify_api_version = v;
+#include <vnet/classify/classify.api.h>
+#undef vl_api_version
+
+/* vlib API inclusion (for get_next_index) */
+
+#define  vl_endianfun
+#include <vlibmemory/vlib.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vlibmemory/vlib.api.h>
+#undef vl_calcsizefun
+
+#define vl_print(handle, ...)  vlib_cli_output (handle, __VA_ARGS__)
+#define vl_printfun
+#include <vlibmemory/vlib.api.h>
+#undef vl_printfun
+
+#define vl_api_version(n, v) static u32 vlibapi_version = v;
+#include <vlibmemory/vlib.api.h>
 #undef vl_api_version
 
 /* tunterm API inclusion */
@@ -151,6 +212,24 @@
 
 #define vl_api_version(n, v) static u32 sr_api_version = v;
 #include <vnet/srv6/sr.api.h>
+#undef vl_api_version
+
+/* MPLS API inclusion */
+
+#define vl_typedefs
+#include <vnet/mpls/mpls.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vnet/mpls/mpls.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vnet/mpls/mpls.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 mpls_api_version = v;
+#include <vnet/mpls/mpls.api.h>
 #undef vl_api_version
 
 /* ipv4 API inclusion */
@@ -239,6 +318,42 @@
 #include <vpp_plugins/acl/acl.api.h>
 #undef vl_api_version
 
+/* sflow API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sflow/sflow.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/sflow/sflow.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sflow/sflow.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sflow_api_version = v;
+#include <vpp_plugins/sflow/sflow.api.h>
+#undef vl_api_version
+
+/* sonic_ext API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_api_version
+
 /* BOND API inclusion */
 
 #define vl_typedefs
@@ -276,6 +391,23 @@
 
 #define vl_api_version(n, v) static u32 vxlan_api_version = v;
 #include <vpp_plugins/vxlan/vxlan.api.h>
+#undef vl_api_version
+
+/* ipip API inclusion */
+#define vl_typedefs
+#include <vnet/ipip/ipip.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vnet/ipip/ipip.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vnet/ipip/ipip.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 ipip_api_version = v;
+#include <vnet/ipip/ipip.api.h>
 #undef vl_api_version
 
 /* memclnt API inclusion */
@@ -326,15 +458,57 @@
 #include <vnet/bfd/bfd.api.h>
 #undef vl_api_version
 
+/* SPAN API inclusion */
+#include <vnet/span/span.api_enum.h>
+#include <vnet/span/span.api_types.h>
+
+#define vl_typedefs
+#include <vnet/span/span.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vnet/span/span.api.h>
+#undef vl_endianfun
+
+#define vl_printfun
+#include <vnet/span/span.api.h>
+#undef vl_printfun
+
+#define vl_calcsizefun
+#include <vnet/span/span.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 span_api_version = v;
+#include <vnet/span/span.api.h>
+#undef vl_api_version
 
 void classify_get_trace_chain(void ){}
 void os_exit(int code) {}
 
-#define SAIVPP_DEBUG(format,args...) {}
-#define SAIVPP_WARN clib_warning
-#define SAIVPP_ERROR clib_error
+#include "../SaiVppLog.h"
 
-
+/*
+ * Normalize VPP return code so add/delete operations are idempotent.
+ * - delete + NO_SUCH_ENTRY: the entry is already gone — treat as success.
+ * - add    + VALUE_EXIST:   the entry already exists — treat as success.
+ * This lets the SAI backend re-run a create/remove cycle in one process
+ * (e.g. host-interface recreate) without failing on leftover VPP state.
+ */
+static inline int vpp_normalize_ret(int ret, bool is_del, const char *func)
+{
+    if (is_del && ret == VNET_API_ERROR_NO_SUCH_ENTRY) {
+	    SAIVPP_INFO("%s: ignoring NO_SUCH_ENTRY(%d) on delete", func, ret);
+	    ret = 0;
+    } else if (!is_del && ret == VNET_API_ERROR_VALUE_EXIST) {
+	    SAIVPP_INFO("%s: ignoring VALUE_EXIST(%d) on add", func, ret);
+	    ret = 0;
+    }
+    if (!is_del && ret == VNET_API_ERROR_VALUE_EXIST) {
+	    SAIVPP_INFO("%s: ignoring VALUE_EXIST(%d) on add", func, ret);
+	    ret = 0;
+    }
+    return ret;
+}
 
 #define M22(T, mp, n)                                            \
 do {                                                            \
@@ -354,15 +528,39 @@ do {                                                            \
  * events causing vl_socket_client_read to return before the expected result is received. If
  * vam->result_ready is not set, which should be set when API callback function is called, then
  * it means we get some unsolicited events and we need to retry.
+ *
+ * The reply message queue can be saturated when there are lots of events. Use a dynamic timeout:
+ *   - Hard cap: 10 seconds total wait time. Tolerates large bursts of unsolicited events that
+ *     delay processing of the actual reply.
+ *   - Idle cap: 1 second since the last successfully processed message. Each time a message is
+ *     processed (even an unsolicited one) the idle deadline is extended by 1 second, up to the
+ *     hard cap.
+ *   - vl_socket_client_read is called with a 1 second wait so it returns frequently while
+ *     messages are being drained, allowing the WR loop to refresh the idle deadline and re-check
+ *     result_ready promptly.
+ *   - The loop breaks when we get the expected reply (vam->result_ready == 1), the 10 second hard
+ *     cap is reached, or 1 second elapses with no new message processed.
  */
 #define WR(ret)                                                 \
 do {                                                            \
-    f64 timeout = vat_time_now (vam) + 1.0;                     \
+    f64 start_time = vat_time_now (vam);                        \
+    f64 hard_deadline = start_time + 10.0;                      \
+    f64 idle_deadline = start_time + 1.0;                       \
     socket_client_main_t *scm = vam->socket_client_main;        \
+    int _wr_rv;                                                 \
     ret = -99;                                                  \
-    while (vat_time_now (vam) < timeout) {                      \
-        if (scm && scm->socket_enable)                          \
-            vl_socket_client_read (5);                          \
+    while (1) {                                                 \
+        f64 now = vat_time_now (vam);                           \
+        if (now >= hard_deadline || now >= idle_deadline)       \
+            break;                                              \
+        if (scm && scm->socket_enable) {                        \
+            _wr_rv = vl_socket_client_read (1);                 \
+            if (_wr_rv == 0) {                                  \
+                idle_deadline = vat_time_now (vam) + 1.0;       \
+                if (idle_deadline > hard_deadline)              \
+                    idle_deadline = hard_deadline;              \
+            }                                                   \
+        }                                                       \
         if (vam->result_ready == 1) {                           \
             ret = vam->retval;                                  \
             break;                                              \
@@ -371,10 +569,92 @@ do {                                                            \
     }                                                            \
 } while(0);
 
-#define VPP_MAX_CTX 2
+/*
+ * Event-connection variants of M / S / PING / WR.
+ *
+ * The asynchronous VPP event stream is carried on a dedicated binary-API
+ * socket (event_socket_client_main / vat_event_main) that is independent of
+ * the synchronous request/reply socket used by the command path. These macros
+ * therefore operate on the explicit "scm" passed via vam->socket_client_main
+ * using the vl_socket_client_*2() APIs instead of the global-socket helpers.
+ */
+#define M_EV(T, mp)                                             \
+do {                                                            \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    vam->result_ready = 0;                                      \
+    if (scm && scm->socket_enable)                              \
+        mp = vl_socket_client_msg_alloc2 (scm, (int)sizeof(*mp)); \
+    else                                                        \
+        mp = vl_msg_api_alloc_as_if_client((int)sizeof(*mp));   \
+    clib_memset (mp, 0, sizeof (*mp));                          \
+    mp->_vl_msg_id = ntohs (VL_API_##T+__plugin_msg_base);      \
+    mp->client_index = vam->my_client_index;                    \
+} while(0);
+
+#define PING_EV(mp_ping)                                        \
+do {                                                            \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    if (scm && scm->socket_enable)                              \
+        mp_ping = vl_socket_client_msg_alloc2 (scm, (int)sizeof (*mp_ping)); \
+    else                                                        \
+        mp_ping = vl_msg_api_alloc_as_if_client ((int)sizeof (*mp_ping)); \
+    clib_memset (mp_ping, 0, sizeof (*mp_ping));                \
+    mp_ping->_vl_msg_id = htons (VL_API_CONTROL_PING + 1);      \
+    mp_ping->client_index = vam->my_client_index;               \
+    vam->result_ready = 0;                                      \
+    if (scm)                                                    \
+        scm->control_pings_outstanding++;                       \
+} while(0);
+
+#define S_EV(mp)                                                \
+do {                                                            \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    if (scm && scm->socket_enable)                              \
+        vl_socket_client_write2 (scm);                          \
+    else                                                        \
+        vl_msg_api_send_shmem (vam->vl_input_queue, (u8 *)&mp); \
+} while (0);
+
+#define WR_EV(ret)                                              \
+do {                                                            \
+    f64 start_time = vat_time_now (vam);                        \
+    f64 hard_deadline = start_time + 10.0;                      \
+    f64 idle_deadline = start_time + 1.0;                       \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    ret = -99;                                                  \
+    while (1) {                                                 \
+        f64 now = vat_time_now (vam);                           \
+        if (now >= hard_deadline || now >= idle_deadline)       \
+            break;                                              \
+        if (scm && scm->socket_enable) {                        \
+            int _wr_rv = vl_socket_client_read2 (scm, 1);     \
+            if (_wr_rv < 0) {                                   \
+                ret = _wr_rv;                                   \
+                break;                                          \
+            }                                                   \
+            if (_wr_rv == 0) {                                  \
+                idle_deadline = vat_time_now (vam) + 1.0;       \
+                if (idle_deadline > hard_deadline)              \
+                    idle_deadline = hard_deadline;              \
+            }                                                   \
+        }                                                       \
+        if (vam->result_ready == 1) {                           \
+            ret = vam->retval;                                  \
+            break;                                              \
+        }                                                       \
+        vat_suspend (vam->vlib_main, 1e-5);                     \
+    }                                                           \
+} while(0);
+
+#define VPP_MAX_CTX 16
+#define VPP_CTX_INDEX_MASK 0xff
+#define VPP_CTX_GENERATION_SHIFT 8
+/* Context index 0 is reserved to mean "no/invalid context"; valid indices are 1..VPP_MAX_CTX-1. */
+#define VPP_INVALID_CTX_INDEX 0
 typedef struct _vpp_index_map_ {
-    uint8_t index_map;
+    uint32_t index_map;
     uintptr_t ptr[VPP_MAX_CTX];
+    uint32_t generation[VPP_MAX_CTX];
 } vpp_index_map_t;
 
 static vpp_index_map_t idx_map;
@@ -420,6 +700,9 @@ static void vpp_evq_init ()
 static int vpp_acl_counters_enable_disable(bool enable);
 static int vpp_intf_events_enable_disable(bool enable);
 static int vpp_bfd_events_enable_disable(bool enable);
+static int vpp_event_client_setup(void);
+static int vpp_event_connect(void);
+static int vpp_event_reconnect(void);
 static int vpp_bfd_udp_enable_multihop();
 static int vpp_lcp_ethertype_enable(u16 ethertype);
 
@@ -427,7 +710,19 @@ static pthread_mutex_t vpp_mutex;
 
 void vpp_mutex_lock_init ()
 {
-    pthread_mutex_init(&vpp_mutex, NULL);
+    /*
+     * Recursive so the command path can nest EVENT_LOCK inside VPP_LOCK (e.g.
+     * event registration/reconnect issued while holding VPP_LOCK). EVENT_LOCK
+     * now maps onto this same mutex (see EVENT_LOCK below): the command path and
+     * the background event thread both allocate on VPP's process-global,
+     * non-thread-safe clib heap, so they must be mutually exclusive to avoid
+     * heap corruption (os_panic in clib_mem_heap_realloc_aligned).
+     */
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&vpp_mutex, &attr);
+    pthread_mutexattr_destroy(&attr);
 }
 
 void vpp_mutex_lock ()
@@ -444,31 +739,119 @@ void vpp_mutex_unlock ()
 #define VPP_UNLOCK() vpp_mutex_unlock()
 
 /*
+ * Legacy dedicated event-connection mutex. No longer used for locking: EVENT_LOCK
+ * now maps onto the recursive vpp_mutex (see EVENT_LOCK below) so that command-path
+ * and event-thread clib allocations are mutually exclusive on VPP's shared,
+ * non-thread-safe clib heap. Retained only to keep the init/teardown surface
+ * unchanged; kept unused otherwise.
+ */
+static pthread_mutex_t vpp_event_mutex;
+
+void vpp_event_mutex_lock_init ()
+{
+    pthread_mutex_init(&vpp_event_mutex, NULL);
+}
+
+void vpp_event_mutex_lock ()
+{
+    pthread_mutex_lock(&vpp_event_mutex);
+}
+
+void vpp_event_mutex_unlock ()
+{
+    pthread_mutex_unlock(&vpp_event_mutex);
+}
+
+/*
+ * EVENT_LOCK maps onto the same recursive vpp_mutex as VPP_LOCK. The event
+ * connection (vat_event_main) and the command connection (vat_main) both
+ * allocate on VPP's process-global, non-thread-safe clib heap; a background
+ * event-thread clib allocation racing a command-thread clib allocation corrupts
+ * the heap and crashes (os_panic in clib_mem_heap_realloc_aligned). Serializing
+ * every VPP client/clib operation under one recursive mutex prevents that. The
+ * mutex is recursive so the command path may still nest EVENT_LOCK inside
+ * VPP_LOCK (event registration/reconnect). No command operation blocks waiting
+ * on an unsolicited event, so this single lock cannot deadlock.
+ */
+#define EVENT_LOCK() vpp_mutex_lock()
+#define EVENT_UNLOCK() vpp_mutex_unlock()
+
+/*
+ * Leaf lock protecting the shared interface lookup tables
+ * (vat_main.sw_if_index_by_interface_name, interface_name_by_sw_index and
+ * link_speed_by_sw_index). These tables are read and written from both the
+ * synchronous command path (under VPP_LOCK) and the asynchronous event
+ * handler (under EVENT_LOCK), so neither connection lock on its own provides
+ * mutual exclusion over them; a concurrent read during a write/rehash/free
+ * corrupts the hash and crashes syncd.
+ *
+ * Lock ordering: this is a leaf lock. It may be acquired while holding
+ * VPP_LOCK or EVENT_LOCK, but code holding it must never acquire VPP_LOCK,
+ * EVENT_LOCK, or re-acquire this lock (keep the critical sections to the raw
+ * hash operations only). This keeps the EVENT_LOCK-never-acquires-VPP_LOCK
+ * ordering rule above intact. Statically initialized so it is valid before
+ * any thread (including the background event thread) starts.
+ */
+static pthread_mutex_t vpp_intf_table_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+#define INTF_TABLE_LOCK() pthread_mutex_lock(&vpp_intf_table_mutex)
+#define INTF_TABLE_UNLOCK() pthread_mutex_unlock(&vpp_intf_table_mutex)
+
+/*
  * Right now configuration is done synchronously in a single thread.
  * When the need arises for multiple requests in pipeline we can move to a pool to
  * allocate index.
  */
 static uint32_t alloc_index ()
 {
-    return 1;
+    /* idx starts at 1 because index 0 (VPP_INVALID_CTX_INDEX) is reserved. */
+    for (uint32_t idx = 1; idx < VPP_MAX_CTX; idx++) {
+        uint32_t mask = (uint32_t)(1 << idx);
+        if ((idx_map.index_map & mask) == 0) {
+            idx_map.index_map |= mask;
+            return idx;
+        }
+    }
+
+    return VPP_INVALID_CTX_INDEX;
 }
 
 static uint32_t store_ptr (void *ptr)
 {
     uint32_t idx = alloc_index();
 
+    if (idx == VPP_INVALID_CTX_INDEX) {
+        return VPP_INVALID_CTX_INDEX;
+    }
+
     idx_map.ptr[idx] = (uintptr_t) ptr;
 
-    return idx;
+    return (idx_map.generation[idx] << VPP_CTX_GENERATION_SHIFT) | idx;
 }
 
-static void release_index (uint32_t idx)
+static void release_index (uint32_t context)
 {
+    uint32_t idx = context & VPP_CTX_INDEX_MASK;
+
+    if (idx == VPP_INVALID_CTX_INDEX || idx >= VPP_MAX_CTX) {
+        return;
+    }
+
+    idx_map.ptr[idx] = (uintptr_t) NULL;
+    idx_map.index_map &= ~((uint32_t)(1 << idx));
+    idx_map.generation[idx]++;
 }
 
-static uintptr_t get_index_ptr (uint32_t idx)
+static uintptr_t get_index_ptr (uint32_t context)
 {
-    if (idx > VPP_MAX_CTX) {
+    uint32_t idx = context & VPP_CTX_INDEX_MASK;
+    uint32_t generation = context >> VPP_CTX_GENERATION_SHIFT;
+
+    if (idx == VPP_INVALID_CTX_INDEX || idx >= VPP_MAX_CTX) {
+        return (uintptr_t) NULL;
+    }
+
+    if (generation != idx_map.generation[idx]) {
         return (uintptr_t) NULL;
     }
 
@@ -477,6 +860,33 @@ static uintptr_t get_index_ptr (uint32_t idx)
 
 vat_main_t vat_main;
 uword *interface_name_by_sw_index = NULL;
+uword *link_speed_by_sw_index = NULL;
+
+/*
+ * Dedicated binary-API connection for the asynchronous VPP event stream
+ * (sw_interface_event / bfd events). Owned by the background event-polling
+ * thread and isolated from the synchronous request/reply connection so the
+ * unsolicited event flood cannot starve or deadlock the command path.
+ */
+static socket_client_main_t event_socket_client_main;
+vat_main_t vat_event_main;
+
+static int event_client_connected = 0;
+static int event_mutex_initialized = 0;
+
+/*
+ * Per-thread "current" vat_main. Reply handlers run in the context of whatever
+ * thread is reading its connection's socket; they use cur_vam() so that a reply
+ * read on a given connection updates only that connection's result state.
+ * Defaults to the command connection (&vat_main) when unset.
+ */
+static __thread vat_main_t *tl_cur_vam;
+
+static inline vat_main_t *cur_vam (void)
+{
+    return tl_cur_vam ? tl_cur_vam : &vat_main;
+}
+
 
 f64
 vat_time_now (vat_main_t * vam)
@@ -523,7 +933,9 @@ vl_msg_api_set_handlers (int id, const char *name, void *handler, void *cleanup,
     c->fromjson = fromjson;
     c->calc_size = calc_size;
     vl_msg_api_config (c);
-    free(name_copy);
+    /* Do not free name_copy: vl_msg_api_config stores the pointer in
+       m->name and in the msg_id_by_name hash table. Freeing it causes
+       use-after-free when the hash does strcmp on existing keys. */
 }
 
 static bool vl_api_to_vpp_ip_addr(vl_api_address_t *vpp_addr, vpp_ip_addr_t *ipaddr)
@@ -597,7 +1009,7 @@ vl_noop_handler (void *mp)
 
 static void set_reply_status (int retval)
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = cur_vam();
 
     if (vam->async_mode)
     {
@@ -612,14 +1024,14 @@ static void set_reply_status (int retval)
 
 static void set_reply_sw_if_index (vl_api_interface_index_t sw_if_index)
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = cur_vam();
     vam->sw_if_index = sw_if_index;
 }
 
 static void
 vl_api_control_ping_reply_t_handler (vl_api_control_ping_reply_t *mp)
 {
-  vat_main_t *vam = &vat_main;
+  vat_main_t *vam = cur_vam();
 
   set_reply_status((int)ntohl ((uint32_t)mp->retval));
 
@@ -632,9 +1044,6 @@ vl_api_want_interface_events_reply_t_handler (vl_api_want_interface_events_reply
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("sw interface events enable %s(%d)",
-                 retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -643,15 +1052,25 @@ vl_api_sw_interface_event_t_handler (vl_api_sw_interface_event_t *mp)
     uint32_t flags, sw_if_index;
     uword *ptr;
 
-    sw_if_index = htonl(mp->sw_if_index);
+    sw_if_index = ntohl(mp->sw_if_index);
+
+    /*
+     * Copy the interface name out while holding the table lock; the pointer
+     * returned by hash_get points into interface_name_by_sw_index, which the
+     * command path may concurrently rewrite/free under VPP_LOCK.
+     */
+    char hw_ifname[64];
+    INTF_TABLE_LOCK();
     ptr = hash_get(interface_name_by_sw_index, sw_if_index);
     if (NULL == ptr) {
-        SAIVPP_WARN("vpp cannot get interface name for sw index %u", sw_if_index);
+        INTF_TABLE_UNLOCK();
+        SAIVPP_INFO("vpp cannot get interface name for sw index %u", sw_if_index);
         return;
     }
-    const char *hw_ifname = (const char *) ptr[0];
+    snprintf(hw_ifname, sizeof(hw_ifname), "%s", (const char *) ptr[0]);
+    INTF_TABLE_UNLOCK();
 
-    flags = htonl(mp->flags);
+    flags = ntohl(mp->flags);
     if (flags & IF_STATUS_API_FLAG_ADMIN_UP &&
         !(flags & IF_STATUS_API_FLAG_LINK_UP)) {
         return;
@@ -662,7 +1081,7 @@ vl_api_sw_interface_event_t_handler (vl_api_sw_interface_event_t *mp)
     } else {
         link_up = false;
     }
-    SAIVPP_WARN("Sending vpp link %s event for interface %s index %u",
+    SAIVPP_INFO("Sending vpp link %s event for interface %s index %u",
 		link_up ? "UP" : "DOWN", hw_ifname, sw_if_index);
 
     vpp_event_info_t *evinfo;
@@ -673,7 +1092,7 @@ vl_api_sw_interface_event_t_handler (vl_api_sw_interface_event_t *mp)
         vpp_intf_status_t *stp = &evinfo->data.intf_status;
 
         stp->link_up = link_up;
-        strncpy(stp->hwif_name, hw_ifname, sizeof(stp->hwif_name) -1);
+        snprintf(stp->hwif_name, sizeof(stp->hwif_name), "%s", hw_ifname);
 
         vpp_ev_enqueue(evinfo);
     }
@@ -684,15 +1103,24 @@ vl_api_sw_interface_details_t_handler (vl_api_sw_interface_details_t *mp)
 {
   if (mp->context) {
       bool *link_up = (bool *) get_index_ptr(mp->context);
+      if (!link_up) {
+          return;
+      }
       *link_up = ntohl(mp->flags) & IF_STATUS_API_FLAG_LINK_UP ? true : false;
+      release_index(mp->context);
       return;
   }
   vat_main_t *vam = &vat_main;
   u8 *s = format (0, "%s%c", mp->interface_name, 0);
 
+  INTF_TABLE_LOCK();
   hash_set_mem (vam->sw_if_index_by_interface_name, s,
                 ntohl (mp->sw_if_index));
   hash_set (interface_name_by_sw_index, ntohl (mp->sw_if_index), s);
+
+  /* Save link speed (in Kbps) per interface */
+  hash_set (link_speed_by_sw_index, ntohl (mp->sw_if_index), ntohl (mp->link_speed));
+  INTF_TABLE_UNLOCK();
 
   /* In sub interface case, fill the sub interface table entry */
   if (mp->sw_if_index != mp->sup_sw_if_index)
@@ -744,7 +1172,13 @@ vl_api_create_subif_reply_t_handler (vl_api_create_subif_reply_t *msg)
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    SAIVPP_DEBUG("subinterface creation %s(%d)", retval ? "failed" : "successful", retval);
+    if (msg->context) {
+      u32 *swif_idx = (u32 *) get_index_ptr(msg->context);
+      if (swif_idx) {
+        *swif_idx = ntohl(msg->sw_if_index);
+      }
+      release_index(msg->context);
+    }
 }
 
 static void
@@ -752,8 +1186,6 @@ vl_api_delete_subif_reply_t_handler (vl_api_delete_subif_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("subinterface deletion %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -761,8 +1193,23 @@ vl_api_sw_interface_set_table_reply_t_handler (vl_api_sw_interface_set_table_rep
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
 
-    SAIVPP_DEBUG("sw interface vrf set %s(%d)", retval ? "failed" : "successful", retval);
+static void
+vl_api_sw_interface_get_table_reply_t_handler (vl_api_sw_interface_get_table_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (msg->context) {
+        uint32_t *vrf_id = (uint32_t *) get_index_ptr(msg->context);
+        if (vrf_id) {
+            *vrf_id = ntohl(msg->vrf_id);
+        }
+    }
+
+    SAIVPP_DEBUG("sw interface get table %s(%d) vrf_id=%u",
+                 retval ? "failed" : "successful", retval, ntohl(msg->vrf_id));
 }
 
 static void
@@ -770,8 +1217,6 @@ vl_api_sw_interface_add_del_address_reply_t_handler (vl_api_sw_interface_add_del
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("sw interface address add/del %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -779,8 +1224,13 @@ vl_api_sw_interface_set_flags_reply_t_handler (vl_api_sw_interface_set_flags_rep
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
 
-    SAIVPP_DEBUG("sw interface state set %s(%d)", retval ? "failed" : "successful", retval);
+static void
+vl_api_sw_interface_set_promisc_reply_t_handler (vl_api_sw_interface_set_promisc_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 }
 
 static void
@@ -788,24 +1238,33 @@ vl_api_sw_interface_set_mtu_reply_t_handler (vl_api_sw_interface_set_mtu_reply_t
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("sw interface mtu set %s(%d)", retval ? "failed" : "successful", retval);
+}
+static void
+vl_api_sw_interface_set_link_speed_reply_t_handler (vl_api_sw_interface_set_link_speed_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 }
 static void
 vl_api_sw_interface_set_mac_address_reply_t_handler (vl_api_sw_interface_set_mac_address_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
 
-    SAIVPP_DEBUG("sw interface mac set %s(%d)", retval ? "failed" : "successful", retval);
+static void
+vl_api_sw_interface_set_unnumbered_reply_t_handler (vl_api_sw_interface_set_unnumbered_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    SAIVPP_DEBUG("sw interface unnumbered set %s(%d)", retval ? "failed" : "successful", retval);
 }
 static void
 vl_api_hw_interface_set_mtu_reply_t_handler (vl_api_hw_interface_set_mtu_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("hw interface mtu set %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -813,17 +1272,26 @@ vl_api_ip_table_add_del_reply_t_handler (vl_api_ip_table_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("ip vrf add %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_ip_route_add_del_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
 
-    SAIVPP_DEBUG("ip route add %s(%d)", retval ? "failed" : "successful", retval);
+    if (msg->context) {
+        uint32_t *stats_index = (uint32_t *) get_index_ptr(msg->context);
+        if (!stats_index) {
+            return;
+        }
+        set_reply_status(retval);
+        if (stats_index && retval == 0) {
+            *stats_index = ntohl(msg->stats_index);
+        }
+        release_index(msg->context);
+    } else {
+        set_reply_status(retval);
+    }
 }
 
 static void
@@ -832,8 +1300,6 @@ vl_api_sw_interface_ip6_enable_disable_reply_t_handler(
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("ip6 enable/disable %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -841,8 +1307,13 @@ vl_api_set_ip_flow_hash_v2_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
 
-    SAIVPP_DEBUG("ip flow has set %s(%d)", retval ? "failed" : "successful", retval);
+static void
+vl_api_set_ip_flow_hash_router_id_reply_t_handler (vl_api_set_ip_flow_hash_router_id_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 }
 
 static void
@@ -850,8 +1321,6 @@ vl_api_ip_neighbor_add_del_reply_t_handler (vl_api_ip_neighbor_add_del_reply_t *
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("ip neighbor add/del %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -859,38 +1328,24 @@ vl_api_bridge_domain_add_del_reply_t_handler (vl_api_bridge_domain_add_del_reply
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("l2 add/del %s(%d)", retval ? "failed" : "successful", retval);
-    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",retval ? "failed" : "successful", retval);
-
 }
 static void
 vl_api_sw_interface_set_l2_bridge_reply_t_handler (vl_api_sw_interface_set_l2_bridge_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("sw inteface set l2 bridge reply handler %s(%d)", retval ? "failed" : "successful", retval);
-    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",retval ? "failed" : "successful", retval);
-
 }
 static void
 vl_api_l2_interface_vlan_tag_rewrite_reply_t_handler (vl_api_l2_interface_vlan_tag_rewrite_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("l2 interface vlan tag rewrite reply handler  %s(%d)", retval ? "failed" : "successful", retval);
-    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",retval ? "failed" : "successful", retval);
-
 }
 static void
 vl_api_bvi_create_reply_t_handler (vl_api_bvi_create_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_WARN("bvi create reply handler %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -898,8 +1353,6 @@ vl_api_bvi_delete_reply_t_handler (vl_api_bvi_delete_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_WARN("bvi delete reply handler  %s(%d)",  retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -907,8 +1360,6 @@ vl_api_bridge_flags_reply_t_handler (vl_api_bridge_flags_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_WARN("bridge flags reply handler  %s(%d)",  retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -916,30 +1367,18 @@ vl_api_l2fib_add_del_reply_t_handler (vl_api_l2fib_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("l2fib add del reply handler  %s(%d)", retval ? "failed" : "successful", retval);
-    //SAIVPP_ERROR("l2fib add del reply handler %s(%d)",retval ? "failed" : "successful", retval);
-
 }
 static void
 vl_api_l2fib_flush_all_reply_t_handler (vl_api_l2fib_flush_all_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("l2fib flush all reply handler  %s(%d)", retval ? "failed" : "successful", retval);
-    //SAIVPP_ERROR("l2fib flush all reply handler %s(%d)",retval ? "failed" : "successful", retval);
-
 }
 static void
 vl_api_l2fib_flush_int_reply_t_handler (vl_api_l2fib_flush_int_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("l2fib flush int reply handler  %s(%d)", retval ? "failed" : "successful", retval);
-    //SAIVPP_ERROR("l2fib flush int reply handler %s(%d)",retval ? "failed" : "successful", retval);
-
 }
 
 static void
@@ -947,20 +1386,82 @@ vl_api_l2fib_flush_bd_reply_t_handler (vl_api_l2fib_flush_bd_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("l2fib flush bd reply handler  %s(%d)", retval ? "failed" : "successful", retval);
-    //SAIVPP_ERROR("l2fib flush bd reply handler %s(%d)",retval ? "failed" : "successful", retval);
-
 }
+
+/* ----- WANT_L2_MACS_EVENTS2: push-based MAC learn/age/move notifications ----- */
+
+static vpp_mac_event_cb_fn g_mac_event_cb = NULL;
+static void *g_mac_event_ctx = NULL;
+
+#define VPP_MAC_EVENT_BATCH_MAX 128
+static vpp_mac_event_t g_mac_event_batch[VPP_MAC_EVENT_BATCH_MAX];
+
+static void
+vl_api_want_l2_macs_events2_reply_t_handler (vl_api_want_l2_macs_events2_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_l2fib_set_scan_delay_reply_t_handler (vl_api_l2fib_set_scan_delay_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+/*
+ * Handler for unsolicited L2_MACS_EVENT notifications pushed by VPP.
+ * Called on VPP's API receive thread — MUST NOT acquire the saivpp main
+ * mutex.  Callers register a callback that enqueues the event for safe
+ * processing on a thread that holds the mutex.
+ */
+static void
+vl_api_l2_macs_event_t_handler (vl_api_l2_macs_event_t *mp)
+{
+    if (!g_mac_event_cb)
+        return;
+
+    u32 n = ntohl(mp->n_macs);
+    if (n == 0) return;
+
+    // Process the full batch in chunks to avoid dropping FDB state deltas.
+    for (u32 off = 0; off < n; off += VPP_MAC_EVENT_BATCH_MAX)
+    {
+        u32 chunk = n - off;
+        if (chunk > VPP_MAC_EVENT_BATCH_MAX)
+            chunk = VPP_MAC_EVENT_BATCH_MAX;
+
+        for (u32 i = 0; i < chunk; i++) {
+            vl_api_mac_entry_t *e = &mp->mac[off + i];
+            memcpy(g_mac_event_batch[i].mac, e->mac_addr, 6);
+            g_mac_event_batch[i].sw_if_index = ntohl(e->sw_if_index);
+            /*
+             * mac_entry.action is a 4-byte vl_api_mac_event_action_t that VPP
+             * sends in network byte order, exactly like sw_if_index above:
+             *   l2fib_scan(): mp->mac[evt_idx].action = htonl(...action);
+             * Casting the raw field to uint8_t without ntohl() truncates to the
+             * least significant byte, which on little-endian hosts is 0 for every
+             * non-zero action:
+             *   ADD    (0) -> htonl(0) = 0x00000000 -> 0 -> ADD    (correct by luck)
+             *   DELETE (1) -> htonl(1) = 0x01000000 -> 0 -> ADD    (WRONG)
+             *   MOVE   (2) -> htonl(2) = 0x02000000 -> 0 -> ADD    (WRONG)
+             * i.e. aged-out and flushed MACs were reported to SONiC as LEARNED,
+             * repopulating ASIC_DB/STATE_DB with entries VPP had just deleted.
+             */
+            g_mac_event_batch[i].action = (uint8_t)ntohl((uint32_t)e->action);
+        }
+        g_mac_event_cb(g_mac_event_batch, chunk, g_mac_event_ctx);
+    }
+}
+
+/* ----- end WANT_L2_MACS_EVENTS2 handlers (implementations below) ----- */
 
 static void
 vl_api_bfd_udp_add_reply_t_handler (vl_api_bfd_udp_add_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("bfd udp add reply handler  %s(%d)", retval ? "failed" : "successful", retval);
-
 }
 
 static void
@@ -968,9 +1469,6 @@ vl_api_bfd_udp_del_reply_t_handler (vl_api_bfd_udp_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("bfd udp del reply handler  %s(%d)", retval ? "failed" : "successful", retval);
-
 }
 
 static void
@@ -978,8 +1476,6 @@ vl_api_want_bfd_events_reply_t_handler (vl_api_want_bfd_events_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("bfd events enable %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -987,8 +1483,48 @@ vl_api_bfd_udp_enable_multihop_reply_t_handler (vl_api_bfd_udp_enable_multihop_r
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
 
-    SAIVPP_DEBUG("bfd enable multihop %s(%d)", retval ? "failed" : "successful", retval);
+static void
+vl_api_sflow_enable_disable_reply_t_handler(vl_api_sflow_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sflow_sampling_rate_set_reply_t_handler(vl_api_sflow_sampling_rate_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_ip2me_enable_disable_reply_t_handler(vl_api_sonic_ext_ip2me_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_bfd_udp_set_tos_reply_t_handler (vl_api_bfd_udp_set_tos_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sflow_interface_sampling_rate_set_reply_t_handler(vl_api_sflow_interface_sampling_rate_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sflow_interface_direction_set_reply_t_handler(vl_api_sflow_interface_direction_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 }
 
 static void
@@ -996,7 +1532,7 @@ vl_api_bfd_udp_session_event_t_handler (vl_api_bfd_udp_session_event_t *msg)
 {
   bool multihop = (htonl(msg->sw_if_index) == (uint32_t)~0);
 
-    SAIVPP_WARN("Sending bfd state change event, multihop: %d, sw_if_index: %d, "
+    SAIVPP_INFO("Sending bfd state change event, multihop: %d, sw_if_index: %d, "
                 "state: %d ",
                 multihop, htonl(msg->sw_if_index), htonl(msg->state));
 
@@ -1018,14 +1554,14 @@ vl_api_bfd_udp_session_event_t_handler (vl_api_bfd_udp_session_event_t *msg)
         if(!((true == vl_api_to_vpp_ip_addr(&msg->local_addr, &bfd_notif->local_addr)) && \
              (true == vl_api_to_vpp_ip_addr(&msg->peer_addr, &bfd_notif->peer_addr))))
         {
-            SAIVPP_WARN("Invalid IP address passed from vpp for bfd event");
+            SAIVPP_ERROR("Invalid IP address passed from vpp for bfd event");
             return;
         }
 
        vpp_ev_enqueue(evinfo);
     }
 
-    SAIVPP_DEBUG("BFD udp session event, multihop: %d, sw_if_index: %d, "
+    SAIVPP_INFO("BFD udp session event, multihop: %d, sw_if_index: %d, "
                  "state: %d ",
                  multihop, htonl(msg->sw_if_index), htonl(msg->state));
 }
@@ -1033,14 +1569,21 @@ vl_api_bfd_udp_session_event_t_handler (vl_api_bfd_udp_session_event_t *msg)
 static void
 vl_api_bridge_domain_details_t_handler (vl_api_bridge_domain_details_t *mp)
 {
+    if (!mp->context)
+    {
+        return;
+    }
 
-  if (mp->context) {
-      u32 *member_count = (u32 *) get_index_ptr(mp->context);
-      *member_count = ntohl(mp->n_sw_ifs);
-      SAIVPP_WARN("bridge member count: %d",ntohl(mp->n_sw_ifs));
-      return;
-  }
-  return;
+    void *ptr = (void *) get_index_ptr(mp->context);
+    if (!ptr)
+    {
+        return;
+    }
+
+    /* Legacy: treat context as u32 *member_count */
+    u32 *member_count = (u32 *) ptr;
+    *member_count = ntohl(mp->n_sw_ifs);
+    SAIVPP_INFO("bridge member count: %d", ntohl(mp->n_sw_ifs));
 }
 
 static void
@@ -1051,20 +1594,75 @@ vl_api_vxlan_add_del_tunnel_v3_reply_t_handler (
 
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-    SAIVPP_DEBUG("vxlan_add_del handler: if_idx,%d,status,%d",vam->sw_if_index, vam->retval);
+}
+
+static void
+vl_api_ipip_add_tunnel_reply_t_handler(vl_api_ipip_add_tunnel_reply_t *msg)
+{
+    set_reply_sw_if_index(ntohl(msg->sw_if_index));
+
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+    SAIVPP_DEBUG("ipip_add_tunnel handler: if_idx,%d,status,%d", ntohl(msg->sw_if_index), retval);
+}
+
+static void
+vl_api_ipip_del_tunnel_reply_t_handler(vl_api_ipip_del_tunnel_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+    SAIVPP_DEBUG("ipip_del_tunnel handler: status,%d", retval);
+}
+
+/*
+ * ip_address_dump result accumulator.
+ * The details handler is called once per address in the W() loop.
+ * We pass a pointer to this struct via context.
+ */
+typedef struct {
+    uint32_t  target_sw_if_index;   /* OUT: sw_if_index that owns the IP, ~0 if not found */
+    vpp_ip_addr_t search_ip;        /* IN:  the IP we are looking for */
+} ip_addr_dump_ctx_t;
+
+static void
+vl_api_ip_address_details_t_handler(vl_api_ip_address_details_t *mp)
+{
+    if (!mp->context)
+        return;
+
+    ip_addr_dump_ctx_t *ctx = (ip_addr_dump_ctx_t *) get_index_ptr(mp->context);
+    if (!ctx)
+        return;
+
+    /* Already found? Skip further processing */
+    if (ctx->target_sw_if_index != (uint32_t)~0)
+        return;
+
+    /* Extract the address from the reply */
+    vl_api_address_t *addr = &mp->prefix.address;
+    if (ctx->search_ip.sa_family == AF_INET && addr->af == ADDRESS_IP4) {
+        if (memcmp(&addr->un.ip4, &ctx->search_ip.addr.ip4.sin_addr, 4) == 0) {
+            ctx->target_sw_if_index = ntohl(mp->sw_if_index);
+        }
+    } else if (ctx->search_ip.sa_family == AF_INET6 && addr->af == ADDRESS_IP6) {
+        if (memcmp(&addr->un.ip6, &ctx->search_ip.addr.ip6.sin6_addr, 16) == 0) {
+            ctx->target_sw_if_index = ntohl(mp->sw_if_index);
+        }
+    }
 }
 
 static void
 vl_api_tunterm_acl_add_replace_reply_t_handler(vl_api_tunterm_acl_add_replace_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
 
     uint32_t *tunterm_index = (uint32_t *) get_index_ptr(msg->context);
+    if (!tunterm_index) {
+        return;
+    }
+    set_reply_status(retval);
     *tunterm_index = ntohl(msg->tunterm_acl_index);
 
-    SAIVPP_DEBUG("tunterm acl add_replace %s(%d) tunterm_index index %u", retval ? "failed" : "successful",
-                 retval, *tunterm_index);
     release_index(msg->context);
 }
 
@@ -1073,8 +1671,6 @@ vl_api_tunterm_acl_del_reply_t_handler(vl_api_tunterm_acl_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("tunterm acl del %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -1082,30 +1678,24 @@ vl_api_tunterm_acl_interface_add_del_reply_t_handler(vl_api_tunterm_acl_interfac
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("tunterm acl interface set/reset  %s(%d)", retval ? "failed" : "successful",
-                 retval);
 }
 
 static void
 vl_api_bond_create_reply_t_handler (vl_api_bond_create_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
 
     if (msg->context) {
       u32 *swif_idx = (u32 *) get_index_ptr(msg->context);
+      if (!swif_idx) {
+          return;
+      }
+      set_reply_status(retval);
       *swif_idx = ntohl(msg->sw_if_index);
+      release_index(msg->context);
+    } else {
+      set_reply_status(retval);
     }
-
-    SAIVPP_WARN("bond add %s(%d)", retval ? "failed" : "successful", retval);
-    if (!msg->retval)
-    {
-        uint32_t bond_if_index =  ntohl(msg->sw_if_index);
-        SAIVPP_WARN("created bond if index%d", bond_if_index);
-    }
-    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",retval ? "failed" : "successful", retval);
-
 }
 
 static void
@@ -1113,8 +1703,6 @@ vl_api_bond_delete_reply_t_handler (vl_api_bond_delete_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_WARN("bond delete %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -1122,8 +1710,6 @@ vl_api_bond_add_member_reply_t_handler (vl_api_bond_add_member_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_WARN("bond add member %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -1131,18 +1717,13 @@ vl_api_bond_detach_member_reply_t_handler (vl_api_bond_detach_member_reply_t *ms
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_WARN("bond detach member %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
-vl_api_sr_localsid_add_del_reply_t_handler(vl_api_sr_localsid_add_del_reply_t *msg)
+vl_api_sr_localsid_add_del_v2_reply_t_handler(vl_api_sr_localsid_add_del_v2_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("sr local sid add/del %s(%d)",
-                  retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -1150,9 +1731,6 @@ vl_api_sr_policy_add_v2_reply_t_handler(vl_api_sr_policy_add_v2_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("sr policy add %s(%d)",
-                  retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -1160,9 +1738,6 @@ vl_api_sr_policy_del_reply_t_handler(vl_api_sr_policy_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("sr policy del %s(%d)",
-                  retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -1170,9 +1745,6 @@ vl_api_sr_steering_add_del_reply_t_handler(vl_api_sr_steering_add_del_reply_t *m
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("sr steer add/del %s(%d)",
-                  retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -1180,9 +1752,81 @@ vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *m
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
 
-    SAIVPP_DEBUG("sr set encap source %s(%d)",
-                  retval ? "failed" : "successful", retval);
+static void
+vl_api_sw_interface_span_enable_disable_reply_t_handler(vl_api_sw_interface_span_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (retval) { SAIVPP_ERROR("span enable/disable failed(%d)", retval); }
+    else { SAIVPP_INFO("span enable/disable successful"); }
+}
+
+/* classify API reply handlers */
+
+static void vl_api_classify_add_del_table_reply_t_handler(
+    vl_api_classify_add_del_table_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (msg->context) {
+        uint32_t *table_index = (uint32_t *) get_index_ptr(msg->context);
+        if (table_index) {
+            *table_index = ntohl(msg->new_table_index);
+        }
+        release_index(msg->context);
+    }
+}
+
+static void vl_api_classify_add_del_session_reply_t_handler(
+    vl_api_classify_add_del_session_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void vl_api_classify_set_interface_l2_tables_reply_t_handler(
+    vl_api_classify_set_interface_l2_tables_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+/* vlib API reply handler (get_next_index) */
+
+static void vl_api_get_next_index_reply_t_handler(
+    vl_api_get_next_index_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (msg->context) {
+        uint32_t *next_index = (uint32_t *) get_index_ptr(msg->context);
+        if (next_index) {
+            *next_index = ntohl(msg->next_index);
+        }
+        release_index(msg->context);
+    }
+}
+
+/* vlib API reply handler (add_node_next) */
+
+static void vl_api_add_node_next_reply_t_handler(
+    vl_api_add_node_next_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (msg->context) {
+        uint32_t *next_index = (uint32_t *) get_index_ptr(msg->context);
+        if (next_index) {
+            *next_index = ntohl(msg->next_index);
+        }
+        release_index(msg->context);
+    }
 }
 
 #define vl_api_get_first_msg_id_reply_t_handler vl_noop_handler
@@ -1194,12 +1838,23 @@ vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *m
     _(MEMCLNT_MSG_ID(GET_FIRST_MSG_ID_REPLY), get_first_msg_id_reply) \
     _(MEMCLNT_MSG_ID(CONTROL_PING_REPLY), control_ping_reply)
 
-static u16 interface_msg_id_base, memclnt_msg_id_base, __plugin_msg_base;
-static u16 l2_msg_id_base, vxlan_msg_id_base;
+static u16 interface_msg_id_base, memclnt_msg_id_base;
+/*
+ * __plugin_msg_base selects the message-id base for the message currently
+ * being constructed. The command path and the dedicated event-connection path
+ * run on different threads under different locks, so this must be thread-local
+ * to avoid a data race between "set base" and the immediately following M()/PING().
+ */
+static __thread u16 __plugin_msg_base;
+static u16 l2_msg_id_base, vxlan_msg_id_base, ipip_msg_id_base;
 static u16 tunterm_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
+static u16 mpls_msg_id_base;
 static u16 bond_msg_id_base;
+static u16 span_msg_id_base;
+static u16 classify_msg_id_base;
+static u16 vlib_msg_id_base;
 
 static void vpp_base_vpe_init(void)
 {
@@ -1236,6 +1891,18 @@ static void vpp_base_vpe_init(void)
 #define BFD_MSG_ID(id) \
     (VL_API_##id + bfd_msg_id_base)
 
+#define SPAN_MSG_ID(id) \
+    (VL_API_##id + span_msg_id_base)
+
+#define CLASSIFY_MSG_ID(id) \
+    (VL_API_##id + classify_msg_id_base)
+
+#define VLIB_API_MSG_ID(id) \
+    (VL_API_##id + vlib_msg_id_base)
+
+#define SFLOW_MSG_ID(id) \
+    (VL_API_##id + sflow_msg_id_base)
+
 #define foreach_vpe_ext_api_reply_msg                                   \
     _(INTERFACE_MSG_ID(SW_INTERFACE_DETAILS), sw_interface_details)     \
     _(INTERFACE_MSG_ID(CREATE_LOOPBACK_INSTANCE_REPLY), create_loopback_instance_reply) \
@@ -1243,17 +1910,23 @@ static void vpp_base_vpe_init(void)
     _(INTERFACE_MSG_ID(CREATE_SUBIF_REPLY), create_subif_reply) \
     _(INTERFACE_MSG_ID(DELETE_SUBIF_REPLY), delete_subif_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_TABLE_REPLY), sw_interface_set_table_reply) \
+    _(INTERFACE_MSG_ID(SW_INTERFACE_GET_TABLE_REPLY), sw_interface_get_table_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_ADD_DEL_ADDRESS_REPLY), sw_interface_add_del_address_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_FLAGS_REPLY), sw_interface_set_flags_reply) \
+    _(INTERFACE_MSG_ID(SW_INTERFACE_SET_PROMISC_REPLY), sw_interface_set_promisc_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MTU_REPLY), sw_interface_set_mtu_reply) \
+    _(INTERFACE_MSG_ID(SW_INTERFACE_SET_LINK_SPEED_REPLY), sw_interface_set_link_speed_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MAC_ADDRESS_REPLY), sw_interface_set_mac_address_reply) \
+    _(INTERFACE_MSG_ID(SW_INTERFACE_SET_UNNUMBERED_REPLY), sw_interface_set_unnumbered_reply) \
     _(INTERFACE_MSG_ID(HW_INTERFACE_SET_MTU_REPLY), hw_interface_set_mtu_reply) \
-    _(INTERFACE_MSG_ID(WANT_INTERFACE_EVENTS), want_interface_events_reply) \
+    _(INTERFACE_MSG_ID(WANT_INTERFACE_EVENTS_REPLY), want_interface_events_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_EVENT), sw_interface_event) \
     _(IP_MSG_ID(IP_TABLE_ADD_DEL_REPLY), ip_table_add_del_reply) \
     _(IP_MSG_ID(IP_ROUTE_ADD_DEL_REPLY), ip_route_add_del_reply) \
     _(IP_MSG_ID(SW_INTERFACE_IP6_ENABLE_DISABLE_REPLY), sw_interface_ip6_enable_disable_reply) \
     _(IP_MSG_ID(SET_IP_FLOW_HASH_V2_REPLY), set_ip_flow_hash_v2_reply)        \
+    _(IP_MSG_ID(SET_IP_FLOW_HASH_ROUTER_ID_REPLY), set_ip_flow_hash_router_id_reply) \
+    _(IP_MSG_ID(IP_ADDRESS_DETAILS), ip_address_details) \
     _(IP_NBR_MSG_ID(IP_NEIGHBOR_ADD_DEL_REPLY), ip_neighbor_add_del_reply) \
     _(L2_MSG_ID(BRIDGE_DOMAIN_ADD_DEL_REPLY), bridge_domain_add_del_reply) \
     _(L2_MSG_ID(SW_INTERFACE_SET_L2_BRIDGE_REPLY), sw_interface_set_l2_bridge_reply) \
@@ -1270,15 +1943,27 @@ static void vpp_base_vpe_init(void)
     _(L2_MSG_ID(L2FIB_FLUSH_ALL_REPLY), l2fib_flush_all_reply) \
     _(L2_MSG_ID(L2FIB_FLUSH_INT_REPLY), l2fib_flush_int_reply) \
     _(L2_MSG_ID(L2FIB_FLUSH_BD_REPLY), l2fib_flush_bd_reply) \
+    _(L2_MSG_ID(WANT_L2_MACS_EVENTS2_REPLY), want_l2_macs_events2_reply) \
+    _(L2_MSG_ID(L2_MACS_EVENT), l2_macs_event) \
+    _(L2_MSG_ID(L2FIB_SET_SCAN_DELAY_REPLY), l2fib_set_scan_delay_reply) \
     _(BFD_MSG_ID(BFD_UDP_ADD_REPLY), bfd_udp_add_reply) \
     _(BFD_MSG_ID(BFD_UDP_DEL_REPLY), bfd_udp_del_reply) \
     _(BFD_MSG_ID(BFD_UDP_SESSION_EVENT), bfd_udp_session_event) \
-    _(BFD_MSG_ID(WANT_BFD_EVENTS), want_bfd_events_reply) \
-    _(BFD_MSG_ID(BFD_UDP_ENABLE_MULTIHOP), bfd_udp_enable_multihop_reply) \
+    _(BFD_MSG_ID(WANT_BFD_EVENTS_REPLY), want_bfd_events_reply) \
+    _(BFD_MSG_ID(BFD_UDP_ENABLE_MULTIHOP_REPLY), bfd_udp_enable_multihop_reply) \
+    _(BFD_MSG_ID(BFD_UDP_SET_TOS_REPLY), bfd_udp_set_tos_reply) \
+    _(SPAN_MSG_ID(SW_INTERFACE_SPAN_ENABLE_DISABLE_REPLY), sw_interface_span_enable_disable_reply) \
+    _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_TABLE_REPLY), classify_add_del_table_reply) \
+    _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_SESSION_REPLY), classify_add_del_session_reply) \
+    _(CLASSIFY_MSG_ID(CLASSIFY_SET_INTERFACE_L2_TABLES_REPLY), classify_set_interface_l2_tables_reply) \
+    _(VLIB_API_MSG_ID(GET_NEXT_INDEX_REPLY), get_next_index_reply) \
+    _(VLIB_API_MSG_ID(ADD_NODE_NEXT_REPLY), add_node_next_reply)
 
 
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
 static u16 acl_msg_id_base;
+static u16 sflow_msg_id_base;
+static u16 sonic_ext_msg_id_base;
 
 static void vpp_ext_vpe_init(void)
 {
@@ -1301,28 +1986,25 @@ static void vl_api_lcp_itf_pair_add_del_reply_t_handler(vl_api_lcp_itf_pair_add_
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("linux_cp hostif creation %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void vl_api_lcp_ethertype_enable_reply_t_handler(vl_api_lcp_ethertype_enable_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_WARN("linux_cp ethertype enabled %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void vl_api_acl_add_replace_reply_t_handler(vl_api_acl_add_replace_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
 
     uint32_t *acl_index = (uint32_t *) get_index_ptr(msg->context);
+    if (!acl_index) {
+        return;
+    }
+    set_reply_status(retval);
     *acl_index = ntohl(msg->acl_index);
 
-    SAIVPP_DEBUG("acl add_replace %s(%d) acl index %u", retval ? "failed" : "successful",
-                 retval, *acl_index);
     release_index(msg->context);
 }
 
@@ -1330,8 +2012,6 @@ static void vl_api_acl_del_reply_t_handler(vl_api_acl_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("acl del %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -1339,8 +2019,6 @@ vl_api_acl_stats_intf_counters_enable_reply_t_handler (vl_api_acl_stats_intf_cou
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
-
-    SAIVPP_DEBUG("acl counters enable %s", retval ? "failed" : "successful");
 }
 
 static void
@@ -1348,9 +2026,27 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
 
-    SAIVPP_DEBUG("acl interface set/reset  %s(%d)", retval ? "failed" : "successful",
-                 retval);
+static void
+vl_api_sw_interface_set_mpls_enable_reply_t_handler (vl_api_sw_interface_set_mpls_enable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_mpls_table_add_del_reply_t_handler (vl_api_mpls_table_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 }
 
 #define LCP_MSG_ID(id) \
@@ -1365,8 +2061,17 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
 #define VXLAN_MSG_ID(id) \
     (VL_API_##id + vxlan_msg_id_base)
 
+#define IPIP_MSG_ID(id) \
+    (VL_API_##id + ipip_msg_id_base)
+
 #define SR_MSG_ID(id) \
     (VL_API_##id + sr_msg_id_base)
+
+#define MPLS_MSG_ID(id) \
+    (VL_API_##id + mpls_msg_id_base)
+
+#define SONIC_EXT_MSG_ID(id) \
+    (VL_API_##id + sonic_ext_msg_id_base)
 
 #define foreach_vpe_plugin_api_reply_msg                                \
     _(LCP_MSG_ID(LCP_ITF_PAIR_ADD_DEL_REPLY), lcp_itf_pair_add_del_reply) \
@@ -1379,11 +2084,21 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     _(TUNTERM_MSG_ID(TUNTERM_ACL_INTERFACE_ADD_DEL_REPLY), tunterm_acl_interface_add_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_DEL_REPLY), tunterm_acl_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_ADD_REPLACE_REPLY), tunterm_acl_add_replace_reply) \
-    _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_REPLY), sr_localsid_add_del_reply) \
+    _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_V2_REPLY), sr_localsid_add_del_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
     _(SR_MSG_ID(SR_STEERING_ADD_DEL_REPLY), sr_steering_add_del_reply) \
-    _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply)
+    _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply) \
+    _(SFLOW_MSG_ID(SFLOW_ENABLE_DISABLE_REPLY), sflow_enable_disable_reply) \
+    _(SFLOW_MSG_ID(SFLOW_SAMPLING_RATE_SET_REPLY), sflow_sampling_rate_set_reply) \
+    _(SFLOW_MSG_ID(SFLOW_INTERFACE_SAMPLING_RATE_SET_REPLY), sflow_interface_sampling_rate_set_reply) \
+    _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
+    _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
+    _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
+    _(MPLS_MSG_ID(SW_INTERFACE_SET_MPLS_ENABLE_REPLY), sw_interface_set_mpls_enable_reply) \
+    _(MPLS_MSG_ID(MPLS_TABLE_ADD_DEL_REPLY), mpls_table_add_del_reply) \
+    _(MPLS_MSG_ID(MPLS_ROUTE_ADD_DEL_REPLY), mpls_route_add_del_reply)
 
 static void vpp_plugin_vpe_init(void)
 {
@@ -1441,6 +2156,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "sr_%08x%c", sr_api_version, 0);
     sr_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sr_msg_id_base != (u16) ~0);
+    msg_base_lookup_name = format (0, "mpls_%08x%c", mpls_api_version, 0);
+    mpls_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(mpls_msg_id_base != (u16) ~0);
+
 
     memclnt_msg_id_base = 0;
 
@@ -1448,9 +2167,33 @@ static void get_base_msg_id()
     vxlan_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(vxlan_msg_id_base != (u16) ~0);
 
+    msg_base_lookup_name = format (0, "ipip_%08x%c", ipip_api_version, 0);
+    ipip_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(ipip_msg_id_base != (u16) ~0);
+
     msg_base_lookup_name = format (0, "tunterm_acl_%08x%c", tunterm_api_version, 0);
     tunterm_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(tunterm_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "span_%08x%c", span_api_version, 0);
+    span_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(span_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "classify_%08x%c", classify_api_version, 0);
+    classify_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(classify_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "vlib_%08x%c", vlibapi_version, 0);
+    vlib_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(vlib_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "sflow_%08x%c", sflow_api_version, 0);
+    sflow_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(sflow_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "sonic_ext_%08x%c", sonic_ext_api_version, 0);
+    sonic_ext_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(sonic_ext_msg_id_base != (u16) ~0);
 }
 
 #define API_SOCKET_FILE "/run/vpp/api.sock"
@@ -1479,6 +2222,105 @@ vsc_socket_connect (vat_main_t * vam, char *client_name)
     return 0;
 }
 
+/*
+ * Establish the dedicated event connection. Uses the explicit-scm
+ * vl_socket_client_connect2() so it is a fully independent client connection
+ * (its own VPP client_index and socket fd). Deliberately does NOT touch the
+ * global api_main->my_client_index, which belongs to the command connection;
+ * messages on this connection carry vat_event_main.my_client_index via the
+ * M_EV/PING_EV macros.
+ */
+static int
+vsc_event_socket_connect (vat_main_t * vam, char *client_name)
+{
+    int rv;
+    vam->socket_client_main = &event_socket_client_main;
+    if ((rv = vl_socket_client_connect2 (&event_socket_client_main,
+                                         (char *) vam->socket_name,
+                                         client_name,
+                                         0 /* default socket rx, tx buffer */ )))
+        return rv;
+
+    /* vpp expects the client index in network order */
+    vam->my_client_index = (u32)htonl (event_socket_client_main.client_index);
+    return 0;
+}
+
+static int init_vpp_event_client (void)
+{
+    return vpp_event_connect();
+}
+
+static int
+vpp_event_client_setup (void)
+{
+    vat_main_t *vam = &vat_event_main;
+    static int vam_setup_done = 0;
+
+    if (!event_mutex_initialized)
+    {
+        vpp_event_mutex_lock_init();
+        event_mutex_initialized = 1;
+    }
+
+    if (!vam_setup_done)
+    {
+        clib_time_init (&vam->clib_time);
+        vam->socket_name = format (0, "%s%c", API_SOCKET_FILE, 0);
+        vam->vlib_main = vat_main.vlib_main;
+        vam_setup_done = 1;
+    }
+
+    return 0;
+}
+
+static int
+vpp_event_connect (void)
+{
+    char client_name[] = "sonic_vpp_event_client";
+    vat_main_t *vam = &vat_event_main;
+
+    vpp_event_client_setup();
+
+    if (vsc_event_socket_connect(vam, client_name) == 0)
+    {
+        event_client_connected = 1;
+        SAIVPP_INFO("vpp event socket connect successful\n");
+        return 0;
+    }
+
+    event_client_connected = 0;
+    SAIVPP_ERROR("vpp event socket connect failed\n");
+    return -1;
+}
+
+static int
+vpp_event_reconnect (void)
+{
+    vat_main_t *vam = &vat_event_main;
+
+    SAIVPP_INFO("attempting vpp event socket reconnect\n");
+
+    EVENT_LOCK();
+    vl_socket_client_disconnect2 (&event_socket_client_main);
+    event_client_connected = 0;
+    vam->result_ready = 0;
+    EVENT_UNLOCK();
+
+    if (vpp_event_connect() != 0)
+        return -1;
+
+    if (vpp_intf_events_enable_disable(true) != 0)
+        return -1;
+
+    if (vpp_bfd_events_enable_disable(true) != 0)
+        return -1;
+
+    SAIVPP_INFO("vpp event socket reconnect successful\n");
+    return 0;
+}
+
+
 typedef struct
 {
   u8 *name;
@@ -1497,6 +2339,14 @@ api_sw_interface_dump (vat_main_t *vam)
 
     VPP_LOCK();
 
+    /*
+     * Toss and recreate the name tables atomically w.r.t. the event handler,
+     * which reads interface_name_by_sw_index under INTF_TABLE_LOCK. The lock is
+     * released before the dump below because WR() dispatches the
+     * sw_interface_details handler, which re-acquires INTF_TABLE_LOCK.
+     */
+    INTF_TABLE_LOCK();
+
     /* Toss the old name table */
     hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
                 vec_add2 (nses, ns, 1);
@@ -1513,6 +2363,7 @@ api_sw_interface_dump (vat_main_t *vam)
 
     /* Interface name is from the index_table which is already freed */
     hash_free (interface_name_by_sw_index);
+    hash_free (link_speed_by_sw_index);
 
     vec_foreach (sub, vam->sw_if_subif_table)
     {
@@ -1522,6 +2373,9 @@ api_sw_interface_dump (vat_main_t *vam)
 
     /* recreate the interface name hash table */
     vam->sw_if_index_by_interface_name = hash_create_string (0, sizeof (uword));
+
+    INTF_TABLE_UNLOCK();
+
     __plugin_msg_base = interface_msg_id_base;
     /*
      * Ask for all interface names. Otherwise, the epic catalog of
@@ -1537,7 +2391,7 @@ api_sw_interface_dump (vat_main_t *vam)
     PING (NULL, mp_ping);
     S (mp_ping);
 
-    W (ret);
+    WR (ret);
 
     VPP_UNLOCK();
 
@@ -1566,11 +2420,13 @@ dump_interface_table (vat_main_t *vam)
         return -99;
     }
 
+    INTF_TABLE_LOCK();
     hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
                 vec_add2 (nses, ns, 1);
                 ns->name = (u8 *) (p->key);
                 ns->value = (u32) p->value[0];
             }));
+    INTF_TABLE_UNLOCK();
 
     vec_sort_with_function (nses, name_sort_cmp);
 
@@ -1588,13 +2444,16 @@ static u32 get_swif_idx (vat_main_t *vam, const char *ifname)
     hash_pair_t *p;
     u8 *name;
     u32 value;
+    u32 found = (u32) -1;
 
+    INTF_TABLE_LOCK();
     hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
                 name = (u8 *) (p->key);
                 value = (u32) p->value[0];
-                if (strcmp((char *) name, ifname) == 0) return value;
+                if (strcmp((char *) name, ifname) == 0) { found = value; }
             }));
-    return ((u32) -1);
+    INTF_TABLE_UNLOCK();
+    return found;
 }
 
 static const char * get_swif_name (vat_main_t *vam, const u32 swif_idx)
@@ -1602,13 +2461,16 @@ static const char * get_swif_name (vat_main_t *vam, const u32 swif_idx)
     hash_pair_t *p;
     u8 *name;
     u32 value;
+    const char *found = NULL;
 
+    INTF_TABLE_LOCK();
     hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
                 name = (u8 *) (p->key);
                 value = (u32) p->value[0];
-                if (value == swif_idx) return (const char * )name;
+                if (value == swif_idx) { found = (const char *) name; }
             }));
-    return NULL;
+    INTF_TABLE_UNLOCK();
+    return found;
 }
 
 static int config_lcp_hostif (vat_main_t *vam,
@@ -1630,7 +2492,12 @@ static int config_lcp_hostif (vat_main_t *vam,
     mp->host_if_type = LCP_API_ITF_HOST_TAP;
     S (mp);
 
-    W (ret);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) if_idx %u hostif %s is_add %d", __func__, ret, if_idx, hostif_name, is_add); }
+    else { SAIVPP_INFO("%s if_idx %u hostif %s is_add %d", __func__, if_idx, hostif_name, is_add); }
 
     VPP_UNLOCK();
 
@@ -1657,6 +2524,9 @@ static int __create_loopback_instance (vat_main_t *vam, u32 instance)
     S (mp);
 
     WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) instance %u", __func__, ret, instance); }
+    else { SAIVPP_INFO("%s instance %u", __func__, instance); }
 
     VPP_UNLOCK();
 
@@ -1685,14 +2555,19 @@ static int __delete_loopback (vat_main_t *vam, const char *hwif_name, u32 instan
 
     S (mp);
 
-    W (ret);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s instance %u", __func__, ret, hwif_name, instance); }
+    else { SAIVPP_INFO("%s %s instance %u", __func__, hwif_name, instance); }
 
     VPP_UNLOCK();
 
     return ret;
 }
 
-static int __create_sub_interface (vat_main_t *vam, vl_api_interface_index_t if_idx, u32 sub_id, u16 vlan_id)
+static int __create_sub_interface (vat_main_t *vam, vl_api_interface_index_t if_idx, u32 sub_id, u16 vlan_id, u32 *new_sw_if_index)
 {
     vl_api_create_subif_t *mp;
     int ret;
@@ -1708,9 +2583,18 @@ static int __create_sub_interface (vat_main_t *vam, vl_api_interface_index_t if_
 
     /* create_sub_interfaces() from vnet/interface_cli.c */
     mp->sub_if_flags = htonl(SUB_IF_API_FLAG_EXACT_MATCH | SUB_IF_API_FLAG_ONE_TAG);
+
+    if (new_sw_if_index) {
+        *new_sw_if_index = (u32) ~0;
+        mp->context = store_ptr(new_sw_if_index);
+    }
+
     S (mp);
 
-    W (ret);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) if_idx %u sub_id %u vlan %u", __func__, ret, if_idx, sub_id, vlan_id); }
+    else { SAIVPP_INFO("%s if_idx %u sub_id %u vlan %u", __func__, if_idx, sub_id, vlan_id); }
 
     VPP_UNLOCK();
 
@@ -1730,7 +2614,12 @@ static int __delete_sub_interface (vat_main_t *vam, vl_api_interface_index_t if_
     mp->sw_if_index = htonl(if_idx);
     S (mp);
 
-    W (ret);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) if_idx %u", __func__, ret, if_idx); }
+    else { SAIVPP_INFO("%s if_idx %u", __func__, if_idx); }
 
     VPP_UNLOCK();
 
@@ -1756,44 +2645,64 @@ int init_vpp_client()
 
     vpp_base_vpe_init();
     vam->socket_name = format (0, "%s%c", API_SOCKET_FILE, 0);
+    INTF_TABLE_LOCK();
     vam->sw_if_index_by_interface_name = hash_create_string (0, sizeof (uword));
     interface_name_by_sw_index = hash_create (0, sizeof (uword));
+    link_speed_by_sw_index = hash_create (0, sizeof (uword));
+    INTF_TABLE_UNLOCK();
 
     if (vsc_socket_connect(vam, client_name) == 0) {
         int rc;
 
-        SAIVPP_DEBUG("vpp socket connect successful\n");
+        SAIVPP_INFO("vpp socket connect successful\n");
         get_base_msg_id();
         vpp_ext_vpe_init();
         vpp_plugin_vpe_init();
 
         rc = api_sw_interface_dump(vam);
         if (rc == 0) {
-            SAIVPP_DEBUG("Interface dump available");
+            SAIVPP_INFO("Interface dump available");
         }
         dump_interface_table(vam);
 
+        /* Initialize the event queue before enabling any VPP event source,
+         * otherwise an early sw_interface_event from VPP can be dispatched
+         * to vl_api_sw_interface_event_t_handler -> vpp_ev_enqueue while
+         * vpp_evq_p is still NULL, causing a SIGSEGV. */
+        vpp_evq_init();
+
         vpp_acl_counters_enable_disable(true);
 
-        /* Enable LACP punt/xc in linux-cp */
+        /* Enable LACP punt/xc in linux-cp (no flood) */
         vpp_lcp_ethertype_enable(0x8809);
         /* Enable LLDP in linux-cp */
         vpp_lcp_ethertype_enable(0x88cc);
+        /* Enable ARP pass through in linux-cp */
+        vpp_lcp_ethertype_enable(0x0806);
 
         /*
-         * SONiC periodically polls the port status so currently there is no need for
-         * async notification. This also simplifies the synchronous design of saivpp.
-         * Revisit the async mechanism if there is greater reason.
+         * Bring up the dedicated event connection before subscribing to any
+         * VPP event source. The want_*_events registrations below are issued
+         * on this connection, so VPP delivers all unsolicited notifications to
+         * the event socket, keeping the command socket reply-only.
          */
-        vpp_intf_events_enable_disable(true);
+        if (init_vpp_event_client() != 0) {
+            SAIVPP_ERROR("vpp event client init failed; async events disabled\n");
+        } else {
+            /*
+             * SONiC periodically polls the port status so currently there is no need for
+             * async notification. This also simplifies the synchronous design of saivpp.
+             * Revisit the async mechanism if there is greater reason.
+             */
+            vpp_intf_events_enable_disable(true);
 
-        /* Register with VPP for BFD notifications */
-        vpp_bfd_events_enable_disable(true);
+            /* Register with VPP for BFD notifications */
+            vpp_bfd_events_enable_disable(true);
+        }
 
         /* Enable BFD multihop support in VPP */
         vpp_bfd_udp_enable_multihop();
 
-        vpp_evq_init();
         vpp_client_init = 1;
         return 0;
     } else {
@@ -1809,7 +2718,7 @@ int refresh_interfaces_list ()
 
     rc = api_sw_interface_dump(vam);
     if (rc == 0) {
-        SAIVPP_DEBUG("Interface dump available");
+        SAIVPP_INFO("Interface dump available");
     }
     dump_interface_table(vam);
 
@@ -1822,7 +2731,7 @@ int configure_lcp_interface (const char *hwif_name, const char *hostif_name, boo
     vat_main_t *vam = &vat_main;
 
     idx = get_swif_idx(vam, hwif_name);
-    SAIVPP_DEBUG("swif index of interface %s is %u\n", hwif_name, idx);
+    SAIVPP_INFO("swif index of interface %s is %u\n", hwif_name, idx);
 
     return config_lcp_hostif(vam, idx, hostif_name, is_add);
 }
@@ -1842,24 +2751,59 @@ int delete_loopback (const char *hwif_name, u32 instance)
 int create_sub_interface (const char *hwif_name, u32 sub_id, u16 vlan_id)
 {
     u32 idx;
+    u32 new_sw_if_index = (u32) ~0;
+    int rc;
     vat_main_t *vam = &vat_main;
 
     idx = get_swif_idx(vam, hwif_name);
-    SAIVPP_DEBUG("swif index of interface %s is %u\n", hwif_name, idx);
+    SAIVPP_INFO("swif index of interface %s is %u\n", hwif_name, idx);
 
-    return __create_sub_interface(vam, idx, sub_id, vlan_id);
+    rc = __create_sub_interface(vam, idx, sub_id, vlan_id, &new_sw_if_index);
+
+    /* Insert the new sub-interface into the local sw_if_index cache so
+     * that subsequent get_swif_idx() lookups (e.g. configure_lcp_interface)
+     * resolve without a full sw_interface_dump. */
+    if (rc == 0 && new_sw_if_index != (u32) ~0) {
+        char subif_name[64];
+        u8 *s;
+
+        snprintf(subif_name, sizeof(subif_name), "%s.%u", hwif_name, sub_id);
+        s = format(0, "%s%c", subif_name, 0);
+        hash_set_mem(vam->sw_if_index_by_interface_name, s, new_sw_if_index);
+        hash_set(interface_name_by_sw_index, new_sw_if_index, s);
+    }
+
+    return rc;
 }
 
 int delete_sub_interface (const char *hwif_name, u32 sub_id)
 {
     u32 idx;
+    int rc;
     vat_main_t *vam = &vat_main;
     char tmpbuf[64];
 
     snprintf(tmpbuf, sizeof(tmpbuf), "%s.%u", hwif_name, sub_id);
     idx = get_swif_idx(vam, tmpbuf);
-    SAIVPP_DEBUG("swif index of interface %s is %u\n", tmpbuf, idx);
-    return __delete_sub_interface(vam, idx);
+    SAIVPP_INFO("swif index of interface %s is %u\n", tmpbuf, idx);
+    rc = __delete_sub_interface(vam, idx);
+
+    /* Evict from local cache on success. */
+    if (rc == 0 && idx != (u32) ~0) {
+        hash_pair_t *p;
+        u8 *key_to_free = NULL;
+        hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
+                    if (strcmp((char *) p->key, tmpbuf) == 0) {
+                        key_to_free = (u8 *) p->key;
+                    }
+                }));
+        if (key_to_free) {
+            hash_unset_mem(vam->sw_if_index_by_interface_name, key_to_free);
+            vec_free(key_to_free);
+        }
+        hash_unset(interface_name_by_sw_index, idx);
+    }
+    return rc;
 }
 
 static int __set_interface_vrf (vat_main_t *vam, vl_api_interface_index_t if_idx,
@@ -1881,6 +2825,9 @@ static int __set_interface_vrf (vat_main_t *vam, vl_api_interface_index_t if_idx
 
     WR (ret);
 
+    if (ret) { SAIVPP_ERROR("%s failed(%d) if_idx %u vrf_id %u is_ipv6 %d", __func__, ret, if_idx, vrf_id, is_ipv6); }
+    else { SAIVPP_INFO("%s if_idx %u vrf_id %u is_ipv6 %d", __func__, if_idx, vrf_id, is_ipv6); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -1897,29 +2844,34 @@ int set_interface_vrf (const char *hwif_name, u32 sub_id, u32 vrf_id, bool is_ip
         hwif_name = tmpbuf;
     }
     idx = get_swif_idx(vam, hwif_name);
-    SAIVPP_DEBUG("swif index of interface %s is %u\n", hwif_name, idx);
+    SAIVPP_INFO("swif index of interface %s is %u\n", hwif_name, idx);
 
     return __set_interface_vrf(vam, idx, vrf_id, is_ipv6);
 }
 
 static int vpp_intf_events_enable_disable (bool enable)
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = &vat_event_main;
     vl_api_want_interface_events_t *mp;
     int ret;
 
-    VPP_LOCK();
+    EVENT_LOCK();
+    tl_cur_vam = &vat_event_main;
 
     __plugin_msg_base = interface_msg_id_base;
 
-    M (WANT_INTERFACE_EVENTS, mp);
+    M_EV (WANT_INTERFACE_EVENTS, mp);
     mp->enable_disable = enable;
     mp->pid = htonl((uint32_t)getpid());
 
-    S (mp);
-    W (ret);
+    S_EV (mp);
+    WR_EV (ret);
 
-    VPP_UNLOCK();
+    if (ret) { SAIVPP_ERROR("%s failed(%d) enable %d", __func__, ret, enable); }
+    else { SAIVPP_INFO("%s enable %d", __func__, enable); }
+
+    tl_cur_vam = NULL;
+    EVENT_UNLOCK();
 
     return ret;
 }
@@ -1941,7 +2893,12 @@ static int __ip_vrf_add_del (vat_main_t *vam, u32 vrf_id,
 
     S (mp);
 
-    W (ret);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) vrf_id %u is_ipv6 %d is_add %d", __func__, ret, vrf_id, is_ipv6, is_add); }
+    else { SAIVPP_INFO("%s vrf_id %u is_ipv6 %d is_add %d", __func__, vrf_id, is_ipv6, is_add); }
 
     VPP_UNLOCK();
 
@@ -1988,6 +2945,11 @@ static int __ip_nbr_add_del (vat_main_t *vam, vl_api_address_t *nbr_addr, u32 if
 
     WR (ret);
 
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) if_idx %u is_add %d", __func__, ret, if_idx, is_add); }
+    else { SAIVPP_INFO("%s if_idx %u is_add %d", __func__, if_idx, is_add); }
+
     VPP_UNLOCK();
     return ret;
 }
@@ -2029,7 +2991,173 @@ int ip6_nbr_add_del (const char *hwif_name, uint32_t sw_if_index, struct sockadd
     return ip_nbr_add_del(hwif_name, sw_if_index, (struct sockaddr *) addr, is_static, no_fib_entry, mac, is_add);
 }
 
-int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
+int sw_interface_set_mpls_enable (const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_mpls_enable_t *mp;
+    u32 sw_if_index;
+    int ret;
+
+    VPP_LOCK();
+
+    sw_if_index = get_swif_idx(vam, hwif_name);
+    if (sw_if_index == (u32) -1) {
+        SAIVPP_ERROR("%s: unknown interface %s", __func__, hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    __plugin_msg_base = mpls_msg_id_base;
+
+    M (SW_INTERFACE_SET_MPLS_ENABLE, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->enable = enable;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) intf %s enable %d", __func__, ret, hwif_name, enable); }
+    else { SAIVPP_INFO("%s intf %s enable %d", __func__, hwif_name, enable); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int mpls_table_add_del (uint32_t table_id, bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_mpls_table_add_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = mpls_msg_id_base;
+
+    M (MPLS_TABLE_ADD_DEL, mp);
+    mp->mt_is_add = is_add;
+    mp->mt_table.mt_table_id = htonl(table_id);
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u is_add %d", __func__, ret, table_id, is_add); }
+    else { SAIVPP_INFO("%s table %u is_add %d", __func__, table_id, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int mpls_route_add_del (vpp_mpls_route_t *route, bool is_add)
+{
+    u32 idx, path_count;
+    vat_main_t *vam = &vat_main;
+    vl_api_mpls_route_t *mr;
+    vl_api_mpls_route_add_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    path_count = route->nexthop_cnt;
+
+    /*
+     * Validate every path before allocating the API message: the message is
+     * only freed once it is sent, so an early return afterwards would leak it.
+     */
+    for (unsigned int i = 0; i < path_count; i++) {
+        if (route->nexthop[i].addr.sa_family != AF_INET &&
+            route->nexthop[i].addr.sa_family != AF_INET6) {
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+        if (route->nexthop[i].n_labels > VPP_MPLS_MAX_LABELS) {
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    }
+
+    __plugin_msg_base = mpls_msg_id_base;
+
+    M22 (MPLS_ROUTE_ADD_DEL, mp, sizeof (vl_api_fib_path_t) * path_count);
+    mr = &mp->mr_route;
+
+    mr->mr_table_id = htonl(route->table_id);
+    mr->mr_label = htonl(route->label);
+    mr->mr_eos = route->eos;
+    mr->mr_eos_proto = (u8)((route->eos_proto_af == AF_INET6) ?
+        FIB_API_PATH_NH_PROTO_IP6 : FIB_API_PATH_NH_PROTO_IP4);
+    mr->mr_is_multicast = false;
+    mr->mr_n_paths = (u8)path_count;
+
+    for (unsigned int i = 0; i < path_count; i++) {
+        vpp_mpls_nexthop_t *nexthop = &route->nexthop[i];
+        vl_api_fib_path_t *fib_path = &mr->mr_paths[i];
+        vl_api_address_union_t *nh_addr = &fib_path->nh.address;
+        vpp_ip_addr_t *addr = &nexthop->addr;
+
+        memset(fib_path, 0, sizeof(*fib_path));
+
+        if (nexthop->sw_if_index != (u32) -1) {
+            fib_path->sw_if_index = htonl(nexthop->sw_if_index);
+        } else if (nexthop->hwif_name) {
+            idx = get_swif_idx(vam, nexthop->hwif_name);
+            fib_path->sw_if_index = htonl(idx != (u32) -1 ? idx : (uint32_t)~0);
+        } else {
+            fib_path->sw_if_index = htonl((uint32_t)~0);
+        }
+
+        if (addr->sa_family == AF_INET) {
+            struct sockaddr_in *ip4 = &addr->addr.ip4;
+            memcpy(nh_addr->ip4, &ip4->sin_addr.s_addr, sizeof(nh_addr->ip4));
+            fib_path->proto = htonl(FIB_API_PATH_NH_PROTO_IP4);
+        } else if (addr->sa_family == AF_INET6) {
+            struct sockaddr_in6 *ip6 = &addr->addr.ip6;
+            memcpy(nh_addr->ip6, &ip6->sin6_addr.s6_addr, sizeof(nh_addr->ip6));
+            fib_path->proto = htonl(FIB_API_PATH_NH_PROTO_IP6);
+        }
+
+        if (nexthop->type == VPP_NEXTHOP_LOCAL) {
+            fib_path->type = htonl(FIB_API_PATH_TYPE_LOCAL);
+        } else {
+            fib_path->type = htonl(FIB_API_PATH_TYPE_NORMAL);
+        }
+
+        fib_path->table_id = 0;
+        fib_path->rpf_id = htonl((uint32_t)~0);
+        fib_path->weight = nexthop->weight;
+        fib_path->preference = nexthop->preference;
+
+        fib_path->n_labels = nexthop->n_labels;
+        for (uint8_t l = 0; l < nexthop->n_labels && l < VPP_MPLS_MAX_LABELS; l++) {
+            fib_path->label_stack[l].label = htonl(nexthop->label_stack[l].label);
+            fib_path->label_stack[l].ttl = nexthop->label_stack[l].ttl;
+            fib_path->label_stack[l].exp = nexthop->label_stack[l].exp;
+            fib_path->label_stack[l].is_uniform = nexthop->label_stack[l].is_uniform;
+        }
+    }
+
+    mp->mr_is_add = is_add;
+    mp->mr_is_multipath = route->is_multipath;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) label %u eos %u is_add %d", __func__, ret, route->label, route->eos, is_add); }
+    else { SAIVPP_INFO("%s label %u eos %u paths %u is_add %d", __func__, route->label, route->eos, path_count, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *stats_index)
 {
     u32 idx, path_count = 1;
     vat_main_t *vam = &vat_main;
@@ -2041,7 +3169,34 @@ int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
 
     VPP_LOCK();
 
+    if (stats_index) {
+        *stats_index = UINT32_MAX;
+    }
+
     path_count = prefix->nexthop_cnt;
+
+    if (prefix->prefix_addr.sa_family != AF_INET &&
+        prefix->prefix_addr.sa_family != AF_INET6) {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    for (unsigned int i = 0; i < path_count; i++) {
+        if (prefix->nexthop[i].addr.sa_family != AF_INET &&
+            prefix->nexthop[i].addr.sa_family != AF_INET6) {
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    }
+
+    uint32_t context = VPP_INVALID_CTX_INDEX;
+    if (stats_index) {
+        context = store_ptr(stats_index);
+        if (context == VPP_INVALID_CTX_INDEX) {
+            VPP_UNLOCK();
+            return -ENOMEM;
+        }
+    }
 
     __plugin_msg_base = ip_msg_id_base;
 
@@ -2059,9 +3214,6 @@ int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
         struct sockaddr_in6 *ip6 =  &addr->addr.ip6;
         api_addr->af = ADDRESS_IP6;
         memcpy(api_addr->un.ip6, &ip6->sin6_addr.s6_addr, sizeof(api_addr->un.ip6));
-    } else {
-        VPP_UNLOCK();
-        return -EINVAL;
     }
     ip_route->prefix.len = (u8)prefix->prefix_len;
     ip_route->n_paths = (u8)path_count;
@@ -2095,33 +3247,62 @@ int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
             struct sockaddr_in6 *ip6 =  &addr->addr.ip6;
             memcpy(nh_addr->ip6, &ip6->sin6_addr.s6_addr, sizeof(nh_addr->ip6));
             fib_path->proto = htonl(FIB_API_PATH_NH_PROTO_IP6);
-        } else {
-            VPP_UNLOCK();
-            return -EINVAL;
         }
         if (nexthop->type == VPP_NEXTHOP_NORMAL) {
             fib_path->type = htonl(FIB_API_PATH_TYPE_NORMAL);
         } else if (nexthop->type == VPP_NEXTHOP_LOCAL) {
             fib_path->type = htonl(FIB_API_PATH_TYPE_LOCAL);
+        } else if (nexthop->type == VPP_NEXTHOP_DROP) {
+            fib_path->type = htonl(FIB_API_PATH_TYPE_DROP);
         }
         fib_path->table_id = 0;
         fib_path->rpf_id = htonl((uint32_t)~0);
         fib_path->weight = nexthop->weight;
         fib_path->preference = nexthop->preference;
-        fib_path->n_labels = 0;
+        /*
+         * Clamp before assigning: only VPP_MPLS_MAX_LABELS entries are ever
+         * populated below, so an unclamped n_labels would tell VPP the message
+         * carries more labels than it actually does.
+         */
+        uint8_t n_labels = nexthop->n_labels > VPP_MPLS_MAX_LABELS ?
+                           VPP_MPLS_MAX_LABELS : nexthop->n_labels;
+        fib_path->n_labels = n_labels;
+        for (uint8_t l = 0; l < n_labels; l++) {
+            fib_path->label_stack[l].label = htonl(nexthop->label_stack[l]);
+            fib_path->label_stack[l].ttl = nexthop->out_ttl;
+            fib_path->label_stack[l].exp = nexthop->out_exp;
+            fib_path->label_stack[l].is_uniform = nexthop->out_is_uniform;
+        }
     }
     ip_route->table_id = htonl(prefix->vrf_id);
 
     mp->is_add = is_add;
     mp->is_multipath = prefix->is_multipath;
+    if (context) {
+        mp->context = context;
+    }
 
     S (mp);
 
     WR (ret);
 
+    if (context && get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) vrf %u prefix_len %u is_add %d", __func__, ret, prefix->vrf_id, prefix->prefix_len, is_add); }
+    else { SAIVPP_INFO("%s vrf %u prefix_len %u is_add %d", __func__, prefix->vrf_id, prefix->prefix_len, is_add); }
+
     VPP_UNLOCK();
 
     return ret;
+}
+
+int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
+{
+    return ip_route_add_del_get_stats(prefix, is_add, NULL);
 }
 
 static unsigned int ipv4_mask_len (uint32_t mask)
@@ -2238,15 +3419,7 @@ int vpp_acl_add_replace (vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace
         vpp_rule->tcp_flags_value = in_rule->tcp_flags_value;
         vpp_rule->is_permit = (vl_api_acl_action_t)in_rule->action;
 
-        if (idx != (acl_count - 1) &&
-            vpp_rule->src_prefix.len == 0 &&
-            vpp_rule->dst_prefix.len == 0 &&
-            vpp_rule->proto == 0) {
-            SAIVPP_WARN("WARNING: VPP Rule %u is not last but will match and %s all!",
-                        idx, vpp_rule->is_permit ? "permit" : "deny");
-        }
-
-        SAIVPP_DEBUG("VPP Rule %u: proto: %u, "
+        SAIVPP_INFO("VPP Rule %u: proto: %u, "
                      "srcport/icmptype: %u-%u, dstport/icmpcode: %u-%u, "
                      "tcp_flags: mask=0x%x, value=0x%x, action: %s",
                      idx,
@@ -2259,11 +3432,23 @@ int vpp_acl_add_replace (vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace
                      vpp_rule->tcp_flags_value,
                      vpp_rule->is_permit ? "permit" : "deny");
     }
-    mp->context = store_ptr(acl_index);
+    uint32_t context = store_ptr(acl_index);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
-    W (ret);
+    WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) acl_index %u is_replace %d", __func__, ret, *acl_index, is_replace); }
+    else { SAIVPP_INFO("%s acl_index %u is_replace %d", __func__, *acl_index, is_replace); }
 
     VPP_UNLOCK();
 
@@ -2284,7 +3469,12 @@ int vpp_acl_del (uint32_t acl_index)
     mp->acl_index = htonl(acl_index);
 
     S (mp);
-    W (ret);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) acl_index %u", __func__, ret, acl_index); }
+    else { SAIVPP_INFO("%s acl_index %u", __func__, acl_index); }
 
     VPP_UNLOCK();
 
@@ -2320,7 +3510,12 @@ int vpp_tunterm_acl_interface_add_del (uint32_t tunterm_index, bool is_bind, con
     mp->tunterm_acl_index= htonl(tunterm_index);
 
     S (mp);
-    W (ret);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_bind, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) tunterm_index %u is_bind %d", __func__, ret, tunterm_index, is_bind); }
+    else { SAIVPP_INFO("%s tunterm_index %u is_bind %d", __func__, tunterm_index, is_bind); }
 
     VPP_UNLOCK();
 
@@ -2342,7 +3537,12 @@ int vpp_tunterm_acl_del (uint32_t tunterm_index)
     mp->tunterm_acl_index= htonl(tunterm_index);
 
     S (mp);
-    W (ret);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) tunterm_index %u", __func__, ret, tunterm_index); }
+    else { SAIVPP_INFO("%s tunterm_index %u", __func__, tunterm_index); }
 
     VPP_UNLOCK();
 
@@ -2379,7 +3579,7 @@ int vpp_tunterm_acl_add_replace (uint32_t *tunterm_index, uint32_t count, vpp_tu
         api_addr = &vpp_rule->dst;
 
         if (!vpp_to_vl_api_ip_addr(api_addr, addr)) {
-            SAIVPP_WARN("Unknown protocol in tunterm acl destination prefix");
+            SAIVPP_NOTICE("Unknown protocol in tunterm acl destination prefix");
             VPP_UNLOCK();
             return -EINVAL;
         }
@@ -2413,16 +3613,28 @@ int vpp_tunterm_acl_add_replace (uint32_t *tunterm_index, uint32_t count, vpp_tu
             vpp_rule->path.proto  = htonl(FIB_API_PATH_NH_PROTO_IP6);
             memcpy(vpp_rule->path.nh.address.ip6, &in_rule->next_hop_ip.addr.ip6.sin6_addr.s6_addr, sizeof(vpp_rule->path.nh.address.ip6));
         } else {
-            SAIVPP_WARN("Unknown protocol in next hop prefix");
+            SAIVPP_ERROR("Unknown protocol in next hop prefix");
             VPP_UNLOCK();
             return -EINVAL;
         }
     }
-    mp->context = store_ptr(tunterm_index);
+    uint32_t context = store_ptr(tunterm_index);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
     WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) count %u", __func__, ret, count); }
+    else { SAIVPP_INFO("%s tunterm_index %u count %u", __func__, *tunterm_index, count); }
 
     VPP_UNLOCK();
 
@@ -2443,7 +3655,10 @@ static int vpp_acl_counters_enable_disable (bool enable)
     mp->enable = enable;
 
     S (mp);
-    W (ret);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) enable %d", __func__, ret, enable); }
+    else { SAIVPP_INFO("%s enable %d", __func__, enable); }
 
     VPP_UNLOCK();
 
@@ -2482,13 +3697,19 @@ int __vpp_acl_interface_bind_unbind (const char *hwif_name, uint32_t acl_index,
     mp->acl_index = htonl(acl_index);
 
     S (mp);
-    W (ret);
+    WR (ret);
 
     if (ret == VNET_API_ERROR_ACL_IN_USE_INBOUND ||
         ret == VNET_API_ERROR_ACL_IN_USE_OUTBOUND) {
-        SAIVPP_WARN("ACL index %u is already bound to %s", acl_index, hwif_name);
+        SAIVPP_NOTICE("ACL index %u is already bound to %s", acl_index, hwif_name);
         ret = 0;
     }
+
+    ret = vpp_normalize_ret(ret, !is_bind, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) acl_index %u is_input %d is_bind %d %s", __func__, ret, acl_index, is_input, is_bind, hwif_name); }
+    else { SAIVPP_INFO("%s acl_index %u is_input %d is_bind %d %s", __func__, acl_index, is_input, is_bind, hwif_name); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -2504,6 +3725,119 @@ int vpp_acl_interface_unbind (const char *hwif_name, uint32_t acl_index,
                               bool is_input)
 {
     return __vpp_acl_interface_bind_unbind(hwif_name, acl_index, is_input, false);
+}
+
+int vpp_sflow_enable_disable(const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_enable_disable_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_ENABLE_DISABLE, mp);
+
+    if(hwif_name){
+        u32 idx;
+        idx = get_swif_idx(vam, hwif_name);
+        if(idx != (u32) - 1){
+            mp->hw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->enable_disable = enable;
+
+    S(mp);
+    WR(ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable);
+    } else {
+        SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+
+}
+
+int vpp_sflow_sampling_rate_set(uint32_t sampling_n)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_sampling_rate_set_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_SAMPLING_RATE_SET, mp);
+
+    mp->sampling_N = htonl(sampling_n);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) sampling_N %u", __func__, ret, sampling_n);
+    } else {
+        SAIVPP_INFO("%s sampling_N %u", __func__, sampling_n);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_ip2me_enable_disable_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+    M(SONIC_EXT_IP2ME_ENABLE_DISABLE, mp);
+
+    if (hwif_name) {
+        u32 idx;
+        idx = get_swif_idx(vam, hwif_name);
+        if (idx != (u32) -1) {
+            mp->sw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        SAIVPP_ERROR("%s: hwif_name is NULL, cannot %s ip2me", __func__,
+                     enable ? "enable" : "disable");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->enable = enable;
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable);
+    } else {
+        SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable);
+    }
+
+    VPP_UNLOCK();
+    return ret;
 }
 
 int vpp_ip_flow_hash_set (uint32_t vrf_id, uint32_t hash_mask, int addr_family)
@@ -2525,11 +3859,127 @@ int vpp_ip_flow_hash_set (uint32_t vrf_id, uint32_t hash_mask, int addr_family)
     } else if (addr_family == AF_INET6) {
         mp->af = ADDRESS_IP6;
     } else {
+        VPP_UNLOCK();
         return -1;
     }
 
     S (mp);
-    W (ret);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) vrf_id %u af %d", __func__, ret, vrf_id, addr_family); }
+    else { SAIVPP_INFO("%s vrf_id %u af %d", __func__, vrf_id, addr_family); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sflow_interface_sampling_rate_set(const char *hwif_name, uint32_t sampling_n)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_interface_sampling_rate_set_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_INTERFACE_SAMPLING_RATE_SET, mp);
+
+    if(hwif_name){
+        u32 idx = get_swif_idx(vam, hwif_name);
+        if(idx != (u32) - 1){
+            mp->hw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        SAIVPP_ERROR("No hwif_name provided");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->sampling_N = htonl(sampling_n);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s sampling_N %u", __func__, ret, hwif_name, sampling_n);
+    } else {
+        SAIVPP_INFO("%s %s sampling_N %u", __func__, hwif_name, sampling_n);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_interface_direction_set_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_INTERFACE_DIRECTION_SET, mp);
+
+    if(hwif_name){
+        u32 idx = get_swif_idx(vam, hwif_name);
+        if(idx != (u32) - 1){
+            mp->hw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        SAIVPP_ERROR("No hw_index provided");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->direction = htonl(direction);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s direction %u", __func__, ret, hwif_name, direction);
+    } else {
+        SAIVPP_INFO("%s %s direction %u", __func__, hwif_name, direction);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+/*
+ * Set the global ECMP flow-hash "router ID" -- the per-router value VPP mixes
+ * into the IPv4/IPv6 ECMP flow hash (see ip4_inlines.h / ip6_inlines.h:
+ * "a ^= ip_flow_hash_router_id"). This is the natural backend for the SAI
+ * switch attribute SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED: changing it
+ * re-distributes ECMP/LAG path selection without touching any per-flow state.
+ */
+int vpp_ip_flow_hash_router_id_set (uint32_t router_id)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_set_ip_flow_hash_router_id_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = ip_msg_id_base;
+
+    M (SET_IP_FLOW_HASH_ROUTER_ID, mp);
+    mp->router_id = htonl(router_id);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) router_id %u", __func__, ret, router_id); }
+    else { SAIVPP_INFO("%s router_id %u", __func__, router_id); }
 
     VPP_UNLOCK();
 
@@ -2575,6 +4025,7 @@ int interface_ip_address_add_del (const char *hwif_name, vpp_ip_route_t *prefix,
             mp->sw_if_index = htonl(idx);
         } else {
             SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
             return -EINVAL;
         }
     } else {
@@ -2588,6 +4039,56 @@ int interface_ip_address_add_del (const char *hwif_name, vpp_ip_route_t *prefix,
     S (mp);
 
     WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s prefix_len %u is_add %d", __func__, ret, hwif_name, prefix->prefix_len, is_add); }
+    else { SAIVPP_INFO("%s %s prefix_len %u is_add %d", __func__, hwif_name, prefix->prefix_len, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int interface_ip_address_del_all (const char *hwif_name)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_add_del_address_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_ADD_DEL_ADDRESS, mp);
+
+    if (hwif_name) {
+        u32 idx;
+
+        idx = get_swif_idx(vam, hwif_name);
+        if (idx != (u32) -1) {
+            mp->sw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->is_add = false;
+    mp->del_all = true;
+
+    S (mp);
+
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s", __func__, ret, hwif_name); }
+    else { SAIVPP_INFO("%s %s", __func__, hwif_name); }
 
     VPP_UNLOCK();
 
@@ -2626,6 +4127,49 @@ int interface_set_state (const char *hwif_name, bool is_up)
 
     WR (ret);
 
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s is_up %d", __func__, ret, hwif_name, is_up); }
+    else { SAIVPP_INFO("%s %s is_up %d", __func__, hwif_name, is_up); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int interface_set_promiscuous (const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_promisc_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_SET_PROMISC, mp);
+    if (hwif_name) {
+        u32 idx;
+
+        idx = get_swif_idx(vam, hwif_name);
+        if (idx != (u32) -1) {
+            mp->sw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    mp->promisc_on = enable;
+
+    S (mp);
+
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable); }
+    else { SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -2659,7 +4203,12 @@ int interface_get_state (const char *hwif_name, bool *link_is_up)
         VPP_UNLOCK();
         return -EINVAL;
     }
-    mp->context = store_ptr(link_is_up);
+    uint32_t context = store_ptr(link_is_up);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
@@ -2669,30 +4218,130 @@ int interface_get_state (const char *hwif_name, bool *link_is_up)
     PING (NULL, mp_ping);
     S (mp_ping);
 
-    W (ret);
+    WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
 
     VPP_UNLOCK();
 
     return ret;
 }
 
-int vpp_sync_for_events ()
+int vpp_refresh_interface_speed (const char *hwif_name)
 {
     vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_dump_t *mp;
     vl_api_control_ping_t *mp_ping;
     int ret;
 
     VPP_LOCK();
 
-    /* Use a control ping for synchronization */
-    __plugin_msg_base = memclnt_msg_id_base;
+    __plugin_msg_base = interface_msg_id_base;
 
+    M (SW_INTERFACE_DUMP, mp);
+
+    u32 idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("%s: unable to get sw_index for %s", __func__, hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    mp->sw_if_index = htonl(idx);
+    /* context=0 so the details handler takes the normal path and
+     * updates link_speed_by_sw_index. */
+
+    S (mp);
+
+    __plugin_msg_base = memclnt_msg_id_base;
     PING (NULL, mp_ping);
     S (mp_ping);
 
-    W (ret);
+    WR (ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s: dump failed(%d) for %s (idx %u)", __func__, ret, hwif_name, idx);
+    } else {
+        SAIVPP_INFO("%s: refreshed speed for %s (idx %u)", __func__, hwif_name, idx);
+    }
 
     VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_get_interface_speed (const char *hwif_name, uint32_t *speed)
+{
+    vat_main_t *vam = &vat_main;
+    uword *p;
+
+    VPP_LOCK();
+
+    u32 idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    INTF_TABLE_LOCK();
+    p = hash_get(link_speed_by_sw_index, idx);
+    if (!p) {
+        INTF_TABLE_UNLOCK();
+        VPP_UNLOCK();
+        return -ENOENT;
+    }
+
+    *speed = (uint32_t) p[0];
+    INTF_TABLE_UNLOCK();
+
+    if (*speed == 0 || *speed == UINT32_MAX) {
+        VPP_UNLOCK();
+        return -ENOENT;
+    }
+
+    VPP_UNLOCK();
+
+    return 0;
+}
+
+/*
+ * Synchronize with VPP via the dedicated event socket. Runs under EVENT_LOCK;
+ * must not acquire VPP_LOCK (see EVENT_LOCK comment above).
+ */
+int vpp_sync_for_events ()
+{
+    vat_main_t *vam = &vat_event_main;
+    vl_api_control_ping_t *mp_ping;
+    int ret;
+
+    if (!event_client_connected)
+    {
+        if (vpp_event_reconnect() != 0)
+            return -1;
+    }
+
+    EVENT_LOCK();
+    tl_cur_vam = &vat_event_main;
+
+    vam->result_ready = 0;
+
+    /* Use a control ping for synchronization */
+    __plugin_msg_base = memclnt_msg_id_base;
+
+    PING_EV (mp_ping);
+    S_EV (mp_ping);
+
+    WR_EV (ret);
+
+    tl_cur_vam = NULL;
+    EVENT_UNLOCK();
+
+    if (ret < 0)
+    {
+        SAIVPP_ERROR("vpp_sync_for_events failed (%d), reconnecting event socket\n", ret);
+        vpp_event_reconnect();
+    }
 
     return ret;
 }
@@ -2728,6 +4377,49 @@ int sw_interface_set_mtu (const char *hwif_name, uint32_t mtu)
     S (mp);
 
     WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s mtu %u", __func__, ret, hwif_name, mtu); }
+    else { SAIVPP_INFO("%s %s mtu %u", __func__, hwif_name, mtu); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int sw_interface_set_link_speed (const char *hwif_name, uint32_t link_speed)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_link_speed_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_SET_LINK_SPEED, mp);
+    if (hwif_name) {
+        u32 idx;
+
+        idx = get_swif_idx(vam, hwif_name);
+        if (idx != (u32) -1) {
+            mp->sw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    mp->link_speed = htonl(link_speed);
+
+    S (mp);
+
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s link_speed %u", __func__, ret, hwif_name, link_speed); }
+    else { SAIVPP_INFO("%s %s link_speed %u", __func__, hwif_name, link_speed); }
 
     VPP_UNLOCK();
 
@@ -2773,6 +4465,9 @@ int sw_interface_set_mac (const char *hwif_name, uint8_t *mac_address)
 
     WR (ret);
 
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s", __func__, ret, hwif_name); }
+    else { SAIVPP_INFO("%s %s", __func__, hwif_name); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -2809,6 +4504,9 @@ int hw_interface_set_mtu (const char *hwif_name, uint32_t mtu)
     S (mp);
 
     WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s mtu %u", __func__, ret, hwif_name, mtu); }
+    else { SAIVPP_INFO("%s %s mtu %u", __func__, hwif_name, mtu); }
 
     VPP_UNLOCK();
 
@@ -2847,6 +4545,15 @@ int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
 
     WR (ret);
 
+    /* enable is an "add"; disable is a "delete". Tolerate VALUE_EXIST when
+     * enabling an interface whose IPv6 is already enabled (and NO_SUCH_ENTRY
+     * when disabling one that is already disabled) so host-interface recreate
+     * in a single process is idempotent. */
+    ret = vpp_normalize_ret(ret, !enable, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable); }
+    else { SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -2868,7 +4575,12 @@ int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add)
 
     S (mp);
 
-    W (ret);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) bd_id %u is_add %d", __func__, ret, bridge_id, is_add); }
+    else { SAIVPP_INFO("%s bd_id %u is_add %d", __func__, bridge_id, is_add); }
 
     VPP_UNLOCK();
 
@@ -2903,6 +4615,9 @@ int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id
     S (mp);
 
     WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u bd_id %u l2_mode %d", __func__, ret, sw_if_index, bridge_id, l2_mode); }
+    else { SAIVPP_INFO("%s sw_if_index %u bd_id %u l2_mode %d", __func__, sw_if_index, bridge_id, l2_mode); }
 
     VPP_UNLOCK();
 
@@ -2962,7 +4677,10 @@ int set_l2_interface_vlan_tag_rewrite(const char *hwif_name, uint32_t tag1, uint
 
     S (mp);
 
-    W (ret);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s vtr_op %u tag1 %u", __func__, ret, hwif_name, vtr_op, tag1); }
+    else { SAIVPP_INFO("%s %s vtr_op %u tag1 %u", __func__, hwif_name, vtr_op, tag1); }
 
     VPP_UNLOCK();
 
@@ -2990,7 +4708,12 @@ int bridge_domain_get_member_count (uint32_t bd_id, uint32_t *member_count)
 
     mp->bd_id = htonl(bd_id);
     mp->sw_if_index = htonl((uint32_t)~0);
-    mp->context = store_ptr(member_count);
+    uint32_t context = store_ptr(member_count);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
@@ -3000,7 +4723,11 @@ int bridge_domain_get_member_count (uint32_t bd_id, uint32_t *member_count)
     PING (NULL, mp_ping);
     S (mp_ping);
 
-    W (ret);
+    WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
 
     VPP_UNLOCK();
 
@@ -3030,6 +4757,9 @@ int create_bvi_interface(uint8_t *mac_address, u32 instance)
     S (mp);
 
     WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) instance %u", __func__, ret, instance); }
+    else { SAIVPP_INFO("%s instance %u", __func__, instance); }
 
     VPP_UNLOCK();
 
@@ -3068,6 +4798,11 @@ int delete_bvi_interface(const char *hwif_name)
 
     WR (ret);
 
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s", __func__, ret, hwif_name); }
+    else { SAIVPP_INFO("%s %s", __func__, hwif_name); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -3079,7 +4814,7 @@ int set_bridge_domain_flags(uint32_t bd_id, vpp_bd_flags_t flag, bool enable)
     vl_api_bridge_flags_t * mp;
     int ret;
 
-    SAIVPP_WARN("Setting the bd:%d flag %d\n",bd_id,flag);
+    SAIVPP_NOTICE("Setting the bd:%d flag %d\n",bd_id,flag);
     VPP_LOCK();
 
     __plugin_msg_base = l2_msg_id_base;
@@ -3091,7 +4826,10 @@ int set_bridge_domain_flags(uint32_t bd_id, vpp_bd_flags_t flag, bool enable)
     mp->flags = htonl(flag);
     S (mp);
 
-    W (ret);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) bd_id %u flag %d enable %d", __func__, ret, bd_id, flag, enable); }
+    else { SAIVPP_INFO("%s bd_id %u flag %d enable %d", __func__, bd_id, flag, enable); }
 
     VPP_UNLOCK();
 
@@ -3156,7 +4894,12 @@ int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, u32 *sw_if
     WR (ret);
     //reply handler needs to set vam->sw_if_index from reply msg
     *sw_if_index = vam->sw_if_index;
-    SAIVPP_DEBUG("vxlan_add_del done: if_idx,%d",vam->sw_if_index);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) vni %u is_add %d", __func__, ret, tunnel->vni, is_add); }
+    else { SAIVPP_INFO("%s vni %u is_add %d sw_if_index %u", __func__, tunnel->vni, is_add, *sw_if_index); }
+
     VPP_UNLOCK();
     return ret;
 }
@@ -3233,6 +4976,11 @@ int l2fib_add_del(const char *hwif_name, const uint8_t *mac, uint32_t bd_id, boo
 
     WR (ret);
 
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s bd_id %u is_add %d", __func__, ret, hwif_name, bd_id, is_add); }
+    else { SAIVPP_INFO("%s %s bd_id %u is_add %d", __func__, hwif_name, bd_id, is_add); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -3255,6 +5003,11 @@ int l2fib_flush_all()
     S (mp);
 
     WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d)", __func__, ret); }
+    else { SAIVPP_INFO("%s", __func__); }
 
     VPP_UNLOCK();
 
@@ -3300,6 +5053,11 @@ int l2fib_flush_int(const char *hwif_name)
 
     WR (ret);
 
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s", __func__, ret, hwif_name); }
+    else { SAIVPP_INFO("%s %s", __func__, hwif_name); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -3330,6 +5088,11 @@ int l2fib_flush_bd(uint32_t bd_id)
     S (mp);
 
     WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) bd_id %u", __func__, ret, bd_id); }
+    else { SAIVPP_INFO("%s bd_id %u", __func__, bd_id); }
 
     VPP_UNLOCK();
 
@@ -3362,7 +5125,7 @@ int bfd_udp_add(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
         }
         else
         {
-            SAIVPP_WARN("Unable to get sw_index for %s\n", hwif_name);
+            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
             VPP_UNLOCK();
             return -EINVAL;
         }
@@ -3385,7 +5148,7 @@ int bfd_udp_add(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
     if(!((true == vpp_to_vl_api_ip_addr(&vpp_local_addr, local_addr)) && \
          (true == vpp_to_vl_api_ip_addr(&vpp_peer_addr, peer_addr))))
     {
-        SAIVPP_WARN("Invalid IP address passed for vpp for bfd_add");
+        SAIVPP_ERROR("Invalid IP address passed for vpp for bfd_add");
         VPP_UNLOCK();
         return -EINVAL;
     }
@@ -3400,6 +5163,9 @@ int bfd_udp_add(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
     S (mp);
 
     WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) multihop %d", __func__, ret, multihop); }
+    else { SAIVPP_INFO("%s multihop %d", __func__, multihop); }
 
     VPP_UNLOCK();
 
@@ -3431,7 +5197,7 @@ int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
         }
         else
         {
-            SAIVPP_WARN("Unable to get sw_index for %s\n", hwif_name);
+            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
             VPP_UNLOCK();
             return -EINVAL;
         }
@@ -3454,7 +5220,7 @@ int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
     if(!((true == vpp_to_vl_api_ip_addr(&vpp_local_addr, local_addr)) && \
          (true == vpp_to_vl_api_ip_addr(&vpp_peer_addr, peer_addr))))
     {
-        SAIVPP_WARN("Invalid IP address passed for vpp for bfd_del");
+        SAIVPP_NOTICE("Invalid IP address passed for vpp for bfd_del");
         VPP_UNLOCK();
         return -EINVAL;
     }
@@ -3466,6 +5232,11 @@ int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
 
     WR (ret);
 
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) multihop %d", __func__, ret, multihop); }
+    else { SAIVPP_INFO("%s multihop %d", __func__, multihop); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -3473,22 +5244,27 @@ int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
 
 static int vpp_bfd_events_enable_disable (bool enable)
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = &vat_event_main;
     vl_api_want_bfd_events_t *mp;
     int ret;
 
-    VPP_LOCK();
+    EVENT_LOCK();
+    tl_cur_vam = &vat_event_main;
 
     __plugin_msg_base = bfd_msg_id_base;
 
-    M (WANT_BFD_EVENTS, mp);
+    M_EV (WANT_BFD_EVENTS, mp);
     mp->enable_disable = enable;
     mp->pid = htonl((uint32_t)getpid());
 
-    S (mp);
-    W (ret);
+    S_EV (mp);
+    WR_EV (ret);
 
-    VPP_UNLOCK();
+    if (ret) { SAIVPP_ERROR("%s failed(%d) enable %d", __func__, ret, enable); }
+    else { SAIVPP_INFO("%s enable %d", __func__, enable); }
+
+    tl_cur_vam = NULL;
+    EVENT_UNLOCK();
 
     return ret;
 }
@@ -3506,7 +5282,35 @@ static int vpp_bfd_udp_enable_multihop ()
     M (BFD_UDP_ENABLE_MULTIHOP, mp);
 
     S (mp);
-    W (ret);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d)", __func__, ret); }
+    else { SAIVPP_INFO("%s", __func__); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int bfd_udp_set_tos (uint8_t tos)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_bfd_udp_set_tos_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = bfd_msg_id_base;
+
+    M (BFD_UDP_SET_TOS, mp);
+
+    mp->tos = tos;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) tos 0x%02x", __func__, ret, tos); }
+    else { SAIVPP_INFO("%s tos 0x%02x", __func__, tos); }
 
     VPP_UNLOCK();
 
@@ -3527,10 +5331,212 @@ static int vpp_lcp_ethertype_enable(u16 ethertype)
     mp->ethertype = ethertype;
 
     S (mp);
-    W (ret);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) ethertype 0x%04x", __func__, ret, ethertype); }
+    else { SAIVPP_INFO("%s ethertype 0x%04x", __func__, ethertype); }
 
     VPP_UNLOCK();
 
+    return ret;
+}
+
+/* ========================================================================
+ * VPP Classify API wrappers for L2 punt via l2-input-classify
+ * ======================================================================== */
+
+int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
+                              uint32_t skip_n_vectors, uint32_t match_n_vectors,
+                              uint32_t next_table_index, uint32_t miss_next_index,
+                              const uint8_t *mask, uint32_t mask_len,
+                              uint32_t *new_table_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_add_del_table_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M22 (CLASSIFY_ADD_DEL_TABLE, mp, mask_len);
+    mp->is_add = true;
+    mp->del_chain = false;
+    mp->table_index = htonl(~0u); /* create new */
+    mp->nbuckets = htonl(nbuckets);
+    mp->memory_size = htonl(memory_size);
+    mp->skip_n_vectors = htonl(skip_n_vectors);
+    mp->match_n_vectors = htonl(match_n_vectors);
+    mp->next_table_index = htonl(next_table_index);
+    mp->miss_next_index = htonl(miss_next_index);
+    mp->current_data_flag = 0;
+    mp->current_data_offset = 0;
+    mp->mask_len = htonl(mask_len);
+    clib_memcpy(mp->mask, mask, mask_len);
+    mp->context = store_ptr(new_table_index);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d)", __func__, ret); }
+    else { SAIVPP_INFO("%s table_index=%u", __func__, *new_table_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_classify_table_delete(uint32_t table_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_add_del_table_t *mp;
+    int ret;
+    uint32_t dummy_idx = ~0u;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M (CLASSIFY_ADD_DEL_TABLE, mp);
+    mp->is_add = false;
+    mp->del_chain = true;
+    mp->table_index = htonl(table_index);
+    mp->mask_len = 0;
+    mp->context = store_ptr(&dummy_idx);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u", __func__, ret, table_index); }
+    else { SAIVPP_INFO("%s table %u", __func__, table_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+                             const uint8_t *match, uint32_t match_len,
+                             uint32_t opaque_index, int32_t advance,
+                             uint8_t action)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_add_del_session_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M22 (CLASSIFY_ADD_DEL_SESSION, mp, match_len);
+    mp->is_add = true;
+    mp->table_index = htonl(table_index);
+    mp->hit_next_index = htonl(hit_next_index);
+    mp->opaque_index = htonl(opaque_index);
+    mp->advance = (i32)htonl((u32)advance);
+    mp->action = action;
+    mp->metadata = 0;
+    mp->match_len = htonl(match_len);
+    clib_memcpy(mp->match, match, match_len);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u", __func__, ret, table_index); }
+    else { SAIVPP_INFO("%s table %u hit_next %u", __func__, table_index, hit_next_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_classify_session_del(uint32_t table_index,
+                             const uint8_t *match, uint32_t match_len)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_add_del_session_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M22 (CLASSIFY_ADD_DEL_SESSION, mp, match_len);
+    mp->is_add = false;
+    mp->table_index = htonl(table_index);
+    mp->hit_next_index = 0;
+    mp->match_len = htonl(match_len);
+    clib_memcpy(mp->match, match, match_len);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u", __func__, ret, table_index); }
+    else { SAIVPP_INFO("%s table %u", __func__, table_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_classify_set_interface_l2_tables(const char *hwif_name,
+                                         uint32_t ip4_table_index,
+                                         uint32_t ip6_table_index,
+                                         uint32_t other_table_index,
+                                         bool is_input)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_set_interface_l2_tables_t *mp;
+    int ret;
+    u32 sw_if_index;
+
+    sw_if_index = get_swif_idx(vam, hwif_name);
+    if (sw_if_index == (u32) -1) {
+        SAIVPP_ERROR("%s: hwif %s not found", __func__, hwif_name ? hwif_name : "<null>");
+        return -1;
+    }
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M (CLASSIFY_SET_INTERFACE_L2_TABLES, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->ip4_table_index = htonl(ip4_table_index);
+    mp->ip6_table_index = htonl(ip6_table_index);
+    mp->other_table_index = htonl(other_table_index);
+    mp->is_input = is_input ? 1 : 0;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s", __func__, ret, hwif_name); }
+    else { SAIVPP_INFO("%s hwif %s ip4=%u ip6=%u other=%u", __func__,
+                       hwif_name, ip4_table_index, ip6_table_index, other_table_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_add_node_next(const char *node_name, const char *next_name,
+                            uint32_t *next_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_add_node_next_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = vlib_msg_id_base;
+
+    M (ADD_NODE_NEXT, mp);
+    strncpy((char *)mp->node_name, node_name, sizeof(mp->node_name) - 1);
+    strncpy((char *)mp->next_name, next_name, sizeof(mp->next_name) - 1);
+    mp->context = store_ptr(next_index);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) node %s next %s", __func__, ret, node_name, next_name); }
+    else { SAIVPP_INFO("%s node %s next %s -> %u", __func__, node_name, next_name, *next_index); }
+
+    VPP_UNLOCK();
     return ret;
 }
 
@@ -3541,7 +5547,6 @@ int create_bond_interface(uint32_t bond_id, uint32_t mode, uint32_t lb, uint32_t
     int ret;
 
     VPP_LOCK();
-    SAIVPP_WARN("Creating bd interface with id %u \n", bond_id);
 
     __plugin_msg_base = bond_msg_id_base;
 
@@ -3552,11 +5557,23 @@ int create_bond_interface(uint32_t bond_id, uint32_t mode, uint32_t lb, uint32_t
     mp->lb = htonl(lb);
     mp->numa_only = false;
     mp->use_custom_mac = false;
-    mp->context = store_ptr(swif_idx);
+    uint32_t context = store_ptr(swif_idx);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
 
     S (mp);
 
     WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) bond_id %u mode %u", __func__, ret, bond_id, mode); }
+    else { SAIVPP_INFO("%s bond_id %u mode %u", __func__, bond_id, mode); }
 
     VPP_UNLOCK();
 
@@ -3570,7 +5587,6 @@ int delete_bond_interface(const char *hwif_name)
     int ret;
 
     VPP_LOCK();
-    SAIVPP_WARN("Removing bond interface %s \n", hwif_name);
 
     __plugin_msg_base = bond_msg_id_base;
 
@@ -3597,6 +5613,11 @@ int delete_bond_interface(const char *hwif_name)
 
     WR (ret);
 
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s", __func__, ret, hwif_name); }
+    else { SAIVPP_INFO("%s %s", __func__, hwif_name); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -3608,7 +5629,6 @@ int create_bond_member(uint32_t bond_sw_if_index, const char *hwif_name, bool is
     int ret;
 
     VPP_LOCK();
-    SAIVPP_WARN("Adding member %s to bond interface %u \n", hwif_name, bond_sw_if_index);
 
     __plugin_msg_base = bond_msg_id_base;
 
@@ -3638,6 +5658,11 @@ int create_bond_member(uint32_t bond_sw_if_index, const char *hwif_name, bool is
 
     WR (ret);
 
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s bond_sw_if_index %u", __func__, ret, hwif_name, bond_sw_if_index); }
+    else { SAIVPP_INFO("%s %s bond_sw_if_index %u", __func__, hwif_name, bond_sw_if_index); }
+
     VPP_UNLOCK();
 
     return ret;
@@ -3649,6 +5674,17 @@ const char * vpp_get_swif_name (const u32 swif_idx)
     return get_swif_name(vam, swif_idx);
 }
 
+int get_sw_if_idx(const char *ifname)
+{
+    vat_main_t *vam = &vat_main;
+
+    VPP_LOCK();
+    u32 idx = get_swif_idx(vam, ifname);
+    VPP_UNLOCK();
+
+    return (int)idx;
+}
+
 
 int delete_bond_member(const char * hwif_name)
 {
@@ -3657,7 +5693,6 @@ int delete_bond_member(const char * hwif_name)
     int ret;
 
     VPP_LOCK();
-    SAIVPP_WARN("Removing member %s from its bond\n", hwif_name);
 
     __plugin_msg_base = bond_msg_id_base;
 
@@ -3682,6 +5717,14 @@ int delete_bond_member(const char * hwif_name)
     S (mp);
 
     WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) {
+	SAIVPP_ERROR("%s failed(%d) %s", __func__, ret, hwif_name);
+    } else {
+	SAIVPP_INFO("%s %s", __func__, hwif_name);
+    }
 
     VPP_UNLOCK();
 
@@ -3734,7 +5777,7 @@ int vpp_my_sid_entry_add_del (vpp_my_sid_entry_t *my_sid, bool is_del)
 {
     int                           ret;
     vat_main_t                   *vam = &vat_main;
-    vl_api_sr_localsid_add_del_t *mp;
+    vl_api_sr_localsid_add_del_v2_t *mp;
 
     init_vpp_client();
 
@@ -3742,7 +5785,7 @@ int vpp_my_sid_entry_add_del (vpp_my_sid_entry_t *my_sid, bool is_del)
 
     __plugin_msg_base = sr_msg_id_base;
 
-    M (SR_LOCALSID_ADD_DEL, mp);
+    M (SR_LOCALSID_ADD_DEL_V2, mp);
 
     if (!vpp_to_vl_api_ip6_address(&mp->localsid, &my_sid->localsid)) {
         SAIVPP_ERROR("Unknown protocol in local sid");
@@ -3779,10 +5822,21 @@ int vpp_my_sid_entry_add_del (vpp_my_sid_entry_t *my_sid, bool is_del)
     mp->behavior = behavior;
     mp->vlan_index = htonl(my_sid->vlan_index);
     mp->fib_table = htonl(my_sid->fib_table);
+    mp->locator_block_len = my_sid->locator_block_len;
+    mp->locator_node_len = my_sid->locator_node_len;
+    mp->function_len = my_sid->function_len;
 
     S (mp);
 
     WR (ret);
+
+    ret = vpp_normalize_ret(ret, is_del, __func__);
+
+    if (ret) {
+	SAIVPP_ERROR("%s failed(%d) is_del=%d behavior=%u", __func__, ret, is_del, my_sid->behavior);
+    } else {
+	SAIVPP_INFO("%s is_del=%d behavior=%u", __func__, is_del, my_sid->behavior);
+    }
 
     VPP_UNLOCK();
 
@@ -3833,6 +5887,12 @@ int vpp_sidlist_add(vpp_sidlist_t *sidlist)
 
     WR (ret);
 
+    if (ret) {
+	SAIVPP_ERROR("%s failed(%d) num_sids=%u", __func__, ret, sidlist->sids.num_sids);
+    } else {
+	SAIVPP_INFO("%s num_sids=%u", __func__, sidlist->sids.num_sids);
+    }
+
     VPP_UNLOCK();
 
     return ret;
@@ -3862,6 +5922,14 @@ int vpp_sidlist_del(vpp_ip_addr_t *bsid)
     S (mp);
 
     WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) {
+	SAIVPP_ERROR("%s failed(%d)", __func__, ret);
+    } else {
+	SAIVPP_INFO("%s", __func__);
+    }
 
     VPP_UNLOCK();
 
@@ -3908,6 +5976,14 @@ int  vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del)
 
     WR (ret);
 
+    ret = vpp_normalize_ret(ret, is_del, __func__);
+
+    if (ret) {
+	SAIVPP_ERROR("%s failed(%d) is_del=%d fib_table=%u", __func__, ret, is_del, sr_steer->fib_table);
+    } else {
+	SAIVPP_INFO("%s is_del=%d fib_table=%u", __func__, is_del, sr_steer->fib_table);
+    }
+
     VPP_UNLOCK();
 
     return ret;
@@ -3937,7 +6013,309 @@ int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src)
 
     WR (ret);
 
+    if (ret) {
+	SAIVPP_ERROR("%s failed(%d)", __func__, ret);
+    } else {
+	SAIVPP_INFO("%s", __func__);
+    }
+
     VPP_UNLOCK();
 
     return ret;
+}
+
+int vpp_span_enable_disable(uint32_t sw_if_index_from, uint32_t sw_if_index_to, uint32_t state, bool is_l2)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_span_enable_disable_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = span_msg_id_base;
+
+    M (SW_INTERFACE_SPAN_ENABLE_DISABLE, mp);
+
+    mp->sw_if_index_from = htonl(sw_if_index_from);
+    mp->sw_if_index_to = htonl(sw_if_index_to);
+    mp->state = htonl(state);
+    mp->is_l2 = is_l2;
+
+    S (mp);
+    WR (ret);
+
+    SAIVPP_INFO("span enable/disable: from=%d to=%d state=%d is_l2=%d ret=%d", sw_if_index_from, sw_if_index_to, state, is_l2, ret);
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index)
+{
+    int ret;
+    vat_main_t *vam = &vat_main;
+    vl_api_ipip_add_tunnel_t *mp;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = ipip_msg_id_base;
+
+    M (IPIP_ADD_TUNNEL, mp);
+
+    mp->tunnel.instance = htonl(tunnel->instance);
+    mp->tunnel.mode = tunnel->mode;
+    mp->tunnel.table_id = htonl(tunnel->table_id);
+    mp->tunnel.flags = tunnel->flags;
+    mp->tunnel.dscp = tunnel->dscp;
+
+    if (!vpp_to_vl_api_ip_addr(&mp->tunnel.src, &tunnel->src_address)) {
+        SAIVPP_ERROR("Unknown protocol in ipip tunnel src address");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    if (!vpp_to_vl_api_ip_addr(&mp->tunnel.dst, &tunnel->dst_address)) {
+        SAIVPP_ERROR("Unknown protocol in ipip tunnel dst address");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    S (mp);
+
+    WR (ret);
+
+    // vam->sw_if_index is set in the reply handler for this message
+    *sw_if_index = vam->sw_if_index;
+
+    SAIVPP_DEBUG("ipip_add done: if_idx,%d",vam->sw_if_index);
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_ipip_tunnel_del(uint32_t sw_if_index)
+{
+    int ret;
+    vat_main_t *vam = &vat_main;
+    vl_api_ipip_del_tunnel_t *mp;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = ipip_msg_id_base;
+
+    M (IPIP_DEL_TUNNEL, mp);
+
+    mp->sw_if_index = htonl(sw_if_index);
+    S (mp);
+
+    WR (ret);
+
+    SAIVPP_DEBUG("ipip_del done: if_idx,%d",vam->sw_if_index);
+    VPP_UNLOCK();
+    return ret;
+}
+
+int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
+                                uint32_t ip_sw_if_index, bool is_add)
+{
+    int ret;
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_unnumbered_t *mp;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_SET_UNNUMBERED, mp);
+
+    mp->sw_if_index = htonl(ip_sw_if_index);
+    mp->unnumbered_sw_if_index = htonl(unnumbered_sw_if_index);
+    mp->is_add = is_add;
+
+    S (mp);
+
+    WR (ret);
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+static int __sw_interface_get_table(uint32_t sw_if_index, bool is_ipv6, uint32_t *out_table_id)
+{
+    int ret;
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_get_table_t *mp;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_GET_TABLE, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->is_ipv6 = is_ipv6;
+
+    uint32_t context = store_ptr(out_table_id);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
+
+    S (mp);
+
+    WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
+                                uint32_t *out_sw_if_index)
+{
+    int ret;
+    vat_main_t *vam = &vat_main;
+
+    if (!search_ip || !out_sw_if_index)
+        return -EINVAL;
+
+    bool is_ipv6 = (search_ip->sa_family == AF_INET6);
+
+    // Iterates all known sw intfs to collect addresses.
+    u32 *sw_if_idxs = NULL;
+    hash_pair_t *p;
+    INTF_TABLE_LOCK();
+    hash_foreach_pair(p, interface_name_by_sw_index, ({
+        vec_add1(sw_if_idxs, (u32) p->key);
+    }));
+    INTF_TABLE_UNLOCK();
+
+    for (unsigned int i = 0; i < vec_len(sw_if_idxs); i++) {
+        /* Pre-filter: skip interfaces not in the target VRF */
+        if (vrf_id != (uint32_t)~0) {
+            uint32_t if_vrf_id = (uint32_t)~0;
+            if (__sw_interface_get_table(sw_if_idxs[i], is_ipv6, &if_vrf_id) != 0 || if_vrf_id != vrf_id)
+                continue;
+        }
+
+        ip_addr_dump_ctx_t ctx;
+        ctx.target_sw_if_index = (uint32_t)~0;
+        ctx.search_ip = *search_ip;
+
+        vl_api_ip_address_dump_t *mp;
+        vl_api_control_ping_t *mp_ping;
+
+        VPP_LOCK();
+
+        __plugin_msg_base = ip_msg_id_base;
+
+        M (IP_ADDRESS_DUMP, mp);
+        mp->sw_if_index = htonl(sw_if_idxs[i]);
+        mp->is_ipv6 = is_ipv6;
+
+        uint32_t context = store_ptr(&ctx);
+        if (context == VPP_INVALID_CTX_INDEX) {
+            VPP_UNLOCK();
+            vec_free(sw_if_idxs);
+            return -ENOMEM;
+        }
+        mp->context = context;
+
+        S (mp);
+
+        __plugin_msg_base = memclnt_msg_id_base;
+        PING (NULL, mp_ping);
+        S (mp_ping);
+
+        WR (ret);
+
+        if (get_index_ptr(context) != (uintptr_t) NULL) {
+            release_index(context);
+        }
+
+        VPP_UNLOCK();
+
+        if (ret == 0 && ctx.target_sw_if_index != (uint32_t)~0) {
+            *out_sw_if_index = ctx.target_sw_if_index;
+            vec_free(sw_if_idxs);
+            return 0;
+        }
+    }
+
+    vec_free(sw_if_idxs);
+    return -ENOENT;
+}
+
+/* =========================================================================
+ * WANT_L2_MACS_EVENTS2 implementation functions
+ * These must appear after l2_msg_id_base and __plugin_msg_base declarations.
+ * ========================================================================= */
+
+int
+vpp_want_l2_macs_events2 (bool enable, vpp_mac_event_cb_fn cb, void *ctx)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_want_l2_macs_events2_t *mp;
+    int ret;
+
+    /*
+     * NOTE: Single-switch assumption: VPP has one L2 MAC event stream per process.
+     * g_mac_event_cb/ctx are process-globals — the last registration wins and
+     * one switch's teardown nulls the callback for all.  Assert here so a
+     * future multi-switch deployment fails loudly instead of silently losing
+     * MAC events from all but the last registered switch.
+     * Supporting multiple switches would require demultiplexing events by
+     * sw_if_index at this layer.
+     */
+    if (enable) {
+        assert(g_mac_event_cb == NULL && "only one switch may register MAC events at a time");
+    }
+
+    g_mac_event_cb = enable ? cb : NULL;
+    g_mac_event_ctx = enable ? ctx : NULL;
+
+    VPP_LOCK();
+    __plugin_msg_base = l2_msg_id_base;
+
+    M(WANT_L2_MACS_EVENTS2, mp);
+    mp->enable_disable = enable ? 1 : 0;
+    // Set the maximum number of MAC entries in each event to 10
+    // Each entry can contain up to 10 MACs, so 100 MACs per event
+    mp->max_macs_in_event = 10;
+    mp->pid = htonl((uint32_t)getpid());
+    S(mp);
+    WR(ret);
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int
+vpp_l2fib_set_scan_delay (uint16_t delay_10ms)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2fib_set_scan_delay_t *mp;
+    int ret;
+
+    VPP_LOCK();
+    __plugin_msg_base = l2_msg_id_base;
+
+    M(L2FIB_SET_SCAN_DELAY, mp);
+    mp->scan_delay = htons(delay_10ms);
+    S(mp);
+    WR(ret);
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+uint32_t
+vpp_get_swif_idx_by_name (const char *hwif_name)
+{
+    vat_main_t *vam = &vat_main;
+    u32 idx = get_swif_idx(vam, hwif_name);
+    return (idx == (u32)~0) ? (uint32_t)~0u : (uint32_t)idx;
 }

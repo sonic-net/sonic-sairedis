@@ -113,6 +113,11 @@ sai_status_t TunnelManagerSRv6::fill_my_sid_entry(
 
     sai_deserialize_my_sid_entry(my_sid_obj->get_id(), my_sid_entry);
 
+    my_sid.locator_block_len = my_sid_entry.locator_block_len;
+    my_sid.locator_node_len = my_sid_entry.locator_node_len;
+    my_sid.function_len = my_sid_entry.function_len;
+    my_sid.args_len = my_sid_entry.args_len;
+
     struct sockaddr_in6 *sin6 =  &my_sid.localsid.addr.ip6;
     my_sid.localsid.sa_family = AF_INET6;
     sin6->sin6_family = AF_INET6;
@@ -554,4 +559,3 @@ sai_status_t TunnelManagerSRv6::remove_sidlist_route_entry(
 
     return status;
 }
-

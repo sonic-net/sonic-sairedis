@@ -24,10 +24,21 @@ extern "C" {
 
     typedef enum {
 	VPP_NEXTHOP_NORMAL = 1,
-	VPP_NEXTHOP_LOCAL = 2
+    VPP_NEXTHOP_LOCAL = 2,
+    VPP_NEXTHOP_DROP = 3
     } vpp_nexthop_type_e;
 
-    typedef struct vpp_ip_addr_ {
+    /* Maximum MPLS label stack depth carried on a single fib path (VPP API limit). */
+#define VPP_MPLS_MAX_LABELS 16
+    /*
+     * TTL used for an imposed label when the SAI next hop does not carry an
+     * explicit one, i.e. when SAI_NEXT_HOP_ATTR_OUTSEG_TTL_MODE is UNIFORM (the
+     * SAI default) and the TTL is therefore taken from the payload rather than
+     * from SAI_NEXT_HOP_ATTR_OUTSEG_TTL_VALUE.
+     */
+#define MPLS_DEFAULT_OUT_TTL 64
+
+typedef struct vpp_ip_addr_ {
 	int sa_family;
 	union {
 	    struct sockaddr_in ip4;
@@ -43,6 +54,18 @@ extern "C" {
         uint8_t preference;
 	vpp_nexthop_type_e type;
         uint32_t flags;
+        uint8_t n_labels;
+        /*
+         * Labels imposed on an IP route (ingress LER). SAI models the TTL and
+         * EXP treatment per next hop rather than per label
+         * (SAI_NEXT_HOP_ATTR_OUTSEG_{TTL,EXP}_{MODE,VALUE}), so the label
+         * values are carried here and the treatment below is applied to every
+         * label in the stack when the VPP fib path is built.
+         */
+        uint32_t label_stack[VPP_MPLS_MAX_LABELS];
+        uint8_t out_ttl;         /* TTL for imposed labels (PIPE mode uses the SAI value) */
+        uint8_t out_exp;         /* EXP for imposed labels */
+        uint8_t out_is_uniform;  /* 1 = UNIFORM (derive from payload), 0 = PIPE */
     } vpp_ip_nexthop_t;
 
     typedef struct vpp_ip_route_ {
@@ -105,6 +128,8 @@ extern "C" {
         VPP_IP_API_FLOW_HASH_REVERSE = 32,
         VPP_IP_API_FLOW_HASH_SYMETRIC = 64,
         VPP_IP_API_FLOW_HASH_FLOW_LABEL = 128,
+        VPP_IP_API_FLOW_HASH_GTPV1_TEID = 256,
+        VPP_IP_API_FLOW_HASH_PEEK_INNER = 512,
     } vpp_ip_flow_hash_mask_e;
 
     typedef enum {
@@ -145,6 +170,10 @@ extern "C" {
         uint32_t vlan_index;
         uint32_t fib_table;
         vpp_ip_addr_t nh_addr;
+        uint8_t locator_block_len;
+        uint8_t locator_node_len;
+        uint8_t function_len;
+        uint8_t args_len;
     } vpp_my_sid_entry_t;
 
     typedef struct vpp_sid_list_ {
@@ -173,6 +202,35 @@ extern "C" {
         uint32_t fib_table;
         vpp_prefix_t prefix;
     } vpp_sr_steer_t;
+
+    typedef struct vpp_mpls_label_ {
+        uint32_t label;
+        uint8_t  ttl;
+        uint8_t  exp;
+        uint8_t  is_uniform;
+    } vpp_mpls_label_t;
+
+    typedef struct vpp_mpls_nexthop_ {
+        vpp_ip_addr_t addr;
+        uint32_t      sw_if_index;
+        const char   *hwif_name;
+        uint8_t       weight;
+        uint8_t       preference;
+        vpp_nexthop_type_e type;
+        uint8_t       n_labels;
+        vpp_mpls_label_t label_stack[VPP_MPLS_MAX_LABELS];
+    } vpp_mpls_nexthop_t;
+
+    typedef struct vpp_mpls_route_ {
+        uint32_t      table_id;
+        uint32_t      label;
+        uint8_t       eos;
+        int           eos_proto_af;   /* AF_INET / AF_INET6 for post-pop lookup proto */
+        bool          is_multipath;
+        unsigned int  nexthop_cnt;
+        vpp_mpls_nexthop_t nexthop[0];
+    } vpp_mpls_route_t;
+
 
     typedef struct vpp_event_info_ {
 	struct vpp_event_info_ *next;
@@ -242,6 +300,15 @@ typedef enum {
   VPP_BOND_API_LB_ALGO_RR = 3,
   VPP_BOND_API_LB_ALGO_BC = 4,
   VPP_BOND_API_LB_ALGO_AB = 5,
+  /*
+   * VPP's inner-aware LAG hash algorithm (added in
+   * sonic-platform-vpp patch 0010-sonic-inner-aware-flow-hash).
+   * Mirrors BOND_API_LB_ALGO_L34_INNER in src/vnet/bonding/bond.api,
+   * which is annotated [backwards_compatible] so adding this value
+   * does not change the CRC of any bond_create* /
+   * sw_interface_bond_details / sw_bond_interface_details message.
+   */
+  VPP_BOND_API_LB_ALGO_L34_INNER = 6,
 }  vpp_bond_lb_algo;
 
     typedef struct  _vpp_vxlan_tunnel {
@@ -257,6 +324,16 @@ typedef enum {
         bool          is_l3;
      } vpp_vxlan_tunnel_t;
 
+    typedef struct _vpp_ipip_tunnel {
+        vpp_ip_addr_t src_address;
+        vpp_ip_addr_t dst_address;
+        uint32_t      table_id;         // underlay VRF
+        uint8_t       flags;            // tunnel_encap_decap_flags
+        uint8_t       mode;             // 0=P2P, 1=MP
+        uint8_t       dscp;             // fixed DSCP value
+        uint32_t      instance;         // ~0 for auto
+    } vpp_ipip_tunnel_t;
+
     extern vpp_event_info_t * vpp_ev_dequeue();
     extern void vpp_ev_free(vpp_event_info_t *evp);
 
@@ -270,9 +347,12 @@ typedef enum {
     extern int delete_sub_interface(const char *hwif_name, uint32_t sub_id);
     extern int set_interface_vrf(const char *hwif_name, uint32_t sub_id, uint32_t vrf_id, bool is_ipv6);
     extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
+    extern int interface_ip_address_del_all(const char *hwif_name);
     extern int interface_set_state (const char *hwif_name, bool is_up);
+    extern int interface_set_promiscuous (const char *hwif_name, bool enable);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
+    extern int sw_interface_set_link_speed(const char *hwif_name, uint32_t link_speed);
     extern int sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address);
     extern int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable);
     extern int ip_vrf_add(uint32_t vrf_id, const char *vrf_name, bool is_ipv6);
@@ -283,7 +363,9 @@ typedef enum {
     extern int ip6_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct sockaddr_in6 *addr,
 			       bool is_static, bool no_fib_entry, uint8_t *mac, bool is_add);
     extern int ip_route_add_del(vpp_ip_route_t *prefix, bool is_add);
+    extern int ip_route_add_del_get_stats(vpp_ip_route_t *prefix, bool is_add, uint32_t *stats_index);
     extern int vpp_ip_flow_hash_set(uint32_t vrf_id, uint32_t mask, int addr_family);
+    extern int vpp_ip_flow_hash_router_id_set(uint32_t router_id);
 
     extern int vpp_acl_add_replace(vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace);
     extern int vpp_acl_del(uint32_t acl_index);
@@ -296,6 +378,8 @@ typedef enum {
     extern int vpp_tunterm_acl_interface_add_del (uint32_t tunterm_index,
                                            bool is_bind, const char *hwif_name);
     extern int interface_get_state(const char *hwif_name, bool *link_is_up);
+    extern int vpp_refresh_interface_speed(const char *hwif_name);
+    extern int vpp_get_interface_speed(const char *hwif_name, uint32_t *speed);
     extern int vpp_sync_for_events();
     extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
     extern int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
@@ -314,11 +398,45 @@ typedef enum {
     extern int l2fib_flush_all();
     extern int l2fib_flush_int(const char *hwif_name);
     extern int l2fib_flush_bd(uint32_t bd_id);
+
+    /* MAC event action codes from VPP l2_macs_event */
+    typedef enum {
+        VPP_MAC_ACTION_ADD    = 0,  /* newly learned */
+        VPP_MAC_ACTION_DELETE = 1,  /* aged out */
+        VPP_MAC_ACTION_MOVE   = 2,  /* moved to a different port */
+    } vpp_mac_action_t;
+
+    /* MAC event callback types for push-based FDB notification via WANT_L2_MACS_EVENTS2 */
+    typedef struct {
+        uint8_t  mac[6];
+        uint32_t sw_if_index;
+        uint8_t  action; /* vpp_mac_action_t */
+    } vpp_mac_event_t;
+
+    /* Batch callback: invoked once per l2_macs_event message with all entries.
+     * Called on the VPP API receive thread — must NOT acquire m_apimutex. */
+    typedef void (*vpp_mac_event_cb_fn)(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
+
+    /* Register/deregister for push-based MAC learn/age/move events from VPP.
+     * cb is invoked on the VPP API receive thread — implementations MUST NOT
+     * acquire the saivpp main mutex (m_apimutex) directly; enqueue the event
+     * and process it from a thread that safely holds the mutex. */
+    extern int vpp_want_l2_macs_events2(bool enable, vpp_mac_event_cb_fn cb, void *ctx);
+
+    /* Set the L2 FIB scan delay (in units of 10ms, default=10 → 100ms).
+     * Reduces the interval between VPP scanning for aged/moved MACs. */
+    extern int vpp_l2fib_set_scan_delay(uint16_t delay_10ms);
+
+    /* Reverse-lookup: return the VPP sw_if_index for a given hw interface name,
+     * or ~0u if not found. */
+    extern uint32_t vpp_get_swif_idx_by_name(const char *hwif_name);
+
     extern int bfd_udp_add(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr, uint8_t detect_mult,
                            uint32_t desired_min_tx, uint32_t required_min_rx);
     extern int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr);
+    extern int bfd_udp_set_tos(uint8_t tos);
 
     extern int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add,  uint32_t *sw_if_index);
     extern int vpp_ip_addr_t_to_string(vpp_ip_addr_t *ip_addr, char *buffer, size_t maxlen);
@@ -327,6 +445,50 @@ typedef enum {
     extern int vpp_sidlist_del(vpp_ip_addr_t *bsid);
     extern int vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del);
     extern int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src);
+
+    /* SPAN (port mirroring) */
+    extern int vpp_span_enable_disable(uint32_t sw_if_index_from,
+                                    uint32_t sw_if_index_to,
+                                    uint32_t state, /* 0 = disable */
+                                    bool is_l2);
+
+    extern int vpp_sflow_enable_disable(const char *hwif_name, bool enable);
+    extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
+
+    extern int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable);
+    extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
+    extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
+    extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
+                                           uint32_t ip_sw_if_index, bool is_add);
+    extern int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip,
+                                           uint32_t vrf_id,
+                                           uint32_t *out_sw_if_index);
+    extern int vpp_sflow_interface_sampling_rate_set(const char *hwif_name, uint32_t sampling_n);
+    extern int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction);
+
+    /* VPP Classify API for L2 punt */
+    extern int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
+                                         uint32_t skip_n_vectors, uint32_t match_n_vectors,
+                                         uint32_t next_table_index, uint32_t miss_next_index,
+                                         const uint8_t *mask, uint32_t mask_len,
+                                         uint32_t *new_table_index);
+    extern int vpp_classify_table_delete(uint32_t table_index);
+    extern int vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+                                        const uint8_t *match, uint32_t match_len,
+                                        uint32_t opaque_index, int32_t advance,
+                                        uint8_t action);
+    extern int vpp_classify_session_del(uint32_t table_index,
+                                        const uint8_t *match, uint32_t match_len);
+    extern int vpp_classify_set_interface_l2_tables(const char *hwif_name,
+                                                    uint32_t ip4_table_index,
+                                                    uint32_t ip6_table_index,
+                                                    uint32_t other_table_index,
+                                                    bool is_input);
+    extern int vpp_add_node_next(const char *node_name, const char *next_name,
+                                       uint32_t *next_index);
+    extern int sw_interface_set_mpls_enable(const char *hwif_name, bool enable);
+    extern int mpls_table_add_del(uint32_t table_id, bool is_add);
+    extern int mpls_route_add_del(vpp_mpls_route_t *route, bool is_add);
 #ifdef __cplusplus
 }
 #endif

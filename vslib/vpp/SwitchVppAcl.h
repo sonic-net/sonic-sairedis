@@ -24,6 +24,11 @@ typedef struct ordered_ace_list_ {
     uint32_t priority;
     sai_object_id_t ace_oid;
     bool is_tunterm;
+    // each ACE in SONiC maps to one or more VPP consequential ACL rules
+    // vpp_rule_base_index is the starting index of these rules in VPP ACL
+    uint32_t vpp_rule_base_index;
+    // number of VPP ACL rules created for this ACE
+    uint32_t num_rules;
 } ordered_ace_list_t;
 
 #ifdef __cplusplus

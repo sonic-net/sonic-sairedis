@@ -3,6 +3,7 @@
 #include "meta/sai_serialize.h"
 
 #include <gtest/gtest.h>
+#include <cstring>
 
 using namespace syncd;
 
@@ -119,4 +120,27 @@ TEST(NotificationHandler, NotificationMacsecPostStatusTest)
     std::string macsecPostStatusData = "{\"macsec_id\":\"oid:0x5800000000\",\"macsec_post_status\":\"SAI_MACSEC_POST_STATUS_PASS\"}";
     sai_deserialize_macsec_post_status_ntf(macsecPostStatusData, macsec_id, macsec_post_status);
     notificationHandler->onMacsecPostStatus(macsec_id, macsec_post_status);
+}
+
+TEST(NotificationHandler, NotificationFlowBulkGetSessionEventTest)
+{
+    auto notificationProcessor =
+      std::make_shared<NotificationProcessor>(nullptr, nullptr, nullptr);
+    auto notificationHandler =
+      std::make_shared<NotificationHandler>(notificationProcessor);
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_FLOW_BULK_GET_SESSION_EVENT_NOTIFY;
+    attr.value.ptr = (void *) 1;
+    notificationHandler->updateNotificationsPointers(1, &attr);
+
+    sai_object_id_t flow_bulk_session_id = 0x123456789abcdef;
+    uint32_t count = 1;
+    sai_flow_bulk_get_session_event_data_t event_data[1];
+    event_data[0].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED;
+    event_data[0].attr_count = 0;
+    event_data[0].attr = nullptr;
+    memset(&event_data[0].flow_entry, 0, sizeof(event_data[0].flow_entry));
+
+    notificationHandler->onFlowBulkGetSessionEvent(flow_bulk_session_id, count, event_data);
 }

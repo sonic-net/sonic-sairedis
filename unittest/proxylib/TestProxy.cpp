@@ -174,6 +174,18 @@ static void onHaScopeEvent(
     ntfCounter++;
 }
 
+static void onFlowBulkGetSessionEvent(
+        _In_ sai_object_id_t flow_bulk_session_id,
+        _In_ uint32_t count,
+        _In_ const sai_flow_bulk_get_session_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("received: onFlowBulkGetSessionEvent");
+
+    ntfCounter++;
+}
+
 static void onBfdSessionStateChange(
         _In_ uint32_t count,
         _In_ const sai_bfd_session_state_notification_t *data)
@@ -300,6 +312,10 @@ TEST(Proxy, notifications)
 
     attr.id = SAI_SWITCH_ATTR_HA_SCOPE_EVENT_NOTIFY;
     attr.value.ptr = (void*)&onHaScopeEvent;
+    sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+
+    attr.id = SAI_SWITCH_ATTR_FLOW_BULK_GET_SESSION_EVENT_NOTIFY;
+    attr.value.ptr = (void*)&onFlowBulkGetSessionEvent;
     sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
 
     attr.id = SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY;

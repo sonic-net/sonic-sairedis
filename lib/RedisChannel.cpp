@@ -5,6 +5,7 @@
 #include "meta/sai_serialize.h"
 
 #include "swss/logger.h"
+#include "swss/notificationconsumer.h"
 #include "swss/select.h"
 
 using namespace sairedis;
@@ -25,7 +26,32 @@ RedisChannel::RedisChannel(
     m_getConsumer           = std::make_shared<swss::ConsumerTable>(m_db.get(), REDIS_TABLE_GETRESPONSE);
 
     m_dbNtf                 = std::make_shared<swss::DBConnector>(dbAsic, 0);
-    m_notificationConsumer  = std::make_shared<swss::NotificationConsumer>(m_dbNtf.get(), REDIS_TABLE_NOTIFICATIONS_PER_DB(dbAsic));
+    // RedisChannel runs a dedicated notification thread inside every
+    // libsairedis-linked process (orchagent, etc.) that SUBSCRIBE's
+    // to "NOTIFICATIONS" -- the same channel orchagent's per-orch
+    // NotificationConsumers also SUBSCRIBE to.  Redis pub/sub fans
+    // every PUBLISH out to every subscriber; under an FDB-event
+    // storm this thread's FIFO queue grew unbounded.  LRU-dedup
+    // collapses byte-identical in-flight payloads at admission,
+    // bounding queue depth to the count of distinct payloads
+    // currently in the queue (popped entries free their dedup-index
+    // slot).  saimeta::Meta state transitions are idempotent under
+    // byte-identical payloads, so the end state of
+    // m_saiObjectCollection is unchanged.
+    //
+    // pri=100 matches swss-common's 4-arg ctor default; the 5-arg
+    // ctor has no defaults so it has to be passed explicitly.  No
+    // Select-loop priority change vs. the prior 2-arg call.
+    m_notificationConsumer  = std::make_shared<swss::NotificationConsumer>(
+            m_dbNtf.get(),
+            REDIS_TABLE_NOTIFICATIONS_PER_DB(dbAsic),
+            100,                                       // pri -- match swss-common default
+            swss::DEFAULT_NC_POP_BATCH_SIZE,
+            swss::NotificationQueuePolicy::LruDedup);
+    // Orch-qualified label so syslog distinguishes this consumer from
+    // any per-orch NotificationConsumer that also SUBSCRIBE's to the
+    // same "NOTIFICATIONS" channel.
+    m_notificationConsumer->setStatsLabel("libsairedis:RedisChannel:" + std::string(REDIS_TABLE_NOTIFICATIONS_PER_DB(dbAsic)));
 
     m_runNotificationThread = true;
 

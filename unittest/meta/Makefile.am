@@ -20,6 +20,7 @@ tests_SOURCES = \
 				TestNotificationFactory.cpp \
 				TestNotificationFdbEvent.cpp \
 				TestNotificationNatEvent.cpp \
+				TestNotificationPortHostTxReadyEvent.cpp \
 				TestNotificationPortStateChange.cpp \
 				TestNotificationQueuePfcDeadlock.cpp \
 				TestNotificationSwitchShutdownRequest.cpp \
@@ -29,6 +30,7 @@ tests_SOURCES = \
 				TestNotificationIcmpEchoSessionStateChange.cpp \
 				TestNotificationHaScopeEvent.cpp \
 				TestNotificationHaSetEvent.cpp \
+				TestNotificationFlowBulkGetSessionEvent.cpp \
 				TestNotificationTam.cpp \
                                 TestNotificationMacsecPostStatus.cpp \
                                 TestNotificationSwitchMacsecPostStatus.cpp \

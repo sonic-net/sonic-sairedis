@@ -24,6 +24,15 @@ extern "C" {
 #define SAI_KEY_VS_INTERFACE_LANE_MAP_FILE  "SAI_VS_INTERFACE_LANE_MAP_FILE"
 
 /**
+ * @def SAI_KEY_VS_PORT_CONFIG_FILE
+ *
+ * Optional path to the SONiC port configuration used to resolve a port lane
+ * set to its SONiC interface name. The default port configuration is used when
+ * this setting is omitted.
+ */
+#define SAI_KEY_VS_PORT_CONFIG_FILE          "SAI_VS_PORT_CONFIG_FILE"
+
+/**
  * @def SAI_KEY_VS_RESOURCE_LIMITER_FILE
  *
  * File with resource limitations for object type create.
@@ -116,6 +125,7 @@ extern "C" {
 #define SAI_VALUE_VS_SWITCH_TYPE_NVDA_MBF2H536C    "SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C"
 #define SAI_VALUE_VS_SWITCH_TYPE_DPU_SIMU_2P       "SAI_VS_SWITCH_TYPE_DPU_SIMU_2P"
 #define SAI_VALUE_VS_SWITCH_TYPE_VPP               "SAI_VS_SWITCH_TYPE_VPP"
+#define SAI_VALUE_VS_SWITCH_TYPE_NOKIA_VS          "SAI_VS_SWITCH_TYPE_NOKIA_VS"
 
 /*
  * Values for SAI_KEY_BOOT_TYPE (defined in saiswitch.h)

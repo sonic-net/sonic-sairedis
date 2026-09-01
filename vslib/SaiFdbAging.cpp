@@ -18,6 +18,12 @@ void Sai::startFdbAgingThread()
     SWSS_LOG_ENTER();
 
     m_fdbAgingThreadEvent = std::make_shared<swss::SelectableEvent>();
+    m_fdbAgingWakeEvent = std::make_shared<swss::SelectableEvent>();
+
+    // This is used by the platform switch to wake up the aging thread immediately
+    // after the MAC events are received (avoids 1s timer latency)
+    auto wakeEvent = m_fdbAgingWakeEvent;
+    m_vsSai->initFdbEventHandling([wakeEvent]() { wakeEvent->notify(); });
 
     m_fdbAgingThreadRun = true;
 
@@ -64,6 +70,7 @@ void Sai::fdbAgingThreadProc()
     swss::Select s;
 
     s.addSelectable(m_fdbAgingThreadEvent.get());
+    s.addSelectable(m_fdbAgingWakeEvent.get());
 
     while (m_fdbAgingThreadRun)
     {
@@ -77,7 +84,8 @@ void Sai::fdbAgingThreadProc()
             break;
         }
 
-        if (result == swss::Select::TIMEOUT)
+        if (result == swss::Select::TIMEOUT ||
+            sel == m_fdbAgingWakeEvent.get())
         {
             processFdbEntriesForAging();
         }

@@ -39,6 +39,7 @@ libsaimeta_la_SOURCES = \
 				NotificationIcmpEchoSessionStateChange.cpp \
 				NotificationHaSetEvent.cpp \
 				NotificationHaScopeEvent.cpp \
+				NotificationFlowBulkGetSessionEvent.cpp \
 				NotificationTwampSessionEvent.cpp \
 				NotificationPortHostTxReadyEvent.cpp \
 				NotificationTamTelTypeConfigChange.cpp \
@@ -54,6 +55,7 @@ libsaimeta_la_SOURCES = \
 				SaiInterface.cpp \
 				SaiObject.cpp \
 				SaiObjectCollection.cpp \
+				DashMeta.cpp \
 				SaiSerialize.cpp \
 				SelectableChannel.cpp \
 				DummySaiInterface.cpp \

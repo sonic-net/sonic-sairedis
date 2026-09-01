@@ -15,6 +15,29 @@ extern "C" {
 #include <memory>
 #include <type_traits>
 
+// Placeholder type for attributes not requiring data allocation
+// Used as default template parameter for simple attributes
+struct NoAttrData {
+    // Empty struct - minimal footprint, compiler optimizes away
+};
+
+// Holds data storage for SAI PORT attribute API calls
+struct PortPhyAttributeData {
+    std::vector<sai_port_lane_latch_status_t> rxSignalDetectData;
+    std::vector<sai_port_lane_latch_status_t> fecAlignmentLockData;
+    std::vector<sai_port_snr_values_t> rxSnrData;
+};
+
+// Holds data storage for SAI PORT_SERDES attribute API calls
+struct PortPhySerdesAttributeData {
+    // For SAI_PORT_SERDES_ATTR_RX_VGA
+    std::vector<uint32_t> rxVgaData;
+
+    // For SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST
+    std::vector<std::vector<int32_t>> txFirTapsData;
+    std::vector<sai_s32_list_t> txFirTapsList;
+};
+
 namespace syncd
 {
     class BaseCounterContext
@@ -37,10 +60,22 @@ namespace syncd
 
         void removePlugins() {m_plugins.clear();}
 
+        virtual void addObjectWithCounterGroups(
+                _In_ sai_object_id_t vid,
+                _In_ sai_object_id_t rid,
+                _In_ const std::vector<std::string> &idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
         virtual void addObject(
                 _In_ sai_object_id_t vid,
                 _In_ sai_object_id_t rid,
                 _In_ const std::vector<std::string> &idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
+        virtual void bulkAddObjectWithCounterGroups(
+                _In_ const std::vector<sai_object_id_t>& vids,
+                _In_ const std::vector<sai_object_id_t>& rids,
+                _In_ const std::vector<std::string>& idStrings,
                 _In_ const std::string &per_object_stats_mode) = 0;
 
         virtual void bulkAddObject(
@@ -66,6 +101,7 @@ namespace syncd
         std::string m_instanceId;
         std::set<std::string> m_plugins;
         std::string m_bulkChunkSizePerPrefix;
+        std::map<std::pair<sai_object_id_t, sai_object_id_t>, uint32_t> m_failedPolls;
 
     public:
         bool always_check_supported_counters = false;
@@ -118,6 +154,9 @@ namespace syncd
 
             void setPollInterval(
                     _In_ uint32_t pollInterval);
+
+            void setSecondaryPollFactor(
+                    _In_ uint32_t secondaryPollFactor);
 
             void setStatus(
                     _In_ const std::string& status);
@@ -183,6 +222,8 @@ namespace syncd
 
             uint32_t m_pollInterval;
 
+            uint32_t m_secondaryPollFactor;
+
             std::string m_instanceId;
 
             sai_stats_mode_t m_statsMode;
@@ -192,6 +233,8 @@ namespace syncd
             std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
 
             std::string m_dbCounters;
+
+            bool m_isTcpConn;
 
             bool m_isDiscarded;
 

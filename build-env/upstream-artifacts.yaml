@@ -1,0 +1,76 @@
+# Upstream build artifacts that sonic-sairedis needs at build time.
+#
+# Consumed by `buildenv_setup`, which downloads each via the Azure DevOps REST
+# API (or uses a --upstream-staged-dir/<name>/ bundle when staged in the same
+# pipeline run, e.g. sonic-swss-common's own CI building sairedis downstream).
+#
+# Artifact-name convention: amd64 has no arch suffix; non-amd64 appends .{arch}.
+
+upstream:
+  # Keep this entry before sonic-swss-common. The swss-common bundle cascades to
+  # an upstream with the same logical name; the first occurrence wins, so this
+  # superset must provide both sairedis's direct common-lib needs (SONiC libnl
+  # on amd64) and swss-common's transitive libyang3/libyang-dev needs.
+  - name: common-libs
+    project: build
+    pipeline: Azure.sonic-buildimage.common_libs
+    cascade_optional: true
+    result_filter: [succeeded]
+    apt_fix_broken: true
+    artifact_name:
+      - { when: { arch: amd64 },          value: 'common-lib' }
+      - { when: { arch: { not: amd64 } }, value: 'common-lib.{arch}' }
+    debs:
+      # Preserve the current Build template's behavior: SONiC libnl on amd64,
+      # stock apt libnl on arm.
+      - { path: 'target/debs/{debian_version}/libnl-3*.deb',       when: { arch: amd64 } }
+      - { path: 'target/debs/{debian_version}/libnl-genl*.deb',    when: { arch: amd64 } }
+      - { path: 'target/debs/{debian_version}/libnl-route*.deb',   when: { arch: amd64 } }
+      - { path: 'target/debs/{debian_version}/libnl-nf*.deb',      when: { arch: amd64 } }
+      # Superset of the nested swss-common common-libs entry. libpcre3 is not
+      # listed: the current download pattern is a no-op because common-lib does
+      # not publish that DEB, while buildenv_setup intentionally fails on an
+      # unmatched requested artifact.
+      - 'target/debs/{debian_version}/libyang3_*.deb'
+      - 'target/debs/{debian_version}/libyang-dev_3*.deb'
+
+  # sonic-swss-common libraries that sonic-sairedis links against. This is the
+  # core cascading upstream: its published build-env/ contributes base packages,
+  # the shared Redis configuration script, and any future transitive upstreams.
+  - name: sonic-swss-common
+    project: build
+    pipeline: Azure.sonic-swss-common
+    cascade_optional: false
+    result_filter: [succeeded, partiallySucceeded]
+    artifact_name:
+      - { when: { arch: amd64 },          value: 'sonic-swss-common-{debian_version}' }
+      - { when: { arch: { not: amd64 } }, value: 'sonic-swss-common-{debian_version}.{arch}' }
+    debs:
+      - 'libswsscommon_1.0.0_{arch}.deb'
+      - 'libswsscommon-dev_1.0.0_{arch}.deb'
+
+  # sonic platform-vpp DEBs (amd64 only). This upstream intentionally tracks
+  # master, matching the existing pipeline.
+  - name: vpp
+    project: build
+    pipeline: sonic-net.sonic-platform-vpp
+    branch: master
+    when: { arch: amd64 }
+    cascade_optional: true
+    result_filter: [succeeded, partiallySucceeded]
+    apt_fix_broken: true
+    # VPP maintainer scripts call sysctl, which fails in the privileged-but-
+    # restricted CI container. Keep VPP in its own dpkg group and skip sysctl.
+    install_env: { VPP_INSTALL_SKIP_SYSCTL: "1" }
+    artifact_name: 'vpp-{debian_version}'
+    debs:
+      - 'libvppinfra-dev_*_{arch}.deb'
+      - 'libvppinfra_*_{arch}.deb'
+      - 'vpp_*_{arch}.deb'
+      - 'vpp-crypto-engines_*_{arch}.deb'
+      - 'vpp-dbg_*_{arch}.deb'
+      - 'vpp-dev_*_{arch}.deb'
+      - 'vpp-plugin-core_*_{arch}.deb'
+      - 'vpp-plugin-devtools_*_{arch}.deb'
+      - 'vpp-plugin-dpdk_*_{arch}.deb'
+      - 'python3-vpp-api_*_{arch}.deb'

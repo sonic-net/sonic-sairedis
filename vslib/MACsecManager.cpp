@@ -395,9 +395,22 @@ bool MACsecManager::create_macsec_egress_sc(
         << " type macsec "
         << " sci " << attr.m_sci
         << " encrypt " << (attr.m_encryptionEnable ? " on " : " off ")
-        << " cipher " << attr.m_cipher
-        << " send_sci " << (attr.m_sendSci ? " on " : " off ")
-        << " && ip link set dev "
+        << " cipher " << attr.m_cipher;
+
+    // send_sci=on is the default behavior, so we only need to set it when m_sendSci is false
+    if (!attr.m_sendSci)
+    {
+        ostream
+        << " && /sbin/ip link set link "
+        << shellquote(attr.m_vethName)
+        << " name "
+        << shellquote(attr.m_macsecName)
+        << " type macsec "
+        << " send_sci off";
+    }
+
+    ostream
+        << " && /sbin/ip link set dev "
         << shellquote(attr.m_macsecName)
         << " up";
 

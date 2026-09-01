@@ -29,7 +29,14 @@ std::map<sai_object_type_t, std::vector<SaiChildRelation>> sai_child_relation_de
                                         {SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_ENCAP_MAPPERS, SAI_ATTR_VALUE_TYPE_OBJECT_LIST}}},
     {SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY, {{SAI_OBJECT_TYPE_TUNNEL, SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_ACTION_TUNNEL_ID, SAI_ATTR_VALUE_TYPE_OBJECT_ID}}},
     {SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, {{SAI_OBJECT_TYPE_NEXT_HOP_GROUP, SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID, SAI_ATTR_VALUE_TYPE_OBJECT_ID}}},
-    {SAI_OBJECT_TYPE_ROUTE_ENTRY, {{SAI_OBJECT_TYPE_NEXT_HOP_GROUP, SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID, SAI_ATTR_VALUE_TYPE_OBJECT_ID}}},
+    {SAI_OBJECT_TYPE_ROUTE_ENTRY, {{SAI_OBJECT_TYPE_NEXT_HOP_GROUP, SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID, SAI_ATTR_VALUE_TYPE_OBJECT_ID},
+                                   {SAI_OBJECT_TYPE_COUNTER, SAI_ROUTE_ENTRY_ATTR_COUNTER_ID, SAI_ATTR_VALUE_TYPE_OBJECT_ID}}},
+    /*
+     * Lets a VLAN enumerate its members, which the flood-control handler needs
+     * in order to re-bind the L2 punt classify tables on every member when
+     * SAI_VLAN_ATTR_{BROADCAST,UNKNOWN_MULTICAST}_FLOOD_CONTROL_TYPE changes.
+     */
+    {SAI_OBJECT_TYPE_VLAN_MEMBER, {{SAI_OBJECT_TYPE_VLAN, SAI_VLAN_MEMBER_ATTR_VLAN_ID, SAI_ATTR_VALUE_TYPE_OBJECT_ID}}},
 };
 
 static std::vector<std::string>
@@ -282,7 +289,7 @@ SaiObjectDB::get(
     // check if the object exists
     status = m_switch_db->get(object_type, id, 0, &attr);
     if (status != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_WARN("Object is not found in SwitchVpp %s:%s", sai_serialize_object_type(object_type).c_str(), id.c_str());
+        SWSS_LOG_NOTICE("Object is not found in SwitchVpp %s:%s", sai_serialize_object_type(object_type).c_str(), id.c_str());
         return std::shared_ptr<SaiDBObject>();
     }
     /*
@@ -306,9 +313,16 @@ SaiObject::get_linked_object(
     attr.id = link_attr_id;
     status = get_attr(attr);
     if (status != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_ERROR("Failed to get attribute %d from object %s", link_attr_id, m_id.c_str());
+        SWSS_LOG_NOTICE("Attribute %d not found in object %s", link_attr_id, m_id.c_str());
         return std::shared_ptr<SaiDBObject>();
     }
+
+    if (RealObjectIdManager::objectTypeQuery(attr.value.oid) != linked_object_type) {
+        SWSS_LOG_INFO("Linked object type mismatch: expected %d, got %d. Will return empty object.",
+                       linked_object_type, RealObjectIdManager::objectTypeQuery(attr.value.oid));
+        return std::shared_ptr<SaiDBObject>();
+    }
+
     linked_obj_id = sai_serialize_object_id(attr.value.oid);
 
     return m_switch_db->get_sai_object(linked_object_type, linked_obj_id);

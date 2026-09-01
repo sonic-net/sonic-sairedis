@@ -1,6 +1,7 @@
 #include "SwitchVpp.h"
 #include "HostInterfaceInfo.h"
 #include "EventPayloadNotification.h"
+#include "SwitchVppUtils.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/NotificationPortStateChange.h"
@@ -17,6 +18,7 @@
 #include <sys/ioctl.h>
 #include <net/if_arp.h>
 #include <unistd.h>
+#include <cctype>
 #include <net/ethernet.h>
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
@@ -89,6 +91,60 @@ int SwitchVpp::vs_set_dev_mac_address(
     if (err < 0)
     {
         SWSS_LOG_ERROR("ioctl SIOCSIFHWADDR on socket %d %s failed, err %d", s, dev, err);
+    }
+
+    close(s);
+
+    return err;
+}
+
+int SwitchVpp::vs_set_dev_admin_up(
+        _In_ const char *dev,
+        _In_ bool up)
+{
+    SWSS_LOG_ENTER();
+
+    int s = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (s < 0)
+    {
+        SWSS_LOG_ERROR("failed to create socket, errno: %d", errno);
+
+        return -1;
+    }
+
+    struct ifreq ifr;
+
+    memset(&ifr, 0, sizeof(ifr));
+
+    strncpy(ifr.ifr_name, dev, MAX_INTERFACE_NAME_LEN);
+
+    int err = ioctl(s, SIOCGIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCGIFFLAGS on %s failed, err %d", dev, err);
+
+        close(s);
+
+        return err;
+    }
+
+    if (up)
+    {
+        ifr.ifr_flags |= IFF_UP;
+    }
+    else
+    {
+        ifr.ifr_flags &= ~IFF_UP;
+    }
+
+    err = ioctl(s, SIOCSIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCSIFFLAGS %s on %s failed, err %d",
+                (up ? "UP" : "DOWN"), dev, err);
     }
 
     close(s);
@@ -218,6 +274,41 @@ bool SwitchVpp::hostif_create_tap_veth_forwarding(
     return true;
 }
 
+bool SwitchVpp::register_hostif_info(
+        _In_ const std::string &tapname,
+        _In_ int tapfd,
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    // VPP uses the TAP directly through Linux CP. No packet socket or veth
+    // forwarding is needed here; syncOnLinkMsg() only needs this ifindex
+    // to accept runtime RTM_NEWLINK events for this hostif.
+    int ifindex = if_nametoindex(tapname.c_str());
+    if (ifindex == 0)
+    {
+        SWSS_LOG_ERROR("failed to get interface index for %s", tapname.c_str());
+
+        return false;
+    }
+
+    m_hostif_info_map[tapname] =
+        std::make_shared<HostInterfaceInfo>(
+                ifindex,
+                -1,
+                tapfd,
+                tapname,
+                port_id,
+                m_switchConfig->m_eventQueue);
+
+    SWSS_LOG_INFO(
+            "registered hostif info for %s, ifindex %d",
+            tapname.c_str(),
+            ifindex);
+
+    return true;
+}
+
 sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -322,6 +413,28 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
     const char *hwif_name = tap_to_hwif_name(dev);
 
     configure_lcp_interface(hwif_name, dev, true);
+    interface_set_promiscuous(hwif_name, true);
+
+    /*
+     * Re-apply the port's configured admin state to the freshly created VPP host
+     * interface. The SAI port admin state may have been set (e.g. during port
+     * bring-up) before this host interface existed; at that point
+     * vpp_set_interface_state() could not resolve the hwif name (no tap yet) and
+     * the admin-up was silently dropped. Without re-applying it here the VPP
+     * host-interface stays admin-down, which keeps the paired kernel netdev (and
+     * therefore the PTF-side veth carrier) down, causing ENETDOWN on transmit.
+     */
+    {
+        sai_attribute_t admin_attr;
+        admin_attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+        if (get(SAI_OBJECT_TYPE_PORT, obj_id, 1, &admin_attr) == SAI_STATUS_SUCCESS &&
+            admin_attr.value.booldata)
+        {
+            interface_set_state(hwif_name, true);
+            SWSS_LOG_NOTICE("Applied admin-up to VPP host interface %s for port %s",
+                    hwif_name, sai_serialize_object_id(obj_id).c_str());
+        }
+    }
 
     {
         bool link_up = false;
@@ -386,6 +499,14 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
     {
         SWSS_LOG_ERROR("failed to enable ipv6 for %s", hwif_name);
         close(tapfd);
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (!register_hostif_info(name, tapfd, obj_id))
+    {
+        SWSS_LOG_ERROR("failed to register hostif info for %s", name.c_str());
+        close(tapfd);
+
         return SAI_STATUS_FAILURE;
     }
 
@@ -485,9 +606,39 @@ sai_status_t SwitchVpp::vs_remove_hostif_tap_interface(
     // std::string vname = vpp_get_veth_name(name, info->m_portId);
 
     sai_object_id_t port_id = getPortIdFromIfName(name);
+    auto it = m_hostif_info_map.find(name);
+
+    if (it != m_hostif_info_map.end())
+    {
+        SWSS_LOG_INFO("attempting to remove host info entry for tap device: %s", name.c_str());
+
+        port_id = it->second->m_portId;
+        m_hostif_info_map.erase(it);
+    }
+
+    /*
+     * Tear down the VPP state that vs_create_hostif_tap_interface() set up, so a
+     * later re-create of the same host interface in the SAME saiserver process
+     * starts from a clean slate. Without this the leftover linux-cp pair and
+     * enabled IPv6 make the next create fail (config_lcp_hostif / ip6-enable
+     * return VALUE_EXIST), which previously required a full backend restart per
+     * test to avoid. Both calls are idempotent (vpp_normalize_ret tolerates
+     * NO_SUCH_ENTRY on delete), so removing a partially-created hostif is safe.
+     */
+    const char *hwif_name = tap_to_hwif_name(name.c_str());
+
+    if (hwif_name != nullptr)
+    {
+        sw_interface_ip6_enable_disable(hwif_name, false);
+        configure_lcp_interface(hwif_name, name.c_str(), false);
+    }
 
     removeIfNameToPortId(name);
-    removePortIdToTapName(port_id);
+
+    if (port_id != SAI_NULL_OBJECT_ID)
+    {
+        removePortIdToTapName(port_id);
+    }
 
     SWSS_LOG_NOTICE("successfully removed hostif tap device: %s", name.c_str());
 
@@ -555,6 +706,30 @@ void SwitchVpp::populate_if_mapping()
     fclose(fp);
 }
 
+static bool bond_tap_to_hwif_name(
+        _In_ const char *name,
+        _Out_ std::string &bond_hwif)
+{
+    SWSS_LOG_ENTER();
+
+    if (name[0] != 'b' || name[1] != 'e' || name[2] == '\0')
+    {
+        return false;
+    }
+
+    for (const char *p = name + 2; *p != '\0'; p++)
+    {
+        if (!isdigit(static_cast<unsigned char>(*p)))
+        {
+            return false;
+        }
+    }
+
+    bond_hwif = std::string(BONDETHERNET_PREFIX) + (name + 2);
+
+    return true;
+}
+
 const char* SwitchVpp::tap_to_hwif_name(
         _In_ const char *name)
 {
@@ -568,6 +743,15 @@ const char* SwitchVpp::tap_to_hwif_name(
 
     if (it == m_hostif_hwif_map.end())
     {
+        static thread_local std::string bond_hwif;
+
+        if (bond_tap_to_hwif_name(name, bond_hwif))
+        {
+            SWSS_LOG_DEBUG("Mapped bond tap %s to hwif %s", name, bond_hwif.c_str());
+
+            return bond_hwif.c_str();
+        }
+
         SWSS_LOG_ERROR("failed to find hwif info entry for hostif device: %s", tap_name.c_str());
 
         return "Unknown";
@@ -591,7 +775,9 @@ const char* SwitchVpp::hwif_to_tap_name(
 
     if (it == m_hwif_hostif_map.end())
     {
-        SWSS_LOG_ERROR("failed to find hostif info entry for hwif device: %s", tap_name.c_str());
+        // not all hwif are mapped to hostif, e.g. vxlan tunnel interface, bvi interface,
+        // and BondEthernet<N> (LAG) which has no SAI hostif tap.
+        SWSS_LOG_NOTICE("failed to find hostif info entry for hwif device: %s", tap_name.c_str());
 
         return "Unknown";
     }

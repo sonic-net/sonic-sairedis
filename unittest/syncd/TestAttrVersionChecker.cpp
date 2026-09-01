@@ -93,6 +93,7 @@ TEST(AttrVersionChecker, reset)
         .iscustom                      = false,\
         .apiversion                    = (v),\
         .nextrelease                   = (n),\
+        .valueprecision                = 0,\
     };\
 
 

@@ -1,0 +1,7 @@
+# Local-only working notes and test artifacts (not published to remote).
+# devdocs/  — progress/debug logs for agent/developer context across branches
+# demodocs/ — stakeholder demo notes
+# results/  — JUnit XML, run logs, compatibility matrices (update README pass list when changed)
+devdocs/
+demodocs/
+results/

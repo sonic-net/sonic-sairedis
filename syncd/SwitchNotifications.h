@@ -105,9 +105,15 @@ namespace syncd
                             _In_ const sai_ha_set_event_data_t *data);
 
                     static void onHaScopeEvent(
+                        _In_ int context,
+                        _In_ uint32_t count,
+                        _In_ const sai_ha_scope_event_data_t *data);
+
+                    static void onFlowBulkGetSessionEvent(
                             _In_ int context,
+                            _In_ sai_object_id_t flow_bulk_session_id,
                             _In_ uint32_t count,
-                            _In_ const sai_ha_scope_event_data_t *data);
+                            _In_ const sai_flow_bulk_get_session_event_data_t *data);
 
                     static void onMacsecPostStatus(
                           _In_ int context,
@@ -163,8 +169,11 @@ namespace syncd
                             .on_ipsec_post_status = &Slot<context>::onIpsecPostStatus,
                             .on_switch_macsec_post_status = &Slot<context>::onSwitchMacsecPostStatus,
                             .on_switch_ipsec_post_status = &Slot<context>::onSwitchIpsecPostStatus,
+                            .on_next_hop_group_hw_protection_switchover = nullptr,
                             .on_ha_set_event = &Slot<context>::onHaSetEvent,
                             .on_ha_scope_event = &Slot<context>::onHaScopeEvent,
+                            .on_flow_bulk_get_session_event = &Slot<context>::onFlowBulkGetSessionEvent,
+                            .on_ocs_port_state_change = nullptr,
                             }) { }
 
                 virtual ~Slot() {}
@@ -241,6 +250,16 @@ namespace syncd
                     SWSS_LOG_ENTER();
 
                     return SlotBase::onHaScopeEvent(context, count, data);
+                }
+
+                static void onFlowBulkGetSessionEvent(
+                        _In_ sai_object_id_t flow_bulk_session_id,
+                        _In_ uint32_t count,
+                        _In_ const sai_flow_bulk_get_session_event_data_t *data)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onFlowBulkGetSessionEvent(context, flow_bulk_session_id, count, data);
                 }
 
                 static void onQueuePfcDeadlock(
@@ -373,6 +392,7 @@ namespace syncd
             std::function<void(sai_object_id_t)>                                                    onTamTelTypeConfigChange;
             std::function<void(uint32_t, const sai_ha_set_event_data_t*)>                          onHaSetEvent;
             std::function<void(uint32_t, const sai_ha_scope_event_data_t*)>                        onHaScopeEvent;
+            std::function<void(sai_object_id_t, uint32_t, const sai_flow_bulk_get_session_event_data_t*)> onFlowBulkGetSessionEvent;
             std::function<void(sai_object_id_t, const sai_macsec_post_status_t)>                   onMacsecPostStatus;
             std::function<void(sai_object_id_t, const sai_ipsec_post_status_t)>                    onIpsecPostStatus;
             std::function<void(sai_object_id_t, const sai_switch_macsec_post_status_t)>            onSwitchMacsecPostStatus;

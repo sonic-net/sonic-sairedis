@@ -66,6 +66,7 @@ Proxy::Proxy(
     m_swNtf.onIcmpEchoSessionStateChange = std::bind(&Proxy::onIcmpEchoSessionStateChange, this, _1, _2);
     m_swNtf.onHaSetEvent = std::bind(&Proxy::onHaSetEvent, this, _1, _2);
     m_swNtf.onHaScopeEvent = std::bind(&Proxy::onHaScopeEvent, this, _1, _2);
+    m_swNtf.onFlowBulkGetSessionEvent = std::bind(&Proxy::onFlowBulkGetSessionEvent, this, _1, _2, _3);
     m_swNtf.onPortHostTxReady = std::bind(&Proxy::onPortHostTxReady, this, _1, _2, _3);
     m_swNtf.onTwampSessionEvent = std::bind(&Proxy::onTwampSessionEvent, this, _1, _2);
     m_swNtf.onTamTelTypeConfigChange = std::bind(&Proxy::onTamTelTypeConfigChange, this, _1);
@@ -1237,6 +1238,18 @@ void Proxy::onHaScopeEvent(
     std::string s = sai_serialize_ha_scope_event_ntf(count, data);
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT, s);
+}
+
+void Proxy::onFlowBulkGetSessionEvent(
+        _In_ sai_object_id_t flow_bulk_session_id,
+        _In_ uint32_t count,
+        _In_ const sai_flow_bulk_get_session_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_FLOW_BULK_GET_SESSION_EVENT, s);
 }
 
 void Proxy::onTwampSessionEvent(

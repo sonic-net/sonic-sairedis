@@ -18,6 +18,7 @@ tests_SOURCES = main.cpp \
 				TestLaneMap.cpp \
 				TestLaneMapContainer.cpp \
 				TestLaneMapFileParser.cpp \
+				TestPortConfigFileParser.cpp \
 				TestMACsecAttr.cpp \
 				TestMACsecEgressFilter.cpp \
 				TestMACsecForwarder.cpp \
@@ -39,6 +40,7 @@ tests_SOURCES = main.cpp \
 				TestSwitchContainer.cpp \
 				TestSwitch.cpp \
 				TestSwitchMLNX2700.cpp \
+				TestSwitchNokiaVS.cpp \
 				TestSwitchNvdaMBF2H536C.cpp \
 				TestSwitchBCM56971B0.cpp \
 				TestSwitchBCM56850.cpp \
@@ -49,6 +51,10 @@ tests_SOURCES = main.cpp \
 				TestSai.cpp \
 				TestVirtualSwitchSaiInterface.cpp \
 				TestTAM.cpp
+
+if USE_VPP
+tests_SOURCES += TestSwitchVpp.cpp
+endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lnl-genl-3 -lnl-nf-3 -lnl-route-3 -lnl-3 \

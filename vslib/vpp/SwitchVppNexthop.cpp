@@ -174,7 +174,8 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
     attr.id = SAI_NEXT_HOP_ATTR_TYPE;
     CHECK_STATUS_QUIET(nh_obj->get_mandatory_attr(attr));
     int32_t next_hop_type = attr.value.s32;
-    if (next_hop_type != SAI_NEXT_HOP_TYPE_IP && next_hop_type != SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
+    if (next_hop_type != SAI_NEXT_HOP_TYPE_IP && next_hop_type != SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP &&
+        next_hop_type != SAI_NEXT_HOP_TYPE_MPLS) {
         return SAI_STATUS_NOT_IMPLEMENTED;
     }
 
@@ -187,12 +188,73 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
     nxt_grp_member->weight = next_hop_weight;
     nxt_grp_member->seq_id = next_hop_sequence;
     nxt_grp_member->sw_if_index = ~0;
+    nxt_grp_member->n_labels = 0;
+
+    std::shared_ptr<SaiDBObject> rif_obj;
 
     switch (next_hop_type) {
+    case SAI_NEXT_HOP_TYPE_MPLS:
     case SAI_NEXT_HOP_TYPE_IP:
-        attr.id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
-        if (get(SAI_OBJECT_TYPE_NEXT_HOP, next_hop_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
-            nxt_grp_member->rif_oid = attr.value.oid;
+        rif_obj = nh_obj->get_linked_object(SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                                            SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID);
+        if (rif_obj) {
+            attr.id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
+            if (nh_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+                nxt_grp_member->rif_oid = attr.value.oid;
+            }
+        }
+        if (next_hop_type == SAI_NEXT_HOP_TYPE_MPLS) {
+            /*
+             * Read the imposed (push) label stack. LABELSTACK is a list
+             * attribute, so the output buffer must be supplied before the get.
+             */
+            uint32_t lbuf[VPP_MPLS_MAX_LABELS];
+            attr.id = SAI_NEXT_HOP_ATTR_LABELSTACK;
+            attr.value.u32list.count = VPP_MPLS_MAX_LABELS;
+            attr.value.u32list.list = lbuf;
+
+            sai_status_t label_status = get(SAI_OBJECT_TYPE_NEXT_HOP, next_hop_oid, 1, &attr);
+
+            /*
+             * A stack deeper than the buffer yields SAI_STATUS_BUFFER_OVERFLOW
+             * with count set to the required size and nothing copied. Fail
+             * explicitly rather than programming a bare IP nexthop, which would
+             * silently drop the imposed labels.
+             */
+            if (label_status == SAI_STATUS_BUFFER_OVERFLOW) {
+                SWSS_LOG_ERROR("MPLS out-label stack of %u labels exceeds maximum %u",
+                        attr.value.u32list.count, VPP_MPLS_MAX_LABELS);
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
+
+            if (label_status == SAI_STATUS_SUCCESS && attr.value.u32list.count > 0) {
+                uint32_t cnt = attr.value.u32list.count;
+
+                getOutsegTtl(nh_obj.get(), &nxt_grp_member->out_ttl,
+                             &nxt_grp_member->out_exp,
+                             &nxt_grp_member->out_is_uniform);
+
+                nxt_grp_member->n_labels = (uint8_t)cnt;
+                for (uint32_t li = 0; li < cnt; li++) {
+                    nxt_grp_member->label_stack[li] = attr.value.u32list.list[li];
+                }
+            }
+            /*
+             * Program an attached path (resolve the router interface to its VPP
+             * egress hwif) so VPP actually imposes the label; a recursive
+             * labelled path is dropped at the MPLS DROP DPO.
+             */
+            std::string mpls_hwif;
+            sai_attribute_t port_attr;
+            port_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+            if (rif_obj &&
+                rif_obj->get_attr(port_attr) == SAI_STATUS_SUCCESS &&
+                vpp_get_hwif_name(port_attr.value.oid, 0, mpls_hwif)) {
+                int idx = get_sw_if_idx(mpls_hwif.c_str());
+                if (idx >= 0) {
+                    nxt_grp_member->sw_if_index = (uint32_t)idx;
+                }
+            }
         }
         break;
     case SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP: {
@@ -286,7 +348,9 @@ SwitchVpp::createNexthopGroupMember(
 
     //call create_internal to update the mapping from NHG to NHG_MBRs, which is used to update the routes
     status = create_internal(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, serializedObjectId, switch_id, attr_count, attr_list);
-    if (status != SAI_STATUS_SUCCESS) {
+    if (status == SAI_STATUS_ITEM_ALREADY_EXISTS) {
+        SWSS_LOG_NOTICE("NHG member %s already exists; continuing path update", serializedObjectId.c_str());
+    } else if (status != SAI_STATUS_SUCCESS) {
         return status;
     }
 
@@ -295,11 +359,16 @@ SwitchVpp::createNexthopGroupMember(
         return SAI_STATUS_SUCCESS;
     }
 
-    for (auto route : *routes) {
-        SWSS_LOG_INFO("NHG member changed. Updating route %s", route.first.c_str());
-        IpRouteAddRemove(route.second.get(), false);
-        IpRouteAddRemove(route.second.get(), true);
+    // Fill the nexthop group member info
+    nexthop_grp_member_t member;
+    status = buildNhgMember(nhg_mbr_obj, member);
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to fill NHG member info for %s", serializedObjectId.c_str());
+        return status;
     }
+
+    // Add the specific path to each route using this NHG
+    updateRoutesForNhgMember(*routes, member, true);
     return SAI_STATUS_SUCCESS;
 }
 
@@ -314,8 +383,8 @@ SwitchVpp::removeNexthopGroupMember(
 
     auto nhg_mbr_obj = get_sai_object(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, serializedObjectId);
     if (!nhg_mbr_obj) {
-        SWSS_LOG_ERROR("Failed to find SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER SaiObject: %s", serializedObjectId.c_str());
-        return SAI_STATUS_FAILURE;
+        SWSS_LOG_NOTICE("NHG member %s already absent; treating remove as success", serializedObjectId.c_str());
+        return SAI_STATUS_SUCCESS;
     }
     attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID;
     CHECK_STATUS_QUIET(nhg_mbr_obj->get_mandatory_attr(attr));
@@ -329,8 +398,20 @@ SwitchVpp::removeNexthopGroupMember(
 
     auto routes = nhg_obj->get_child_objs(SAI_OBJECT_TYPE_ROUTE_ENTRY);
 
+    // Fill the nexthop group member info before removing from internal DB
+    nexthop_grp_member_t member;
+    status = buildNhgMember(*nhg_mbr_obj, member);
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to fill NHG member info for %s", serializedObjectId.c_str());
+        return status;
+    }
+
     //call remove_internal to update the mapping from NHG to NHG_MBRs
     status = remove_internal(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, serializedObjectId);
+    if (status == SAI_STATUS_ITEM_NOT_FOUND) {
+        SWSS_LOG_NOTICE("NHG member %s already removed from DB; treating as success", serializedObjectId.c_str());
+        return SAI_STATUS_SUCCESS;
+    }
     if (status != SAI_STATUS_SUCCESS) {
         return status;
     }
@@ -339,10 +420,103 @@ SwitchVpp::removeNexthopGroupMember(
         return SAI_STATUS_SUCCESS;
     }
 
-    for (auto route : *routes) {
-        SWSS_LOG_INFO("NHG member changed. Updating route %s", route.first.c_str());
-        IpRouteAddRemove(route.second.get(), false);
-        IpRouteAddRemove(route.second.get(), true);
-    }
+    // Remove the specific path from each route using this NHG
+    // VPP will handle the case of removing the last path
+    updateRoutesForNhgMember(*routes, member, false);
     return SAI_STATUS_SUCCESS;
+}
+
+void
+SwitchVpp::updateRoutesForNhgMember(
+        _In_ const std::unordered_map<std::string, std::shared_ptr<SaiObject>>& routes,
+        _Inout_ nexthop_grp_member_t& member,
+        _In_ bool isAdd)
+{
+    SWSS_LOG_ENTER();
+
+    for (auto route : routes) {
+        uint32_t stats_index = UINT32_MAX;
+        sai_object_id_t counter_oid = getRouteBoundCounter(route.first);
+        std::map<sai_stat_id_t, uint64_t> old_counter_stats;
+        bool has_old_counter_stats = false;
+        if (counter_oid != SAI_NULL_OBJECT_ID) {
+            sai_status_t status = getRouteCounterStats(counter_oid, old_counter_stats);
+            if (status == SAI_STATUS_SUCCESS) {
+                has_old_counter_stats = true;
+            } else {
+                SWSS_LOG_WARN("Failed to read route counter stats before %s route %s, status %d",
+                        isAdd ? "adding path to" : "removing path from", route.first.c_str(), status);
+            }
+        }
+
+        SWSS_LOG_INFO("NHG member %s. %s route %s",
+                isAdd ? "added" : "removed",
+                isAdd ? "Adding path to" : "Removing path from",
+                route.first.c_str());
+        sai_status_t status = IpRoutePathAddRemove(route.second.get(), &member, isAdd, &stats_index);
+        if (status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to %s route %s, status %d",
+                    isAdd ? "add path to" : "remove path from", route.first.c_str(), status);
+            // Continue with other routes
+        } else {
+            recordRouteStatsIndexAndResetBase(route.first, stats_index, has_old_counter_stats, old_counter_stats);
+        }
+    }
+}
+
+void
+SwitchVpp::recordRouteStatsIndexAndResetBase(
+        _In_ const std::string& route,
+        _In_ uint32_t stats_index,
+        _In_ bool has_old_counter_stats,
+        _In_ const std::map<sai_stat_id_t, uint64_t>& old_counter_stats)
+{
+    SWSS_LOG_ENTER();
+
+    if (stats_index == UINT32_MAX) {
+        return;
+    }
+
+    m_routeStatsIndexMap[route] = stats_index;
+
+    sai_object_id_t counter_oid = getRouteBoundCounter(route);
+    if (counter_oid == SAI_NULL_OBJECT_ID) {
+        return;
+    }
+
+    std::map<sai_stat_id_t, uint64_t> new_counter_base;
+    sai_status_t status = getRouteCounterStats(counter_oid, new_counter_base);
+    if (has_old_counter_stats) {
+        carryRouteCounterStatsDelta(counter_oid, old_counter_stats);
+    }
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to reset route counter base for route %s, status %d", route.c_str(), status);
+        m_routeCounterStatsBaseMap.erase(counter_oid);
+    } else {
+        m_routeCounterStatsBaseMap[counter_oid] = new_counter_base;
+    }
+}
+
+sai_status_t
+SwitchVpp::buildNhgMember(
+        _In_ const SaiObject& nhg_mbr_obj,
+        _Out_ nexthop_grp_member_t& member)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    // Get the nexthop OID from the member
+    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
+    CHECK_STATUS_QUIET(nhg_mbr_obj.get_mandatory_attr(attr));
+    sai_object_id_t next_hop_oid = attr.value.oid;
+
+    // Get weight if available
+    uint32_t weight = 1;
+    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_WEIGHT;
+    if (nhg_mbr_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
+        weight = attr.value.u32;
+    }
+
+    return fillNHGrpMember(&member, next_hop_oid, weight, 0);
 }

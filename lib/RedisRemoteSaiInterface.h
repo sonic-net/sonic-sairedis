@@ -108,6 +108,13 @@ namespace sairedis
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
+        public: // QUAD meta key
+
+            using SaiInterface::remove;
+            using SaiInterface::get;
+            using SaiInterface::create;
+            using SaiInterface::set;
+
         public: // stats API
 
             virtual sai_status_t getStats(
@@ -222,6 +229,15 @@ namespace sairedis
 
             sai_status_t setRedisAttribute(
                     _In_ sai_object_id_t switchId,
+                    _In_ const sai_attribute_t* attr);
+
+            /**
+             * @brief Checks whether attribute is custom SAI_REDIS_PORT attribute.
+             *
+             * This function should only be used on port_api set function.
+             */
+            static bool isRedisPortAttribute(
+                    _In_ sai_object_type_t objectType,
                     _In_ const sai_attribute_t* attr);
 
             void setMeta(
@@ -394,6 +410,11 @@ namespace sairedis
                     _In_ sai_object_id_t objectId,
                     _In_ const sai_attribute_t *attr);
 
+            sai_status_t setRedisPortExtensionAttribute(
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_object_id_t objectId,
+                    _In_ const sai_attribute_t *attr);
+
             bool isSaiS8ListValidString(
                     _In_ const sai_s8_list_t &s8list);
 
@@ -415,11 +436,20 @@ namespace sairedis
                     _In_ sai_object_id_t objectId,
                     _In_ const sai_redis_flex_counter_parameter_t *flexCounterParam);
 
+            sai_status_t notifyCounterGroupSecondaryPollFactor(
+                    _In_ sai_object_id_t objectId,
+                    _In_ const sai_redis_flex_counter_group_secondary_poll_factor_parameter_t *param);
+
         private:
 
             sai_status_t sai_redis_notify_syncd(
                     _In_ sai_object_id_t switchId,
                     _In_ const sai_attribute_t *attr);
+
+            sai_status_t setLinkEventDampingConfig(
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_object_id_t objectId,
+                    _In_ const std::vector<swss::FieldValueTuple> &values);
 
             void clear_local_state();
 
@@ -459,6 +489,8 @@ namespace sairedis
             std::shared_ptr<Channel> m_communicationChannel;
 
             uint64_t m_responseTimeoutMs;
+
+            size_t m_zmqResponseBufferSize;
 
             std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> m_notificationCallback;
 

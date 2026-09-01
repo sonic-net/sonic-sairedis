@@ -62,13 +62,14 @@ HostInterfaceInfo::~HostInterfaceInfo()
         m_e2t->join();
     }
 
-    // remove tap device
-
-    int err = close(m_tapfd);
-
-    if (err)
+    if (m_tapfd >= 0)
     {
-        SWSS_LOG_ERROR("failed to remove tap device: %s, err: %d", m_name.c_str(), err);
+        int err = close(m_tapfd);
+
+        if (err)
+        {
+            SWSS_LOG_ERROR("failed to remove tap device: %s, err: %d", m_name.c_str(), err);
+        }
     }
 
     SWSS_LOG_NOTICE("joined threads for hostif: %s", m_name.c_str());

@@ -77,6 +77,14 @@ namespace syncd
 
             bool m_enableSyncMode;
 
+            /**
+             * When set to true, ASIC_DB writes are performed asynchronously on a
+             * background thread (via ZmqRedisClient) instead of synchronously on
+             * the processing thread. Only effective when ZMQ southbound is active
+             * on a non-virtual, non-DPU switch. Driven by SYSTEM_DEFAULTS|async_rec.
+             */
+            bool m_enableAsyncRec;
+
             bool m_enableSaiBulkSupport;
 
             sai_redis_communication_mode_t m_redisCommunicationMode;
@@ -93,12 +101,15 @@ namespace syncd
 
             int64_t m_watchdogWarnTimeSpan;
 
+            int64_t m_watchdogInitTimeSpan;
+
 #ifdef SAITHRIFT
             bool m_runRPCServer;
             std::string m_portMapFile;
 #endif // SAITHRIFT
 
             std::string m_supportingBulkCounterGroups;
+            bool m_enablePerPortCounterDiscovery;
 
             bool m_enableAttrVersionCheck;
     };

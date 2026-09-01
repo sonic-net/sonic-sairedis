@@ -1,6 +1,7 @@
 #include "VirtualOidTranslator.h"
 #include "VirtualObjectIdManager.h"
 #include "RedisClient.h"
+#include "DisabledRedisClient.h"
 
 #include "swss/logger.h"
 #include "meta/sai_serialize.h"
@@ -10,7 +11,7 @@
 using namespace syncd;
 
 VirtualOidTranslator::VirtualOidTranslator(
-        _In_ std::shared_ptr<RedisClient> client,
+        _In_ std::shared_ptr<BaseRedisClient> client,
         _In_ std::shared_ptr<sairedis::VirtualObjectIdManager> virtualObjectIdManager,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai):
     m_virtualObjectIdManager(virtualObjectIdManager),
@@ -38,7 +39,7 @@ bool VirtualOidTranslator::tryTranslateRidToVid(
         return true;
     }
 
-    auto it = m_rid2vid.find(vid);
+    auto it = m_rid2vid.find(rid);
 
     if (it != m_rid2vid.end())
     {
@@ -169,14 +170,30 @@ void VirtualOidTranslator::translateRidsToVids(
     newVids.reserve(count);
 
     /*
-     * Get unknown (new) RIDs into newRids array.
+     * DisabledRedisClient::getVidsForRids (ZMQ / no-ASIC_DB) returns null for
+     * every RID. User-created objects (e.g. bulk create ports) already have
+     * RID->VID in m_rid2vid from insertRidsAndVids. Without this pass,
+     * redisSetDummyAsicStateForRealObjectIds / onPostPortsCreate would allocate
+     * new VIDs and overwrite the map, so notifications (e.g. port_state_change)
+     * would use wrong VIDs.
+     *
+     * Then collect RIDs that still have no VID for allocateNewObjectIds below.
      */
+
     for (size_t idx = 0; idx < count; idx++)
     {
         if (vids[idx] == SAI_NULL_OBJECT_ID)
         {
-            newRids.push_back(rids[idx]);
-            newVids.push_back(SAI_NULL_OBJECT_ID);
+            auto it = m_rid2vid.find(rids[idx]);
+            if (it != m_rid2vid.end())
+            {
+                vids[idx] = it->second;
+            }
+            else
+            {
+                newRids.push_back(rids[idx]);
+                newVids.push_back(SAI_NULL_OBJECT_ID);
+            }
         }
     }
 
@@ -366,6 +383,13 @@ sai_object_id_t VirtualOidTranslator::translateVidToRid(
 
     if (rid == SAI_NULL_OBJECT_ID)
     {
+        if (!m_client->isRedisEnabled())
+        {
+            SWSS_LOG_DEBUG("Redis disabled, unable to get RID for VID %s",
+                    sai_serialize_object_id(vid).c_str());
+            return SAI_NULL_OBJECT_ID;
+        }
+
             /*
              * If user created object that is object id, then it should not
              * query attributes of this object in init view mode, because he

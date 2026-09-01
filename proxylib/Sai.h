@@ -100,6 +100,13 @@ namespace saiproxy
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
+        public: // QUAD meta key
+
+            using SaiInterface::remove;
+            using SaiInterface::get;
+            using SaiInterface::create;
+            using SaiInterface::set;
+
         public: // stats API
 
             virtual sai_status_t getStats(

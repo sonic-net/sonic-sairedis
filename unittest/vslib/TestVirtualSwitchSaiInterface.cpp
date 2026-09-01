@@ -16,6 +16,20 @@ extern "C" {
 
 using namespace saivs;
 
+namespace
+{
+class NativePacketSamplingSwitchState final : public SwitchStateBase
+{
+public:
+    using SwitchStateBase::SwitchStateBase;
+
+    bool hasNativePacketSampling() const override
+    {
+        return true;
+    }
+};
+}
+
 class VirtualSwitchSaiInterfaceTest : public ::testing::Test
 {
 public:
@@ -65,6 +79,34 @@ protected:
     const std::uint32_t m_guid = 0; // default context config id
     const std::uint32_t m_scid = 0; // default switch config id
 };
+
+TEST_F(VirtualSwitchSaiInterfaceTest, nativePacketSamplingSkipsKernelSampler)
+{
+    const auto port_id = m_vssai->m_realObjectIdManager->allocateNewObjectId(
+            SAI_OBJECT_TYPE_PORT,
+            m_swid);
+
+    sai_attribute_t attr = {};
+    attr.id = SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+
+    EXPECT_EQ(
+            m_vssai->preSetPort(port_id, &attr),
+            SAI_STATUS_FAILURE);
+
+    auto original_state = m_vssai->m_switchStateMap.at(m_swid);
+    m_vssai->m_switchStateMap.at(m_swid) =
+            std::make_shared<NativePacketSamplingSwitchState>(
+                    m_swid,
+                    m_vssai->m_realObjectIdManager,
+                    m_sc);
+
+    EXPECT_EQ(
+            m_vssai->preSetPort(port_id, &attr),
+            SAI_STATUS_SUCCESS);
+
+    m_vssai->m_switchStateMap.at(m_swid) = original_state;
+}
 
 TEST_F(VirtualSwitchSaiInterfaceTest, portBulkAddRemove)
 {
@@ -225,6 +267,13 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
                 m_swid,
                 SAI_OBJECT_TYPE_PORT,
                 &stats_capability));
+
+    /* Invalid switch id */
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_vssai->queryStatsCapability(
+                SAI_NULL_OBJECT_ID,
+                SAI_OBJECT_TYPE_SWITCH,
+                &stats_capability));
 }
 
 TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsStCapability)
@@ -289,6 +338,13 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsStCapability)
                   SAI_OBJECT_TYPE_PORT,
                   &stats_capability));
     EXPECT_EQ(stats_capability.list[0].minimal_polling_interval, static_cast<uint64_t>(1e6 * 100));
+
+    /* Invalid switch id */
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+              m_vssai->queryStatsStCapability(
+                  SAI_NULL_OBJECT_ID,
+                  SAI_OBJECT_TYPE_SWITCH,
+                  &stats_capability));
 }
 
 TEST_F(VirtualSwitchSaiInterfaceTest, switchHostifTrapCapabilityGet)
@@ -482,4 +538,19 @@ TEST_F(VirtualSwitchSaiInterfaceTest, objectTypeGetAvailability_MySidEntry_Inval
         &count);
 
     EXPECT_EQ(status, SAI_STATUS_FAILURE);
+}
+
+TEST_F(VirtualSwitchSaiInterfaceTest, initFdbEventHandling)
+{
+    // Verify the wake functor is forwarded to all switch instances.
+    // For the base (non-platform) SwitchStateBase the virtual is a no-op, so the
+    // functor is never called — but the call chain itself must not crash.
+    bool called = false;
+    m_vssai->initFdbEventHandling([&called]() { called = true; });
+
+    // Base SwitchStateBase does NOT invoke the functor — calling it is a no-op.
+    EXPECT_FALSE(called);
+
+    // deinitFdbEventHandling must also be safe to call after init.
+    EXPECT_NO_FATAL_FAILURE(m_vssai->deinitFdbEventHandling());
 }

@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <functional>
 
 namespace saivs
 {
@@ -101,6 +102,13 @@ namespace saivs
                     _Inout_ sai_attribute_t **attr_list,
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
+
+        public: // QUAD meta key
+
+            using SaiInterface::remove;
+            using SaiInterface::get;
+            using SaiInterface::create;
+            using SaiInterface::set;
 
         public: // stats API
 
@@ -317,6 +325,11 @@ namespace saivs
 
             void ageFdbs();
 
+            // Set the wake function used to signal the FDB
+            // aging thread immediately on MAC events.
+            void initFdbEventHandling(std::function<void()> fn);
+            void deinitFdbEventHandling();
+
             void debugSetStats(
                     _In_ sai_object_id_t oid,
                     _In_ const std::map<sai_stat_id_t, uint64_t>& stats);
@@ -340,5 +353,7 @@ namespace saivs
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
 
             SwitchStateBase::SwitchStateMap m_switchStateMap;
+
+            std::function<void()> m_fdbEventFn;
     };
 }

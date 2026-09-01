@@ -15,10 +15,41 @@
 #include <netinet/in.h>
 
 #include "vppxlate/SaiVppXlate.h"
+#include "SwitchVppNexthop.h"
 
 using namespace saivs;
 
-sai_status_t SwitchVpp::addRemoveIpNbr(
+void create_route_prefix_entry(sai_route_entry_t *route_entry, vpp_ip_route_t *ip_route);
+void create_vpp_nexthop_entry(nexthop_grp_member_t *nxt_grp_member, const char *hwif_name,
+        vpp_nexthop_type_e type, vpp_ip_nexthop_t *vpp_nexthop);
+
+#define CHECK_STATUS_QUIET(status) {                        \
+    sai_status_t _status = (status);                        \
+    if (_status != SAI_STATUS_SUCCESS) { return _status; } }
+
+static sai_ip_prefix_t make_neighbor_host_prefix(const sai_ip_address_t &addr)
+{
+    SWSS_LOG_ENTER();
+
+    sai_ip_prefix_t prefix;
+
+    prefix.addr_family = addr.addr_family;
+    prefix.addr = addr.addr;
+
+    if (addr.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        memset(&prefix.mask.ip4, 0xFF, sizeof(prefix.mask.ip4));
+    }
+    else
+    {
+        memset(prefix.mask.ip6, 0xFF, sizeof(prefix.mask.ip6));
+    }
+
+    return prefix;
+}
+
+static bool neighbor_no_host_route(
+        SwitchVpp *switch_db,
         _In_ const std::string &serializedObjectId,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list,
@@ -27,115 +58,259 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
     SWSS_LOG_ENTER();
 
     sai_attribute_t attr;
+    attr.id = SAI_NEIGHBOR_ENTRY_ATTR_NO_HOST_ROUTE;
+
+    if (is_add && attr_count > 0)
+    {
+        SaiCachedObject nbr_obj(switch_db, SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, attr_count, attr_list);
+
+        if (nbr_obj.get_attr(attr) == SAI_STATUS_SUCCESS)
+        {
+            return attr.value.booldata;
+        }
+    }
+    else if (!is_add)
+    {
+        auto nbr_obj = switch_db->get_sai_object(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId);
+
+        if (nbr_obj != nullptr && nbr_obj->get_attr(attr) == SAI_STATUS_SUCCESS)
+        {
+            return attr.value.booldata;
+        }
+    }
+
+    return false;
+}
+
+sai_status_t SwitchVpp::addRemoveIpNbr(
+        _In_ const std::string &serializedObjectId,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ bool is_add,
+        _In_ bool program_adjacency,
+        _In_ bool program_host_route)
+{
+    SWSS_LOG_ENTER();
+
+    if (program_adjacency == false && program_host_route == false)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    sai_attribute_t attr;
     sai_neighbor_entry_t nbr_entry;
 
     sai_deserialize_neighbor_entry(serializedObjectId, nbr_entry);
 
-    attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-
-    CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
-
-    if (objectTypeQuery(attr.value.oid) != SAI_OBJECT_TYPE_PORT)
-    {
-        return SAI_STATUS_SUCCESS;
-    }
-    auto port_oid = attr.value.oid;
-
     attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
-
     CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
-    if (attr.value.s32 != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT &&
-        attr.value.s32 != SAI_ROUTER_INTERFACE_TYPE_PORT)
-    {
-        SWSS_LOG_NOTICE("Skipping neighbor add for attr type %d", attr.value.s32);
 
-        return SAI_STATUS_SUCCESS;
-    }
+    int32_t rif_type = attr.value.s32;
 
-    uint16_t vlan_id = 0;
-    if (attr.value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+    std::string hwif_name;
+
+    // SONiC owns the neighbor lifecycle for a VLAN/BVI RIF, so program a static
+    // adjacency that VPP will not age out while the host is quiet. PORT/LAG
+    // neighbors keep their existing dynamic behavior.
+    bool is_static = (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN);
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN)
     {
-        attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
 
         CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
-        vlan_id = attr.value.u16;
+
+        sai_object_id_t vlan_oid = attr.value.oid;
+
+        if (objectTypeQuery(vlan_oid) != SAI_OBJECT_TYPE_VLAN)
+        {
+            SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_VLAN_ID=%s is not a VLAN object",
+                           sai_serialize_object_id(vlan_oid).c_str());
+            return SAI_STATUS_FAILURE;
+        }
+
+        attr.id = SAI_VLAN_ATTR_VLAN_ID;
+        CHECK_STATUS(get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &attr));
+        uint16_t vlan_id = attr.value.u16;
+
+        if (vlan_id == 0)
+        {
+            SWSS_LOG_ERROR("unable to resolve VLAN id for router interface %s",
+                           sai_serialize_object_id(nbr_entry.rif_id).c_str());
+            return SAI_STATUS_FAILURE;
+        }
+
+        hwif_name = std::string("bvi") + std::to_string(vlan_id);
+    }
+    else if (rif_type == SAI_ROUTER_INTERFACE_TYPE_PORT ||
+             rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+    {
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+
+        CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
+
+        auto port_obj_type = objectTypeQuery(attr.value.oid);
+        if (port_obj_type != SAI_OBJECT_TYPE_PORT && port_obj_type != SAI_OBJECT_TYPE_LAG)
+        {
+            return SAI_STATUS_SUCCESS;
+        }
+        auto port_oid = attr.value.oid;
+
+        uint16_t vlan_id = 0;
+        if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+        {
+            attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+
+            CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
+            vlan_id = attr.value.u16;
+        }
+
+        if (vpp_get_hwif_name(port_oid, vlan_id, hwif_name) == false)
+        {
+            SWSS_LOG_ERROR("hw interface for port/lag id %s not found", serializedObjectId.c_str());
+            return SAI_STATUS_FAILURE;
+        }
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("Skipping neighbor VPP programming for RIF type %d", rif_type);
+        return SAI_STATUS_SUCCESS;
     }
 
-    sai_mac_t nbr_mac;
-    bool no_mac = true;
-
-    if (is_add)
+    if (program_host_route)
     {
-        for (uint32_t i = 0; i < attr_count; i++)
+        if (neighbor_no_host_route(this, serializedObjectId, attr_count, attr_list, is_add))
         {
-            switch (attr_list[i].id)
-            {
-            case SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS:
-                memcpy(nbr_mac, attr_list[i].value.mac, sizeof(sai_mac_t));
-                no_mac = false;
-                break;
+            return SAI_STATUS_SUCCESS;
+        }
 
-            default:
-                break;
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+        CHECK_STATUS_QUIET(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
+
+        sai_object_id_t vr_id = attr.value.oid;
+
+        std::shared_ptr<IpVrfInfo> vrf = vpp_get_ip_vrf(vr_id);
+        uint32_t vrf_id = (vrf == nullptr) ? 0 : vrf->m_vrf_id;
+
+        sai_route_entry_t route_entry;
+        route_entry.switch_id = nbr_entry.switch_id;
+        route_entry.vr_id = vr_id;
+        route_entry.destination = make_neighbor_host_prefix(nbr_entry.ip_address);
+
+        vpp_ip_route_t *ip_route = (vpp_ip_route_t *)
+            calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
+
+        if (!ip_route)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+
+        create_route_prefix_entry(&route_entry, ip_route);
+        ip_route->vrf_id = vrf_id;
+        // The neighbor host route (<ip>/32 or /128 via the BVI) can share its VPP
+        // FIB prefix with a dual-ToR tunnel-encap route that MuxOrch installs for the
+        // same server IP. VPP's ip_route_add_del() deletes the ENTIRE prefix (all
+        // paths) when is_multipath=0 on remove, so removing the neighbor with
+        // is_multipath=false clobbers a coexisting tunnel route.
+        // MuxOrch always adds the new contributor before removing the old one, so:
+        //   add    -> is_multipath=false: authoritatively (re)install this single
+        //             attached path, replacing whatever occupied the prefix.
+        //   remove -> is_multipath=true : retract only the neighbor's own path; if a
+        //             tunnel route has already replaced it the remove is a harmless
+        //             no-op, so the tunnel route is preserved.
+        ip_route->is_multipath = !is_add;
+        ip_route->nexthop_cnt = 1;
+
+        nexthop_grp_member_t member;
+        memset(&member, 0, sizeof(member));
+        member.addr = nbr_entry.ip_address;
+        member.rif_oid = nbr_entry.rif_id;
+        member.weight = 1;
+        // Force ip_route_add_del() to resolve the egress interface from hwif_name.
+        // sw_if_index 0 is VPP's local0: leaving it 0 (from memset) makes the host
+        // route's path point at local0 and the packet is dropped, even though the
+        // neighbor adjacency over the real interface exists. ~0 selects the
+        // hwif_name lookup branch (same convention as fillNHGrpMember()).
+        member.sw_if_index = (uint32_t) ~0;
+
+        create_vpp_nexthop_entry(&member, hwif_name.c_str(), VPP_NEXTHOP_NORMAL, &ip_route->nexthop[0]);
+
+        init_vpp_client();
+        int ret = ip_route_add_del(ip_route, is_add);
+
+        SWSS_LOG_NOTICE("%s neighbor host route %s status %d vrf %u hwif %s",
+                        (is_add ? "Add" : "Remove"), serializedObjectId.c_str(), ret, vrf_id, hwif_name.c_str());
+
+        free(ip_route);
+
+        if (ret != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    if (program_adjacency)
+    {
+        sai_mac_t nbr_mac;
+        bool no_mac = true;
+
+        if (is_add)
+        {
+            for (uint32_t i = 0; i < attr_count; i++)
+            {
+                switch (attr_list[i].id)
+                {
+                case SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS:
+                    memcpy(nbr_mac, attr_list[i].value.mac, sizeof(sai_mac_t));
+                    no_mac = false;
+                    break;
+
+                default:
+                    break;
+                }
             }
         }
-    } else {
-        attr.id = SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS;
+        else
+        {
+            attr.id = SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS;
 
-        if (get(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, 1, &attr) == SAI_STATUS_SUCCESS) {
-            memcpy(nbr_mac, attr.value.mac, sizeof(sai_mac_t));
-            no_mac = false;
+            if (get(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, 1, &attr) == SAI_STATUS_SUCCESS)
+            {
+                memcpy(nbr_mac, attr.value.mac, sizeof(sai_mac_t));
+                no_mac = false;
+            }
         }
-    }
 
-    if (no_mac == true)
-    {
-        SWSS_LOG_ERROR("No mac address passed for neighbor %s", serializedObjectId.c_str());
-        return SAI_STATUS_FAILURE;
-    }
+        if (no_mac == true)
+        {
+            SWSS_LOG_ERROR("No mac address passed for neighbor %s", serializedObjectId.c_str());
+            return SAI_STATUS_FAILURE;
+        }
 
-    std::string if_name;
-    bool found = getTapNameFromPortId(port_oid, if_name);
-    if (found == false)
-    {
-        SWSS_LOG_ERROR("host interface for port id %s not found", serializedObjectId.c_str());
-        return SAI_STATUS_FAILURE;
-    }
+        const char *vpp_ifname = hwif_name.c_str();
+        init_vpp_client();
 
-    const char *hwif_name = tap_to_hwif_name(if_name.c_str());
-    const char *vpp_ifname;
-    char subifname[32];
+        switch (nbr_entry.ip_address.addr_family) {
+        case SAI_IP_ADDR_FAMILY_IPV4:
+            struct sockaddr_in sin;
 
-    if (vlan_id)
-    {
-        snprintf(subifname, sizeof(subifname), "%s.%u", hwif_name, vlan_id);
+            sin.sin_family = AF_INET;
+            sin.sin_addr.s_addr = nbr_entry.ip_address.addr.ip4;
 
-        vpp_ifname = subifname;
-    } else {
-        vpp_ifname = hwif_name;
-    }
-    init_vpp_client();
+            ip4_nbr_add_del(vpp_ifname, ~0, &sin, is_static, false, nbr_mac, is_add);
 
-    switch (nbr_entry.ip_address.addr_family) {
-    case SAI_IP_ADDR_FAMILY_IPV4:
-        struct sockaddr_in sin;
+            break;
 
-        sin.sin_family = AF_INET;
-        sin.sin_addr.s_addr = nbr_entry.ip_address.addr.ip4;
+        case SAI_IP_ADDR_FAMILY_IPV6:
+            struct sockaddr_in6 sin6;
 
-        ip4_nbr_add_del(vpp_ifname, ~0, &sin, false, false, nbr_mac, is_add);
+            sin6.sin6_family = AF_INET6;
+            memcpy(sin6.sin6_addr.s6_addr, nbr_entry.ip_address.addr.ip6, sizeof(sin6.sin6_addr.s6_addr));
 
-        break;
+            ip6_nbr_add_del(vpp_ifname, ~0, &sin6, is_static, false, nbr_mac, is_add);
 
-    case SAI_IP_ADDR_FAMILY_IPV6:
-        struct sockaddr_in6 sin6;
-
-        sin6.sin6_family = AF_INET6;
-        memcpy(sin6.sin6_addr.s6_addr, nbr_entry.ip_address.addr.ip6, sizeof(sin6.sin6_addr.s6_addr));
-
-        ip6_nbr_add_del(vpp_ifname, ~0, &sin6, false, false, nbr_mac, is_add);
-
-        break;
+            break;
+        }
     }
 
     return SAI_STATUS_SUCCESS;
@@ -150,8 +325,8 @@ bool SwitchVpp::is_ip_nbr_active()
         const char *val;
 
         val = getenv("NO_LINUX_NL");
-        if (val && (*val == 'y' || *val == 'Y')) {
-            nbr_active = true;
+        if (val && (*val == 'n' || *val == 'N')) {
+            nbr_active = false;
         }
         nbr_env_read = true;
     }
@@ -168,10 +343,14 @@ sai_status_t SwitchVpp::addIpNbr(
 
     if (is_ip_nbr_active() == true) {
         SWSS_LOG_NOTICE("Add neighbor in VS %s", serializedObjectId.c_str());
-        addRemoveIpNbr(serializedObjectId, attr_count, attr_list, true);
+        CHECK_STATUS(addRemoveIpNbr(serializedObjectId, attr_count, attr_list, true, true, false));
     }
 
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, switch_id, attr_count, attr_list));
+
+    if (is_ip_nbr_active() == true) {
+        CHECK_STATUS(addRemoveIpNbr(serializedObjectId, attr_count, attr_list, true, false, true));
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -183,7 +362,8 @@ sai_status_t SwitchVpp::removeIpNbr(
 
     if (is_ip_nbr_active() == true) {
         SWSS_LOG_NOTICE("Remove neighbor in VS %s", serializedObjectId.c_str());
-        addRemoveIpNbr(serializedObjectId, 0, NULL, false);
+        CHECK_STATUS(addRemoveIpNbr(serializedObjectId, 0, NULL, false, false, true));
+        CHECK_STATUS(addRemoveIpNbr(serializedObjectId, 0, NULL, false, true, false));
     }
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId));

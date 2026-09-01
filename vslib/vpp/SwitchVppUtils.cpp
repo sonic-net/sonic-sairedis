@@ -188,3 +188,16 @@ void saivs::vpp_ip_addr_t_to_sai_ip_address_t(vpp_ip_addr_t& src, sai_ip_address
                 sizeof(sin6->sin6_addr.s6_addr));
     }
 }
+
+bool saivs::sai_ip_address_equal(const sai_ip_address_t &a, const sai_ip_address_t &b)
+{
+    SWSS_LOG_ENTER();
+
+    if (a.addr_family != b.addr_family) {
+        return false;
+    }
+    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
+        return a.addr.ip4 == b.addr.ip4;
+    }
+    return memcmp(a.addr.ip6, b.addr.ip6, sizeof(a.addr.ip6)) == 0;
+}

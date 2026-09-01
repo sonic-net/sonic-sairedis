@@ -76,6 +76,8 @@ sai_ip_prefix_t* sai_ip_prefix_t_from_string(const std::string& s);
 %pointer_functions(sai_ha_set_event_data_t, sai_ha_set_event_data_t_p);
 %array_functions(sai_ha_scope_event_data_t, sai_ha_scope_event_data_t_arr);
 %pointer_functions(sai_ha_scope_event_data_t, sai_ha_scope_event_data_t_p);
+%array_functions(sai_flow_bulk_get_session_event_data_t, sai_flow_bulk_get_session_event_data_t_arr);
+%pointer_functions(sai_flow_bulk_get_session_event_data_t, sai_flow_bulk_get_session_event_data_t_p);
 %array_functions(sai_fdb_event_notification_data_t, sai_fdb_event_notification_data_t_arr);
 %pointer_functions(sai_fdb_event_notification_data_t, sai_fdb_event_notification_data_t_p);
 %array_functions(sai_port_oper_status_notification_t, sai_port_oper_status_notification_t_arr);
@@ -94,6 +96,8 @@ PyObject *py_convert_sai_ha_set_event_data_t_to_PyObject(const sai_ha_set_event_
 { return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_ha_set_event_data_t, 0 | 0); }
 PyObject *py_convert_sai_ha_scope_event_data_t_to_PyObject(const sai_ha_scope_event_data_t*ntf)
 { return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_ha_scope_event_data_t, 0 | 0); }
+PyObject *py_convert_sai_flow_bulk_get_session_event_data_t_to_PyObject(const sai_flow_bulk_get_session_event_data_t*ntf)
+{ return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_flow_bulk_get_session_event_data_t, 0 | 0); }
 PyObject *py_convert_sai_port_oper_status_notification_t_to_PyObject(const sai_port_oper_status_notification_t*ntf)
 { return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_port_oper_status_notification_t, 0 | 0); }
 PyObject *py_convert_sai_queue_deadlock_notification_data_t_to_PyObject(const sai_queue_deadlock_notification_data_t*ntf)

@@ -33,6 +33,8 @@ libSaiVS_a_SOURCES = \
 					  LaneMapContainer.cpp \
 					  LaneMap.cpp \
 					  LaneMapFileParser.cpp \
+					  PortConfigMap.cpp \
+					  PortConfigFileParser.cpp \
 					  MACsecAttr.cpp \
 					  MACsecFilterStateGuard.cpp \
 					  MACsecEgressFilter.cpp \
@@ -60,6 +62,7 @@ libSaiVS_a_SOURCES = \
 					  SwitchContainer.cpp \
 					  Switch.cpp \
 					  SwitchMLNX2700.cpp \
+					  SwitchNokiaVS.cpp \
 					  SwitchNvdaMBF2H536C.cpp \
 					  SwitchStateBase.cpp \
 					  SwitchStateBaseFdb.cpp \
@@ -74,6 +77,7 @@ libSaiVS_a_SOURCES = \
 
 if USE_VPP
 libSaiVS_a_SOURCES +=\
+					  vpp/CRMTracker.cpp \
 					  vpp/SaiObjectDB.cpp \
 					  vpp/SwitchVpp.cpp \
 					  vpp/SwitchVppAcl.cpp \
@@ -86,11 +90,16 @@ libSaiVS_a_SOURCES +=\
 					  vpp/SwitchVppRoute.cpp \
 					  vpp/SwitchVppNbr.cpp \
 					  vpp/SwitchVppSRv6.cpp \
+					  vpp/SwitchVppMirror.cpp \
+					  vpp/SwitchVppSflow.cpp \
+					  vpp/SwitchVppMpls.cpp \
 					  vpp/TunnelManager.cpp \
+					  vpp/SaiVppLog.cpp \
 					  vpp/vppxlate/SaiVppXlate.c \
 					  vpp/vppxlate/SaiVppStats.c \
 					  vpp/vppxlate/SaiAclStats.c \
-					  vpp/vppxlate/SaiIntfStats.c
+					  vpp/vppxlate/SaiIntfStats.c \
+					  vpp/vppxlate/SaiRouteStats.c
 endif
 
 BUILT_SOURCES = sai_vs.cpp
@@ -108,12 +117,12 @@ libSaiVS_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVER
 
 libsaivs_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaivs_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libsaivs_la_LIBADD = -lhiredis -lswsscommon libSaiVS.a $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
+libsaivs_la_LIBADD = libSaiVS.a $(top_srcdir)/meta/libsaimetadata.la $(top_srcdir)/meta/libsaimeta.la $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 bin_PROGRAMS = tests
 
 tests_SOURCES = tests.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread libsaivs.la -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(VPP_LIBS)
+tests_LDADD = -lhiredis -lswsscommon -lpthread libsaivs.la $(top_srcdir)/meta/libsaimetadata.la $(top_srcdir)/meta/libsaimeta.la -lzmq $(VPP_LIBS)
 
 TESTS = tests

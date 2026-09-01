@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include <memory>
+#include <cstring>
 
 using namespace sairedis;
 
@@ -128,5 +129,21 @@ TEST(NotificationFactory, deserialize_macsec_post_status)
     auto str = sai_serialize_macsec_post_status_ntf(0x2100000000, SAI_MACSEC_POST_STATUS_PASS);
     auto ntf = NotificationFactory::deserialize(SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS, str);
     EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_MACSEC_POST_STATUS);
+    EXPECT_EQ(str, ntf->getSerializedNotification());
+}
+
+TEST(NotificationFactory, deserialize_flow_bulk_get_session_event)
+{
+    sai_object_id_t flow_bulk_session_id = 0x123456789abcdef;
+    uint32_t count = 1;
+    sai_flow_bulk_get_session_event_data_t event_data[1];
+    event_data[0].event_type = SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED;
+    event_data[0].attr_count = 0;
+    event_data[0].attr = nullptr;
+    memset(&event_data[0].flow_entry, 0, sizeof(event_data[0].flow_entry));
+
+    auto str = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, count, event_data);
+    auto ntf = NotificationFactory::deserialize(SAI_SWITCH_NOTIFICATION_NAME_FLOW_BULK_GET_SESSION_EVENT, str);
+    EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_FLOW_BULK_GET_SESSION_EVENT);
     EXPECT_EQ(str, ntf->getSerializedNotification());
 }

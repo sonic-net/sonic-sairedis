@@ -2057,3 +2057,182 @@ TEST(Meta, meta_validation_post_create_remove_uint16_range)
     // Verify the object was removed
     EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m.remove(SAI_OBJECT_TYPE_ACL_RANGE, acl_range_id));
 }
+
+TEST(Meta, meta_validation_uint64_range_list)
+{
+    SWSS_LOG_ENTER();
+
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switch_id = 0;
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    // Create TAM_INT object with all mandatory attributes + UINT64_RANGE_LIST
+    // TYPE must be CSIG_COMPACT or CSIG_WIDE for QUANT_BAND_UINT64_RANGE_LIST validonly.
+    // INT_PRESENCE_TYPE = PB requires PB1 and PB2 as conditional mandatory attrs.
+    std::vector<sai_attribute_t> tam_int_attrs;
+
+    attr.id = SAI_TAM_INT_ATTR_TYPE;
+    attr.value.s32 = SAI_TAM_INT_TYPE_CSIG_COMPACT;
+    tam_int_attrs.push_back(attr);
+
+    attr.id = SAI_TAM_INT_ATTR_DEVICE_ID;
+    attr.value.u32 = 1;
+    tam_int_attrs.push_back(attr);
+
+    attr.id = SAI_TAM_INT_ATTR_INT_PRESENCE_TYPE;
+    attr.value.s32 = SAI_TAM_INT_PRESENCE_TYPE_PB;
+    tam_int_attrs.push_back(attr);
+
+    attr.id = SAI_TAM_INT_ATTR_INT_PRESENCE_PB1;
+    attr.value.u32 = 0;
+    tam_int_attrs.push_back(attr);
+
+    attr.id = SAI_TAM_INT_ATTR_INT_PRESENCE_PB2;
+    attr.value.u32 = 0;
+    tam_int_attrs.push_back(attr);
+
+    attr.id = SAI_TAM_INT_ATTR_INLINE;
+    attr.value.booldata = true;
+    tam_int_attrs.push_back(attr);
+
+    // Add UINT64_RANGE_LIST (CREATE_AND_SET, validonly for CSIG types)
+    sai_u64_range_t ranges[] = {{100, 200}, {300, 400}};
+    attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+    attr.value.u64rangelist.count = 2;
+    attr.value.u64rangelist.list = ranges;
+    tam_int_attrs.push_back(attr);
+
+    sai_object_id_t tam_int_id;
+    // Create exercises meta_generic_validation_create (UINT64_RANGE_LIST path)
+    // and meta_generic_validation_post_create
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_TAM_INT, &tam_int_id, switch_id,
+        (uint32_t)tam_int_attrs.size(), tam_int_attrs.data()));
+
+    // Add UINT64_RANGE_LIST (CREATE_AND_SET, invalid ranges)
+    sai_u64_range_t ranges_inv[] = {{200, 100}, {400, 500}};
+    attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+    attr.value.u64rangelist.count = 2;
+    attr.value.u64rangelist.list = ranges_inv;
+    tam_int_attrs.push_back(attr);
+
+    // Create exercises meta_generic_validation_create (invalid parameter check)
+    // and meta_generic_validation_post_create
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.create(SAI_OBJECT_TYPE_TAM_INT, &tam_int_id, switch_id,
+        (uint32_t)tam_int_attrs.size(), tam_int_attrs.data()));
+
+    // Set exercises meta_generic_validation_set (UINT64_RANGE_LIST path)
+    sai_attribute_t set_attr;
+    sai_u64_range_t new_ranges[] = {{500, 600}};
+    set_attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+    set_attr.value.u64rangelist.count = 1;
+    set_attr.value.u64rangelist.list = new_ranges;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(SAI_OBJECT_TYPE_TAM_INT, tam_int_id, &set_attr));
+
+    // Set exercises meta_generic_validation_set (invalid ranges)
+    sai_attribute_t set_attr_inv;
+    sai_u64_range_t new_ranges_inv[] = {{600, 100}};
+    set_attr_inv.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+    set_attr_inv.value.u64rangelist.count = 1;
+    set_attr_inv.value.u64rangelist.list = new_ranges_inv;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.set(SAI_OBJECT_TYPE_TAM_INT, tam_int_id, &set_attr_inv));
+
+    // Get exercises meta_generic_validation_get (UINT64_RANGE_LIST path)
+    // and meta_generic_validation_post_get
+    sai_u64_range_t get_ranges[2];
+    sai_attribute_t get_attr;
+    get_attr.id = SAI_TAM_INT_ATTR_QUANT_BAND_UINT64_RANGE_LIST;
+    get_attr.value.u64rangelist.count = 2;
+    get_attr.value.u64rangelist.list = get_ranges;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(SAI_OBJECT_TYPE_TAM_INT, tam_int_id, 1, &get_attr));
+
+    // Remove exercises meta_generic_validation_post_remove (UINT64_RANGE_LIST path)
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(SAI_OBJECT_TYPE_TAM_INT, tam_int_id));
+}
+
+TEST(Meta, meta_sai_on_port_state_change_snoop)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    // Port OID not in local DB — hits the snoop path (SWSS_LOG_INFO)
+    sai_port_oper_status_notification_t data;
+    data.port_id = 0x100000000001a; // encodes as SAI_OBJECT_TYPE_PORT
+    data.port_state = SAI_PORT_OPER_STATUS_UP;
+
+    m.meta_sai_on_port_state_change(1, &data);
+
+    // SAI_NULL_OBJECT_ID — hits the invalid type error path
+    data.port_id = SAI_NULL_OBJECT_ID;
+    m.meta_sai_on_port_state_change(1, &data);
+
+    // Port that IS in the DB — should NOT hit the snoop path
+    sai_object_id_t portId = create_port(m, switchId);
+    data.port_id = portId;
+    data.port_state = SAI_PORT_OPER_STATUS_UP;
+    m.meta_sai_on_port_state_change(1, &data);
+
+    // count > 0 with NULL data pointer — hits the NULL guard
+    m.meta_sai_on_port_state_change(1, nullptr);
+
+    // count == 0 — no-op
+    m.meta_sai_on_port_state_change(0, nullptr);
+}
+
+TEST(Meta, meta_sai_on_port_host_tx_ready_change_snoop)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    // Port OID not in local DB — hits the snoop path (SWSS_LOG_INFO)
+    m.meta_sai_on_port_host_tx_ready_change(
+            0x100000000001a, // encodes as SAI_OBJECT_TYPE_PORT, not in local DB
+            switchId,
+            SAI_PORT_HOST_TX_READY_STATUS_READY);
+
+    // SAI_NULL_OBJECT_ID — hits the unexpected type error path
+    m.meta_sai_on_port_host_tx_ready_change(
+            SAI_NULL_OBJECT_ID,
+            switchId,
+            SAI_PORT_HOST_TX_READY_STATUS_READY);
+
+    // Invalid enum value — early return, drops notification
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+    m.meta_sai_on_port_host_tx_ready_change(
+            0x100000000001a,
+            switchId,
+            (sai_port_host_tx_ready_status_t)9999);
+#pragma GCC diagnostic pop
+
+    // Port that IS in the DB — should NOT hit the snoop path
+    sai_object_id_t portId = create_port(m, switchId);
+    m.meta_sai_on_port_host_tx_ready_change(
+            portId,
+            switchId,
+            SAI_PORT_HOST_TX_READY_STATUS_NOT_READY);
+}

@@ -6,6 +6,7 @@ extern "C"{
 
 #include "NotificationQueue.h"
 #include "NotificationProcessor.h"
+#include "FlowDump.h"
 
 #include "swss/table.h"
 
@@ -102,6 +103,11 @@ namespace syncd
                     _In_ uint32_t count,
                     _In_ const sai_ha_scope_event_data_t *data);
 
+            void onFlowBulkGetSessionEvent(
+                    _In_ sai_object_id_t flow_bulk_session_id,
+                    _In_ uint32_t count,
+                    _In_ const sai_flow_bulk_get_session_event_data_t *data);
+
             void onSwitchMacsecPostStatus(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_switch_macsec_post_status_t switch_macsec_post_status);
@@ -120,6 +126,11 @@ namespace syncd
             void enqueueNotification(
                     _In_ const std::string& op,
                     _In_ const std::string& data);
+
+            void enqueueNotification(
+                    _In_ const std::string& op,
+                    _In_ const std::string& data,
+                    _In_ FlowDumpDataPtr auxiliary_data);
 
         private:
 

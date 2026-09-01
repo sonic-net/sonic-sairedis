@@ -2,8 +2,9 @@
 
 #include "NotificationQueue.h"
 #include "VirtualOidTranslator.h"
-#include "RedisClient.h"
+#include "BaseRedisClient.h"
 #include "NotificationProducerBase.h"
+#include "FlowDump.h"
 
 #include "swss/notificationproducer.h"
 
@@ -20,8 +21,9 @@ namespace syncd
 
             NotificationProcessor(
                     _In_ std::shared_ptr<NotificationProducerBase> producer,
-                    _In_ std::shared_ptr<RedisClient> client,
-                    _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer);
+                    _In_ std::shared_ptr<BaseRedisClient> client,
+                    _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer,
+                    _In_ std::function<bool(sai_object_id_t, sai_port_oper_status_t)> linkEventDampingApplier = nullptr);
 
             virtual ~NotificationProcessor();
 
@@ -153,6 +155,10 @@ namespace syncd
             void handle_ha_scope_event(
                     _In_ const std::string &data);
 
+            void handle_flow_bulk_get_session_event(
+                    _In_ const std::string &data,
+                    _In_ FlowDumpDataPtr auxiliary_data = nullptr);
+
             void handle_switch_asic_sdk_health_event(
                     _In_ const std::string &data);
 
@@ -176,6 +182,9 @@ namespace syncd
 
             void processNotification(
                     _In_ const swss::KeyOpFieldsValuesTuple& item);
+
+            void processNotification(
+                    _In_ const NotificationItem& item);
 
         public:
 
@@ -203,7 +212,13 @@ namespace syncd
 
             std::function<void(const swss::KeyOpFieldsValuesTuple&)> m_synchronizer;
 
-            std::shared_ptr<RedisClient> m_client;
+            /**
+             * @brief Callback function to apply link event damping to port state changes
+             * Returns true if notification should be suppressed, false if it should be propagated
+             */
+            std::function<bool(sai_object_id_t, sai_port_oper_status_t)> m_linkEventDampingApplier;
+
+            std::shared_ptr<BaseRedisClient> m_client;
 
             std::shared_ptr<NotificationProducerBase> m_notifications;
     };
