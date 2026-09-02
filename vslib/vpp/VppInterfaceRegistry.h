@@ -3,6 +3,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "VppInterface.h"
@@ -14,10 +15,19 @@ namespace saivs
      *
      * Every field that is also a lookup key lives in one place, and every
      * mutation updates all affected indexes in the same step. That invariant is
-     * the entire reason this class exists: today the same facts are spread over
-     * seven maps (m_osif_to_hwif_map, m_hwif_to_osif_map, m_ifname_to_port_id_map,
-     * m_port_id_to_tapname, m_lag_bond_map, m_swif_to_bdid, m_swif_to_port_id)
-     * whose lifetimes are only loosely related to each other.
+     * the entire reason this class exists: the same facts used to be spread over
+     * several side maps (m_lag_bond_map, m_swif_to_bdid, m_swif_to_port_id, and
+     * the tap/name maps) whose lifetimes were only loosely related to each other,
+     * so a teardown that missed one left the others answering with stale data.
+     *
+     * What deliberately stays outside: the SAI object hashes. The registry
+     * knows names and oids, not attributes.
+     *
+     * The osif->hwif mapping parsed from sonic_vpp_ifmap.ini lives here too,
+     * even though it is a seed read from a file rather than derived state,
+     * because it is the only remaining way to answer "what is the VPP name of
+     * this netdev" and splitting name resolution across two owners is what
+     * this class exists to stop.
      *
      * Threading: this class takes NO lock of its own. It lives under the
      * existing recursive m_apimutex held by the main/command thread and by the
@@ -60,12 +70,13 @@ namespace saivs
              *
              * NO tap name is taken. A physical port exists and is routable
              * whether or not SAI ever creates a hostif for it -- the lane based
-             * lookup in vpp_get_hwif_name() never touches a tap -- so seeding
-             * one would make findByTap() answer for taps that do not exist.
+             * lookup in vppGetHwIfNameForPort() never touches a tap -- so
+             * seeding one would make findByTap() answer for taps that do not
+             * exist.
              */
             std::shared_ptr<VppPhysicalPort> addPhysicalPort(
                     _In_ const std::string& hwifName,
-                    _In_ const std::string& sonicName,
+                    _In_ const std::string& osIf,
                     _In_ sai_object_id_t oid);
 
             /*
@@ -95,8 +106,14 @@ namespace saivs
                     _In_ uint32_t subId,
                     _In_ uint16_t vlanId);
 
+            /*
+             * The VLAN oid is recorded so that a BVI can be resolved straight
+             * from SAI_ROUTER_INTERFACE_ATTR_VLAN_ID without a SAI attribute
+             * read to turn the oid back into a vlan id.
+             */
             std::shared_ptr<VppVlanInterface> addBvi(
-                    _In_ uint16_t vlanId);
+                    _In_ uint16_t vlanId,
+                    _In_ sai_object_id_t vlanOid);
 
             std::shared_ptr<VppTunnelInterface> addTunnel(
                     _In_ const std::string& hwifName,
@@ -137,9 +154,9 @@ namespace saivs
                     _In_ const std::string& hwifName);
 
             /*
-             * PORT or LAG object id only; anything else is rejected.
+             * PORT, LAG or VLAN object id only; anything else is rejected.
              *
-             * Both kinds now supply their oid at registration, so this exists
+             * All three kinds supply their oid at registration, so this exists
              * for the rare re-bind rather than as a required second step.
              */
             bool setOid(
@@ -183,8 +200,8 @@ namespace saivs
              * available for a registered interface, so this is what the lane
              * based port lookup and any config driven path should use.
              */
-            std::shared_ptr<VppInterface> findBySonicName(
-                    _In_ const std::string& sonicName) const;
+            std::shared_ptr<VppInterface> findByOsIf(
+                    _In_ const std::string& osIf) const;
 
             /*
              * Resolve a host netdev name. Answers only for interfaces that
@@ -205,14 +222,104 @@ namespace saivs
                     _In_ uint32_t subId) const;
 
             /*
-             * Resolve a sw_if_index reported by VPP to the PORT/LAG oid that
-             * SAI_BRIDGE_PORT_ATTR_PORT_ID would carry, walking from a
-             * sub-interface up to its parent. This is what the FDB learn/move
-             * path needs, and the reason a sub-interface is a stored record
-             * rather than a derived name.
+             * Resolve a sw_if_index reported by VPP to the oid of the interface
+             * it belongs to, walking from a sub-interface up to its parent.
+             * That walk is the reason a sub-interface is a stored record rather
+             * than a derived name.
+             *
+             * The oid is whatever the record carries: a PORT, a LAG or, for a
+             * BVI, a VLAN. SAI_NULL_OBJECT_ID when the index is unknown or the
+             * interface has no oid, as a tunnel or a bare sub-interface does
+             * not.
              */
-            sai_object_id_t resolvePortOid(
+            sai_object_id_t resolveIfOid(
                     _In_ uint32_t swIfIndex) const;
+
+            /*
+             * Host netdev (linux-cp tap) of a PORT or LAG: "Ethernet0" for a
+             * port, "be<N>" for a bond. Empty when the interface has no host
+             * representation yet -- a port before its hostif is created, a bond
+             * before vpp_ensure_lag_lcp() makes the be<N> pair. A miss means
+             * "no host netdev", not "unknown interface".
+             */
+            std::string resolveTapName(
+                    _In_ sai_object_id_t oid) const;
+
+            /*
+             * SONiC netdev of a PORT or LAG: "Ethernet0", "PortChannel<N>".
+             *
+             * Deliberately NOT resolveTapName(): a LAG has two host netdevs,
+             * the teamd-owned PortChannel<N> returned here and the linux-cp tap
+             * be<N> returned there. They coincide for a physical port. Use this
+             * one for anything keyed on the SONiC name -- `ip link show`, VRF
+             * enslavement, resolveHwIfByOsIf().
+             */
+            std::string resolveOsIf(
+                    _In_ sai_object_id_t oid) const;
+
+            /* Same, keyed on the VPP interface name. */
+            std::string resolveOsIfByHwif(
+                    _In_ const std::string& hwifName) const;
+
+            /*
+             * VPP interface name of a PORT, LAG or VLAN, with an optional
+             * .<vlanId> sub-interface suffix: "TenGigabitEthernet0/0/0",
+             * "BondEthernet1.100", "bvi1000". Empty on miss.
+             *
+             * A pure index lookup: it makes no SAI and no VPP call, so it
+             * cannot register anything it does not already know about. The one
+             * caller that has to cope with a port that has not been registered
+             * yet is SwitchVpp::vppGetHwIfNameForPort().
+             */
+            std::string resolveHwIfName(
+                    _In_ sai_object_id_t oid,
+                    _In_ uint32_t vlanId) const;
+
+            /*
+             * A LAG that is fully realised: registered, of LAG type and bound
+             * to a VPP sw_if_index. addLag() takes the bond id, the sw_if_index
+             * and the oid in one call, so those three are either all present or
+             * all absent. nullptr on miss.
+             *
+             * Callers reach the bond id and the LCP flag through asBond().
+             */
+            std::shared_ptr<VppInterface> findLag(
+                    _In_ sai_object_id_t oid) const;
+
+            /*
+             * Bond ids currently in use.
+             *
+             * find_new_bond_id() picks the one kernel PortChannel that no LAG
+             * has claimed yet, so it needs the set of already-allocated ids and
+             * nothing else. Returning ids rather than exposing an iterator over
+             * records keeps the indexes private.
+             *
+             * Note this cannot tell you the id OF a given PortChannel: a bond
+             * record's SONiC name is built FROM its id, so the mapping only runs
+             * that way. The kernel netdev name remains the sole source of a new
+             * id.
+             */
+            std::unordered_set<uint32_t> collectBondIds() const;
+
+            /*
+             * VPP interface name of a host OS interface name ("Ethernet0",
+             * "PortChannel1", "PortChannel1.100", "Vlan200"). The input is the
+             * SONiC-side netdev name as produced by resolveOsIf(); a bond LCP
+             * tap name ("be1") is deliberately not accepted. Empty on miss.
+             *
+             * Unlike every other resolver here this does NOT consult the
+             * records: it answers from sonic_vpp_ifmap.ini plus the naming
+             * rules, so it works before anything is registered. That is what
+             * makes it usable as the registry's own seed --
+             * getPortHwifNameFromLane() has to turn a port_config.ini name into
+             * a hwif name before addPhysicalPort() can make a record.
+             *
+             * The flip side is that it answers by RULE, not by existence: ask
+             * it about a PortChannel that was never created and it will still
+             * say "BondEthernet<N>".
+             */
+            std::string resolveHwIfByOsIf(
+                    _In_ const std::string& osIfName) const;
 
             size_t size() const
             {
@@ -232,6 +339,13 @@ namespace saivs
             std::vector<std::string> collectChildren(
                     _In_ const std::shared_ptr<VppInterface>& parent) const;
 
+            /*
+             * Parse sonic_vpp_ifmap.ini on first use. Retries on every call
+             * until the file can actually be opened: at switch create time the
+             * hwsku directory is not guaranteed to be there yet.
+             */
+            void loadIfMapping() const;
+
         private:
 
             /*
@@ -245,7 +359,7 @@ namespace saivs
             std::map<std::string, std::shared_ptr<VppInterface>> m_byHwif;
 
             /* SONiC facing name; populated at registration, never late bound */
-            std::map<std::string, std::shared_ptr<VppInterface>> m_bySonicName;
+            std::map<std::string, std::shared_ptr<VppInterface>> m_byOsIf;
 
             /* only records that CURRENTLY have a host tap */
             std::map<std::string, std::shared_ptr<VppInterface>> m_byTap;
@@ -255,5 +369,15 @@ namespace saivs
 
             /* only records whose sw_if_index has been resolved */
             std::map<uint32_t, std::shared_ptr<VppInterface>> m_bySwIfIndex;
+
+            /*
+             * Physical ports only, straight out of sonic_vpp_ifmap.ini; every
+             * logical interface is derived by rule instead. Mutable because it
+             * is a read-through cache of an immutable file, which does not make
+             * a lookup any less of an observer.
+             */
+            mutable std::map<std::string, std::string> m_osIfToHwIf;
+
+            mutable bool m_ifMapLoaded = false;
     };
 }

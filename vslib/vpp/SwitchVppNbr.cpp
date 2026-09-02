@@ -165,7 +165,9 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
             vlan_id = attr.value.u16;
         }
 
-        if (vpp_get_hwif_name(port_oid, vlan_id, hwif_name) == false)
+        hwif_name = m_ifaceRegistry.resolveHwIfName(port_oid, vlan_id);
+
+        if (hwif_name.empty())
         {
             SWSS_LOG_ERROR("hw interface for port/lag id %s not found", serializedObjectId.c_str());
             return SAI_STATUS_FAILURE;

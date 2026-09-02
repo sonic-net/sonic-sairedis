@@ -410,9 +410,9 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
 
     SWSS_LOG_NOTICE("created TAP device for %s, fd: %d", name.c_str(), tapfd);
     const char *dev = name.c_str();
-    const char *hwif_name = osif_name_to_hwif_name(dev);
+    const std::string hwif = m_ifaceRegistry.resolveHwIfByOsIf(name);
 
-    if (hwif_name == nullptr)
+    if (hwif.empty())
     {
         /*
          * Every use of hwif_name below either calls into VPP or formats it with
@@ -426,6 +426,8 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
 
         return SAI_STATUS_FAILURE;
     }
+
+    const char *hwif_name = hwif.c_str();
 
     configure_lcp_interface(hwif_name, dev, true);
     interface_set_promiscuous(hwif_name, true);
@@ -525,6 +527,13 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
         return SAI_STATUS_FAILURE;
     }
 
+    /*
+     * Write-only from the VPP backend's point of view: nothing under vslib/vpp/
+     * reads these two maps any more, every VPP lookup goes through
+     * m_ifaceRegistry instead. They are kept in step purely so the inherited
+     * SwitchState/SwitchStateBase paths that still consult them -- getPortStat()
+     * being the one VPP actually reaches -- see the same state they always did.
+     */
     setIfNameToPortId(name, obj_id);
     setPortIdToTapName(obj_id, name);
 
@@ -618,28 +627,15 @@ sai_status_t SwitchVpp::vs_remove_hostif_tap_interface(
     std::string name = std::string(attr.value.chardata);
 
     /*
-       auto it = m_hostif_info_map.find(name);
+     * Only needed to undo the compatibility writes in
+     * vs_create_hostif_tap_interface(). Resolved through the registry rather
+     * than getPortIdFromIfName(), and taken before clearTapName() below drops
+     * the tap index.
+     */
+    auto rec = m_ifaceRegistry.findByTap(name);
 
-       if (it == m_hostif_info_map.end())
-       {
-       SWSS_LOG_ERROR("failed to find host info entry for tap device: %s", name.c_str());
+    sai_object_id_t port_id = rec ? rec->getOid() : SAI_NULL_OBJECT_ID;
 
-       return SAI_STATUS_FAILURE;
-       }
-
-       SWSS_LOG_NOTICE("attempting to remove tap device: %s", name.c_str());
-
-       auto info = it->second; // destructor will stop threads
-       */
-    // remove host info entry from map
-
-    // m_hostif_info_map.erase(it);
-
-    // remove interface mapping
-
-    // std::string vname = vpp_get_veth_name(name, info->m_portId);
-
-    sai_object_id_t port_id = getPortIdFromIfName(name);
     auto it = m_hostif_info_map.find(name);
 
     if (it != m_hostif_info_map.end())
@@ -659,12 +655,12 @@ sai_status_t SwitchVpp::vs_remove_hostif_tap_interface(
      * test to avoid. Both calls are idempotent (vpp_normalize_ret tolerates
      * NO_SUCH_ENTRY on delete), so removing a partially-created hostif is safe.
      */
-    const char *hwif_name = osif_name_to_hwif_name(name.c_str());
+    const std::string hwif_name = m_ifaceRegistry.resolveHwIfByOsIf(name);
 
-    if (hwif_name != nullptr)
+    if (!hwif_name.empty())
     {
-        sw_interface_ip6_enable_disable(hwif_name, false);
-        configure_lcp_interface(hwif_name, name.c_str(), false);
+        sw_interface_ip6_enable_disable(hwif_name.c_str(), false);
+        configure_lcp_interface(hwif_name.c_str(), name.c_str(), false);
 
         /*
          * Only the tap goes away. The port itself still exists in VPP and is
@@ -674,6 +670,7 @@ sai_status_t SwitchVpp::vs_remove_hostif_tap_interface(
         m_ifaceRegistry.clearTapName(hwif_name);
     }
 
+    /* Compatibility only, see vs_create_hostif_tap_interface(). */
     removeIfNameToPortId(name);
 
     if (port_id != SAI_NULL_OBJECT_ID)
@@ -709,254 +706,3 @@ bool SwitchVpp::hasIfIndex(
 
 // VPP
 
-// TODO to config
-static const char *sonic_vpp_ifmap = "/usr/share/sonic/hwsku/sonic_vpp_ifmap.ini";
-
-/*
- * sonic_vpp_ifmap.ini maps the host OS interface name ("osif") to the VPP
- * hardware interface name, e.g. "Ethernet0" -> "TenGigabitEthernet0/0/0". The
- * osif name is whatever the NOS above SAI calls the port -- under SONiC it is
- * the port_config.ini name, but nothing here depends on that.
- * Only physical ports appear in the file -- every logical interface is derived
- * by rule in derive_logical_hwif() below.
- *
- * Note that for a physical port the osif name, the LCP tap name and the SAI
- * hostif name are all the same string, which is why this map has historically
- * been described as a "tap" map. It is not: for a bond the osif name is
- * "PortChannel<N>" while the tap is "be<N>", and the two must not be confused.
- */
-void SwitchVpp::populate_if_mapping()
-{
-    SWSS_LOG_ENTER();
-
-    if (mapping_init)
-    {
-        return;
-    }
-
-    FILE *fp;
-    char osif_name[64], vpp_name[64];
-
-    fp = fopen(sonic_vpp_ifmap, "r");
-
-    if (!fp)
-    {
-        return;
-    }
-
-    while (fscanf(fp, "%s %s", osif_name, vpp_name) != EOF)
-    {
-        std::string ifname, hwif_name;
-
-        ifname = std::string(osif_name);
-        hwif_name = std::string(vpp_name);
-
-        m_osif_to_hwif_map[ifname] = hwif_name;
-        m_hwif_to_osif_map[hwif_name] = ifname;
-    }
-
-    mapping_init = 1;
-
-    fclose(fp);
-}
-
-/*
- * Split a trailing ".<vlan>" sub-interface suffix off an interface name.
- * Returns false if there is a '.' that is not followed by digits only, which
- * means the name is not something this switch ever creates.
- */
-static bool split_subif_suffix(
-        _In_ const std::string &name,
-        _Out_ std::string &base,
-        _Out_ std::string &suffix)
-{
-    auto dot = name.find('.');
-
-    if (dot == std::string::npos)
-    {
-        base = name;
-        suffix.clear();
-
-        return true;
-    }
-
-    base = name.substr(0, dot);
-    suffix = name.substr(dot);
-
-    if (suffix.size() < 2)
-    {
-        return false;
-    }
-
-    for (size_t i = 1; i < suffix.size(); i++)
-    {
-        if (!isdigit(static_cast<unsigned char>(suffix[i])))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-/*
- * Derive the VPP hardware interface name of a logical interface. These are
- * hard invariants of the way this switch creates VPP interfaces:
- *
- *   PortChannel<N> -> BondEthernet<N>   vpp_create_lag(); find_new_bond_id()
- *                                       takes the bond id straight from the
- *                                       PortChannel kernel netdev name
- *   Vlan<N>        -> bvi<N>            vpp_create_bvi_interface()
- *
- * Only SONiC-side names are accepted. The bond's linux-cp tap name be<N> is
- * deliberately not resolved here: it is a VPP-side artefact, and accepting it
- * would let a caller that wants the SONiC netdev (`ip link show`, VRF
- * enslavement) silently get away with the wrong name.
- *
- * Physical ports are not handled here: their hwif name is platform specific
- * and only sonic_vpp_ifmap.ini knows it.
- */
-static bool derive_logical_hwif(
-        _In_ const std::string &base,
-        _Out_ std::string &hwif)
-{
-    SWSS_LOG_ENTER();
-
-    const char *prefix;
-    const char *hwif_prefix;
-
-    if (base.compare(0, strlen(PORTCHANNEL_PREFIX), PORTCHANNEL_PREFIX) == 0)
-    {
-        prefix = PORTCHANNEL_PREFIX;
-        hwif_prefix = BONDETHERNET_PREFIX;
-    }
-    else if (base.compare(0, strlen(VLAN_PREFIX), VLAN_PREFIX) == 0)
-    {
-        prefix = VLAN_PREFIX;
-        hwif_prefix = BVI_PREFIX;
-    }
-    else
-    {
-        return false;
-    }
-
-    std::string id = base.substr(strlen(prefix));
-
-    if (id.empty())
-    {
-        return false;
-    }
-
-    for (size_t i = 0; i < id.size(); i++)
-    {
-        if (!isdigit(static_cast<unsigned char>(id[i])))
-        {
-            return false;
-        }
-    }
-
-    hwif = std::string(hwif_prefix) + id;
-
-    return true;
-}
-
-const char* SwitchVpp::osif_name_to_hwif_name(
-        _In_ const char *name)
-{
-    SWSS_LOG_ENTER();
-
-    populate_if_mapping();
-
-    std::string ifname = std::string(name);
-
-    auto it = m_osif_to_hwif_map.find(ifname);
-
-    if (it != m_osif_to_hwif_map.end())
-    {
-        SWSS_LOG_DEBUG("Found hwif %s info entry for interface: %s", it->second.c_str(), name);
-
-        return it->second.c_str();
-    }
-
-    static thread_local std::string derived_hwif;
-
-    std::string base, suffix;
-
-    if (split_subif_suffix(ifname, base, suffix))
-    {
-        /*
-         * A sub-interface carries the ".<vlan>" suffix over unchanged, so
-         * "Ethernet0.100" -> "TenGigabitEthernet0/0/0.100" and
-         * "PortChannel1.100" -> "BondEthernet1.100".
-         */
-        auto base_it = m_osif_to_hwif_map.find(base);
-
-        if (base_it != m_osif_to_hwif_map.end())
-        {
-            derived_hwif = base_it->second + suffix;
-
-            SWSS_LOG_DEBUG("Derived hwif %s for interface: %s", derived_hwif.c_str(), name);
-
-            return derived_hwif.c_str();
-        }
-
-        if (derive_logical_hwif(base, derived_hwif))
-        {
-            derived_hwif += suffix;
-
-            SWSS_LOG_DEBUG("Derived hwif %s for interface: %s", derived_hwif.c_str(), name);
-
-            return derived_hwif.c_str();
-        }
-    }
-
-    SWSS_LOG_ERROR("failed to find hwif info entry for interface: %s", name);
-
-    return nullptr;
-}
-
-const char* SwitchVpp::hwif_to_osif_name(
-        _In_ const char *name)
-{
-    SWSS_LOG_ENTER();
-
-    populate_if_mapping();
-
-    std::string hwif_name = std::string(name);
-
-    /*
-     * Registry first. sonic_vpp_ifmap.ini lists ONLY physical ports, so the map
-     * below structurally cannot answer for BondEthernet<N>, bvi<N> or a
-     * sub-interface -- those are exactly the "Unknown" returns this function has
-     * always produced. The registry knows all of them because every kind records
-     * its SONiC name at registration.
-     *
-     * getSonicName() returns a reference into a registry-owned record, so the
-     * c_str() handed back stays valid as long as the interface exists.
-     */
-    auto rec = m_ifaceRegistry.findByHwif(hwif_name);
-
-    if (rec && rec->hasSonicName())
-    {
-        SWSS_LOG_DEBUG("Registry resolved hwif %s to interface %s", name, rec->getSonicName().c_str());
-
-        return rec->getSonicName().c_str();
-    }
-
-    auto it = m_hwif_to_osif_map.find(hwif_name);
-
-    if (it == m_hwif_to_osif_map.end())
-    {
-        // not all hwif have an entry in the ifmap, e.g. vxlan tunnel interface,
-        // bvi interface, and BondEthernet<N> (LAG) which is not a physical port.
-        SWSS_LOG_NOTICE("failed to find interface name entry for hwif device: %s", name);
-
-        return "Unknown";
-    }
-
-    SWSS_LOG_WARN("registry miss for hwif %s, ifmap resolved it to %s", name, it->second.c_str());
-
-    SWSS_LOG_DEBUG("Found interface %s entry for hwif device: %s", it->second.c_str(), name);
-
-    return it->second.c_str();
-}

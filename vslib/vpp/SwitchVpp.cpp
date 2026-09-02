@@ -750,148 +750,6 @@ sai_status_t SwitchVpp::warm_update_queues()
     return SAI_STATUS_SUCCESS;
 }
 
-bool SwitchVpp::port_to_hostif_list(
-        _In_ sai_object_id_t port_id,
-        _Inout_ std::string& if_name)
-{
-    SWSS_LOG_ENTER();
-
-    // TODO to be removed and inlined
-
-    //sai_object_id_t switch_id = switchIdQuery(port_id);
-    //if (switch_id == SAI_NULL_OBJECT_ID) {
-    //return false;
-    //}
-    //auto it = m_switchStateMap.find(switch_id);
-    //if (it == m_switchStateMap.end()) {
-    //return false;
-    //}
-    //auto sw = it->second;
-    //if (sw == nullptr) {
-    //return false;
-    //}
-    //return(
-    return getTapNameFromPortId(port_id, if_name);
-}
-
-bool SwitchVpp::getTapNameFromPortOrLagId(
-        _In_ sai_object_id_t obj_id,
-        _Out_ std::string& if_name)
-{
-    SWSS_LOG_ENTER();
-
-    /*
-     * Answers uniformly for PORT and LAG, and answers only when a host netdev
-     * really exists: hasTapName() is false until the hostif is created for a
-     * port, or until vpp_ensure_lag_lcp() creates the be<N> pair for a bond.
-     */
-    auto rec = m_ifaceRegistry.findByOid(obj_id);
-
-    if (rec && rec->hasTapName())
-    {
-        if_name = rec->getTapName();
-
-        return true;
-    }
-
-    sai_object_type_t ot = objectTypeQuery(obj_id);
-
-    bool resolved = false;
-
-    if (ot == SAI_OBJECT_TYPE_PORT)
-    {
-        resolved = getTapNameFromPortId(obj_id, if_name);
-    }
-    else if (ot == SAI_OBJECT_TYPE_LAG)
-    {
-        platform_bond_info_t bond_info;
-        sai_status_t status = get_lag_bond_info(obj_id, bond_info);
-
-        if (status == SAI_STATUS_SUCCESS)
-        {
-            std::ostringstream tap_stream;
-            tap_stream << BOND_TAP_PREFIX << bond_info.id;
-            if_name = tap_stream.str();
-
-            resolved = true;
-        }
-    }
-
-    if (resolved)
-    {
-        SWSS_LOG_WARN("registry has no tap for %s, legacy path resolved %s",
-                sai_serialize_object_id(obj_id).c_str(), if_name.c_str());
-    }
-
-    return resolved;
-}
-
-/*
- * Host OS interface name of a port or LAG, i.e. the netdev SONiC itself
- * provisions and that shows up in `ip link`: "Ethernet<n>" for a port,
- * "PortChannel<id>" for a LAG.
- *
- * This is deliberately NOT the same as getTapNameFromPortOrLagId(): a LAG has
- * two host netdevs, the teamd-owned PortChannel<id> returned here and the
- * linux-cp tap be<id> returned there. They coincide for a physical port.
- * Use this one for anything keyed on the SONiC name -- `ip link show`, VRF
- * enslavement lookups, and osif_name_to_hwif_name().
- */
-bool SwitchVpp::getOsIfFromPortOrLagId(
-        _In_ sai_object_id_t obj_id,
-        _Out_ std::string& if_name)
-{
-    SWSS_LOG_ENTER();
-
-    sai_object_type_t ot = objectTypeQuery(obj_id);
-
-    if (ot == SAI_OBJECT_TYPE_PORT)
-    {
-        return getTapNameFromPortId(obj_id, if_name);
-    }
-
-    if (ot == SAI_OBJECT_TYPE_LAG)
-    {
-        platform_bond_info_t bond_info;
-        sai_status_t status = get_lag_bond_info(obj_id, bond_info);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            return false;
-        }
-
-        if_name = std::string(PORTCHANNEL_PREFIX) + std::to_string(bond_info.id);
-
-        return true;
-    }
-
-    return false;
-}
-
-bool SwitchVpp::port_to_hwifname(
-        _In_ sai_object_id_t port_id,
-        _Inout_ std::string& if_name)
-{
-    SWSS_LOG_ENTER();
-
-    // TODO to be removed and inlined
-
-    // sai_object_id_t switch_id = switchIdQuery(port_id);
-    // if (switch_id == SAI_NULL_OBJECT_ID) {
-    // return false;
-    // }
-    // auto it = m_switchStateMap.find(switch_id);
-    // if (it == m_switchStateMap.end()) {
-    // return false;
-    // }
-    // auto sw = it->second;
-    // if (sw == nullptr) {
-    // return false;
-    // }
-
-    return vpp_get_hwif_name(port_id, 0, if_name);
-}
-
 void SwitchVpp::setPortStats(
         _In_ sai_object_id_t oid)
 {
@@ -899,9 +757,9 @@ void SwitchVpp::setPortStats(
 
     std::map<sai_stat_id_t, uint64_t> stats;
 
-    std::string if_name;
+    std::string if_name = m_ifaceRegistry.resolveHwIfName(oid, 0);
 
-    if (!port_to_hwifname(oid, if_name))
+    if (if_name.empty())
     {
         return;
     }
@@ -1357,29 +1215,18 @@ void SwitchVpp::processFdbEntriesForAging()
          */
         auto rec = m_ifaceRegistry.findBySwIfIndex(ev.sw_if_index);
 
-        uint32_t bd_id;
-
-        if (rec && rec->hasBdId()) {
-            bd_id = rec->getBdId();
-        } else {
-            auto bd_it = m_swif_to_bdid.find(ev.sw_if_index);
-
-            if (bd_it == m_swif_to_bdid.end()) {
-                SWSS_LOG_WARN("FDB: dropping MAC event for untracked sw_if_index %u "
-                              "(action %u, MAC %02x:%02x:%02x:%02x:%02x:%02x); "
-                              "VPP L2FIB will desync from ASIC_DB/STATE_DB",
-                              ev.sw_if_index, ev.action,
-                              ev.mac[0], ev.mac[1], ev.mac[2],
-                              ev.mac[3], ev.mac[4], ev.mac[5]);
-                events.pop();
-                continue;
-            }
-
-            bd_id = bd_it->second;
-
-            SWSS_LOG_WARN("FDB: registry has no bd_id for sw_if_index %u, legacy map says bd %u",
-                          ev.sw_if_index, bd_id);
+        if (!rec || !rec->hasBdId()) {
+            SWSS_LOG_WARN("FDB: dropping MAC event for untracked sw_if_index %u "
+                          "(action %u, MAC %02x:%02x:%02x:%02x:%02x:%02x); "
+                          "VPP L2FIB will desync from ASIC_DB/STATE_DB",
+                          ev.sw_if_index, ev.action,
+                          ev.mac[0], ev.mac[1], ev.mac[2],
+                          ev.mac[3], ev.mac[4], ev.mac[5]);
+            events.pop();
+            continue;
         }
+
+        uint32_t bd_id = rec->getBdId();
 
         VppFdbKey key;
         memcpy(key.mac, ev.mac, 6);
@@ -3057,10 +2904,10 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
     }
     else
     {
-        std::string hwif_name;
+        std::string hwif_name = m_ifaceRegistry.resolveHwIfName(port_id, 0);
         uint32_t vpp_speed_kbps = 0;
 
-        if (vpp_get_hwif_name(port_id, 0, hwif_name) &&
+        if (!hwif_name.empty() &&
             vpp_get_interface_speed(hwif_name.c_str(), &vpp_speed_kbps) == 0 &&
             vpp_speed_kbps > 0)
         {
@@ -3085,50 +2932,4 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
     return SAI_STATUS_SUCCESS;
-}
-
-/*
- * Resolve a VPP sw_if_index to a SAI port OID via the 3-step lookup chain:
- * sw_if_index -> VPP hw interface name -> Linux tap/SONiC port name -> SAI port OID.
- * Returns SAI_NULL_OBJECT_ID on any lookup failure.
- */
-sai_object_id_t SwitchVpp::getPortIdFromSwIfIndex(uint32_t sw_if_index)
-{
-    SWSS_LOG_ENTER();
-
-    /*
-     * The registry indexes sw_if_index directly, so it answers in one step what
-     * the chain below needs three for -- and without depending on the interface
-     * having a host tap at all, which a LAG never has.
-     */
-    auto rec = m_ifaceRegistry.findBySwIfIndex(sw_if_index);
-
-    if (rec && rec->hasOid())
-    {
-        return rec->getOid();
-    }
-
-    const char *hwifname = vpp_get_swif_name(sw_if_index);
-    if (!hwifname)
-    {
-        SWSS_LOG_WARN("FDB: cannot get hwif name for sw_if_index %u", sw_if_index);
-        return SAI_NULL_OBJECT_ID;
-    }
-
-    const char *tapname = hwif_to_osif_name(hwifname);
-    if (!tapname)
-    {
-        SWSS_LOG_WARN("FDB: cannot get tap name for hwif %s", hwifname);
-        return SAI_NULL_OBJECT_ID;
-    }
-
-    sai_object_id_t port_id = getPortIdFromIfName(std::string(tapname));
-
-    if (port_id != SAI_NULL_OBJECT_ID)
-    {
-        SWSS_LOG_WARN("FDB: registry has no oid for sw_if_index %u, legacy chain resolved %s via %s/%s",
-                sw_if_index, sai_serialize_object_id(port_id).c_str(), hwifname, tapname);
-    }
-
-    return port_id;
 }

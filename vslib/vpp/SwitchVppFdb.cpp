@@ -818,7 +818,9 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
-    if (!vpp_get_hwif_name(port_id, 0, hwif_str))
+    hwif_str = m_ifaceRegistry.resolveHwIfName(port_id, 0);
+
+    if (hwif_str.empty())
     {
         SWSS_LOG_NOTICE("No VPP interface found for bridge port id :%s",
                 sai_serialize_object_id(br_port_id).c_str());
@@ -1076,7 +1078,9 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
-    if (!vpp_get_hwif_name(port_id, 0, hwif_str))
+    hwif_str = m_ifaceRegistry.resolveHwIfName(port_id, 0);
+
+    if (hwif_str.empty())
     {
         SWSS_LOG_NOTICE("No VPP interface found for bridge port id :%s",
                 sai_serialize_object_id(br_port_oid).c_str());
@@ -1252,9 +1256,9 @@ bool SwitchVpp::vlan_member_hwif(
         return false;
     }
 
-    std::string hwif_str;
+    std::string hwif_str = m_ifaceRegistry.resolveHwIfName(port_id, 0);
 
-    if (!vpp_get_hwif_name(port_id, 0, hwif_str))
+    if (hwif_str.empty())
     {
         SWSS_LOG_WARN("No VPP interface for vlan member %s",
                 vlan_member.get_id().c_str());
@@ -1551,7 +1555,7 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
          * recorded explicitly: it exists only once the LCP pair above has been
          * created, and hasTapName() is what tells a reader that.
          */
-        auto bvi_rec = m_ifaceRegistry.addBvi(static_cast<uint16_t>(vlan_id));
+        auto bvi_rec = m_ifaceRegistry.addBvi(static_cast<uint16_t>(vlan_id), vlan_oid);
 
         if (bvi_rec)
         {
@@ -1741,59 +1745,6 @@ sai_status_t SwitchVpp::vpp_delete_bvi_interface(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchVpp::get_lag_bond_info(const sai_object_id_t lag_id, platform_bond_info_t &bond_info)
-{
-    SWSS_LOG_ENTER();
-
-    /*
-     * Registry first: addLag() takes the bond id, the sw_if_index and the oid in
-     * one call, so a registered LAG always has all three -- the map below only
-     * has them because the same creation path writes both.
-     */
-    auto rec = m_ifaceRegistry.findByOid(lag_id);
-
-    if (rec && rec->getType() == VppInterfaceType::LAG && rec->hasSwIfIndex())
-    {
-        const VppBondInterface *bond = rec->asBond();
-
-        bond_info.sw_if_index = rec->getSwIfIndex();
-        bond_info.id = bond->getBondId();
-        bond_info.lcp_created = bond->isLcpCreated();
-
-        return SAI_STATUS_SUCCESS;
-    }
-
-    auto it = m_lag_bond_map.find(lag_id);
-    if (it == m_lag_bond_map.end())
-    {
-        SWSS_LOG_ERROR("failed to find bond info for lag id: %s", sai_serialize_object_id(lag_id).c_str());
-        return SAI_STATUS_ITEM_NOT_FOUND;
-    }
-
-    SWSS_LOG_WARN("registry miss for lag %s, bond map resolved bond %u",
-            sai_serialize_object_id(lag_id).c_str(), it->second.id);
-
-    bond_info = it->second;
-    return SAI_STATUS_SUCCESS;
-}
-
-int SwitchVpp::remove_lag_to_bond_entry(const sai_object_id_t lag_oid)
-{
-    SWSS_LOG_ENTER();
-
-    auto it = m_lag_bond_map.find(lag_oid);
-
-    if (it == m_lag_bond_map.end())
-    {
-        SWSS_LOG_ERROR("failed to find lag swif index for : %s", sai_serialize_object_id(lag_oid).c_str());
-        return ~0;
-    }
-
-    SWSS_LOG_NOTICE("Removing lag object swif index: %s", sai_serialize_object_id(lag_oid).c_str());
-    m_lag_bond_map.erase(it);
-    return 0;
-}
-
 sai_status_t SwitchVpp::createLag(
         _In_ sai_object_id_t object_id,
         _In_ sai_object_id_t switch_id,
@@ -1811,7 +1762,11 @@ sai_status_t SwitchVpp::createLag(
 /*
  * This function determines the ID of a newly created PortChannel.
  * It does this by querying the list of PortChannels using the ip command and
- * comparing it to the existing LAG interfaces in m_lag_bond_map.
+ * comparing it to the bond ids already claimed by a registered LAG.
+ *
+ * The kernel netdev name is the only source of the number: SAI passes no name
+ * with a LAG object, and a bond record's "PortChannel<N>" is built FROM its id,
+ * so the registry can supply the already-used set but never a new id.
  *
  * This function is necessary due to the way IP addresses are set on interfaces in Sonic-VPP,
  * which requires mapping between the PortChannel interface and the BondEthernet in VPP.
@@ -1843,10 +1798,7 @@ uint32_t SwitchVpp::find_new_bond_id()
 
     SWSS_LOG_DEBUG("Output of ip command: %s", res.c_str());
 
-    std::unordered_set<uint32_t> existing_bond_ids;
-    for (const auto& entry : m_lag_bond_map) {
-        existing_bond_ids.insert(entry.second.id);
-    }
+    std::unordered_set<uint32_t> existing_bond_ids = m_ifaceRegistry.collectBondIds();
 
     std::istringstream iss(res);
     std::string line;
@@ -1907,9 +1859,6 @@ sai_status_t SwitchVpp::vpp_create_lag(
     }
 
     // Update the lag to bond map
-    platform_bond_info_t bond_info = {swif_idx, bond_id, false};
-    m_lag_bond_map[lag_id] = bond_info;
-
     /*
      * A bond is fully identified the moment it is created: the oid came in as a
      * parameter, the bond id was just allocated and the sw_if_index came back
@@ -1945,10 +1894,16 @@ sai_status_t SwitchVpp::vpp_remove_lag(
     SWSS_LOG_ENTER();
 
     int ret;
-    platform_bond_info_t bond_info;
 
-    CHECK_STATUS(get_lag_bond_info(lag_oid, bond_info));
-    uint32_t lag_swif_idx = bond_info.sw_if_index;
+    auto lag_rec = m_ifaceRegistry.findLag(lag_oid);
+
+    if (!lag_rec)
+    {
+        SWSS_LOG_ERROR("no bond record for lag id: %s", sai_serialize_object_id(lag_oid).c_str());
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    uint32_t lag_swif_idx = lag_rec->getSwIfIndex();
     auto lag_ifname =  vpp_get_swif_name(lag_swif_idx);
     SWSS_LOG_NOTICE("lag swif idx :%d swif_name:%s",lag_swif_idx, lag_ifname);
     if (lag_ifname == NULL)
@@ -1964,7 +1919,6 @@ sai_status_t SwitchVpp::vpp_remove_lag(
         SWSS_LOG_ERROR("failed to delete bond interface in VPP for %s", sai_serialize_object_id(lag_oid).c_str());
         return SAI_STATUS_FAILURE;
     }
-    remove_lag_to_bond_entry(lag_oid);
 
     /*
      * delete_bond_interface() also tears down the LCP pair and any
@@ -2035,9 +1989,15 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
         return SAI_STATUS_FAILURE;
     }
 
-    platform_bond_info_t bond_info;
-    CHECK_STATUS(get_lag_bond_info(lag_oid, bond_info));
-    bond_if_idx = bond_info.sw_if_index;
+    auto bond_rec = m_ifaceRegistry.findLag(lag_oid);
+
+    if (!bond_rec)
+    {
+        SWSS_LOG_ERROR("no bond record for lag id: %s", sai_serialize_object_id(lag_oid).c_str());
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    bond_if_idx = bond_rec->getSwIfIndex();
     SWSS_LOG_NOTICE("bond if index is %d\n", bond_if_idx);
 
     attr_type = sai_metadata_get_attr_by_id(SAI_LAG_MEMBER_ATTR_PORT_ID, attr_count, attr_list);
@@ -2059,9 +2019,9 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
         return SAI_STATUS_FAILURE;
     }
 
-    std::string hwif_str;
+    std::string hwif_str = m_ifaceRegistry.resolveHwIfName(lag_port_oid, 0);
 
-    if (!vpp_get_hwif_name(lag_port_oid, 0, hwif_str))
+    if (hwif_str.empty())
     {
         SWSS_LOG_NOTICE("No VPP interface found for lag port id :%s",
                 sai_serialize_object_id(lag_port_oid).c_str());
@@ -2110,9 +2070,9 @@ void SwitchVpp::vpp_set_lag_member_ip6(
     // Best effort, the caller must still complete the LAG member add/remove because
     // the VPP bond membership change already happened and failing here would leave
     // the object model inconsistent.
-    std::string hwif_str;
+    std::string hwif_str = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
 
-    if (!vpp_get_hwif_name(port_oid, 0, hwif_str))
+    if (hwif_str.empty())
     {
         SWSS_LOG_ERROR("no hwif found for port %s, IPv6 not %s",
                 sai_serialize_object_id(port_oid).c_str(),
@@ -2138,20 +2098,24 @@ sai_status_t SwitchVpp::vpp_ensure_lag_lcp(
 {
     SWSS_LOG_ENTER();
 
-    platform_bond_info_t bond_info;
-    CHECK_STATUS(get_lag_bond_info(lag_oid, bond_info));
+    auto lag_rec = m_ifaceRegistry.findLag(lag_oid);
 
-    if (bond_info.lcp_created)
+    if (!lag_rec)
+    {
+        SWSS_LOG_ERROR("no bond record for lag id: %s", sai_serialize_object_id(lag_oid).c_str());
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    VppBondInterface *bond = lag_rec->asBond();
+
+    if (bond->isLcpCreated())
     {
         return SAI_STATUS_SUCCESS;
     }
 
-    uint32_t bond_id = bond_info.id;
-    std::ostringstream tap_stream;
-    tap_stream << "be" << bond_id;
-    std::string tap = tap_stream.str();
+    std::string tap = VppBondInterface::tapNameFor(bond->getBondId());
 
-    const char *hw_ifname = vpp_get_swif_name(bond_info.sw_if_index);
+    const char *hw_ifname = vpp_get_swif_name(lag_rec->getSwIfIndex());
     if (hw_ifname == NULL)
     {
         SWSS_LOG_ERROR("failed to get VPP bond interface name for %s", sai_serialize_object_id(lag_oid).c_str());
@@ -2167,8 +2131,6 @@ sai_status_t SwitchVpp::vpp_ensure_lag_lcp(
      * be<id> -> PortChannel<id> tc mirred redirect is no longer needed and is
      * intentionally not installed (SONiC PR #2440 §5.3).
      */
-    bond_info.lcp_created = true;
-    m_lag_bond_map[lag_oid] = bond_info;
 
     /*
      * A LAG has no SAI hostif, so this is the ONLY point at which its host
@@ -2184,12 +2146,7 @@ sai_status_t SwitchVpp::vpp_ensure_lag_lcp(
      */
     m_ifaceRegistry.setTapName(hw_ifname, tap);
 
-    auto lag_rec = m_ifaceRegistry.findByOid(lag_oid);
-
-    if (lag_rec && lag_rec->getType() == VppInterfaceType::LAG)
-    {
-        lag_rec->asBond()->setLcpCreated(true);
-    }
+    bond->setLcpCreated(true);
 
     SWSS_LOG_NOTICE("Created LCP for LAG %s", sai_serialize_object_id(lag_oid).c_str());
 
@@ -2327,9 +2284,15 @@ sai_status_t SwitchVpp::get_lag_member_bond_index(
         return SAI_STATUS_FAILURE;
     }
 
-    platform_bond_info_t bond_info;
-    CHECK_STATUS(get_lag_bond_info(lag_oid, bond_info));
-    bond_sw_if_index = bond_info.sw_if_index;
+    auto bond_rec = m_ifaceRegistry.findLag(lag_oid);
+
+    if (!bond_rec)
+    {
+        SWSS_LOG_ERROR("no bond record for lag id: %s", sai_serialize_object_id(lag_oid).c_str());
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    bond_sw_if_index = bond_rec->getSwIfIndex();
 
     return SAI_STATUS_SUCCESS;
 }
@@ -2350,8 +2313,9 @@ sai_status_t SwitchVpp::vpp_set_lag_member_egress_disable(
     sai_object_id_t port_oid;
     CHECK_STATUS(get_lag_member_port(lag_member_oid, port_oid));
 
-    std::string hwif_str;
-    if (!vpp_get_hwif_name(port_oid, 0, hwif_str))
+    std::string hwif_str = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
+
+    if (hwif_str.empty())
     {
         SWSS_LOG_ERROR("No hwif found for lag member port id: %s", sai_serialize_object_id(port_oid).c_str());
         return SAI_STATUS_FAILURE;
@@ -2455,9 +2419,9 @@ sai_status_t SwitchVpp::restorePortTapMac(
 {
     SWSS_LOG_ENTER();
 
-    std::string if_name;
+    const std::string if_name = m_ifaceRegistry.resolveTapName(port_oid);
 
-    if (getTapNameFromPortId(port_oid, if_name) == false)
+    if (if_name.empty())
     {
         SWSS_LOG_ERROR("no tap found for port %s, switch MAC not restored",
                 sai_serialize_object_id(port_oid).c_str());
@@ -2545,9 +2509,9 @@ sai_status_t SwitchVpp::vpp_remove_lag_member(
         return SAI_STATUS_FAILURE;
     }
 
-    std::string hwif_str;
+    std::string hwif_str = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
 
-    if (!vpp_get_hwif_name(port_oid, 0, hwif_str))
+    if (hwif_str.empty())
     {
         SWSS_LOG_NOTICE("No VPP interface found for lag port id :%s",
                 sai_serialize_object_id(port_oid).c_str());
@@ -2686,8 +2650,9 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
 
     uint32_t bd_id = attr.value.u16; /* bd_id is same as VLAN ID for .1Q bridge */
 
-    std::string ifname;
-    if (vpp_get_hwif_name(port_id, 0, ifname) == true)
+    std::string ifname = m_ifaceRegistry.resolveHwIfName(port_id, 0);
+
+    if (!ifname.empty())
     {
         const char *hwif_name = ifname.c_str();
         auto ret = l2fib_add_del(hwif_name, fdb_entry.mac_address, bd_id, is_add, is_static);
@@ -2823,9 +2788,9 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
                 sai_serialize_mac(fdb_entry.mac_address).c_str(), bd_id);
     }
 
-    std::string ifname;
+    std::string ifname = m_ifaceRegistry.resolveHwIfName(port_id, 0);
 
-    if (vpp_get_hwif_name(port_id, 0, ifname) == true)
+    if (!ifname.empty())
     {
         const char *hwif_name = ifname.c_str();
         auto ret = l2fib_add_del(hwif_name, fdb_entry.mac_address, bd_id, is_add, is_static);
@@ -2939,8 +2904,9 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
                             sai_serialize_object_type(obj_type).c_str());
                     return SAI_STATUS_FAILURE;
                 }
-                std::string ifname = "";
-                if (vpp_get_hwif_name(port_id, 0, ifname) == true)
+                std::string ifname = m_ifaceRegistry.resolveHwIfName(port_id, 0);
+
+                if (!ifname.empty())
                 {
                     const char *hwif_name = ifname.c_str();
                     auto ret = l2fib_flush_int(hwif_name);
@@ -2985,69 +2951,21 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
     return SAI_STATUS_SUCCESS;
 }
 
-inline sai_object_id_t SwitchVpp::resolvePortIdFromSwIfIndex(uint32_t sw_if_index)
-{
-    SWSS_LOG_ENTER();
-
-    auto it = m_swif_to_port_id.find(sw_if_index);
-    if (it != m_swif_to_port_id.end())
-        return it->second;
-
-    /*
-     * The only lookup that can resolve a SUB-INTERFACE index. VPP reports the
-     * sub-interface sw_if_index in FDB learn events, and resolvePortOid() walks
-     * from the sub-interface record up to its parent's PORT/LAG oid -- which is
-     * what SAI_BRIDGE_PORT_ATTR_PORT_ID carries and what
-     * findBridgeVlanForPortVlan() matches on. Neither the name chain below nor
-     * the bond scan can answer that: the former dead-ends on a name the ifmap
-     * has never heard of, the latter compares the BOND index, not the sub-if's.
-     */
-    sai_object_id_t port_id = m_ifaceRegistry.resolvePortOid(sw_if_index);
-
-    if (port_id == SAI_NULL_OBJECT_ID)
-    {
-        port_id = getPortIdFromSwIfIndex(sw_if_index);
-    }
-
-    if (port_id == SAI_NULL_OBJECT_ID)
-    {
-        /*
-         * A LAG (BondEthernet<N>) is created directly via create_bond_interface()
-         * and has no SAI hostif tap, so it is absent from the hwif->hostif ifmap
-         * that getPortIdFromSwIfIndex() relies on. Resolve it from the bond map
-         * instead: SAI_BRIDGE_PORT_ATTR_PORT_ID of a PortChannel bridge port is
-         * the LAG OID, which is exactly what findBridgeVlanForPortVlan() matches
-         * on. Without this, every MAC learned on a PortChannel is dropped and
-         * never reaches ASIC_DB/STATE_DB (invisible to fdbshow).
-         */
-        for (const auto &kv : m_lag_bond_map)
-        {
-            if (kv.second.sw_if_index == sw_if_index)
-            {
-                port_id = kv.first;
-                SWSS_LOG_WARN("FDB: registry could not resolve sw_if_index %u, bond map resolved LAG %s (bond %u)",
-                                sw_if_index, sai_serialize_object_id(port_id).c_str(),
-                                kv.second.id);
-                break;
-            }
-        }
-    }
-
-    if (port_id != SAI_NULL_OBJECT_ID)
-    {
-        m_swif_to_port_id[sw_if_index] = port_id;
-    }
-
-    return port_id;
-}
-
 bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type)
 {
     SWSS_LOG_ENTER();
 
     bool is_move = (event_type == SAI_FDB_EVENT_MOVE);
 
-    sai_object_id_t port_id = resolvePortIdFromSwIfIndex(sw_if_index);
+    /*
+     * resolveIfOid() is the only lookup that can resolve a SUB-INTERFACE index.
+     * VPP reports the sub-interface sw_if_index in FDB learn events and it
+     * walks from the sub-interface record up to its parent's PORT/LAG oid --
+     * which is what SAI_BRIDGE_PORT_ATTR_PORT_ID carries and what
+     * findBridgeVlanForPortVlan() matches on below. A BVI never sources an FDB
+     * event, so a VLAN oid cannot come back here.
+     */
+    sai_object_id_t port_id = m_ifaceRegistry.resolveIfOid(sw_if_index);
     if (port_id == SAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_ERROR("FDB: cannot resolve port OID for sw_if_index %u", sw_if_index);
@@ -3184,12 +3102,9 @@ void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)
     uint32_t swif = vpp_get_swif_idx_by_name(hwif_name);
     if (swif != (uint32_t)~0u)
     {
-        m_swif_to_bdid[swif] = bd_id;
-
         /*
-         * Same two facts, in the record rather than in a side map. bd_id is the
-         * FDB drop gate, so it has to be attached to the interface it describes
-         * and torn down with it.
+         * bd_id is the FDB drop gate, so it has to be attached to the interface
+         * it describes and torn down with it.
          */
          //@todo: can this be moved to when the subif is created, add to the bd?
         m_ifaceRegistry.bindSwIfIndex(hwif_name, swif);
@@ -3203,7 +3118,7 @@ void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)
         // vpp_get_swif_idx_by_name() resolves against a locally cached
         // interface table populated by sw_interface_dump. A miss here means
         // every MAC learn/age event VPP reports for this interface will be
-        // dropped (its sw_if_index never enters m_swif_to_bdid), silently
+        // dropped (its sw_if_index carries no bd_id), silently
         // desyncing the VPP L2FIB from ASIC_DB/STATE_DB.
         SWSS_LOG_ERROR("FDB: cannot resolve sw_if_index for %s (bd %u); "
                        "MAC events for this interface will be dropped",
@@ -3214,22 +3129,11 @@ void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)
 void SwitchVpp::swif_bdid_untrack(const char *hwif_name)
 {
     SWSS_LOG_ENTER();
-    uint32_t swif = vpp_get_swif_idx_by_name(hwif_name);
-    if (swif != (uint32_t)~0u)
-    {
-        m_swif_to_bdid.erase(swif);
-
-        // Invalidate the sw_if_index -> SAI port OID memoization as well.
-        // VPP recycles sw_if_index values after an interface is deleted, so a
-        // stale entry would mis-attribute FDB learn/move/age notifications (and
-        // vpp_fdb_entries_invalidate_by_port matches) to the previous port OID.
-        m_swif_to_port_id.erase(swif);
-    }
 
     /*
-     * Keyed by name, so this still works when the sw_if_index lookup above
-     * misses -- which is exactly the leak the old code had, since it derived
-     * the index from the name at teardown and silently did nothing on a miss.
+     * Keyed by name, so this still works when a sw_if_index lookup would miss --
+     * which is exactly the leak the old code had, since it derived the index
+     * from the name at teardown and silently did nothing on a miss.
      * The record survives: leaving a bridge domain is not the end of the
      * interface.
      */
@@ -3264,7 +3168,7 @@ void SwitchVpp::vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id)
     size_t before = m_vpp_fdb_entries.size();
     for (auto it = m_vpp_fdb_entries.begin(); it != m_vpp_fdb_entries.end(); )
     {
-        if (resolvePortIdFromSwIfIndex(it->second) == port_id)
+        if (m_ifaceRegistry.resolveIfOid(it->second) == port_id)
             it = m_vpp_fdb_entries.erase(it);
         else
             ++it;

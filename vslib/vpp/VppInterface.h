@@ -100,14 +100,14 @@ namespace saivs
              *
              * This is NOT evidence that a host netdev exists. See getTapName().
              */
-            const std::string& getSonicName() const
+            const std::string& getOsIf() const
             {
-                return m_sonicName;
+                return m_osIf;
             }
 
-            bool hasSonicName() const
+            bool hasOsIf() const
             {
-                return !m_sonicName.empty();
+                return !m_osIf.empty();
             }
 
             /*
@@ -119,7 +119,7 @@ namespace saivs
              * must not be seeded at registration time: doing so would make the
              * punt paths believe in a tap that does not exist.
              *
-             * Usually equal to getSonicName() but not always - a sub-port RIF on
+             * Usually equal to getOsIf() but not always - a sub-port RIF on
              * a bond deliberately uses "be<id>.<vlan>" rather than
              * "PortChannel<id>.<vlan>", which would collide with the kernel
              * 8021q netdev owned by the Linux bond stack.
@@ -135,9 +135,11 @@ namespace saivs
             }
 
             /*
-             * SAI_OBJECT_TYPE_PORT or SAI_OBJECT_TYPE_LAG only. This is what the
-             * FDB path resolves to and what SAI_BRIDGE_PORT_ATTR_PORT_ID holds.
-             * Sub-interfaces, BVIs and tunnels never have one.
+             * SAI_OBJECT_TYPE_PORT, SAI_OBJECT_TYPE_LAG or, for a BVI,
+             * SAI_OBJECT_TYPE_VLAN. The first two are what the FDB path
+             * resolves to and what SAI_BRIDGE_PORT_ATTR_PORT_ID holds; the
+             * third lets a BVI be found from the vlan oid a VLAN router
+             * interface carries. Sub-interfaces and tunnels never have one.
              */
             sai_object_id_t getOid() const
             {
@@ -232,11 +234,11 @@ namespace saivs
             VppInterface(
                     _In_ VppInterfaceType type,
                     _In_ const std::string& hwifName,
-                    _In_ const std::string& sonicName,
+                    _In_ const std::string& osIf,
                     _In_ uint32_t bdId = BD_ID_INVALID):
                 m_type(type),
                 m_hwifName(hwifName),
-                m_sonicName(sonicName),
+                m_osIf(osIf),
                 m_oid(SAI_NULL_OBJECT_ID),
                 m_rifOid(SAI_NULL_OBJECT_ID),
                 m_swIfIndex(SWIF_INDEX_INVALID),
@@ -258,7 +260,7 @@ namespace saivs
 
             std::string m_hwifName;
 
-            std::string m_sonicName;
+            std::string m_osIf;
 
             std::string m_tapName;
 
@@ -283,8 +285,8 @@ namespace saivs
 
             VppPhysicalPort(
                     _In_ const std::string& hwifName,
-                    _In_ const std::string& sonicName):
-                VppInterface(VppInterfaceType::PHYSICAL_PORT, hwifName, sonicName)
+                    _In_ const std::string& osIf):
+                VppInterface(VppInterfaceType::PHYSICAL_PORT, hwifName, osIf)
             {
                 // empty
             }
@@ -300,7 +302,7 @@ namespace saivs
              */
             std::string deriveTapName() const override
             {
-                return getSonicName();
+                return getOsIf();
             }
     };
 
@@ -311,7 +313,7 @@ namespace saivs
 
             VppBondInterface(
                     _In_ uint32_t bondId):
-                VppInterface(VppInterfaceType::LAG, hwifNameFor(bondId), sonicNameFor(bondId)),
+                VppInterface(VppInterfaceType::LAG, hwifNameFor(bondId), osIfFor(bondId)),
                 m_bondId(bondId),
                 m_lcpCreated(false)
             {
@@ -354,7 +356,7 @@ namespace saivs
             }
 
             // must match PORTCHANNEL_PREFIX in SwitchVppUtils.h
-            static std::string sonicNameFor(
+            static std::string osIfFor(
                     _In_ uint32_t bondId)
             {
                 return "PortChannel" + std::to_string(bondId);
@@ -407,7 +409,7 @@ namespace saivs
                     _In_ uint16_t vlanId):
                 VppInterface(VppInterfaceType::SUB_INTERFACE,
                         hwifNameFor(parent ? parent->getHwifName() : std::string(), subId),
-                        sonicNameFor(parent ? parent->getSonicName() : std::string(), subId)),
+                        osIfFor(parent ? parent->getOsIf() : std::string(), subId)),
                 m_parent(parent),
                 m_subId(subId),
                 m_vlanId(vlanId)
@@ -445,7 +447,7 @@ namespace saivs
             /*
              * The LCP tap a sub-port RIF would create. It hangs off the
              * PARENT'S TAP, not off the parent's SONiC name, so for a bond this
-             * is "be<id>.<vlan>" while getSonicName() is
+             * is "be<id>.<vlan>" while getOsIf() is
              * "PortChannel<id>.<vlan>". Empty while the parent has no tap.
              */
             std::string deriveTapName() const override
@@ -469,16 +471,16 @@ namespace saivs
                 return parentHwifName + "." + std::to_string(subId);
             }
 
-            static std::string sonicNameFor(
-                    _In_ const std::string& parentSonicName,
+            static std::string osIfFor(
+                    _In_ const std::string& parentOsIf,
                     _In_ uint32_t subId)
             {
-                if (parentSonicName.empty())
+                if (parentOsIf.empty())
                 {
                     return std::string();
                 }
 
-                return parentSonicName + "." + std::to_string(subId);
+                return parentOsIf + "." + std::to_string(subId);
             }
 
         private:
@@ -491,8 +493,8 @@ namespace saivs
     };
 
     /*
-     * BVI for a .1q VLAN. Carries no PORT oid; its rif oid is the
-     * SAI_ROUTER_INTERFACE_TYPE_VLAN object.
+     * BVI for a .1q VLAN. Its oid is the SAI_OBJECT_TYPE_VLAN object rather
+     * than a port, and its rif oid is the SAI_ROUTER_INTERFACE_TYPE_VLAN one.
      */
     class VppVlanInterface:
         public VppInterface
@@ -501,7 +503,7 @@ namespace saivs
 
             VppVlanInterface(
                     _In_ uint16_t vlanId):
-                VppInterface(VppInterfaceType::VLAN_BVI, hwifNameFor(vlanId), sonicNameFor(vlanId),
+                VppInterface(VppInterfaceType::VLAN_BVI, hwifNameFor(vlanId), osIfFor(vlanId),
                              bdIdFor(vlanId)),
                 m_vlanId(vlanId)
             {
@@ -531,7 +533,7 @@ namespace saivs
                 return "bvi" + std::to_string(vlanId);
             }
 
-            static std::string sonicNameFor(
+            static std::string osIfFor(
                     _In_ uint16_t vlanId)
             {
                 return "Vlan" + std::to_string(vlanId);

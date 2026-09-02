@@ -140,10 +140,14 @@ const char* SwitchVpp::resolveNexthopMemberHwif(
     }
 
     rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS &&
-        vpp_get_hwif_name(rif_attr.value.oid, vlan_id, member_hwif))
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS)
     {
-        return member_hwif.c_str();
+        member_hwif = m_ifaceRegistry.resolveHwIfName(rif_attr.value.oid, vlan_id);
+
+        if (!member_hwif.empty())
+        {
+            return member_hwif.c_str();
+        }
     }
 
     return NULL;
