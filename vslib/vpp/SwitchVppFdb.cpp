@@ -128,6 +128,10 @@ using namespace saivs;
  *     multicast (rewrites VLIB_RX from bridged sub-if to parent phys
  *     before handing to linux-cp-punt, because a bridged sub-if has no
  *     LCP pair).
+ *   - sonic-ext-l2-vlan-filter: 802.1Q frames on an untagged (access)
+ *     member.  Accepts frames whose VID equals the member's access
+ *     VLAN (pops the tag and re-bridges) and drops any other VID, so
+ *     the tag-agnostic access bridge port does not flood foreign VLANs.
  * Untagged DHCP does not need the fixup node: VLIB_RX on an untagged
  * bridge member is already the parent phys, so linux-cp-punt resolves
  * the right LCP pair directly.
@@ -138,6 +142,7 @@ using namespace saivs;
 static bool     s_l2_punt_classify_inited = false;
 static uint32_t s_punt_next_index = ~0;       /* linux-cp-punt (untagged + LLDP) */
 static uint32_t s_trap_fixup_next_index = ~0; /* sonic-ext-l2-trap-fixup (tagged DHCP only) */
+static uint32_t s_vlan_filter_next_index = ~0; /* sonic-ext-l2-vlan-filter (access-port ingress VLAN filter) */
 
 /* Untagged member tables: ip4 slot holds DHCPv4 broadcast,
  * other slot holds LLDP.  No chain between them (different ethertype
@@ -218,6 +223,23 @@ static int l2_punt_classify_init()
         SWSS_LOG_NOTICE("l2_punt_classify_init: trap_fixup_next_index=%u",
                         s_trap_fixup_next_index);
     }
+
+    /* sonic-ext-l2-vlan-filter next: ingress VLAN filter for untagged
+     * (access) bridge members.  A tagged frame on an access member is
+     * classified (outer ethertype 0x8100) and handed to this node,
+     * which compares the frame's VID against the member's own access
+     * VLAN (derived from its bridge-domain id): if they match it pops
+     * the tag and re-bridges the frame; otherwise it drops it.  Runs at
+     * l2-input-classify, BEFORE l2-fwd/l2-flood.  Not fatal if
+     * unavailable: the ingress VLAN filter session is simply not
+     * installed (tagged frames then follow the default L2 path). */
+    if (vpp_add_node_next("l2-input-classify", "sonic-ext-l2-vlan-filter",
+                                &s_vlan_filter_next_index) != 0) {
+        SWSS_LOG_WARN("l2_punt_classify_init: sonic-ext-l2-vlan-filter not registered; "
+                      "ingress VLAN filtering on access members disabled");
+        s_vlan_filter_next_index = ~0;
+    }
+
     SWSS_LOG_NOTICE("l2_punt_classify_init: punt_next_index=%u", s_punt_next_index);
 
     /* --- Untagged IP4-slot table (DHCPv4 broadcast) ---
@@ -274,7 +296,7 @@ static int l2_punt_classify_init()
         mask[12] = 0xFF; mask[13] = 0xFF;
 
         if (vpp_classify_table_create(
-                8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
+                8 /*nbuckets*/, 4*1024 /*memory_size: 2 sessions*/,
                 0 /*skip*/, 1 /*match_n_vectors*/,
                 ~0 /*next_table=none*/,
                 ~0 /*miss_next=continue*/,
@@ -287,6 +309,18 @@ static int l2_punt_classify_init()
         uint8_t m[16] = {0}; m[12] = 0x88; m[13] = 0xCC;
         vpp_classify_session_add(s_untag_other_table, s_punt_next_index,
                                  m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+
+        /* 802.1Q 0x8100 → sonic-ext-l2-vlan-filter (ingress VLAN
+         * filter). Runs at l2-input-classify, BEFORE l2-fwd/l2-flood.
+         * The node accepts frames whose VID equals the access member's
+         * own VLAN (popping the tag and re-bridging) and drops frames
+         * carrying any other (unconfigured) VID, instead of letting the
+         * tag-agnostic bridge domain flood them. */
+        if (s_vlan_filter_next_index != ~0u) {
+            uint8_t md[16] = {0}; md[12] = 0x81; md[13] = 0x00;
+            vpp_classify_session_add(s_untag_other_table, s_vlan_filter_next_index,
+                                     md, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        }
     }
 
     /* --- Untagged OTHER-slot variant that ALSO punts broadcast ARP ---
@@ -541,12 +575,12 @@ static int l2_punt_classify_init()
     SWSS_LOG_NOTICE("L2 punt classify tables initialized: "
                     "untag_ip4=%u untag_other=%u untag_arp=%u untag_ip6mc=%u "
                     "tag_dhcp=%u tag_arp=%u tag_ip6mc=%u tag_ip6mc_only=%u "
-                    "punt_next=%u trap_fixup_next=%u",
+                    "punt_next=%u trap_fixup_next=%u vlan_filter_next=%u",
                     s_untag_ip4_table, s_untag_other_table, s_untag_arp_table,
                     s_untag_ip6mc_table,
                     s_tag_dhcp_table, s_tag_arp_table, s_tag_ip6mc_table,
                     s_tag_ip6mc_only_table,
-                    s_punt_next_index, s_trap_fixup_next_index);
+                    s_punt_next_index, s_trap_fixup_next_index, s_vlan_filter_next_index);
     return 0;
 }
 
