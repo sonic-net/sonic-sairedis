@@ -1248,10 +1248,13 @@ TunnelManager::create_vxlan_decap_term(
     // Primary-VTEP guard: if this VTEP IP already belongs to one of our own
     // interfaces (switch Loopback0), decap is already handled by the
     // nexthop-driven decap path; do nothing to avoid disturbing it.
-    // In the standard SONiC VNET model ENCAP_SRC_IP is always the local
-    // Loopback0 VTEP (the address advertised by BGP), so this guard always
-    // fires and the explicit "secondary VTEP" term below is a defensive path
-    // for a non-local ENCAP_SRC_IP that a single-loopback config never hits.
+    // In the common single-loopback SONiC VNET config ENCAP_SRC_IP is the
+    // local Loopback0 VTEP (the address advertised by BGP), so this guard
+    // fires and the secondary-VTEP term below is skipped. A config whose
+    // ENCAP_SRC_IP is not a local interface address (for example the
+    // multi-tunnel case exercised by sonic-mgmt test_vxlan_multiple_tunnels)
+    // falls through and installs the secondary-VTEP decap term and the VRF0
+    // local-receive below.
     refresh_interfaces_list();
     {
         vpp_ip_addr_t    probe_ip;
