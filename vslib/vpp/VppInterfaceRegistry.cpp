@@ -21,6 +21,8 @@ static bool split_subif_suffix(
         _Out_ std::string& base,
         _Out_ std::string& suffix)
 {
+    SWSS_LOG_ENTER();
+
     auto dot = name.find('.');
 
     if (dot == std::string::npos)
@@ -277,28 +279,6 @@ std::shared_ptr<VppVlanInterface> VppInterfaceRegistry::addBvi(
 
     SWSS_LOG_INFO("registered BVI %s oid 0x%llx",
             hwifName.c_str(), static_cast<unsigned long long>(vlanOid));
-
-    return rec;
-}
-
-std::shared_ptr<VppTunnelInterface> VppInterfaceRegistry::addTunnel(
-        _In_ const std::string& hwifName,
-        _In_ uint32_t vni)
-{
-    SWSS_LOG_ENTER();
-
-    if (findByHwif(hwifName))
-    {
-        SWSS_LOG_WARN("interface %s already registered, not adding tunnel", hwifName.c_str());
-
-        return nullptr;
-    }
-
-    auto rec = std::make_shared<VppTunnelInterface>(hwifName, vni);
-
-    indexRecord(rec);
-
-    SWSS_LOG_INFO("registered tunnel %s vni %u", hwifName.c_str(), vni);
 
     return rec;
 }
@@ -604,6 +584,8 @@ size_t VppInterfaceRegistry::removeByOid(
 std::shared_ptr<VppInterface> VppInterfaceRegistry::findByHwif(
         _In_ const std::string& hwifName) const
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_byHwif.find(hwifName);
 
     return it == m_byHwif.end() ? nullptr : it->second;
@@ -612,6 +594,8 @@ std::shared_ptr<VppInterface> VppInterfaceRegistry::findByHwif(
 std::shared_ptr<VppInterface> VppInterfaceRegistry::findByOsIf(
         _In_ const std::string& osIf) const
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_byOsIf.find(osIf);
 
     return it == m_byOsIf.end() ? nullptr : it->second;
@@ -620,6 +604,8 @@ std::shared_ptr<VppInterface> VppInterfaceRegistry::findByOsIf(
 std::shared_ptr<VppInterface> VppInterfaceRegistry::findByTap(
         _In_ const std::string& tapName) const
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_byTap.find(tapName);
 
     return it == m_byTap.end() ? nullptr : it->second;
@@ -628,6 +614,8 @@ std::shared_ptr<VppInterface> VppInterfaceRegistry::findByTap(
 std::shared_ptr<VppInterface> VppInterfaceRegistry::findByOid(
         _In_ sai_object_id_t oid) const
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_byOid.find(oid);
 
     return it == m_byOid.end() ? nullptr : it->second;
@@ -636,6 +624,8 @@ std::shared_ptr<VppInterface> VppInterfaceRegistry::findByOid(
 std::shared_ptr<VppInterface> VppInterfaceRegistry::findBySwIfIndex(
         _In_ uint32_t swIfIndex) const
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_bySwIfIndex.find(swIfIndex);
 
     return it == m_bySwIfIndex.end() ? nullptr : it->second;
@@ -645,6 +635,8 @@ std::shared_ptr<VppSubInterface> VppInterfaceRegistry::findSubIf(
         _In_ const std::string& parentHwifName,
         _In_ uint32_t subId) const
 {
+    SWSS_LOG_ENTER();
+
     /*
      * A sub-interface is named after its parent, so the primary index already
      * answers this; no separate (parent, vlan) index has to be kept in sync.
@@ -893,6 +885,8 @@ void VppInterfaceRegistry::clear()
 void VppInterfaceRegistry::indexRecord(
         _In_ const std::shared_ptr<VppInterface>& rec)
 {
+    SWSS_LOG_ENTER();
+
     m_byHwif[rec->getHwifName()] = rec;
 
     if (rec->hasOsIf())
@@ -919,6 +913,8 @@ void VppInterfaceRegistry::indexRecord(
 void VppInterfaceRegistry::unindexRecord(
         _In_ const std::shared_ptr<VppInterface>& rec)
 {
+    SWSS_LOG_ENTER();
+
     if (rec->hasSwIfIndex())
     {
         m_bySwIfIndex.erase(rec->getSwIfIndex());
@@ -945,6 +941,8 @@ void VppInterfaceRegistry::unindexRecord(
 std::vector<std::string> VppInterfaceRegistry::collectChildren(
         _In_ const std::shared_ptr<VppInterface>& parent) const
 {
+    SWSS_LOG_ENTER();
+
     std::vector<std::string> children;
 
     /*

@@ -1,5 +1,5 @@
 #pragma once
-
+#include "swss/logger.h"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -26,7 +26,6 @@ namespace saivs
     class VppBondInterface;
     class VppSubInterface;
     class VppVlanInterface;
-    class VppTunnelInterface;
 
     enum class VppInterfaceType
     {
@@ -36,7 +35,6 @@ namespace saivs
         LAG,                // BondEthernet<N>
         SUB_INTERFACE,      // <parent>.<vlan>, no PORT/LAG oid of its own
         VLAN_BVI,           // bvi<N>
-        TUNNEL,             // VXLAN/IPinIP, no tap and no port oid
     };
 
     class VppInterface
@@ -75,6 +73,7 @@ namespace saivs
 
             VppInterfaceType getType() const
             {
+                SWSS_LOG_ENTER();
                 return m_type;
             }
 
@@ -85,6 +84,7 @@ namespace saivs
              */
             const std::string& getHwifName() const
             {
+                SWSS_LOG_ENTER();
                 return m_hwifName;
             }
 
@@ -102,11 +102,13 @@ namespace saivs
              */
             const std::string& getOsIf() const
             {
+                SWSS_LOG_ENTER();
                 return m_osIf;
             }
 
             bool hasOsIf() const
             {
+                SWSS_LOG_ENTER();
                 return !m_osIf.empty();
             }
 
@@ -126,11 +128,13 @@ namespace saivs
              */
             const std::string& getTapName() const
             {
+                SWSS_LOG_ENTER();
                 return m_tapName;
             }
 
             bool hasTapName() const
             {
+                SWSS_LOG_ENTER();
                 return !m_tapName.empty();
             }
 
@@ -139,15 +143,17 @@ namespace saivs
              * SAI_OBJECT_TYPE_VLAN. The first two are what the FDB path
              * resolves to and what SAI_BRIDGE_PORT_ATTR_PORT_ID holds; the
              * third lets a BVI be found from the vlan oid a VLAN router
-             * interface carries. Sub-interfaces and tunnels never have one.
+             * interface carries. A sub-interface never has one.
              */
             sai_object_id_t getOid() const
             {
+                SWSS_LOG_ENTER();
                 return m_oid;
             }
 
             bool hasOid() const
             {
+                SWSS_LOG_ENTER();
                 return m_oid != SAI_NULL_OBJECT_ID;
             }
 
@@ -159,31 +165,37 @@ namespace saivs
              */
             sai_object_id_t getRifOid() const
             {
+                SWSS_LOG_ENTER();
                 return m_rifOid;
             }
 
             bool hasRifOid() const
             {
+                SWSS_LOG_ENTER();
                 return m_rifOid != SAI_NULL_OBJECT_ID;
             }
 
             uint32_t getSwIfIndex() const
             {
+                SWSS_LOG_ENTER();
                 return m_swIfIndex;
             }
 
             bool hasSwIfIndex() const
             {
+                SWSS_LOG_ENTER();
                 return m_swIfIndex != SWIF_INDEX_INVALID;
             }
 
             uint32_t getBdId() const
             {
+                SWSS_LOG_ENTER();
                 return m_bdId;
             }
 
             bool hasBdId() const
             {
+                SWSS_LOG_ENTER();
                 return m_bdId != BD_ID_INVALID;
             }
 
@@ -198,6 +210,7 @@ namespace saivs
 
             virtual std::string deriveTapName() const
             {
+                SWSS_LOG_ENTER();
                 return std::string();
             }
 
@@ -211,7 +224,6 @@ namespace saivs
             const VppBondInterface* asBond() const;
             const VppSubInterface* asSubIf() const;
             const VppVlanInterface* asVlan() const;
-            const VppTunnelInterface* asTunnel() const;
 
             /*
              * Non-const overload, for the one piece of bond state that is not
@@ -244,7 +256,7 @@ namespace saivs
                 m_swIfIndex(SWIF_INDEX_INVALID),
                 m_bdId(bdId)
             {
-                // empty
+                SWSS_LOG_ENTER();
             }
 
         private:
@@ -288,11 +300,12 @@ namespace saivs
                     _In_ const std::string& osIf):
                 VppInterface(VppInterfaceType::PHYSICAL_PORT, hwifName, osIf)
             {
-                // empty
+                SWSS_LOG_ENTER();
             }
 
             std::string deriveHwifName() const override
             {
+                SWSS_LOG_ENTER();
                 return getHwifName();
             }
 
@@ -302,6 +315,7 @@ namespace saivs
              */
             std::string deriveTapName() const override
             {
+                SWSS_LOG_ENTER();
                 return getOsIf();
             }
     };
@@ -322,27 +336,32 @@ namespace saivs
 
             uint32_t getBondId() const
             {
+                SWSS_LOG_ENTER();
                 return m_bondId;
             }
 
             bool isLcpCreated() const
             {
+                SWSS_LOG_ENTER();
                 return m_lcpCreated;
             }
 
             void setLcpCreated(
                     _In_ bool created)
             {
+                SWSS_LOG_ENTER();
                 m_lcpCreated = created;
             }
 
             std::string deriveHwifName() const override
             {
+                SWSS_LOG_ENTER();
                 return hwifNameFor(m_bondId);
             }
 
             std::string deriveTapName() const override
             {
+                SWSS_LOG_ENTER();
                 return tapNameFor(m_bondId);
             }
 
@@ -352,6 +371,7 @@ namespace saivs
             static std::string hwifNameFor(
                     _In_ uint32_t bondId)
             {
+                SWSS_LOG_ENTER();
                 return "BondEthernet" + std::to_string(bondId);
             }
 
@@ -359,6 +379,7 @@ namespace saivs
             static std::string osIfFor(
                     _In_ uint32_t bondId)
             {
+                SWSS_LOG_ENTER();
                 return "PortChannel" + std::to_string(bondId);
             }
 
@@ -370,6 +391,7 @@ namespace saivs
             static std::string tapNameFor(
                     _In_ uint32_t bondId)
             {
+                SWSS_LOG_ENTER();
                 return "be" + std::to_string(bondId);
             }
 
@@ -424,21 +446,25 @@ namespace saivs
              */
             std::shared_ptr<VppInterface> getParent() const
             {
+                SWSS_LOG_ENTER();
                 return m_parent.lock();
             }
 
             uint32_t getSubId() const
             {
+                SWSS_LOG_ENTER();
                 return m_subId;
             }
 
             uint16_t getVlanId() const
             {
+                SWSS_LOG_ENTER();
                 return m_vlanId;
             }
 
             std::string deriveHwifName() const override
             {
+                SWSS_LOG_ENTER();
                 auto parent = m_parent.lock();
 
                 return hwifNameFor(parent ? parent->getHwifName() : std::string(), m_subId);
@@ -452,6 +478,7 @@ namespace saivs
              */
             std::string deriveTapName() const override
             {
+                SWSS_LOG_ENTER();
                 auto parent = m_parent.lock();
 
                 if (!parent || !parent->hasTapName())
@@ -468,6 +495,7 @@ namespace saivs
                     _In_ const std::string& parentHwifName,
                     _In_ uint32_t subId)
             {
+                SWSS_LOG_ENTER();
                 return parentHwifName + "." + std::to_string(subId);
             }
 
@@ -475,6 +503,7 @@ namespace saivs
                     _In_ const std::string& parentOsIf,
                     _In_ uint32_t subId)
             {
+                SWSS_LOG_ENTER();
                 if (parentOsIf.empty())
                 {
                     return std::string();
@@ -512,16 +541,19 @@ namespace saivs
 
             uint16_t getVlanId() const
             {
+                SWSS_LOG_ENTER();
                 return m_vlanId;
             }
 
             std::string deriveHwifName() const override
             {
+                SWSS_LOG_ENTER();
                 return hwifNameFor(m_vlanId);
             }
 
             std::string deriveTapName() const override
             {
+                SWSS_LOG_ENTER();
                 return tapNameFor(m_vlanId);
             }
 
@@ -530,18 +562,21 @@ namespace saivs
             static std::string hwifNameFor(
                     _In_ uint16_t vlanId)
             {
+                SWSS_LOG_ENTER();
                 return "bvi" + std::to_string(vlanId);
             }
 
             static std::string osIfFor(
                     _In_ uint16_t vlanId)
             {
+                SWSS_LOG_ENTER();
                 return "Vlan" + std::to_string(vlanId);
             }
 
             static std::string tapNameFor(
                     _In_ uint16_t vlanId)
             {
+                SWSS_LOG_ENTER();
                 return "tap_Vlan" + std::to_string(vlanId);
             }
 
@@ -555,6 +590,7 @@ namespace saivs
             static uint32_t bdIdFor(
                     _In_ uint16_t vlanId)
             {
+                SWSS_LOG_ENTER();
                 return vlanId;
             }
 
@@ -563,42 +599,10 @@ namespace saivs
             uint16_t m_vlanId;
     };
 
-    /*
-     * No SONiC name, no tap, no port oid, and no derivable name: VPP names
-     * tunnels itself. L2 tunnels are keyed by vni, L3 encap by NEXT_HOP oid, so
-     * neither the by_oid nor the by_tap index applies here.
-     */
-    class VppTunnelInterface:
-        public VppInterface
-    {
-        public:
-
-            VppTunnelInterface(
-                    _In_ const std::string& hwifName,
-                    _In_ uint32_t vni):
-                VppInterface(VppInterfaceType::TUNNEL, hwifName, std::string()),
-                m_vni(vni)
-            {
-                // empty
-            }
-
-            uint32_t getVni() const
-            {
-                return m_vni;
-            }
-
-            std::string deriveHwifName() const override
-            {
-                return getHwifName();
-            }
-
-        private:
-
-            uint32_t m_vni;
-    };
-
     inline const VppBondInterface* VppInterface::asBond() const
     {
+        SWSS_LOG_ENTER();
+
         if (m_type != VppInterfaceType::LAG)
             return nullptr;
 
@@ -607,6 +611,8 @@ namespace saivs
 
     inline VppBondInterface* VppInterface::asBond()
     {
+        SWSS_LOG_ENTER();
+
         if (m_type != VppInterfaceType::LAG)
             return nullptr;
 
@@ -615,6 +621,8 @@ namespace saivs
 
     inline const VppSubInterface* VppInterface::asSubIf() const
     {
+        SWSS_LOG_ENTER();
+
         if (m_type != VppInterfaceType::SUB_INTERFACE)
             return nullptr;
 
@@ -623,17 +631,11 @@ namespace saivs
 
     inline const VppVlanInterface* VppInterface::asVlan() const
     {
+        SWSS_LOG_ENTER();
+
         if (m_type != VppInterfaceType::VLAN_BVI)
             return nullptr;
 
         return static_cast<const VppVlanInterface*>(this);
-    }
-
-    inline const VppTunnelInterface* VppInterface::asTunnel() const
-    {
-        if (m_type != VppInterfaceType::TUNNEL)
-            return nullptr;
-
-        return static_cast<const VppTunnelInterface*>(this);
     }
 }

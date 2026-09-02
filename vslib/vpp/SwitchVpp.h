@@ -2,6 +2,8 @@
 
 #include "SwitchStateBase.h"
 
+#include "swss/logger.h"
+
 #include "IpVrfInfo.h"
 #include "SaiObjectDB.h"
 #include "BitResourcePool.h"
@@ -1289,6 +1291,7 @@ namespace saivs
 
             const VppInterfaceRegistry& getInterfaceRegistry() const
             {
+                                SWSS_LOG_ENTER();
                 return m_ifaceRegistry;
             }
 

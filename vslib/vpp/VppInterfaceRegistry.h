@@ -1,5 +1,5 @@
 #pragma once
-
+#include "swss/logger.h"
 #include <map>
 #include <memory>
 #include <string>
@@ -115,10 +115,6 @@ namespace saivs
                     _In_ uint16_t vlanId,
                     _In_ sai_object_id_t vlanOid);
 
-            std::shared_ptr<VppTunnelInterface> addTunnel(
-                    _In_ const std::string& hwifName,
-                    _In_ uint32_t vni);
-
         public:
 
             // ---- mutation, keyed by the primary key -----------------------
@@ -229,8 +225,7 @@ namespace saivs
              *
              * The oid is whatever the record carries: a PORT, a LAG or, for a
              * BVI, a VLAN. SAI_NULL_OBJECT_ID when the index is unknown or the
-             * interface has no oid, as a tunnel or a bare sub-interface does
-             * not.
+             * interface has no oid, as a bare sub-interface does not.
              */
             sai_object_id_t resolveIfOid(
                     _In_ uint32_t swIfIndex) const;
@@ -323,6 +318,7 @@ namespace saivs
 
             size_t size() const
             {
+                SWSS_LOG_ENTER();
                 return m_byHwif.size();
             }
 
