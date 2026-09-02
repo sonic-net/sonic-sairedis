@@ -37,6 +37,31 @@ namespace saivs
         VLAN_BVI,           // bvi<N>
     };
 
+    /*
+     * Interface identity model used by VppInterfaceRegistry.
+     *
+     * Base attributes on every record:
+     *   - hwif name   (always present, primary key)
+     *   - osif name   (SONiC side name)
+     *   - tap name    (optional, present only while host netdev exists)
+     *   - oid         (optional; PORT/LAG/VLAN identity)
+     *   - rif oid     (optional router interface oid)
+     *   - sw_if_index (optional VPP runtime index)
+     *   - bd_id       (optional bridge domain id)
+     *
+     * Subclasses:
+     *   - VppPhysicalPort: front panel port identity seeded from ifmap.
+     *   - VppBondInterface: LAG identity with bond id and lcp-created state.
+     *   - VppSubInterface: parent-linked <parent>.<subId> interface identity.
+     *   - VppVlanInterface: VLAN BVI identity (bvi<VLAN>, Vlan<VLAN>).
+     *
+     * Lookup coverage by subclass (through registry indexes):
+     *   - Physical/LAG/BVI: hwif + osif + optional tap + optional oid +
+     *                       optional sw_if_index.
+     *   - Sub-interface:    hwif + osif + optional tap + optional sw_if_index,
+     *                       and findSubIf(parentHwif, subId).
+     */
+
     class VppInterface
     {
         public:
