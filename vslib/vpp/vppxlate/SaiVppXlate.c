@@ -29,6 +29,8 @@
 
 #include "SaiVppXlate.h"
 
+#include <vpp-api/client/stat_client.h>
+
 #include <vnet/ip/ip_types_api.h>
 
 #include <vlibapi/vat_helper_macros.h>
@@ -58,6 +60,8 @@
 
 #include <vpp_plugins/sonic_ext/sonic_ext.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
+#include <vpp_plugins/copp_punt_policer/copp_punt_policer.api_enum.h>
+#include <vpp_plugins/copp_punt_policer/copp_punt_policer.api_types.h>
 
 #include <vlibmemory/vlib.api_types.h>
 #include <vlibmemory/memclnt.api_enum.h>
@@ -81,6 +85,9 @@
 
 #include <vnet/ipip/ipip.api_enum.h>
 #include <vnet/ipip/ipip.api_types.h>
+
+#include <vnet/policer/policer.api_enum.h>
+#include <vnet/policer/policer.api_types.h>
 
 #include <vnet/classify/classify.api_enum.h>
 #include <vnet/classify/classify.api_types.h>
@@ -169,6 +176,22 @@
 
 #define vl_api_version(n, v) static u32 tunterm_api_version = v;
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api.h>
+#undef vl_api_version
+
+#define vl_typedefs
+#include <vpp_plugins/copp_punt_policer/copp_punt_policer.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vpp_plugins/copp_punt_policer/copp_punt_policer.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/copp_punt_policer/copp_punt_policer.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 copp_punt_policer_api_version = v;
+#include <vpp_plugins/copp_punt_policer/copp_punt_policer.api.h>
 #undef vl_api_version
 
 /* interface API inclusion */
@@ -280,6 +303,48 @@
 
 #define vl_api_version(n, v) static u32 ip_neighbor_api_version = v;
 #include <vnet/ip-neighbor/ip_neighbor.api.h>
+#undef vl_api_version
+
+#define vl_typedefs
+#include <vnet/policer/policer.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vnet/policer/policer.api.h>
+#undef vl_endianfun
+
+#define vl_print(handle, ...)        vlib_cli_output (handle, __VA_ARGS__)
+#define vl_printfun
+#include <vnet/policer/policer.api.h>
+#undef vl_printfun
+
+#define vl_calcsizefun
+#include <vnet/policer/policer.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 policer_api_version = v;
+#include <vnet/policer/policer.api.h>
+#undef vl_api_version
+
+#define vl_typedefs
+#include <vnet/classify/classify.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vnet/classify/classify.api.h>
+#undef vl_endianfun
+
+#define vl_print(handle, ...)        vlib_cli_output (handle, __VA_ARGS__)
+#define vl_printfun
+#include <vnet/classify/classify.api.h>
+#undef vl_printfun
+
+#define vl_calcsizefun
+#include <vnet/classify/classify.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 classify_api_version = v;
+#include <vnet/classify/classify.api.h>
 #undef vl_api_version
 
 /* linux_cp API inclusion */
@@ -1681,6 +1746,25 @@ vl_api_tunterm_acl_interface_add_del_reply_t_handler(vl_api_tunterm_acl_interfac
 }
 
 static void
+vl_api_copp_punt_policer_bind_reply_t_handler(vl_api_copp_punt_policer_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static vl_api_copp_punt_policer_get_counters_reply_t g_copp_punt_policer_counters_reply;
+static bool g_copp_punt_policer_counters_reply_valid;
+
+static void
+vl_api_copp_punt_policer_get_counters_reply_t_handler(vl_api_copp_punt_policer_get_counters_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+    g_copp_punt_policer_counters_reply = *msg;
+    g_copp_punt_policer_counters_reply_valid = true;
+}
+
+static void
 vl_api_bond_create_reply_t_handler (vl_api_bond_create_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1829,6 +1913,36 @@ static void vl_api_add_node_next_reply_t_handler(
     }
 }
 
+/* policer API reply handlers */
+
+static void vl_api_policer_add_reply_t_handler(vl_api_policer_add_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    uint32_t *policer_index = (uint32_t *) get_index_ptr(msg->context);
+    if (policer_index) {
+        *policer_index = ntohl(msg->policer_index);
+    }
+
+    release_index(msg->context);
+}
+
+static void vl_api_policer_del_reply_t_handler(vl_api_policer_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static vl_api_policer_details_t g_policer_details;
+static bool g_policer_details_valid;
+
+static void vl_api_policer_details_t_handler(vl_api_policer_details_t *msg)
+{
+    g_policer_details = *msg;
+    g_policer_details_valid = true;
+}
+
 #define vl_api_get_first_msg_id_reply_t_handler vl_noop_handler
 #define vl_api_get_first_msg_id_reply_t_handler_json vl_noop_handler
 
@@ -1848,6 +1962,7 @@ static u16 interface_msg_id_base, memclnt_msg_id_base;
 static __thread u16 __plugin_msg_base;
 static u16 l2_msg_id_base, vxlan_msg_id_base, ipip_msg_id_base;
 static u16 tunterm_msg_id_base;
+static u16 copp_punt_policer_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
 static u16 mpls_msg_id_base;
@@ -1893,6 +2008,9 @@ static void vpp_base_vpe_init(void)
 
 #define SPAN_MSG_ID(id) \
     (VL_API_##id + span_msg_id_base)
+
+#define POLICER_MSG_ID(id) \
+    (VL_API_##id + policer_msg_id_base)
 
 #define CLASSIFY_MSG_ID(id) \
     (VL_API_##id + classify_msg_id_base)
@@ -1957,13 +2075,17 @@ static void vpp_base_vpe_init(void)
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_SESSION_REPLY), classify_add_del_session_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_SET_INTERFACE_L2_TABLES_REPLY), classify_set_interface_l2_tables_reply) \
     _(VLIB_API_MSG_ID(GET_NEXT_INDEX_REPLY), get_next_index_reply) \
-    _(VLIB_API_MSG_ID(ADD_NODE_NEXT_REPLY), add_node_next_reply)
+    _(VLIB_API_MSG_ID(ADD_NODE_NEXT_REPLY), add_node_next_reply) \
+    _(POLICER_MSG_ID(POLICER_ADD_REPLY), policer_add_reply) \
+    _(POLICER_MSG_ID(POLICER_DEL_REPLY), policer_del_reply) \
+    _(POLICER_MSG_ID(POLICER_DETAILS), policer_details)
 
 
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
 static u16 acl_msg_id_base;
 static u16 sflow_msg_id_base;
 static u16 sonic_ext_msg_id_base;
+static u16 policer_msg_id_base;
 
 static void vpp_ext_vpe_init(void)
 {
@@ -2064,6 +2186,9 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
 #define IPIP_MSG_ID(id) \
     (VL_API_##id + ipip_msg_id_base)
 
+#define COPP_PUNT_POLICER_MSG_ID(id) \
+    (VL_API_##id + copp_punt_policer_msg_id_base)
+
 #define SR_MSG_ID(id) \
     (VL_API_##id + sr_msg_id_base)
 
@@ -2084,6 +2209,8 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(TUNTERM_MSG_ID(TUNTERM_ACL_INTERFACE_ADD_DEL_REPLY), tunterm_acl_interface_add_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_DEL_REPLY), tunterm_acl_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_ADD_REPLACE_REPLY), tunterm_acl_add_replace_reply) \
+    _(COPP_PUNT_POLICER_MSG_ID(COPP_PUNT_POLICER_BIND_REPLY), copp_punt_policer_bind_reply) \
+    _(COPP_PUNT_POLICER_MSG_ID(COPP_PUNT_POLICER_GET_COUNTERS_REPLY), copp_punt_policer_get_counters_reply) \
     _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_V2_REPLY), sr_localsid_add_del_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
@@ -2138,6 +2265,14 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "acl_%08x%c", acl_api_version, 0);
     acl_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(acl_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "policer_%08x%c", policer_api_version, 0);
+    policer_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(policer_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "classify_%08x%c", classify_api_version, 0);
+    classify_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(classify_msg_id_base != (u16) ~0);
 
     msg_base_lookup_name = format (0, "l2_%08x%c", l2_api_version, 0);
     l2_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
@@ -2194,6 +2329,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "sonic_ext_%08x%c", sonic_ext_api_version, 0);
     sonic_ext_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sonic_ext_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "copp_punt_policer_%08x%c", copp_punt_policer_api_version, 0);
+    copp_punt_policer_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(copp_punt_policer_msg_id_base != (u16) ~0);
 }
 
 #define API_SOCKET_FILE "/run/vpp/api.sock"
@@ -3494,6 +3633,328 @@ int vpp_acl_del (uint32_t acl_index)
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) acl_index %u", __func__, ret, acl_index); }
     else { SAIVPP_INFO("%s acl_index %u", __func__, acl_index); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+static vl_api_sse2_qos_rate_type_t vpp_policer_xlate_rate_type(vpp_policer_rate_type_e rate_type)
+{
+    switch (rate_type) {
+    case VPP_POLICER_RATE_PPS:  return SSE2_QOS_RATE_API_PPS;
+    case VPP_POLICER_RATE_KBPS:
+    default:                   return SSE2_QOS_RATE_API_KBPS;
+    }
+}
+
+static vl_api_sse2_qos_round_type_t vpp_policer_xlate_round_type(vpp_policer_round_type_e round_type)
+{
+    switch (round_type) {
+    case VPP_POLICER_ROUND_UP:      return SSE2_QOS_ROUND_API_TO_UP;
+    case VPP_POLICER_ROUND_DOWN:    return SSE2_QOS_ROUND_API_TO_DOWN;
+    case VPP_POLICER_ROUND_CLOSEST:
+    default:                        return SSE2_QOS_ROUND_API_TO_CLOSEST;
+    }
+}
+
+static vl_api_sse2_qos_policer_type_t vpp_policer_xlate_type(vpp_policer_type_e type)
+{
+    switch (type) {
+    case VPP_POLICER_TYPE_1R3C_RFC2697:   return SSE2_QOS_POLICER_TYPE_API_1R3C_RFC_2697;
+    case VPP_POLICER_TYPE_2R3C_RFC2698:   return SSE2_QOS_POLICER_TYPE_API_2R3C_RFC_2698;
+    case VPP_POLICER_TYPE_2R3C_RFC4115:   return SSE2_QOS_POLICER_TYPE_API_2R3C_RFC_4115;
+    case VPP_POLICER_TYPE_2R3C_MEF5CF1:   return SSE2_QOS_POLICER_TYPE_API_2R3C_RFC_MEF5CF1;
+    case VPP_POLICER_TYPE_1R2C:
+    default:                              return SSE2_QOS_POLICER_TYPE_API_1R2C;
+    }
+}
+
+static vl_api_sse2_qos_action_type_t vpp_policer_xlate_action(vpp_policer_action_e action)
+{
+    switch (action) {
+    case VPP_POLICER_ACTION_TRANSMIT:            return SSE2_QOS_ACTION_API_TRANSMIT;
+    case VPP_POLICER_ACTION_MARK_AND_TRANSMIT:    return SSE2_QOS_ACTION_API_MARK_AND_TRANSMIT;
+    case VPP_POLICER_ACTION_DROP:
+    default:                                      return SSE2_QOS_ACTION_API_DROP;
+    }
+}
+
+int vpp_policer_add_replace (vpp_policer_t *in_policer, uint32_t *policer_index, bool is_replace)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_policer_add_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    if (is_replace && *policer_index != (uint32_t)~0) {
+        vl_api_policer_del_t *dmp;
+        int dret;
+
+        __plugin_msg_base = policer_msg_id_base;
+        M (POLICER_DEL, dmp);
+        dmp->policer_index = htonl(*policer_index);
+        S (dmp);
+        WR (dret);
+        (void) dret;
+        /* Best-effort: proceed to (re)create even if the delete failed
+         * (e.g. index already gone); the add below is authoritative. */
+    }
+
+    __plugin_msg_base = policer_msg_id_base;
+
+    M (POLICER_ADD, mp);
+
+    // Bounded copy (avoid -Wstringop-truncation on strncpy with a
+    // possibly-full-length source): explicit memcpy of at most
+    // sizeof(mp->name)-1 bytes, always NUL-terminated.
+    {
+        size_t name_len = strnlen(in_policer->name, sizeof(mp->name) - 1);
+        memcpy((char *)mp->name, in_policer->name, name_len);
+        ((char *)mp->name)[name_len] = '\0';
+    }
+    mp->infos.cir = htonl(in_policer->cir);
+    mp->infos.eir = htonl(in_policer->eir);
+    mp->infos.cb = clib_host_to_net_u64(in_policer->cb);
+    mp->infos.eb = clib_host_to_net_u64(in_policer->eb);
+    mp->infos.rate_type = vpp_policer_xlate_rate_type(in_policer->rate_type);
+    mp->infos.round_type = vpp_policer_xlate_round_type(in_policer->round_type);
+    mp->infos.type = vpp_policer_xlate_type(in_policer->type);
+    mp->infos.color_aware = in_policer->color_aware;
+    mp->infos.conform_action.type = vpp_policer_xlate_action(in_policer->conform_action);
+    mp->infos.exceed_action.type = vpp_policer_xlate_action(in_policer->exceed_action);
+    mp->infos.violate_action.type = vpp_policer_xlate_action(in_policer->violate_action);
+
+    mp->context = store_ptr(policer_index);
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) name %s", __func__, ret, in_policer->name); }
+    else { SAIVPP_INFO("%s name %s -> policer_index %u", __func__, in_policer->name, *policer_index); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_policer_del (uint32_t policer_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_policer_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = policer_msg_id_base;
+
+    M (POLICER_DEL, mp);
+    mp->policer_index = htonl(policer_index);
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer_index %u", __func__, ret, policer_index); }
+    else { SAIVPP_INFO("%s policer_index %u", __func__, policer_index); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/*
+ * Read back a VPP policer's live cumulative conform/exceed/violate
+ * packet+byte counters directly from the VPP stats segment.
+ * Connects to the stats segment lazily on first call and keeps the
+ * connection open for the life of the process (same pattern VPP's own
+ * `vpp_get_stats` CLI tool uses) -- reconnecting per-call would be far
+ * more expensive than the up-front one-time connect cost.
+ */
+static bool g_stat_client_connected;
+
+static bool ensure_stat_client_connected(void)
+{
+    if (g_stat_client_connected)
+    {
+        return true;
+    }
+
+    if (stat_segment_connect(STAT_SEGMENT_SOCKET_FILE) != 0)
+    {
+        SAIVPP_ERROR("%s: failed to connect to VPP stats segment at %s",
+                __func__, STAT_SEGMENT_SOCKET_FILE);
+        return false;
+    }
+
+    g_stat_client_connected = true;
+
+    return true;
+}
+
+/* Sums a combined-counter-vector stat (indexed [thread][policer_index])
+ * across all threads for one policer_index. Returns false if the named
+ * stat path isn't found or isn't the expected type. */
+static bool sum_policer_combined_counter(
+        const char *stat_path,
+        uint32_t policer_index,
+        uint64_t *out_packets,
+        uint64_t *out_bytes)
+{
+    uint8_t **patterns = NULL;
+    patterns = stat_segment_string_vector(patterns, stat_path);
+    uint32_t *stats = stat_segment_ls(patterns);
+    stat_segment_data_t *res = stat_segment_dump(stats);
+    bool found = false;
+
+    *out_packets = 0;
+    *out_bytes = 0;
+
+    for (int i = 0; i < stat_segment_vec_len(res); i++)
+    {
+        if (res[i].type != STAT_DIR_TYPE_COUNTER_VECTOR_COMBINED)
+        {
+            continue;
+        }
+
+        int n_threads = stat_segment_vec_len(res[i].combined_counter_vec);
+
+        for (int t = 0; t < n_threads; t++)
+        {
+            if ((uint32_t)stat_segment_vec_len(res[i].combined_counter_vec[t]) <= policer_index)
+            {
+                continue;
+            }
+
+            *out_packets += res[i].combined_counter_vec[t][policer_index].packets;
+            *out_bytes += res[i].combined_counter_vec[t][policer_index].bytes;
+            found = true;
+        }
+    }
+
+    stat_segment_data_free(res);
+    stat_segment_vec_free(stats);
+    stat_segment_vec_free((void *)patterns);
+
+    return found;
+}
+
+int vpp_policer_get_counters (uint32_t policer_index, vpp_policer_counters_t *counters)
+{
+    memset(counters, 0, sizeof(*counters));
+
+    if (!ensure_stat_client_connected())
+    {
+        return -1;
+    }
+
+    uint64_t conform_packets = 0, conform_bytes = 0;
+    uint64_t exceed_packets = 0, exceed_bytes = 0;
+    uint64_t violate_packets = 0, violate_bytes = 0;
+
+    bool have_conform = sum_policer_combined_counter("/net/policer/conform", policer_index, &conform_packets, &conform_bytes);
+    bool have_exceed = sum_policer_combined_counter("/net/policer/exceed", policer_index, &exceed_packets, &exceed_bytes);
+    bool have_violate = sum_policer_combined_counter("/net/policer/violate", policer_index, &violate_packets, &violate_bytes);
+
+    if (!have_conform && !have_exceed && !have_violate)
+    {
+        SAIVPP_ERROR("%s: no /net/policer/* stats entries found for policer_index %u",
+                __func__, policer_index);
+        return -1;
+    }
+
+    /* SAI_POLICER_STAT_GREEN_PACKETS/BYTES <- conform,
+     * SAI_POLICER_STAT_YELLOW_PACKETS/BYTES <- exceed (this design is a
+     * single-rate 1r2c policer: conform/exceed/drop, no separate
+     * yellow marking tier -- "exceed" is the closest SAI mapping),
+     * SAI_POLICER_STAT_RED_PACKETS/BYTES <- violate (the actual drop
+     * tier for 1r2c). */
+    counters->green_packets = conform_packets;
+    counters->green_bytes = conform_bytes;
+    counters->yellow_packets = exceed_packets;
+    counters->yellow_bytes = exceed_bytes;
+    counters->red_packets = violate_packets;
+    counters->red_bytes = violate_bytes;
+
+    return 0;
+}
+
+/*
+ * device-input-arc ethertype -> policer binding
+ */
+int vpp_copp_punt_policer_bind(
+        uint16_t ethertype,
+        const char *policer_name,
+        bool is_bind,
+        bool match_ip4_ttl_expiring)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_copp_punt_policer_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = copp_punt_policer_msg_id_base;
+
+    M (COPP_PUNT_POLICER_BIND, mp);
+
+    mp->ethertype = htons(ethertype);
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
+    mp->is_bind = is_bind;
+    mp->match_ip4_ttl_expiring = match_ip4_ttl_expiring;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) ethertype 0x%04x policer_name %s is_bind %d", __func__, ret, ethertype, policer_name ? policer_name : "", is_bind); }
+    else { SAIVPP_INFO("%s ethertype 0x%04x policer_name %s is_bind %d", __func__, ethertype, policer_name ? policer_name : "", is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_copp_punt_policer_get_counters(
+        uint16_t ethertype,
+        uint64_t *conform_packets,
+        uint64_t *exceed_packets,
+        uint64_t *violate_packets)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_copp_punt_policer_get_counters_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = copp_punt_policer_msg_id_base;
+
+    g_copp_punt_policer_counters_reply_valid = false;
+
+    M (COPP_PUNT_POLICER_GET_COUNTERS, mp);
+
+    mp->ethertype = htons(ethertype);
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) ethertype 0x%04x", __func__, ret, ethertype); }
+    else if (g_copp_punt_policer_counters_reply_valid) {
+        *conform_packets = clib_net_to_host_u64(g_copp_punt_policer_counters_reply.conform_packets);
+        *exceed_packets = clib_net_to_host_u64(g_copp_punt_policer_counters_reply.exceed_packets);
+        *violate_packets = clib_net_to_host_u64(g_copp_punt_policer_counters_reply.violate_packets);
+    }
 
     VPP_UNLOCK();
 

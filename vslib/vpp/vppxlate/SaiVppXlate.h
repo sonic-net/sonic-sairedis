@@ -124,6 +124,56 @@ typedef struct vpp_ip_addr_ {
         vpp_tunterm_acl_rule_t rules[0];
     } vpp_tunterm_acl_t;
 
+    /* CoPP: SAI POLICER -> VPP native policer (vnet/policer) */
+    typedef enum {
+        VPP_POLICER_RATE_KBPS = 0,
+        VPP_POLICER_RATE_PPS = 1,
+    } vpp_policer_rate_type_e;
+
+    typedef enum {
+        VPP_POLICER_ROUND_CLOSEST = 0,
+        VPP_POLICER_ROUND_UP = 1,
+        VPP_POLICER_ROUND_DOWN = 2,
+    } vpp_policer_round_type_e;
+
+    typedef enum {
+        VPP_POLICER_TYPE_1R2C = 0,
+        VPP_POLICER_TYPE_1R3C_RFC2697 = 1,
+        VPP_POLICER_TYPE_2R3C_RFC2698 = 2,
+        VPP_POLICER_TYPE_2R3C_RFC4115 = 3,
+        VPP_POLICER_TYPE_2R3C_MEF5CF1 = 4,
+    } vpp_policer_type_e;
+
+    typedef enum {
+        VPP_POLICER_ACTION_DROP = 0,
+        VPP_POLICER_ACTION_TRANSMIT = 1,
+        VPP_POLICER_ACTION_MARK_AND_TRANSMIT = 2,
+    } vpp_policer_action_e;
+
+    typedef struct _vpp_policer_ {
+        char name[64];
+        uint32_t cir;
+        uint32_t eir;
+        uint64_t cb;
+        uint64_t eb;
+        vpp_policer_rate_type_e rate_type;
+        vpp_policer_round_type_e round_type;
+        vpp_policer_type_e type;
+        bool color_aware;
+        vpp_policer_action_e conform_action;
+        vpp_policer_action_e exceed_action;
+        vpp_policer_action_e violate_action;
+    } vpp_policer_t;
+
+    typedef struct _vpp_policer_counters_ {
+        uint64_t green_packets;
+        uint64_t green_bytes;
+        uint64_t yellow_packets;
+        uint64_t yellow_bytes;
+        uint64_t red_packets;
+        uint64_t red_bytes;
+    } vpp_policer_counters_t;
+
 
     typedef enum {
         VPP_IP_API_FLOW_HASH_SRC_IP = 1,
@@ -393,6 +443,18 @@ typedef enum {
 
     extern int vpp_acl_add_replace(vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace);
     extern int vpp_acl_del(uint32_t acl_index);
+
+    /* CoPP policer: create/replace, delete, and read counters for a VPP
+     * native policer backing a SAI_OBJECT_TYPE_POLICER. */
+    extern int vpp_policer_add_replace(vpp_policer_t *in_policer, uint32_t *policer_index, bool is_replace);
+    extern int vpp_policer_del(uint32_t policer_index);
+    extern int vpp_policer_get_counters(uint32_t policer_index, vpp_policer_counters_t *counters);
+
+    /* device-input-arc ethertype -> policer binding */
+    extern int vpp_copp_punt_policer_bind(uint16_t ethertype,
+            const char *policer_name, bool is_bind, bool match_ip4_ttl_expiring);
+    extern int vpp_copp_punt_policer_get_counters(uint16_t ethertype,
+            uint64_t *conform_packets, uint64_t *exceed_packets, uint64_t *violate_packets);
     extern int vpp_acl_interface_bind(const char *hwif_name, uint32_t acl_index,
 				      bool is_input);
     extern int vpp_acl_interface_unbind(const char *hwif_name, uint32_t acl_index,
