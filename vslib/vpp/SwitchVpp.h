@@ -8,6 +8,8 @@
 #include "TunnelManager.h"
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
+#include "SwitchVppPolicer.h"
+#include "SwitchVppHostifTrap.h"
 #include "CRMTracker.h"
 #include "PortConfigMap.h"
 
@@ -24,6 +26,8 @@
 #include <chrono>
 #include <functional>
 #include <queue>
+#include <set>
+#include <string>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -954,6 +958,70 @@ namespace saivs
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
+
+        protected: // CoPP: POLICER / HOSTIF_TRAP / HOSTIF_TRAP_GROUP
+
+            // SAI POLICER OID -> VPP-side policer identity (name + index).
+            std::map<sai_object_id_t, vpp_policer_entry_t> m_policer_map;
+
+            sai_status_t createPolicer(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removePolicer(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t setPolicer(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t getPolicerStats(
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _Out_ uint64_t *counters);
+
+        protected: // CoPP: HOSTIF_TRAP / HOSTIF_TRAP_GROUP
+
+            std::map<sai_object_id_t, vpp_trap_group_entry_t> m_trap_group_map;
+            std::map<sai_object_id_t, vpp_trap_entry_t> m_trap_map;
+
+            sai_status_t createHostifTrapGroup(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeHostifTrapGroup(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t setHostifTrapGroup(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t createHostifTrap(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeHostifTrap(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t setHostifTrap(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t installTrapClassify(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap,
+                    _In_ uint32_t vpp_policer_index);
+
+            sai_status_t uninstallTrapClassify(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap);
 
         protected: // VPP
 
