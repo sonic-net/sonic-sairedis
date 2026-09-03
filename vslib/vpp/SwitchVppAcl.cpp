@@ -989,6 +989,11 @@ sai_status_t SwitchVpp::fill_acl_rules(
             std::set<std::string> in_hwifs;
             bool                  in_ports_scoped = false;
 
+            /*
+             * A scope that cannot be resolved comes back as an empty in_hwifs
+             * rather than a status, so that it costs this entry its rules and
+             * not the whole table. The status check is defensive only.
+             */
             status = acl_entry_in_ports_get(p_ace, ace.ace_oid, in_ports_scoped, in_hwifs);
 
             if (status != SAI_STATUS_SUCCESS) {
@@ -1129,9 +1134,15 @@ sai_status_t SwitchVpp::acl_entry_in_ports_get(
     attr.value.aclfield.data.objlist.list = ports.data();
 
     if (get(SAI_OBJECT_TYPE_ACL_ENTRY, ace_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_ERROR("Failed to read IN_PORTS list of ACL entry %s",
+        /*
+         * The scope cannot be determined, so leave hwifs empty and let the
+         * caller emit no rule for this entry. See the note below on why that
+         * is preferred over failing the table.
+         */
+        SWSS_LOG_ERROR("Failed to read IN_PORTS list of ACL entry %s; no rule is emitted "
+                       "for this entry",
                        sai_serialize_object_id(ace_oid).c_str());
-        return SAI_STATUS_FAILURE;
+        return SAI_STATUS_SUCCESS;
     }
 
     for (uint32_t i = 0; i < attr.value.aclfield.data.objlist.count; i++) {
@@ -1148,11 +1159,28 @@ sai_status_t SwitchVpp::acl_entry_in_ports_get(
         hwifs.insert(hwif_name);
     }
 
+    /*
+     * If nothing resolved, hwifs is left empty and the caller emits no rule for
+     * this entry. That is deliberate, and it is the same outcome as the
+     * degenerate cases above rather than a separate policy:
+     *
+     *   - Programming the entry unscoped would apply it to every port the table
+     *     is bound to, which is the table-wide deny this whole change exists to
+     *     remove.
+     *   - Failing the table would abort AclTblConfig for every entry in it, and
+     *     the table is shared: MuxOrch's drop rule and PFC watchdog's rules both
+     *     live in IngressTableDrop. The failure would also be sticky, because
+     *     createAclEntry has already committed the entry to the object store and
+     *     to m_acl_tbl_rules_map before this runs and does not roll either back,
+     *     so every later add or remove on the table would fail here again.
+     *
+     * Emitting no rule keeps the damage to the entry that could not be
+     * resolved, and the error below is the signal.
+     */
     if (hwifs.empty()) {
         SWSS_LOG_ERROR("None of the %u port(s) named by IN_PORTS of ACL entry %s resolve "
-                       "to a VPP interface",
+                       "to a VPP interface; no rule is emitted for this entry",
                        count, sai_serialize_object_id(ace_oid).c_str());
-        return SAI_STATUS_FAILURE;
     }
 
     return SAI_STATUS_SUCCESS;
