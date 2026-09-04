@@ -970,6 +970,15 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+            // Shared VPP-side programming for createPolicer()/setPolicer();
+            // see SwitchVppPolicer.cpp for details. Does not itself call
+            // create_internal()/set_internal() -- callers own that.
+            sai_status_t programPolicer(
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _In_ bool is_replace);
+
             sai_status_t removePolicer(
                     _In_ const std::string &serializedObjectId);
 

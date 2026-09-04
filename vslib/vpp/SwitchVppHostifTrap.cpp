@@ -160,7 +160,42 @@ sai_status_t SwitchVpp::uninstallTrapClassify(
     {
         uint16_t ethertype = (uint16_t)((match[12] << 8) | match[13]);
 
-        vpp_copp_punt_policer_bind(ethertype, "", false, isIp4TtlExpiringTrap(trap.trap_type));
+        // Multiple trap_types can share an ethertype (e.g.
+        // SAI_HOSTIF_TRAP_TYPE_ARP_REQUEST/_RESPONSE both map to 0x0806),
+        // but the device-input plugin's bind table is keyed purely by
+        // ethertype with a single slot -- unbinding unconditionally here
+        // would also silently unpolice any other still-installed trap on
+        // the same ethertype. Only actually unbind once no other tracked,
+        // classify_installed trap still needs this ethertype.
+        bool still_needed = false;
+
+        for (auto &kv : m_trap_map)
+        {
+            if (kv.first == trap_oid || !kv.second.classify_installed)
+            {
+                continue;
+            }
+
+            std::array<uint8_t, 16> other_match{};
+
+            if (buildClassifyMatchForTrapType(kv.second.trap_type, other_match) &&
+                    other_match[12] == match[12] && other_match[13] == match[13])
+            {
+                still_needed = true;
+                break;
+            }
+        }
+
+        if (!still_needed)
+        {
+            vpp_copp_punt_policer_bind(ethertype, "", false, isIp4TtlExpiringTrap(trap.trap_type));
+        }
+        else
+        {
+            SWSS_LOG_NOTICE("ethertype 0x%04x still needed by another installed trap; "
+                    "leaving device-input binding in place for SAI trap 0x%lx",
+                    ethertype, (unsigned long)trap_oid);
+        }
     }
 
     SWSS_LOG_NOTICE("unbound device-input policer for SAI trap 0x%lx: trap_type %d",
@@ -450,6 +485,28 @@ sai_status_t SwitchVpp::setHostifTrap(
         {
             it->second.classify_installed = false;
         }
+    }
+    else if (should_be_installed && it->second.classify_installed && attr->id == SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP)
+    {
+        // Trap stays installed but moved to a different trap group: neither
+        // branch above fires (classify_installed doesn't change), so without
+        // this the trap would silently keep its old group's policer binding.
+        // installTrapClassify()/vpp_copp_punt_policer_bind() are idempotent
+        // on the same ethertype -- re-running with the new group's policer
+        // just updates which policer name that ethertype resolves to.
+        uint32_t vpp_policer_index = (uint32_t)~0;
+
+        auto git = m_trap_group_map.find(it->second.trap_group_oid);
+        if (git != m_trap_group_map.end())
+        {
+            auto pit = m_policer_map.find(git->second.policer_oid);
+            if (pit != m_policer_map.end())
+            {
+                vpp_policer_index = pit->second.vpp_policer_index;
+            }
+        }
+
+        installTrapClassify(object_id, it->second, vpp_policer_index);
     }
 
     return SAI_STATUS_SUCCESS;
