@@ -19,7 +19,7 @@ static vpp_policer_rate_type_e vpp_policer_meter_type_from_sai(sai_meter_type_t 
     return (meter_type == SAI_METER_TYPE_PACKETS) ? VPP_POLICER_RATE_PPS : VPP_POLICER_RATE_KBPS;
 }
 
-static vpp_policer_type_e vpp_policer_mode_from_sai(sai_policer_mode_t mode, bool has_pir)
+static vpp_policer_type_e vpp_policer_mode_from_sai(sai_policer_mode_t mode, bool has_pir, bool has_pbs)
 {
     switch (mode)
     {
@@ -29,9 +29,11 @@ static vpp_policer_type_e vpp_policer_mode_from_sai(sai_policer_mode_t mode, boo
             return has_pir ? VPP_POLICER_TYPE_2R3C_RFC2698 : VPP_POLICER_TYPE_1R2C;
 
         case SAI_POLICER_MODE_SR_TCM:
-            // Single-rate: CIR + CBS, optional PBS -> RFC 2697 (1R3C) if a
-            // second bucket (PBS) is present, otherwise plain 1R2C.
-            return has_pir ? VPP_POLICER_TYPE_1R3C_RFC2697 : VPP_POLICER_TYPE_1R2C;
+            // Single-rate three-color (RFC 2697) discriminates on PBS (the
+            // second bucket), not PIR -- PIR/EIR belongs to the two-rate
+            // (TR_TCM) modes above. Falls back to plain 1R2C if no PBS is
+            // present.
+            return has_pbs ? VPP_POLICER_TYPE_1R3C_RFC2697 : VPP_POLICER_TYPE_1R2C;
 
         case SAI_POLICER_MODE_STORM_CONTROL:
         default:
@@ -70,6 +72,26 @@ sai_status_t SwitchVpp::createPolicer(
 
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_POLICER, sid, switch_id, attr_count, attr_list));
 
+    return programPolicer(object_id, attr_count, attr_list, false /* is_replace */);
+}
+
+// Shared VPP-side programming for both createPolicer() (is_replace=false,
+// first-time create) and setPolicer() (is_replace=true, re-derive the full
+// config from the object hash and recreate at the same VPP policer_index --
+// VPP's policer_add has no true in-place update, so this deletes-then-
+// recreates, mirroring how SwitchVppAcl.cpp's acl_add_replace() handles any
+// ACE change). Never calls create_internal()/set_internal() itself; callers
+// own that.
+sai_status_t SwitchVpp::programPolicer(
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ bool is_replace)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(object_id);
+
     vpp_policer_t vpp_policer;
     memset(&vpp_policer, 0, sizeof(vpp_policer));
 
@@ -83,6 +105,7 @@ sai_status_t SwitchVpp::createPolicer(
     vpp_policer.violate_action = VPP_POLICER_ACTION_DROP;
 
     bool has_pir = false;
+    bool has_pbs = false;
     sai_policer_mode_t mode = SAI_POLICER_MODE_SR_TCM;
 
     for (uint32_t i = 0; i < attr_count; i++)
@@ -114,6 +137,7 @@ sai_status_t SwitchVpp::createPolicer(
 
             case SAI_POLICER_ATTR_PBS:
                 vpp_policer.eb = attr.value.u64;
+                has_pbs = true;
                 break;
 
             case SAI_POLICER_ATTR_GREEN_PACKET_ACTION:
@@ -133,7 +157,7 @@ sai_status_t SwitchVpp::createPolicer(
         }
     }
 
-    vpp_policer.type = vpp_policer_mode_from_sai(mode, has_pir);
+    vpp_policer.type = vpp_policer_mode_from_sai(mode, has_pir, has_pbs);
 
     // VPP policer names are unique keys in its policer table; derive one
     // from the SAI OID so create/replace/del/dump can all address the same
@@ -141,14 +165,26 @@ sai_status_t SwitchVpp::createPolicer(
     snprintf(vpp_policer.name, sizeof(vpp_policer.name), "copp-policer-0x%lx",
             (unsigned long)object_id);
 
+    // On replace, pass in the existing VPP policer_index so
+    // vpp_policer_add_replace() deletes-then-recreates at the same
+    // tracked slot; on first create there is none yet.
     uint32_t vpp_policer_index = (uint32_t)~0;
 
-    int ret = vpp_policer_add_replace(&vpp_policer, &vpp_policer_index, false);
+    if (is_replace)
+    {
+        auto existing = m_policer_map.find(object_id);
+        if (existing != m_policer_map.end())
+        {
+            vpp_policer_index = existing->second.vpp_policer_index;
+        }
+    }
+
+    int ret = vpp_policer_add_replace(&vpp_policer, &vpp_policer_index, is_replace);
 
     if (ret != 0)
     {
-        SWSS_LOG_ERROR("failed to create VPP policer for %s (name %s): ret %d",
-                sid.c_str(), vpp_policer.name, ret);
+        SWSS_LOG_ERROR("failed to %s VPP policer for %s (name %s): ret %d",
+                is_replace ? "replace" : "create", sid.c_str(), vpp_policer.name, ret);
 
         // Config-plane bookkeeping already succeeded above (matching the
         // rest of saivpp's tolerant-of-dataplane-gaps posture); surface the
@@ -169,8 +205,8 @@ sai_status_t SwitchVpp::createPolicer(
 
     m_policer_map[object_id] = entry;
 
-    SWSS_LOG_NOTICE("created VPP policer %s (index %u) for SAI policer %s",
-            vpp_policer.name, vpp_policer_index, sid.c_str());
+    SWSS_LOG_NOTICE("%s VPP policer %s (index %u) for SAI policer %s",
+            is_replace ? "replaced" : "created", vpp_policer.name, vpp_policer_index, sid.c_str());
 
     return SAI_STATUS_SUCCESS;
 }
@@ -234,9 +270,7 @@ sai_status_t SwitchVpp::setPolicer(
         all_attrs.push_back(*kv.second->getAttr());
     }
 
-    sai_object_id_t switch_id = m_switch_id;
-
-    return createPolicer(object_id, switch_id, (uint32_t)all_attrs.size(), all_attrs.data());
+    return programPolicer(object_id, (uint32_t)all_attrs.size(), all_attrs.data(), true /* is_replace */);
 }
 
 sai_status_t SwitchVpp::getPolicerStats(
