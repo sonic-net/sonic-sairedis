@@ -749,6 +749,20 @@ sai_status_t SwitchVpp::get_sorted_aces(
             status = SAI_STATUS_FAILURE;
             break;
         }
+
+        /*
+         * get_max() stops at MAX_ACL_ATTRS, and the attribute store is keyed by
+         * attribute name, so what survives is an alphabetical cut rather than
+         * the attributes that matter. An entry that hits the cap may therefore
+         * be missing qualifiers this code goes on to read - IN_PORTS among them,
+         * which would leave a scoped entry looking unscoped. Report it: the cap
+         * is not raised here, so this is the only signal that it was reached.
+         */
+        if (p_ace->attrs_count >= MAX_ACL_ATTRS) {
+            SWSS_LOG_WARN("ACL entry %s has at least %u attributes, the most this code reads; "
+                          "any beyond that were dropped by name order and are invisible to it",
+                          sid.c_str(), MAX_ACL_ATTRS);
+        }
         p_ace->attr_range.value.aclfield.data.objlist.list = p_ace->range_objid_list;
         p_ace->attr_range.value.aclfield.data.objlist.count = 2;
 
