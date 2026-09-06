@@ -77,6 +77,27 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     EXPECT_EQ(*bridgeport, "oid:0x3a000000000a99");
     EXPECT_EQ(ip, nullptr);
 
+    // Verify one invalid FDB event does not block later valid entries in the same batch.
+    translator->insertRidAndVid(0x21000000000000,0x210000000000);
+    translator->insertRidAndVid(0x2600000003,0x26000000000003);
+    translator->insertRidAndVid(0x1003a0000004c,0x3a000000000a9c);
+    // Leave the bad entry's BVID and bridge-port RIDs unregistered on purpose.
+
+    static std::string fdb_batch_data = "[{\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x2600000002\\\",\\\"mac\\\":\\\"00:00:00:00:00:02\\\",\\\"switch_id\\\":\\\"oid:0x21000000000000\\\"}\",\"fdb_event\":\"SAI_FDB_EVENT_LEARNED\",\"list\":[{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"value\":\"oid:0x1003a0000004b\"}]},{\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x2600000003\\\",\\\"mac\\\":\\\"00:00:00:00:00:03\\\",\\\"switch_id\\\":\\\"oid:0x21000000000000\\\"}\",\"fdb_event\":\"SAI_FDB_EVENT_LEARNED\",\"list\":[{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"value\":\"oid:0x1003a0000004c\"}]}]";
+    std::vector<swss::FieldValueTuple> fdb_batch_entry;
+    swss::KeyOpFieldsValuesTuple batchItem(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, fdb_batch_data, fdb_batch_entry);
+
+    notificationProcessor->syncProcessNotification(batchItem);
+
+    translator->eraseRidAndVid(0x21000000000000,0x210000000000);
+    translator->eraseRidAndVid(0x2600000003,0x26000000000003);
+    translator->eraseRidAndVid(0x1003a0000004c,0x3a000000000a9c);
+
+    std::string goodKey = "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x26000000000003\",\"mac\":\"00:00:00:00:00:03\",\"switch_id\":\"oid:0x210000000000\"}";
+    auto goodBridgePort = dbAsic->hget(goodKey, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
+    ASSERT_NE(goodBridgePort, nullptr);
+    EXPECT_EQ(*goodBridgePort, "oid:0x3a000000000a9c");
+
     //Test ICMP_ECHO_SESSION_STATE_CHANGE Notification
     translator->insertRidAndVid(0x21000000000000,0x210000000000);
     translator->insertRidAndVid(0x100000000003a,0x100000000003a);
