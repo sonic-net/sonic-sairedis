@@ -386,6 +386,9 @@ namespace sairedis
             void recordNotifySyncdResponse(
                     _In_ sai_status_t status);
 
+            void recordSyncResponseTimeout(
+                   _In_ uint64_t responseTimeout);
+
         public: // Recorder API
 
             void enableRecording(
