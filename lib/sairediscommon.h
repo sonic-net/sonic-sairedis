@@ -99,6 +99,18 @@
  */
 #define REDIS_TABLE_GETRESPONSE     "GETRESPONSE"
 
+/**
+ * @brief Redis pub/sub channel for operator meta-layer FDB diagnostics.
+ *
+ * libsairedis subscribes a dedicated, tolerant consumer on this channel (see
+ * RedisChannel). Operators PUBLISH a "dump" command to it (e.g. via
+ * sonic-db-cli) to log the meta FDB mirror + desync counters to syslog. The
+ * handler NEVER throws on malformed input, so publishing arbitrary messages to
+ * this channel cannot disturb runtime. Pub/sub is not scoped to a redis
+ * database, so any PUBLISH to this channel name is received.
+ */
+#define SAIREDIS_META_FDB_DEBUG_CHANNEL "SAIREDIS_META_FDB_DEBUG"
+
 // REDIS default database defines
 
 #define REDIS_DEFAULT_DATABASE_ASIC         "ASIC_DB"

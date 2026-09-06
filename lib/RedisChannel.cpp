@@ -8,13 +8,17 @@
 #include "swss/notificationconsumer.h"
 #include "swss/select.h"
 
+#include <exception>
+
 using namespace sairedis;
 
 RedisChannel::RedisChannel(
         _In_ const std::string& dbAsic,
-        _In_ Channel::Callback callback):
+        _In_ Channel::Callback callback,
+        _In_ Channel::Callback debugCallback):
     Channel(callback),
-    m_dbAsic(dbAsic)
+    m_dbAsic(dbAsic),
+    m_debugCallback(debugCallback)
 {
     SWSS_LOG_ENTER();
 
@@ -52,6 +56,19 @@ RedisChannel::RedisChannel(
     // any per-orch NotificationConsumer that also SUBSCRIBE's to the
     // same "NOTIFICATIONS" channel.
     m_notificationConsumer->setStatsLabel("libsairedis:RedisChannel:" + std::string(REDIS_TABLE_NOTIFICATIONS_PER_DB(dbAsic)));
+
+    if (m_debugCallback)
+    {
+        // Optional operator meta FDB debug channel. Kept entirely separate from
+        // the ASIC NOTIFICATIONS consumer so a flood of operator commands can
+        // never displace real notifications, and vice versa.
+        m_dbNtfDebug = std::make_shared<swss::DBConnector>(dbAsic, 0);
+        m_debugConsumer = std::make_shared<swss::NotificationConsumer>(
+                m_dbNtfDebug.get(),
+                SAIREDIS_META_FDB_DEBUG_CHANNEL);
+
+        SWSS_LOG_NOTICE("subscribed meta FDB debug consumer on channel %s", SAIREDIS_META_FDB_DEBUG_CHANNEL);
+    }
 
     m_runNotificationThread = true;
 
@@ -92,6 +109,11 @@ void RedisChannel::notificationThreadFunction()
     s.addSelectable(m_notificationConsumer.get());
     s.addSelectable(&m_notificationThreadShouldEndEvent);
 
+    if (m_debugConsumer)
+    {
+        s.addSelectable(m_debugConsumer.get());
+    }
+
     while (m_runNotificationThread)
     {
         swss::Selectable *sel;
@@ -111,6 +133,35 @@ void RedisChannel::notificationThreadFunction()
             std::string op;
             std::string data;
             std::vector<swss::FieldValueTuple> values;
+
+            if (m_debugConsumer && sel == m_debugConsumer.get())
+            {
+                // Operator meta FDB debug command. Fully isolated and tolerant:
+                // a malformed command must never disturb real notification
+                // processing, so everything is wrapped in try/catch and we
+                // continue the loop regardless of outcome.
+                try
+                {
+                    m_debugConsumer->pop(op, data, values);
+
+                    SWSS_LOG_NOTICE("meta debug command: op = %s, data = %s", op.c_str(), data.c_str());
+
+                    if (m_debugCallback)
+                    {
+                        m_debugCallback(op, data, values);
+                    }
+                }
+                catch (const std::exception& e)
+                {
+                    SWSS_LOG_ERROR("meta debug command failed and was ignored: %s", e.what());
+                }
+                catch (...)
+                {
+                    SWSS_LOG_ERROR("meta debug command failed and was ignored: unknown exception");
+                }
+
+                continue;
+            }
 
             m_notificationConsumer->pop(op, data, values);
 

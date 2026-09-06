@@ -208,6 +208,36 @@ namespace saimeta
 
             void dump() const;
 
+        public: // meta FDB diagnostics (operator-driven, see doc/specs)
+
+            /**
+             * @brief Dump the meta-layer FDB mirror and desync counters.
+             *
+             * Read-only. Enumerates every FDB_ENTRY currently tracked in
+             * m_saiObjectCollection together with the running desync-event
+             * counters. MUST be called under the sairedis API mutex (same as
+             * every other meta access) because m_oids/m_saiObjectCollection are
+             * shared across all object types.
+             *
+             * This function never throws and never mutates any state.
+             */
+            void dumpFdb() const;
+
+            /**
+             * @brief Tolerant operator command entry point.
+             *
+             * Dispatches the read-only "dump" operator command. NEVER throws on
+             * malformed input: unknown ops are logged and ignored.
+             *
+             * MUST be called under the sairedis API mutex.
+             *
+             * @param op   Operator opcode ("dump").
+             * @param data Opcode payload. Empty for "dump".
+             */
+            void processDebugCommand(
+                    _In_ const std::string& op,
+                    _In_ const std::string& data);
+
         public: // notifications
 
             void meta_sai_on_fdb_event(
@@ -283,6 +313,15 @@ namespace saimeta
 
             void meta_sai_on_fdb_event_single(
                     _In_ const sai_fdb_event_notification_data_t& data);
+
+            /*
+             * Build a short human-readable description of the attributes
+             * carried on an FDB event (bridge port OID + entry type when
+             * present). Diagnostic-only; used to enrich the desync WARN logs.
+             * Never throws.
+             */
+            std::string meta_fdb_event_desc(
+                    _In_ const sai_fdb_event_notification_data_t& data) const;
 
             void meta_sai_on_nat_event_single(
                     _In_ const sai_nat_event_notification_data_t& data);
@@ -670,6 +709,24 @@ namespace saimeta
             SaiObjectCollection m_saiObjectCollection;
 
             AttrKeyMap m_attrKeys;
+
+        private: // meta FDB desync diagnostics
+
+            /*
+             * Running counters for FDB notification/meta-mirror desync events.
+             * Purely diagnostic; incremented at the existing WARN sites in
+             * meta_sai_on_fdb_event_single and dumped by dumpFdb(). Access is
+             * already serialized by the sairedis API mutex.
+             */
+            struct FdbDesyncStats
+            {
+                uint64_t learnedButExists = 0;   // LEARNED event, key already present
+                uint64_t agedButMissing = 0;     // AGED event, key absent
+                uint64_t flushedButMissing = 0;  // FLUSHED event, key absent
+                uint64_t moveButMissing = 0;     // MOVE event, key absent
+            };
+
+            FdbDesyncStats m_fdbDesyncStats;
 
         private: // unittests
 
