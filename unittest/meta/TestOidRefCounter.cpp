@@ -58,6 +58,8 @@ TEST(OidRefCounter, objectReferenceRemove)
     EXPECT_THROW(c.objectReferenceRemove(2), std::runtime_error);
 
     EXPECT_THROW(c.objectReferenceRemove(3), std::runtime_error);
+    
+    c.objectReferenceRemove(2, true);
 }
 
 TEST(OidRefCounter, getObjectReferenceCount)
