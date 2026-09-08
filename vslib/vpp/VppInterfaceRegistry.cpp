@@ -125,6 +125,7 @@ std::shared_ptr<VppPhysicalPort> VppInterfaceRegistry::addPhysicalPort(
         _In_ sai_object_id_t oid)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     if (oid == SAI_NULL_OBJECT_ID)
     {
@@ -161,6 +162,7 @@ std::shared_ptr<VppBondInterface> VppInterfaceRegistry::addLag(
         _In_ sai_object_id_t oid)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto hwifName = VppBondInterface::hwifNameFor(bondId);
 
@@ -202,6 +204,7 @@ std::shared_ptr<VppSubInterface> VppInterfaceRegistry::addSubInterface(
         _In_ uint16_t vlanId)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     if (!parent)
     {
@@ -254,6 +257,7 @@ std::shared_ptr<VppVlanInterface> VppInterfaceRegistry::addBvi(
         _In_ sai_object_id_t vlanOid)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto hwifName = VppVlanInterface::hwifNameFor(vlanId);
 
@@ -288,6 +292,7 @@ bool VppInterfaceRegistry::bindSwIfIndex(
         _In_ uint32_t swIfIndex)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByHwif(hwifName);
 
@@ -340,6 +345,7 @@ bool VppInterfaceRegistry::unbindSwIfIndex(
         _In_ const std::string& hwifName)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByHwif(hwifName);
 
@@ -360,6 +366,7 @@ bool VppInterfaceRegistry::setTapName(
         _In_ const std::string& tapName)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByHwif(hwifName);
 
@@ -412,6 +419,7 @@ bool VppInterfaceRegistry::clearTapName(
         _In_ const std::string& hwifName)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByHwif(hwifName);
 
@@ -434,6 +442,7 @@ bool VppInterfaceRegistry::setOid(
         _In_ sai_object_id_t oid)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByHwif(hwifName);
 
@@ -480,6 +489,7 @@ bool VppInterfaceRegistry::setRifOid(
         _In_ sai_object_id_t rifOid)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByHwif(hwifName);
 
@@ -501,6 +511,7 @@ bool VppInterfaceRegistry::setBdId(
         _In_ uint32_t bdId)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByHwif(hwifName);
 
@@ -520,6 +531,7 @@ bool VppInterfaceRegistry::clearBdId(
         _In_ const std::string& hwifName)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByHwif(hwifName);
 
@@ -537,6 +549,7 @@ size_t VppInterfaceRegistry::remove(
         _In_ const std::string& hwifName)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByHwif(hwifName);
 
@@ -570,6 +583,7 @@ size_t VppInterfaceRegistry::removeByOid(
         _In_ sai_object_id_t oid)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto it = m_byOid.find(oid);
 
@@ -585,6 +599,7 @@ std::shared_ptr<VppInterface> VppInterfaceRegistry::findByHwif(
         _In_ const std::string& hwifName) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto it = m_byHwif.find(hwifName);
 
@@ -595,6 +610,7 @@ std::shared_ptr<VppInterface> VppInterfaceRegistry::findByOsIf(
         _In_ const std::string& osIf) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto it = m_byOsIf.find(osIf);
 
@@ -605,6 +621,7 @@ std::shared_ptr<VppInterface> VppInterfaceRegistry::findByTap(
         _In_ const std::string& tapName) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto it = m_byTap.find(tapName);
 
@@ -615,6 +632,7 @@ std::shared_ptr<VppInterface> VppInterfaceRegistry::findByOid(
         _In_ sai_object_id_t oid) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto it = m_byOid.find(oid);
 
@@ -625,6 +643,7 @@ std::shared_ptr<VppInterface> VppInterfaceRegistry::findBySwIfIndex(
         _In_ uint32_t swIfIndex) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto it = m_bySwIfIndex.find(swIfIndex);
 
@@ -636,6 +655,7 @@ std::shared_ptr<VppSubInterface> VppInterfaceRegistry::findSubIf(
         _In_ uint32_t subId) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     /*
      * A sub-interface is named after its parent, so the primary index already
@@ -655,6 +675,7 @@ sai_object_id_t VppInterfaceRegistry::resolveIfOid(
         _In_ uint32_t swIfIndex) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findBySwIfIndex(swIfIndex);
 
@@ -691,6 +712,7 @@ std::string VppInterfaceRegistry::resolveTapName(
         _In_ sai_object_id_t oid) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByOid(oid);
 
@@ -706,6 +728,7 @@ std::string VppInterfaceRegistry::resolveOsIf(
         _In_ sai_object_id_t oid) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByOid(oid);
 
@@ -721,6 +744,7 @@ std::string VppInterfaceRegistry::resolveOsIfByHwif(
         _In_ const std::string& hwifName) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByHwif(hwifName);
 
@@ -737,6 +761,7 @@ std::string VppInterfaceRegistry::resolveHwIfName(
         _In_ uint32_t vlanId) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByOid(oid);
 
@@ -769,6 +794,7 @@ std::string VppInterfaceRegistry::resolveHwIfName(
 void VppInterfaceRegistry::loadIfMapping() const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     if (m_ifMapLoaded)
     {
@@ -798,6 +824,7 @@ std::string VppInterfaceRegistry::resolveHwIfByOsIf(
         _In_ const std::string& osIfName) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     loadIfMapping();
 
@@ -837,10 +864,32 @@ std::string VppInterfaceRegistry::resolveHwIfByOsIf(
     return std::string();
 }
 
+sai_object_id_t VppInterfaceRegistry::resolvePhysicalPortOid(
+        _In_ const std::string& hwifName) const
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    /*
+     * The type test and the oid read are deliberately done here rather than by
+     * the caller: this is reached from the VPP event thread, which must not
+     * dereference a record once the lock is gone.
+     */
+    auto rec = findByHwif(hwifName);
+
+    if (!rec || rec->getType() != VppInterfaceType::PHYSICAL_PORT)
+    {
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    return rec->getOid();
+}
+
 std::shared_ptr<VppInterface> VppInterfaceRegistry::findLag(
         _In_ sai_object_id_t oid) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto rec = findByOid(oid);
 
@@ -855,6 +904,7 @@ std::shared_ptr<VppInterface> VppInterfaceRegistry::findLag(
 std::unordered_set<uint32_t> VppInterfaceRegistry::collectBondIds() const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     std::unordered_set<uint32_t> ids;
 
@@ -874,6 +924,7 @@ std::unordered_set<uint32_t> VppInterfaceRegistry::collectBondIds() const
 void VppInterfaceRegistry::clear()
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     m_bySwIfIndex.clear();
     m_byOid.clear();
@@ -886,6 +937,7 @@ void VppInterfaceRegistry::indexRecord(
         _In_ const std::shared_ptr<VppInterface>& rec)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     m_byHwif[rec->getHwifName()] = rec;
 
@@ -914,6 +966,7 @@ void VppInterfaceRegistry::unindexRecord(
         _In_ const std::shared_ptr<VppInterface>& rec)
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     if (rec->hasSwIfIndex())
     {
@@ -942,6 +995,7 @@ std::vector<std::string> VppInterfaceRegistry::collectChildren(
         _In_ const std::shared_ptr<VppInterface>& parent) const
 {
     SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     std::vector<std::string> children;
 

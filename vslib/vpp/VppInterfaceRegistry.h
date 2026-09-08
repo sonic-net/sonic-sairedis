@@ -2,6 +2,7 @@
 #include "swss/logger.h"
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -29,10 +30,31 @@ namespace saivs
      * this netdev" and splitting name resolution across two owners is what
      * this class exists to stop.
      *
-     * Threading: this class takes NO lock of its own. It lives under the
-     * existing recursive m_apimutex held by the main/command thread and by the
-     * FDB aging thread. The VPP API RX thread (staticMacEventCb) must NEVER
-     * touch it -- that thread only enqueues onto m_mac_event_queue.
+     * Threading: this class is internally synchronized by a recursive mutex and
+     * is safe to call from the command thread, the FDB aging thread and the VPP
+     * event thread. It is a LEAF lock -- no other lock is ever acquired while it
+     * is held -- so it cannot take part in a deadlock cycle. This mirrors the
+     * vpp_intf_table_mutex leaf lock in SaiVppXlate.c, which guards the shared
+     * interface tables read from both the command and the event paths.
+     *
+     * The lock is recursive because the public API self-nests: remove() recurses
+     * through collectChildren(), every setter re-enters findByHwif(), and
+     * resolveHwIfByOsIf() calls loadIfMapping().
+     *
+     * IMPORTANT: only the registry's own state is synchronized. A VppInterface
+     * returned by findBy*() is NOT individually locked, and the shared_ptr is a
+     * lifetime guarantee, NOT a lock -- the mutex is already released by the
+     * time the pointer reaches the caller. The record therefore cannot be freed
+     * underneath you, but its mutable fields (oid, tap name, sw_if_index) may be
+     * rewritten by the command thread while you read them. A caller that does
+     * not already hold m_apimutex must therefore read records through the
+     * value-returning resolve*() accessors, which do the whole read inside the
+     * lock, never by dereferencing a findBy*() result.
+     *
+     * The VPP API RX thread (staticMacEventCb) must still NEVER touch it: that
+     * thread runs holding VPP_LOCK, and taking any further lock there would
+     * break the "never acquire another lock while holding vpp_mutex" ordering
+     * rule. It only enqueues onto m_mac_event_queue.
      *
      * This class makes no VPP API calls. Resolving a sw_if_index from VPP stays
      * in SwitchVpp, which then calls bindSwIfIndex(); that keeps the registry
@@ -316,9 +338,24 @@ namespace saivs
             std::string resolveHwIfByOsIf(
                     _In_ const std::string& osIfName) const;
 
+            /*
+             * Oid of the front panel port named by hwifName, or
+             * SAI_NULL_OBJECT_ID if there is no such record, it is not a
+             * physical port, or it has no oid yet.
+             *
+             * Exists so the VPP event thread can answer "which PORT does this
+             * link event belong to" without dereferencing a record outside the
+             * lock: the type test and the oid read both happen while the lock
+             * is held and only a value comes back. See the threading note on
+             * the class.
+             */
+            sai_object_id_t resolvePhysicalPortOid(
+                    _In_ const std::string& hwifName) const;
+
             size_t size() const
             {
                 SWSS_LOG_ENTER();
+                std::lock_guard<std::recursive_mutex> lock(m_mutex);
                 return m_byHwif.size();
             }
 
@@ -343,6 +380,14 @@ namespace saivs
             void loadIfMapping() const;
 
         private:
+
+            /*
+             * Leaf lock guarding every index below. Recursive because the
+             * public API self-nests, mutable so the const resolve*() accessors
+             * and loadIfMapping() can take it. See the threading note on the
+             * class.
+             */
+            mutable std::recursive_mutex m_mutex;
 
             /*
              * All five indexes hold a shared_ptr rather than a raw pointer.

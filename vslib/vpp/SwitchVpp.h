@@ -280,6 +280,17 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+            /*
+             * Overridden purely to deregister the port from m_ifaceRegistry.
+             * The base class knows nothing about the registry, so without this
+             * a removed physical port would leave its record behind -- and
+             * because addPhysicalPort() refuses a hwif that is already
+             * registered, a later re-add of the same hwif would silently get no
+             * record at all. LAG and sub-port teardown already do this.
+             */
+            virtual sai_status_t removePort(
+                    _In_ sai_object_id_t objectId) override;
+
             virtual sai_status_t setPort(
                     _In_ sai_object_id_t portId,
                     _In_ const sai_attribute_t* attr) override;

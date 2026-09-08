@@ -715,15 +715,25 @@ sai_status_t SwitchVpp::asyncIntfStateUpdate(const char *hwif_name, bool link_up
 {
     SWSS_LOG_ENTER();
 
-    auto rec = m_ifaceRegistry.findByHwif(hwif_name);
+    /*
+     * Runs on the VPP event thread, which holds neither m_apimutex nor any VPP
+     * lock at this point. The registry is internally synchronized, but a record
+     * handed back by findBy*() would be read after that lock is dropped, so ask
+     * for the oid as a value instead: the port type test and the oid read both
+     * happen inside the registry lock.
+     *
+     * A null oid means the hwif is not a front panel port (BondEthernet, bvi, a
+     * sub-interface) or has no oid yet. Only physical ports carry SAI port oper
+     * status.
+     */
+    const sai_object_id_t port_oid = m_ifaceRegistry.resolvePhysicalPortOid(hwif_name);
 
-    if (!rec)
+    if (port_oid == SAI_NULL_OBJECT_ID)
     {
-        SWSS_LOG_NOTICE("No interface record for hwif %s. Ignore the update.", hwif_name);
+        SWSS_LOG_INFO("no physical port record for hwif %s, ignoring link update", hwif_name);
+
         return SAI_STATUS_SUCCESS;
     }
-
-    const sai_object_id_t port_oid = rec->getOid();
 
     auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
 

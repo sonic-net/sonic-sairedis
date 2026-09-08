@@ -1714,6 +1714,32 @@ sai_status_t SwitchVpp::createPort(
     return create_port_dependencies(object_id, attr_count, attr_list);
 }
 
+sai_status_t SwitchVpp::removePort(
+        _In_ sai_object_id_t objectId)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Deregister only after the base removal has succeeded: it can refuse with
+     * SAI_STATUS_OBJECT_IN_USE while the port still has active dependencies,
+     * and dropping the record for a port that is still present would break
+     * resolveHwIfName() and resolveTapName() for it.
+     */
+    CHECK_STATUS(SwitchStateBase::removePort(objectId));
+
+    /*
+     * Cascades to any sub-interfaces parented on this port -- tagged VLAN
+     * members and SUB_PORT RIFs -- mirroring VPP, which deletes them with their
+     * parent. Zero is the normal answer for a port that never had its lane list
+     * set, since that is what registers it in the first place.
+     */
+    auto removed = m_ifaceRegistry.removeByOid(objectId);
+
+    SWSS_LOG_INFO("removed port %s from interface registry (%zu records)",
+            sai_serialize_object_id(objectId).c_str(), removed);
+
+    return SAI_STATUS_SUCCESS;
+}
 
 sai_status_t SwitchVpp::remove(
         _In_ sai_object_type_t object_type,
