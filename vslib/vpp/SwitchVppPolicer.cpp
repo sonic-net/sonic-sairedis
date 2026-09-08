@@ -165,6 +165,33 @@ sai_status_t SwitchVpp::programPolicer(
     snprintf(vpp_policer.name, sizeof(vpp_policer.name), "copp-policer-0x%lx",
             (unsigned long)object_id);
 
+    // Deferred (WD-timeout fix -- see enqueuePolicerProgramWork() in
+    // SwitchVpp.h): do NOT call vpp_policer_add_replace() synchronously here
+    // -- it is a blocking VAPI round-trip and this function is called
+    // directly from createPolicer()/setPolicer(), i.e. from inside a single
+    // watchdog-timed syncd SAI call. Confirmed live: a SAI_OBJECT_TYPE_POLICER
+    // create stalled past the 30s watchdog here. The real VAPI call now runs
+    // later, one item per call, from programPolicerNow() via
+    // serviceDeferredPolicerProgramWork().
+    enqueuePolicerProgramWork({ object_id, vpp_policer, is_replace });
+
+    SWSS_LOG_NOTICE("queued %s of VPP policer %s for SAI policer %s",
+            is_replace ? "replace" : "create", vpp_policer.name, sid.c_str());
+
+    return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::programPolicerNow(
+        _In_ sai_object_id_t object_id,
+        _In_ const vpp_policer_t &vpp_policer_in,
+        _In_ bool is_replace)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(object_id);
+
+    vpp_policer_t vpp_policer = vpp_policer_in;
+
     // On replace, pass in the existing VPP policer_index so
     // vpp_policer_add_replace() deletes-then-recreates at the same
     // tracked slot; on first create there is none yet.
@@ -186,12 +213,14 @@ sai_status_t SwitchVpp::programPolicer(
         SWSS_LOG_ERROR("failed to %s VPP policer for %s (name %s): ret %d",
                 is_replace ? "replace" : "create", sid.c_str(), vpp_policer.name, ret);
 
-        // Config-plane bookkeeping already succeeded above (matching the
-        // rest of saivpp's tolerant-of-dataplane-gaps posture); surface the
+        // Config-plane bookkeeping already succeeded via create_internal()/
+        // set_internal() in createPolicer()/setPolicer() (matching the rest
+        // of saivpp's tolerant-of-dataplane-gaps posture); surface the
         // dataplane failure via ERROR log but do not fail the SAI call, so
         // config-only tests (test_verify_copp_configuration_cli) are not
-        // regressed by a VPP-side issue.
-        return SAI_STATUS_SUCCESS;
+        // regressed by a VPP-side issue. This is deferred work anyway, so
+        // there is no SAI call left to fail at this point.
+        return;
     }
 
     vpp_policer_entry_t entry;
@@ -205,10 +234,16 @@ sai_status_t SwitchVpp::programPolicer(
 
     m_policer_map[object_id] = entry;
 
+    // A newly created/replaced policer may be the one an already-created
+    // IP2ME trap's group references (createPolicer commonly runs after
+    // createHostifTrap/setHostifTrapGroup for the same object during bulk
+    // config apply) -- retry any classify sessions that were skipped
+    // because this policer wasn't resolvable yet. Deferred (see
+    // enqueueIp2meDeferredWork() in SwitchVpp.h).
+    enqueueIp2meDeferredWork({ Ip2meDeferredOp::RETRY_PENDING, "", "" });
+
     SWSS_LOG_NOTICE("%s VPP policer %s (index %u) for SAI policer %s",
             is_replace ? "replaced" : "created", vpp_policer.name, vpp_policer_index, sid.c_str());
-
-    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::removePolicer(

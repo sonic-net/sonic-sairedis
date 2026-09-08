@@ -26,6 +26,7 @@
 #include <chrono>
 #include <functional>
 #include <queue>
+#include <deque>
 #include <set>
 #include <string>
 
@@ -972,12 +973,48 @@ namespace saivs
 
             // Shared VPP-side programming for createPolicer()/setPolicer();
             // see SwitchVppPolicer.cpp for details. Does not itself call
-            // create_internal()/set_internal() -- callers own that.
+            // create_internal()/set_internal() -- callers own that. Deferred
+            // (WD-timeout fix -- see enqueuePolicerProgramWork() below): this
+            // only enqueues; the real vpp_policer_add_replace() VAPI call
+            // runs later via programPolicerNow(), drained one item per call
+            // from serviceDeferredTrapClassifyWork()'s call sites. Confirmed
+            // live: a SAI_OBJECT_TYPE_POLICER create hit the 30s watchdog
+            // here (createPolicer()/setPolicer() call this directly, with
+            // zero deferral, from inside a syncd SAI create/set call) --
+            // the same class of bug as installTrapClassify()/
+            // ip2meClassifyAddressAdd() above, just in a call path not
+            // audited until now.
             sai_status_t programPolicer(
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list,
                     _In_ bool is_replace);
+
+            // Performs the actual vpp_policer_add_replace() VAPI call and
+            // the m_policer_map/IP2ME-retry bookkeeping that programPolicer()
+            // used to do synchronously. Runs later, drained from the
+            // deferred queue.
+            void programPolicerNow(
+                    _In_ sai_object_id_t object_id,
+                    _In_ const vpp_policer_t &vpp_policer,
+                    _In_ bool is_replace);
+
+            struct PolicerProgramDeferredWork
+            {
+                sai_object_id_t object_id;
+                vpp_policer_t vpp_policer;
+                bool is_replace;
+            };
+
+            std::mutex m_policer_program_deferred_mutex;
+            std::deque<PolicerProgramDeferredWork> m_policer_program_deferred_queue;
+
+            void enqueuePolicerProgramWork(PolicerProgramDeferredWork &&work);
+
+            // Drains m_policer_program_deferred_queue, one item per call --
+            // same discipline as serviceDeferredTrapClassifyWork(). Runs on
+            // the command thread from the same create/set/remove call sites.
+            void serviceDeferredPolicerProgramWork();
 
             sai_status_t removePolicer(
                     _In_ const std::string &serializedObjectId);
@@ -1028,9 +1065,189 @@ namespace saivs
                     _In_ const vpp_trap_entry_t &trap,
                     _In_ uint32_t vpp_policer_index);
 
+            void installTrapClassifyNow(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap,
+                    _In_ uint32_t vpp_policer_index);
+
             sai_status_t uninstallTrapClassify(
                     _In_ sai_object_id_t trap_oid,
                     _In_ const vpp_trap_entry_t &trap);
+
+            void uninstallTrapClassifyNow(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap);
+
+            // IP2ME (and other IP-layer, non-ethertype) trap policing: one
+            // shared ip4-policer-classify table per switch, with one session
+            // per router-interface IPv4 address currently configured,
+            // matching l3 ip4 dst <addr> -> the IP2ME trap's VPP policer
+            // index. Bound to each interface via policer_classify_set_interface
+            // as its first local address is added; unbound when its last
+            // local address is removed. See SwitchVppRif.cpp.
+            uint32_t m_ip4_policer_classify_table_index = (uint32_t)~0;
+
+            // hwif name -> set of local IPv4 addresses (dotted-decimal
+            // strings) currently classified on that interface, so the
+            // interface can be unbound from the table once its last address
+            // is removed and so the classify session for a given address
+            // can be located again on removal.
+            std::map<std::string, std::set<std::string>> m_ip2me_classified_addrs;
+
+            // hwif name -> set of local IPv4 addresses that were skipped by
+            // ip2meClassifyAddressAdd() because the IP2ME trap/policer
+            // wasn't resolvable yet at the time. Replayed by
+            // retryIp2meClassifyPending() once the trap or its group's
+            // policer becomes available.
+            std::map<std::string, std::set<std::string>> m_ip2me_pending_addrs;
+
+            // Resolve the VPP policer index currently bound to the given SAI
+            // hostif trap type (e.g. SAI_HOSTIF_TRAP_TYPE_IP2ME), by scanning
+            // m_trap_map/m_trap_group_map/m_policer_map. Returns (uint32_t)~0
+            // if no trap of this type exists yet or its group has no policer
+            // resolvable to a live VPP policer.
+            uint32_t findVppPolicerIndexForTrapType(
+                    _In_ sai_hostif_trap_type_t trap_type);
+
+            // Ensure the shared ip4-policer-classify table exists (created
+            // lazily on first use). Returns false on failure.
+            bool ensureIp4PolicerClassifyTable();
+
+            // Add/remove the IP2ME classify session + interface binding for
+            // one local IPv4 address on one interface. Called from
+            // vpp_interface_ip_address_update() as router-interface
+            // addresses are configured/removed.
+            void ip2meClassifyAddressAdd(
+                    _In_ const std::string &hwifName,
+                    _In_ const std::string &ip4AddrDotted);
+
+            void ip2meClassifyAddressDel(
+                    _In_ const std::string &hwifName,
+                    _In_ const std::string &ip4AddrDotted);
+
+            // Replay any addresses queued in m_ip2me_pending_addrs (skipped
+            // earlier because the IP2ME trap/policer wasn't resolvable yet)
+            // now that it may be. Safe/idempotent to call any time -- a
+            // no-op if the policer still isn't resolvable or there's
+            // nothing pending.
+            void retryIp2meClassifyPending();
+
+            // All hw interface names that have ever backed a SAI router
+            // interface (port or LAG, including sub-ports), regardless of
+            // whether they currently own a classified IPv4 address.
+            // ip4-policer-classify matches purely on destination IP in a
+            // single shared table -- IP2ME traffic destined to router
+            // interface A's address can arrive on router interface B, so
+            // the classify feature must be bound on every L3 ingress
+            // interface, not just the one whose own address is classified.
+            std::set<std::string> m_ip2me_l3_hwifs;
+
+            // Register hwifName as an L3 (router) interface and bind the
+            // shared ip4-policer-classify table to it immediately if that
+            // table already exists and it isn't already bound. Safe to call
+            // repeatedly (idempotent) and safe to call before the table
+            // exists (binding is deferred to ensureIp4PolicerClassifyTable()
+            // for interfaces registered too early). Called from
+            // vpp_create_router_interface() for every port/LAG/sub-port RIF.
+            void ip2meRegisterL3Interface(
+                    _In_ const std::string &hwifName);
+
+            // Perform the actual VAPI bind for hwifName against the shared
+            // ip4-policer-classify table -- the part of
+            // ip2meRegisterL3Interface()'s backfill loop that must run
+            // once per already-registered interface without re-triggering
+            // its m_ip2me_l3_hwifs insert-based idempotency check. Used by
+            // serviceDeferredIp2meClassifyWork() for BIND_L3_INTERFACE work
+            // items. Safe/no-op if the table doesn't exist yet.
+            void bindIp2meL3Interface(
+                    _In_ const std::string &hwifName);
+
+            // ---- Deferred trap classify work (WD-timeout fix, generalized) ----
+            //
+            // installTrapClassify()/uninstallTrapClassify() (used for EVERY
+            // ethertype-keyed trap: ARP/LACP/LLDP/UDLD/TTL_ERROR/BGP/BGPV6/ND)
+            // call vpp_copp_punt_policer_bind() -- another blocking VAPI
+            // round-trip under VPP_LOCK() against the same synchronous
+            // control-plane socket -- synchronously from createHostifTrap(),
+            // removeHostifTrap(), and setHostifTrapGroup(). Same class of bug
+            // as the IP2ME classify-table one below (confirmed live: a
+            // BGPV6 createHostifTrap call hitting the 30s WD-exceeded
+            // watchdog and starving every trap queued after it), just in a
+            // different, more commonly-hit function. Deferred the same way:
+            // these entry points now only update m_trap_map/mark work
+            // pending and enqueue; the actual bind/unbind VAPI call runs
+            // later, one item per call, from
+            // serviceDeferredTrapClassifyWork() at the same create/set/remove
+            // call sites as serviceDeferredOperStatusResync().
+            struct TrapClassifyDeferredWork
+            {
+                sai_object_id_t trap_oid;
+                vpp_trap_entry_t trap;
+                uint32_t vpp_policer_index; // only used for install
+                bool is_install; // true: installTrapClassify, false: uninstallTrapClassify
+            };
+
+            std::mutex m_trap_classify_deferred_mutex;
+            std::deque<TrapClassifyDeferredWork> m_trap_classify_deferred_queue;
+
+            void enqueueTrapClassifyDeferredWork(TrapClassifyDeferredWork &&work);
+
+            // Drains m_trap_classify_deferred_queue, actually performing each
+            // queued install/uninstall. Runs on the command thread; safe to
+            // call unconditionally and often (no-op when queue empty).
+            void serviceDeferredTrapClassifyWork();
+
+            // ---- Deferred IP2ME classify work (WD-timeout fix) ----
+            //
+            // ensureIp4PolicerClassifyTable()/ip2meClassifyAddressAdd()/
+            // ip2meRegisterL3Interface() each make blocking VAPI round-trips
+            // (vpp_classify_table_create/vpp_classify_session_add/
+            // vpp_policer_classify_set_interface) under VPP_LOCK() against
+            // the same synchronous control-plane socket used by every other
+            // in-flight VPP command. Calling them synchronously from
+            // createHostifTrap()/vpp_add_del_intf_ip_addr_norif()/
+            // vpp_interface_ip_address_update() -- i.e. from directly inside
+            // a syncd SAI create/set call -- races config_reload's own flood
+            // of interface/route programming on that same socket and can
+            // stall past syncd's 30s per-call watchdog (observed live:
+            // "threadFunction: time span WD exceeded 30026ms for
+            // create:...IP2ME"), which then aborts the whole in-flight SAI
+            // task and starves every trap queued after it (bgp/bgpv6/lldp/
+            // udld/lacp/arp never get (re)created for the rest of that
+            // config_reload). Exactly the class of bug the existing
+            // m_operResyncDue/serviceDeferredOperStatusResync() pattern
+            // above was built to avoid for oper-status resync -- reused
+            // here: SAI entry points below now only enqueue a request and
+            // return immediately; the actual VAPI calls run later, drained
+            // from serviceDeferredIp2meClassifyWork() on the command thread
+            // at the top of the next create/set/remove call (same call
+            // sites serviceDeferredOperStatusResync() already runs from),
+            // well outside of any single call's watchdog window.
+            enum class Ip2meDeferredOp
+            {
+                REGISTER_L3_INTERFACE,
+                BIND_L3_INTERFACE,
+                ADDRESS_ADD,
+                ADDRESS_DEL,
+                RETRY_PENDING,
+            };
+
+            struct Ip2meDeferredWork
+            {
+                Ip2meDeferredOp op;
+                std::string hwifName;
+                std::string addr; // unused for REGISTER_L3_INTERFACE/RETRY_PENDING
+            };
+
+            std::mutex m_ip2me_deferred_mutex;
+            std::deque<Ip2meDeferredWork> m_ip2me_deferred_queue;
+
+            void enqueueIp2meDeferredWork(Ip2meDeferredWork &&work);
+
+            // Drains m_ip2me_deferred_queue, actually performing each queued
+            // registration/add/del/retry. Runs on the command thread; safe
+            // to call unconditionally and often (no-op when queue empty).
+            void serviceDeferredIp2meClassifyWork();
 
         protected: // VPP
 

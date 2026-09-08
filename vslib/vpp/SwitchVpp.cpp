@@ -1385,6 +1385,9 @@ sai_status_t SwitchVpp::create(
     SWSS_LOG_ENTER();
 
     serviceDeferredOperStatusResync();
+    serviceDeferredIp2meClassifyWork();
+    serviceDeferredTrapClassifyWork();
+    serviceDeferredPolicerProgramWork();
 
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
@@ -1814,6 +1817,9 @@ sai_status_t SwitchVpp::remove(
     SWSS_LOG_ENTER();
 
     serviceDeferredOperStatusResync();
+    serviceDeferredIp2meClassifyWork();
+    serviceDeferredTrapClassifyWork();
+    serviceDeferredPolicerProgramWork();
 
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
@@ -2213,6 +2219,9 @@ sai_status_t SwitchVpp::set(
     SWSS_LOG_ENTER();
 
     serviceDeferredOperStatusResync();
+    serviceDeferredIp2meClassifyWork();
+    serviceDeferredTrapClassifyWork();
+    serviceDeferredPolicerProgramWork();
 
     if (objectType == SAI_OBJECT_TYPE_PORT)
     {

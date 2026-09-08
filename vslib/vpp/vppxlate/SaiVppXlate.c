@@ -86,8 +86,8 @@
 #include <vnet/ipip/ipip.api_enum.h>
 #include <vnet/ipip/ipip.api_types.h>
 
-#include <vnet/policer/policer.api_enum.h>
-#include <vnet/policer/policer.api_types.h>
+#include <vpp_plugins/policer/policer.api_enum.h>
+#include <vpp_plugins/policer/policer.api_types.h>
 
 #include <vnet/classify/classify.api_enum.h>
 #include <vnet/classify/classify.api_types.h>
@@ -306,45 +306,24 @@
 #undef vl_api_version
 
 #define vl_typedefs
-#include <vnet/policer/policer.api.h>
+#include <vpp_plugins/policer/policer.api.h>
 #undef vl_typedefs
 
 #define  vl_endianfun
-#include <vnet/policer/policer.api.h>
+#include <vpp_plugins/policer/policer.api.h>
 #undef vl_endianfun
 
 #define vl_print(handle, ...)        vlib_cli_output (handle, __VA_ARGS__)
 #define vl_printfun
-#include <vnet/policer/policer.api.h>
+#include <vpp_plugins/policer/policer.api.h>
 #undef vl_printfun
 
 #define vl_calcsizefun
-#include <vnet/policer/policer.api.h>
+#include <vpp_plugins/policer/policer.api.h>
 #undef vl_calcsizefun
 
 #define vl_api_version(n, v) static u32 policer_api_version = v;
-#include <vnet/policer/policer.api.h>
-#undef vl_api_version
-
-#define vl_typedefs
-#include <vnet/classify/classify.api.h>
-#undef vl_typedefs
-
-#define  vl_endianfun
-#include <vnet/classify/classify.api.h>
-#undef vl_endianfun
-
-#define vl_print(handle, ...)        vlib_cli_output (handle, __VA_ARGS__)
-#define vl_printfun
-#include <vnet/classify/classify.api.h>
-#undef vl_printfun
-
-#define vl_calcsizefun
-#include <vnet/classify/classify.api.h>
-#undef vl_calcsizefun
-
-#define vl_api_version(n, v) static u32 classify_api_version = v;
-#include <vnet/classify/classify.api.h>
+#include <vpp_plugins/policer/policer.api.h>
 #undef vl_api_version
 
 /* linux_cp API inclusion */
@@ -1879,6 +1858,26 @@ static void vl_api_classify_set_interface_l2_tables_reply_t_handler(
     set_reply_status(retval);
 }
 
+/*
+ * Reply handler for POLICER_CLASSIFY_SET_INTERFACE (msg id 425 on this VPP
+ * build, confirmed live via `vppctl show api message-table`). This handler
+ * was missing entirely -- vpp_policer_classify_set_interface() sends the
+ * request and VPP correctly replies, but with no handler registered here
+ * the client's msg_handler_internal() logs "no handler for msg id 425" and
+ * drops the reply, so vam->result_ready is never set. WR()'s retry loop
+ * then spins forever (confirmed live via perf: syncd thread pegged at 100%
+ * CPU in a read()/EAGAIN loop), which is what bindIp2meL3Interface() /
+ * ip2meClassifyAddressAdd() hit via serviceDeferredIp2meClassifyWork() --
+ * this call had never succeeded once on this testbed. Same pattern as the
+ * other classify_*_reply handlers above.
+ */
+static void vl_api_policer_classify_set_interface_reply_t_handler(
+    vl_api_policer_classify_set_interface_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
 /* vlib API reply handler (get_next_index) */
 
 static void vl_api_get_next_index_reply_t_handler(
@@ -2074,6 +2073,7 @@ static void vpp_base_vpe_init(void)
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_TABLE_REPLY), classify_add_del_table_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_SESSION_REPLY), classify_add_del_session_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_SET_INTERFACE_L2_TABLES_REPLY), classify_set_interface_l2_tables_reply) \
+    _(CLASSIFY_MSG_ID(POLICER_CLASSIFY_SET_INTERFACE_REPLY), policer_classify_set_interface_reply) \
     _(VLIB_API_MSG_ID(GET_NEXT_INDEX_REPLY), get_next_index_reply) \
     _(VLIB_API_MSG_ID(ADD_NODE_NEXT_REPLY), add_node_next_reply) \
     _(POLICER_MSG_ID(POLICER_ADD_REPLY), policer_add_reply) \
@@ -3892,7 +3892,9 @@ int vpp_copp_punt_policer_bind(
         uint16_t ethertype,
         const char *policer_name,
         bool is_bind,
-        bool match_ip4_ttl_expiring)
+        bool match_ip4_ttl_expiring,
+        bool match_ip6_bgp,
+        bool match_ip6_nd)
 {
     vat_main_t *vam = &vat_main;
     vl_api_copp_punt_policer_bind_t *mp;
@@ -3910,6 +3912,8 @@ int vpp_copp_punt_policer_bind(
     snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
     mp->is_bind = is_bind;
     mp->match_ip4_ttl_expiring = match_ip4_ttl_expiring;
+    mp->match_ip6_bgp = match_ip6_bgp;
+    mp->match_ip6_nd = match_ip6_nd;
 
     S (mp);
     WR (ret);
@@ -6010,6 +6014,44 @@ int vpp_classify_set_interface_l2_tables(const char *hwif_name,
     if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s", __func__, ret, hwif_name); }
     else { SAIVPP_INFO("%s hwif %s ip4=%u ip6=%u other=%u", __func__,
                        hwif_name, ip4_table_index, ip6_table_index, other_table_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_policer_classify_set_interface(const char *hwif_name,
+                                       uint32_t ip4_table_index,
+                                       uint32_t ip6_table_index,
+                                       bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_policer_classify_set_interface_t *mp;
+    int ret;
+    u32 sw_if_index;
+
+    sw_if_index = get_swif_idx(vam, hwif_name);
+    if (sw_if_index == (u32) -1) {
+        SAIVPP_ERROR("%s: hwif %s not found", __func__, hwif_name ? hwif_name : "<null>");
+        return -1;
+    }
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M (POLICER_CLASSIFY_SET_INTERFACE, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->ip4_table_index = htonl(ip4_table_index);
+    mp->ip6_table_index = htonl(ip6_table_index);
+    mp->l2_table_index = htonl(~0u);
+    mp->is_add = is_add;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s is_add %d", __func__, ret, hwif_name, is_add); }
+    else { SAIVPP_INFO("%s hwif %s ip4_table=%u ip6_table=%u is_add %d", __func__,
+                       hwif_name, ip4_table_index, ip6_table_index, is_add); }
 
     VPP_UNLOCK();
     return ret;
