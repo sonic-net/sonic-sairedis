@@ -60,6 +60,29 @@ namespace
                 ethertype = 0x0800;
                 break;
 
+            case SAI_HOSTIF_TRAP_TYPE_BGPV6:
+            case SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_DISCOVERY:
+            case SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_SOLICITATION:
+            case SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_ADVERTISEMENT:
+                // Prior to this case, no trap_type ever mapped to ethertype
+                // 0x86DD (IPv6), so any IPv6 control packet (BGP-over-IPv6,
+                // ND solicit/advert) fell through this node unmatched and
+                // continued into the normal ethernet-input/ip6-input path.
+                // On a LAG member that is harmless for a directly-attached
+                // port, but LAG members intentionally run with IPv6 disabled
+                // (see vpp_set_lag_member_ip6() in SwitchVppFdb.cpp -- L3 for
+                // a bonded interface is owned by the BondEthernet, not the
+                // member), so an unmatched IPv6 packet arriving on a member
+                // hits ip6-not-enabled and is dropped before VPP's bond layer
+                // ever gets a chance to reclassify it to the bond's
+                // sw_if_index. Binding 0x86DD here routes it through the same
+                // direct-to-tap path IPv4 already uses (matched entry ->
+                // lcp_itf_pair_find_by_phy -> interface-output), bypassing
+                // ip6-input entirely, exactly like the IPv4/TTL_ERROR path
+                // above already does for IPv4.
+                ethertype = 0x86dd;
+                break;
+
             default:
                 return false;
         }
@@ -73,6 +96,18 @@ namespace
     bool isIp4TtlExpiringTrap(sai_hostif_trap_type_t trap_type)
     {
         return trap_type == SAI_HOSTIF_TRAP_TYPE_TTL_ERROR;
+    }
+
+    bool isIp6BgpTrap(sai_hostif_trap_type_t trap_type)
+    {
+        return trap_type == SAI_HOSTIF_TRAP_TYPE_BGPV6;
+    }
+
+    bool isIp6NdTrap(sai_hostif_trap_type_t trap_type)
+    {
+        return trap_type == SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_DISCOVERY ||
+               trap_type == SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_SOLICITATION ||
+               trap_type == SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_ADVERTISEMENT;
     }
 }
 
@@ -91,12 +126,34 @@ sai_status_t SwitchVpp::installTrapClassify(
 {
     SWSS_LOG_ENTER();
 
+    // Deferred (WD-timeout fix, generalized -- see enqueueTrapClassifyDeferredWork()
+    // in SwitchVpp.h): do NOT call vpp_copp_punt_policer_bind() synchronously
+    // here -- it is a blocking VAPI round-trip and this function is called
+    // directly from createHostifTrap()/setHostifTrap()/setHostifTrapGroup(),
+    // i.e. from inside a single watchdog-timed syncd SAI call. Confirmed live:
+    // a BGPV6 createHostifTrap call stalled past the 30s watchdog here,
+    // starving every trap queued after it for the rest of that config_reload
+    // (the exact same failure mode the IP2ME classify-table work was
+    // deferred to fix). The real bind runs later, one item per call, from
+    // serviceDeferredTrapClassifyWork().
+    enqueueTrapClassifyDeferredWork({ trap_oid, trap, vpp_policer_index, true });
+
+    return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::installTrapClassifyNow(
+        _In_ sai_object_id_t trap_oid,
+        _In_ const vpp_trap_entry_t &trap,
+        _In_ uint32_t vpp_policer_index)
+{
+    SWSS_LOG_ENTER();
+
     if (vpp_policer_index == (uint32_t)~0)
     {
         SWSS_LOG_NOTICE("no VPP policer resolved for trap 0x%lx (trap_type %d); skipping classify install",
                 (unsigned long)trap_oid, (int)trap.trap_type);
 
-        return SAI_STATUS_SUCCESS;
+        return;
     }
 
     std::array<uint8_t, 16> match{};
@@ -108,7 +165,7 @@ sai_status_t SwitchVpp::installTrapClassify(
                 "SAI trap 0x%lx: trap_type %d, packet_action %d, vpp_policer_index %u",
                 (unsigned long)trap_oid, (int)trap.trap_type, (int)trap.packet_action, vpp_policer_index);
 
-        return SAI_STATUS_SUCCESS;
+        return;
     }
 
     // PRIMARY: device-input-arc plugin bind, by policer name (the same
@@ -128,7 +185,9 @@ sai_status_t SwitchVpp::installTrapClassify(
             snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
 
             int pret = vpp_copp_punt_policer_bind(ethertype, policer_name, true,
-                    isIp4TtlExpiringTrap(trap.trap_type));
+                    isIp4TtlExpiringTrap(trap.trap_type),
+                    isIp6BgpTrap(trap.trap_type),
+                    isIp6NdTrap(trap.trap_type));
 
             if (pret != 0)
             {
@@ -143,11 +202,24 @@ sai_status_t SwitchVpp::installTrapClassify(
             }
         }
     }
+}
+
+sai_status_t SwitchVpp::uninstallTrapClassify(
+        _In_ sai_object_id_t trap_oid,
+        _In_ const vpp_trap_entry_t &trap)
+{
+    SWSS_LOG_ENTER();
+
+    // Deferred (WD-timeout fix, generalized -- see enqueueTrapClassifyDeferredWork()
+    // in SwitchVpp.h): same reasoning as installTrapClassify() above -- do not
+    // call vpp_copp_punt_policer_bind() synchronously from inside a
+    // watchdog-timed syncd SAI call (removeHostifTrap()/setHostifTrap()).
+    enqueueTrapClassifyDeferredWork({ trap_oid, trap, (uint32_t)~0, false });
 
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchVpp::uninstallTrapClassify(
+void SwitchVpp::uninstallTrapClassifyNow(
         _In_ sai_object_id_t trap_oid,
         _In_ const vpp_trap_entry_t &trap)
 {
@@ -165,30 +237,43 @@ sai_status_t SwitchVpp::uninstallTrapClassify(
         // but the device-input plugin's bind table is keyed purely by
         // ethertype with a single slot -- unbinding unconditionally here
         // would also silently unpolice any other still-installed trap on
-        // the same ethertype. Only actually unbind once no other tracked,
-        // classify_installed trap still needs this ethertype.
+        // the same ethertype. For the ARP-style (non-bgp/nd) case, only
+        // actually unbind once no other tracked, classify_installed trap
+        // still needs this exact ethertype. For the shared 0x86DD BGPV6/ND
+        // slot, the VPP plugin tracks bgp/nd as independent sub-bindings
+        // (see copp_punt_policer.h) that unbind independently -- so
+        // BGPV6 and ND are each always unbound for real here regardless
+        // of the other's state; "still_needed" only has to consider the
+        // plain (non-bgp/nd) case.
         bool still_needed = false;
 
-        for (auto &kv : m_trap_map)
+        if (!isIp6BgpTrap(trap.trap_type) && !isIp6NdTrap(trap.trap_type))
         {
-            if (kv.first == trap_oid || !kv.second.classify_installed)
+            for (auto &kv : m_trap_map)
             {
-                continue;
-            }
+                if (kv.first == trap_oid || !kv.second.classify_installed)
+                {
+                    continue;
+                }
 
-            std::array<uint8_t, 16> other_match{};
+                std::array<uint8_t, 16> other_match{};
 
-            if (buildClassifyMatchForTrapType(kv.second.trap_type, other_match) &&
-                    other_match[12] == match[12] && other_match[13] == match[13])
-            {
-                still_needed = true;
-                break;
+                if (buildClassifyMatchForTrapType(kv.second.trap_type, other_match) &&
+                        other_match[12] == match[12] && other_match[13] == match[13] &&
+                        !isIp6BgpTrap(kv.second.trap_type) && !isIp6NdTrap(kv.second.trap_type))
+                {
+                    still_needed = true;
+                    break;
+                }
             }
         }
 
         if (!still_needed)
         {
-            vpp_copp_punt_policer_bind(ethertype, "", false, isIp4TtlExpiringTrap(trap.trap_type));
+            vpp_copp_punt_policer_bind(ethertype, "", false,
+                    isIp4TtlExpiringTrap(trap.trap_type),
+                    isIp6BgpTrap(trap.trap_type),
+                    isIp6NdTrap(trap.trap_type));
         }
         else
         {
@@ -200,8 +285,6 @@ sai_status_t SwitchVpp::uninstallTrapClassify(
 
     SWSS_LOG_NOTICE("unbound device-input policer for SAI trap 0x%lx: trap_type %d",
             (unsigned long)trap_oid, (int)trap.trap_type);
-
-    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::createHostifTrapGroup(
@@ -322,6 +405,11 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
             }
 
             installTrapClassify(kv.first, kv.second, vpp_policer_index);
+
+            if (kv.second.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
+            {
+                enqueueIp2meDeferredWork({ Ip2meDeferredOp::RETRY_PENDING, "", "" });
+            }
         }
     }
 
@@ -390,6 +478,20 @@ sai_status_t SwitchVpp::createHostifTrap(
     }
 
     m_trap_map[object_id] = entry;
+
+    if (entry.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
+    {
+        // The IP2ME trap (and its policer) may only just now have become
+        // resolvable; retroactively add classify sessions for any
+        // router-interface addresses that were already configured before
+        // this trap existed and were skipped by ip2meClassifyAddressAdd().
+        // Deferred (see enqueueIp2meDeferredWork() in SwitchVpp.h): this used
+        // to call retryIp2meClassifyPending() directly here, inside
+        // createHostifTrap() -- i.e. inside a single watchdog-timed syncd
+        // SAI create call -- which is exactly the call path observed to
+        // stall past the 30s watchdog live on this testbed.
+        enqueueIp2meDeferredWork({ Ip2meDeferredOp::RETRY_PENDING, "", "" });
+    }
 
     SWSS_LOG_NOTICE("created hostif trap %s: trap_type %d, packet_action %d, trap_group 0x%lx",
             sid.c_str(), (int)entry.trap_type, (int)entry.packet_action, (unsigned long)entry.trap_group_oid);
