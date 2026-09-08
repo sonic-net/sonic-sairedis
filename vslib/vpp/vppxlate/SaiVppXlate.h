@@ -452,7 +452,8 @@ typedef enum {
 
     /* device-input-arc ethertype -> policer binding */
     extern int vpp_copp_punt_policer_bind(uint16_t ethertype,
-            const char *policer_name, bool is_bind, bool match_ip4_ttl_expiring);
+            const char *policer_name, bool is_bind, bool match_ip4_ttl_expiring,
+            bool match_ip6_bgp, bool match_ip6_nd);
     extern int vpp_copp_punt_policer_get_counters(uint16_t ethertype,
             uint64_t *conform_packets, uint64_t *exceed_packets, uint64_t *violate_packets);
     extern int vpp_acl_interface_bind(const char *hwif_name, uint32_t acl_index,
@@ -570,6 +571,10 @@ typedef enum {
                                                     uint32_t ip6_table_index,
                                                     uint32_t other_table_index,
                                                     bool is_input);
+    extern int vpp_policer_classify_set_interface(const char *hwif_name,
+                                                  uint32_t ip4_table_index,
+                                                  uint32_t ip6_table_index,
+                                                  bool is_add);
     extern int vpp_add_node_next(const char *node_name, const char *next_name,
                                        uint32_t *next_index);
     extern int sw_interface_set_mpls_enable(const char *hwif_name, bool enable);
