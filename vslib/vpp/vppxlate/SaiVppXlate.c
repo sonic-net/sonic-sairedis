@@ -4429,8 +4429,36 @@ int sw_interface_set_link_speed (const char *hwif_name, uint32_t link_speed)
 int sw_interface_set_mac (const char *hwif_name, uint8_t *mac_address)
 {
     vat_main_t *vam = &vat_main;
+    u32 idx;
+
+    if (hwif_name == NULL) {
+        SAIVPP_ERROR("hwif_name cannot be NULL");
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+    idx = get_swif_idx(vam, hwif_name);
+    VPP_UNLOCK();
+
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+        return -EINVAL;
+    }
+
+    /* Reuse the index based implementation for the actual VPP API call. */
+    return sw_interface_set_mac_by_index(idx, mac_address);
+}
+
+int sw_interface_set_mac_by_index (uint32_t sw_if_index, uint8_t *mac_address)
+{
+    vat_main_t *vam = &vat_main;
     vl_api_sw_interface_set_mac_address_t *mp;
     int ret;
+
+    if (mac_address == NULL) {
+        SAIVPP_ERROR("mac address can't be NULL");
+        return -EINVAL;
+    }
 
     VPP_LOCK();
 
@@ -4438,35 +4466,15 @@ int sw_interface_set_mac (const char *hwif_name, uint8_t *mac_address)
 
     M (SW_INTERFACE_SET_MAC_ADDRESS, mp);
 
-    if (hwif_name) {
-        u32 idx;
-        idx = get_swif_idx(vam, hwif_name);
-        if (idx != (u32) -1) {
-            mp->sw_if_index = htonl(idx);
-        } else {
-            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
-            VPP_UNLOCK();
-            return -EINVAL;
-        }
-    } else {
-        SAIVPP_ERROR("hwif_name cannot be NULL");
-        VPP_UNLOCK();
-        return -EINVAL;
-    }
-
-    if (mac_address == NULL) {
-        SAIVPP_ERROR("mac address can't be NULL");
-        VPP_UNLOCK();
-        return -EINVAL;
-    }
+    mp->sw_if_index = htonl(sw_if_index);
     memcpy(mp->mac_address, mac_address, sizeof(mp->mac_address));
 
     S (mp);
 
     WR (ret);
 
-    if (ret) { SAIVPP_ERROR("%s failed(%d) %s", __func__, ret, hwif_name); }
-    else { SAIVPP_INFO("%s %s", __func__, hwif_name); }
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u", __func__, ret, sw_if_index); }
+    else { SAIVPP_INFO("%s sw_if_index %u", __func__, sw_if_index); }
 
     VPP_UNLOCK();
 
@@ -4888,7 +4896,20 @@ int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, u32 *sw_if
     mp->encap_vrf_id = htonl(tunnel->encap_vrf_id);
     mp->vni = htonl(tunnel->vni);
     mp->is_l3 = tunnel->is_l3;
-    mp->decap_next_index = htonl(tunnel->decap_next_index);
+    {
+        /* SONiC VNET decap-any: signal a source-independent decap term by
+         * setting the high bit of the wire decap_next_index. Force a valid
+         * default next index if the caller left it unset (~0), so the bit is
+         * distinguishable and the stripped value stays valid in VPP. */
+        u32 dni = tunnel->decap_next_index;
+        if (tunnel->decap_any) {
+            if (dni == (u32)~0) {
+                dni = VPP_VXLAN_DECAP_NEXT_L2_INPUT;
+            }
+            dni |= VPP_VXLAN_DECAP_ANY_FLAG;
+        }
+        mp->decap_next_index = htonl(dni);
+    }
 
     S (mp);
     WR (ret);
