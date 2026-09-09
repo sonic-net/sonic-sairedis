@@ -6,6 +6,7 @@
 #include <mutex>
 
 #include "FlexCounter.h"
+#include "VendorSaiOptions.h"
 #include "VidManager.h"
 
 #include <chrono>
@@ -4412,6 +4413,10 @@ void FlexCounter::addCounter(
     std::vector<std::string> counterIds;
 
     std::string statsMode;
+    auto vso = std::dynamic_pointer_cast<VendorSaiOptions>(
+            m_vendorSai->getOptions(VendorSaiOptions::OPTIONS_KEY));
+    const bool enablePerPortCounterDiscovery =
+            vso && vso->m_enablePerPortCounterDiscovery;
 
     for (const auto& valuePair: values)
     {
@@ -4423,27 +4428,19 @@ void FlexCounter::addCounter(
         const auto &counterGroupRef = m_objectTypeField2CounterType.find({objectType, field});
         if (counterGroupRef != m_objectTypeField2CounterType.end())
         {
-            try {
-                getCounterContext(counterGroupRef->second)->addObjectWithCounterGroups(
-                        vid,
-                        rid,
-                        idStrings,
-                        "");
+            auto counterContext = getCounterContext(counterGroupRef->second);
 
-            }
-            catch (const std::exception& e)
+            if (enablePerPortCounterDiscovery)
             {
-                SWSS_LOG_WARN("Error initializing SAI objects with counter groups: %s, falling back", e.what());
-                getCounterContext(counterGroupRef->second)->addObject(
+                counterContext->addObjectWithCounterGroups(
                         vid,
                         rid,
                         idStrings,
                         "");
             }
-            catch (...) {
-                SWSS_LOG_WARN("Unknown error initializing SAI objects with counter groups, falling back");
-
-                getCounterContext(counterGroupRef->second)->addObject(
+            else
+            {
+                counterContext->addObject(
                         vid,
                         rid,
                         idStrings,
@@ -4494,6 +4491,10 @@ void FlexCounter::bulkAddCounter(
     std::vector<std::string> counterIds;
 
     std::string statsMode;
+    auto vso = std::dynamic_pointer_cast<VendorSaiOptions>(
+            m_vendorSai->getOptions(VendorSaiOptions::OPTIONS_KEY));
+    const bool enablePerPortCounterDiscovery =
+            vso && vso->m_enablePerPortCounterDiscovery;
 
     for (const auto& valuePair: values)
     {
@@ -4505,33 +4506,24 @@ void FlexCounter::bulkAddCounter(
         const auto &counterGroupRef = m_objectTypeField2CounterType.find({objectType, field});
         if (counterGroupRef != m_objectTypeField2CounterType.end())
         {
-            try
-            {
-                getCounterContext(counterGroupRef->second)->bulkAddObjectWithCounterGroups(
-                        vids,
-                        rids,
-                        idStrings,
-                        "");
-            }
-            catch (const std::exception& e)
-            {
-                SWSS_LOG_WARN("Error initializing SAI objects with counter groups: %s, falling back", e.what());
-                getCounterContext(counterGroupRef->second)->bulkAddObject(
-                        vids,
-                        rids,
-                        idStrings,
-                        "");
-            }
-            catch (...)
-            {
-                SWSS_LOG_WARN("Unknown error initializing SAI objects with counter groups, falling back");
-                getCounterContext(counterGroupRef->second)->bulkAddObject(
-                        vids,
-                        rids,
-                        idStrings,
-                        "");
-            }
+            auto counterContext = getCounterContext(counterGroupRef->second);
 
+            if (enablePerPortCounterDiscovery)
+            {
+               counterContext->bulkAddObjectWithCounterGroups(
+                        vids,
+                        rids,
+                        idStrings,
+                        "");
+            }
+            else
+            {
+                counterContext->bulkAddObject(
+                        vids,
+                        rids,
+                        idStrings,
+                        "");
+            }
         }
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
         {
@@ -4553,33 +4545,23 @@ void FlexCounter::bulkAddCounter(
 
     if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && counterIds.size())
     {
-        try
-        {
-            getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObjectWithCounterGroups(
-                    vids,
-                    rids,
-                    counterIds,
-                    statsMode);
+        auto counterContext = getCounterContext(COUNTER_TYPE_BUFFER_POOL);
 
-        }
-        catch (const std::exception& e)
+        if (enablePerPortCounterDiscovery)
         {
-            SWSS_LOG_WARN("Error initializing SAI objects with counter groups: %s, falling back", e.what());
-            getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObject(
+            counterContext->bulkAddObjectWithCounterGroups(
                     vids,
                     rids,
                     counterIds,
                     statsMode);
         }
-        catch (...)
+        else
         {
-            SWSS_LOG_WARN("Unknown error initializing SAI objects with counter groups, falling back");
-            getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObject(
+            counterContext->bulkAddObject(
                     vids,
                     rids,
                     counterIds,
                     statsMode);
-
         }
     }
 
