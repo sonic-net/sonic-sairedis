@@ -2468,9 +2468,14 @@ private:
             return false;
         }
 
-        // Any other overall status still carries per-object detail in statuses[],
-        // so the results are read either way rather than repeating the whole sweep
-        // through the slow path.
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_WARN("Failed to bulk get attr of %s: %d",
+                    sai_serialize_object_type(Base::m_objectType).c_str(), status);
+
+            return false;
+        }
+
         size_t n = 0;
         for (const auto &kv : Base::m_objectIdsMap)
         {
