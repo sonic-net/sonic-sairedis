@@ -81,6 +81,8 @@ libSaiVS_a_SOURCES +=\
 					  vpp/SaiObjectDB.cpp \
 					  vpp/SwitchVpp.cpp \
 					  vpp/SwitchVppAcl.cpp \
+					  vpp/SwitchVppPolicer.cpp \
+					  vpp/SwitchVppHostifTrap.cpp \
 					  vpp/SwitchVppNexthop.cpp \
 					  vpp/SwitchVppUtils.cpp \
 					  vpp/SwitchVppFdb.cpp \

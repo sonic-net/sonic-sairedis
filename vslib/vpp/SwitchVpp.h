@@ -8,6 +8,8 @@
 #include "TunnelManager.h"
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
+#include "SwitchVppPolicer.h"
+#include "SwitchVppHostifTrap.h"
 #include "CRMTracker.h"
 #include "PortConfigMap.h"
 
@@ -24,6 +26,9 @@
 #include <chrono>
 #include <functional>
 #include <queue>
+#include <deque>
+#include <set>
+#include <string>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -954,6 +959,157 @@ namespace saivs
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
+
+        protected: // CoPP: POLICER / HOSTIF_TRAP / HOSTIF_TRAP_GROUP
+
+            // SAI POLICER OID -> VPP-side policer identity (name + index).
+            std::map<sai_object_id_t, vpp_policer_entry_t> m_policer_map;
+
+            sai_status_t createPolicer(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            // Shared VPP-side programming for createPolicer()/setPolicer();
+            // see SwitchVppPolicer.cpp for details. Does not itself call
+            // create_internal()/set_internal() -- callers own that. Deferred
+            // (WD-timeout fix -- see enqueuePolicerProgramWork() below): this
+            // only enqueues; the real vpp_policer_add_replace() VAPI call
+            // runs later via programPolicerNow(), drained one item per call
+            // from serviceDeferredTrapClassifyWork()'s call sites. Confirmed
+            // live: a SAI_OBJECT_TYPE_POLICER create hit the 30s watchdog
+            // here (createPolicer()/setPolicer() call this directly, with
+            // zero deferral, from inside a syncd SAI create/set call) --
+            // the same class of bug as installTrapClassify(), just in a
+            // call path not audited until now.
+            sai_status_t programPolicer(
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _In_ bool is_replace);
+
+            // Performs the actual vpp_policer_add_replace() VAPI call and
+            // the m_policer_map bookkeeping that programPolicer() used to do
+            // synchronously. Runs later, drained from the deferred queue.
+            void programPolicerNow(
+                    _In_ sai_object_id_t object_id,
+                    _In_ const vpp_policer_t &vpp_policer,
+                    _In_ bool is_replace);
+
+            struct PolicerProgramDeferredWork
+            {
+                sai_object_id_t object_id;
+                vpp_policer_t vpp_policer;
+                bool is_replace;
+            };
+
+            std::mutex m_policer_program_deferred_mutex;
+            std::deque<PolicerProgramDeferredWork> m_policer_program_deferred_queue;
+
+            void enqueuePolicerProgramWork(PolicerProgramDeferredWork &&work);
+
+            // Drains m_policer_program_deferred_queue, one item per call --
+            // same discipline as serviceDeferredTrapClassifyWork(). Runs on
+            // the command thread from the same create/set/remove call sites.
+            void serviceDeferredPolicerProgramWork();
+
+            sai_status_t removePolicer(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t setPolicer(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t getPolicerStats(
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _Out_ uint64_t *counters);
+
+        protected: // CoPP: HOSTIF_TRAP / HOSTIF_TRAP_GROUP
+
+            std::map<sai_object_id_t, vpp_trap_group_entry_t> m_trap_group_map;
+            std::map<sai_object_id_t, vpp_trap_entry_t> m_trap_map;
+
+            sai_status_t createHostifTrapGroup(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeHostifTrapGroup(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t setHostifTrapGroup(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t createHostifTrap(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeHostifTrap(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t setHostifTrap(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t installTrapClassify(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap,
+                    _In_ uint32_t vpp_policer_index);
+
+            void installTrapClassifyNow(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap,
+                    _In_ uint32_t vpp_policer_index);
+
+            sai_status_t uninstallTrapClassify(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap);
+
+            void uninstallTrapClassifyNow(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap);
+
+            // ---- Deferred trap classify work (WD-timeout fix, generalized) ----
+            //
+            // installTrapClassify()/uninstallTrapClassify() (used for EVERY
+            // ethertype-keyed trap: ARP/LACP/LLDP/UDLD/TTL_ERROR/BGP/BGPV6/ND)
+            // call vpp_copp_punt_policer_bind() -- another blocking VAPI
+            // round-trip under VPP_LOCK() against the same synchronous
+            // control-plane socket -- synchronously from createHostifTrap(),
+            // removeHostifTrap(), and setHostifTrapGroup(). Confirmed live: a
+            // BGPV6 createHostifTrap call hitting the 30s WD-exceeded
+            // watchdog and starving every trap queued after it), just in a
+            // different, more commonly-hit function. Deferred the same way:
+            // these entry points now only update m_trap_map/mark work
+            // pending and enqueue; the actual bind/unbind VAPI call runs
+            // later, one item per call, from
+            // serviceDeferredTrapClassifyWork() at the same create/set/remove
+            // call sites as serviceDeferredOperStatusResync().
+            struct TrapClassifyDeferredWork
+            {
+                sai_object_id_t trap_oid;
+                vpp_trap_entry_t trap;
+                uint32_t vpp_policer_index; // only used for install
+                bool is_install; // true: installTrapClassify, false: uninstallTrapClassify
+            };
+
+            std::mutex m_trap_classify_deferred_mutex;
+            std::deque<TrapClassifyDeferredWork> m_trap_classify_deferred_queue;
+
+            void enqueueTrapClassifyDeferredWork(TrapClassifyDeferredWork &&work);
+
+            // Drains m_trap_classify_deferred_queue, actually performing each
+            // queued install/uninstall. Runs on the command thread; safe to
+            // call unconditionally and often (no-op when queue empty).
+            void serviceDeferredTrapClassifyWork();
+
 
         protected: // VPP
 

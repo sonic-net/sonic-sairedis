@@ -1362,6 +1362,20 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);
 
+    if (ret == 0 && vpp_ip_prefix.prefix_addr.sa_family == AF_INET)
+    {
+        // IP2ME dataplane policing: register this router-interface IPv4
+        // address with the copp_ip2me_policer VPP plugin's ip4-punt-arc
+        // address set, so the shared IP2ME/SNMP/SSH policer is actually
+        // enforced for traffic destined to it. No per-interface binding
+        // needed -- ip4-punt is a single global arc every packet destined
+        // to a local address and unhandled by VPP's own dataplane already
+        // crosses, regardless of ingress interface (see
+        // copp_ip2me_policer.c for the full design rationale).
+        vpp_copp_ip2me_policer_addr_add_del(
+                vpp_ip_prefix.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
+    }
+
     if (ret == 0)
     {
         if (is_add)
@@ -1536,7 +1550,95 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
         m_tunnel_mgr_ipip.retry_pending_unnumbered(ip_route.prefix_addr);
     }
 
+    // IP2ME dataplane policing: see vpp_add_del_intf_ip_addr_norif() for
+    // the same registration on the copp_ip2me_policer plugin's ip4-punt
+    // address set -- this is the RIF-tracked-interface counterpart.
+    if (ret == 0 && route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        vpp_copp_ip2me_policer_addr_add_del(
+                ip_route.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
+    }
+
     return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::enqueueTrapClassifyDeferredWork(TrapClassifyDeferredWork &&work)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_trap_classify_deferred_mutex);
+    m_trap_classify_deferred_queue.push_back(std::move(work));
+}
+
+void SwitchVpp::serviceDeferredTrapClassifyWork()
+{
+    SWSS_LOG_ENTER();
+
+    // Same one-item-per-call discipline as serviceDeferredOperStatusResync() -- each install/uninstall
+    // makes a blocking VAPI round-trip (vpp_copp_punt_policer_bind()) that
+    // can itself take up to VPP's internal WR() timeout, and this runs from
+    // inside a watchdog-timed syncd SAI call, so only ever do one per call.
+    TrapClassifyDeferredWork item;
+    bool haveItem = false;
+    {
+        std::lock_guard<std::mutex> lock(m_trap_classify_deferred_mutex);
+        if (!m_trap_classify_deferred_queue.empty())
+        {
+            item = std::move(m_trap_classify_deferred_queue.front());
+            m_trap_classify_deferred_queue.pop_front();
+            haveItem = true;
+        }
+    }
+
+    if (!haveItem)
+    {
+        return;
+    }
+
+    if (item.is_install)
+    {
+        installTrapClassifyNow(item.trap_oid, item.trap, item.vpp_policer_index);
+    }
+    else
+    {
+        uninstallTrapClassifyNow(item.trap_oid, item.trap);
+    }
+}
+
+void SwitchVpp::enqueuePolicerProgramWork(PolicerProgramDeferredWork &&work)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_policer_program_deferred_mutex);
+    m_policer_program_deferred_queue.push_back(std::move(work));
+}
+
+void SwitchVpp::serviceDeferredPolicerProgramWork()
+{
+    SWSS_LOG_ENTER();
+
+    // Same one-item-per-call discipline as serviceDeferredTrapClassifyWork()
+    // -- vpp_policer_add_replace() is a blocking VAPI round-trip, and this
+    // runs from inside a watchdog-timed syncd SAI call, so only ever do one
+    // per call.
+    PolicerProgramDeferredWork item;
+    bool haveItem = false;
+    {
+        std::lock_guard<std::mutex> lock(m_policer_program_deferred_mutex);
+        if (!m_policer_program_deferred_queue.empty())
+        {
+            item = std::move(m_policer_program_deferred_queue.front());
+            m_policer_program_deferred_queue.pop_front();
+            haveItem = true;
+        }
+    }
+
+    if (!haveItem)
+    {
+        return;
+    }
+
+    programPolicerNow(item.object_id, item.vpp_policer, item.is_replace);
 }
 
 sai_status_t SwitchVpp::vpp_add_lpb_intf_ip_addr (
@@ -2005,17 +2107,21 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     int ret = vpp_get_vrf_id(linux_ifname, &vrf_id);
 
     vpp_add_ip_vrf(vrf_obj_id, vrf_id);
-    if (ret == 0 && vrf_id != 0) {
-	const char *hwif_name;
-	char hw_bondifname[32];
-	if (ot == SAI_OBJECT_TYPE_LAG) {
-	    snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_info.id);
-	    hwif_name = hw_bondifname;
-	} else {
-	    hwif_name = tap_to_hwif_name(dev);
-	}
-	SWSS_LOG_NOTICE("Setting interface vrf on hwif_name %s", hwif_name);
-	set_interface_vrf(hwif_name, vlan_id, vrf_id, false);
+
+    {
+        const char *hwif_name;
+        char hw_bondifname[32];
+        if (ot == SAI_OBJECT_TYPE_LAG) {
+            snprintf(hw_bondifname, sizeof(hw_bondifname), "%s%d", BONDETHERNET_PREFIX, bond_info.id);
+            hwif_name = hw_bondifname;
+        } else {
+            hwif_name = tap_to_hwif_name(dev);
+        }
+
+        if (ret == 0 && vrf_id != 0) {
+            SWSS_LOG_NOTICE("Setting interface vrf on hwif_name %s", hwif_name);
+            set_interface_vrf(hwif_name, vlan_id, vrf_id, false);
+        }
     }
     auto attr_type_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
 
