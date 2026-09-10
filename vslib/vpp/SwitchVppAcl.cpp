@@ -758,7 +758,12 @@ sai_status_t SwitchVpp::get_sorted_aces(
         }
 
         p_ace->priority = 0;
-        acl_priority_attr_get(p_ace->attrs_count, p_ace->attrs, &p_ace->priority);
+        if (acl_priority_attr_get(p_ace->attrs_count, p_ace->attrs,
+                                  &p_ace->priority) != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("No priority attribute on ACL entry %s, ordering it at 0; "
+                           "its %u attributes may have been truncated at MAX_ACL_ATTRS (%u)",
+                           sid.c_str(), p_ace->attrs_count, MAX_ACL_ATTRS);
+        }
 
         ordered_aces.push_back({index, p_ace->priority, entry_id, false, 0, 0});
         p_ace++;
