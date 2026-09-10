@@ -32,6 +32,8 @@ namespace sairedis
 
             sai_status_t apiUninitialize(void) override;
 
+            void shutdown() override;
+
         public: // SAI interface overrides
 
             virtual sai_status_t create(

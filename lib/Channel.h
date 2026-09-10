@@ -35,6 +35,17 @@ namespace sairedis
 
             uint64_t getResponseTimeout() const;
 
+            /**
+             * @brief Signal that the system is shutting down.
+             *
+             * When set, blocking operations (like zmq_poll) will not retry
+             * on EINTR and will return failure immediately, allowing the
+             * caller to exit promptly.
+             */
+            void setShutdown();
+
+            bool isShutdown() const;
+
         public:
 
             virtual void setBuffered(
@@ -64,6 +75,8 @@ namespace sairedis
             Callback m_callback;
 
             uint64_t m_responseTimeoutMs;
+
+            volatile bool m_shutdown;
 
         protected: // notification
 
