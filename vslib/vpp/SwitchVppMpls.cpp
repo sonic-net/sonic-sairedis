@@ -243,8 +243,10 @@ sai_status_t SwitchVpp::mplsRouteAddRemove(
             sai_object_id_t rif_id = rif_attr.value.oid;
             sai_attribute_t port_attr;
             port_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-            if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &port_attr) == SAI_STATUS_SUCCESS &&
-                vpp_get_hwif_name(port_attr.value.oid, 0, egress_hwif)) {
+            if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &port_attr) == SAI_STATUS_SUCCESS) {
+                egress_hwif = m_ifaceRegistry.resolveHwIfName(port_attr.value.oid, 0);
+            }
+            if (!egress_hwif.empty()) {
                 route->nexthop[0].hwif_name = egress_hwif.c_str();
             }
         }

@@ -140,10 +140,14 @@ const char* SwitchVpp::resolveNexthopMemberHwif(
     }
 
     rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS &&
-        vpp_get_hwif_name(rif_attr.value.oid, vlan_id, member_hwif))
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS)
     {
-        return member_hwif.c_str();
+        member_hwif = m_ifaceRegistry.resolveHwIfName(rif_attr.value.oid, vlan_id);
+
+        if (!member_hwif.empty())
+        {
+            return member_hwif.c_str();
+        }
     }
 
     return NULL;
@@ -219,11 +223,7 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
     nexthop_grp_config_t *nxthop_group = NULL;
 
-    if (SAI_OBJECT_TYPE_ROUTER_INTERFACE == RealObjectIdManager::objectTypeQuery(next_hop_oid))
-    {
-        // vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, is_add);
-    }
-    else if (SAI_OBJECT_TYPE_PORT == RealObjectIdManager::objectTypeQuery(next_hop_oid))
+    if (SAI_OBJECT_TYPE_PORT == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
         attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
         status = route_obj->get_attr(attr);

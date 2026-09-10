@@ -546,8 +546,8 @@ sai_status_t SwitchVpp::tunterm_set_action_redirect(
         vlan_id = attr.value.u16;
     }
 
-    std::string hwif_name;
-    if (!vpp_get_hwif_name(port_oid, vlan_id, hwif_name)) {
+    std::string hwif_name = m_ifaceRegistry.resolveHwIfName(port_oid, vlan_id);
+    if (hwif_name.empty()) {
         SWSS_LOG_WARN("VS hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
         return SAI_STATUS_SUCCESS;
     }
@@ -1161,9 +1161,8 @@ sai_status_t SwitchVpp::acl_entry_in_ports_get(
 
     for (uint32_t i = 0; i < attr.value.aclfield.data.objlist.count; i++) {
 
-        std::string hwif_name;
-
-        if (!vpp_get_hwif_name(ports[i], 0, hwif_name)) {
+        std::string hwif_name = m_ifaceRegistry.resolveHwIfName(ports[i], 0);
+        if (hwif_name.empty()) {
             SWSS_LOG_WARN("No VPP interface for port %s named by IN_PORTS of ACL entry %s",
                           sai_serialize_object_id(ports[i]).c_str(),
                           sai_serialize_object_id(ace_oid).c_str());
@@ -2242,9 +2241,9 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
         return SAI_STATUS_SUCCESS;
     }
 
-    std::string hwif_name;
+    std::string hwif_name = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
 
-    if (!vpp_get_hwif_name(port_oid, 0, hwif_name)) {
+    if (hwif_name.empty()) {
         SWSS_LOG_WARN("VS hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
         return SAI_STATUS_FAILURE;
     }
@@ -2406,7 +2405,9 @@ sai_status_t SwitchVpp::aclBindUnbindPorts(
 
     for (auto port_oid: member_list) {
 
-        if (!vpp_get_hwif_name(port_oid, 0, hwif_name)) {
+        hwif_name = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
+
+        if (hwif_name.empty()) {
             SWSS_LOG_WARN("VS hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
             continue;
         }

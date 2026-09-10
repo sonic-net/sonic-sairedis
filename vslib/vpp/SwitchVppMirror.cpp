@@ -32,8 +32,8 @@ sai_status_t SwitchVpp::createMirrorSession(
         CHECK_STATUS(find_attrib_in_list(attr_count, attr_list, SAI_MIRROR_SESSION_ATTR_MONITOR_PORT, &value, &attr_index));
         sai_object_id_t monitor_port = value->oid;
 
-        std::string hwif_name;
-        if(!vpp_get_hwif_name(monitor_port, 0, hwif_name)) {
+        std::string hwif_name = m_ifaceRegistry.resolveHwIfName(monitor_port, 0);
+        if(hwif_name.empty()) {
             SWSS_LOG_ERROR("Failed to get hwif name for monitor port %s", sai_serialize_object_id(monitor_port).c_str());
             return SAI_STATUS_FAILURE;
         }
@@ -92,8 +92,8 @@ sai_status_t SwitchVpp::removeMirrorSession(
         sai_object_id_t portId = pmb_it->first;
         auto port_sid = sai_serialize_object_id(portId);
 
-        std::string src_hwif;
-        if(!vpp_get_hwif_name(portId, 0, src_hwif)) {
+        std::string src_hwif = m_ifaceRegistry.resolveHwIfName(portId, 0);
+        if(src_hwif.empty()) {
             SWSS_LOG_WARN("Failed to get hwif name for port %s while removing mirror session %s; skipping VPP SPAN unprogramming",
                 port_sid.c_str(), sai_serialize_object_id(object_id).c_str());
         } else {
@@ -131,8 +131,8 @@ sai_status_t SwitchVpp::bindMirrorPort(
 
     auto sid = sai_serialize_object_id(portId);
 
-    std::string src_hwif;
-    if(!vpp_get_hwif_name(portId, 0, src_hwif)) {
+    std::string src_hwif = m_ifaceRegistry.resolveHwIfName(portId, 0);
+    if(src_hwif.empty()) {
         SWSS_LOG_ERROR("Failed to get hwif name for port %s", sid.c_str());
         return SAI_STATUS_FAILURE;
     } else {

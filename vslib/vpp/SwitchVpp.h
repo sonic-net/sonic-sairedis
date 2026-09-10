@@ -2,6 +2,8 @@
 
 #include "SwitchStateBase.h"
 
+#include "swss/logger.h"
+
 #include "IpVrfInfo.h"
 #include "SaiObjectDB.h"
 #include "BitResourcePool.h"
@@ -10,6 +12,7 @@
 #include "SwitchVppAcl.h"
 #include "CRMTracker.h"
 #include "PortConfigMap.h"
+#include "VppInterfaceRegistry.h"
 
 #include "vppxlate/SaiVppXlate.h"
 #include "vppxlate/SaiRouteStats.h"
@@ -183,14 +186,6 @@ namespace saivs
             void removeRouteCounterBinding(
                     _In_ const std::string &serializedObjectId);
 
-            bool port_to_hostif_list(
-                    _In_ sai_object_id_t oid,
-                    _Inout_ std::string& if_name);
-
-            bool port_to_hwifname(
-                    _In_ sai_object_id_t oid,
-                    _Inout_ std::string& if_name);
-
         public: // from VirtualSwitchSaiInterface changed functions
 
             virtual sai_status_t queryAttributeCapability(
@@ -286,6 +281,17 @@ namespace saivs
                     _In_ sai_object_id_t port_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
+
+            /*
+             * Overridden purely to deregister the port from m_ifaceRegistry.
+             * The base class knows nothing about the registry, so without this
+             * a removed physical port would leave its record behind -- and
+             * because addPhysicalPort() refuses a hwif that is already
+             * registered, a later re-add of the same hwif would silently get no
+             * record at all. LAG and sub-port teardown already do this.
+             */
+            virtual sai_status_t removePort(
+                    _In_ sai_object_id_t objectId) override;
 
             virtual sai_status_t setPort(
                     _In_ sai_object_id_t portId,
@@ -706,14 +712,6 @@ namespace saivs
             sai_status_t vpp_remove_router_interface(
                     _In_ sai_object_id_t objectId);
 
-            sai_status_t vpp_router_interface_remove_vrf(
-                    _In_ sai_object_id_t obj_id);
-
-            sai_status_t vpp_add_del_intf_ip_addr (
-                    _In_ sai_ip_prefix_t& ip_prefix,
-                    _In_ sai_object_id_t nexthop_oid,
-                    _In_ bool is_add);
-
             sai_status_t vpp_add_del_intf_ip_addr_norif (
                     _In_ const std::string& ip_prefix_key,
                     _In_ sai_route_entry_t& route_entry,
@@ -734,11 +732,6 @@ namespace saivs
 
             sai_status_t vpp_del_lpb_intf_ip_addr (
                     _In_ const std::string &serializedObjectId);
-
-            sai_status_t vpp_get_router_intf_name (
-                    _In_ sai_ip_prefix_t& ip_prefix,
-                    _In_ sai_object_id_t rif_id,
-                    std::string& nexthop_ifname);
 
             int getNextLoopbackInstance();
 
@@ -1308,12 +1301,34 @@ namespace saivs
                     _Out_ uint32_t *vpp_rule_base_index,
                     _Out_ uint32_t *num_rules);
 
-            bool vpp_get_hwif_name (
+            /*
+             * VPP interface name of a PORT, on the port create/update path.
+             *
+             * Registry first, falling back to the hardware lane list, which is
+             * also what registers the port: create_ports() makes ports with no
+             * attributes at all and only later sets SAI_PORT_ATTR_HW_LANE_LIST,
+             * so this is the first moment a front panel port has a derivable
+             * name. That makes this the only entry point that can name a port
+             * which is not in the registry yet, and the reason it takes the
+             * attribute list -- during a set, the new lane list is in attr_list
+             * and not yet in the object store.
+             *
+             * Everywhere else the interface is necessarily already known, and
+             * the plain index lookup, VppInterfaceRegistry::resolveHwIfName(),
+             * is what should be used.
+             */
+            bool vppGetHwIfNameForPort (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
                     _Out_ std::string& ifname,
                     _In_ uint32_t attr_count = 0,
                     _In_ const sai_attribute_t *attr_list = nullptr);
+
+            const VppInterfaceRegistry& getInterfaceRegistry() const
+            {
+                                SWSS_LOG_ENTER();
+                return m_ifaceRegistry;
+            }
 
         public:
 
@@ -1326,14 +1341,6 @@ namespace saivs
             void deinitFdbEventHandling() override;
 
         protected: // VPP
-            typedef struct platform_bond_info_ {
-                uint32_t sw_if_index;
-                uint32_t id;
-                bool lcp_created;
-            } platform_bond_info_t;
-
-            void populate_if_mapping();
-
             bool getPortHwifNameFromLane(
                     _In_ sai_object_id_t port_id,
                     _Out_ std::string& if_name);
@@ -1343,16 +1350,8 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list,
                     _Out_ std::string& if_name);
-            bool getTapNameFromPortOrLagId(
-                    _In_ sai_object_id_t obj_id,
-                    _Out_ std::string& if_name);
-            const char *tap_to_hwif_name(const char *name);
-
-            const char *hwif_to_tap_name(const char *name);
 
             uint32_t find_new_bond_id();
-            sai_status_t get_lag_bond_info(const sai_object_id_t lag_id, platform_bond_info_t &bond_info);
-            int remove_lag_to_bond_entry (const sai_object_id_t lag_id);
 
             void vppProcessEvents ();
 
@@ -1374,19 +1373,22 @@ namespace saivs
 
             std::shared_ptr<PortConfigMap> m_portConfigMap;
 
-            std::map<std::string, std::string> m_hostif_hwif_map;
-            std::map<std::string, std::string> m_hwif_hostif_map;
-            int mapping_init = 0;
+            /*
+             * Single owner of interface identity: hwif name, SONiC name, host
+             * tap, PORT/LAG oid, sw_if_index and bridge domain, for every kind
+             * of VPP interface.
+             */
+            VppInterfaceRegistry m_ifaceRegistry;
+
             bool m_run_vpp_events_thread = true;
             std::atomic<bool> m_operResyncDue { false };
             bool VppEventsThreadStarted = false;
             std::shared_ptr<std::thread> m_vpp_thread;
 
         private: // VPP
-	    // m_lag_bond_map and m_egress_disabled_lag_member_ports are only accessed on
-	    // the LAG create/set/remove path, which the VS layer serializes through a
-	    // single queue, so they require no additional locking.
-	    std::map<sai_object_id_t, platform_bond_info_t> m_lag_bond_map;
+	    // m_egress_disabled_lag_member_ports is only accessed on the LAG
+	    // create/set/remove path, which the VS layer serializes through a
+	    // single queue, so it requires no additional locking.
 	    std::set<sai_object_id_t> m_egress_disabled_lag_member_ports;
 
             static int currentMaxInstance;
@@ -1403,17 +1405,6 @@ namespace saivs
             // Kept in sync with MAC events from VPP to support flush operations
             // and de-duplication of events.
             std::map<VppFdbKey, uint32_t> m_vpp_fdb_entries;
-
-            // Cache: VPP sw_if_index -> SAI port OID, built from FDB learn events.
-            // Avoids per-entry VPP API calls in vpp_fdb_entries_invalidate_by_port().
-            // Invalidated per sw_if_index on port-leave via swif_bdid_untrack(),
-            // since VPP recycles sw_if_index values after an interface is deleted.
-            std::unordered_map<uint32_t, sai_object_id_t> m_swif_to_port_id;
-
-            // Maps VPP sw_if_index -> bridge domain ID.
-            // Maintained when ports are added/removed from bridge domains.
-            // Required because l2_macs_event carries sw_if_index but not bd_id.
-            std::map<uint32_t, uint32_t> m_swif_to_bdid;
 
             // MAC event queue — thread boundary between VPP and saivpp.
             //
@@ -1448,20 +1439,15 @@ namespace saivs
 
             bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
             bool generateFdbAgedEvent(const VppFdbKey &key);
-            sai_object_id_t getPortIdFromSwIfIndex(uint32_t sw_if_index);
-
-            // Cache-first resolution of sw_if_index -> SAI port OID.
-            // On a cache miss, falls back to the VPP API lookup and memoizes the result.
-            // Defined inline in SwitchVppFdb.cpp (its only translation unit).
-            sai_object_id_t resolvePortIdFromSwIfIndex(uint32_t sw_if_index);
 
             void vpp_fdb_entries_invalidate_all();
             void vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id);
             void vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id);
 
-            // Track/untrack sw_if_index→bd_id when ports join/leave bridge domains.
-            // Untrack also invalidates the m_swif_to_port_id cache for that
-            // sw_if_index, since both per-swif caches share the same lifecycle.
+            // Track/untrack bd_id on the interface record when ports join/leave
+            // bridge domains. Having a bd_id is the gate that admits an FDB
+            // event: every interface has a record, so record existence alone
+            // does not imply bridge domain membership.
             void swif_bdid_track(const char *hwif_name, uint32_t bd_id);
             void swif_bdid_untrack(const char *hwif_name);
 
