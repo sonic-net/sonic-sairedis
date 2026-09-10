@@ -96,6 +96,12 @@ typedef struct vpp_ip_addr_ {
         uint16_t dstport_or_icmpcode_last;
         uint8_t tcp_flags_mask;
         uint8_t tcp_flags_value;
+        /*
+         * Match only packets received on this interface. Empty for any, which
+         * is what a rule with no SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS gets. The
+         * name is resolved to a VPP sw_if_index when the rule is programmed.
+         */
+        char in_hwif_name[64];
     } vpp_acl_rule_t;
 
     typedef struct _vpp_acl_ {

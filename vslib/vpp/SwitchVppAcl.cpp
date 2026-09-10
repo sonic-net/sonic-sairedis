@@ -473,6 +473,13 @@ sai_status_t acl_rule_field_update(
         // NOOP here - these are either handled elsewhere or not currently applicable
         break;
 
+    case SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS:
+        /*
+         * Not a per rule field: it names several ports, so it is applied by
+         * fanning the generated rules out over them in fill_acl_rules().
+         */
+        break;
+
     default:
         SWSS_LOG_ERROR("Unhandled ACL entry attribute ID: %d", attr_id);
         break;
@@ -742,6 +749,20 @@ sai_status_t SwitchVpp::get_sorted_aces(
             status = SAI_STATUS_FAILURE;
             break;
         }
+
+        /*
+         * get_max() stops at MAX_ACL_ATTRS, and the attribute store is keyed by
+         * attribute name, so what survives is an alphabetical cut rather than
+         * the attributes that matter. An entry that hits the cap may therefore
+         * be missing qualifiers this code goes on to read - IN_PORTS among them,
+         * which would leave a scoped entry looking unscoped. Report it: the cap
+         * is not raised here, so this is the only signal that it was reached.
+         */
+        if (p_ace->attrs_count >= MAX_ACL_ATTRS) {
+            SWSS_LOG_WARN("ACL entry %s has at least %u attributes, the most this code reads; "
+                          "any beyond that were dropped by name order and are invisible to it",
+                          sid.c_str(), MAX_ACL_ATTRS);
+        }
         p_ace->attr_range.value.aclfield.data.objlist.list = p_ace->range_objid_list;
         p_ace->attr_range.value.aclfield.data.objlist.count = 2;
 
@@ -811,6 +832,7 @@ void SwitchVpp::count_tunterm_acl_rules(
 }
 
 sai_status_t SwitchVpp::fill_acl_rules(
+    sai_object_id_t tbl_oid,
     acl_tbl_entries_t *aces,
     std::list<ordered_ace_list_t> &ordered_aces,
     std::list<vpp_acl_rule_t> &acl_rules,
@@ -822,6 +844,39 @@ sai_status_t SwitchVpp::fill_acl_rules(
     acl_tbl_entries_t *p_ace = NULL;
     uint32_t acl_rule_index = 0;
     uint32_t tunterm_rule_index = 0;
+
+    // An IN_PORTS scope is compiled into the rule's in_sw_if_index, which the
+    // ACL plugin compares against sw_if_index[VLIB_RX] only for an ACL bound
+    // inbound; bound outbound the same 5-tuple slot holds sw_if_index[VLIB_TX].
+    // Programming an ingress scope into an egress table would therefore match
+    // the egress port while still reporting the ingress port that was asked for.
+    //
+    // Resolved lazily, and only for an entry that actually carries IN_PORTS, so
+    // a table with no scoped entry keeps behaving exactly as it did before this
+    // feature.  An unreadable stage is treated as not-egress: the attribute is
+    // MANDATORY_ON_CREATE on a table we are in the middle of programming, so
+    // this should be unreachable, and failing here would take the whole table
+    // down for a check that is only a guard.
+    enum { STAGE_UNKNOWN, STAGE_EGRESS, STAGE_NOT_EGRESS } tbl_stage = STAGE_UNKNOWN;
+
+    auto table_is_egress = [&]() -> bool {
+        if (tbl_stage == STAGE_UNKNOWN) {
+            sai_attribute_t attr;
+
+            attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
+            if (get(SAI_OBJECT_TYPE_ACL_TABLE, tbl_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to get stage of ACL table %s carrying an IN_PORTS entry, "
+                               "assuming ingress",
+                               sai_serialize_object_id(tbl_oid).c_str());
+                tbl_stage = STAGE_NOT_EGRESS;
+            } else {
+                tbl_stage = (attr.value.s32 == SAI_ACL_STAGE_EGRESS) ? STAGE_EGRESS
+                                                                     : STAGE_NOT_EGRESS;
+            }
+        }
+
+        return (tbl_stage == STAGE_EGRESS);
+    };
 
     for (auto &ace: ordered_aces) {
         SWSS_LOG_INFO("Acl entry index %u priority %u", ace.index, ace.priority);
@@ -936,6 +991,73 @@ sai_status_t SwitchVpp::fill_acl_rules(
                 rules_added++;
             }
 
+            /*
+             * SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS restricts the entry to the
+             * ports it names. A VPP ACL rule matches one interface, so the
+             * rules generated above are fanned out - one copy per named port -
+             * the same way a port based entry with no protocol fans out into a
+             * UDP and a TCP rule. They stay contiguous from
+             * ace.vpp_rule_base_index, so the counter of the entry still sums
+             * over ace.num_rules and needs no special handling.
+             */
+            std::set<std::string> in_hwifs;
+            bool                  in_ports_scoped = false;
+
+            /*
+             * A scope that cannot be resolved comes back as an empty in_hwifs
+             * rather than a status, so that it costs this entry its rules and
+             * not the whole table. The status check is defensive only.
+             */
+            status = acl_entry_in_ports_get(p_ace, ace.ace_oid, in_ports_scoped, in_hwifs);
+
+            if (status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to resolve IN_PORTS of ACL entry %s, status: %d",
+                               sai_serialize_object_id(ace.ace_oid).c_str(), status);
+                return SAI_STATUS_FAILURE;
+            }
+
+            if (in_ports_scoped) {
+
+                if (table_is_egress()) {
+                    /*
+                     * The scope would silently become an egress one here, so
+                     * emit no rule for this entry rather than a rule that
+                     * enforces something other than what was asked for. The
+                     * rest of the table still programs: failing it outright
+                     * would take the table's unrelated entries down with it,
+                     * and the entry cannot be un-programmed afterwards.
+                     */
+                    SWSS_LOG_ERROR("ACL entry %s in egress table %s carries IN_PORTS, which "
+                                   "would match the egress interface rather than the ingress "
+                                   "one; no rule is emitted for this entry",
+                                   sai_serialize_object_id(ace.ace_oid).c_str(),
+                                   sai_serialize_object_id(tbl_oid).c_str());
+                    in_hwifs.clear();
+                }
+
+                std::list<vpp_acl_rule_t> base_rules;
+
+                for (uint32_t n = 0; n < rules_added; n++) {
+                    base_rules.push_front(acl_rules.back());
+                    acl_rules.pop_back();
+                }
+
+                rules_added = 0;
+
+                for (const auto &hwif_name : in_hwifs) {
+                    for (auto scoped_rule : base_rules) {
+                        snprintf(scoped_rule.in_hwif_name, sizeof(scoped_rule.in_hwif_name),
+                                 "%s", hwif_name.c_str());
+                        acl_rules.push_back(scoped_rule);
+                        rules_added++;
+                    }
+                }
+
+                SWSS_LOG_INFO("ACL entry %s scoped to %zu interface(s): %u rule(s)",
+                              sai_serialize_object_id(ace.ace_oid).c_str(),
+                              in_hwifs.size(), rules_added);
+            }
+
             ace.num_rules = rules_added;
             acl_rule_index += rules_added;
 
@@ -971,6 +1093,111 @@ void SwitchVpp::cleanup_acl_tbl_config(
         tunterm_acl = NULL;
     }
     ordered_aces.clear();
+}
+
+sai_status_t SwitchVpp::acl_entry_in_ports_get(
+    _In_ const acl_tbl_entries_t *ace,
+    _In_ sai_object_id_t ace_oid,
+    _Out_ bool &scoped,
+    _Out_ std::set<std::string> &hwifs)
+{
+    SWSS_LOG_ENTER();
+
+    scoped = false;
+    hwifs.clear();
+
+    const sai_attribute_t *found = NULL;
+
+    for (uint32_t i = 0; i < ace->attrs_count; i++) {
+        if (ace->attrs[i].id == SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS) {
+            found = &ace->attrs[i];
+            break;
+        }
+    }
+
+    if (found == NULL || !found->value.aclfield.enable) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    scoped = true;
+
+    /*
+     * The attributes were read with a zero capacity object list, so only its
+     * count came back and its list is still null. Read the entry again, now
+     * with somewhere to put the ports.
+     */
+    uint32_t count = found->value.aclfield.data.objlist.count;
+
+    if (count == 0) {
+        /*
+         * The field is on but names no port, so no ingress interface can be in
+         * the list and the entry matches nothing. Leaving hwifs empty makes the
+         * caller emit no rule for it, which comes to the same thing.
+         */
+        SWSS_LOG_WARN("ACL entry %s has an enabled but empty IN_PORTS list",
+                      sai_serialize_object_id(ace_oid).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::vector<sai_object_id_t> ports(count);
+    sai_attribute_t              attr;
+
+    attr.id = SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS;
+    attr.value.aclfield.enable = true;
+    attr.value.aclfield.data.objlist.count = count;
+    attr.value.aclfield.data.objlist.list = ports.data();
+
+    if (get(SAI_OBJECT_TYPE_ACL_ENTRY, ace_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
+        /*
+         * The scope cannot be determined, so leave hwifs empty and let the
+         * caller emit no rule for this entry. See the note below on why that
+         * is preferred over failing the table.
+         */
+        SWSS_LOG_ERROR("Failed to read IN_PORTS list of ACL entry %s; no rule is emitted "
+                       "for this entry",
+                       sai_serialize_object_id(ace_oid).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
+    for (uint32_t i = 0; i < attr.value.aclfield.data.objlist.count; i++) {
+
+        std::string hwif_name;
+
+        if (!vpp_get_hwif_name(ports[i], 0, hwif_name)) {
+            SWSS_LOG_WARN("No VPP interface for port %s named by IN_PORTS of ACL entry %s",
+                          sai_serialize_object_id(ports[i]).c_str(),
+                          sai_serialize_object_id(ace_oid).c_str());
+            continue;
+        }
+
+        hwifs.insert(hwif_name);
+    }
+
+    /*
+     * If nothing resolved, hwifs is left empty and the caller emits no rule for
+     * this entry. That is deliberate, and it is the same outcome as the
+     * degenerate cases above rather than a separate policy:
+     *
+     *   - Programming the entry unscoped would apply it to every port the table
+     *     is bound to, which is the table-wide deny this whole change exists to
+     *     remove.
+     *   - Failing the table would abort AclTblConfig for every entry in it, and
+     *     the table is shared: MuxOrch's drop rule and PFC watchdog's rules both
+     *     live in IngressTableDrop. The failure would also be sticky, because
+     *     createAclEntry has already committed the entry to the object store and
+     *     to m_acl_tbl_rules_map before this runs and does not roll either back,
+     *     so every later add or remove on the table would fail here again.
+     *
+     * Emitting no rule keeps the damage to the entry that could not be
+     * resolved, and the error below is the signal.
+     */
+    if (hwifs.empty()) {
+        SWSS_LOG_ERROR("None of the %u port(s) named by IN_PORTS of ACL entry %s resolve "
+                       "to a VPP interface; no rule is emitted for this entry",
+                       count, sai_serialize_object_id(ace_oid).c_str());
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::acl_add_replace(
@@ -1194,7 +1421,7 @@ sai_status_t SwitchVpp::AclTblConfig(
     SWSS_LOG_INFO("Total ACL entries: %ld", n_total_entries);
 
     // Fill ACL rules - this returns converted rule lists
-    CHECK_STATUS_ACLTBLCONFIG(fill_acl_rules(aces, ordered_aces, acl_rules, tunterm_acl_rules));
+    CHECK_STATUS_ACLTBLCONFIG(fill_acl_rules(tbl_oid, aces, ordered_aces, acl_rules, tunterm_acl_rules));
 
     SWSS_LOG_INFO("Generated %ld regular ACL rules and %ld tunterm ACL rules",
                     acl_rules.size(), tunterm_acl_rules.size());
