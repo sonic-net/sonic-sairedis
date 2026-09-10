@@ -24,6 +24,75 @@ BestCandidateFinder::BestCandidateFinder(
     // empty
 }
 
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForVirtualRouter(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    auto getVlanIds = [](
+            const AsicView& view,
+            sai_object_id_t virtualRouterId)
+    {
+        std::vector<sai_vlan_id_t> vlanIds;
+
+        for (const auto& rif: view.getObjectsByObjectType(SAI_OBJECT_TYPE_ROUTER_INTERFACE))
+        {
+            auto type = rif->tryGetSaiAttr(SAI_ROUTER_INTERFACE_ATTR_TYPE);
+            auto vr = rif->tryGetSaiAttr(SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID);
+            auto vlan = rif->tryGetSaiAttr(SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
+
+            if (type == nullptr || vr == nullptr || vlan == nullptr ||
+                    type->getSaiAttr()->value.s32 != SAI_ROUTER_INTERFACE_TYPE_VLAN ||
+                    vr->getOid() != virtualRouterId)
+            {
+                continue;
+            }
+
+            auto vlanObject = view.m_oOids.find(vlan->getOid());
+
+            if (vlanObject == view.m_oOids.end())
+                continue;
+
+            auto vlanId = vlanObject->second->tryGetSaiAttr(SAI_VLAN_ATTR_VLAN_ID);
+
+            if (vlanId != nullptr)
+                vlanIds.push_back(vlanId->getSaiAttr()->value.u16);
+        }
+
+        std::sort(vlanIds.begin(), vlanIds.end());
+
+        return vlanIds;
+    };
+
+    auto temporaryVlanIds = getVlanIds(m_temporaryView, temporaryObj->getVid());
+
+    if (temporaryVlanIds.empty())
+        return nullptr;
+
+    std::shared_ptr<SaiObj> match = nullptr;
+
+    for (const auto& candidate: candidateObjects)
+    {
+        if (getVlanIds(m_currentView, candidate.obj->getVid()) != temporaryVlanIds)
+            continue;
+
+        if (match != nullptr)
+            return nullptr;
+
+        match = candidate.obj;
+    }
+
+    if (match != nullptr)
+    {
+        SWSS_LOG_NOTICE("matched virtual router %s to %s by VLAN interfaces",
+                temporaryObj->m_str_object_id.c_str(),
+                match->m_str_object_id.c_str());
+    }
+
+    return match;
+}
+
 std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForLag(
         _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
         _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
@@ -1496,6 +1565,10 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
 
     switch (temporaryObj->getObjectType())
     {
+        case SAI_OBJECT_TYPE_VIRTUAL_ROUTER:
+            candidate = findCurrentBestMatchForVirtualRouter(temporaryObj, candidateObjects);
+            break;
+
         case SAI_OBJECT_TYPE_LAG:
             candidate = findCurrentBestMatchForLag(temporaryObj, candidateObjects);
             break;
