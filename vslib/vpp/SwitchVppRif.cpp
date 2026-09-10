@@ -1362,24 +1362,18 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);
 
-    if (ret == 0 && !is_v6 && hw_ifname)
+    if (ret == 0 && vpp_ip_prefix.prefix_addr.sa_family == AF_INET)
     {
-        // IP2ME dataplane policing: mirror this router-interface IPv4
-        // address into the ip4-policer-classify table so the IP2ME trap
-        // group's policer is actually enforced for traffic destined to
-        // it (VPP's ip4-punt-redirect otherwise delivers such traffic
-        // completely unpoliced -- see ip2meClassifyAddressAdd()/_Del()).
-        // Deferred (see enqueueIp2meDeferredWork() in SwitchVpp.h): do NOT
-        // call the *Address*Add/Del helpers directly here -- they make
-        // blocking VAPI calls that can stall past syncd's per-call
-        // watchdog when run synchronously from this SAI entry point.
-        char addrStr[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &(vpp_ip_prefix.prefix_addr.addr.ip4.sin_addr), addrStr, sizeof(addrStr));
-
-        enqueueIp2meDeferredWork({
-                is_add ? Ip2meDeferredOp::ADDRESS_ADD : Ip2meDeferredOp::ADDRESS_DEL,
-                hw_ifname,
-                addrStr });
+        // IP2ME dataplane policing: register this router-interface IPv4
+        // address with the copp_ip2me_policer VPP plugin's ip4-punt-arc
+        // address set, so the shared IP2ME/SNMP/SSH policer is actually
+        // enforced for traffic destined to it. No per-interface binding
+        // needed -- ip4-punt is a single global arc every packet destined
+        // to a local address and unhandled by VPP's own dataplane already
+        // crosses, regardless of ingress interface (see
+        // copp_ip2me_policer.c for the full design rationale).
+        vpp_copp_ip2me_policer_addr_add_del(
+                vpp_ip_prefix.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
     }
 
     if (ret == 0)
@@ -1533,9 +1527,6 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
     vpp_ip_route_t ip_route;
     create_route_prefix(&route_entry, &ip_route);
 
-    bool isIp4 = false;
-    std::string prefixIp4;
-
     if (route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
     {
         char prefixIp6Str[INET6_ADDRSTRLEN];
@@ -1547,8 +1538,6 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
         char prefixIp4Str[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(ip_route.prefix_addr.addr.ip4.sin_addr),
             prefixIp4Str, INET_ADDRSTRLEN);
-        isIp4 = true;
-        prefixIp4 = prefixIp4Str;
     } else {
         SWSS_LOG_ERROR("Could not determine IP address family!  destinationIP:%s",
             destinationIP.c_str());
@@ -1561,415 +1550,16 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
         m_tunnel_mgr_ipip.retry_pending_unnumbered(ip_route.prefix_addr);
     }
 
-    // IP2ME dataplane policing: VPP's ip4-punt-redirect delivers traffic
-    // destined to any of the router's own addresses regardless of any
-    // policer, since no SAI trap type maps to a device-input ethertype
-    // for it (see buildClassifyMatchForTrapType()'s default: case in
-    // SwitchVppHostifTrap.cpp). Mirror the address here with an
-    // ip4-policer-classify session so the IP2ME trap group's policer is
-    // actually enforced, the same way a real ASIC traps+polices
-    // router-destined traffic ahead of forwarding. Deferred -- see
-    // enqueueIp2meDeferredWork() in SwitchVpp.h.
-    if (ret == 0 && isIp4 && vppIfname)
+    // IP2ME dataplane policing: see vpp_add_del_intf_ip_addr_norif() for
+    // the same registration on the copp_ip2me_policer plugin's ip4-punt
+    // address set -- this is the RIF-tracked-interface counterpart.
+    if (ret == 0 && route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
     {
-        enqueueIp2meDeferredWork({
-                is_add ? Ip2meDeferredOp::ADDRESS_ADD : Ip2meDeferredOp::ADDRESS_DEL,
-                vppIfname,
-                prefixIp4 });
+        vpp_copp_ip2me_policer_addr_add_del(
+                ip_route.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
     }
 
     return SAI_STATUS_SUCCESS;
-}
-
-uint32_t SwitchVpp::findVppPolicerIndexForTrapType(
-        _In_ sai_hostif_trap_type_t trap_type)
-{
-    SWSS_LOG_ENTER();
-
-    for (const auto &kv : m_trap_map)
-    {
-        if (kv.second.trap_type != trap_type)
-        {
-            continue;
-        }
-
-        auto git = m_trap_group_map.find(kv.second.trap_group_oid);
-        if (git == m_trap_group_map.end())
-        {
-            continue;
-        }
-
-        auto pit = m_policer_map.find(git->second.policer_oid);
-        if (pit == m_policer_map.end())
-        {
-            continue;
-        }
-
-        return pit->second.vpp_policer_index;
-    }
-
-    return (uint32_t)~0;
-}
-
-bool SwitchVpp::ensureIp4PolicerClassifyTable()
-{
-    SWSS_LOG_ENTER();
-
-    if (m_ip4_policer_classify_table_index != (uint32_t)~0)
-    {
-        return true;
-    }
-
-    // Mirrors what `classify table mask l3 ip4 dst buckets 16` builds:
-    // skip_n_vectors=1 (a 16-byte placeholder vector for the L2 header --
-    // ip4-unicast's classify runs past the Ethernet header, so this is a
-    // layout convention, not real bytes read), match_n_vectors=2 (32 bytes
-    // covering the IPv4 header), with only the 4-byte dst_address field
-    // (at byte 16 of the IPv4 header, i.e. absolute byte 16 of the second
-    // 16-byte match vector) masked to 0xffffffff.
-    const uint32_t skip_n_vectors = 1;
-    const uint32_t match_n_vectors = 2;
-    uint8_t mask[32];
-    memset(mask, 0, sizeof(mask));
-    mask[16] = 0xff;
-    mask[17] = 0xff;
-    mask[18] = 0xff;
-    mask[19] = 0xff;
-
-    uint32_t new_table_index = (uint32_t)~0;
-    int ret = vpp_classify_table_create(
-            16 /* nbuckets */,
-            2 * 1024 * 1024 /* memory_size */,
-            skip_n_vectors,
-            match_n_vectors,
-            (uint32_t)~0 /* next_table_index */,
-            (uint32_t)~0 /* miss_next_index: fall through to normal ip4-lookup */,
-            mask,
-            sizeof(mask),
-            &new_table_index);
-
-    if (ret != 0 || new_table_index == (uint32_t)~0)
-    {
-        SWSS_LOG_ERROR("failed to create ip4-policer-classify table: ret %d", ret);
-        return false;
-    }
-
-    m_ip4_policer_classify_table_index = new_table_index;
-
-    SWSS_LOG_NOTICE("created shared ip4-policer-classify table, index %u",
-            m_ip4_policer_classify_table_index);
-
-    // The table didn't exist yet when any already-registered L3 interfaces
-    // called ip2meRegisterL3Interface() -- bind it to all of them now.
-    // Deferred (see enqueueIp2meDeferredWork()/serviceDeferredIp2meClassifyWork()
-    // time budget): do NOT bind all of them synchronously in this one call
-    // -- on a switch with many L3 interfaces (e.g. after full RIF creation
-    // for every port) this loop alone could exceed the per-call VAPI time
-    // budget. Re-enqueue each as its own BIND_L3_INTERFACE work item (NOT
-    // REGISTER_L3_INTERFACE -- these hwifs are already in m_ip2me_l3_hwifs,
-    // so ip2meRegisterL3Interface()'s insert-based idempotency check would
-    // just silently skip them) so the same drain loop's 5s budget applies
-    // to them individually and any leftover gets requeued for a later call,
-    // just like any other item.
-    for (const auto &hwifName : m_ip2me_l3_hwifs)
-    {
-        enqueueIp2meDeferredWork({ Ip2meDeferredOp::BIND_L3_INTERFACE, hwifName, "" });
-    }
-
-    return true;
-}
-
-void SwitchVpp::ip2meRegisterL3Interface(
-        _In_ const std::string &hwifName)
-{
-    SWSS_LOG_ENTER();
-
-    if (!m_ip2me_l3_hwifs.insert(hwifName).second)
-    {
-        // Already registered (idempotent re-create/reconcile path).
-        return;
-    }
-
-    if (m_ip4_policer_classify_table_index == (uint32_t)~0)
-    {
-        // Table doesn't exist yet -- ensureIp4PolicerClassifyTable() will
-        // bind this interface (from m_ip2me_l3_hwifs) once it is created.
-        return;
-    }
-
-    bindIp2meL3Interface(hwifName);
-}
-
-void SwitchVpp::bindIp2meL3Interface(
-        _In_ const std::string &hwifName)
-{
-    SWSS_LOG_ENTER();
-
-    if (m_ip4_policer_classify_table_index == (uint32_t)~0)
-    {
-        // Table doesn't exist yet; nothing to bind against.
-        return;
-    }
-
-    int ret = vpp_policer_classify_set_interface(
-            hwifName.c_str(),
-            m_ip4_policer_classify_table_index,
-            (uint32_t)~0 /* ip6_table_index: not used */,
-            true /* is_add */);
-
-    if (ret != 0)
-    {
-        SWSS_LOG_ERROR("failed to bind ip4-policer-classify table to %s: ret %d",
-                hwifName.c_str(), ret);
-    }
-    else
-    {
-        SWSS_LOG_NOTICE("ip2me classify: bound ip4-policer-classify table to L3 interface %s",
-                hwifName.c_str());
-    }
-}
-
-void SwitchVpp::ip2meClassifyAddressAdd(
-        _In_ const std::string &hwifName,
-        _In_ const std::string &ip4AddrDotted)
-{
-    SWSS_LOG_ENTER();
-
-    uint32_t policer_index = findVppPolicerIndexForTrapType(SAI_HOSTIF_TRAP_TYPE_IP2ME);
-    if (policer_index == (uint32_t)~0)
-    {
-        SWSS_LOG_NOTICE("no IP2ME trap/policer resolved yet; skipping ip4-policer-classify "
-                "session for %s on %s (will retry on next address add or trap change)",
-                ip4AddrDotted.c_str(), hwifName.c_str());
-        m_ip2me_pending_addrs[hwifName].insert(ip4AddrDotted);
-        return;
-    }
-
-    m_ip2me_pending_addrs[hwifName].erase(ip4AddrDotted);
-
-    if (!ensureIp4PolicerClassifyTable())
-    {
-        return;
-    }
-
-    struct in_addr addr;
-    if (inet_pton(AF_INET, ip4AddrDotted.c_str(), &addr) != 1)
-    {
-        SWSS_LOG_ERROR("invalid IPv4 address %s for ip4-policer-classify session",
-                ip4AddrDotted.c_str());
-        return;
-    }
-
-    uint8_t match[48];
-    memset(match, 0, sizeof(match));
-    memcpy(&match[16 + 16], &addr.s_addr, sizeof(addr.s_addr));
-
-    int ret = vpp_classify_session_add(
-            m_ip4_policer_classify_table_index,
-            policer_index /* hit_next_index: resolved policer index for a
-                              policer-classify table */,
-            match,
-            sizeof(match),
-            (uint32_t)~0 /* opaque_index */,
-            0 /* advance */,
-            0 /* action: none */);
-
-    if (ret != 0)
-    {
-        SWSS_LOG_ERROR("failed to add ip4-policer-classify session for %s on %s: ret %d",
-                ip4AddrDotted.c_str(), hwifName.c_str(), ret);
-        return;
-    }
-
-    m_ip2me_classified_addrs[hwifName].insert(ip4AddrDotted);
-
-    // ip4-policer-classify matches purely on destination IP in one shared
-    // table -- traffic destined to this address can arrive on ANY L3
-    // ingress interface, not just hwifName. Ensure the classify feature is
-    // bound everywhere it needs to be (idempotent; a no-op if hwifName was
-    // already registered via vpp_create_router_interface()).
-    ip2meRegisterL3Interface(hwifName);
-
-    SWSS_LOG_NOTICE("ip2me classify: added %s on %s -> policer_index %u",
-            ip4AddrDotted.c_str(), hwifName.c_str(), policer_index);
-}
-
-void SwitchVpp::ip2meClassifyAddressDel(
-        _In_ const std::string &hwifName,
-        _In_ const std::string &ip4AddrDotted)
-{
-    SWSS_LOG_ENTER();
-
-    auto pendingIt = m_ip2me_pending_addrs.find(hwifName);
-    if (pendingIt != m_ip2me_pending_addrs.end())
-    {
-        pendingIt->second.erase(ip4AddrDotted);
-    }
-
-    auto it = m_ip2me_classified_addrs.find(hwifName);
-    if (it == m_ip2me_classified_addrs.end() || it->second.count(ip4AddrDotted) == 0)
-    {
-        // Nothing was ever classified for this address (e.g. IP2ME trap
-        // wasn't resolvable yet when it was added) -- nothing to undo.
-        return;
-    }
-
-    if (m_ip4_policer_classify_table_index != (uint32_t)~0)
-    {
-        struct in_addr addr;
-        if (inet_pton(AF_INET, ip4AddrDotted.c_str(), &addr) == 1)
-        {
-            uint8_t match[48];
-            memset(match, 0, sizeof(match));
-            memcpy(&match[16 + 16], &addr.s_addr, sizeof(addr.s_addr));
-
-            int ret = vpp_classify_session_del(m_ip4_policer_classify_table_index, match, sizeof(match));
-            if (ret != 0)
-            {
-                SWSS_LOG_ERROR("failed to delete ip4-policer-classify session for %s on %s: ret %d",
-                        ip4AddrDotted.c_str(), hwifName.c_str(), ret);
-            }
-        }
-    }
-
-    it->second.erase(ip4AddrDotted);
-
-    if (it->second.empty())
-    {
-        // Unlike before, the classify feature stays bound to hwifName --
-        // it's registered permanently in m_ip2me_l3_hwifs as an L3
-        // interface (see ip2meRegisterL3Interface()) since the shared
-        // table may still be needed there for addresses on OTHER
-        // interfaces (IP2ME traffic can arrive on any L3 ingress port).
-        m_ip2me_classified_addrs.erase(it);
-    }
-
-    SWSS_LOG_NOTICE("ip2me classify: removed %s on %s", ip4AddrDotted.c_str(), hwifName.c_str());
-}
-
-void SwitchVpp::retryIp2meClassifyPending()
-{
-    SWSS_LOG_ENTER();
-
-    if (findVppPolicerIndexForTrapType(SAI_HOSTIF_TRAP_TYPE_IP2ME) == (uint32_t)~0)
-    {
-        // Still not resolvable; nothing to do yet.
-        return;
-    }
-
-    // Snapshot first: ip2meClassifyAddressAdd() below mutates
-    // m_ip2me_pending_addrs (erasing entries that succeed), so iterating
-    // the live map while modifying it would be unsafe.
-    std::map<std::string, std::set<std::string>> pendingSnapshot = m_ip2me_pending_addrs;
-
-    for (const auto &ifKv : pendingSnapshot)
-    {
-        for (const auto &addr : ifKv.second)
-        {
-            ip2meClassifyAddressAdd(ifKv.first, addr);
-        }
-    }
-}
-
-void SwitchVpp::enqueueIp2meDeferredWork(Ip2meDeferredWork &&work)
-{
-    SWSS_LOG_ENTER();
-
-    std::lock_guard<std::mutex> lock(m_ip2me_deferred_mutex);
-    m_ip2me_deferred_queue.push_back(std::move(work));
-}
-
-void SwitchVpp::serviceDeferredIp2meClassifyWork()
-{
-    SWSS_LOG_ENTER();
-
-    // Drain under the lock into a local queue, then do the (blocking VAPI)
-    // work outside the lock -- nothing else touches m_ip2me_deferred_queue
-    // except enqueueIp2meDeferredWork() (a quick push_back) and this
-    // function re-pushing any leftover/expanded items below, so this keeps
-    // the lock held only briefly.
-    std::deque<Ip2meDeferredWork> work;
-    {
-        std::lock_guard<std::mutex> lock(m_ip2me_deferred_mutex);
-        if (m_ip2me_deferred_queue.empty())
-        {
-            return;
-        }
-        work.swap(m_ip2me_deferred_queue);
-    }
-
-    // Perform at most ONE deferred item per call. Each item makes a
-    // blocking VAPI round-trip that can itself take up to VPP's own
-    // internal WR() timeout (up to ~10s), and this function runs from
-    // inside a syncd SAI call (create/set/remove) that is *also*
-    // watchdog-timed at 30s -- so even a modest multi-item batch (observed
-    // live: a burst of ~7 ADDRESS_ADD items after a table create) can
-    // saturate VPP's single control-plane socket long enough to stall the
-    // *next*, unrelated SAI call that happens to run right after this one
-    // returns. Matches the exact one-item-per-call discipline already used
-    // by serviceDeferredOperStatusResync() above for the same reason.
-    // Any remainder stays queued for the next create/set/remove call.
-    if (!work.empty())
-    {
-        Ip2meDeferredWork item = std::move(work.front());
-        work.pop_front();
-
-        switch (item.op)
-        {
-            case Ip2meDeferredOp::REGISTER_L3_INTERFACE:
-                ip2meRegisterL3Interface(item.hwifName);
-                break;
-
-            case Ip2meDeferredOp::BIND_L3_INTERFACE:
-                bindIp2meL3Interface(item.hwifName);
-                break;
-
-            case Ip2meDeferredOp::ADDRESS_ADD:
-                ip2meClassifyAddressAdd(item.hwifName, item.addr);
-                break;
-
-            case Ip2meDeferredOp::ADDRESS_DEL:
-                ip2meClassifyAddressDel(item.hwifName, item.addr);
-                break;
-
-            case Ip2meDeferredOp::RETRY_PENDING:
-            {
-                // Expand into one ADDRESS_ADD per currently-pending address
-                // instead of calling retryIp2meClassifyPending() (which
-                // would loop over the whole backlog synchronously,
-                // defeating the one-item-per-call budget here). Push the
-                // expanded items to the FRONT of the local work deque so
-                // they get their own turn (one per future call) ahead of
-                // whatever was queued after this item.
-                if (findVppPolicerIndexForTrapType(SAI_HOSTIF_TRAP_TYPE_IP2ME) == (uint32_t)~0)
-                {
-                    // Still not resolvable; nothing to expand yet.
-                    break;
-                }
-
-                std::map<std::string, std::set<std::string>> pendingSnapshot = m_ip2me_pending_addrs;
-                for (auto ifIt = pendingSnapshot.rbegin(); ifIt != pendingSnapshot.rend(); ++ifIt)
-                {
-                    for (auto addrIt = ifIt->second.rbegin(); addrIt != ifIt->second.rend(); ++addrIt)
-                    {
-                        work.push_front({ Ip2meDeferredOp::ADDRESS_ADD, ifIt->first, *addrIt });
-                    }
-                }
-                break;
-            }
-        }
-    }
-
-    // Requeue whatever's left (untouched, in original order) for the next
-    // create/set/remove entry point to continue draining.
-    if (!work.empty())
-    {
-        std::lock_guard<std::mutex> lock(m_ip2me_deferred_mutex);
-        for (auto it = work.rbegin(); it != work.rend(); ++it)
-        {
-            m_ip2me_deferred_queue.push_front(std::move(*it));
-        }
-    }
 }
 
 void SwitchVpp::enqueueTrapClassifyDeferredWork(TrapClassifyDeferredWork &&work)
@@ -1984,8 +1574,7 @@ void SwitchVpp::serviceDeferredTrapClassifyWork()
 {
     SWSS_LOG_ENTER();
 
-    // Same one-item-per-call discipline as serviceDeferredIp2meClassifyWork()
-    // above and serviceDeferredOperStatusResync() -- each install/uninstall
+    // Same one-item-per-call discipline as serviceDeferredOperStatusResync() -- each install/uninstall
     // makes a blocking VAPI round-trip (vpp_copp_punt_policer_bind()) that
     // can itself take up to VPP's internal WR() timeout, and this runs from
     // inside a watchdog-timed syncd SAI call, so only ever do one per call.
@@ -2528,14 +2117,6 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         } else {
             hwif_name = tap_to_hwif_name(dev);
         }
-
-        // Register this RIF's hw interface for ip4-policer-classify
-        // regardless of vrf_id -- IP2ME traffic destined to ANOTHER
-        // interface's address can still arrive here, so the classify
-        // feature must be bound on every L3 interface (see
-        // ip2meRegisterL3Interface()). Deferred -- see
-        // enqueueIp2meDeferredWork() in SwitchVpp.h.
-        enqueueIp2meDeferredWork({ Ip2meDeferredOp::REGISTER_L3_INTERFACE, hwif_name, "" });
 
         if (ret == 0 && vrf_id != 0) {
             SWSS_LOG_NOTICE("Setting interface vrf on hwif_name %s", hwif_name);

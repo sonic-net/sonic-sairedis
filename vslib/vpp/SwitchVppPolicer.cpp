@@ -234,14 +234,6 @@ void SwitchVpp::programPolicerNow(
 
     m_policer_map[object_id] = entry;
 
-    // A newly created/replaced policer may be the one an already-created
-    // IP2ME trap's group references (createPolicer commonly runs after
-    // createHostifTrap/setHostifTrapGroup for the same object during bulk
-    // config apply) -- retry any classify sessions that were skipped
-    // because this policer wasn't resolvable yet. Deferred (see
-    // enqueueIp2meDeferredWork() in SwitchVpp.h).
-    enqueueIp2meDeferredWork({ Ip2meDeferredOp::RETRY_PENDING, "", "" });
-
     SWSS_LOG_NOTICE("%s VPP policer %s (index %u) for SAI policer %s",
             is_replace ? "replaced" : "created", vpp_policer.name, vpp_policer_index, sid.c_str());
 }

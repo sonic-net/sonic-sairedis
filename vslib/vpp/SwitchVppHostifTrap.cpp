@@ -132,9 +132,8 @@ sai_status_t SwitchVpp::installTrapClassify(
     // directly from createHostifTrap()/setHostifTrap()/setHostifTrapGroup(),
     // i.e. from inside a single watchdog-timed syncd SAI call. Confirmed live:
     // a BGPV6 createHostifTrap call stalled past the 30s watchdog here,
-    // starving every trap queued after it for the rest of that config_reload
-    // (the exact same failure mode the IP2ME classify-table work was
-    // deferred to fix). The real bind runs later, one item per call, from
+    // starving every trap queued after it for the rest of that config_reload.
+    // The real bind runs later, one item per call, from
     // serviceDeferredTrapClassifyWork().
     enqueueTrapClassifyDeferredWork({ trap_oid, trap, vpp_policer_index, true });
 
@@ -152,6 +151,39 @@ void SwitchVpp::installTrapClassifyNow(
     {
         SWSS_LOG_NOTICE("no VPP policer resolved for trap 0x%lx (trap_type %d); skipping classify install",
                 (unsigned long)trap_oid, (int)trap.trap_type);
+
+        return;
+    }
+
+    if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
+    {
+        // IP2ME (and SNMP/SSH, which map to the same SAI trap type -- see
+        // PROTOCOL_TO_TRAP_ID in sonic-mgmt's copp_tests.py) has no
+        // device-input ethertype to match on: it identifies traffic by
+        // destination IP after routing, not by L2 ethertype before it.
+        // Bind the shared copp_ip2me_policer plugin's policer instead of
+        // the ethertype-keyed copp_punt_policer path below -- see
+        // copp_ip2me_policer.c for the full design (enforced on the
+        // ip4-punt arc, ahead of ip4-punt-redirect).
+        auto git = m_trap_group_map.find(trap.trap_group_oid);
+        sai_object_id_t policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
+
+        if (policer_oid != SAI_NULL_OBJECT_ID)
+        {
+            char policer_name[64];
+            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
+
+            int pret = vpp_copp_ip2me_policer_bind(policer_name, true);
+
+            if (pret != 0)
+            {
+                SWSS_LOG_ERROR("failed to bind IP2ME policer %s: ret %d", policer_name, pret);
+            }
+            else
+            {
+                SWSS_LOG_NOTICE("bound IP2ME policer %s for trap 0x%lx", policer_name, (unsigned long)trap_oid);
+            }
+        }
 
         return;
     }
@@ -224,6 +256,26 @@ void SwitchVpp::uninstallTrapClassifyNow(
         _In_ const vpp_trap_entry_t &trap)
 {
     SWSS_LOG_ENTER();
+
+    if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
+    {
+        // Unlike the ethertype-keyed path, the IP2ME policer binding
+        // isn't per-trap-instance -- there is exactly one SAI IP2ME trap
+        // and one shared copp_ip2me_policer plugin policer, so removing
+        // it here unconditionally unbinds. Address entries themselves
+        // (which router-interface IPs are tracked) are managed separately
+        // by vpp_copp_ip2me_policer_addr_add_del(), independent of trap
+        // lifecycle.
+        int pret = vpp_copp_ip2me_policer_bind("", false);
+
+        if (pret != 0)
+        {
+            SWSS_LOG_ERROR("failed to unbind IP2ME policer for trap 0x%lx: ret %d",
+                    (unsigned long)trap_oid, pret);
+        }
+
+        return;
+    }
 
     std::array<uint8_t, 16> match{};
     bool have_match_key = buildClassifyMatchForTrapType(trap.trap_type, match);
@@ -405,11 +457,6 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
             }
 
             installTrapClassify(kv.first, kv.second, vpp_policer_index);
-
-            if (kv.second.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
-            {
-                enqueueIp2meDeferredWork({ Ip2meDeferredOp::RETRY_PENDING, "", "" });
-            }
         }
     }
 
@@ -478,20 +525,6 @@ sai_status_t SwitchVpp::createHostifTrap(
     }
 
     m_trap_map[object_id] = entry;
-
-    if (entry.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
-    {
-        // The IP2ME trap (and its policer) may only just now have become
-        // resolvable; retroactively add classify sessions for any
-        // router-interface addresses that were already configured before
-        // this trap existed and were skipped by ip2meClassifyAddressAdd().
-        // Deferred (see enqueueIp2meDeferredWork() in SwitchVpp.h): this used
-        // to call retryIp2meClassifyPending() directly here, inside
-        // createHostifTrap() -- i.e. inside a single watchdog-timed syncd
-        // SAI create call -- which is exactly the call path observed to
-        // stall past the 30s watchdog live on this testbed.
-        enqueueIp2meDeferredWork({ Ip2meDeferredOp::RETRY_PENDING, "", "" });
-    }
 
     SWSS_LOG_NOTICE("created hostif trap %s: trap_type %d, packet_action %d, trap_group 0x%lx",
             sid.c_str(), (int)entry.trap_type, (int)entry.packet_action, (unsigned long)entry.trap_group_oid);

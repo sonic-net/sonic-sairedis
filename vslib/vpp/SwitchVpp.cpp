@@ -1385,7 +1385,6 @@ sai_status_t SwitchVpp::create(
     SWSS_LOG_ENTER();
 
     serviceDeferredOperStatusResync();
-    serviceDeferredIp2meClassifyWork();
     serviceDeferredTrapClassifyWork();
     serviceDeferredPolicerProgramWork();
 
@@ -1817,7 +1816,6 @@ sai_status_t SwitchVpp::remove(
     SWSS_LOG_ENTER();
 
     serviceDeferredOperStatusResync();
-    serviceDeferredIp2meClassifyWork();
     serviceDeferredTrapClassifyWork();
     serviceDeferredPolicerProgramWork();
 
@@ -2219,7 +2217,6 @@ sai_status_t SwitchVpp::set(
     SWSS_LOG_ENTER();
 
     serviceDeferredOperStatusResync();
-    serviceDeferredIp2meClassifyWork();
     serviceDeferredTrapClassifyWork();
     serviceDeferredPolicerProgramWork();
 

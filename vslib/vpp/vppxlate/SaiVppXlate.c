@@ -62,6 +62,8 @@
 #include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
 #include <vpp_plugins/copp_punt_policer/copp_punt_policer.api_enum.h>
 #include <vpp_plugins/copp_punt_policer/copp_punt_policer.api_types.h>
+#include <vpp_plugins/copp_ip2me_policer/copp_ip2me_policer.api_enum.h>
+#include <vpp_plugins/copp_ip2me_policer/copp_ip2me_policer.api_types.h>
 
 #include <vlibmemory/vlib.api_types.h>
 #include <vlibmemory/memclnt.api_enum.h>
@@ -192,6 +194,22 @@
 
 #define vl_api_version(n, v) static u32 copp_punt_policer_api_version = v;
 #include <vpp_plugins/copp_punt_policer/copp_punt_policer.api.h>
+#undef vl_api_version
+
+#define vl_typedefs
+#include <vpp_plugins/copp_ip2me_policer/copp_ip2me_policer.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vpp_plugins/copp_ip2me_policer/copp_ip2me_policer.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/copp_ip2me_policer/copp_ip2me_policer.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 copp_ip2me_policer_api_version = v;
+#include <vpp_plugins/copp_ip2me_policer/copp_ip2me_policer.api.h>
 #undef vl_api_version
 
 /* interface API inclusion */
@@ -1744,6 +1762,32 @@ vl_api_copp_punt_policer_get_counters_reply_t_handler(vl_api_copp_punt_policer_g
 }
 
 static void
+vl_api_copp_ip2me_policer_addr_add_del_reply_t_handler(vl_api_copp_ip2me_policer_addr_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_copp_ip2me_policer_bind_reply_t_handler(vl_api_copp_ip2me_policer_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static vl_api_copp_ip2me_policer_get_counters_reply_t g_copp_ip2me_policer_counters_reply;
+static bool g_copp_ip2me_policer_counters_reply_valid;
+
+static void
+vl_api_copp_ip2me_policer_get_counters_reply_t_handler(vl_api_copp_ip2me_policer_get_counters_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+    g_copp_ip2me_policer_counters_reply = *msg;
+    g_copp_ip2me_policer_counters_reply_valid = true;
+}
+
+static void
 vl_api_bond_create_reply_t_handler (vl_api_bond_create_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1858,26 +1902,6 @@ static void vl_api_classify_set_interface_l2_tables_reply_t_handler(
     set_reply_status(retval);
 }
 
-/*
- * Reply handler for POLICER_CLASSIFY_SET_INTERFACE (msg id 425 on this VPP
- * build, confirmed live via `vppctl show api message-table`). This handler
- * was missing entirely -- vpp_policer_classify_set_interface() sends the
- * request and VPP correctly replies, but with no handler registered here
- * the client's msg_handler_internal() logs "no handler for msg id 425" and
- * drops the reply, so vam->result_ready is never set. WR()'s retry loop
- * then spins forever (confirmed live via perf: syncd thread pegged at 100%
- * CPU in a read()/EAGAIN loop), which is what bindIp2meL3Interface() /
- * ip2meClassifyAddressAdd() hit via serviceDeferredIp2meClassifyWork() --
- * this call had never succeeded once on this testbed. Same pattern as the
- * other classify_*_reply handlers above.
- */
-static void vl_api_policer_classify_set_interface_reply_t_handler(
-    vl_api_policer_classify_set_interface_reply_t *msg)
-{
-    int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
-}
-
 /* vlib API reply handler (get_next_index) */
 
 static void vl_api_get_next_index_reply_t_handler(
@@ -1962,6 +1986,7 @@ static __thread u16 __plugin_msg_base;
 static u16 l2_msg_id_base, vxlan_msg_id_base, ipip_msg_id_base;
 static u16 tunterm_msg_id_base;
 static u16 copp_punt_policer_msg_id_base;
+static u16 copp_ip2me_policer_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
 static u16 mpls_msg_id_base;
@@ -2073,7 +2098,6 @@ static void vpp_base_vpe_init(void)
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_TABLE_REPLY), classify_add_del_table_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_SESSION_REPLY), classify_add_del_session_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_SET_INTERFACE_L2_TABLES_REPLY), classify_set_interface_l2_tables_reply) \
-    _(CLASSIFY_MSG_ID(POLICER_CLASSIFY_SET_INTERFACE_REPLY), policer_classify_set_interface_reply) \
     _(VLIB_API_MSG_ID(GET_NEXT_INDEX_REPLY), get_next_index_reply) \
     _(VLIB_API_MSG_ID(ADD_NODE_NEXT_REPLY), add_node_next_reply) \
     _(POLICER_MSG_ID(POLICER_ADD_REPLY), policer_add_reply) \
@@ -2189,6 +2213,9 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
 #define COPP_PUNT_POLICER_MSG_ID(id) \
     (VL_API_##id + copp_punt_policer_msg_id_base)
 
+#define COPP_IP2ME_POLICER_MSG_ID(id) \
+    (VL_API_##id + copp_ip2me_policer_msg_id_base)
+
 #define SR_MSG_ID(id) \
     (VL_API_##id + sr_msg_id_base)
 
@@ -2211,6 +2238,9 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(TUNTERM_MSG_ID(TUNTERM_ACL_ADD_REPLACE_REPLY), tunterm_acl_add_replace_reply) \
     _(COPP_PUNT_POLICER_MSG_ID(COPP_PUNT_POLICER_BIND_REPLY), copp_punt_policer_bind_reply) \
     _(COPP_PUNT_POLICER_MSG_ID(COPP_PUNT_POLICER_GET_COUNTERS_REPLY), copp_punt_policer_get_counters_reply) \
+    _(COPP_IP2ME_POLICER_MSG_ID(COPP_IP2ME_POLICER_ADDR_ADD_DEL_REPLY), copp_ip2me_policer_addr_add_del_reply) \
+    _(COPP_IP2ME_POLICER_MSG_ID(COPP_IP2ME_POLICER_BIND_REPLY), copp_ip2me_policer_bind_reply) \
+    _(COPP_IP2ME_POLICER_MSG_ID(COPP_IP2ME_POLICER_GET_COUNTERS_REPLY), copp_ip2me_policer_get_counters_reply) \
     _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_V2_REPLY), sr_localsid_add_del_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
@@ -2333,6 +2363,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "copp_punt_policer_%08x%c", copp_punt_policer_api_version, 0);
     copp_punt_policer_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(copp_punt_policer_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "copp_ip2me_policer_%08x%c", copp_ip2me_policer_api_version, 0);
+    copp_ip2me_policer_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(copp_ip2me_policer_msg_id_base != (u16) ~0);
 }
 
 #define API_SOCKET_FILE "/run/vpp/api.sock"
@@ -3958,6 +3992,107 @@ int vpp_copp_punt_policer_get_counters(
         *conform_packets = clib_net_to_host_u64(g_copp_punt_policer_counters_reply.conform_packets);
         *exceed_packets = clib_net_to_host_u64(g_copp_punt_policer_counters_reply.exceed_packets);
         *violate_packets = clib_net_to_host_u64(g_copp_punt_policer_counters_reply.violate_packets);
+    }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/*
+ * ip4-punt-arc IP2ME address set + shared policer binding
+ */
+int vpp_copp_ip2me_policer_addr_add_del(
+        uint32_t addr,
+        bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_copp_ip2me_policer_addr_add_del_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = copp_ip2me_policer_msg_id_base;
+
+    M (COPP_IP2ME_POLICER_ADDR_ADD_DEL, mp);
+
+    mp->addr = addr;
+    mp->is_add = is_add;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) addr 0x%08x is_add %d", __func__, ret, addr, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_copp_ip2me_policer_bind(
+        const char *policer_name,
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_copp_ip2me_policer_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = copp_ip2me_policer_msg_id_base;
+
+    M (COPP_IP2ME_POLICER_BIND, mp);
+
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer %s is_bind %d", __func__, ret, policer_name, is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_copp_ip2me_policer_get_counters(
+        uint64_t *conform_packets,
+        uint64_t *exceed_packets,
+        uint64_t *violate_packets)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_copp_ip2me_policer_get_counters_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = copp_ip2me_policer_msg_id_base;
+
+    g_copp_ip2me_policer_counters_reply_valid = false;
+
+    M (COPP_IP2ME_POLICER_GET_COUNTERS, mp);
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d)", __func__, ret); }
+    else if (g_copp_ip2me_policer_counters_reply_valid) {
+        *conform_packets = clib_net_to_host_u64(g_copp_ip2me_policer_counters_reply.conform_packets);
+        *exceed_packets = clib_net_to_host_u64(g_copp_ip2me_policer_counters_reply.exceed_packets);
+        *violate_packets = clib_net_to_host_u64(g_copp_ip2me_policer_counters_reply.violate_packets);
     }
 
     VPP_UNLOCK();
@@ -6014,44 +6149,6 @@ int vpp_classify_set_interface_l2_tables(const char *hwif_name,
     if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s", __func__, ret, hwif_name); }
     else { SAIVPP_INFO("%s hwif %s ip4=%u ip6=%u other=%u", __func__,
                        hwif_name, ip4_table_index, ip6_table_index, other_table_index); }
-
-    VPP_UNLOCK();
-    return ret;
-}
-
-int vpp_policer_classify_set_interface(const char *hwif_name,
-                                       uint32_t ip4_table_index,
-                                       uint32_t ip6_table_index,
-                                       bool is_add)
-{
-    vat_main_t *vam = &vat_main;
-    vl_api_policer_classify_set_interface_t *mp;
-    int ret;
-    u32 sw_if_index;
-
-    sw_if_index = get_swif_idx(vam, hwif_name);
-    if (sw_if_index == (u32) -1) {
-        SAIVPP_ERROR("%s: hwif %s not found", __func__, hwif_name ? hwif_name : "<null>");
-        return -1;
-    }
-
-    VPP_LOCK();
-
-    __plugin_msg_base = classify_msg_id_base;
-
-    M (POLICER_CLASSIFY_SET_INTERFACE, mp);
-    mp->sw_if_index = htonl(sw_if_index);
-    mp->ip4_table_index = htonl(ip4_table_index);
-    mp->ip6_table_index = htonl(ip6_table_index);
-    mp->l2_table_index = htonl(~0u);
-    mp->is_add = is_add;
-
-    S (mp);
-    WR (ret);
-
-    if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s is_add %d", __func__, ret, hwif_name, is_add); }
-    else { SAIVPP_INFO("%s hwif %s ip4_table=%u ip6_table=%u is_add %d", __func__,
-                       hwif_name, ip4_table_index, ip6_table_index, is_add); }
 
     VPP_UNLOCK();
     return ret;
