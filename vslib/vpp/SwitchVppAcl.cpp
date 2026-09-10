@@ -1161,9 +1161,8 @@ sai_status_t SwitchVpp::acl_entry_in_ports_get(
 
     for (uint32_t i = 0; i < attr.value.aclfield.data.objlist.count; i++) {
 
-        std::string hwif_name;
-
-        if (!vpp_get_hwif_name(ports[i], 0, hwif_name)) {
+        std::string hwif_name = m_ifaceRegistry.resolveHwIfName(ports[i], 0);
+        if (hwif_name.empty()) {
             SWSS_LOG_WARN("No VPP interface for port %s named by IN_PORTS of ACL entry %s",
                           sai_serialize_object_id(ports[i]).c_str(),
                           sai_serialize_object_id(ace_oid).c_str());
