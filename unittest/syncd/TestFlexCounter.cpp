@@ -3233,3 +3233,55 @@ TEST_F(FlexCounterCountersDbUnreachable, pollLoopSurvivesCountersDbConnectFailur
     // stayed down if the backoff wait were ever moved inside it.
     EXPECT_TRUE(fc.isEmpty());
 }
+
+TEST(FlexCounter, malformedBulkChunkSizePerPrefix)
+{
+    // Malformed BULK_CHUNK_SIZE_PER_PREFIX values (missing "name:size") must not
+    // crash; parse errors are caught and leave FlexCounter usable.
+
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+
+    sai_object_id_t oid{0x1000000000000};
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS");
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            counters[i] = 1;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *, uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    fc.addCounter(oid, oid, values);
+    EXPECT_EQ(fc.isEmpty(), false);
+
+    std::string malformedPrefixMaps[] = {
+        "bad_token",
+        "SAI_PORT_STAT_IF_OUT_QLEN",
+        "SAI_PORT_STAT_IF_OUT_QLEN:",
+        "SAI_PORT_STAT_IF_OUT_QLEN:not_a_number",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;bad_token"};
+    for (auto &bad : malformedPrefixMaps)
+    {
+        values.clear();
+        values.emplace_back(BULK_CHUNK_SIZE_PER_PREFIX_FIELD, bad);
+        fc.addCounterPlugin(values);
+        EXPECT_EQ(fc.isEmpty(), false);
+    }
+
+    // Valid map after malformed input should still be accepted
+    values.clear();
+    values.emplace_back(BULK_CHUNK_SIZE_PER_PREFIX_FIELD, "SAI_PORT_STAT_IF_OUT_QLEN:0");
+    fc.addCounterPlugin(values);
+
+    fc.removeCounter(oid);
+    EXPECT_EQ(fc.isEmpty(), true);
+}
