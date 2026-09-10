@@ -171,6 +171,24 @@
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api.h>
 #undef vl_api_version
 
+/* sonic_ext (RIF loopback) API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_api_version
+
 /* interface API inclusion */
 
 #define vl_typedefs
@@ -1681,6 +1699,13 @@ vl_api_tunterm_acl_interface_add_del_reply_t_handler(vl_api_tunterm_acl_interfac
 }
 
 static void
+vl_api_iface_loopback_set_action_reply_t_handler(vl_api_iface_loopback_set_action_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_bond_create_reply_t_handler (vl_api_bond_create_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2096,6 +2121,7 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
     _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
+    _(SONIC_EXT_MSG_ID(IFACE_LOOPBACK_SET_ACTION_REPLY), iface_loopback_set_action_reply) \
     _(MPLS_MSG_ID(SW_INTERFACE_SET_MPLS_ENABLE_REPLY), sw_interface_set_mpls_enable_reply) \
     _(MPLS_MSG_ID(MPLS_TABLE_ADD_DEL_REPLY), mpls_table_add_del_reply) \
     _(MPLS_MSG_ID(MPLS_ROUTE_ADD_DEL_REPLY), mpls_route_add_del_reply)
@@ -2561,6 +2587,40 @@ static int __delete_loopback (vat_main_t *vam, const char *hwif_name, u32 instan
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s instance %u", __func__, ret, hwif_name, instance); }
     else { SAIVPP_INFO("%s %s instance %u", __func__, hwif_name, instance); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_iface_loopback_set_action (const char *hwif_name, int action)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_iface_loopback_set_action_t *mp;
+    u32 idx;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get sw_index for %s", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    M (IFACE_LOOPBACK_SET_ACTION, mp);
+    mp->sw_if_index = htonl(idx);
+    mp->action = (u8) action;
+
+    S (mp);
+
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s action %d", __func__, ret, hwif_name, action); }
+    else { SAIVPP_INFO("%s %s action %d", __func__, hwif_name, action); }
 
     VPP_UNLOCK();
 

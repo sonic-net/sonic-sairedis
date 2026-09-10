@@ -487,6 +487,7 @@ typedef enum {
     extern int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip,
                                            uint32_t vrf_id,
                                            uint32_t *out_sw_if_index);
+    extern int vpp_iface_loopback_set_action(const char *hwif_name, int action);
     extern int vpp_sflow_interface_sampling_rate_set(const char *hwif_name, uint32_t sampling_n);
     extern int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction);
 
