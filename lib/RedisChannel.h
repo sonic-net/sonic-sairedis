@@ -13,6 +13,7 @@
 #include "swss/consumertable.h"
 #include "swss/notificationconsumer.h"
 #include "swss/selectableevent.h"
+#include "swss/events.h"
 
 #include <memory>
 #include <functional>
@@ -51,6 +52,8 @@ namespace sairedis
             virtual sai_status_t wait(
                     _In_ const std::string& command,
                     _Out_ swss::KeyOpFieldsValuesTuple& kco) override;
+
+            event_params_t m_event_params;
 
         protected:
 
