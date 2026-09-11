@@ -94,6 +94,8 @@ class MockableSaiInterface: public saimeta::DummySaiInterface
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
+        std::function<sai_status_t(sai_object_type_t, uint32_t, const sai_object_id_t *, const uint32_t *, sai_attribute_t **, sai_bulk_op_error_mode_t, sai_status_t *)> mock_bulkGet;
+
     public: // stats API
 
         virtual sai_status_t getStats(

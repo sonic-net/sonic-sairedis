@@ -2329,6 +2329,11 @@ public:
     {
         SWSS_LOG_ENTER();
 
+        if (m_bulkGetSupported && collectDataBulk(countersTable))
+        {
+            return;
+        }
+
         for (const auto &kv : Base::m_objectIdsMap)
         {
             const auto &vid = kv.first;
@@ -2355,18 +2360,139 @@ public:
                 continue;
             }
 
-            std::vector<swss::FieldValueTuple> values;
-            for (size_t i = 0; i != attrIds.size(); i++)
-            {
-                auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
-                if (!meta)
-                {
-                    SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
-                }
-                values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
-            }
-            countersTable.set(sai_serialize_object_id(vid), values, "");
+            publishAttrs(countersTable, vid, attrIds, attrs.data());
         }
+    }
+
+private:
+
+    // Whether the vendor SAI implements a bulk get for this object type.  Latched
+    // off on the first NOT_IMPLEMENTED / NOT_SUPPORTED so a vendor without it is
+    // not asked again on every poll.
+    bool m_bulkGetSupported = true;
+
+    void publishAttrs(
+            _In_ swss::Table &countersTable,
+            _In_ sai_object_id_t vid,
+            _In_ const std::vector<AttrType> &attrIds,
+            _In_ const sai_attribute_t *attrs)
+    {
+        SWSS_LOG_ENTER();
+
+        std::vector<swss::FieldValueTuple> values;
+
+        for (size_t i = 0; i != attrIds.size(); i++)
+        {
+            auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
+            if (!meta)
+            {
+                SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
+            }
+            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
+        }
+
+        countersTable.set(sai_serialize_object_id(vid), values, "");
+    }
+
+    // Read every object's attributes in one SAI call.
+    //
+    // The per-object loop above calls VendorSai::get() once per object, and that
+    // takes the process-wide m_apimutex each time.  One bulk call takes the lock
+    // once, which bounds the wait at a single in-flight get rather than a whole
+    // foreign sweep.
+    //
+    // Returns false if the caller should fall back to the per-object loop.
+    bool collectDataBulk(
+            _In_ swss::Table &countersTable)
+    {
+        SWSS_LOG_ENTER();
+
+        const size_t count = Base::m_objectIdsMap.size();
+
+        if (count == 0)
+        {
+            return true;
+        }
+
+        std::vector<sai_object_id_t> vids;
+        std::vector<sai_object_id_t> rids;
+        std::vector<uint32_t> attrCounts;
+        std::vector<std::vector<sai_attribute_t>> attrStorage;
+
+        vids.reserve(count);
+        rids.reserve(count);
+        attrCounts.reserve(count);
+        attrStorage.reserve(count);
+
+        for (const auto &kv : Base::m_objectIdsMap)
+        {
+            const auto &attrIds = kv.second->counter_ids;
+
+            std::vector<sai_attribute_t> attrs(attrIds.size());
+            for (size_t i = 0; i < attrIds.size(); i++)
+            {
+                attrs[i].id = attrIds[i];
+            }
+
+            vids.push_back(kv.first);
+            rids.push_back(kv.second->rid);
+            attrCounts.push_back(static_cast<uint32_t>(attrIds.size()));
+            attrStorage.push_back(std::move(attrs));
+        }
+
+        std::vector<sai_attribute_t*> attrList;
+        attrList.reserve(count);
+        for (auto &attrs : attrStorage)
+        {
+            attrList.push_back(attrs.data());
+        }
+
+        std::vector<sai_status_t> statuses(count, SAI_STATUS_SUCCESS);
+
+        sai_status_t status = Base::m_vendorSai->bulkGet(
+                Base::m_objectType,
+                static_cast<uint32_t>(count),
+                rids.data(),
+                attrCounts.data(),
+                attrList.data(),
+                SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+                statuses.data());
+
+        if (status == SAI_STATUS_NOT_IMPLEMENTED || status == SAI_STATUS_NOT_SUPPORTED)
+        {
+            m_bulkGetSupported = false;
+
+            SWSS_LOG_NOTICE("Bulk get not available for %s, using per object get",
+                    sai_serialize_object_type(Base::m_objectType).c_str());
+
+            return false;
+        }
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_WARN("Failed to bulk get attr of %s: %d",
+                    sai_serialize_object_type(Base::m_objectType).c_str(), status);
+
+            return false;
+        }
+
+        size_t n = 0;
+        for (const auto &kv : Base::m_objectIdsMap)
+        {
+            if (statuses[n] != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to get attr of %s 0x%" PRIx64 ": %d",
+                        sai_serialize_object_type(Base::m_objectType).c_str(),
+                        kv.first, statuses[n]);
+                n++;
+                continue;
+            }
+
+            publishAttrs(countersTable, vids[n], kv.second->counter_ids, attrStorage[n].data());
+            n++;
+        }
+
+        return true;
     }
 };
 

@@ -2995,3 +2995,114 @@ TEST(FlexCounter, failedPollsCountAndCleanUp)
     removeTimeStamp(keys, countersTable);
     ASSERT_TRUE(keys.empty());
 }
+
+TEST(FlexCounter, queueAttrBulkGet)
+{
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+
+    sai_object_id_t counterVid = generateOids(1, SAI_OBJECT_TYPE_QUEUE).at(0);
+    sai_object_id_t counterRid = counterVid;
+
+    sai->mock_bulkGet = [](sai_object_type_t objectType,
+                           uint32_t objectCount,
+                           const sai_object_id_t *,
+                           const uint32_t *attrCount,
+                           sai_attribute_t **attrList,
+                           sai_bulk_op_error_mode_t,
+                           sai_status_t *objectStatuses) {
+        EXPECT_EQ(objectType, SAI_OBJECT_TYPE_QUEUE);
+
+        for (uint32_t i = 0; i < objectCount; i++)
+        {
+            for (uint32_t j = 0; j < attrCount[i]; j++)
+            {
+                if (attrList[i][j].id == SAI_QUEUE_ATTR_PAUSE_STATUS)
+                {
+                    attrList[i][j].value.booldata = true;
+                }
+            }
+
+            objectStatuses[i] = SAI_STATUS_SUCCESS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    };
+
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(QUEUE_ATTR_ID_LIST, "SAI_QUEUE_ATTR_PAUSE_STATUS");
+    fc.addCounter(counterVid, counterRid, values);
+
+    values.clear();
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    waitForCounterKeys(countersTable, 1);
+
+    std::string value;
+    EXPECT_TRUE(countersTable.hget(toOid(counterVid), "SAI_QUEUE_ATTR_PAUSE_STATUS", value));
+    EXPECT_EQ(value, "true");
+
+    sai->mock_bulkGet = nullptr;
+    fc.removeCounter(counterVid);
+    countersTable.del(toOid(counterVid));
+}
+
+TEST(FlexCounter, queueAttrBulkGetFailureFallsBack)
+{
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+
+    sai_object_id_t counterVid = generateOids(1, SAI_OBJECT_TYPE_QUEUE).at(0);
+    sai_object_id_t counterRid = counterVid;
+
+    sai->mock_bulkGet = [](sai_object_type_t,
+                           uint32_t,
+                           const sai_object_id_t *,
+                           const uint32_t *,
+                           sai_attribute_t **,
+                           sai_bulk_op_error_mode_t,
+                           sai_status_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    sai->mock_get = [](sai_object_type_t, sai_object_id_t, uint32_t attrCount, sai_attribute_t *attrList) {
+        for (uint32_t i = 0; i < attrCount; i++)
+        {
+            if (attrList[i].id == SAI_QUEUE_ATTR_PAUSE_STATUS)
+            {
+                attrList[i].value.booldata = false;
+            }
+        }
+
+        return SAI_STATUS_SUCCESS;
+    };
+
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(QUEUE_ATTR_ID_LIST, "SAI_QUEUE_ATTR_PAUSE_STATUS");
+    fc.addCounter(counterVid, counterRid, values);
+
+    values.clear();
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    waitForCounterKeys(countersTable, 1);
+
+    std::string value;
+    EXPECT_TRUE(countersTable.hget(toOid(counterVid), "SAI_QUEUE_ATTR_PAUSE_STATUS", value));
+    EXPECT_EQ(value, "false");
+
+    sai->mock_bulkGet = nullptr;
+    fc.removeCounter(counterVid);
+    countersTable.del(toOid(counterVid));
+}
