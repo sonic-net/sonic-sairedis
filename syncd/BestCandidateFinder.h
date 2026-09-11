@@ -5,6 +5,7 @@
 #include "SaiSwitchInterface.h"
 
 #include <memory>
+#include <set>
 
 namespace syncd
 {
@@ -42,6 +43,24 @@ namespace syncd
 
             std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
+
+            std::shared_ptr<SaiObj> findCurrentBestMatchUsingIdentityIndex(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
+
+            std::shared_ptr<SaiObj> findCurrentBestMatchForNextHopGroupUsingMemberIndex(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
+
+            std::string resolveNhgMemberKeyViaIdentityIndex(
+                    _In_ sai_object_id_t tempNhgVid);
+
+            sai_object_id_t resolveNextHopRidForNhgKey(
+                    _In_ sai_object_id_t nhVid);
+
+            static std::set<sai_attr_id_t> buildAttrFilterFromObject(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
+
+            static bool isSlowPathMatchType(
+                    _In_ sai_object_type_t objectType);
 
             std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
