@@ -1739,6 +1739,20 @@ TEST(Meta, populate)
     m.populate(dump);
 }
 
+TEST(Meta, populate_acl_entry_udf_uint8_list)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    swss::TableDump dump;
+
+    dump["SAI_OBJECT_TYPE_ACL_TABLE:oid:0x7000000000700"]["SAI_ACL_TABLE_ATTR_FIELD_ACL_IP_TYPE"] = "true";
+    dump["SAI_OBJECT_TYPE_ACL_ENTRY:oid:0x8000000000701"]["SAI_ACL_ENTRY_ATTR_TABLE_ID"] = "oid:0x7000000000700";
+    dump["SAI_OBJECT_TYPE_ACL_ENTRY:oid:0x8000000000701"]["SAI_ACL_ENTRY_ATTR_USER_DEFINED_FIELD_GROUP_MIN"] =
+            "4:17,34,51,68&mask:4:0xff,0xff,0xff,0xff";
+
+    m.populate(dump);
+}
+
 TEST(Meta, bulkGetClearStats)
 {
     Meta m(std::make_shared<MetaTestSaiInterface>());
