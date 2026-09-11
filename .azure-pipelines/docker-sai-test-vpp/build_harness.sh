@@ -13,6 +13,7 @@ STAGE_DEBS="${STAGE_DEBS:-1}"
 BUILD_SAIREDIS_DEBS="${BUILD_SAIREDIS_DEBS:-0}"
 AUTO_BUILD_SAIREDIS_DEBS="${AUTO_BUILD_SAIREDIS_DEBS:-1}"
 VPP_DEB_DIR="${VPP_DEB_DIR:-}"
+PTF_VERSION="${PTF_VERSION:-}"
 
 SAIREDIS_DEB_PATTERNS=(
     'libsaivs_*.deb' 'libsairedis_*.deb' 'libsaimetadata_*.deb'
@@ -43,6 +44,7 @@ Options:
 Environment:
   SONIC_BUILDIMAGE      Path to sonic-buildimage root (auto-detected if unset)
   VPP_DEB_DIR           Extra directory to copy VPP .debs from
+    PTF_VERSION           Override the version derived from SAI/test/ptf
   AUTO_BUILD_SAIREDIS_DEBS  1 (default): build sairedis .debs when missing
   http_proxy/https_proxy/no_proxy  Passed through to docker build when set
 
@@ -269,6 +271,8 @@ docker_build_args()
     local -a args=(docker build --no-cache -f "${DOCKERFILE}" -t "${IMAGE_TAG}" .)
     local var
 
+    args+=(--build-arg "PTF_VERSION=${PTF_VERSION}")
+
     for var in http_proxy https_proxy HTTP_PROXY HTTPS_PROXY no_proxy NO_PROXY; do
         if [[ -n "${!var:-}" ]]; then
             args+=(--build-arg "${var}=${!var}")
@@ -304,6 +308,12 @@ main()
     fi
 
     ensure_staged_debs
+
+    if [[ -z "${PTF_VERSION}" ]]; then
+        PTF_VERSION="$(python3 "${SCRIPT_DIR}/derive_ptf_version.py" \
+            "${SAIREDIS_ROOT}/SAI/test/ptf")"
+    fi
+    log "Using PTF version ${PTF_VERSION}"
 
     log "Building image ${IMAGE_TAG} from ${SAIREDIS_ROOT}"
     (
