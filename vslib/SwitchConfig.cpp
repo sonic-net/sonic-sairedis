@@ -42,11 +42,16 @@ bool SwitchConfig::parseSaiSwitchType(
     {
         saiSwitchType = SAI_SWITCH_TYPE_PHY;
     }
+    else if (st == SAI_VALUE_SAI_SWITCH_TYPE_POE)
+    {
+        saiSwitchType = SAI_SWITCH_TYPE_POE;
+    }
     else
     {
-        SWSS_LOG_ERROR("unknown SAI switch type: '%s', expected (%s|%s)",
+        SWSS_LOG_ERROR("unknown SAI switch type: '%s', expected (%s|%s|%s)",
                 saiSwitchTypeStr,
                 SAI_VALUE_SAI_SWITCH_TYPE_NPU,
+                SAI_VALUE_SAI_SWITCH_TYPE_POE,
                 SAI_VALUE_SAI_SWITCH_TYPE_PHY);
 
         return false;
@@ -74,6 +79,10 @@ bool SwitchConfig::parseSwitchType(
     else if (st == SAI_VALUE_VS_SWITCH_TYPE_BCM81724)
     {
         switchType = SAI_VS_SWITCH_TYPE_BCM81724;
+    }
+    else if (st == SAI_VALUE_VS_SWITCH_TYPE_POE)
+    {
+        switchType = SAI_VS_SWITCH_TYPE_POE;
     }
     else if (st == SAI_VALUE_VS_SWITCH_TYPE_MLNX2700)
     {
@@ -106,6 +115,7 @@ bool SwitchConfig::parseSwitchType(
                 SAI_VALUE_VS_SWITCH_TYPE_BCM81724,
                 SAI_VALUE_VS_SWITCH_TYPE_BCM56850,
                 SAI_VALUE_VS_SWITCH_TYPE_BCM56971B0,
+                SAI_VALUE_VS_SWITCH_TYPE_POE,
                 SAI_VALUE_VS_SWITCH_TYPE_MLNX2700,
                 SAI_VALUE_VS_SWITCH_TYPE_NVDA_MBF2H536C,
                 SAI_VALUE_VS_SWITCH_TYPE_DPU_SIMU_2P,
