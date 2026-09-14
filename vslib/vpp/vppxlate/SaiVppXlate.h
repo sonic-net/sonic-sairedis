@@ -21,6 +21,8 @@ extern "C" {
 #endif
 
 #include <netinet/in.h>
+#include <stdbool.h>
+#include <stdint.h>
 
     typedef enum {
 	VPP_NEXTHOP_NORMAL = 1,
@@ -81,7 +83,29 @@ typedef struct vpp_ip_addr_ {
         VPP_ACL_ACTION_API_DENY = 0,
         VPP_ACL_ACTION_API_PERMIT = 1,
         VPP_ACL_ACTION_API_PERMIT_STFULL = 2,
+        VPP_ACL_ACTION_PERMIT_MIRROR = 3,
     } vpp_acl_action_e;
+
+/*
+ * Packed mirror action carried on a PERMIT_MIRROR rule: destination
+ * sw_if_index in bits 27:0, action flags in bits 31:28.
+ */
+#define VPP_ACL_MIRROR_SW_IF_INDEX_MASK 0x0fffffffU
+#define VPP_ACL_MIRROR_FLAGS_SHIFT 28
+#define VPP_ACL_MIRROR_F_DEFERRED (1U << 0)
+#define VPP_ACL_MIRROR_FLAGS_MASK 0xfU
+
+#ifdef __cplusplus
+static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
+               (VPP_ACL_MIRROR_FLAGS_MASK << VPP_ACL_MIRROR_FLAGS_SHIFT)) ==
+                  UINT32_MAX,
+              "packed ACL mirror action must cover exactly 32 bits");
+#else
+_Static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
+                (VPP_ACL_MIRROR_FLAGS_MASK << VPP_ACL_MIRROR_FLAGS_SHIFT)) ==
+                   UINT32_MAX,
+               "packed ACL mirror action must cover exactly 32 bits");
+#endif
 
     typedef struct  _vpp_acl_rule {
         vpp_acl_action_e action;
@@ -96,6 +120,7 @@ typedef struct vpp_ip_addr_ {
         uint16_t dstport_or_icmpcode_last;
         uint8_t tcp_flags_mask;
         uint8_t tcp_flags_value;
+        uint32_t mirror_action;
         /*
          * Match only packets received on this interface. Empty for any, which
          * is what a rule with no SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS gets. The
@@ -372,6 +397,7 @@ typedef enum {
     extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
     extern int interface_ip_address_del_all(const char *hwif_name);
     extern int interface_set_state (const char *hwif_name, bool is_up);
+    extern int interface_set_state_by_index (uint32_t sw_if_index, bool is_up);
     extern int interface_set_promiscuous (const char *hwif_name, bool enable);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
@@ -393,6 +419,7 @@ typedef enum {
 
     extern int vpp_acl_add_replace(vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace);
     extern int vpp_acl_del(uint32_t acl_index);
+    extern int vpp_sonic_ext_egress_mirror_enable_disable(bool enable);
     extern int vpp_acl_interface_bind(const char *hwif_name, uint32_t acl_index,
 				      bool is_input);
     extern int vpp_acl_interface_unbind(const char *hwif_name, uint32_t acl_index,
@@ -513,6 +540,20 @@ typedef enum {
     extern int sw_interface_set_mpls_enable(const char *hwif_name, bool enable);
     extern int mpls_table_add_del(uint32_t table_id, bool is_add);
     extern int mpls_route_add_del(vpp_mpls_route_t *route, bool is_add);
+
+    /* GRE tunnel for ERSPAN */
+    typedef struct _vpp_gre_tunnel {
+        vpp_ip_addr_t src;
+        vpp_ip_addr_t dst;
+        uint8_t type;           /* 0 = L3, 1 = TEB, 2 = ERSPAN */
+        uint16_t session_id;    /* ERSPAN session ID (0 - 1023) */
+        uint32_t instance;
+        uint32_t outer_table_id;
+        uint16_t gre_protocol;  /* GRE protocol/ethertype override, 0 = derive from type */
+        uint8_t ttl;            /* Outer IP TTL / hop-limit, 0 = VPP default */
+    } vpp_gre_tunnel_t;
+
+    extern int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, uint32_t *sw_if_index);
 #ifdef __cplusplus
 }
 #endif

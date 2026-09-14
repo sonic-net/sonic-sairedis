@@ -366,7 +366,7 @@ static void acl_rule_set_action(
         }
 }
 
-sai_status_t acl_rule_field_update(
+sai_status_t SwitchVpp::acl_rule_field_update(
     _In_ sai_acl_entry_attr_t          attr_id,
     _In_ const sai_attribute_value_t  *value,
     _Out_ vpp_acl_rule_t      *rule)
@@ -462,7 +462,48 @@ sai_status_t acl_rule_field_update(
         break;
 
     case SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION:
-        acl_rule_set_action(value, rule);
+        // MIRROR action is sticky: if a prior MIRROR_INGRESS/EGRESS already set the
+        // rule to PERMIT_MIRROR, do not let PACKET_ACTION clobber it (attribute order
+        // is not guaranteed). The mirror-action path forwards the original packet
+        // regardless, so the combination behaves as "forward + clone".
+        if (rule->action != VPP_ACL_ACTION_PERMIT_MIRROR) {
+            acl_rule_set_action(value, rule);
+        }
+        break;
+
+    case SAI_ACL_ENTRY_ATTR_ACTION_MIRROR_INGRESS:
+    case SAI_ACL_ENTRY_ATTR_ACTION_MIRROR_EGRESS:
+        if (value->aclaction.enable) {
+            // SAI defines MIRROR_INGRESS/EGRESS as sai_object_list_t. We honor the
+            // first session OID only (HLD restriction).
+            const auto &objlist = value->aclaction.parameter.objlist;
+            if (objlist.count == 0 || objlist.list == NULL) {
+                SWSS_LOG_ERROR("Mirror action objlist is empty");
+                return SAI_STATUS_INVALID_PARAMETER;
+            }
+            sai_object_id_t oid = objlist.list[0];
+            auto it = m_mirror_sessions.find(oid);
+            if (it == m_mirror_sessions.end()) {
+                SWSS_LOG_ERROR("Mirror session %s not found for ACL mirror action", sai_serialize_object_id(oid).c_str());
+                return SAI_STATUS_FAILURE;
+            }
+            if (it->second.sw_if_index > VPP_ACL_MIRROR_SW_IF_INDEX_MASK) {
+                SWSS_LOG_ERROR("Mirror session %s sw_if_index %u exceeds packed-action limit %u",
+                               sai_serialize_object_id(oid).c_str(), it->second.sw_if_index,
+                               VPP_ACL_MIRROR_SW_IF_INDEX_MASK);
+                return SAI_STATUS_INVALID_PARAMETER;
+            }
+            uint32_t mirror_flags =
+                (attr_id == SAI_ACL_ENTRY_ATTR_ACTION_MIRROR_EGRESS) ?
+                    VPP_ACL_MIRROR_F_DEFERRED : 0;
+            rule->action = VPP_ACL_ACTION_PERMIT_MIRROR;
+            rule->mirror_action = it->second.sw_if_index |
+                (mirror_flags << VPP_ACL_MIRROR_FLAGS_SHIFT);
+            SWSS_LOG_INFO("ACL mirror action set: session %s -> mirror_action 0x%08x stage %s (rule proto so far %d)",
+                          sai_serialize_object_id(oid).c_str(), rule->mirror_action,
+                          mirror_flags ? "egress" : "ingress",
+                          rule->proto);
+        }
         break;
 
     case SAI_ACL_ENTRY_ATTR_PRIORITY:
@@ -763,6 +804,38 @@ sai_status_t SwitchVpp::get_sorted_aces(
                           "any beyond that were dropped by name order and are invisible to it",
                           sid.c_str(), MAX_ACL_ATTRS);
         }
+
+        /*
+         * get_max() copies list attributes via transfer_list(), which propagates
+         * the source count but leaves dst.list = NULL when dst.count was 0 on
+         * entry (see meta/SaiSerialize.cpp). Re-fetch the object lists we care
+         * about with a pre-allocated buffer so the OIDs actually land in the ACE.
+         */
+        for (uint32_t i = 0; i < p_ace->attrs_count; i++) {
+            sai_attribute_t *attr = &p_ace->attrs[i];
+            sai_object_id_t *buf = NULL;
+
+            if (attr->id == SAI_ACL_ENTRY_ATTR_ACTION_MIRROR_INGRESS) {
+                buf = p_ace->mirror_ingress_objid_list;
+            } else if (attr->id == SAI_ACL_ENTRY_ATTR_ACTION_MIRROR_EGRESS) {
+                buf = p_ace->mirror_egress_objid_list;
+            } else {
+                continue;
+            }
+
+            attr->value.aclaction.parameter.objlist.list = buf;
+            attr->value.aclaction.parameter.objlist.count = MAX_ACL_MIRROR_OIDS;
+
+            sai_status_t st = get(SAI_OBJECT_TYPE_ACL_ENTRY, sid, 1, attr);
+            if (st != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_WARN("Failed to re-fetch mirror action attr %d for %s: %s",
+                              attr->id, sid.c_str(),
+                              sai_serialize_status(st).c_str());
+                attr->value.aclaction.parameter.objlist.list = NULL;
+                attr->value.aclaction.parameter.objlist.count = 0;
+            }
+        }
+
         p_ace->attr_range.value.aclfield.data.objlist.list = p_ace->range_objid_list;
         p_ace->attr_range.value.aclfield.data.objlist.count = 2;
 
@@ -836,12 +909,77 @@ void SwitchVpp::count_tunterm_acl_rules(
     }
 }
 
+void SwitchVpp::acl_table_get_ip_version(
+    sai_object_id_t tbl_oid,
+    bool &has_v4,
+    bool &has_v6)
+{
+    SWSS_LOG_ENTER();
+
+    has_v4 = false;
+    has_v6 = false;
+
+    auto sid = sai_serialize_object_id(tbl_oid);
+
+    const uint32_t MAX_TBL_ATTRS = 64;
+    // Must be zeroed: transfer_list() dereferences the destination's list/count
+    // for list-valued table attributes, and garbage stack values crash syncd.
+    sai_attribute_t attrs[MAX_TBL_ATTRS];
+    memset(attrs, 0, sizeof(attrs));
+    uint32_t count = 0;
+
+    sai_status_t st = get_max(SAI_OBJECT_TYPE_ACL_TABLE, sid, MAX_TBL_ATTRS, &count, attrs);
+    if (st != SAI_STATUS_SUCCESS && st != SAI_STATUS_BUFFER_OVERFLOW) {
+        SWSS_LOG_WARN("Failed to read ACL table %s attrs to determine IP version: %s",
+                      sid.c_str(), sai_serialize_status(st).c_str());
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        const sai_attribute_t *a = &attrs[i];
+
+        switch (a->id) {
+        case SAI_ACL_TABLE_ATTR_FIELD_SRC_IP:
+        case SAI_ACL_TABLE_ATTR_FIELD_DST_IP:
+        case SAI_ACL_TABLE_ATTR_FIELD_INNER_SRC_IP:
+        case SAI_ACL_TABLE_ATTR_FIELD_INNER_DST_IP:
+        case SAI_ACL_TABLE_ATTR_FIELD_ICMP_TYPE:
+        case SAI_ACL_TABLE_ATTR_FIELD_ICMP_CODE:
+            if (a->value.booldata) {
+                has_v4 = true;
+            }
+            break;
+
+        case SAI_ACL_TABLE_ATTR_FIELD_SRC_IPV6:
+        case SAI_ACL_TABLE_ATTR_FIELD_DST_IPV6:
+        case SAI_ACL_TABLE_ATTR_FIELD_INNER_SRC_IPV6:
+        case SAI_ACL_TABLE_ATTR_FIELD_INNER_DST_IPV6:
+        case SAI_ACL_TABLE_ATTR_FIELD_IPV6_NEXT_HEADER:
+        case SAI_ACL_TABLE_ATTR_FIELD_ICMPV6_TYPE:
+        case SAI_ACL_TABLE_ATTR_FIELD_ICMPV6_CODE:
+            if (a->value.booldata) {
+                has_v6 = true;
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    SWSS_LOG_INFO("ACL table %s IP version: has_v4=%d has_v6=%d",
+                  sid.c_str(), has_v4, has_v6);
+}
+
 sai_status_t SwitchVpp::fill_acl_rules(
     sai_object_id_t tbl_oid,
     acl_tbl_entries_t *aces,
     std::list<ordered_ace_list_t> &ordered_aces,
+    bool table_has_v4,
+    bool table_has_v6,
     std::list<vpp_acl_rule_t> &acl_rules,
-    std::list<vpp_tunterm_acl_rule_t> &tunterm_acl_rules)
+    std::list<vpp_tunterm_acl_rule_t> &tunterm_acl_rules,
+    uint32_t &deferred_mirror_count)
 {
     SWSS_LOG_ENTER();
 
@@ -849,6 +987,7 @@ sai_status_t SwitchVpp::fill_acl_rules(
     acl_tbl_entries_t *p_ace = NULL;
     uint32_t acl_rule_index = 0;
     uint32_t tunterm_rule_index = 0;
+    deferred_mirror_count = 0;
 
     // An IN_PORTS scope is compiled into the rule's in_sw_if_index, which the
     // ACL plugin compares against sw_if_index[VLIB_RX] only for an ACL bound
@@ -952,7 +1091,10 @@ sai_status_t SwitchVpp::fill_acl_rules(
                     status = acl_rule_field_update((sai_acl_entry_attr_t) attr->id, &attr->value, &rule);
 
                     if (status != SAI_STATUS_SUCCESS) {
-                        SWSS_LOG_ERROR("Failed to fill acl rule, status: %d", status);
+                        SWSS_LOG_ERROR("Failed to translate attr %d of ACL entry %s (ace index %u, "
+                                       "priority %u), status: %d; aborting the whole table update",
+                                       attr->id, sai_serialize_object_id(ace.ace_oid).c_str(),
+                                       ace.index, ace.priority, status);
                         return SAI_STATUS_FAILURE;
                     }
 
@@ -975,25 +1117,81 @@ sai_status_t SwitchVpp::fill_acl_rules(
                 }
             }
 
-            // If port/port_range is set but protocol is not set, create 2 rules: UDP and TCP
-            if (port_proto && rule.proto == 0) {
-                // Create UDP rule
-                vpp_acl_rule_t udp_rule = rule;
-                udp_rule.proto = IPPROTO_UDP;
-                acl_rules.push_back(udp_rule);
-                rules_added++;
-                SWSS_LOG_INFO("Added UDP rule for port-based ACL entry");
+            if (rule.action == VPP_ACL_ACTION_PERMIT_MIRROR) {
+                SWSS_LOG_INFO("Mirror ACL rule built (ace index %u, priority %u): proto=%d, "
+                              "src_af=%d, dst_af=%d, mirror_action=0x%08x",
+                              ace.index, ace.priority, rule.proto,
+                              rule.src_prefix.sa_family, rule.dst_prefix.sa_family,
+                              rule.mirror_action);
+                if ((rule.mirror_action >> VPP_ACL_MIRROR_FLAGS_SHIFT) &
+                    VPP_ACL_MIRROR_F_DEFERRED) {
+                    deferred_mirror_count++;
+                }
+            }
 
-                // Create TCP rule
-                vpp_acl_rule_t tcp_rule = rule;
-                tcp_rule.proto = IPPROTO_TCP;
-                acl_rules.push_back(tcp_rule);
-                rules_added++;
-                SWSS_LOG_INFO("Added TCP rule for port-based ACL entry");
+            // VPP classifies a rule's family from its prefix, so an address-less
+            // rule (e.g. an Everflow mirror rule matching only on L4 protocol)
+            // would default to IPv4 and never match IPv6. Fall back to the parent
+            // table's declared family instead.
+            bool rule_has_ip_family =
+                (rule.src_prefix.sa_family == AF_INET  || rule.dst_prefix.sa_family == AF_INET ||
+                 rule.src_prefix.sa_family == AF_INET6 || rule.dst_prefix.sa_family == AF_INET6);
+
+            // IPv4 and IPv6 mirroring live in separate tables (MIRROR / MIRRORV6),
+            // so emitting both families here would duplicate the rule and mirror
+            // twice. Only a mirror table declaring NEITHER family is ambiguous.
+            bool is_mirror_rule = (rule.action == VPP_ACL_ACTION_PERMIT_MIRROR);
+            bool want_v4 = table_has_v4;
+            bool want_v6 = table_has_v6;
+            if (is_mirror_rule && !table_has_v4 && !table_has_v6) {
+                want_v4 = true;
+                want_v6 = true;
+            }
+
+            std::vector<vpp_acl_rule_t> family_variants;
+            if (!rule_has_ip_family && (want_v4 || want_v6)) {
+                if (want_v4) {
+                    // Zero/unspec address is emitted as IPv4 any by vpp_acl_add_replace.
+                    family_variants.push_back(rule);
+                }
+                if (want_v6) {
+                    vpp_acl_rule_t v6_rule = rule;
+                    set_ipv6any_addr_mask(&v6_rule.src_prefix);
+                    set_ipv6any_addr_mask(&v6_rule.dst_prefix);
+                    set_ipv6any_addr_mask(&v6_rule.src_prefix_mask);
+                    set_ipv6any_addr_mask(&v6_rule.dst_prefix_mask);
+                    family_variants.push_back(v6_rule);
+                    SWSS_LOG_INFO("Address-less ACL rule (ace index %u): emitting IPv6 variant "
+                                  "(proto=%d, action=%d, is_mirror=%d, table_has_v4=%d, table_has_v6=%d)",
+                                  ace.index, v6_rule.proto, v6_rule.action,
+                                  is_mirror_rule, table_has_v4, table_has_v6);
+                }
             } else {
-                // Add the single rule
-                acl_rules.push_back(rule);
-                rules_added++;
+                family_variants.push_back(rule);
+            }
+
+            // If port/port_range is set but protocol is not set, create 2 rules
+            // (UDP and TCP) per family variant.
+            for (auto &fr : family_variants) {
+                if (port_proto && fr.proto == 0) {
+                    // Create UDP rule
+                    vpp_acl_rule_t udp_rule = fr;
+                    udp_rule.proto = IPPROTO_UDP;
+                    acl_rules.push_back(udp_rule);
+                    rules_added++;
+                    SWSS_LOG_INFO("Added UDP rule for port-based ACL entry");
+
+                    // Create TCP rule
+                    vpp_acl_rule_t tcp_rule = fr;
+                    tcp_rule.proto = IPPROTO_TCP;
+                    acl_rules.push_back(tcp_rule);
+                    rules_added++;
+                    SWSS_LOG_INFO("Added TCP rule for port-based ACL entry");
+                } else {
+                    // Add the single rule
+                    acl_rules.push_back(fr);
+                    rules_added++;
+                }
             }
 
             /*
@@ -1063,6 +1261,12 @@ sai_status_t SwitchVpp::fill_acl_rules(
                               in_hwifs.size(), rules_added);
             }
 
+            if (rules_added > (uint32_t) ACL_MAX_RULES_PER_ACE) {
+                SWSS_LOG_WARN("ACL entry %s expanded to %u VPP rules; large expansions grow the "
+                              "acl_add_replace message",
+                              sai_serialize_object_id(ace.ace_oid).c_str(), rules_added);
+            }
+
             ace.num_rules = rules_added;
             acl_rule_index += rules_added;
 
@@ -1071,8 +1275,10 @@ sai_status_t SwitchVpp::fill_acl_rules(
         }
     }
 
-    SWSS_LOG_INFO("fill_acl_rules complete: total %u acl_rules and %u tunterm_rules",
-                 (uint32_t)acl_rules.size(), (uint32_t)tunterm_acl_rules.size());
+    SWSS_LOG_INFO("fill_acl_rules complete: total %u acl_rules, %u tunterm_rules, "
+                  "%u logical deferred mirror actions",
+                  (uint32_t)acl_rules.size(), (uint32_t)tunterm_acl_rules.size(),
+                  deferred_mirror_count);
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1410,6 +1616,7 @@ sai_status_t SwitchVpp::AclTblConfig(
     std::list<ordered_ace_list_t>       ordered_aces = {};
     std::list<vpp_acl_rule_t>          acl_rules;
     std::list<vpp_tunterm_acl_rule_t>  tunterm_acl_rules;
+    uint32_t                            deferred_mirror_count = 0;
 
     #define CHECK_STATUS_ACLTBLCONFIG(status) {                           \
         sai_status_t _status = (status);                                  \
@@ -1424,8 +1631,24 @@ sai_status_t SwitchVpp::AclTblConfig(
 
     SWSS_LOG_INFO("Total ACL entries: %ld", n_total_entries);
 
+    // Determine the table's IP family so address-less rules (e.g. an Everflow
+    // mirror rule matching only on L4 protocol) get emitted with the correct
+    // IPv4/IPv6 family instead of defaulting to IPv4.
+    bool table_has_v4 = false;
+    bool table_has_v6 = false;
+    acl_table_get_ip_version(tbl_oid, table_has_v4, table_has_v6);
+
     // Fill ACL rules - this returns converted rule lists
-    CHECK_STATUS_ACLTBLCONFIG(fill_acl_rules(tbl_oid, aces, ordered_aces, acl_rules, tunterm_acl_rules));
+    sai_status_t fill_status = fill_acl_rules(tbl_oid, aces, ordered_aces, table_has_v4, table_has_v6,
+                                              acl_rules, tunterm_acl_rules,
+                                              deferred_mirror_count);
+    if (fill_status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("ACL table %s not reprogrammed: rule translation failed (%s); previously "
+                       "installed rules and deferred mirror count are retained",
+                       sai_serialize_object_id(tbl_oid).c_str(),
+                       sai_serialize_status(fill_status).c_str());
+    }
+    CHECK_STATUS_ACLTBLCONFIG(fill_status);
 
     SWSS_LOG_INFO("Generated %ld regular ACL rules and %ld tunterm ACL rules",
                     acl_rules.size(), tunterm_acl_rules.size());
@@ -1488,6 +1711,16 @@ sai_status_t SwitchVpp::AclTblConfig(
     // there is nothing to clear and vpp_acl_add_replace() must not see a NULL.
     if (acl != NULL || m_acl_swindex_map.find(tbl_oid) != m_acl_swindex_map.end()) {
         status = acl_add_replace(acl, tbl_oid, aces, ordered_aces);
+    } else {
+        status = emptyAclCreate(tbl_oid);
+    }
+
+    if (status == SAI_STATUS_SUCCESS) {
+        status = commitAclDeferredMirrorCount(tbl_oid, deferred_mirror_count);
+    } else {
+        SWSS_LOG_ERROR("Regular ACL update failed for table %s; installed deferred "
+                       "mirror count remains unchanged (candidate %u)",
+                       sai_serialize_object_id(tbl_oid).c_str(), deferred_mirror_count);
     }
 
     if (status == SAI_STATUS_SUCCESS && tunterm_acl != NULL) {
@@ -1516,6 +1749,52 @@ sai_status_t SwitchVpp::AclTblConfig(
 
     cleanup_acl_tbl_config(aces, ordered_aces, acl, tunterm_acl);
     return status;
+}
+
+sai_status_t SwitchVpp::commitAclDeferredMirrorCount(
+    _In_ sai_object_id_t tbl_oid,
+    _In_ uint32_t deferred_mirror_count)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t previous_count = 0;
+    auto count_it = m_acl_deferred_mirror_count_map.find(tbl_oid);
+    if (count_it != m_acl_deferred_mirror_count_map.end()) {
+        previous_count = count_it->second;
+    }
+
+    m_acl_deferred_mirror_count -= previous_count;
+    m_acl_deferred_mirror_count += deferred_mirror_count;
+
+    if (deferred_mirror_count == 0) {
+        m_acl_deferred_mirror_count_map.erase(tbl_oid);
+    } else {
+        m_acl_deferred_mirror_count_map[tbl_oid] = deferred_mirror_count;
+    }
+
+    bool enable = m_acl_deferred_mirror_count != 0;
+    SWSS_LOG_INFO("ACL table %s installed deferred mirror count %u -> %u; "
+                  "aggregate %u, desired feature state %s",
+                  sai_serialize_object_id(tbl_oid).c_str(), previous_count,
+                  deferred_mirror_count, m_acl_deferred_mirror_count,
+                  enable ? "enabled" : "disabled");
+
+    if (enable == m_acl_egress_mirror_feature_enabled) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    int status = vpp_sonic_ext_egress_mirror_enable_disable(enable);
+    if (status != 0) {
+        SWSS_LOG_ERROR("Failed to set sonic_ext egress mirror feature to %s; "
+                       "installed ACL counts retained for retry, status %d",
+                       enable ? "enabled" : "disabled", status);
+        return SAI_STATUS_FAILURE;
+    }
+
+    m_acl_egress_mirror_feature_enabled = enable;
+    SWSS_LOG_NOTICE("sonic_ext egress mirror feature %s (aggregate deferred mirror count %u)",
+                    enable ? "enabled" : "disabled", m_acl_deferred_mirror_count);
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::aclGetVppIndices(
@@ -1704,6 +1983,14 @@ sai_status_t SwitchVpp::AclTblRemove(
     ip2meUpdateDropTable(tbl_oid, false);
 
     status = tunterm_acl_delete(tbl_oid, true);
+
+    // The table is already gone from the SAI DB, so this is the last chance to drop
+    // its contribution to the aggregate deferred mirror count.
+    sai_status_t count_status = commitAclDeferredMirrorCount(tbl_oid, 0);
+    if (count_status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to clear deferred mirror count for removed ACL table %s",
+                       sai_serialize_object_id(tbl_oid).c_str());
+    }
 
     auto vpp_idx_it = m_acl_swindex_map.find(tbl_oid);
     if (vpp_idx_it == m_acl_swindex_map.end()) {
