@@ -67,6 +67,7 @@ NHG
 NPU
 OA
 OIDs
+OTN
 ObjectAttrHash
 ObjectHash
 PN
@@ -312,6 +313,7 @@ objecttype
 oid
 oids
 OIDs
+OTN
 ok
 orch
 orchagent

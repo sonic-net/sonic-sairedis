@@ -50,6 +50,8 @@ static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
 static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
 static const std::string COUNTER_TYPE_WRED_ECN_QUEUE = "WRED Queue Counter";
 static const std::string COUNTER_TYPE_WRED_ECN_PORT = "WRED Port Counter";
+static const std::string ATTR_TYPE_OTN_ATTENUATOR_ATTR = "OTN Attenuator Attributes";
+static const std::string ATTR_TYPE_OTN_OA_ATTR = "OTN OA Attributes";
 
 static const std::unordered_map<std::string, bool> statusMap =
 {
@@ -72,7 +74,10 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
     {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW},
     {WRED_QUEUE_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_QUEUE},
-    {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT}};
+    {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT},
+    {OTN_ATTENUATOR_PLUGIN_FIELD, ATTR_TYPE_OTN_ATTENUATOR_ATTR},
+    {OTN_OA_PLUGIN_FIELD, ATTR_TYPE_OTN_OA_ATTR},
+};
 
 const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
     {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
@@ -97,6 +102,8 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
     {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
     {{SAI_OBJECT_TYPE_SWITCH, SWITCH_COUNTER_ID_LIST}, COUNTER_TYPE_SWITCH},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, OTN_ATTENUATOR_ATTR_ID_LIST}, ATTR_TYPE_OTN_ATTENUATOR_ATTR},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, OTN_OA_ATTR_ID_LIST}, ATTR_TYPE_OTN_OA_ATTR},
 };
 
 BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
@@ -530,6 +537,24 @@ void deserializeAttr(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_port_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_otn_attenuator_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_otn_attenuator_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_otn_oa_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_otn_oa_attr(name, attr);
 }
 
 template <typename StatType>
@@ -4099,6 +4124,14 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->use_sai_stats_ext = m_vendorSai->isSwitchStatsExtSupported();
         return context;
     }
+    else if (context_name == ATTR_TYPE_OTN_ATTENUATOR_ATTR)
+    {
+        return std::make_shared<AttrContext<sai_otn_attenuator_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, m_vendorSai.get(), m_statsMode);
+    }
+    else if (context_name == ATTR_TYPE_OTN_OA_ATTR)
+    {
+        return std::make_shared<AttrContext<sai_otn_oa_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, m_vendorSai.get(), m_statsMode);
+    }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
     // GCC 8.3 requires a return value here
@@ -4432,6 +4465,20 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR))
         {
             getCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR)->removeObject(vid);
+        }
+    }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR)
+    {
+        if (hasCounterContext(ATTR_TYPE_OTN_ATTENUATOR_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_OTN_ATTENUATOR_ATTR)->removeObject(vid);
+        }
+    }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA)
+    {
+        if (hasCounterContext(ATTR_TYPE_OTN_OA_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_OTN_OA_ATTR)->removeObject(vid);
         }
     }
     else

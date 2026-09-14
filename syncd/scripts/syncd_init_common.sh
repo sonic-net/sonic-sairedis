@@ -787,6 +787,8 @@ config_syncd()
 	config_syncd_pensando
     elif [ "$SONIC_ASIC_TYPE" == "clounix" ]; then
         config_syncd_clounix
+    elif [ "$SONIC_ASIC_TYPE" == "otn-kvm" ]; then
+        config_syncd_vs
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
