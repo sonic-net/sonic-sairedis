@@ -4291,21 +4291,25 @@ void FlexCounter::collectCounters(
 }
 
 void FlexCounter::runPlugins(
-        _In_ swss::DBConnector& counters_db)
+        _In_ swss::DBConnector& counters_db,
+        _In_ int64_t cycleStartUs,
+        _In_ int64_t collectUs)
 {
     SWSS_LOG_ENTER();
 
-    std::vector<std::string> argv =
+    // Fixed positions so a plugin can index them:
+    //   ARGV[4] secondary poll factor, 0 when unset
+    //   ARGV[5] monotonic start of this cycle, us
+    //   ARGV[6] time spent collecting this cycle, us
+    const std::vector<std::string> argv =
     {
         std::to_string(counters_db.getDbId()),
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval)
+        std::to_string(m_pollInterval),
+        std::to_string(m_secondaryPollFactor),
+        std::to_string(cycleStartUs),
+        std::to_string(collectUs)
     };
-
-    if (m_secondaryPollFactor > 0)
-    {
-        argv.push_back(std::to_string(m_secondaryPollFactor));
-    }
 
     for (const auto &it : m_counterContext)
     {
@@ -4329,9 +4333,17 @@ void FlexCounter::flexCounterThreadRunFunction()
         {
             auto start = std::chrono::steady_clock::now();
 
+            // start of this cycle; successive values differ by the true period
+            auto cycleStartUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                    start.time_since_epoch()).count();
+
             collectCounters(countersTable);
 
-            runPlugins(db);
+            // time spent collecting; the term that scales with object count
+            auto collectUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - start).count();
+
+            runPlugins(db, cycleStartUs, collectUs);
 
             auto finish = std::chrono::steady_clock::now();
 
