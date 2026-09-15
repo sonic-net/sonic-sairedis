@@ -1138,13 +1138,24 @@ void NotificationProcessor::ntf_process_function()
 {
     SWSS_LOG_ENTER();
 
-    std::mutex ntf_mutex;
-
-    std::unique_lock<std::mutex> ulock(ntf_mutex);
-
     while (m_runThread)
     {
-        m_cv.wait(ulock);
+        {
+            std::unique_lock<std::mutex> ulock(m_mtx);
+
+            // Wait on a predicate so a signal() that races ahead of this wait
+            // (queue already made non-empty by enqueue) is not lost. With the
+            // previous predicate-less m_cv.wait(), the tail of a notification
+            // burst could sit stuck in the queue until the next enqueue happened
+            // to re-signal the thread. m_mtx is held ONLY around the wait, never
+            // during processNotification(), to stay clear of the syncd mutex
+            // taken while processing.
+
+            m_cv.wait(ulock, [this]()
+            {
+                return !m_runThread || m_notificationQueue->getQueueSize() > 0;
+            });
+        }
 
         // this is notifications processing thread context, which is different
         // from SAI notifications context, we can safe use syncd mutex here,
@@ -1173,7 +1184,11 @@ void NotificationProcessor::stopNotificationsProcessingThread()
 {
     SWSS_LOG_ENTER();
 
-    m_runThread = false;
+    {
+        std::lock_guard<std::mutex> lock(m_mtx);
+
+        m_runThread = false;
+    }
 
     m_cv.notify_all();
 
@@ -1188,6 +1203,11 @@ void NotificationProcessor::stopNotificationsProcessingThread()
 void NotificationProcessor::signal()
 {
     SWSS_LOG_ENTER();
+
+    // Hold m_mtx while notifying so the wakeup cannot slip in between the
+    // processing thread evaluating its wait predicate and blocking in wait().
+
+    std::lock_guard<std::mutex> lock(m_mtx);
 
     m_cv.notify_all();
 }

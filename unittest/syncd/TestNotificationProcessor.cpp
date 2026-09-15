@@ -8,6 +8,13 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
+#include <thread>
+#include <mutex>
+#include <vector>
+#include <string>
+
 using namespace syncd;
 
 static std::string natData =
@@ -143,4 +150,157 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->insertRidAndVid(0x123456789abcdef, 0x123456789abcdef);
     notificationProcessor->syncProcessNotification(flowBulkGetSessionEventItem);
     translator->eraseRidAndVid(0x123456789abcdef, 0x123456789abcdef);
+}
+
+// ---------------------------------------------------------------------------
+// Lost-wakeup / wait-predicate tests for the NotificationProcessor threading.
+//
+// ntf_process_function() now waits on a predicate (queue non-empty || !running)
+// under the member mutex m_mtx, and signal()/stop take that same mutex around
+// notify_all(). The old predicate-less m_cv.wait() could miss a wakeup that
+// raced ahead of the wait, leaving the tail of a burst stuck in the queue.
+//
+// processNotification(NotificationItem) forwards a normal notification to
+// processNotification(item.notification) -> the constructor-supplied
+// synchronizer, so a counting synchronizer is the observation point: no SAI
+// deserialize / redis / translator is needed, and producer & client (only
+// stored on this path) can be nullptr.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+    // A notification whose op is NOT the flow-bulk event, so it routes through
+    // processNotification(item.notification) -> synchronizer. The key doubles
+    // as a payload marker.
+    swss::KeyOpFieldsValuesTuple makeNtf(const std::string& key)
+    {
+        std::vector<swss::FieldValueTuple> values;
+        return swss::KeyOpFieldsValuesTuple(key, "test-op", values);
+    }
+
+    bool waitUntil(const std::function<bool()>& pred, int timeoutMs = 5000)
+    {
+        auto deadline = std::chrono::steady_clock::now()
+                        + std::chrono::milliseconds(timeoutMs);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            if (pred())
+            {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return pred();
+    }
+
+    struct Sink
+    {
+        std::atomic<int> processed{0};
+        std::mutex mtx;
+        std::vector<std::string> keys;
+
+        std::function<void(const swss::KeyOpFieldsValuesTuple&)> fn()
+        {
+            return [this](const swss::KeyOpFieldsValuesTuple& item)
+            {
+                {
+                    std::lock_guard<std::mutex> l(mtx);
+                    keys.push_back(kfvKey(item));
+                }
+                processed++;
+            };
+        }
+    };
+}
+
+// Core regression: an item enqueued BEFORE the thread starts and with NO
+// signal() must still be processed, because the first predicate check sees
+// queueSize > 0. With the old predicate-less wait() the thread blocks forever
+// here and the test times out.
+TEST(NotificationProcessor, LostWakeup_EnqueueBeforeStart_NoSignal)
+{
+    Sink sink;
+    auto np = std::make_shared<NotificationProcessor>(nullptr, nullptr, sink.fn());
+
+    np->getQueue()->enqueue(makeNtf("evt-0"));      // queue non-empty first
+    np->startNotificationsProcessingThread();       // ... then start, no signal()
+
+    EXPECT_TRUE(waitUntil([&]{ return sink.processed.load() == 1; }));
+
+    np->stopNotificationsProcessingThread();
+    EXPECT_EQ(sink.processed.load(), 1);
+    EXPECT_EQ(np->getQueue()->getQueueSize(), 0u);  // nothing left stuck
+}
+
+// Producer hammers enqueue()+signal() concurrently with the consumer's
+// wait/drain cycle. Every enqueued item must be processed exactly once.
+TEST(NotificationProcessor, LostWakeup_ConcurrentEnqueueSignal_NoneLost)
+{
+    const int N = 500;
+    Sink sink;
+    auto np = std::make_shared<NotificationProcessor>(nullptr, nullptr, sink.fn());
+
+    np->startNotificationsProcessingThread();
+
+    std::thread producer([&]()
+    {
+        for (int i = 0; i < N; ++i)
+        {
+            np->getQueue()->enqueue(makeNtf("evt-" + std::to_string(i)));
+            np->signal();                            // race against wait/drain
+        }
+    });
+    producer.join();
+
+    EXPECT_TRUE(waitUntil([&]{ return sink.processed.load() == N; }));
+
+    np->stopNotificationsProcessingThread();
+    EXPECT_EQ(sink.processed.load(), N);
+    EXPECT_EQ(np->getQueue()->getQueueSize(), 0u);
+
+    std::lock_guard<std::mutex> l(sink.mtx);
+    EXPECT_EQ((int)sink.keys.size(), N);             // no duplicates / no loss
+}
+
+// A whole burst enqueued, then a SINGLE signal(): the drain loop plus the
+// non-empty predicate must process every item from that one wakeup, even if
+// the signal races ahead of the wait.
+TEST(NotificationProcessor, BurstThenSingleSignal_AllDrained)
+{
+    const int M = 1000;
+    Sink sink;
+    auto np = std::make_shared<NotificationProcessor>(nullptr, nullptr, sink.fn());
+
+    np->startNotificationsProcessingThread();
+
+    for (int i = 0; i < M; ++i)
+    {
+        np->getQueue()->enqueue(makeNtf("burst-" + std::to_string(i)));
+    }
+    np->signal();                                    // one signal for the burst
+
+    EXPECT_TRUE(waitUntil([&]{ return sink.processed.load() == M; }));
+
+    np->stopNotificationsProcessingThread();
+    EXPECT_EQ(sink.processed.load(), M);
+    EXPECT_EQ(np->getQueue()->getQueueSize(), 0u);
+}
+
+// The !m_runThread branch of the predicate: a thread blocked on an empty queue
+// must wake and exit promptly on stop (stop must not hang).
+TEST(NotificationProcessor, ShutdownWakesWaitingThread)
+{
+    Sink sink;
+    auto np = std::make_shared<NotificationProcessor>(nullptr, nullptr, sink.fn());
+
+    np->startNotificationsProcessingThread();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50)); // let it block in wait()
+
+    auto t0 = std::chrono::steady_clock::now();
+    np->stopNotificationsProcessingThread();                    // joins the thread
+    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::steady_clock::now() - t0).count();
+
+    EXPECT_LT(elapsedMs, 1000);                      // woke via predicate, no hang
+    EXPECT_EQ(sink.processed.load(), 0);
 }
