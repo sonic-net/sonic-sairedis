@@ -32,6 +32,7 @@ EAPOL
 ECN
 EIO
 ENI
+ENOENT
 ETERM
 ecmp
 ECMP
@@ -535,3 +536,10 @@ glibc
 getopt
 optind
 sid
+DBConnector
+SIGABRT
+backoff
+desync
+rebuildable
+jitter
+jittered
