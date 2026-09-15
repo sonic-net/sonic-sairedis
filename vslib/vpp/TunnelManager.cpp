@@ -487,13 +487,17 @@ TunnelManager::remove_vpp_vxlan_decap(
     return SAI_STATUS_SUCCESS;
 }
 
+// Defined below with create_vxlan_decap_term; used here for decap-only L2 tunnels.
+static void vxlan_decap_term_set_dst(const vpp_ip_addr_t& src, vpp_ip_addr_t& dst);
+
 sai_status_t
 TunnelManager::create_l2_vxlan_tunnel_for_vni(
     _In_ sai_ip_address_t src_ip,
     _In_ sai_ip_address_t dst_ip,
     _In_ uint32_t vni,
     _In_ uint16_t vlan_id,
-    _Out_ uint32_t& sw_if_index)
+    _Out_ uint32_t& sw_if_index,
+    _In_ bool decap_only)
 {
     SWSS_LOG_ENTER();
 
@@ -515,7 +519,14 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
     req.instance = ~0;
     req.decap_next_index = ~0;
     sai_ip_address_t_to_vpp_ip_addr_t(src_ip, req.src_address);
-    sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.dst_address);
+    if (decap_only) {
+        // Static L2 VXLAN decap endpoint (VXLAN_TUNNEL has ENCAP_SRC_IP only):
+        // register a source-independent decap term; dst is an unused sentinel.
+        req.decap_any = true;
+        vxlan_decap_term_set_dst(req.src_address, req.dst_address);
+    } else {
+        sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.dst_address);
+    }
 
     tunnel_data.vni = vni;
     tunnel_data.src_ip = src_ip;
@@ -535,6 +546,15 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
             tunnel_data.sw_if_index, vlan_id);
         remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
         return SAI_STATUS_FAILURE;
+    }
+
+    // A source-independent decap tunnel can receive inner frames whose source
+    // MAC is the switch's own router MAC (e.g. a gateway ARP in the overlay);
+    // learning that static MAC on the tunnel trips l2-learn's mac-move-violation
+    // drop. Decap-only tunnels never encap back, so disable learning on the port
+    // so the decapped frame is forwarded to the VLAN instead of dropped.
+    if (decap_only) {
+        set_sw_interface_l2_learn(tunnel_data.sw_if_index, false);
     }
 
     m_l2_tunnel_map[vni] = tunnel_data;
@@ -587,13 +607,20 @@ TunnelManager::create_l2_vxlan_tunnel(
     }
     sai_ip_address_t src_ip = attr.value.ipaddr;
 
-    // Get dst IP - if missing, this is local VTEP, not P2P tunnel
+    // ENCAP_DST_IP present => P2P (EVPN) tunnel. Absent => the standard static
+    // L2 VXLAN *decap* endpoint (VXLAN_TUNNEL with ENCAP_SRC_IP only): terminate
+    // VXLAN sent to the local VTEP and bridge the inner frame into the mapped
+    // VLAN. Treat it as a source-independent decap tunnel instead of skipping.
+    bool decap_only = false;
+    sai_ip_address_t dst_ip;
+    memset(&dst_ip, 0, sizeof(dst_ip));
     attr.id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
-    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_NOTICE("No ENCAP_DST_IP - local VTEP tunnel, skipping VPP creation");
-        return SAI_STATUS_SUCCESS;
+    if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+        dst_ip = attr.value.ipaddr;
+    } else {
+        decap_only = true;
+        dst_ip.addr_family = src_ip.addr_family;
     }
-    sai_ip_address_t dst_ip = attr.value.ipaddr;
 
     // Find VNI and VLAN from decap mappers — create a VPP tunnel for each entry (L3-style loop)
 
@@ -638,7 +665,7 @@ TunnelManager::create_l2_vxlan_tunnel(
             if (vni == 0 || vlan_id == 0) continue;
 
             uint32_t vni_sw_if_index;
-            if (create_l2_vxlan_tunnel_for_vni(src_ip, dst_ip, vni, vlan_id, vni_sw_if_index) != SAI_STATUS_SUCCESS) {
+            if (create_l2_vxlan_tunnel_for_vni(src_ip, dst_ip, vni, vlan_id, vni_sw_if_index, decap_only) != SAI_STATUS_SUCCESS) {
                 return SAI_STATUS_FAILURE;
             }
 
@@ -1008,19 +1035,29 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry(
         if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS ||
             attr.value.s32 != SAI_TUNNEL_TYPE_VXLAN) continue;
 
-        attr.id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
-        if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) continue;
-        sai_ip_address_t dst_ip = attr.value.ipaddr;
-
         attr.id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
         if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) continue;
         sai_ip_address_t src_ip = attr.value.ipaddr;
 
+        // ENCAP_DST_IP absent => static L2 VXLAN decap endpoint (see
+        // create_l2_vxlan_tunnel); still install a source-independent decap
+        // tunnel bridged into the mapped VLAN instead of skipping.
+        bool decap_only = false;
+        sai_ip_address_t dst_ip;
+        memset(&dst_ip, 0, sizeof(dst_ip));
+        attr.id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
+        if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+            dst_ip = attr.value.ipaddr;
+        } else {
+            decap_only = true;
+            dst_ip.addr_family = src_ip.addr_family;
+        }
+
         SWSS_LOG_NOTICE("Late mapper entry: creating VPP tunnel for VNI=%u VLAN=%u "
-            "on existing P2P tunnel %s", vni, vlan_id, tunnel_obj->get_id().c_str());
+            "on tunnel %s", vni, vlan_id, tunnel_obj->get_id().c_str());
 
         uint32_t vni_sw_if_index;
-        create_l2_vxlan_tunnel_for_vni(src_ip, dst_ip, vni, vlan_id, vni_sw_if_index);
+        create_l2_vxlan_tunnel_for_vni(src_ip, dst_ip, vni, vlan_id, vni_sw_if_index, decap_only);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1245,27 +1282,23 @@ TunnelManager::create_vxlan_decap_term(
 
     is_local_skip = false;
 
-    // Primary-VTEP guard: if this VTEP IP already belongs to one of our own
-    // interfaces (switch Loopback0), decap is already handled by the
-    // nexthop-driven decap path; do nothing to avoid disturbing it.
-    // In the common single-loopback SONiC VNET config ENCAP_SRC_IP is the
-    // local Loopback0 VTEP (the address advertised by BGP), so this guard
-    // fires and the secondary-VTEP term below is skipped. A config whose
-    // ENCAP_SRC_IP is not a local interface address (for example the
-    // multi-tunnel case exercised by sonic-mgmt test_vxlan_multiple_tunnels)
-    // falls through and installs the secondary-VTEP decap term and the VRF0
-    // local-receive below.
+    // Detect whether this VTEP IP is one of our own interface addrs (Loopback0).
+    // A primary VTEP is already local, so outer VXLAN to it is punted to
+    // vxlan-input without an explicit VRF0 local-receive - but it still needs
+    // the decap term (BD/BVI/wildcard). Previously the whole term was skipped
+    // for a local VTEP assuming the nexthop-driven decap path handled it; that
+    // is false for a route-less VNET decap endpoint (no encap nexthop), which
+    // left the primary VTEP with no decap. Install the term either way and only
+    // condition the local-receive below on non-local.
     refresh_interfaces_list();
+    bool vtep_is_local = false;
     {
         vpp_ip_addr_t    probe_ip;
         sai_ip_address_t vtep_probe = vtep_ip;
         sai_ip_address_t_to_vpp_ip_addr_t(vtep_probe, probe_ip);
         uint32_t owner_if = 0;
         if (vpp_sw_interface_find_by_ip(&probe_ip, (uint32_t)~0, &owner_if) == 0) {
-            SWSS_LOG_NOTICE("VXLAN decap term: VTEP is a local interface addr "
-                            "(sw_if %u); skipping VNI %u (primary VTEP)", owner_if, vni);
-            is_local_skip = true;
-            return SAI_STATUS_SUCCESS;
+            vtep_is_local = true;
         }
     }
 
@@ -1385,7 +1418,8 @@ TunnelManager::create_vxlan_decap_term(
     // to this secondary VTEP are punted to vxlan-input. The primary VTEP is
     // already local via Loopback0; a secondary VTEP is not backed by any
     // interface address, so add it explicitly.
-    if (vxlan_secondary_vtep_local_receive(vtep_ip, true) != SAI_STATUS_SUCCESS) {
+    if (!vtep_is_local &&
+        vxlan_secondary_vtep_local_receive(vtep_ip, true) != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("VXLAN decap term: failed to add VRF0 local-receive for VNI %u", vni);
         set_sw_interface_l2_bridge_by_index(tunnel_data.sw_if_index, bd_id, false,
                                             VPP_API_PORT_TYPE_NORMAL);
@@ -1394,7 +1428,7 @@ TunnelManager::create_vxlan_decap_term(
         return SAI_STATUS_FAILURE;
     }
 
-    SWSS_LOG_NOTICE("VXLAN decap term: installed secondary VTEP decap VNI %u bd %u sw_if %u",
+    SWSS_LOG_NOTICE("VXLAN decap term: installed decap VNI %u bd %u sw_if %u",
                     vni, bd_id, tunnel_data.sw_if_index);
     return SAI_STATUS_SUCCESS;
 }
@@ -1826,11 +1860,15 @@ sai_status_t TunnelManagerIpIp::create_ipip_tunnel_term(
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2P:
             vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_P2P;
             break;
+        // P2MP, MP2P and MP2MP terms are all decap-only from the local
+        // endpoint's view (any remote source -> local dst). VPP's MP2P mode
+        // implements exactly that (wildcard dst, no per-peer TEIB). MP2MP is
+        // what SONiC subnet-decap uses for VNET IP-in-IP termination.
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2MP:
-            vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP2P;
-            break;
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_MP2P:
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_MP2MP:
+            vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP2P;
+            break;
         default:
             SWSS_LOG_ERROR("IpIp Tunnel: Unsupported tunnel term type %d", term_type);
             return SAI_STATUS_NOT_SUPPORTED;
