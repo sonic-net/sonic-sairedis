@@ -1790,6 +1790,7 @@ sai_status_t SwitchVpp::createAclEntry(
     sai_object_id_t tbl_oid;
 
     if (getAclTableId(object_id, &tbl_oid) != SAI_STATUS_SUCCESS) {
+        remove_internal(SAI_OBJECT_TYPE_ACL_ENTRY, sid);
         return SAI_STATUS_FAILURE;
     }
     sai_status_t status;
@@ -1829,7 +1830,13 @@ sai_status_t SwitchVpp::removeAclEntry(
         sai_serialize_object_id(tbl_oid).c_str(),
         status);
 
-    return status;
+    // The object is gone from the state either way, and
+    // SAI_ACL_TABLE_ATTR_AVAILABLE_ACL_ENTRY is recomputed from what is left, so
+    // the entry has already been given back to the table. Reporting a failure
+    // here would stop the caller from dropping its own accounting for the entry,
+    // leaving crm_stats_acl_entry_used stuck above what the table actually holds.
+    // The VPP reprogramming error is logged above.
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::getAclTableGroupId(
