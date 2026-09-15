@@ -36,6 +36,13 @@ resources:
     # Validation-only: consume the exact SWSS PR merge ref and its reusable
     # Build/Docker/VS-test templates. Revert to master before any real merge.
     ref: refs/pull/4821/merge
+  # Required because the swss-owned templates above check out this resource
+  # by alias; the entry pipeline must declare it too.
+  - repository: sonic_swss_common
+    type: github
+    name: sonic-net/sonic-swss-common
+    endpoint: sonic-net
+    ref: refs/heads/$(BUILD_BRANCH)
 
 parameters:
   - name: debian_version
