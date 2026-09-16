@@ -133,6 +133,40 @@ static void set_ipv6any_addr_mask (vpp_ip_addr_t *ip_addr)
     memcpy(&sin6->sin6_addr.s6_addr[8], &v6_mask, 8);
 }
 
+static bool vpp_ip_addr_family_is_set (const vpp_ip_addr_t *ip_addr)
+{
+    return ip_addr->sa_family == AF_INET || ip_addr->sa_family == AF_INET6;
+}
+
+/*
+ * VPP's acl_add_list rejects a rule whose src and dst prefixes disagree on
+ * address family (VNET_API_ERROR_INVALID_SRC_ADDRESS), and vpp_acl_add_replace
+ * serializes a prefix with no family as IPv4 any. A rule matching on only one
+ * of SRC/DST IPv6 would therefore be rejected, and since the ACL is pushed with
+ * is_replace it takes every other rule in the table down with it.
+ */
+static void normalize_rule_ip_family (vpp_acl_rule_t *rule)
+{
+    bool src_set = vpp_ip_addr_family_is_set(&rule->src_prefix);
+    bool dst_set = vpp_ip_addr_family_is_set(&rule->dst_prefix);
+
+    if (src_set == dst_set) {
+        return;
+    }
+
+    int            family = src_set ? rule->src_prefix.sa_family : rule->dst_prefix.sa_family;
+    vpp_ip_addr_t *addr   = src_set ? &rule->dst_prefix : &rule->src_prefix;
+    vpp_ip_addr_t *mask   = src_set ? &rule->dst_prefix_mask : &rule->src_prefix_mask;
+
+    if (family == AF_INET6) {
+        set_ipv6any_addr_mask(addr);
+        set_ipv6any_addr_mask(mask);
+    } else {
+        set_ipv4any_addr_mask(addr);
+        set_ipv4any_addr_mask(mask);
+    }
+}
+
 static sai_status_t acl_ip_type_field_to_vpp_acl_rule(
     _In_ sai_acl_entry_attr_t         attr_id,
     _In_ const sai_attribute_value_t *value,
@@ -866,6 +900,7 @@ sai_status_t SwitchVpp::get_sorted_aces(
 
     if (status != SAI_STATUS_SUCCESS) {
         free(aces);
+        aces = NULL;
         ordered_aces.clear();
         return SAI_STATUS_FAILURE;
     }
@@ -1128,6 +1163,8 @@ sai_status_t SwitchVpp::fill_acl_rules(
                     deferred_mirror_count++;
                 }
             }
+
+            normalize_rule_ip_family(&rule);
 
             // VPP classifies a rule's family from its prefix, so an address-less
             // rule (e.g. an Everflow mirror rule matching only on L4 protocol)
