@@ -17,6 +17,7 @@
 #include <saitypes.h>
 
 #include "saiwredcustom.h"
+#include "saiarscustom.h"
 
 /**
  * @brief Custom SAI APIs placeholder
