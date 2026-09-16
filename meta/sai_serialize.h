@@ -420,9 +420,11 @@ std::string sai_serialize_macsec_post_status_ntf(
          _In_ const sai_macsec_post_status_t macsec_post_status);
 
 // serialize OTN
-std::string sai_serialize_otn_attenuator_attr(_In_ const sai_otn_attenuator_attr_t attr);
+std::string sai_serialize_otn_attenuator_attr(
+        _In_ const sai_otn_attenuator_attr_t attr);
 
-std::string sai_serialize_otn_oa_attr(_In_ const sai_otn_oa_attr_t attr);
+std::string sai_serialize_otn_oa_attr(
+        _In_ const sai_otn_oa_attr_t attr);
 
 // deserialize
 
