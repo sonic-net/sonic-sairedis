@@ -1798,7 +1798,25 @@ sai_status_t SwitchVpp::createAclEntry(
     status = addRemoveAclEntrytoMap(object_id, tbl_oid, true);
     if (status == SAI_STATUS_SUCCESS) {
         status = AclAddRemoveCheck(tbl_oid);
+
+        if (status != SAI_STATUS_SUCCESS) {
+            addRemoveAclEntrytoMap(object_id, tbl_oid, false);
+        }
     }
+
+    if (status != SAI_STATUS_SUCCESS) {
+        // acl_add_replace() swaps the table's whole rule set atomically, so a
+        // failure means VPP never took this entry. Undo the state as well, so
+        // it keeps describing what VPP holds. Left behind, the entry would
+        // consume a slot of SAI_ACL_TABLE_ATTR_AVAILABLE_ACL_ENTRY that no
+        // caller owns and no later remove can free, while the caller - having
+        // seen the failure - never counts it in crm_stats_acl_entry_used.
+        remove_internal(SAI_OBJECT_TYPE_ACL_ENTRY, sid);
+
+        SWSS_LOG_ERROR("ACL entry %s in table %s create failed, status %d",
+            sid.c_str(), sai_serialize_object_id(tbl_oid).c_str(), status);
+    }
+
     return status;
 }
 
@@ -1817,25 +1835,37 @@ sai_status_t SwitchVpp::removeAclEntry(
         return SAI_STATUS_FAILURE;
     }
 
-    sai_status_t status;
+    sai_status_t status = addRemoveAclEntrytoMap(entry_oid, tbl_oid, false);
 
-    status = addRemoveAclEntrytoMap(entry_oid, tbl_oid, false);
+    // A failure here means the entry was not listed under the table, so the rule
+    // set VPP holds already excludes it and there is nothing to reprogram - the
+    // removal has in effect already happened. addRemoveAclEntrytoMap() has
+    // logged the inconsistency, and the object can go either way.
     if (status == SAI_STATUS_SUCCESS) {
         status = AclAddRemoveCheck(tbl_oid);
+
+        if (status != SAI_STATUS_SUCCESS) {
+            // acl_add_replace() swaps the table's whole rule set atomically, so
+            // a failure means VPP is still enforcing this entry. Put it back and
+            // report the failure, so the state keeps describing what VPP holds
+            // and the caller keeps its accounting for the entry.
+            addRemoveAclEntrytoMap(entry_oid, tbl_oid, true);
+
+            SWSS_LOG_ERROR("ACL entry %s in table %s remove failed, status %d",
+                sai_serialize_object_id(entry_oid).c_str(),
+                sai_serialize_object_id(tbl_oid).c_str(),
+                status);
+
+            return status;
+        }
     }
+
     remove_internal(SAI_OBJECT_TYPE_ACL_ENTRY, serializedObjectId);
 
-    SWSS_LOG_NOTICE("ACL entry %s in table %s remove status %d",
+    SWSS_LOG_NOTICE("ACL entry %s in table %s removed",
         sai_serialize_object_id(entry_oid).c_str(),
-        sai_serialize_object_id(tbl_oid).c_str(),
-        status);
+        sai_serialize_object_id(tbl_oid).c_str());
 
-    // The object is gone from the state either way, and
-    // SAI_ACL_TABLE_ATTR_AVAILABLE_ACL_ENTRY is recomputed from what is left, so
-    // the entry has already been given back to the table. Reporting a failure
-    // here would stop the caller from dropping its own accounting for the entry,
-    // leaving crm_stats_acl_entry_used stuck above what the table actually holds.
-    // The VPP reprogramming error is logged above.
     return SAI_STATUS_SUCCESS;
 }
 
