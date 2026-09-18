@@ -803,6 +803,78 @@ TEST(FlexCounter, addRemoveCounter)
         STATS_MODE_READ,
         true);
 
+    sai->mock_get = [] (sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attr_list) {
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            if (attr_list[i].id == SAI_OTN_ATTENUATOR_ATTR_ATTENUATION)
+            {
+                attr_list[i].value.u32 = 500;
+            }
+            else if (attr_list[i].id == SAI_OTN_ATTENUATOR_ATTR_ENABLED)
+            {
+                attr_list[i].value.booldata = true;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    testAddRemoveCounter(
+        1,
+        (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR,
+        OTN_ATTENUATOR_ATTR_ID_LIST,
+        {"SAI_OTN_ATTENUATOR_ATTR_ATTENUATION", "SAI_OTN_ATTENUATOR_ATTR_ENABLED"},
+        {"500", "true"},
+        counterVerifyFunc,
+        false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR,
+        OTN_ATTENUATOR_ATTR_ID_LIST,
+        {"SAI_OTN_ATTENUATOR_ATTR_ATTENUATION", "SAI_OTN_ATTENUATOR_ATTR_ENABLED"},
+        {"500", "true"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
+    sai->mock_get = [] (sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attr_list) {
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            if (attr_list[i].id == SAI_OTN_OA_ATTR_TARGET_GAIN)
+            {
+                attr_list[i].value.u32 = 2000;
+            }
+            else if (attr_list[i].id == SAI_OTN_OA_ATTR_ENABLED)
+            {
+                attr_list[i].value.booldata = true;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    testAddRemoveCounter(
+        1,
+        (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA,
+        OTN_OA_ATTR_ID_LIST,
+        {"SAI_OTN_OA_ATTR_TARGET_GAIN", "SAI_OTN_OA_ATTR_ENABLED"},
+        {"2000", "true"},
+        counterVerifyFunc,
+        false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA,
+        OTN_OA_ATTR_ID_LIST,
+        {"SAI_OTN_OA_ATTR_TARGET_GAIN", "SAI_OTN_OA_ATTR_ENABLED"},
+        {"2000", "true"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_COUNTER,
@@ -1042,7 +1114,9 @@ TEST(FlexCounter, addRemoveCounterPlugin)
                             TUNNEL_PLUGIN_FIELD,
                             FLOW_COUNTER_PLUGIN_FIELD,
                             WRED_QUEUE_PLUGIN_FIELD,
-                            WRED_PORT_PLUGIN_FIELD};
+                            WRED_PORT_PLUGIN_FIELD,
+                            OTN_ATTENUATOR_PLUGIN_FIELD,
+                            OTN_OA_PLUGIN_FIELD};
     for (auto &field : fields)
     {
         testAddRemovePlugin(field);

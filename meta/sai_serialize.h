@@ -419,6 +419,13 @@ std::string sai_serialize_macsec_post_status_ntf(
          _In_ sai_object_id_t macsec_id,
          _In_ const sai_macsec_post_status_t macsec_post_status);
 
+// serialize OTN
+std::string sai_serialize_otn_attenuator_attr(
+        _In_ const sai_otn_attenuator_attr_t attr);
+
+std::string sai_serialize_otn_oa_attr(
+        _In_ const sai_otn_oa_attr_t attr);
+
 // deserialize
 
 void sai_deserialize_enum(
@@ -829,3 +836,12 @@ void sai_deserialize_macsec_post_status_ntf(
         _In_ const std::string& s,
         _Out_ sai_object_id_t& macsec_id,
         _Out_ sai_macsec_post_status_t& macsec_post_status);
+
+// deserialize OTN
+void sai_deserialize_otn_attenuator_attr(
+        _In_ const std::string& s,
+        _Out_ sai_otn_attenuator_attr_t& attr);
+
+void sai_deserialize_otn_oa_attr(
+        _In_ const std::string& s,
+        _Out_ sai_otn_oa_attr_t& attr);
