@@ -76,15 +76,6 @@ namespace
         return trap_type == SAI_HOSTIF_TRAP_TYPE_TTL_ERROR;
     }
 
-    // BGP/BGPV6 are genuinely distinct SAI trap types from IP2ME (own
-    // trap group/policer per `show copp config`: ip2me -> queue1_group1,
-    // bgp/bgpv6 -> queue4_group1) and have no L2 ethertype signature
-    // (post-routing, identified by TCP dst port 179) -- same shape as
-    // IP2ME, but matched by port instead of destination address, and
-    // bound as their OWN independent policer slot via
-    // vpp_sonic_ext_copp_ip2me_bind_bgp() so installing/removing the bgp
-    // trap never disturbs IP2ME/SNMP/SSH's separate slot (or vice
-    // versa) -- see copp_ip2me_node.c.
     bool isBgpTrap(sai_hostif_trap_type_t trap_type)
     {
         return trap_type == SAI_HOSTIF_TRAP_TYPE_BGP || trap_type == SAI_HOSTIF_TRAP_TYPE_BGPV6;
@@ -95,10 +86,6 @@ namespace
 
 /*
  * Install (or update) the VPP-native punt-path policer binding for `trap`
- * across every physical (hwif) interface backing a currently-known hostif
- * TAP (SAI traps are switch-wide, not per-port, so this applies uniformly
- * to all ports SwitchVpp knows about via m_hostif_info_map -- see
- * SwitchVppHostif.cpp's vs_create_hostif_tap_interface()).
  */
 sai_status_t SwitchVpp::installTrapClassify(
         _In_ sai_object_id_t trap_oid,
@@ -107,15 +94,6 @@ sai_status_t SwitchVpp::installTrapClassify(
 {
     SWSS_LOG_ENTER();
 
-    // Deferred (WD-timeout fix, generalized -- see enqueueTrapClassifyDeferredWork()
-    // in SwitchVpp.h): do NOT call vpp_sonic_ext_copp_ifout_bind() synchronously
-    // here -- it is a blocking VAPI round-trip and this function is called
-    // directly from createHostifTrap()/setHostifTrap()/setHostifTrapGroup(),
-    // i.e. from inside a single watchdog-timed syncd SAI call. Confirmed live:
-    // a BGPV6 createHostifTrap call stalled past the 30s watchdog here,
-    // starving every trap queued after it for the rest of that config_reload.
-    // The real bind runs later, one item per call, from
-    // serviceDeferredTrapClassifyWork().
     enqueueTrapClassifyDeferredWork({ trap_oid, trap, vpp_policer_index, true });
 
     return SAI_STATUS_SUCCESS;
@@ -138,15 +116,7 @@ void SwitchVpp::installTrapClassifyNow(
 
     if (isBgpTrap(trap.trap_type))
     {
-        // BGP/BGPV6: own independent policer slot, matched by TCP dst
-        // port 179 rather than IP2ME's destination-address set -- see
-        // isBgpTrap()/copp_ip2me_node.c. Using a distinct bind function
-        // (vpp_sonic_ext_copp_ip2me_bind_bgp, not vpp_sonic_ext_copp_ip2me_bind)
-        // guarantees this slot is looked up/cleared strictly by its own
-        // name, so removing the bgp trap can never unbind IP2ME/SNMP/SSH's
-        // separate slot (the bug that caused test_remove_trap/
-        // test_add_new_trap failures: the old shared single-slot design
-        // unbound IP2ME's policer whenever BGP's trap was disabled).
+        // BGP/BGPV6: independent policer slot, matched by TCP dst port 179
         auto git = m_trap_group_map.find(trap.trap_group_oid);
         sai_object_id_t policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
 
@@ -172,14 +142,7 @@ void SwitchVpp::installTrapClassifyNow(
 
     if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
     {
-        // IP2ME (and SNMP/SSH, which map to the same SAI trap type -- see
-        // PROTOCOL_TO_TRAP_ID in sonic-mgmt's copp_tests.py) has no
-        // device-input ethertype to match on: it identifies traffic by
-        // destination IP after routing, not by L2 ethertype before it.
-        // Bind the shared sonic-ext-copp-ip2me policer instead of the
-        // ethertype-keyed sonic-ext-copp-ifout path below -- see
-        // copp_ip2me_node.c for the full design (enforced on the
-        // ip4-punt arc, ahead of ip4-punt-redirect).
+        // IP2ME identifies traffic by destination IP after routing, not by L2 ethertype before it.
         auto git = m_trap_group_map.find(trap.trap_group_oid);
         sai_object_id_t policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
 
@@ -214,12 +177,7 @@ void SwitchVpp::installTrapClassifyNow(
         return;
     }
 
-    // PRIMARY: interface-output-arc feature bind (sonic-ext-copp-ifout),
-    // by policer name (the same "copp-policer-0x<oid>" name
-    // SwitchVppPolicer.cpp already registered via vpp_policer_add_replace()
-    // for trap.trap_group_oid's bound policer). Ethertype is the same
-    // 16-bit value buildClassifyMatchForTrapType() just wrote into
-    // match[12:13] (big-endian on the wire there too).
+    // interface-output-arc feature bind by policer name
     {
         uint16_t ethertype = (uint16_t)((match[12] << 8) | match[13]);
 
@@ -256,10 +214,6 @@ sai_status_t SwitchVpp::uninstallTrapClassify(
 {
     SWSS_LOG_ENTER();
 
-    // Deferred (WD-timeout fix, generalized -- see enqueueTrapClassifyDeferredWork()
-    // in SwitchVpp.h): same reasoning as installTrapClassify() above -- do not
-    // call vpp_sonic_ext_copp_ifout_bind() synchronously from inside a
-    // watchdog-timed syncd SAI call (removeHostifTrap()/setHostifTrap()).
     enqueueTrapClassifyDeferredWork({ trap_oid, trap, (uint32_t)~0, false });
 
     return SAI_STATUS_SUCCESS;
@@ -274,9 +228,6 @@ void SwitchVpp::uninstallTrapClassifyNow(
     if (isBgpTrap(trap.trap_type))
     {
         // BGP/BGPV6: unbind ONLY this trap's own TCP-dst-port-179 slot
-        // (see isBgpTrap()/installTrapClassifyNow() above) -- looked up
-        // and cleared strictly by its own "copp-policer-0x<oid>" name,
-        // so this can never disturb IP2ME/SNMP/SSH's separate slot.
         auto git = m_trap_group_map.find(trap.trap_group_oid);
         sai_object_id_t policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
 
@@ -299,17 +250,6 @@ void SwitchVpp::uninstallTrapClassifyNow(
 
     if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
     {
-        // Unlike the ethertype-keyed path, the IP2ME policer binding
-        // isn't per-trap-instance -- there is exactly one SAI IP2ME trap
-        // and one shared sonic-ext-copp-ip2me policer, so removing
-        // it here unconditionally unbinds. Address entries themselves
-        // (which router-interface IPs are tracked) are managed separately
-        // by vpp_sonic_ext_copp_ip2me_addr_add_del(), independent of trap
-        // lifecycle. IP2ME's slot is looked up/cleared strictly by its
-        // own name (never BGP's, or vice versa -- see isBgpTrap() above),
-        // so the name here must be IP2ME's own trap group's policer, not
-        // an empty string (an empty name would never match the real
-        // bound slot under the keyed-slot design and silently no-op).
         auto git = m_trap_group_map.find(trap.trap_group_oid);
         sai_object_id_t policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
 
@@ -339,14 +279,10 @@ void SwitchVpp::uninstallTrapClassifyNow(
     {
         uint16_t ethertype = (uint16_t)((match[12] << 8) | match[13]);
 
-        // Multiple trap_types can share an ethertype (e.g.
-        // SAI_HOSTIF_TRAP_TYPE_ARP_REQUEST/_RESPONSE both map to
-        // 0x0806), but sonic-ext-copp-ifout's bind table is keyed
-        // purely by ethertype with a single slot -- unbinding
-        // unconditionally here would also silently unpolice any
-        // other still-installed trap on the same ethertype. Only
-        // actually unbind once no other tracked, classify_installed
-        // trap still needs this exact ethertype.
+        // Multiple trap_types can share an ethertype, but sonic-ext-copp-ifout's
+        // bind table is keyed by ethertype with a single slot -- unbinding
+        // unconditionally here would also silently unpolice any other still-installed
+        // trap on the same ethertype. Unbind once no other trap still needs this ethertype.
         bool still_needed = false;
 
         for (auto &kv : m_trap_map)
@@ -633,10 +569,6 @@ sai_status_t SwitchVpp::setHostifTrap(
             break;
     }
 
-    // Re-derive the punt/policer binding for this trap: this is the path
-    // exercised by test_add_new_trap (packet_action DROP -> TRAP) and
-    // test_remove_trap (packet_action TRAP/COPY -> DROP, or trap deleted
-    // outright via removeHostifTrap above).
     bool should_be_installed =
         (it->second.packet_action == SAI_PACKET_ACTION_TRAP || it->second.packet_action == SAI_PACKET_ACTION_COPY);
 
@@ -668,12 +600,7 @@ sai_status_t SwitchVpp::setHostifTrap(
     }
     else if (should_be_installed && it->second.classify_installed && attr->id == SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP)
     {
-        // Trap stays installed but moved to a different trap group: neither
-        // branch above fires (classify_installed doesn't change), so without
-        // this the trap would silently keep its old group's policer binding.
-        // installTrapClassify()/vpp_sonic_ext_copp_ifout_bind() are idempotent
-        // on the same ethertype -- re-running with the new group's policer
-        // just updates which policer name that ethertype resolves to.
+        // Trap stays installed but moved to a different trap group
         uint32_t vpp_policer_index = (uint32_t)~0;
 
         auto git = m_trap_group_map.find(it->second.trap_group_oid);

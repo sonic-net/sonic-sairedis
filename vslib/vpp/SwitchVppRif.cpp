@@ -1211,14 +1211,6 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     if (ret == 0 && vpp_ip_prefix.prefix_addr.sa_family == AF_INET)
     {
-        // IP2ME dataplane policing: register this router-interface IPv4
-        // address with sonic-ext-copp-ip2me's ip4-punt-arc
-        // address set, so the shared IP2ME/SNMP/SSH policer is actually
-        // enforced for traffic destined to it. No per-interface binding
-        // needed -- ip4-punt is a single global arc every packet destined
-        // to a local address and unhandled by VPP's own dataplane already
-        // crosses, regardless of ingress interface (see
-        // copp_ip2me_node.c for the full design rationale).
         vpp_sonic_ext_copp_ip2me_addr_add_del(
                 vpp_ip_prefix.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
     }
@@ -1397,9 +1389,6 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
         m_tunnel_mgr_ipip.retry_pending_unnumbered(ip_route.prefix_addr);
     }
 
-    // IP2ME dataplane policing: see vpp_add_del_intf_ip_addr_norif() for
-    // the same registration on sonic-ext-copp-ip2me's ip4-punt
-    // address set -- this is the RIF-tracked-interface counterpart.
     if (ret == 0 && route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
     {
         vpp_sonic_ext_copp_ip2me_addr_add_del(
@@ -1420,11 +1409,7 @@ void SwitchVpp::enqueueTrapClassifyDeferredWork(TrapClassifyDeferredWork &&work)
 void SwitchVpp::serviceDeferredTrapClassifyWork()
 {
     SWSS_LOG_ENTER();
-
-    // Same one-item-per-call discipline as serviceDeferredOperStatusResync() -- each install/uninstall
-    // makes a blocking VAPI round-trip (vpp_sonic_ext_copp_ifout_bind()) that
-    // can itself take up to VPP's internal WR() timeout, and this runs from
-    // inside a watchdog-timed syncd SAI call, so only ever do one per call.
+    
     TrapClassifyDeferredWork item;
     bool haveItem = false;
     {
@@ -1464,10 +1449,6 @@ void SwitchVpp::serviceDeferredPolicerProgramWork()
 {
     SWSS_LOG_ENTER();
 
-    // Same one-item-per-call discipline as serviceDeferredTrapClassifyWork()
-    // -- vpp_policer_add_replace() is a blocking VAPI round-trip, and this
-    // runs from inside a watchdog-timed syncd SAI call, so only ever do one
-    // per call.
     PolicerProgramDeferredWork item;
     bool haveItem = false;
     {
@@ -1885,19 +1866,10 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     int ret = vpp_get_vrf_id(osif_name.c_str(), &vrf_id);
 
     vpp_add_ip_vrf(vrf_obj_id, vrf_id);
-    {
-        // Register this RIF's hw interface for ip4-policer-classify
-        // regardless of vrf_id -- IP2ME traffic destined to ANOTHER
-        // interface's address can still arrive here, so the classify
-        // feature must be bound on every L3 interface (see
-        // ip2meRegisterL3Interface()). Deferred -- see
-        // enqueueIp2meDeferredWork() in SwitchVpp.h.
-        enqueueIp2meDeferredWork({ Ip2meDeferredOp::REGISTER_L3_INTERFACE, parent_hwif, "" });
-
-        if (ret == 0 && vrf_id != 0) {
-            SWSS_LOG_NOTICE("Setting interface vrf on hwif_name %s", parent_hwif.c_str());
-            set_interface_vrf(parent_hwif.c_str(), vlan_id, vrf_id, false);
-        }
+    enqueueIp2meDeferredWork({ Ip2meDeferredOp::REGISTER_L3_INTERFACE, parent_hwif, "" });
+    if (ret == 0 && vrf_id != 0) {
+        SWSS_LOG_NOTICE("Setting interface vrf on hwif_name %s", parent_hwif.c_str());
+        set_interface_vrf(parent_hwif.c_str(), vlan_id, vrf_id, false);
     }
     auto attr_type_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
 
