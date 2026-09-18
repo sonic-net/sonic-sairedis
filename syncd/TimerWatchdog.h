@@ -50,6 +50,8 @@ namespace syncd
 
             void logEventData();
 
+            void writeHealthFile(bool isStuck);
+
         private:
 
             volatile bool m_run;
@@ -60,6 +62,7 @@ namespace syncd
             std::atomic_int_fast64_t m_startTimestamp;
             std::atomic_int_fast64_t m_endTimestamp;
             std::atomic_int_fast64_t m_lastCheckTimestamp;
+            std::atomic_int_fast64_t m_startTimeSinceEpoch;
 
             std::shared_ptr<std::thread> m_thread;
 

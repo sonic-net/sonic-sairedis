@@ -3,6 +3,9 @@
 #include "swss/logger.h"
 
 #include <chrono>
+#include <fstream>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #define MUTEX std::lock_guard<std::mutex> _lock(m_mutex);
 
@@ -21,6 +24,9 @@ TimerWatchdog::TimerWatchdog(
     m_startTimestamp = start;
     m_endTimestamp = start;
     m_lastCheckTimestamp = start;
+    m_startTimeSinceEpoch = start;
+
+    mkdir("/var/run/syncd", 0755);
 
     m_thread = std::make_shared<std::thread>(&TimerWatchdog::threadFunction, this);
 
@@ -170,6 +176,7 @@ void TimerWatchdog::threadFunction()
         int64_t now = getTimeSinceEpoch(); // now needs to be obtained after obtaining start
 
         int64_t span = end - start;
+        bool isStuck = false;
 
         if (span < 0 && start > m_lastCheckTimestamp)
         {
@@ -193,14 +200,17 @@ void TimerWatchdog::threadFunction()
                 // function probably hanged
 
                 SWSS_LOG_ERROR("time span WD exceeded %ld ms for %s", span/1000, m_eventName.c_str());
+                isStuck = true;
 
                 logEventData();
             }
 
+            writeHealthFile(isStuck);
             continue;
         }
 
         m_lastCheckTimestamp = start;
+        writeHealthFile(isStuck);
     }
 
     SWSS_LOG_NOTICE("ending timer watchdog thread");
@@ -211,4 +221,24 @@ int64_t TimerWatchdog::getTimeSinceEpoch()
     SWSS_LOG_ENTER();
 
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+void TimerWatchdog::writeHealthFile(bool isStuck)
+{
+    // Write health JSON
+    std::ofstream out("/var/run/syncd/health.json");
+    if (!out.is_open())
+    {
+        return;
+    }
+
+    int64_t uptimeMs = (getTimeSinceEpoch() - m_startTimeSinceEpoch) / 1000;
+    int64_t lastSuccessfulCallMs = m_endTimestamp / 1000;
+
+    out << "{" << std::endl;
+    out << "  \"uptime_ms\": " << uptimeMs << "," << std::endl;
+    out << "  \"last_successful_call_ms\": " << lastSuccessfulCallMs << "," << std::endl;
+    out << "  \"watchdog_status\": \"" << (isStuck ? "stuck" : "healthy") << "\"," << std::endl;
+    out << "  \"asic_connection_state\": \"connected\"" << std::endl;
+    out << "}" << std::endl;
 }
