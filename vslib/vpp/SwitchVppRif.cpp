@@ -1212,14 +1212,14 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
     if (ret == 0 && vpp_ip_prefix.prefix_addr.sa_family == AF_INET)
     {
         // IP2ME dataplane policing: register this router-interface IPv4
-        // address with the copp_ip2me_policer VPP plugin's ip4-punt-arc
+        // address with sonic-ext-copp-ip2me's ip4-punt-arc
         // address set, so the shared IP2ME/SNMP/SSH policer is actually
         // enforced for traffic destined to it. No per-interface binding
         // needed -- ip4-punt is a single global arc every packet destined
         // to a local address and unhandled by VPP's own dataplane already
         // crosses, regardless of ingress interface (see
-        // copp_ip2me_policer.c for the full design rationale).
-        vpp_copp_ip2me_policer_addr_add_del(
+        // copp_ip2me_node.c for the full design rationale).
+        vpp_sonic_ext_copp_ip2me_addr_add_del(
                 vpp_ip_prefix.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
     }
 
@@ -1398,11 +1398,11 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
     }
 
     // IP2ME dataplane policing: see vpp_add_del_intf_ip_addr_norif() for
-    // the same registration on the copp_ip2me_policer plugin's ip4-punt
+    // the same registration on sonic-ext-copp-ip2me's ip4-punt
     // address set -- this is the RIF-tracked-interface counterpart.
     if (ret == 0 && route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
     {
-        vpp_copp_ip2me_policer_addr_add_del(
+        vpp_sonic_ext_copp_ip2me_addr_add_del(
                 ip_route.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
     }
 
@@ -1422,7 +1422,7 @@ void SwitchVpp::serviceDeferredTrapClassifyWork()
     SWSS_LOG_ENTER();
 
     // Same one-item-per-call discipline as serviceDeferredOperStatusResync() -- each install/uninstall
-    // makes a blocking VAPI round-trip (vpp_copp_punt_policer_bind()) that
+    // makes a blocking VAPI round-trip (vpp_sonic_ext_copp_ifout_bind()) that
     // can itself take up to VPP's internal WR() timeout, and this runs from
     // inside a watchdog-timed syncd SAI call, so only ever do one per call.
     TrapClassifyDeferredWork item;

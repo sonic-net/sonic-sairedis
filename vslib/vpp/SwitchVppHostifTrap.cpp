@@ -60,32 +60,10 @@ namespace
                 ethertype = 0x0800;
                 break;
 
-            case SAI_HOSTIF_TRAP_TYPE_BGPV6:
-            case SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_DISCOVERY:
-            case SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_SOLICITATION:
-            case SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_ADVERTISEMENT:
-                // Prior to this case, no trap_type ever mapped to ethertype
-                // 0x86DD (IPv6), so any IPv6 control packet (BGP-over-IPv6,
-                // ND solicit/advert) fell through this node unmatched and
-                // continued into the normal ethernet-input/ip6-input path.
-                // On a LAG member that is harmless for a directly-attached
-                // port, but LAG members intentionally run with IPv6 disabled
-                // (see vpp_set_lag_member_ip6() in SwitchVppFdb.cpp -- L3 for
-                // a bonded interface is owned by the BondEthernet, not the
-                // member), so an unmatched IPv6 packet arriving on a member
-                // hits ip6-not-enabled and is dropped before VPP's bond layer
-                // ever gets a chance to reclassify it to the bond's
-                // sw_if_index. Binding 0x86DD here routes it through the same
-                // direct-to-tap path IPv4 already uses (matched entry ->
-                // lcp_itf_pair_find_by_phy -> interface-output), bypassing
-                // ip6-input entirely, exactly like the IPv4/TTL_ERROR path
-                // above already does for IPv4.
-                ethertype = 0x86dd;
-                break;
-
             default:
                 return false;
         }
+
 
         match[12] = (uint8_t)(ethertype >> 8);
         match[13] = (uint8_t)(ethertype & 0xFF);
@@ -98,17 +76,20 @@ namespace
         return trap_type == SAI_HOSTIF_TRAP_TYPE_TTL_ERROR;
     }
 
-    bool isIp6BgpTrap(sai_hostif_trap_type_t trap_type)
+    // BGP/BGPV6 are genuinely distinct SAI trap types from IP2ME (own
+    // trap group/policer per `show copp config`: ip2me -> queue1_group1,
+    // bgp/bgpv6 -> queue4_group1) and have no L2 ethertype signature
+    // (post-routing, identified by TCP dst port 179) -- same shape as
+    // IP2ME, but matched by port instead of destination address, and
+    // bound as their OWN independent policer slot via
+    // vpp_sonic_ext_copp_ip2me_bind_bgp() so installing/removing the bgp
+    // trap never disturbs IP2ME/SNMP/SSH's separate slot (or vice
+    // versa) -- see copp_ip2me_node.c.
+    bool isBgpTrap(sai_hostif_trap_type_t trap_type)
     {
-        return trap_type == SAI_HOSTIF_TRAP_TYPE_BGPV6;
+        return trap_type == SAI_HOSTIF_TRAP_TYPE_BGP || trap_type == SAI_HOSTIF_TRAP_TYPE_BGPV6;
     }
 
-    bool isIp6NdTrap(sai_hostif_trap_type_t trap_type)
-    {
-        return trap_type == SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_DISCOVERY ||
-               trap_type == SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_SOLICITATION ||
-               trap_type == SAI_HOSTIF_TRAP_TYPE_IPV6_NEIGHBOR_ADVERTISEMENT;
-    }
 }
 
 
@@ -127,7 +108,7 @@ sai_status_t SwitchVpp::installTrapClassify(
     SWSS_LOG_ENTER();
 
     // Deferred (WD-timeout fix, generalized -- see enqueueTrapClassifyDeferredWork()
-    // in SwitchVpp.h): do NOT call vpp_copp_punt_policer_bind() synchronously
+    // in SwitchVpp.h): do NOT call vpp_sonic_ext_copp_ifout_bind() synchronously
     // here -- it is a blocking VAPI round-trip and this function is called
     // directly from createHostifTrap()/setHostifTrap()/setHostifTrapGroup(),
     // i.e. from inside a single watchdog-timed syncd SAI call. Confirmed live:
@@ -155,15 +136,49 @@ void SwitchVpp::installTrapClassifyNow(
         return;
     }
 
+    if (isBgpTrap(trap.trap_type))
+    {
+        // BGP/BGPV6: own independent policer slot, matched by TCP dst
+        // port 179 rather than IP2ME's destination-address set -- see
+        // isBgpTrap()/copp_ip2me_node.c. Using a distinct bind function
+        // (vpp_sonic_ext_copp_ip2me_bind_bgp, not vpp_sonic_ext_copp_ip2me_bind)
+        // guarantees this slot is looked up/cleared strictly by its own
+        // name, so removing the bgp trap can never unbind IP2ME/SNMP/SSH's
+        // separate slot (the bug that caused test_remove_trap/
+        // test_add_new_trap failures: the old shared single-slot design
+        // unbound IP2ME's policer whenever BGP's trap was disabled).
+        auto git = m_trap_group_map.find(trap.trap_group_oid);
+        sai_object_id_t policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
+
+        if (policer_oid != SAI_NULL_OBJECT_ID)
+        {
+            char policer_name[64];
+            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
+
+            int pret = vpp_sonic_ext_copp_ip2me_bind_bgp(policer_name, true);
+
+            if (pret != 0)
+            {
+                SWSS_LOG_ERROR("failed to bind BGP policer %s: ret %d", policer_name, pret);
+            }
+            else
+            {
+                SWSS_LOG_NOTICE("bound BGP policer %s for trap 0x%lx", policer_name, (unsigned long)trap_oid);
+            }
+        }
+
+        return;
+    }
+
     if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
     {
         // IP2ME (and SNMP/SSH, which map to the same SAI trap type -- see
         // PROTOCOL_TO_TRAP_ID in sonic-mgmt's copp_tests.py) has no
         // device-input ethertype to match on: it identifies traffic by
         // destination IP after routing, not by L2 ethertype before it.
-        // Bind the shared copp_ip2me_policer plugin's policer instead of
-        // the ethertype-keyed copp_punt_policer path below -- see
-        // copp_ip2me_policer.c for the full design (enforced on the
+        // Bind the shared sonic-ext-copp-ip2me policer instead of the
+        // ethertype-keyed sonic-ext-copp-ifout path below -- see
+        // copp_ip2me_node.c for the full design (enforced on the
         // ip4-punt arc, ahead of ip4-punt-redirect).
         auto git = m_trap_group_map.find(trap.trap_group_oid);
         sai_object_id_t policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
@@ -173,13 +188,12 @@ void SwitchVpp::installTrapClassifyNow(
             char policer_name[64];
             snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
 
-            int pret = vpp_copp_ip2me_policer_bind(policer_name, true);
+            int pret = vpp_sonic_ext_copp_ip2me_bind(policer_name, true);
 
             if (pret != 0)
             {
                 SWSS_LOG_ERROR("failed to bind IP2ME policer %s: ret %d", policer_name, pret);
-            }
-            else
+            }            else
             {
                 SWSS_LOG_NOTICE("bound IP2ME policer %s for trap 0x%lx", policer_name, (unsigned long)trap_oid);
             }
@@ -200,11 +214,12 @@ void SwitchVpp::installTrapClassifyNow(
         return;
     }
 
-    // PRIMARY: device-input-arc plugin bind, by policer name (the same
-    // "copp-policer-0x<oid>" name SwitchVppPolicer.cpp already registered
-    // via vpp_policer_add_replace() for trap.trap_group_oid's bound
-    // policer). Ethertype is the same 16-bit value buildClassifyMatchForTrapType()
-    // just wrote into match[12:13] (big-endian on the wire there too).
+    // PRIMARY: interface-output-arc feature bind (sonic-ext-copp-ifout),
+    // by policer name (the same "copp-policer-0x<oid>" name
+    // SwitchVppPolicer.cpp already registered via vpp_policer_add_replace()
+    // for trap.trap_group_oid's bound policer). Ethertype is the same
+    // 16-bit value buildClassifyMatchForTrapType() just wrote into
+    // match[12:13] (big-endian on the wire there too).
     {
         uint16_t ethertype = (uint16_t)((match[12] << 8) | match[13]);
 
@@ -216,25 +231,24 @@ void SwitchVpp::installTrapClassifyNow(
             char policer_name[64];
             snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
 
-            int pret = vpp_copp_punt_policer_bind(ethertype, policer_name, true,
-                    isIp4TtlExpiringTrap(trap.trap_type),
-                    isIp6BgpTrap(trap.trap_type),
-                    isIp6NdTrap(trap.trap_type));
+            int pret = vpp_sonic_ext_copp_ifout_bind(ethertype, policer_name, true,
+                    isIp4TtlExpiringTrap(trap.trap_type));
 
             if (pret != 0)
             {
-                SWSS_LOG_ERROR("failed to bind device-input policer for trap 0x%lx (trap_type %d, "
+                SWSS_LOG_ERROR("failed to bind copp-ifout policer for trap 0x%lx (trap_type %d, "
                         "ethertype 0x%04x, policer %s): ret %d",
                         (unsigned long)trap_oid, (int)trap.trap_type, ethertype, policer_name, pret);
             }
             else
             {
-                SWSS_LOG_NOTICE("bound device-input policer for trap 0x%lx: trap_type %d, ethertype 0x%04x, "
+                SWSS_LOG_NOTICE("bound copp-ifout policer for trap 0x%lx: trap_type %d, ethertype 0x%04x, "
                         "policer %s", (unsigned long)trap_oid, (int)trap.trap_type, ethertype, policer_name);
             }
         }
     }
 }
+
 
 sai_status_t SwitchVpp::uninstallTrapClassify(
         _In_ sai_object_id_t trap_oid,
@@ -244,7 +258,7 @@ sai_status_t SwitchVpp::uninstallTrapClassify(
 
     // Deferred (WD-timeout fix, generalized -- see enqueueTrapClassifyDeferredWork()
     // in SwitchVpp.h): same reasoning as installTrapClassify() above -- do not
-    // call vpp_copp_punt_policer_bind() synchronously from inside a
+    // call vpp_sonic_ext_copp_ifout_bind() synchronously from inside a
     // watchdog-timed syncd SAI call (removeHostifTrap()/setHostifTrap()).
     enqueueTrapClassifyDeferredWork({ trap_oid, trap, (uint32_t)~0, false });
 
@@ -257,16 +271,57 @@ void SwitchVpp::uninstallTrapClassifyNow(
 {
     SWSS_LOG_ENTER();
 
+    if (isBgpTrap(trap.trap_type))
+    {
+        // BGP/BGPV6: unbind ONLY this trap's own TCP-dst-port-179 slot
+        // (see isBgpTrap()/installTrapClassifyNow() above) -- looked up
+        // and cleared strictly by its own "copp-policer-0x<oid>" name,
+        // so this can never disturb IP2ME/SNMP/SSH's separate slot.
+        auto git = m_trap_group_map.find(trap.trap_group_oid);
+        sai_object_id_t policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
+
+        if (policer_oid != SAI_NULL_OBJECT_ID)
+        {
+            char policer_name[64];
+            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
+
+            int pret = vpp_sonic_ext_copp_ip2me_bind_bgp(policer_name, false);
+
+            if (pret != 0)
+            {
+                SWSS_LOG_ERROR("failed to unbind BGP policer %s for trap 0x%lx: ret %d",
+                        policer_name, (unsigned long)trap_oid, pret);
+            }
+        }
+
+        return;
+    }
+
     if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
     {
         // Unlike the ethertype-keyed path, the IP2ME policer binding
         // isn't per-trap-instance -- there is exactly one SAI IP2ME trap
-        // and one shared copp_ip2me_policer plugin policer, so removing
+        // and one shared sonic-ext-copp-ip2me policer, so removing
         // it here unconditionally unbinds. Address entries themselves
         // (which router-interface IPs are tracked) are managed separately
-        // by vpp_copp_ip2me_policer_addr_add_del(), independent of trap
-        // lifecycle.
-        int pret = vpp_copp_ip2me_policer_bind("", false);
+        // by vpp_sonic_ext_copp_ip2me_addr_add_del(), independent of trap
+        // lifecycle. IP2ME's slot is looked up/cleared strictly by its
+        // own name (never BGP's, or vice versa -- see isBgpTrap() above),
+        // so the name here must be IP2ME's own trap group's policer, not
+        // an empty string (an empty name would never match the real
+        // bound slot under the keyed-slot design and silently no-op).
+        auto git = m_trap_group_map.find(trap.trap_group_oid);
+        sai_object_id_t policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
+
+        int pret = SAI_STATUS_SUCCESS;
+
+        if (policer_oid != SAI_NULL_OBJECT_ID)
+        {
+            char policer_name[64];
+            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
+
+            pret = vpp_sonic_ext_copp_ip2me_bind(policer_name, false);
+        }
 
         if (pret != 0)
         {
@@ -285,59 +340,49 @@ void SwitchVpp::uninstallTrapClassifyNow(
         uint16_t ethertype = (uint16_t)((match[12] << 8) | match[13]);
 
         // Multiple trap_types can share an ethertype (e.g.
-        // SAI_HOSTIF_TRAP_TYPE_ARP_REQUEST/_RESPONSE both map to 0x0806),
-        // but the device-input plugin's bind table is keyed purely by
-        // ethertype with a single slot -- unbinding unconditionally here
-        // would also silently unpolice any other still-installed trap on
-        // the same ethertype. For the ARP-style (non-bgp/nd) case, only
-        // actually unbind once no other tracked, classify_installed trap
-        // still needs this exact ethertype. For the shared 0x86DD BGPV6/ND
-        // slot, the VPP plugin tracks bgp/nd as independent sub-bindings
-        // (see copp_punt_policer.h) that unbind independently -- so
-        // BGPV6 and ND are each always unbound for real here regardless
-        // of the other's state; "still_needed" only has to consider the
-        // plain (non-bgp/nd) case.
+        // SAI_HOSTIF_TRAP_TYPE_ARP_REQUEST/_RESPONSE both map to
+        // 0x0806), but sonic-ext-copp-ifout's bind table is keyed
+        // purely by ethertype with a single slot -- unbinding
+        // unconditionally here would also silently unpolice any
+        // other still-installed trap on the same ethertype. Only
+        // actually unbind once no other tracked, classify_installed
+        // trap still needs this exact ethertype.
         bool still_needed = false;
 
-        if (!isIp6BgpTrap(trap.trap_type) && !isIp6NdTrap(trap.trap_type))
+        for (auto &kv : m_trap_map)
         {
-            for (auto &kv : m_trap_map)
+            if (kv.first == trap_oid || !kv.second.classify_installed)
             {
-                if (kv.first == trap_oid || !kv.second.classify_installed)
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                std::array<uint8_t, 16> other_match{};
+            std::array<uint8_t, 16> other_match{};
 
-                if (buildClassifyMatchForTrapType(kv.second.trap_type, other_match) &&
-                        other_match[12] == match[12] && other_match[13] == match[13] &&
-                        !isIp6BgpTrap(kv.second.trap_type) && !isIp6NdTrap(kv.second.trap_type))
-                {
-                    still_needed = true;
-                    break;
-                }
+            if (buildClassifyMatchForTrapType(kv.second.trap_type, other_match) &&
+                    other_match[12] == match[12] && other_match[13] == match[13])
+            {
+                still_needed = true;
+                break;
             }
         }
 
         if (!still_needed)
         {
-            vpp_copp_punt_policer_bind(ethertype, "", false,
-                    isIp4TtlExpiringTrap(trap.trap_type),
-                    isIp6BgpTrap(trap.trap_type),
-                    isIp6NdTrap(trap.trap_type));
+            vpp_sonic_ext_copp_ifout_bind(ethertype, "", false,
+                    isIp4TtlExpiringTrap(trap.trap_type));
         }
         else
         {
             SWSS_LOG_NOTICE("ethertype 0x%04x still needed by another installed trap; "
-                    "leaving device-input binding in place for SAI trap 0x%lx",
-                    ethertype, (unsigned long)trap_oid);
+                        "leaving copp-ifout binding in place for SAI trap 0x%lx",
+                        ethertype, (unsigned long)trap_oid);
         }
     }
 
-    SWSS_LOG_NOTICE("unbound device-input policer for SAI trap 0x%lx: trap_type %d",
+    SWSS_LOG_NOTICE("unbound policer for SAI trap 0x%lx: trap_type %d",
             (unsigned long)trap_oid, (int)trap.trap_type);
 }
+
 
 sai_status_t SwitchVpp::createHostifTrapGroup(
         _In_ sai_object_id_t object_id,
@@ -626,7 +671,7 @@ sai_status_t SwitchVpp::setHostifTrap(
         // Trap stays installed but moved to a different trap group: neither
         // branch above fires (classify_installed doesn't change), so without
         // this the trap would silently keep its old group's policer binding.
-        // installTrapClassify()/vpp_copp_punt_policer_bind() are idempotent
+        // installTrapClassify()/vpp_sonic_ext_copp_ifout_bind() are idempotent
         // on the same ethertype -- re-running with the new group's policer
         // just updates which policer name that ethertype resolves to.
         uint32_t vpp_policer_index = (uint32_t)~0;
