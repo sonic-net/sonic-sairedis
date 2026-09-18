@@ -24,6 +24,8 @@
 
 #include <chrono>
 #include <thread>
+#include <fstream>
+#include <cstdlib>
 
 #include "swss/table.h"
 
@@ -371,6 +373,67 @@ TEST(Syncd, asyncRecIgnoredWhenContextConfigDisablesZmq)
 }
 
 using namespace syncd;
+
+class SyncdWarmBootStateTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        char tmpl[] = "/tmp/syncd_warmboot_XXXXXX";
+
+        ASSERT_NE(mkdtemp(tmpl), nullptr);
+
+        m_dir = tmpl;
+    }
+
+    void TearDown() override
+    {
+        std::string cmd = "rm -rf " + m_dir;
+
+        ASSERT_EQ(system(cmd.c_str()), 0);
+    }
+
+    std::string m_dir;
+};
+
+TEST_F(SyncdWarmBootStateTest, missingPathHasNoState)
+{
+    EXPECT_FALSE(Syncd::hasWarmBootState((m_dir + "/does-not-exist").c_str()));
+}
+
+TEST_F(SyncdWarmBootStateTest, emptyDirectoryHasNoState)
+{
+    EXPECT_FALSE(Syncd::hasWarmBootState(m_dir.c_str()));
+}
+
+TEST_F(SyncdWarmBootStateTest, emptyFileHasNoState)
+{
+    std::string file = m_dir + "/sai-warmboot.bin";
+
+    std::ofstream(file).close();
+
+    EXPECT_FALSE(Syncd::hasWarmBootState(file.c_str()));
+}
+
+TEST_F(SyncdWarmBootStateTest, populatedFileHasState)
+{
+    std::string file = m_dir + "/sai-warmboot.bin";
+
+    std::ofstream ofs(file);
+    ofs << "warm boot state";
+    ofs.close();
+
+    EXPECT_TRUE(Syncd::hasWarmBootState(file.c_str()));
+}
+
+TEST_F(SyncdWarmBootStateTest, directoryWithFileHasState)
+{
+    std::ofstream ofs(m_dir + "/sai-warmboot.bin");
+    ofs << "warm boot state";
+    ofs.close();
+
+    EXPECT_TRUE(Syncd::hasWarmBootState(m_dir.c_str()));
+}
 
 #ifdef MOCK_METHOD
 class MockSelectableChannel : public sairedis::SelectableChannel {
