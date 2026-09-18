@@ -900,6 +900,7 @@ namespace saivs
             std::map<sai_object_id_t, std::list<std::string>> m_acl_tbl_hw_ports_map;
             std::map<sai_object_id_t, uint32_t> m_acl_swindex_map;
             std::map<sai_object_id_t, uint32_t> m_tunterm_acl_swindex_map;
+            std::map<sai_object_id_t, uint32_t> m_acl_deferred_mirror_count_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_mbr_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
@@ -947,6 +948,8 @@ namespace saivs
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
+            uint32_t m_acl_deferred_mirror_count = 0;
+            bool m_acl_egress_mirror_feature_enabled = false;
 
         protected: // VPP
 
@@ -972,6 +975,10 @@ namespace saivs
 
             sai_status_t AclTblRemove(
                     _In_ sai_object_id_t tbl_oid);
+
+            sai_status_t commitAclDeferredMirrorCount(
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ uint32_t deferred_mirror_count);
 
             sai_status_t AclAddRemoveCheck(
                     _In_ sai_object_id_t tbl_oid);
@@ -1023,8 +1030,26 @@ namespace saivs
                     _In_ sai_object_id_t tbl_oid,
                     _In_ acl_tbl_entries_t *aces,
                     _In_ std::list<ordered_ace_list_t> &ordered_aces,
+                    _In_ bool table_has_v4,
+                    _In_ bool table_has_v6,
                     _Out_ std::list<vpp_acl_rule_t> &acl_rules,
-                    _Out_ std::list<vpp_tunterm_acl_rule_t> &tunterm_acl_rules);
+                    _Out_ std::list<vpp_tunterm_acl_rule_t> &tunterm_acl_rules,
+                    _Out_ uint32_t &deferred_mirror_count);
+
+            /**
+             * @brief Determines the IP address family/families an ACL table matches on.
+             *
+             * Used to give an address-less rule the correct family, since VPP
+             * classifies a rule as IPv4 or IPv6 from its prefix alone.
+             *
+             * @param[in] tbl_oid ACL table object ID.
+             * @param[out] has_v4 Set true if the table matches on IPv4 fields.
+             * @param[out] has_v6 Set true if the table matches on IPv6 fields.
+             */
+            void acl_table_get_ip_version(
+                    _In_ sai_object_id_t tbl_oid,
+                    _Out_ bool &has_v4,
+                    _Out_ bool &has_v6);
 
             /**
              * @brief Creates or replaces the provided ACL in VS.
@@ -1132,6 +1157,19 @@ namespace saivs
                     _In_ sai_acl_entry_attr_t attr_id,
                     _In_ const sai_attribute_value_t *value,
                     _In_ vpp_tunterm_acl_rule_t *rule);
+
+            /**
+             * @brief Updates an ACE field for a regular VPP ACL rule.
+             *
+             * @param[in] attr_id The ID of the SAI attribute to be updated.
+             * @param[in] value Pointer to the SAI attribute value.
+             * @param[out] rule Pointer to the ACL rule to be updated.
+             * @return SAI_STATUS_SUCCESS on success, or an appropriate error code otherwise.
+             */
+            sai_status_t acl_rule_field_update(
+                    _In_ sai_acl_entry_attr_t attr_id,
+                    _In_ const sai_attribute_value_t *value,
+                    _Out_ vpp_acl_rule_t *rule);
 
             /**
              * @brief Binds or unbinds a tunnel termination ACL table to/from an interface.
@@ -1487,19 +1525,36 @@ namespace saivs
 
         private: // VPP mirror
             uint32_t m_mirror_session_count = 0;
-            uint16_t m_next_erspan_session_id = 1;  // currently unused; for Phase II (ERSPAN)
+
+            BitResourcePool m_erspan_session_id_pool{1024, 0};
+
+            // Names the greN interface, so it must never be reused: re-adding greN
+            // while VPP still tears down the old one corrupts its clib heap. Kept
+            // monotonic and independent of the recyclable ERSPAN session_id.
+            uint32_t m_next_gre_instance = 0;
 
             struct MirrorSessionInfo {
                 uint32_t sw_if_index;
-
-                // Fields for Phase II (ERSPAN) support; currently unused
                 bool is_erspan;
                 vpp_ip_addr_t src_ip;
                 vpp_ip_addr_t dst_ip;
                 uint16_t session_id;
+                uint32_t gre_instance; // GRE tunnel instance for erspan
+
+                // Pin state for the single monitor port MirrorOrch resolved, applied
+                // as a /32 host route so the encap does not follow mirror-dst ECMP.
+                bool monitor_pinned;          // true once a monitor pin is installed
+                sai_object_id_t monitor_port; // current SAI MONITOR_PORT oid
+                std::string monitor_hwif;     // VPP hwif of the pinned monitor port
+                sai_mac_t monitor_mac;        // current DST_MAC (nexthop L2 address)
+                sai_ip_address_t monitor_nh;  // resolved nexthop IP the /32 pin routes via
             };
 
             std::map<sai_object_id_t, MirrorSessionInfo> m_mirror_sessions;
+
+            // port oid -> (neighbor ip -> neighbor mac), maintained from SAI neighbor
+            // create/remove; resolves the monitor port's nexthop from DST_MAC.
+            std::map<sai_object_id_t, std::map<std::string, std::string>> m_port_neighbor_mac;
 
             struct PortMirrorBinding {
                 sai_object_id_t session_oid;
@@ -1512,17 +1567,39 @@ namespace saivs
             std::map<sai_object_id_t, PortMirrorBinding> m_port_mirror_bindings;
 
         protected:
-            sai_status_t createMirrorSession(
-                _In_ sai_object_id_t object_id,
-                _In_ sai_object_id_t switch_id,
-                _In_ uint32_t attr_count,
-                _In_ const sai_attribute_t *attr_list);
 
-            sai_status_t removeMirrorSession(_In_ sai_object_id_t object_id);
+            sai_status_t createMirrorSession(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeMirrorSession(
+                    _In_ sai_object_id_t object_id);
+
+            sai_status_t setMirrorSession(
+                    _In_ sai_object_id_t object_id,
+                    _In_ const sai_attribute_t *attr);
+
+            // Resolves the monitor port's nexthop IP from (monitor_port, DST_MAC).
+            bool resolveMonitorNexthop(
+                    _In_ sai_object_id_t monitor_port,
+                    _In_ const sai_mac_t mac,
+                    _Out_ sai_ip_address_t &nexthop);
+
+            // (Re)computes and installs the monitor pin, tearing down any previous one.
+            sai_status_t applyErspanMonitor(
+                    _In_ MirrorSessionInfo &info,
+                    _In_ sai_object_id_t monitor_port,
+                    _In_ const sai_mac_t mac);
+
+            // Installs or removes the /32 host route implementing the monitor pin.
+            sai_status_t pinErspanMonitor(
+                    _In_ MirrorSessionInfo &info,
+                    _In_ bool is_add);
 
             sai_status_t bindMirrorPort(
-                _In_ sai_object_id_t portId,
-                _In_ const sai_attribute_t* attr);
-
+                    _In_ sai_object_id_t portId,
+                    _In_ const sai_attribute_t* attr);
     };
 }
