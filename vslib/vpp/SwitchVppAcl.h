@@ -4,7 +4,12 @@
 extern "C" {
 #endif
 
-#define MAX_ACL_ATTRS 12
+/*
+ * Cap on the attributes read back per ACL entry. The attribute store is keyed
+ * by attribute name, so an entry above the cap loses attributes in name order,
+ * PRIORITY and TABLE_ID first. Keep it above the widest entry orchagent builds.
+ */
+#define MAX_ACL_ATTRS 20
 
 typedef struct _acl_tbl_entries_ {
     uint32_t priority;

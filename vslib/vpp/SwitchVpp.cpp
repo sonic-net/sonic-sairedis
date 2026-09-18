@@ -750,87 +750,6 @@ sai_status_t SwitchVpp::warm_update_queues()
     return SAI_STATUS_SUCCESS;
 }
 
-bool SwitchVpp::port_to_hostif_list(
-        _In_ sai_object_id_t port_id,
-        _Inout_ std::string& if_name)
-{
-    SWSS_LOG_ENTER();
-
-    // TODO to be removed and inlined
-
-    //sai_object_id_t switch_id = switchIdQuery(port_id);
-    //if (switch_id == SAI_NULL_OBJECT_ID) {
-    //return false;
-    //}
-    //auto it = m_switchStateMap.find(switch_id);
-    //if (it == m_switchStateMap.end()) {
-    //return false;
-    //}
-    //auto sw = it->second;
-    //if (sw == nullptr) {
-    //return false;
-    //}
-    //return(
-    return getTapNameFromPortId(port_id, if_name);
-}
-
-bool SwitchVpp::getTapNameFromPortOrLagId(
-        _In_ sai_object_id_t obj_id,
-        _Out_ std::string& if_name)
-{
-    SWSS_LOG_ENTER();
-
-    sai_object_type_t ot = objectTypeQuery(obj_id);
-
-    if (ot == SAI_OBJECT_TYPE_PORT)
-    {
-        return getTapNameFromPortId(obj_id, if_name);
-    }
-
-    if (ot == SAI_OBJECT_TYPE_LAG)
-    {
-        platform_bond_info_t bond_info;
-        sai_status_t status = get_lag_bond_info(obj_id, bond_info);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            return false;
-        }
-
-        std::ostringstream tap_stream;
-        tap_stream << "be" << bond_info.id;
-        if_name = tap_stream.str();
-
-        return true;
-    }
-
-    return false;
-}
-
-bool SwitchVpp::port_to_hwifname(
-        _In_ sai_object_id_t port_id,
-        _Inout_ std::string& if_name)
-{
-    SWSS_LOG_ENTER();
-
-    // TODO to be removed and inlined
-
-    // sai_object_id_t switch_id = switchIdQuery(port_id);
-    // if (switch_id == SAI_NULL_OBJECT_ID) {
-    // return false;
-    // }
-    // auto it = m_switchStateMap.find(switch_id);
-    // if (it == m_switchStateMap.end()) {
-    // return false;
-    // }
-    // auto sw = it->second;
-    // if (sw == nullptr) {
-    // return false;
-    // }
-
-    return vpp_get_hwif_name(port_id, 0, if_name);
-}
-
 void SwitchVpp::setPortStats(
         _In_ sai_object_id_t oid)
 {
@@ -838,9 +757,9 @@ void SwitchVpp::setPortStats(
 
     std::map<sai_stat_id_t, uint64_t> stats;
 
-    std::string if_name;
+    std::string if_name = m_ifaceRegistry.resolveHwIfName(oid, 0);
 
-    if (!port_to_hwifname(oid, if_name))
+    if (if_name.empty())
     {
         return;
     }
@@ -1285,8 +1204,18 @@ void SwitchVpp::processFdbEntriesForAging()
     while (!events.empty()) {
         const VppMacEvent &ev = events.front();
 
-        auto bd_it = m_swif_to_bdid.find(ev.sw_if_index);
-        if (bd_it == m_swif_to_bdid.end()) {
+        /*
+         * Bridge-domain membership is the drop gate: an event from an interface
+         * that is not in a BD is not a bridged MAC and must not reach ASIC_DB.
+         *
+         * Test hasBdId(), NEVER record existence. Every interface now has a
+         * permanent registry record from the moment it is created, so existence
+         * says nothing about BD membership -- gating on it would admit events
+         * for L3 interfaces that the old map deliberately rejected.
+         */
+        auto rec = m_ifaceRegistry.findBySwIfIndex(ev.sw_if_index);
+
+        if (!rec || !rec->hasBdId()) {
             SWSS_LOG_WARN("FDB: dropping MAC event for untracked sw_if_index %u "
                           "(action %u, MAC %02x:%02x:%02x:%02x:%02x:%02x); "
                           "VPP L2FIB will desync from ASIC_DB/STATE_DB",
@@ -1297,9 +1226,11 @@ void SwitchVpp::processFdbEntriesForAging()
             continue;
         }
 
+        uint32_t bd_id = rec->getBdId();
+
         VppFdbKey key;
         memcpy(key.mac, ev.mac, 6);
-        key.bd_id = bd_it->second;
+        key.bd_id = bd_id;
 
         switch (ev.action) {
         case VPP_MAC_ACTION_ADD:
@@ -1557,12 +1488,7 @@ sai_status_t SwitchVpp::create(
 
     if (object_type == SAI_OBJECT_TYPE_FDB_ENTRY)
     {
-        sai_status_t status = FdbEntryadd(serializedObjectId, switch_id, attr_count, attr_list);
-        if (status == SAI_STATUS_SUCCESS)
-        {
-            m_crmTracker.onFdbCreated();
-        }
-        return status;
+        return FdbEntryadd(serializedObjectId, switch_id, attr_count, attr_list);
     }
 
     if (object_type == SAI_OBJECT_TYPE_BFD_SESSION)
@@ -1604,6 +1530,10 @@ sai_status_t SwitchVpp::create(
         sai_status_t status = m_tunnel_mgr.create_l2_vxlan_tunnel(object_id, sw_if_index);
         SWSS_LOG_INFO("L2 VXLAN tunnel create for %s: status=%d sw_if_index=%u",
             serializedObjectId.c_str(), status, sw_if_index);
+
+        // Late-tunnel hook: install any L3 secondary-VTEP decap terms whose
+        // TUNNEL_MAP_ENTRY was created before this tunnel existed (M3).
+        m_tunnel_mgr.handle_l3_vxlan_tunnel_create(object_id);
         return status;
     }
 
@@ -1783,6 +1713,32 @@ sai_status_t SwitchVpp::createPort(
     return create_port_dependencies(object_id, attr_count, attr_list);
 }
 
+sai_status_t SwitchVpp::removePort(
+        _In_ sai_object_id_t objectId)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Deregister only after the base removal has succeeded: it can refuse with
+     * SAI_STATUS_OBJECT_IN_USE while the port still has active dependencies,
+     * and dropping the record for a port that is still present would break
+     * resolveHwIfName() and resolveTapName() for it.
+     */
+    CHECK_STATUS(SwitchStateBase::removePort(objectId));
+
+    /*
+     * Cascades to any sub-interfaces parented on this port -- tagged VLAN
+     * members and SUB_PORT RIFs -- mirroring VPP, which deletes them with their
+     * parent. Zero is the normal answer for a port that never had its lane list
+     * set, since that is what registers it in the first place.
+     */
+    auto removed = m_ifaceRegistry.removeByOid(objectId);
+
+    SWSS_LOG_INFO("removed port %s from interface registry (%zu records)",
+            sai_serialize_object_id(objectId).c_str(), removed);
+
+    return SAI_STATUS_SUCCESS;
+}
 
 sai_status_t SwitchVpp::remove(
         _In_ sai_object_type_t object_type,
@@ -1992,12 +1948,7 @@ sai_status_t SwitchVpp::remove(
     }
     else if (object_type == SAI_OBJECT_TYPE_FDB_ENTRY)
     {
-        sai_status_t status = FdbEntrydel(serializedObjectId);
-        if (status == SAI_STATUS_SUCCESS)
-        {
-            m_crmTracker.onFdbRemoved();
-        }
-        return status;
+        return FdbEntrydel(serializedObjectId);
     }
     else if (object_type == SAI_OBJECT_TYPE_BFD_SESSION)
     {
@@ -2012,6 +1963,18 @@ sai_status_t SwitchVpp::remove(
             m_crmTracker.onNhgRemoved();
         }
         return status;
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_TUNNEL)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+
+        // Defense in depth: sweep any L3 VNET decap terms this tunnel's VTEP owns
+        // before the SAI object and its DECAP_MAPPERS links are torn down, in case
+        // the TUNNEL is deleted while its TUNNEL_MAP_ENTRYs are still present.
+        m_tunnel_mgr.handle_l3_vxlan_tunnel_removal(object_id);
+        return remove_internal(object_type, serializedObjectId);
     }
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
@@ -2946,6 +2909,19 @@ sai_status_t SwitchVpp::refresh_read_only(
     if (meta->objecttype == SAI_OBJECT_TYPE_SWITCH &&
         m_crmTracker.handles((sai_switch_attr_t)meta->attrid))
     {
+        if (meta->attrid == SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY)
+        {
+            // FDB entries appear and disappear outside create()/remove(): MACs
+            // learned and aged by VPP are written straight into the object
+            // store, and a flush erases them there as well. Counting what is
+            // actually held is therefore the only way to stay in step with
+            // orchagent's crm_stats_fdb_entry_used, which also counts learned
+            // MACs and drops them on flush.
+            auto it = m_objectHash.find(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+            m_crmTracker.syncFdbCount(it == m_objectHash.end() ? 0 : (uint32_t)it->second.size());
+        }
+
         sai_attribute_t attr;
         attr.id = meta->attrid;
         attr.value.u32 = m_crmTracker.getAvailable((sai_switch_attr_t)meta->attrid);
@@ -2973,10 +2949,10 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
     }
     else
     {
-        std::string hwif_name;
+        std::string hwif_name = m_ifaceRegistry.resolveHwIfName(port_id, 0);
         uint32_t vpp_speed_kbps = 0;
 
-        if (vpp_get_hwif_name(port_id, 0, hwif_name) &&
+        if (!hwif_name.empty() &&
             vpp_get_interface_speed(hwif_name.c_str(), &vpp_speed_kbps) == 0 &&
             vpp_speed_kbps > 0)
         {
@@ -3001,29 +2977,4 @@ sai_status_t SwitchVpp::refresh_port_oper_speed(
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
     return SAI_STATUS_SUCCESS;
-}
-
-/*
- * Resolve a VPP sw_if_index to a SAI port OID via the 3-step lookup chain:
- * sw_if_index -> VPP hw interface name -> Linux tap/SONiC port name -> SAI port OID.
- * Returns SAI_NULL_OBJECT_ID on any lookup failure.
- */
-sai_object_id_t SwitchVpp::getPortIdFromSwIfIndex(uint32_t sw_if_index)
-{
-    SWSS_LOG_ENTER();
-    const char *hwifname = vpp_get_swif_name(sw_if_index);
-    if (!hwifname)
-    {
-        SWSS_LOG_WARN("FDB: cannot get hwif name for sw_if_index %u", sw_if_index);
-        return SAI_NULL_OBJECT_ID;
-    }
-
-    const char *tapname = hwif_to_tap_name(hwifname);
-    if (!tapname)
-    {
-        SWSS_LOG_WARN("FDB: cannot get tap name for hwif %s", hwifname);
-        return SAI_NULL_OBJECT_ID;
-    }
-
-    return getPortIdFromIfName(std::string(tapname));
 }
