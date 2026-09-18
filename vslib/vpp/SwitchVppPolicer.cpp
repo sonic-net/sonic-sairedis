@@ -75,13 +75,7 @@ sai_status_t SwitchVpp::createPolicer(
     return programPolicer(object_id, attr_count, attr_list, false /* is_replace */);
 }
 
-// Shared VPP-side programming for both createPolicer() (is_replace=false,
-// first-time create) and setPolicer() (is_replace=true, re-derive the full
-// config from the object hash and recreate at the same VPP policer_index --
-// VPP's policer_add has no true in-place update, so this deletes-then-
-// recreates, mirroring how SwitchVppAcl.cpp's acl_add_replace() handles any
-// ACE change). Never calls create_internal()/set_internal() itself; callers
-// own that.
+// Shared VPP-side programming for createPolicer() and setPolicer()
 sai_status_t SwitchVpp::programPolicer(
         _In_ sai_object_id_t object_id,
         _In_ uint32_t attr_count,
@@ -159,20 +153,10 @@ sai_status_t SwitchVpp::programPolicer(
 
     vpp_policer.type = vpp_policer_mode_from_sai(mode, has_pir, has_pbs);
 
-    // VPP policer names are unique keys in its policer table; derive one
-    // from the SAI OID so create/replace/del/dump can all address the same
-    // VPP object deterministically.
+    // VPP policer names are unique keys in its policer table
     snprintf(vpp_policer.name, sizeof(vpp_policer.name), "copp-policer-0x%lx",
             (unsigned long)object_id);
 
-    // Deferred (WD-timeout fix -- see enqueuePolicerProgramWork() in
-    // SwitchVpp.h): do NOT call vpp_policer_add_replace() synchronously here
-    // -- it is a blocking VAPI round-trip and this function is called
-    // directly from createPolicer()/setPolicer(), i.e. from inside a single
-    // watchdog-timed syncd SAI call. Confirmed live: a SAI_OBJECT_TYPE_POLICER
-    // create stalled past the 30s watchdog here. The real VAPI call now runs
-    // later, one item per call, from programPolicerNow() via
-    // serviceDeferredPolicerProgramWork().
     enqueuePolicerProgramWork({ object_id, vpp_policer, is_replace });
 
     SWSS_LOG_NOTICE("queued %s of VPP policer %s for SAI policer %s",
@@ -192,9 +176,7 @@ void SwitchVpp::programPolicerNow(
 
     vpp_policer_t vpp_policer = vpp_policer_in;
 
-    // On replace, pass in the existing VPP policer_index so
-    // vpp_policer_add_replace() deletes-then-recreates at the same
-    // tracked slot; on first create there is none yet.
+    // On replace, pass in the existing VPP policer_index
     uint32_t vpp_policer_index = (uint32_t)~0;
 
     if (is_replace)
@@ -214,12 +196,7 @@ void SwitchVpp::programPolicerNow(
                 is_replace ? "replace" : "create", sid.c_str(), vpp_policer.name, ret);
 
         // Config-plane bookkeeping already succeeded via create_internal()/
-        // set_internal() in createPolicer()/setPolicer() (matching the rest
-        // of saivpp's tolerant-of-dataplane-gaps posture); surface the
-        // dataplane failure via ERROR log but do not fail the SAI call, so
-        // config-only tests (test_verify_copp_configuration_cli) are not
-        // regressed by a VPP-side issue. This is deferred work anyway, so
-        // there is no SAI call left to fail at this point.
+        // set_internal() in createPolicer()/setPolicer()
         return;
     }
 
@@ -275,13 +252,7 @@ sai_status_t SwitchVpp::setPolicer(
 
     CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_POLICER, serializedObjectId, attr));
 
-    // VPP's policer_add has no true in-place update; re-derive the full
-    // policer config from the (now-updated) attribute store and
-    // recreate it via vpp_policer_add_replace(is_replace=true), which
-    // deletes-then-recreates at the same VPP policer_index slot tracking.
-    // This mirrors how SwitchVppAcl.cpp's acl_add_replace() re-derives and
-    // resubmits the whole ACL on any ACE change rather than patching VPP
-    // in place.
+    // VPP's policer_add has no true in-place update
     auto ait = m_objectHash.at(SAI_OBJECT_TYPE_POLICER).find(serializedObjectId);
 
     if (ait == m_objectHash.at(SAI_OBJECT_TYPE_POLICER).end())

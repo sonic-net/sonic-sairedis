@@ -450,20 +450,12 @@ typedef enum {
     extern int vpp_policer_del(uint32_t policer_index);
     extern int vpp_policer_get_counters(uint32_t policer_index, vpp_policer_counters_t *counters);
 
-    /* interface-output-arc ethertype -> policer binding (ARP/LACP/LLDP/
-     * UDLD/TTL_ERROR), part of sonic_ext. */
+    /* interface-output-arc ethertype -> policer binding */
     extern int vpp_sonic_ext_copp_ifout_bind(uint16_t ethertype,
             const char *policer_name, bool is_bind, bool match_ip4_ttl_expiring);
     extern int vpp_sonic_ext_copp_ifout_get_counters(uint16_t ethertype,
             uint64_t *conform_packets, uint64_t *exceed_packets, uint64_t *violate_packets);
 
-    /* ip4-punt-arc IP2ME address set + independently-keyed policer
-     * bindings (one per SAI trap group -- IP2ME/SNMP/SSH share the
-     * legacy address-match slot via vpp_sonic_ext_copp_ip2me_bind();
-     * BGP/BGPV6 get their own TCP-dst-port-179-match slot via
-     * vpp_sonic_ext_copp_ip2me_bind_bgp(), independent of IP2ME's --
-     * see copp_ip2me_node.c), part of sonic_ext (formerly the
-     * standalone copp_ip2me_policer plugin). */
     extern int vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add);
     extern int vpp_sonic_ext_copp_ip2me_bind(const char *policer_name, bool is_bind);
     extern int vpp_sonic_ext_copp_ip2me_bind_bgp(const char *policer_name, bool is_bind);
