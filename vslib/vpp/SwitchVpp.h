@@ -1073,7 +1073,7 @@ namespace saivs
             //
             // installTrapClassify()/uninstallTrapClassify() (used for EVERY
             // ethertype-keyed trap: ARP/LACP/LLDP/UDLD/TTL_ERROR/BGP/BGPV6/ND)
-            // call vpp_copp_punt_policer_bind() -- another blocking VAPI
+            // call vpp_sonic_ext_copp_ifout_bind() -- another blocking VAPI
             // round-trip under VPP_LOCK() against the same synchronous
             // control-plane socket -- synchronously from createHostifTrap(),
             // removeHostifTrap(), and setHostifTrapGroup(). Confirmed live: a
