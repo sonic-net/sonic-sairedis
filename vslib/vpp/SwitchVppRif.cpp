@@ -1209,6 +1209,12 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);
 
+    if (ret == 0 && vpp_ip_prefix.prefix_addr.sa_family == AF_INET)
+    {
+        vpp_sonic_ext_copp_ip2me_addr_add_del(
+                vpp_ip_prefix.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
+    }
+
     if (ret == 0)
     {
         if (is_add)
@@ -1383,7 +1389,84 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
         m_tunnel_mgr_ipip.retry_pending_unnumbered(ip_route.prefix_addr);
     }
 
+    if (ret == 0 && route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        vpp_sonic_ext_copp_ip2me_addr_add_del(
+                ip_route.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
+    }
+
     return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::enqueueTrapClassifyDeferredWork(TrapClassifyDeferredWork &&work)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_trap_classify_deferred_mutex);
+    m_trap_classify_deferred_queue.push_back(std::move(work));
+}
+
+void SwitchVpp::serviceDeferredTrapClassifyWork()
+{
+    SWSS_LOG_ENTER();
+    
+    TrapClassifyDeferredWork item;
+    bool haveItem = false;
+    {
+        std::lock_guard<std::mutex> lock(m_trap_classify_deferred_mutex);
+        if (!m_trap_classify_deferred_queue.empty())
+        {
+            item = std::move(m_trap_classify_deferred_queue.front());
+            m_trap_classify_deferred_queue.pop_front();
+            haveItem = true;
+        }
+    }
+
+    if (!haveItem)
+    {
+        return;
+    }
+
+    if (item.is_install)
+    {
+        installTrapClassifyNow(item.trap_oid, item.trap, item.vpp_policer_index);
+    }
+    else
+    {
+        uninstallTrapClassifyNow(item.trap_oid, item.trap);
+    }
+}
+
+void SwitchVpp::enqueuePolicerProgramWork(PolicerProgramDeferredWork &&work)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_policer_program_deferred_mutex);
+    m_policer_program_deferred_queue.push_back(std::move(work));
+}
+
+void SwitchVpp::serviceDeferredPolicerProgramWork()
+{
+    SWSS_LOG_ENTER();
+
+    PolicerProgramDeferredWork item;
+    bool haveItem = false;
+    {
+        std::lock_guard<std::mutex> lock(m_policer_program_deferred_mutex);
+        if (!m_policer_program_deferred_queue.empty())
+        {
+            item = std::move(m_policer_program_deferred_queue.front());
+            m_policer_program_deferred_queue.pop_front();
+            haveItem = true;
+        }
+    }
+
+    if (!haveItem)
+    {
+        return;
+    }
+
+    programPolicerNow(item.object_id, item.vpp_policer, item.is_replace);
 }
 
 sai_status_t SwitchVpp::vpp_add_lpb_intf_ip_addr (
