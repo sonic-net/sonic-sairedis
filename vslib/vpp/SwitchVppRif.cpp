@@ -1866,7 +1866,6 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     int ret = vpp_get_vrf_id(osif_name.c_str(), &vrf_id);
 
     vpp_add_ip_vrf(vrf_obj_id, vrf_id);
-    enqueueIp2meDeferredWork({ Ip2meDeferredOp::REGISTER_L3_INTERFACE, parent_hwif, "" });
     if (ret == 0 && vrf_id != 0) {
         SWSS_LOG_NOTICE("Setting interface vrf on hwif_name %s", parent_hwif.c_str());
         set_interface_vrf(parent_hwif.c_str(), vlan_id, vrf_id, false);
