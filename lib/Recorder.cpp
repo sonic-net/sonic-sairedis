@@ -7,10 +7,12 @@
 
 #include <unistd.h>
 #include <inttypes.h>
+#include <pthread.h>
 
 #include <cstring>
 #include <vector>
 #include <fstream>
+#include <chrono>
 
 using namespace sairedis;
 using namespace saimeta;
@@ -41,7 +43,7 @@ Recorder::~Recorder()
 {
     SWSS_LOG_ENTER();
 
-    stopRecording();
+    stopWorker();
 }
 
 bool Recorder::setRecordingOutputDirectory(
@@ -168,17 +170,27 @@ void Recorder::recordLine(
 {
     MUTEX();
 
-    SWSS_LOG_ENTER();
-
-    if (!m_enabled)
+    if (!m_enabled || !m_workerRunning)
     {
         return;
     }
 
-    if (m_ofstream.is_open())
+    std::string ts = getTimestamp();
+
+    if (m_queue.size() >= QUEUE_CAPACITY)
     {
-        m_ofstream << getTimestamp() << "|" << line << std::endl;
+        m_droppedCount++;
+        return;
     }
+
+    if (m_droppedCount > 0)
+    {
+        m_queue.push({RecordEntry::DATA, ts + "|#|dropped " + std::to_string(m_droppedCount) + " entries"});
+        m_droppedCount = 0;
+    }
+
+    m_queue.push({RecordEntry::DATA, ts + "|" + line});
+    m_cv.notify_one();
 }
 
 void Recorder::requestLogRotate()
@@ -198,22 +210,12 @@ void Recorder::recordingFileReopen()
 
     SWSS_LOG_ENTER();
 
-    m_ofstream.close();
-
-    /*
-     * On log rotate we will use the same file name, we are assuming that
-     * logrotate daemon move filename to filename.1 and we will create new
-     * empty file here.
-     */
-
     m_recordingFile = m_recordingOutputDirectory + "/" + m_recordingFileName;
 
-    m_ofstream.open(m_recordingFile, std::ofstream::out | std::ofstream::app);
-
-    if (!m_ofstream.is_open())
+    if (m_workerRunning)
     {
-        SWSS_LOG_ERROR("failed to open recording file %s: %s", m_recordingFile.c_str(), strerror(errno));
-        return;
+        m_queue.push({RecordEntry::ROTATE, m_recordingFile});
+        m_cv.notify_one();
     }
 }
 
@@ -223,16 +225,7 @@ void Recorder::startRecording()
 
     m_recordingFile = m_recordingOutputDirectory + "/" + m_recordingFileName;
 
-    {
-        MUTEX();
-        m_ofstream.open(m_recordingFile, std::ofstream::out | std::ofstream::app);
-
-        if (!m_ofstream.is_open())
-        {
-            SWSS_LOG_ERROR("failed to open recording file %s: %s", m_recordingFile.c_str(), strerror(errno));
-            return;
-        }
-    }
+    startWorker();
 
     recordLine("#|recording on: " + m_recordingFile);
 
@@ -241,18 +234,11 @@ void Recorder::startRecording()
 
 void Recorder::stopRecording()
 {
-    MUTEX();
-
     SWSS_LOG_ENTER();
 
     SWSS_LOG_NOTICE("stopped recording");
 
-    if (m_ofstream.is_open())
-    {
-        m_ofstream.close();
-
-        SWSS_LOG_NOTICE("closed recording file: %s", m_recordingFileName.c_str());
-    }
+    stopWorker();
 }
 
 std::string Recorder::getTimestamp()
@@ -272,6 +258,160 @@ std::string Recorder::getTimestamp()
     snprintf(&buffer[size], 32, "%06ld", tv.tv_usec);
 
     return std::string(buffer);
+}
+
+void Recorder::startWorker()
+{
+    SWSS_LOG_ENTER();
+
+    if (m_workerRunning)
+    {
+        stopWorker();
+    }
+
+    m_workerRunning = true;
+
+    {
+        MUTEX();
+        m_queue.push({RecordEntry::OPEN, m_recordingFile});
+    }
+
+    m_worker = std::thread(&Recorder::workerLoop, this);
+}
+
+void Recorder::stopWorker()
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_workerRunning)
+    {
+        return;
+    }
+
+    {
+        MUTEX();
+        m_droppedCount = 0;
+        m_queue.push({RecordEntry::STOP, ""});
+    }
+
+    m_workerRunning = false;
+    m_cv.notify_one();
+
+    if (m_worker.joinable())
+    {
+        m_worker.join();
+    }
+}
+
+void Recorder::workerLoop()
+{
+    pthread_setname_np(pthread_self(), "rec_writer");
+
+    auto lastFlush = std::chrono::steady_clock::now();
+
+    while (true)
+    {
+        std::vector<RecordEntry> batch;
+
+        {
+            std::unique_lock<std::mutex> lk(m_mutex);
+
+            m_cv.wait_for(lk, std::chrono::seconds(1),
+                    [this]{ return !m_queue.empty() || !m_workerRunning; });
+
+            while (!m_queue.empty())
+            {
+                batch.push_back(std::move(m_queue.front()));
+                m_queue.pop();
+            }
+        }
+
+        if (batch.empty())
+        {
+            if (m_ofstream.is_open())
+            {
+                m_ofstream.flush();
+                lastFlush = std::chrono::steady_clock::now();
+            }
+
+            if (!m_workerRunning)
+            {
+                break;
+            }
+
+            continue;
+        }
+
+        for (auto& entry : batch)
+        {
+            switch (entry.type)
+            {
+                case RecordEntry::DATA:
+                    if (m_ofstream.is_open())
+                    {
+                        m_ofstream << entry.payload << '\n';
+                    }
+                    break;
+
+                case RecordEntry::OPEN:
+                    if (m_ofstream.is_open())
+                    {
+                        m_ofstream.close();
+                    }
+
+                    m_ofstream.open(entry.payload, std::ofstream::out | std::ofstream::app);
+
+                    if (!m_ofstream.is_open())
+                    {
+                        SWSS_LOG_ERROR("failed to open recording file %s: %s",
+                                entry.payload.c_str(), strerror(errno));
+                    }
+                    break;
+
+                case RecordEntry::ROTATE:
+                    m_ofstream.close();
+                    m_ofstream.open(entry.payload, std::ofstream::out | std::ofstream::app);
+
+                    if (!m_ofstream.is_open())
+                    {
+                        SWSS_LOG_ERROR("failed to open recording file %s: %s",
+                                entry.payload.c_str(), strerror(errno));
+                    }
+                    else
+                    {
+                        m_ofstream.flush();
+                    }
+
+                    lastFlush = std::chrono::steady_clock::now();
+                    break;
+
+                case RecordEntry::STOP:
+                    if (m_ofstream.is_open())
+                    {
+                        m_ofstream.flush();
+                        m_ofstream.close();
+                    }
+                    return;
+            }
+        }
+
+        auto now = std::chrono::steady_clock::now();
+
+        if (now - lastFlush >= std::chrono::seconds(1))
+        {
+            if (m_ofstream.is_open())
+            {
+                m_ofstream.flush();
+                lastFlush = now;
+            }
+        }
+    }
+
+    if (m_ofstream.is_open())
+    {
+        m_ofstream.flush();
+        m_ofstream.close();
+    }
 }
 
 // SAI APIs record functions

@@ -12,6 +12,10 @@ extern "C" {
 #include <string>
 #include <fstream>
 #include <vector>
+#include <thread>
+#include <condition_variable>
+#include <queue>
+#include <atomic>
 
 #define SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(X,ot)   \
     void recordRemove(                                   \
@@ -460,5 +464,24 @@ namespace sairedis
             std::ofstream m_ofstream;
 
             std::mutex m_mutex;
+
+            struct RecordEntry
+            {
+                enum Type { DATA, ROTATE, OPEN, STOP };
+                Type type;
+                std::string payload;
+            };
+
+            static constexpr size_t QUEUE_CAPACITY = 65536;
+
+            void workerLoop();
+            void startWorker();
+            void stopWorker();
+
+            std::queue<RecordEntry> m_queue;
+            std::condition_variable m_cv;
+            std::thread m_worker;
+            std::atomic<bool> m_workerRunning{false};
+            uint64_t m_droppedCount = 0;
     };
 }
