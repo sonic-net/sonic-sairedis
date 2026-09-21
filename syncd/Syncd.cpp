@@ -47,6 +47,12 @@
 #define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
 #define SYNCD_ZMQ_RESPONSE_BUFFER_SIZE (128*1024*1024)
 
+// Number of ASIC objects written to redis database in a single bulk
+// call when saving temporary view as current view. Bulk write builds an
+// intermediate hash of the objects, so writing all of them at once at
+// route scale would cause a significant memory spike during warm boot.
+#define ASIC_STATE_BULK_WRITE_CHUNK_SIZE (10000u)
+
 using namespace syncd;
 using namespace saimeta;
 using namespace sairediscommon;
@@ -5936,6 +5942,13 @@ void Syncd::updateRedisDatabase(
     m_client->removeTempAsicStateTable();
 
     // Save temporary views as current view in redis database.
+    //
+    // Objects are written in bulk, since createAsicObject() issues a separate
+    // redis call per object attribute, which at route scale is the dominant
+    // cost of the whole warm boot APPLY_VIEW. Writing is done in chunks to keep
+    // the memory used by the intermediate hash bounded.
+
+    std::unordered_map<std::string, std::vector<swss::FieldValueTuple>> multiHash;
 
     for (auto& tv: temporaryViews)
     {
@@ -5954,8 +5967,23 @@ void Syncd::updateRedisDatabase(
                 entry.emplace_back(saiAttr->getStrAttrId(), saiAttr->getStrAttrValue());
             }
 
-            m_client->createAsicObject(obj->m_meta_key, entry);
+            // NOTE: key must be without table prefix, since createAsicObjects()
+            // is adding it internally
+
+            multiHash[sai_serialize_object_meta_key(obj->m_meta_key)] = std::move(entry);
+
+            if (multiHash.size() >= ASIC_STATE_BULK_WRITE_CHUNK_SIZE)
+            {
+                m_client->createAsicObjects(multiHash);
+
+                multiHash.clear();
+            }
         }
+    }
+
+    if (multiHash.size() > 0)
+    {
+        m_client->createAsicObjects(multiHash);
     }
 
     /*
