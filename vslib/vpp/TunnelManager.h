@@ -39,6 +39,7 @@ namespace saivs
         u_int16_t vlan_id = 0;
         sai_ip_address_t src_ip;
         sai_ip_address_t dst_ip;
+        bool decap_only = false;
     };
 
     /**

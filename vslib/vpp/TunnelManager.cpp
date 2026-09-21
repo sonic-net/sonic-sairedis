@@ -522,7 +522,7 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
     if (decap_only) {
         // Static L2 VXLAN decap endpoint (VXLAN_TUNNEL has ENCAP_SRC_IP only):
         // register a source-independent decap term; dst is an unused sentinel.
-        req.decap_any = true;
+        req.l2_decap_any = true;
         vxlan_decap_term_set_dst(req.src_address, req.dst_address);
     } else {
         sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.dst_address);
@@ -533,6 +533,7 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
     tunnel_data.dst_ip = dst_ip;
     tunnel_data.vlan_id = vlan_id;
     tunnel_data.ip_vrf = nullptr;
+    tunnel_data.decap_only = decap_only;
 
     if (create_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true) != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("Failed to create VPP VXLAN tunnel for VNI=%u", vni);
@@ -553,8 +554,13 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
     // learning that static MAC on the tunnel trips l2-learn's mac-move-violation
     // drop. Decap-only tunnels never encap back, so disable learning on the port
     // so the decapped frame is forwarded to the VLAN instead of dropped.
-    if (decap_only) {
-        set_sw_interface_l2_learn(tunnel_data.sw_if_index, false);
+    if (decap_only && set_sw_interface_l2_learn(tunnel_data.sw_if_index, false) != 0) {
+        SWSS_LOG_ERROR("Failed to disable learning on decap-only tunnel sw_if %u",
+                       tunnel_data.sw_if_index);
+        set_sw_interface_l2_bridge_by_index(
+            tunnel_data.sw_if_index, vlan_id, false, VPP_API_PORT_TYPE_NORMAL);
+        remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
+        return SAI_STATUS_FAILURE;
     }
 
     m_l2_tunnel_map[vni] = tunnel_data;
@@ -1127,9 +1133,16 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry_removal(
     req.instance = ~0;
     req.decap_next_index = ~0;
     sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.src_ip, req.src_address);
-    sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.dst_ip, req.dst_address);
+    if (tunnel_data.decap_only) {
+        vxlan_decap_term_set_dst(req.src_address, req.dst_address);
+    } else {
+        sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.dst_ip, req.dst_address);
+    }
 
-    remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
+    if (remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true) !=
+        SAI_STATUS_SUCCESS) {
+        return SAI_STATUS_FAILURE;
+    }
 
     SWSS_LOG_NOTICE("Removed L2 VXLAN tunnel VNI=%u on map entry deletion (sw_if=%u, VLAN=%u)",
         vni, tunnel_data.sw_if_index, tunnel_data.vlan_id);
@@ -1806,22 +1819,38 @@ sai_status_t TunnelManagerIpIp::create_ipip_tunnel_term(
     // Parse attributes from the tunnel term table entry
     sai_ip_address_t dst_ip;   // our local IP (packet destination = tunnel src)
     sai_ip_address_t src_ip;   // remote peer IP (packet source = tunnel dst)
+    sai_ip_address_t dst_ip_mask;
+    sai_ip_address_t src_ip_mask;
     sai_object_id_t tunnel_oid = SAI_NULL_OBJECT_ID;
     sai_object_id_t vr_oid = SAI_NULL_OBJECT_ID;
     int32_t term_type = SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2MP;
+    bool has_dst_ip = false;
     bool has_src_ip = false;
+    bool has_dst_ip_mask = false;
+    bool has_src_ip_mask = false;
 
     memset(&dst_ip, 0, sizeof(dst_ip));
     memset(&src_ip, 0, sizeof(src_ip));
+    memset(&dst_ip_mask, 0, sizeof(dst_ip_mask));
+    memset(&src_ip_mask, 0, sizeof(src_ip_mask));
 
     for (uint32_t i = 0; i < attr_count; i++) {
         switch (attr_list[i].id) {
             case SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP:
                 dst_ip = attr_list[i].value.ipaddr;
+                has_dst_ip = true;
                 break;
             case SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_SRC_IP:
                 src_ip = attr_list[i].value.ipaddr;
                 has_src_ip = true;
+                break;
+            case SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP_MASK:
+                dst_ip_mask = attr_list[i].value.ipaddr;
+                has_dst_ip_mask = true;
+                break;
+            case SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_SRC_IP_MASK:
+                src_ip_mask = attr_list[i].value.ipaddr;
+                has_src_ip_mask = true;
                 break;
             case SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_ACTION_TUNNEL_ID:
                 tunnel_oid = attr_list[i].value.oid;
@@ -1841,6 +1870,11 @@ sai_status_t TunnelManagerIpIp::create_ipip_tunnel_term(
         SWSS_LOG_ERROR("IpIp: missing tunnel id in tunnel term %s", serializedObjectId.c_str());
         return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
     }
+    if (!has_dst_ip) {
+        SWSS_LOG_ERROR("IpIp: missing local destination in tunnel term %s",
+                       serializedObjectId.c_str());
+        return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
+    }
 
     // Look up the referenced tunnel object from SaiObjectDB to read TTL/DSCP/ECN modes
     auto tunnel_db_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL,
@@ -1851,22 +1885,57 @@ sai_status_t TunnelManagerIpIp::create_ipip_tunnel_term(
         return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
-    // Map sai_tunnel_term_table_entry_type_t -> VPP IPIP tunnel mode.
-    // SAI P2MP term means "one local endpoint decapsulates traffic from many
-    // remote peers" -- this is decap-only and maps to VPP's MP2P mode, which
-    // (unlike MP / NBMA) does not require per-peer TEIB next-hops.
-    uint8_t vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP2P;
+    auto mask_is = [](const sai_ip_address_t& mask, uint8_t expected) {
+        const uint8_t *bytes;
+        size_t length;
+        if (mask.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
+            bytes = reinterpret_cast<const uint8_t *>(&mask.addr.ip4);
+            length = sizeof(mask.addr.ip4);
+        } else if (mask.addr_family == SAI_IP_ADDR_FAMILY_IPV6) {
+            bytes = mask.addr.ip6;
+            length = sizeof(mask.addr.ip6);
+        } else {
+            return false;
+        }
+        return std::all_of(bytes, bytes + length,
+                           [expected](uint8_t byte) { return byte == expected; });
+    };
+
+    bool source_is_any = !has_src_ip_mask ||
+        (src_ip_mask.addr_family == dst_ip.addr_family && mask_is(src_ip_mask, 0));
+    bool destination_is_exact = has_dst_ip_mask &&
+        dst_ip_mask.addr_family == dst_ip.addr_family && mask_is(dst_ip_mask, 0xff);
+
+    // VPP supports exact remote+local (P2P), or any remote to one exact local
+    // endpoint (MP2P). Reject SAI prefix shapes that would otherwise be widened.
+    uint8_t vpp_mode;
     switch (term_type) {
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2P:
+            if (!has_src_ip || src_ip.addr_family != dst_ip.addr_family) {
+                return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
+            }
             vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_P2P;
             break;
-        // P2MP, MP2P and MP2MP terms are all decap-only from the local
-        // endpoint's view (any remote source -> local dst). VPP's MP2P mode
-        // implements exactly that (wildcard dst, no per-peer TEIB). MP2MP is
-        // what SONiC subnet-decap uses for VNET IP-in-IP termination.
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2MP:
+            if (!source_is_any) {
+                SWSS_LOG_ERROR("IpIp: P2MP source prefixes are not supported");
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
+            vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP2P;
+            break;
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_MP2P:
+            if (!has_src_ip || src_ip.addr_family != dst_ip.addr_family ||
+                !destination_is_exact) {
+                SWSS_LOG_ERROR("IpIp: MP2P requires exact source and destination");
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
+            vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_P2P;
+            break;
         case SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_MP2MP:
+            if (!destination_is_exact || !source_is_any) {
+                SWSS_LOG_ERROR("IpIp: MP2MP requires exact destination and wildcard source");
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
             vpp_mode = IpIpTunnelVPPData::TUNNEL_API_MODE_MP2P;
             break;
         default:

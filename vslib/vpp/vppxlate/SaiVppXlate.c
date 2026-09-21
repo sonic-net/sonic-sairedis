@@ -4961,16 +4961,18 @@ int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, u32 *sw_if
     mp->vni = htonl(tunnel->vni);
     mp->is_l3 = tunnel->is_l3;
     {
-        /* SONiC VNET decap-any: signal a source-independent decap term by
-         * setting the high bit of the wire decap_next_index. Force a valid
-         * default next index if the caller left it unset (~0), so the bit is
-         * distinguishable and the stripped value stays valid in VPP. */
+        /* Signal source-independent decap in otherwise-unused high bits. */
         u32 dni = tunnel->decap_next_index;
-        if (tunnel->decap_any) {
+        if (tunnel->decap_any || tunnel->l2_decap_any) {
             if (dni == (u32)~0) {
                 dni = VPP_VXLAN_DECAP_NEXT_L2_INPUT;
             }
+        }
+        if (tunnel->decap_any) {
             dni |= VPP_VXLAN_DECAP_ANY_FLAG;
+        }
+        if (tunnel->l2_decap_any) {
+            dni |= VPP_VXLAN_L2_DECAP_ANY_FLAG;
         }
         mp->decap_next_index = htonl(dni);
     }
