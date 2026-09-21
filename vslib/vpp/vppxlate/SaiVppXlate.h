@@ -420,6 +420,8 @@ typedef enum {
     extern int vpp_acl_add_replace(vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace);
     extern int vpp_acl_del(uint32_t acl_index);
     extern int vpp_sonic_ext_egress_mirror_enable_disable(bool enable);
+    extern int vpp_sonic_ext_mirror_encap_fixup_enable_disable(uint32_t sw_if_index,
+				      uint16_t gre_protocol, uint8_t ttl, bool enable);
     extern int vpp_acl_interface_bind(const char *hwif_name, uint32_t acl_index,
 				      bool is_input);
     extern int vpp_acl_interface_unbind(const char *hwif_name, uint32_t acl_index,
@@ -541,16 +543,15 @@ typedef enum {
     extern int mpls_table_add_del(uint32_t table_id, bool is_add);
     extern int mpls_route_add_del(vpp_mpls_route_t *route, bool is_add);
 
-    /* GRE tunnel for ERSPAN */
+    /* GRE tunnel for mirror encap (stock TEB tunnel; the outer TTL and GRE
+     * ethertype override are applied by the sonic_ext mirror-encap-fixup node,
+     * not here). */
     typedef struct _vpp_gre_tunnel {
         vpp_ip_addr_t src;
         vpp_ip_addr_t dst;
         uint8_t type;           /* 0 = L3, 1 = TEB, 2 = ERSPAN */
-        uint16_t session_id;    /* ERSPAN session ID (0 - 1023) */
         uint32_t instance;
         uint32_t outer_table_id;
-        uint16_t gre_protocol;  /* GRE protocol/ethertype override, 0 = derive from type */
-        uint8_t ttl;            /* Outer IP TTL / hop-limit, 0 = VPP default */
     } vpp_gre_tunnel_t;
 
     extern int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, uint32_t *sw_if_index);

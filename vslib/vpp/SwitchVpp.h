@@ -1526,11 +1526,9 @@ namespace saivs
         private: // VPP mirror
             uint32_t m_mirror_session_count = 0;
 
-            BitResourcePool m_erspan_session_id_pool{1024, 0};
-
             // Names the greN interface, so it must never be reused: re-adding greN
             // while VPP still tears down the old one corrupts its clib heap. Kept
-            // monotonic and independent of the recyclable ERSPAN session_id.
+            // monotonic across the switch lifetime.
             uint32_t m_next_gre_instance = 0;
 
             struct MirrorSessionInfo {
@@ -1538,8 +1536,9 @@ namespace saivs
                 bool is_erspan;
                 vpp_ip_addr_t src_ip;
                 vpp_ip_addr_t dst_ip;
-                uint16_t session_id;
                 uint32_t gre_instance; // GRE tunnel instance for erspan
+                uint16_t gre_protocol; // ethertype stamped by the mirror-encap-fixup node
+                uint8_t ttl;           // exact outer TTL stamped by the fixup node
 
                 // Pin state for the single monitor port MirrorOrch resolved, applied
                 // as a /32 host route so the encap does not follow mirror-dst ECMP.

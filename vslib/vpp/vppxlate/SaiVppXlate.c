@@ -1866,15 +1866,26 @@ static void vl_api_add_node_next_reply_t_handler(
 }
 
 static void
-vl_api_gre_tunnel_add_del_v3_reply_t_handler(vl_api_gre_tunnel_add_del_v3_reply_t *msg)
+vl_api_gre_tunnel_add_del_v2_reply_t_handler(vl_api_gre_tunnel_add_del_v2_reply_t *msg)
 {
     set_reply_sw_if_index(ntohl(msg->sw_if_index));
 
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    if (retval) { SAIVPP_ERROR("gre_tunnel_add_del_v3 handler failed(%d)", retval); }
-    else { SAIVPP_INFO("gre_tunnel_add_del_v3 handler successful: if_idx,%d", ntohl(msg->sw_if_index)); }
+    if (retval) { SAIVPP_ERROR("gre_tunnel_add_del_v2 handler failed(%d)", retval); }
+    else { SAIVPP_INFO("gre_tunnel_add_del_v2 handler successful: if_idx,%d", ntohl(msg->sw_if_index)); }
+}
+
+static void
+vl_api_sonic_ext_mirror_encap_fixup_enable_disable_reply_t_handler(
+    vl_api_sonic_ext_mirror_encap_fixup_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (retval) { SAIVPP_ERROR("sonic_ext mirror encap fixup update failed(%d)", retval); }
+    else { SAIVPP_INFO("sonic_ext mirror encap fixup update successful"); }
 }
 
 #define vl_api_get_first_msg_id_reply_t_handler vl_noop_handler
@@ -2034,14 +2045,14 @@ static void vpp_ext_vpe_init(void)
 #undef _
 
 // no tojson/fromjson for gre
-vl_msg_api_set_handlers(GRE_MSG_ID(GRE_TUNNEL_ADD_DEL_V3_REPLY),
-                        "gre_tunnel_add_del_v3_reply",
-                        vl_api_gre_tunnel_add_del_v3_reply_t_handler,
+vl_msg_api_set_handlers(GRE_MSG_ID(GRE_TUNNEL_ADD_DEL_V2_REPLY),
+                        "gre_tunnel_add_del_v2_reply",
+                        vl_api_gre_tunnel_add_del_v2_reply_t_handler,
                         vl_noop_handler,
-                        vl_api_gre_tunnel_add_del_v3_reply_t_endian,
-                        sizeof(vl_api_gre_tunnel_add_del_v3_reply_t), 1,
+                        vl_api_gre_tunnel_add_del_v2_reply_t_endian,
+                        sizeof(vl_api_gre_tunnel_add_del_v2_reply_t), 1,
                         0, 0,
-                        vl_api_gre_tunnel_add_del_v3_reply_t_calc_size);
+                        vl_api_gre_tunnel_add_del_v2_reply_t_calc_size);
 }
 
 static void vl_api_lcp_itf_pair_add_del_reply_t_handler(vl_api_lcp_itf_pair_add_del_reply_t *msg)
@@ -2147,6 +2158,7 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(TUNTERM_MSG_ID(TUNTERM_ACL_DEL_REPLY), tunterm_acl_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_ADD_REPLACE_REPLY), tunterm_acl_add_replace_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_EGRESS_MIRROR_ENABLE_DISABLE_REPLY), sonic_ext_egress_mirror_enable_disable_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_MIRROR_ENCAP_FIXUP_ENABLE_DISABLE_REPLY), sonic_ext_mirror_encap_fixup_enable_disable_reply) \
     _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_V2_REPLY), sr_localsid_add_del_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
@@ -3585,6 +3597,36 @@ int vpp_sonic_ext_egress_mirror_enable_disable(bool enable)
 
     S (mp);
     WR (ret);
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_mirror_encap_fixup_enable_disable(uint32_t sw_if_index,
+				      uint16_t gre_protocol, uint8_t ttl, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_mirror_encap_fixup_enable_disable_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M (SONIC_EXT_MIRROR_ENCAP_FIXUP_ENABLE_DISABLE, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->gre_protocol = htons(gre_protocol);
+    mp->hop_limit = ttl;
+    mp->enable = enable;
+
+    S (mp);
+    WR (ret);
+
+    SAIVPP_INFO("sonic_ext mirror encap fixup: sw_if_index=%u gre_protocol=0x%04x ttl=%u enable=%d ret=%d",
+		sw_if_index, gre_protocol, ttl, enable, ret);
 
     VPP_UNLOCK();
 
@@ -6213,7 +6255,7 @@ int vpp_span_enable_disable(uint32_t sw_if_index_from, uint32_t sw_if_index_to, 
 int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, u32 *sw_if_index)
 {
     vat_main_t *vam = &vat_main;
-    vl_api_gre_tunnel_add_del_v3_t *mp;
+    vl_api_gre_tunnel_add_del_v2_t *mp;
     int ret;
     vpp_ip_addr_t *addr;
     vl_api_address_t *api_addr;
@@ -6222,15 +6264,12 @@ int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, u32 *sw_if_ind
 
     __plugin_msg_base = gre_msg_id_base;
 
-    M (GRE_TUNNEL_ADD_DEL_V3, mp);
+    M (GRE_TUNNEL_ADD_DEL_V2, mp);
 
     mp->is_add = is_add;
     mp->tunnel.type = tunnel->type;
-    mp->tunnel.session_id = htons(tunnel->session_id);
     mp->tunnel.instance = htonl(tunnel->instance);
     mp->tunnel.outer_table_id = htonl(tunnel->outer_table_id);
-    mp->tunnel.gre_protocol = htons(tunnel->gre_protocol);
-    mp->tunnel.hop_limit = tunnel->ttl;
 
     api_addr = &mp->tunnel.src;
     addr = &tunnel->src;
@@ -6266,7 +6305,7 @@ int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, u32 *sw_if_ind
     WR (ret);
 
     *sw_if_index = vam->sw_if_index;
-    SAIVPP_INFO("gre_add_del: is_add=%d type=%u session_id=%u instance=%u gre_protocol=0x%04x ttl=%u if_index=%d ret=%d", is_add, tunnel->type, tunnel->session_id, tunnel->instance, tunnel->gre_protocol, tunnel->ttl, vam->sw_if_index, ret);
+    SAIVPP_INFO("gre_add_del: is_add=%d type=%u instance=%u if_index=%d ret=%d", is_add, tunnel->type, tunnel->instance, vam->sw_if_index, ret);
 
     VPP_UNLOCK();
     return ret;

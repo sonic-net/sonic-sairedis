@@ -67,39 +67,28 @@ sai_status_t SwitchVpp::createMirrorSession(
             gre_protocol = value->u16;
         }
 
-        // Outer tunnel header TTL. Optional (SAI default 255).
+        // Outer tunnel header TTL. Optional (SAI default 255). The fixup node
+        // stamps this exact value, so reject 0 rather than black-hole every
+        // mirrored packet with an immediate TTL-expired drop.
         uint8_t session_ttl = 255;
         if (find_attrib_in_list(attr_count, attr_list, SAI_MIRROR_SESSION_ATTR_TTL, &value, &attr_index) == SAI_STATUS_SUCCESS) {
+            if (value->u8 == 0) {
+                SWSS_LOG_ERROR("Rejecting mirror session %s: TTL 0 would black-hole every mirrored packet", sid.c_str());
+                return SAI_STATUS_INVALID_ATTR_VALUE_0 + attr_index;
+            }
             session_ttl = value->u8;
-        }
-
-        int session_id = m_erspan_session_id_pool.alloc();
-        if (session_id < 0) {
-            SWSS_LOG_ERROR("ERSPAN session id pool exhausted (max 1024 in-flight sessions)");
-            return SAI_STATUS_INSUFFICIENT_RESOURCES;
         }
 
         vpp_gre_tunnel_t tunnel{};
         sai_ip_address_t_to_vpp_ip_addr_t(src_ip, tunnel.src);
         sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, tunnel.dst);
-        // ERSPAN (type 2) is the only VPP GRE type whose L2 delivery path forwards
-        // the ACL-injected clone. A non-zero gre_protocol tells the patched GRE
-        // plugin to emit plain GRE (flags=0, no type-II shim), which is what SONiC
-        // Everflow actually expects.
-        tunnel.type = 2;
-        tunnel.session_id = (uint16_t)session_id;
-        tunnel.gre_protocol = gre_protocol;
-        // The tunnel's underlay IP rewrite decrements the outer TTL once, so add
-        // one to land on the session-configured value on the wire.
-        if (session_ttl > 0 && session_ttl < 255) {
-            tunnel.ttl = (uint8_t)(session_ttl + 1);
-        } else {
-            tunnel.ttl = session_ttl;
-        }
+        // Stock TEB tunnel: its L2 delivery path forwards the ACL-injected clone.
+        // The outer TTL and the Everflow GRE ethertype are stamped later by the
+        // sonic-ext-mirror-encap-fixup node, so nothing is set on the tunnel here.
+        tunnel.type = 1;
 
-        // Must stay monotonic and independent of the recyclable session id: naming
-        // a new tunnel greN while VPP still tears down the old greN corrupts its
-        // interface-name hash.
+        // Must stay monotonic: naming a new tunnel greN while VPP still tears down
+        // the old greN corrupts its interface-name hash.
         tunnel.instance = m_next_gre_instance++;
         tunnel.outer_table_id = 0;
 
@@ -124,18 +113,17 @@ sai_status_t SwitchVpp::createMirrorSession(
             applyErspanMonitor(info, mon_value->oid, mac_value->mac);
         }
 
-        SWSS_LOG_NOTICE("Creating GRE mirror tunnel: type=%u session_id=%d instance=%u gre_protocol=0x%04x ttl=%u(session_ttl=%u)",
-            tunnel.type, session_id, tunnel.instance, gre_protocol, tunnel.ttl, session_ttl);
+        SWSS_LOG_NOTICE("Creating GRE mirror tunnel: type=%u instance=%u gre_protocol=0x%04x ttl=%u",
+            tunnel.type, tunnel.instance, gre_protocol, session_ttl);
         int ret = vpp_gre_tunnel_add_del(&tunnel, true, &gre_sw_if_index);
         if(ret != 0) {
             SWSS_LOG_ERROR("Failed to add GRE tunnel for ERSPAN session, ret=%d", ret);
             if(info.monitor_pinned) {
                 pinErspanMonitor(info, false);
             }
-            m_erspan_session_id_pool.free((uint32_t)session_id);
             return SAI_STATUS_FAILURE;
         }
-        SWSS_LOG_NOTICE("GRE mirror tunnel created: session_id=%d sw_if_index=%u", session_id, gre_sw_if_index);
+        SWSS_LOG_NOTICE("GRE mirror tunnel created: instance=%u sw_if_index=%u", gre_instance, gre_sw_if_index);
 
         // Set state by index rather than by name: the name lookup would need
         // refresh_interfaces_list(), whose repeated rebuild of VPP's interface-name
@@ -149,13 +137,26 @@ sai_status_t SwitchVpp::createMirrorSession(
             if(info.monitor_pinned) {
                 pinErspanMonitor(info, false);
             }
-            m_erspan_session_id_pool.free((uint32_t)session_id);
+            return SAI_STATUS_FAILURE;
+        }
+
+        // Stamp the exact outer TTL and Everflow GRE ethertype on the encapped
+        // copy: a stock TEB tunnel carries neither. Registered per tunnel
+        // sw_if_index and torn down with the session.
+        int fixup_ret = vpp_sonic_ext_mirror_encap_fixup_enable_disable(gre_sw_if_index, gre_protocol, session_ttl, true);
+        if(fixup_ret != 0) {
+            SWSS_LOG_ERROR("Failed to register mirror encap fixup on gre tunnel %s (sw_if_index %u), ret=%d", gre_ifname.c_str(), gre_sw_if_index, fixup_ret);
+            vpp_gre_tunnel_add_del(&tunnel, false, &gre_sw_if_index);
+            if(info.monitor_pinned) {
+                pinErspanMonitor(info, false);
+            }
             return SAI_STATUS_FAILURE;
         }
 
         info.sw_if_index = gre_sw_if_index;
         info.is_erspan = true;
-        info.session_id = (uint16_t)session_id;
+        info.gre_protocol = gre_protocol;
+        info.ttl = session_ttl;
         info.gre_instance = gre_instance;
     } else {
         SWSS_LOG_ERROR("Unsupported mirror session type %d", mirror_type);
@@ -168,22 +169,21 @@ sai_status_t SwitchVpp::createMirrorSession(
         // Tunnel-scoped locals are out of scope here, so rebuild the delete key
         // from info exactly as removeMirrorSession does.
         if(info.is_erspan) {
+            vpp_sonic_ext_mirror_encap_fixup_enable_disable(info.sw_if_index, 0, 0, false);
             if(info.monitor_pinned) {
                 pinErspanMonitor(info, false);
             }
             vpp_gre_tunnel_t tunnel{};
             tunnel.instance = info.gre_instance;
-            tunnel.type = 2;
+            tunnel.type = 1;
             tunnel.src = info.src_ip;
             tunnel.dst = info.dst_ip;
-            tunnel.session_id = info.session_id;
             tunnel.outer_table_id = 0;
             uint32_t sw_if_index = 0;
             int ret = vpp_gre_tunnel_add_del(&tunnel, false, &sw_if_index);
             if(ret != 0) {
                 SWSS_LOG_ERROR("Failed to remove GRE tunnel for ERSPAN session after SAI DB create failure, ret=%d", ret);
             }
-            m_erspan_session_id_pool.free((uint32_t)info.session_id);
         }
         return create_status;
     }
@@ -216,29 +216,28 @@ sai_status_t SwitchVpp::removeMirrorSession(
     MirrorSessionInfo &info = it->second;
 
     if(info.is_erspan) {
+        // Disable the fixup feature while the tunnel sw_if_index is still valid.
+        vpp_sonic_ext_mirror_encap_fixup_enable_disable(info.sw_if_index, 0, 0, false);
+
         // Drop the pin before tearing down the tunnel that stacks on it.
         if(info.monitor_pinned) {
             pinErspanMonitor(info, false);
         }
 
         vpp_gre_tunnel_t tunnel{};
-        // VPP keys the delete on (src, dst, fib, type, session_id), not instance.
+        // VPP keys the delete on (src, dst, fib, type), not instance.
         tunnel.instance = info.gre_instance;
-        tunnel.type = 2;
+        tunnel.type = 1;
         tunnel.src = info.src_ip;
         tunnel.dst = info.dst_ip;
-        tunnel.session_id = info.session_id;
         tunnel.outer_table_id = 0;
 
         uint32_t sw_if_index = 0;
         int ret = vpp_gre_tunnel_add_del(&tunnel, false, &sw_if_index);
         if(ret != 0) {
             // Not usefully retryable, so drop the entry anyway rather than leak.
-            SWSS_LOG_ERROR("Failed to remove GRE tunnel for ERSPAN session, ret=%d; freeing session id and dropping entry anyway", ret);
+            SWSS_LOG_ERROR("Failed to remove GRE tunnel for ERSPAN session, ret=%d; dropping entry anyway", ret);
         }
-
-        // After the delete attempt, so a re-alloc cannot collide with a live tunnel.
-        m_erspan_session_id_pool.free((uint32_t)info.session_id);
     }
 
     // Unprogram and erase any port mirror bindings that still reference this
@@ -449,6 +448,22 @@ sai_status_t SwitchVpp::setMirrorSession(
             // Neighbor MAC changed; re-resolve against the current monitor port.
             applyErspanMonitor(info, info.monitor_port, attr->value.mac);
             SWSS_LOG_NOTICE("ERSPAN session %s dst mac updated", sid.c_str());
+        }
+        else if (attr->id == SAI_MIRROR_SESSION_ATTR_TTL)
+        {
+            if (attr->value.u8 == 0) {
+                SWSS_LOG_ERROR("Rejecting TTL 0 on mirror session %s: would black-hole every mirrored packet", sid.c_str());
+                return SAI_STATUS_INVALID_ATTR_VALUE_0;
+            }
+            info.ttl = attr->value.u8;
+            vpp_sonic_ext_mirror_encap_fixup_enable_disable(info.sw_if_index, info.gre_protocol, info.ttl, true);
+            SWSS_LOG_NOTICE("ERSPAN session %s ttl updated to %u", sid.c_str(), info.ttl);
+        }
+        else if (attr->id == SAI_MIRROR_SESSION_ATTR_GRE_PROTOCOL_TYPE)
+        {
+            info.gre_protocol = attr->value.u16;
+            vpp_sonic_ext_mirror_encap_fixup_enable_disable(info.sw_if_index, info.gre_protocol, info.ttl, true);
+            SWSS_LOG_NOTICE("ERSPAN session %s gre protocol updated to 0x%04x", sid.c_str(), info.gre_protocol);
         }
     }
 
