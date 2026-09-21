@@ -295,11 +295,6 @@
 #include <vpp_plugins/policer/policer.api.h>
 #undef vl_endianfun
 
-#define vl_print(handle, ...)        vlib_cli_output (handle, __VA_ARGS__)
-#define vl_printfun
-#include <vpp_plugins/policer/policer.api.h>
-#undef vl_printfun
-
 #define vl_calcsizefun
 #include <vpp_plugins/policer/policer.api.h>
 #undef vl_calcsizefun
@@ -2068,10 +2063,7 @@ static void vpp_base_vpe_init(void)
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_SESSION_REPLY), classify_add_del_session_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_SET_INTERFACE_L2_TABLES_REPLY), classify_set_interface_l2_tables_reply) \
     _(VLIB_API_MSG_ID(GET_NEXT_INDEX_REPLY), get_next_index_reply) \
-    _(VLIB_API_MSG_ID(ADD_NODE_NEXT_REPLY), add_node_next_reply) \
-    _(POLICER_MSG_ID(POLICER_ADD_REPLY), policer_add_reply) \
-    _(POLICER_MSG_ID(POLICER_DEL_REPLY), policer_del_reply) \
-    _(POLICER_MSG_ID(POLICER_DETAILS), policer_details)
+    _(VLIB_API_MSG_ID(ADD_NODE_NEXT_REPLY), add_node_next_reply)
 
 
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
@@ -2219,7 +2211,10 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
     _(MPLS_MSG_ID(SW_INTERFACE_SET_MPLS_ENABLE_REPLY), sw_interface_set_mpls_enable_reply) \
     _(MPLS_MSG_ID(MPLS_TABLE_ADD_DEL_REPLY), mpls_table_add_del_reply) \
-    _(MPLS_MSG_ID(MPLS_ROUTE_ADD_DEL_REPLY), mpls_route_add_del_reply)
+    _(MPLS_MSG_ID(MPLS_ROUTE_ADD_DEL_REPLY), mpls_route_add_del_reply) \
+    _(POLICER_MSG_ID(POLICER_ADD_REPLY), policer_add_reply) \
+    _(POLICER_MSG_ID(POLICER_DEL_REPLY), policer_del_reply) \
+    _(POLICER_MSG_ID(POLICER_DETAILS), policer_details)
 
 static void vpp_plugin_vpe_init(void)
 {
