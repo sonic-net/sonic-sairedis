@@ -12,9 +12,10 @@ extern "C" {
 #include <string>
 #include <fstream>
 #include <vector>
-#include <thread>
-#include <condition_variable>
 #include <queue>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 #include <atomic>
 
 #define SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(X,ot)   \
