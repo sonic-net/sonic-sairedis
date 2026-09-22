@@ -536,7 +536,6 @@ truthy
 glibc
 getopt
 optind
-<<<<<<< HEAD
 sid
 DBConnector
 SIGABRT
@@ -545,8 +544,6 @@ desync
 rebuildable
 jitter
 jittered
-=======
 diag
 poller
 PAI
->>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
