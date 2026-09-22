@@ -1890,19 +1890,29 @@ std::string sai_serialize_port_snr_list(
     return j.dump();
 }
 
+<<<<<<< HEAD
 std::string sai_serialize_port_ilt_lane_training_status_list(
         _In_ const sai_port_ilt_lane_training_status_list_t& status_list,
+=======
+std::string sai_serialize_port_pam4_eye_values_list(
+        _In_ const sai_port_pam4_eye_values_list_t& eye_list,
+>>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
         _In_ bool countOnly)
 {
     SWSS_LOG_ENTER();
 
     json j = json::object();
 
+<<<<<<< HEAD
     if (status_list.list == NULL || countOnly)
+=======
+    if (eye_list.list == NULL || countOnly)
+>>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
     {
         return j.dump();
     }
 
+<<<<<<< HEAD
     // Create dictionary format keyed by lane, with each training status by name
     for (uint32_t i = 0; i < status_list.count; ++i)
     {
@@ -1911,6 +1921,20 @@ std::string sai_serialize_port_ilt_lane_training_status_list(
         j[lane_key] = sai_serialize_enum(
                 static_cast<int32_t>(status_list.list[i].training_status),
                 &sai_metadata_enum_sai_port_ilt_lane_training_status_t);
+=======
+    // Per-lane PAM4 eye values: heights in mV, widths in psec (-1 = N/A)
+    for (uint32_t i = 0; i < eye_list.count; ++i)
+    {
+        const auto& eye = eye_list.list[i];
+        json lane_obj = json::object();
+        lane_obj["upper_ht"] = eye.upper_ht;
+        lane_obj["upper_wd"] = eye.upper_wd;
+        lane_obj["middle_ht"] = eye.middle_ht;
+        lane_obj["middle_wd"] = eye.middle_wd;
+        lane_obj["lower_ht"] = eye.lower_ht;
+        lane_obj["lower_wd"] = eye.lower_wd;
+        j[std::to_string(eye.lane)] = lane_obj;
+>>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
     }
 
     return j.dump();
@@ -2498,6 +2522,9 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             return sai_serialize_port_snr_list(attr.value.portsnrlist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_PORT_PAM4_EYE_VALUES_LIST:
+            return sai_serialize_port_pam4_eye_values_list(attr.value.portpam4eyevalues, countOnly);
 
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
             return sai_serialize_taps_list(attr.value.portserdestaps, countOnly);
@@ -4897,41 +4924,64 @@ void sai_deserialize_port_snr_list(
     }
 }
 
+<<<<<<< HEAD
 void sai_deserialize_port_ilt_lane_training_status_list(
         _In_ const std::string& s,
         _Out_ sai_port_ilt_lane_training_status_list_t& status_list,
+=======
+void sai_deserialize_port_pam4_eye_values_list(
+        _In_ const std::string& s,
+        _Out_ sai_port_pam4_eye_values_list_t& eye_list,
+>>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
         _In_ bool countOnly)
 {
     SWSS_LOG_ENTER();
 
+<<<<<<< HEAD
     // Entries are collected here first so that a malformed lane key or training
     // status, both of which throw, cannot leak a partially populated list.
 
     sai_ilt_lane_training_status_t *list = NULL;
 
+=======
+>>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
     try
     {
         json j = json::parse(s);
 
         if (j.empty() || !j.is_object())
         {
+<<<<<<< HEAD
             status_list.count = 0;
             status_list.list = NULL;
             return;
         }
 
         status_list.count = static_cast<uint32_t>(j.size());
+=======
+            eye_list.count = 0;
+            eye_list.list = NULL;
+            return;
+        }
+
+        eye_list.count = static_cast<uint32_t>(j.size());
+>>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
 
         if (countOnly)
         {
             return;
         }
 
+<<<<<<< HEAD
         list = sai_alloc_n_of_ptr_type(status_list.count, list);
+=======
+        eye_list.list = sai_alloc_n_of_ptr_type(eye_list.count, eye_list.list);
+>>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
 
         uint32_t idx = 0;
         for (auto it = j.begin(); it != j.end(); ++it, ++idx)
         {
+<<<<<<< HEAD
             // Populate defaults first so a rejected entry never leaves this
             // element uninitialized for the caller.
             list[idx].lane = static_cast<uint32_t>(std::stoul(it.key()));
@@ -4968,6 +5018,35 @@ void sai_deserialize_port_ilt_lane_training_status_list(
         delete[] list;
         status_list.count = 0;
         status_list.list = NULL;
+=======
+            if (!it.value().is_object())
+            {
+                SWSS_LOG_ERROR("Invalid PAM4 eye value type for lane %s", it.key().c_str());
+                continue;
+            }
+
+            const auto& lane_obj = it.value();
+            eye_list.list[idx].lane = static_cast<uint32_t>(std::stoul(it.key()));
+            eye_list.list[idx].upper_ht = lane_obj.value("upper_ht", 0);
+            eye_list.list[idx].upper_wd = lane_obj.value("upper_wd", -1);
+            eye_list.list[idx].middle_ht = lane_obj.value("middle_ht", 0);
+            eye_list.list[idx].middle_wd = lane_obj.value("middle_wd", -1);
+            eye_list.list[idx].lower_ht = lane_obj.value("lower_ht", 0);
+            eye_list.list[idx].lower_wd = lane_obj.value("lower_wd", -1);
+        }
+    }
+    catch (const json::parse_error& e)
+    {
+        SWSS_LOG_ERROR("JSON parse error in sai_deserialize_port_pam4_eye_values_list: %s", e.what());
+        eye_list.count = 0;
+        eye_list.list = NULL;
+    }
+    catch (const std::exception& e)
+    {
+        SWSS_LOG_ERROR("Error in sai_deserialize_port_pam4_eye_values_list: %s", e.what());
+        eye_list.count = 0;
+        eye_list.list = NULL;
+>>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
     }
 }
 
@@ -5220,6 +5299,9 @@ void sai_deserialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             return sai_deserialize_port_snr_list(s, attr.value.portsnrlist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_PORT_PAM4_EYE_VALUES_LIST:
+            return sai_deserialize_port_pam4_eye_values_list(s, attr.value.portpam4eyevalues, countOnly);
 
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
             return sai_deserialize_taps_list(s, attr.value.portserdestaps, countOnly);
@@ -6689,6 +6771,10 @@ void sai_deserialize_free_attribute_value(
 
         case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             sai_free_list(attr.value.portsnrlist);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PORT_PAM4_EYE_VALUES_LIST:
+            sai_free_list(attr.value.portpam4eyevalues);
             break;
 
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:

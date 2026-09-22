@@ -330,8 +330,13 @@ std::string sai_serialize_port_snr_list(
         _In_ const sai_port_snr_list_t& snr_list,
         _In_ bool countOnly);
 
+<<<<<<< HEAD
 std::string sai_serialize_port_ilt_lane_training_status_list(
         _In_ const sai_port_ilt_lane_training_status_list_t& status_list,
+=======
+std::string sai_serialize_port_pam4_eye_values_list(
+        _In_ const sai_port_pam4_eye_values_list_t& eye_list,
+>>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
         _In_ bool countOnly);
 
 std::string sai_serialize_taps_list(
@@ -802,9 +807,15 @@ void sai_deserialize_port_snr_list(
         _Out_ sai_port_snr_list_t& snr_list,
         _In_ bool countOnly);
 
+<<<<<<< HEAD
 void sai_deserialize_port_ilt_lane_training_status_list(
         _In_ const std::string& s,
         _Out_ sai_port_ilt_lane_training_status_list_t& status_list,
+=======
+void sai_deserialize_port_pam4_eye_values_list(
+        _In_ const std::string& s,
+        _Out_ sai_port_pam4_eye_values_list_t& eye_list,
+>>>>>>> 784997e4 (NOS-10909: Support new gearbox attributes (#283))
         _In_ bool countOnly);
 
 void sai_deserialize_taps_list(
