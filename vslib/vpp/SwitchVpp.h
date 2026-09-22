@@ -1540,6 +1540,11 @@ namespace saivs
                 uint16_t gre_protocol; // ethertype stamped by the mirror-encap-fixup node
                 uint8_t ttl;           // exact outer TTL stamped by the fixup node
 
+                // FIB this session alone owns, used as the GRE tunnel's outer table so
+                // the collector host route can never collide with an orchagent route or
+                // with another session pointing at the same collector.
+                uint32_t outer_fib_id;
+
                 // Pin state for the single monitor port MirrorOrch resolved, applied
                 // as a /32 host route so the encap does not follow mirror-dst ECMP.
                 bool monitor_pinned;          // true once a monitor pin is installed
@@ -1550,6 +1555,9 @@ namespace saivs
             };
 
             std::map<sai_object_id_t, MirrorSessionInfo> m_mirror_sessions;
+
+            // Outer FIB ids currently handed out to ERSPAN sessions.
+            std::set<uint32_t> m_mirror_outer_fibs;
 
             // port oid -> (neighbor ip -> neighbor mac), maintained from SAI neighbor
             // create/remove; resolves the monitor port's nexthop from DST_MAC.
@@ -1592,10 +1600,20 @@ namespace saivs
                     _In_ sai_object_id_t monitor_port,
                     _In_ const sai_mac_t mac);
 
-            // Installs or removes the /32 host route implementing the monitor pin.
-            sai_status_t pinErspanMonitor(
+            // Writes the collector host route into the session's own outer FIB: via the
+            // pinned monitor nexthop when resolved, otherwise a deaggregation path that
+            // defers the lookup to the main FIB.
+            sai_status_t programErspanOuterRoute(
                     _In_ MirrorSessionInfo &info,
                     _In_ bool is_add);
+
+            // Reserves and creates the session's private outer FIB.
+            sai_status_t createErspanOuterFib(
+                    _In_ MirrorSessionInfo &info);
+
+            // Removes the collector route and releases the session's outer FIB.
+            void destroyErspanOuterFib(
+                    _In_ MirrorSessionInfo &info);
 
             sai_status_t bindMirrorPort(
                     _In_ sai_object_id_t portId,

@@ -2237,6 +2237,18 @@ sai_status_t SwitchVpp::set(
         return setMirrorSession(objectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_NEIGHBOR_ENTRY
+            && attr != nullptr
+            && attr->id == SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS
+            && is_ip_nbr_active())
+    {
+        // Re-program the adjacency and refresh m_port_neighbor_mac; without this
+        // the ERSPAN monitor pin would keep resolving against the stale MAC.
+        CHECK_STATUS(addRemoveIpNbr(serializedObjectId, 1, attr, true));
+
+        // Fall through to set_internal() below so the attribute is also cached
+    }
+
     if (objectType == SAI_OBJECT_TYPE_LAG_MEMBER)
     {
         sai_object_id_t objectId;
