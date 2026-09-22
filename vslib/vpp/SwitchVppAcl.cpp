@@ -135,6 +135,8 @@ static void set_ipv6any_addr_mask (vpp_ip_addr_t *ip_addr)
 
 static bool vpp_ip_addr_family_is_set (const vpp_ip_addr_t *ip_addr)
 {
+    SWSS_LOG_ENTER();
+
     return ip_addr->sa_family == AF_INET || ip_addr->sa_family == AF_INET6;
 }
 
@@ -147,6 +149,8 @@ static bool vpp_ip_addr_family_is_set (const vpp_ip_addr_t *ip_addr)
  */
 static void normalize_rule_ip_family (vpp_acl_rule_t *rule)
 {
+    SWSS_LOG_ENTER();
+
     bool src_set = vpp_ip_addr_family_is_set(&rule->src_prefix);
     bool dst_set = vpp_ip_addr_family_is_set(&rule->dst_prefix);
 
