@@ -14,6 +14,7 @@ extern "C" {
 #include <unordered_map>
 #include <memory>
 #include <type_traits>
+#include <cstdint>
 
 // Placeholder type for attributes not requiring data allocation
 // Used as default template parameter for simple attributes
@@ -192,7 +193,9 @@ namespace syncd
                     _In_ swss::Table &countersTable);
 
             void runPlugins(
-                    _In_ swss::DBConnector& db);
+                    _In_ swss::DBConnector& db,
+                    _In_ int64_t cycleStartUs,
+                    _In_ int64_t collectUs);
 
             void startFlexCounterThread();
 
