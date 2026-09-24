@@ -212,8 +212,6 @@ static int l2_punt_classify_init()
         return -1;
     }
     if (!sonicExtFeatureEnabled("l2-trap-fixup")) {
-        /* Same end state as the node being absent: every session that would
-         * have used it is skipped by the ~0 guards below. */
         SWSS_LOG_NOTICE("l2_punt_classify_init: sonic-ext-l2-trap-fixup disabled in "
                         "startup.conf; tagged DHCP/ARP/IPv6-mcast broadcast "
                         "will not be punted");
