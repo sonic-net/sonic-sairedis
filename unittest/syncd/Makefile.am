@@ -25,6 +25,7 @@ tests_SOURCES = main.cpp \
 				TestPortStateChangeHandler.cpp \
 				TestSelectablesTracker.cpp \
 				TestWorkaround.cpp \
+				TestPortMapParser.cpp \
 				TestSyncd.cpp \
 				TestVendorSai.cpp \
 				TestFlowDump.cpp
