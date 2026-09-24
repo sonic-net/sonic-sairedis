@@ -24,8 +24,10 @@ struct NoAttrData {
 // Holds data storage for SAI PORT attribute API calls
 struct PortPhyAttributeData {
     std::vector<sai_port_lane_latch_status_t> rxSignalDetectData;
+    std::vector<sai_port_lane_latch_status_t> rxLockStatusData;
     std::vector<sai_port_lane_latch_status_t> fecAlignmentLockData;
     std::vector<sai_port_snr_values_t> rxSnrData;
+    std::vector<sai_port_pam4_lane_eye_values_t> pam4EyeValuesData;
 };
 
 // Holds data storage for SAI PORT_SERDES attribute API calls
@@ -36,6 +38,10 @@ struct PortPhySerdesAttributeData {
     // For SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST
     std::vector<std::vector<int32_t>> txFirTapsData;
     std::vector<sai_s32_list_t> txFirTapsList;
+
+    // For SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST
+    std::vector<std::vector<int32_t>> rxFfeTapsData;
+    std::vector<sai_s32_list_t> rxFfeTapsList;
 };
 
 namespace syncd

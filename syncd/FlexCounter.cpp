@@ -2402,12 +2402,26 @@ public:
         SWSS_LOG_ENTER();
     }
 
+    static bool isScalarPortPhyAttr(sai_port_attr_t attr_id)
+    {
+        SWSS_LOG_ENTER();
+
+        return attr_id == SAI_PORT_ATTR_ERROR_STATUS ||
+               attr_id == SAI_PORT_ATTR_PCS_RX_LINK_STATUS;
+    }
+
     bool initAttrForLaneCountQuery(sai_attribute_t& attr)
     {
         SWSS_LOG_ENTER();
 
+        if (isScalarPortPhyAttr(static_cast<sai_port_attr_t>(attr.id)))
+        {
+            return false;
+        }
+
         switch (attr.id) {
             case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+            case SAI_PORT_ATTR_RX_LOCK_STATUS:
             case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
                 attr.value.portlanelatchstatuslist.count = 0;
                 attr.value.portlanelatchstatuslist.list = nullptr;
@@ -2416,6 +2430,11 @@ public:
             case SAI_PORT_ATTR_RX_SNR:
                 attr.value.portsnrlist.count = 0;
                 attr.value.portsnrlist.list = nullptr;
+                return true;
+
+            case SAI_PORT_ATTR_PAM4_EYE_VALUES:
+                attr.value.portpam4eyevalues.count = 0;
+                attr.value.portpam4eyevalues.list = nullptr;
                 return true;
 
             default:
@@ -2429,11 +2448,15 @@ public:
 
         switch (attr.id) {
             case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+            case SAI_PORT_ATTR_RX_LOCK_STATUS:
             case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
                 return attr.value.portlanelatchstatuslist.count;
 
             case SAI_PORT_ATTR_RX_SNR:
                 return attr.value.portsnrlist.count;
+
+            case SAI_PORT_ATTR_PAM4_EYE_VALUES:
+                return attr.value.portpam4eyevalues.count;
 
             default:
                 return 0;
@@ -2490,6 +2513,11 @@ public:
             return false;
         }
 
+        if (isScalarPortPhyAttr(static_cast<sai_port_attr_t>(attr->id)))
+        {
+            return true;
+        }
+
         auto outer_it = m_portLaneCountMap.find(rid);
         if (outer_it == m_portLaneCountMap.end())
         {
@@ -2518,6 +2546,12 @@ public:
                 attr->value.portlanelatchstatuslist.list = data->rxSignalDetectData.data();
                 return true;
 
+            case SAI_PORT_ATTR_RX_LOCK_STATUS:
+                data->rxLockStatusData.resize(portLaneCount);
+                attr->value.portlanelatchstatuslist.count = portLaneCount;
+                attr->value.portlanelatchstatuslist.list = data->rxLockStatusData.data();
+                return true;
+
             case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
                 data->fecAlignmentLockData.resize(portLaneCount);
                 attr->value.portlanelatchstatuslist.count = portLaneCount;
@@ -2528,6 +2562,12 @@ public:
                 data->rxSnrData.resize(portLaneCount);
                 attr->value.portsnrlist.count = portLaneCount;
                 attr->value.portsnrlist.list = data->rxSnrData.data();
+                return true;
+
+            case SAI_PORT_ATTR_PAM4_EYE_VALUES:
+                data->pam4EyeValuesData.resize(portLaneCount);
+                attr->value.portpam4eyevalues.count = portLaneCount;
+                attr->value.portpam4eyevalues.list = data->pam4EyeValuesData.data();
                 return true;
 
             default:
@@ -2614,6 +2654,12 @@ public:
             SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
 
+            /*
+             * Get each attribute individually. Gearbox PAI may return
+             * ATTR_NOT_SUPPORTED for FEC_ALIGNMENT_LOCK when the FEC monitor
+             * is inactive; a bulk get then fails the whole object and drops
+             * working attrs (PAM4 eye, SNR, RX lock, etc.).
+             */
             for (size_t i = 0; i < attrIds.size(); i++)
             {
                 sai_attribute_t attr = {};
@@ -2627,28 +2673,28 @@ public:
                         attrIds[i], rid);
                     continue;
                 }
+
+                sai_status_t status = Base::m_vendorSai->get(
+                        Base::m_objectType,
+                        rid,
+                        1,
+                        &attr);
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to get port attr %d for VID 0x%" PRIx64 ", RID:0x%" PRIx64 ": %d",
+                            attrIds[i], vid, rid, status);
+                    continue;
+                }
+
                 attrs.push_back(attr);
             }
 
             if (attrs.empty())
             {
                 SWSS_LOG_WARN(
-                    "PORT_PHY_ATTR: No attributes could be initialized"
+                    "PORT_PHY_ATTR: No attributes could be collected"
                     " for RID:0x%" PRIx64 ", skipping object", rid);
-                continue;
-            }
-
-            // Collect attributes from SAI
-            sai_status_t status = Base::m_vendorSai->get(
-                    Base::m_objectType,
-                    rid,
-                    static_cast<uint32_t>(attrs.size()),
-                    attrs.data());
-
-            if (status != SAI_STATUS_SUCCESS)
-            {
-                SWSS_LOG_ERROR("Failed to get port attr for VID 0x%" PRIx64 ", RID:0x%" PRIx64 ": %d",
-                        vid, rid, status);
                 continue;
             }
 
@@ -2673,22 +2719,37 @@ public:
 
                 std::string attr_value;
 
-                // Latch attributes: Track changes, add timestamp/count per lane
-                if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST)
+                try
                 {
-                    // Compare current lane values with previous and update metadata
-                    updateLatchedLaneMetadata(vid, static_cast<sai_port_attr_t>(attrs[i].id), attrs[i]);
+                    // Scalar PCS latch: serialize by attr id so a metadata
+                    // type mismatch cannot skip or crash the poller thread.
+                    // Format matches sai_serialize_latch_status: "<changed>:<current>".
+                    if (attrs[i].id == SAI_PORT_ATTR_PCS_RX_LINK_STATUS ||
+                        meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_LATCH_STATUS)
+                    {
+                        const auto& ls = attrs[i].value.latchstatus;
+                        attr_value = std::string(ls.changed ? "true" : "false") + ":" +
+                                     (ls.current_status ? "true" : "false");
+                    }
+                    // Lane latch attributes: Track changes, add timestamp/count per lane
+                    else if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST)
+                    {
+                        updateLatchedLaneMetadata(vid, static_cast<sai_port_attr_t>(attrs[i].id), attrs[i]);
+                        attr_value = buildLatchStatusWithMetadata(vid, static_cast<sai_port_attr_t>(attrs[i].id), attrs[i]);
+                    }
+                    else
+                    {
+                        // Standard serialization for SNR and any other attributes
+                        attr_value = sai_serialize_attr_value(*meta, attrs[i]);
+                    }
+                }
+                catch (const std::exception& e)
+                {
+                    SWSS_LOG_ERROR("PORT_PHY_ATTR: serialize failed for attr %d VID 0x%" PRIx64 ": %s",
+                            attrs[i].id, vid, e.what());
+                    continue;
+                }
 
-                    // Serialize with timestamp and count per lane
-                    attr_value = buildLatchStatusWithMetadata(vid, static_cast<sai_port_attr_t>(attrs[i].id), attrs[i]);
-                }
-                else
-                {
-                    // Standard serialization for SNR and any other attributes
-                    attr_value = sai_serialize_attr_value(*meta, attrs[i]);
-                }
-                // Use hset to set each field individually to avoid race conditions
-                // with PortSerdesAttrContext writing to the same table
                 portPhyAttrTable.hset(vid_str, it->second, attr_value, "");
             }
         }
@@ -2813,7 +2874,11 @@ private:
 const std::unordered_map<sai_port_attr_t, std::string> PortPhyAttrContext::m_attrAliases = {
     {SAI_PORT_ATTR_RX_SNR, "rx_snr"},
     {SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK, "pcs_fec_lane_alignment_lock"},
-    {SAI_PORT_ATTR_RX_SIGNAL_DETECT, "phy_rx_signal_detect"}
+    {SAI_PORT_ATTR_RX_SIGNAL_DETECT, "phy_rx_signal_detect"},
+    {SAI_PORT_ATTR_RX_LOCK_STATUS, "rx_lock_status"},
+    {SAI_PORT_ATTR_PAM4_EYE_VALUES, "pam4_eye_values"},
+    {SAI_PORT_ATTR_ERROR_STATUS, "error_status"},
+    {SAI_PORT_ATTR_PCS_RX_LINK_STATUS, "pcs_rx_link_status"},
 };
 
 
@@ -2951,9 +3016,9 @@ public:
         SWSS_LOG_ENTER();
 
         std::vector<sai_port_serdes_attr_t> countAttrs = {
-            SAI_PORT_SERDES_ATTR_TX_FIR_COUNT
+            SAI_PORT_SERDES_ATTR_TX_FIR_COUNT,
+            SAI_PORT_SERDES_ATTR_RX_FFE_COUNT,
             // enable the below attrs when implemented.
-            //SAI_PORT_SERDES_ATTR_RX_FFE_COUNT,
             //SAI_PORT_SERDES_ATTR_RX_DFE_COUNT
         };
 
@@ -3055,6 +3120,38 @@ public:
                 return true;
             }
 
+            case SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST:
+            {
+                auto count_it = m_portSerdesTapsCountMap.find(rid);
+                if (count_it == m_portSerdesTapsCountMap.end())
+                {
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no serdes count attribute information", rid);
+                    return false;
+                }
+                auto& attrCountMap = count_it->second;
+                auto tap_it = attrCountMap.find(SAI_PORT_SERDES_ATTR_RX_FFE_COUNT);
+                if (tap_it == attrCountMap.end())
+                {
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: RX_FFE_COUNT not found for port_serdes_rid:0x%" PRIx64, rid);
+                    return false;
+                }
+                uint32_t tapCount = tap_it->second;
+
+                data->rxFfeTapsData.resize(tapCount);
+                data->rxFfeTapsList.resize(tapCount);
+
+                for (uint32_t i = 0; i < tapCount; i++)
+                {
+                    data->rxFfeTapsData[i].resize(laneCount);
+                    data->rxFfeTapsList[i].count = laneCount;
+                    data->rxFfeTapsList[i].list = data->rxFfeTapsData[i].data();
+                }
+
+                attr->value.portserdestaps.count = tapCount;
+                attr->value.portserdestaps.list = data->rxFfeTapsList.data();
+                return true;
+            }
+
             default:
                 SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: initAttrData: Unsupported attr-id : %d", attr->id);
                 return false;
@@ -3151,53 +3248,13 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-            std::vector<sai_attribute_t> attrs = {};
+            std::vector<sai_attribute_t> attrs(attrIds.size());
             PortPhySerdesAttributeData attrData;
 
             SWSS_LOG_DEBUG(
                 "PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes "
                 "with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                 attrIds.size(), vid, rid);
-
-            // Initialize attributes - only collect successfully initialized ones
-            for (size_t i = 0; i < attrIds.size(); i++)
-            {
-                sai_attribute_t attr = {};
-                attr.id = attrIds[i];
-                if (!initAttrData(rid, &attr, &attrData))
-                {
-                    SWSS_LOG_WARN(
-                        "PORT_PHY_SERDES_ATTR: Failed to initialize "
-                        "attribute %s for RID:0x%" PRIx64 ", "
-                        "skipping this attribute only",
-                        sai_serialize_port_serdes_attr(attrIds[i]).c_str(),
-                        rid);
-                    continue;
-                }
-                attrs.push_back(attr);
-            }
-
-            if (attrs.empty())
-            {
-                SWSS_LOG_WARN(
-                    "PORT_PHY_SERDES_ATTR: No attributes could be "
-                    "initialized for RID:0x%" PRIx64 ", "
-                    "skipping object", rid);
-                continue;
-            }
-
-            sai_status_t status = Base::m_vendorSai->get(
-                    Base::m_objectType,
-                    rid,
-                    static_cast<uint32_t>(attrs.size()),
-                    attrs.data());
-
-            if (status != SAI_STATUS_SUCCESS)
-            {
-                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes attr for VID 0x%" PRIx64 ", status: %d",
-                        vid, status);
-                continue;
-            }
 
             // Get port_vid from the map using port_serdes_rid
             auto port_it = m_portSerdesIdToPortIdMap.find(rid);
@@ -3209,8 +3266,72 @@ public:
 
             std::string port_vid_str = sai_serialize_object_id(port_it->second.port_vid);
 
-            for (size_t i = 0; i != attrs.size(); i++)
+            /*
+             * Get each serdes attribute individually. Gearbox PAI may fail one
+             * attr (e.g. TX FIR on an RX-only poll path historically, or a
+             * transient diag error) without meaning RX_FFE/RX_VGA are unusable.
+             */
+            for (size_t i = 0; i < attrIds.size(); i++)
             {
+                attrs[i].id = attrIds[i];
+                if (!initAttrData(rid, &attrs[i], &attrData))
+                {
+                    SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Failed to initialize attribute %s for RID:0x%" PRIx64 ", skipping attr",
+                                  sai_serialize_port_serdes_attr(attrIds[i]).c_str(), rid);
+                    continue;
+                }
+
+                sai_status_t status = Base::m_vendorSai->get(
+                        Base::m_objectType,
+                        rid,
+                        1,
+                        &attrs[i]);
+
+                /*
+                 * PAI may return BUFFER_OVERFLOW if tap/lane sizing differs from
+                 * our cached RX_FFE_COUNT / HW_LANE_LIST (e.g. COUNT answered
+                 * before lanes were known). Retry once with the reported size.
+                 */
+                if (status == SAI_STATUS_BUFFER_OVERFLOW &&
+                    (attrIds[i] == SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST ||
+                     attrIds[i] == SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST))
+                {
+                    uint32_t newTapCount = attrs[i].value.portserdestaps.count;
+                    if (newTapCount > 0)
+                    {
+                        m_portSerdesTapsCountMap[rid][
+                            (attrIds[i] == SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST)
+                                ? SAI_PORT_SERDES_ATTR_RX_FFE_COUNT
+                                : SAI_PORT_SERDES_ATTR_TX_FIR_COUNT] = newTapCount;
+                        if (initAttrData(rid, &attrs[i], &attrData))
+                        {
+                            status = Base::m_vendorSai->get(
+                                    Base::m_objectType, rid, 1, &attrs[i]);
+                        }
+                    }
+                }
+                else if (status == SAI_STATUS_BUFFER_OVERFLOW &&
+                         attrIds[i] == SAI_PORT_SERDES_ATTR_RX_VGA)
+                {
+                    uint32_t newLaneCount = attrs[i].value.u32list.count;
+                    if (newLaneCount > 0)
+                    {
+                        m_portSerdesIdToLaneCountMap[rid] = newLaneCount;
+                        if (initAttrData(rid, &attrs[i], &attrData))
+                        {
+                            status = Base::m_vendorSai->get(
+                                    Base::m_objectType, rid, 1, &attrs[i]);
+                        }
+                    }
+                }
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes attr %s for VID 0x%" PRIx64 ", status: %d",
+                            sai_serialize_port_serdes_attr(attrIds[i]).c_str(), vid, status);
+                    continue;
+                }
+
                 auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
                 if (!meta)
                 {
@@ -3264,7 +3385,8 @@ private:
 
 const std::unordered_map<sai_port_serdes_attr_t, std::string> PortPhySerdesAttrContext::m_attrAliases = {
     {SAI_PORT_SERDES_ATTR_RX_VGA, "rx_vga"},
-    {SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST, "tx_fir_taps_list"}
+    {SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST, "tx_fir_taps_list"},
+    {SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST, "rx_ffe_taps_list"}
 };
 
 

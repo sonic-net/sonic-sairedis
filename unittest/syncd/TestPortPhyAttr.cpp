@@ -80,6 +80,22 @@ TEST_F(TestPortPhyAttr, SerializePortAttr)
     attr = SAI_PORT_ATTR_RX_SNR;
     result = sai_serialize_port_attr(attr);
     EXPECT_EQ(result, "SAI_PORT_ATTR_RX_SNR");
+
+    attr = SAI_PORT_ATTR_RX_LOCK_STATUS;
+    result = sai_serialize_port_attr(attr);
+    EXPECT_EQ(result, "SAI_PORT_ATTR_RX_LOCK_STATUS");
+
+    attr = SAI_PORT_ATTR_PAM4_EYE_VALUES;
+    result = sai_serialize_port_attr(attr);
+    EXPECT_EQ(result, "SAI_PORT_ATTR_PAM4_EYE_VALUES");
+
+    attr = SAI_PORT_ATTR_ERROR_STATUS;
+    result = sai_serialize_port_attr(attr);
+    EXPECT_EQ(result, "SAI_PORT_ATTR_ERROR_STATUS");
+
+    attr = SAI_PORT_ATTR_PCS_RX_LINK_STATUS;
+    result = sai_serialize_port_attr(attr);
+    EXPECT_EQ(result, "SAI_PORT_ATTR_PCS_RX_LINK_STATUS");
 }
 
 TEST_F(TestPortPhyAttr, DeserializePortAttr)
@@ -97,6 +113,22 @@ TEST_F(TestPortPhyAttr, DeserializePortAttr)
     input = "SAI_PORT_ATTR_RX_SNR";
     sai_deserialize_port_attr(input, attr_out);
     EXPECT_EQ(attr_out, SAI_PORT_ATTR_RX_SNR);
+
+    input = "SAI_PORT_ATTR_RX_LOCK_STATUS";
+    sai_deserialize_port_attr(input, attr_out);
+    EXPECT_EQ(attr_out, SAI_PORT_ATTR_RX_LOCK_STATUS);
+
+    input = "SAI_PORT_ATTR_PAM4_EYE_VALUES";
+    sai_deserialize_port_attr(input, attr_out);
+    EXPECT_EQ(attr_out, SAI_PORT_ATTR_PAM4_EYE_VALUES);
+
+    input = "SAI_PORT_ATTR_ERROR_STATUS";
+    sai_deserialize_port_attr(input, attr_out);
+    EXPECT_EQ(attr_out, SAI_PORT_ATTR_ERROR_STATUS);
+
+    input = "SAI_PORT_ATTR_PCS_RX_LINK_STATUS";
+    sai_deserialize_port_attr(input, attr_out);
+    EXPECT_EQ(attr_out, SAI_PORT_ATTR_PCS_RX_LINK_STATUS);
 }
 
 /**
@@ -155,6 +187,20 @@ TEST_F(TestPortPhyAttr, CollectDataAndValidateCountersDB)
                         attr_list[i].value.portlanelatchstatuslist.count = std::min(count, static_cast<uint32_t>(MAX_LANES_PER_PORT));
                     }
                     break;
+                case SAI_PORT_ATTR_RX_LOCK_STATUS:
+                    if (attr_list[i].value.portlanelatchstatuslist.list == nullptr) {
+                        attr_list[i].value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    } else {
+                        uint32_t count = attr_list[i].value.portlanelatchstatuslist.count;
+                        for (uint32_t lane = 0; lane < count && lane < MAX_LANES_PER_PORT; lane++) {
+                            attr_list[i].value.portlanelatchstatuslist.list[lane].lane = lane;
+                            attr_list[i].value.portlanelatchstatuslist.list[lane].value.changed = false;
+                            attr_list[i].value.portlanelatchstatuslist.list[lane].value.current_status = true;
+                        }
+                        attr_list[i].value.portlanelatchstatuslist.count = std::min(count, static_cast<uint32_t>(MAX_LANES_PER_PORT));
+                    }
+                    break;
                 case SAI_PORT_ATTR_RX_SNR:
                     if (attr_list[i].value.portsnrlist.list == nullptr) {
                         // First call: return count needed
@@ -170,6 +216,31 @@ TEST_F(TestPortPhyAttr, CollectDataAndValidateCountersDB)
                         attr_list[i].value.portsnrlist.count = std::min(count, static_cast<uint32_t>(MAX_LANES_PER_PORT));
                     }
                     break;
+                case SAI_PORT_ATTR_PAM4_EYE_VALUES:
+                    if (attr_list[i].value.portpam4eyevalues.list == nullptr) {
+                        attr_list[i].value.portpam4eyevalues.count = MAX_LANES_PER_PORT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    } else {
+                        uint32_t count = attr_list[i].value.portpam4eyevalues.count;
+                        for (uint32_t lane = 0; lane < count && lane < MAX_LANES_PER_PORT; lane++) {
+                            attr_list[i].value.portpam4eyevalues.list[lane].lane = lane;
+                            attr_list[i].value.portpam4eyevalues.list[lane].upper_ht = 100 + static_cast<int32_t>(lane);
+                            attr_list[i].value.portpam4eyevalues.list[lane].upper_wd = -1;
+                            attr_list[i].value.portpam4eyevalues.list[lane].middle_ht = 80 + static_cast<int32_t>(lane);
+                            attr_list[i].value.portpam4eyevalues.list[lane].middle_wd = -1;
+                            attr_list[i].value.portpam4eyevalues.list[lane].lower_ht = 60 + static_cast<int32_t>(lane);
+                            attr_list[i].value.portpam4eyevalues.list[lane].lower_wd = -1;
+                        }
+                        attr_list[i].value.portpam4eyevalues.count = std::min(count, static_cast<uint32_t>(MAX_LANES_PER_PORT));
+                    }
+                    break;
+                case SAI_PORT_ATTR_ERROR_STATUS:
+                    attr_list[i].value.u32 = SAI_PORT_ERROR_STATUS_MAC_LOCAL_FAULT;
+                    break;
+                case SAI_PORT_ATTR_PCS_RX_LINK_STATUS:
+                    attr_list[i].value.latchstatus.current_status = true;
+                    attr_list[i].value.latchstatus.changed = false;
+                    break;
                 default:
                     return SAI_STATUS_NOT_SUPPORTED;
             }
@@ -179,7 +250,10 @@ TEST_F(TestPortPhyAttr, CollectDataAndValidateCountersDB)
 
     vector<swss::FieldValueTuple> portPhyAttrValues;
 
-    std::string attrIds = "SAI_PORT_ATTR_RX_SIGNAL_DETECT,SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK,SAI_PORT_ATTR_RX_SNR";
+    std::string attrIds =
+        "SAI_PORT_ATTR_RX_SIGNAL_DETECT,SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK,SAI_PORT_ATTR_RX_SNR,"
+        "SAI_PORT_ATTR_RX_LOCK_STATUS,SAI_PORT_ATTR_PAM4_EYE_VALUES,"
+        "SAI_PORT_ATTR_ERROR_STATUS,SAI_PORT_ATTR_PCS_RX_LINK_STATUS";
 
     portPhyAttrValues.emplace_back(PORT_PHY_ATTR_ID_LIST, attrIds);
 
@@ -262,6 +336,41 @@ TEST_F(TestPortPhyAttr, CollectDataAndValidateCountersDB)
             << "\nActual full value: " << rxSnrValue
             << "\nLooking for: " << expected_entry.str();
     }
+
+    std::string rxLockValue;
+    found = countersTable.hget(expectedKey, "rx_lock_status", rxLockValue);
+    EXPECT_TRUE(found) << "rx_lock_status not found in COUNTERS_DB";
+    for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++) {
+        std::ostringstream expected_entry;
+        expected_entry << "\"" << lane << "\":[\"T\"";
+        EXPECT_TRUE(rxLockValue.find(expected_entry.str()) != std::string::npos)
+            << "Lane " << lane << " should have status=T"
+            << "\nActual full value: " << rxLockValue;
+    }
+
+    std::string pam4EyeValue;
+    found = countersTable.hget(expectedKey, "pam4_eye_values", pam4EyeValue);
+    EXPECT_TRUE(found) << "pam4_eye_values not found in COUNTERS_DB";
+    for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++) {
+        EXPECT_TRUE(pam4EyeValue.find("\"" + std::to_string(lane) + "\":") != std::string::npos)
+            << "Lane " << lane << " missing from pam4_eye_values: " << pam4EyeValue;
+        EXPECT_TRUE(pam4EyeValue.find("\"upper_ht\":" + std::to_string(100 + lane)) != std::string::npos)
+            << "Lane " << lane << " upper_ht mismatch in: " << pam4EyeValue;
+        EXPECT_TRUE(pam4EyeValue.find("\"middle_ht\":" + std::to_string(80 + lane)) != std::string::npos)
+            << "Lane " << lane << " middle_ht mismatch in: " << pam4EyeValue;
+        EXPECT_TRUE(pam4EyeValue.find("\"lower_ht\":" + std::to_string(60 + lane)) != std::string::npos)
+            << "Lane " << lane << " lower_ht mismatch in: " << pam4EyeValue;
+    }
+
+    std::string errorStatusValue;
+    found = countersTable.hget(expectedKey, "error_status", errorStatusValue);
+    EXPECT_TRUE(found) << "error_status not found in COUNTERS_DB";
+    EXPECT_FALSE(errorStatusValue.empty());
+
+    std::string pcsRxLinkValue;
+    found = countersTable.hget(expectedKey, "pcs_rx_link_status", pcsRxLinkValue);
+    EXPECT_TRUE(found) << "pcs_rx_link_status not found in COUNTERS_DB";
+    EXPECT_FALSE(pcsRxLinkValue.empty());
 
     flexCounter->removeCounter(testPortOid);
 }
