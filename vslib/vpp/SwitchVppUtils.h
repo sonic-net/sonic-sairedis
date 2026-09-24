@@ -70,4 +70,9 @@ namespace saivs
     void vpp_ip_addr_t_to_sai_ip_address_t(vpp_ip_addr_t& src, sai_ip_address_t& dst);
 
     bool sai_ip_address_equal(const sai_ip_address_t &a, const sai_ip_address_t &b);
+
+    /* Is a sonic-ext feature enabled in VPP's startup.conf?  Queried once per
+     * feature and cached.  A failed query answers "enabled", so a transient
+     * API error cannot disable a working feature for the life of the process. */
+    bool sonicExtFeatureEnabled(const char *feature);
 }
