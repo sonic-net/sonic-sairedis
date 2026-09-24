@@ -43,9 +43,11 @@ plugins {
   plugin linux_nl_plugin.so { enable }
   plugin acl_plugin.so { enable }
   plugin vxlan_plugin.so { enable }
+  plugin ipip_plugin.so { enable }
   plugin tunterm_acl_plugin.so { enable }
   plugin ip_validate_plugin.so { enable }
   plugin sflow_plugin.so { enable }
+  plugin sonic_ext_plugin.so { enable }
 }
 
 linux-cp {
