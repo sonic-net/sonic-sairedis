@@ -1336,6 +1336,12 @@ vl_api_sw_interface_set_l2_bridge_reply_t_handler (vl_api_sw_interface_set_l2_br
     set_reply_status(retval);
 }
 static void
+vl_api_l2_flags_set_reply_t_handler (vl_api_l2_flags_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+static void
 vl_api_l2_interface_vlan_tag_rewrite_reply_t_handler (vl_api_l2_interface_vlan_tag_rewrite_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1930,6 +1936,7 @@ static void vpp_base_vpe_init(void)
     _(IP_NBR_MSG_ID(IP_NEIGHBOR_ADD_DEL_REPLY), ip_neighbor_add_del_reply) \
     _(L2_MSG_ID(BRIDGE_DOMAIN_ADD_DEL_REPLY), bridge_domain_add_del_reply) \
     _(L2_MSG_ID(SW_INTERFACE_SET_L2_BRIDGE_REPLY), sw_interface_set_l2_bridge_reply) \
+    _(L2_MSG_ID(L2_FLAGS_SET_REPLY), l2_flags_set_reply) \
     _(L2_MSG_ID(L2_INTERFACE_VLAN_TAG_REWRITE_REPLY), l2_interface_vlan_tag_rewrite_reply) \
     _(L2_MSG_ID(BRIDGE_DOMAIN_DETAILS), bridge_domain_details) \
     _(L2_MSG_ID(BVI_CREATE_REPLY), bvi_create_reply) \
@@ -4651,6 +4658,44 @@ int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id
     return ret;
 }
 
+/*
+ * Enable/disable L2 source-MAC learning on one bridged interface. Used to turn
+ * learning OFF on a source-independent VXLAN decap tunnel: its decapped inner
+ * frames can carry the switch's own router MAC as source (e.g. a gateway ARP in
+ * the overlay), which otherwise trips l2-learn's static-MAC "mac move violation"
+ * and drops the frame. A decap-only tunnel never encaps back, so learning on it
+ * is unnecessary. input_feature_bitmap uses the raw L2INPUT_FEAT_* value;
+ * L2INPUT_FEAT_LEARN == (1<<9) per l2_input.h foreach_l2input_feat ordering.
+ */
+int set_sw_interface_l2_learn(uint32_t sw_if_index, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2_flags_set_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M (L2_FLAGS_SET, mp);
+
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->is_set = enable;
+    mp->input_feature_bitmap = htonl(1 << 9);   /* L2INPUT_FEAT_LEARN */
+    mp->output_feature_bitmap = 0;
+
+    S (mp);
+
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u enable %d", __func__, ret, sw_if_index, enable); }
+    else { SAIVPP_INFO("%s sw_if_index %u learn %d", __func__, sw_if_index, enable); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
 int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_mode, uint32_t port_type)
 {
     vat_main_t *vam = &vat_main;
@@ -4916,16 +4961,18 @@ int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, u32 *sw_if
     mp->vni = htonl(tunnel->vni);
     mp->is_l3 = tunnel->is_l3;
     {
-        /* SONiC VNET decap-any: signal a source-independent decap term by
-         * setting the high bit of the wire decap_next_index. Force a valid
-         * default next index if the caller left it unset (~0), so the bit is
-         * distinguishable and the stripped value stays valid in VPP. */
+        /* Signal source-independent decap in otherwise-unused high bits. */
         u32 dni = tunnel->decap_next_index;
-        if (tunnel->decap_any) {
+        if (tunnel->decap_any || tunnel->l2_decap_any) {
             if (dni == (u32)~0) {
                 dni = VPP_VXLAN_DECAP_NEXT_L2_INPUT;
             }
+        }
+        if (tunnel->decap_any) {
             dni |= VPP_VXLAN_DECAP_ANY_FLAG;
+        }
+        if (tunnel->l2_decap_any) {
+            dni |= VPP_VXLAN_L2_DECAP_ANY_FLAG;
         }
         mp->decap_next_index = htonl(dni);
     }

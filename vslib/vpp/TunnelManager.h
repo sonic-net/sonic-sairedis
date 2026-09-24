@@ -39,6 +39,7 @@ namespace saivs
         u_int16_t vlan_id = 0;
         sai_ip_address_t src_ip;
         sai_ip_address_t dst_ip;
+        bool decap_only = false;
     };
 
     /**
@@ -322,7 +323,8 @@ namespace saivs
             _In_ sai_ip_address_t dst_ip,
             _In_ uint32_t vni,
             _In_ uint16_t vlan_id,
-            _Out_ uint32_t& sw_if_index);
+            _Out_ uint32_t& sw_if_index,
+            _In_ bool decap_only = false);
     };
 
     class TunnelManagerSRv6 {
