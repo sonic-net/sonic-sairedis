@@ -1507,6 +1507,21 @@ vl_api_sonic_ext_ip2me_enable_disable_reply_t_handler(vl_api_sonic_ext_ip2me_ena
 }
 
 static void
+vl_api_sonic_ext_feature_get_reply_t_handler(vl_api_sonic_ext_feature_get_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (msg->context) {
+        bool *enabled = (bool *) get_index_ptr(msg->context);
+        if (enabled) {
+            *enabled = msg->enabled ? true : false;
+        }
+        release_index(msg->context);
+    }
+}
+
+static void
 vl_api_bfd_udp_set_tos_reply_t_handler (vl_api_bfd_udp_set_tos_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2094,6 +2109,7 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_SAMPLING_RATE_SET_REPLY), sflow_interface_sampling_rate_set_reply) \
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_FEATURE_GET_REPLY), sonic_ext_feature_get_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
     _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
     _(MPLS_MSG_ID(SW_INTERFACE_SET_MPLS_ENABLE_REPLY), sw_interface_set_mpls_enable_reply) \
@@ -3853,6 +3869,39 @@ int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable)
         SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable);
     } else {
         SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_sonic_ext_feature_get(const char *feature, bool *enabled)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_feature_get_t *mp;
+    int ret;
+
+    if (!feature || !enabled) {
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+    M (SONIC_EXT_FEATURE_GET, mp);
+
+    /* Fixed 64-byte field, and M() has already zeroed the message, so a bounded
+     * copy leaves it NUL-terminated. */
+    strncpy((char *)mp->feature, feature, sizeof(mp->feature) - 1);
+    mp->context = store_ptr(enabled);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) feature %s", __func__, ret, feature);
+    } else {
+        SAIVPP_INFO("%s %s -> %d", __func__, feature, *enabled);
     }
 
     VPP_UNLOCK();

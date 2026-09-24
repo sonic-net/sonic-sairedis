@@ -4,7 +4,40 @@
 
 #include "vppxlate/SaiVppXlate.h"
 
+#include <map>
+#include <string>
+
 using namespace saivs;
+
+bool saivs::sonicExtFeatureEnabled(const char *feature)
+{
+    SWSS_LOG_ENTER();
+
+    static std::map<std::string, bool> s_cache;
+
+    auto it = s_cache.find(feature);
+
+    if (it != s_cache.end())
+    {
+        return it->second;
+    }
+
+    bool enabled = true;
+
+    if (vpp_sonic_ext_feature_get(feature, &enabled) != 0)
+    {
+        SWSS_LOG_WARN("sonic_ext_feature_get(%s) failed; assuming enabled", feature);
+        enabled = true;
+    }
+    else if (!enabled)
+    {
+        SWSS_LOG_NOTICE("sonic-ext feature %s disabled in startup.conf", feature);
+    }
+
+    s_cache[feature] = enabled;
+
+    return enabled;
+}
 
 sai_status_t saivs::find_attrib_in_list(
         _In_ uint32_t                       attr_count,

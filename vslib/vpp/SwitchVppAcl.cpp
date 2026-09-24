@@ -2197,12 +2197,17 @@ void SwitchVpp::ip2meRefreshPort(
     // Desired state: enabled iff any ingress table bound to this interface
     // is currently a drop table.
     bool want_enable = false;
-    auto pit = m_port_acl_tables.find(hwif_name);
-    if (pit != m_port_acl_tables.end()) {
-        for (auto tbl_oid : pit->second.ingress) {
-            if (m_ip2me_drop_tables.count(tbl_oid)) {
-                want_enable = true;
-                break;
+    /* Leaving want_enable false when the feature is off keeps the reconciler
+     * authoritative: a port enabled earlier is disabled here rather than
+     * silently diverging from what VPP is running. */
+    if (sonicExtFeatureEnabled("ip2me")) {
+        auto pit = m_port_acl_tables.find(hwif_name);
+        if (pit != m_port_acl_tables.end()) {
+            for (auto tbl_oid : pit->second.ingress) {
+                if (m_ip2me_drop_tables.count(tbl_oid)) {
+                    want_enable = true;
+                    break;
+                }
             }
         }
     }

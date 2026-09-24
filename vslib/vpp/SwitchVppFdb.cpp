@@ -211,7 +211,14 @@ static int l2_punt_classify_init()
         SWSS_LOG_ERROR("l2_punt_classify_init: vpp_add_node_next(linux-cp-punt) failed");
         return -1;
     }
-    if (vpp_add_node_next("l2-input-classify", "sonic-ext-l2-trap-fixup",
+    if (!sonicExtFeatureEnabled("l2-trap-fixup")) {
+        /* Same end state as the node being absent: every session that would
+         * have used it is skipped by the ~0 guards below. */
+        SWSS_LOG_NOTICE("l2_punt_classify_init: sonic-ext-l2-trap-fixup disabled in "
+                        "startup.conf; tagged DHCP/ARP/IPv6-mcast broadcast "
+                        "will not be punted");
+        s_trap_fixup_next_index = ~0;
+    } else if (vpp_add_node_next("l2-input-classify", "sonic-ext-l2-trap-fixup",
                                 &s_trap_fixup_next_index) != 0) {
         /* Not fatal: without the fixup node, only tagged-DHCP punt
          * is broken.  Untagged DHCP and LLDP still work via the
@@ -233,7 +240,12 @@ static int l2_punt_classify_init()
      * l2-input-classify, BEFORE l2-fwd/l2-flood.  Not fatal if
      * unavailable: the ingress VLAN filter session is simply not
      * installed (tagged frames then follow the default L2 path). */
-    if (vpp_add_node_next("l2-input-classify", "sonic-ext-l2-vlan-filter",
+    if (!sonicExtFeatureEnabled("l2-vlan-filter")) {
+        SWSS_LOG_NOTICE("l2_punt_classify_init: sonic-ext-l2-vlan-filter disabled in "
+                        "startup.conf; ingress VLAN filtering on access members "
+                        "not installed");
+        s_vlan_filter_next_index = ~0;
+    } else if (vpp_add_node_next("l2-input-classify", "sonic-ext-l2-vlan-filter",
                                 &s_vlan_filter_next_index) != 0) {
         SWSS_LOG_WARN("l2_punt_classify_init: sonic-ext-l2-vlan-filter not registered; "
                       "ingress VLAN filtering on access members disabled");
