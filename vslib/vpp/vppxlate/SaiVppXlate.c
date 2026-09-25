@@ -1735,7 +1735,14 @@ vl_api_sonic_ext_copp_ip2me_bind_reply_t_handler(vl_api_sonic_ext_copp_ip2me_bin
 }
 
 static void
-vl_api_sonic_ext_copp_ip2me_bind_bgp_reply_t_handler(vl_api_sonic_ext_copp_ip2me_bind_bgp_reply_t *msg)
+vl_api_sonic_ext_copp_ip2me_bind_condition_reply_t_handler(vl_api_sonic_ext_copp_ip2me_bind_condition_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_copp_ttl_punt_bind_reply_t_handler(vl_api_sonic_ext_copp_ttl_punt_bind_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
@@ -2195,8 +2202,9 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IFOUT_GET_COUNTERS_REPLY), sonic_ext_copp_ifout_get_counters_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_ADDR_ADD_DEL_REPLY), sonic_ext_copp_ip2me_addr_add_del_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_REPLY), sonic_ext_copp_ip2me_bind_reply) \
-    _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_BGP_REPLY), sonic_ext_copp_ip2me_bind_bgp_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_CONDITION_REPLY), sonic_ext_copp_ip2me_bind_condition_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_GET_COUNTERS_REPLY), sonic_ext_copp_ip2me_get_counters_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_TTL_PUNT_BIND_REPLY), sonic_ext_copp_ttl_punt_bind_reply) \
     _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_V2_REPLY), sr_localsid_add_del_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
@@ -4014,12 +4022,13 @@ int vpp_sonic_ext_copp_ip2me_bind(
     return ret;
 }
 
-int vpp_sonic_ext_copp_ip2me_bind_bgp(
+int vpp_sonic_ext_copp_ip2me_bind_condition(
         const char *policer_name,
+        uint16_t tcp_port,
         bool is_bind)
 {
     vat_main_t *vam = &vat_main;
-    vl_api_sonic_ext_copp_ip2me_bind_bgp_t *mp;
+    vl_api_sonic_ext_copp_ip2me_bind_condition_t *mp;
     int ret;
 
     init_vpp_client();
@@ -4028,9 +4037,10 @@ int vpp_sonic_ext_copp_ip2me_bind_bgp(
 
     __plugin_msg_base = sonic_ext_msg_id_base;
 
-    M (SONIC_EXT_COPP_IP2ME_BIND_BGP, mp);
+    M (SONIC_EXT_COPP_IP2ME_BIND_CONDITION, mp);
 
     snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
+    mp->tcp_port = htons(tcp_port);
     mp->is_bind = is_bind;
 
     S (mp);
@@ -4038,7 +4048,36 @@ int vpp_sonic_ext_copp_ip2me_bind_bgp(
 
     ret = vpp_normalize_ret(ret, false, __func__);
 
-    if (ret) { SAIVPP_ERROR("%s failed(%d) policer %s is_bind %d", __func__, ret, policer_name, is_bind); }
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer %s tcp_port %u is_bind %d", __func__, ret, policer_name, tcp_port, is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_copp_ttl_punt_bind(
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_ttl_punt_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M (SONIC_EXT_COPP_TTL_PUNT_BIND, mp);
+
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) is_bind %d", __func__, ret, is_bind); }
 
     VPP_UNLOCK();
 

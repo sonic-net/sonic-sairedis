@@ -125,7 +125,7 @@ void SwitchVpp::installTrapClassifyNow(
             char policer_name[64];
             snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
 
-            int pret = vpp_sonic_ext_copp_ip2me_bind_bgp(policer_name, true);
+            int pret = vpp_sonic_ext_copp_ip2me_bind_condition(policer_name, 179, true);
 
             if (pret != 0)
             {
@@ -203,6 +203,25 @@ void SwitchVpp::installTrapClassifyNow(
                 SWSS_LOG_NOTICE("bound copp-ifout policer for trap 0x%lx: trap_type %d, ethertype 0x%04x, "
                         "policer %s", (unsigned long)trap_oid, (int)trap.trap_type, ethertype, policer_name);
             }
+
+            // TTL_ERROR additionally needs the punt-to-host path enabled: without
+            // this, genuinely-transiting TTL-expired packets never reach
+            // copp-ifout at all (they dead-end in VPP's stock ip4-icmp-error path,
+            // which never punts anywhere).
+            if (isIp4TtlExpiringTrap(trap.trap_type))
+            {
+                int tret = vpp_sonic_ext_copp_ttl_punt_bind(true);
+
+                if (tret != 0)
+                {
+                    SWSS_LOG_ERROR("failed to enable TTL_ERROR punt-to-host for trap 0x%lx: ret %d",
+                            (unsigned long)trap_oid, tret);
+                }
+                else
+                {
+                    SWSS_LOG_NOTICE("enabled TTL_ERROR punt-to-host for trap 0x%lx", (unsigned long)trap_oid);
+                }
+            }
         }
     }
 }
@@ -236,7 +255,7 @@ void SwitchVpp::uninstallTrapClassifyNow(
             char policer_name[64];
             snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
 
-            int pret = vpp_sonic_ext_copp_ip2me_bind_bgp(policer_name, false);
+            int pret = vpp_sonic_ext_copp_ip2me_bind_condition(policer_name, 179, false);
 
             if (pret != 0)
             {
@@ -306,6 +325,20 @@ void SwitchVpp::uninstallTrapClassifyNow(
         {
             vpp_sonic_ext_copp_ifout_bind(ethertype, "", false,
                     isIp4TtlExpiringTrap(trap.trap_type));
+
+            // Disable the punt-to-host toggle alongside the copp-ifout unbind
+            // above. A stale enable here would leave ip4-rewrite redirecting
+	    // transit TTL-expired traffic to a policer that's just been unbound.
+            if (isIp4TtlExpiringTrap(trap.trap_type))
+            {
+                int tret = vpp_sonic_ext_copp_ttl_punt_bind(false);
+
+                if (tret != 0)
+                {
+                    SWSS_LOG_ERROR("failed to disable TTL_ERROR punt-to-host for trap 0x%lx: ret %d",
+                            (unsigned long)trap_oid, tret);
+                }
+            }
         }
         else
         {
