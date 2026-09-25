@@ -586,6 +586,48 @@ void SwitchVpp::vppProcessEvents ()
 
     while(m_run_vpp_events_thread) {
         nanosleep(&req, NULL);
+
+        // Guaranteed schedule-to-empty drain for the trap-classify/policer-
+        // program deferred queues. The one-item-per-call draining at the top
+        // of create()/set()/remove() only runs when a *later* SAI mutation
+        // happens to arrive; a terminal update or backlog with no further
+        // SAI activity could otherwise leave queued work unapplied
+        // indefinitely while SAI already returned success. This thread ticks
+        // on a fixed ~2s cadence regardless of SAI call traffic and carries
+        // no per-call watchdog (unlike the SAI create/set/remove path), so it
+        // is a safe, always-running backstop: drain each queue here too,
+        // bounded per tick so one pathological backlog can't stall event
+        // processing (BFD/link-state) for too long -- any remainder is
+        // picked up on the next tick or by the next SAI call, whichever
+        // comes first.
+        for (int drained = 0; drained < 32 && m_run_vpp_events_thread; drained++)
+        {
+            size_t before;
+            {
+                std::lock_guard<std::mutex> lock(m_trap_classify_deferred_mutex);
+                before = m_trap_classify_deferred_queue.size();
+            }
+            if (before == 0)
+            {
+                break;
+            }
+            serviceDeferredTrapClassifyWork();
+        }
+
+        for (int drained = 0; drained < 32 && m_run_vpp_events_thread; drained++)
+        {
+            size_t before;
+            {
+                std::lock_guard<std::mutex> lock(m_policer_program_deferred_mutex);
+                before = m_policer_program_deferred_queue.size();
+            }
+            if (before == 0)
+            {
+                break;
+            }
+            serviceDeferredPolicerProgramWork();
+        }
+
         ret = vpp_sync_for_events();
         SWSS_LOG_NOTICE("Checking for any VS events status %d", ret);
         if (ret < 0)

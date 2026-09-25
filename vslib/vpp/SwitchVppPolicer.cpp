@@ -100,7 +100,18 @@ sai_status_t SwitchVpp::programPolicer(
 
     bool has_pir = false;
     bool has_pbs = false;
+    bool has_cbs = false;
     sai_policer_mode_t mode = SAI_POLICER_MODE_SR_TCM;
+
+    // SAI_POLICER_ATTR_CBS/PBS are packet counts when METER_TYPE is PACKETS
+    // (see SAI/inc/saipolicer.h), but VPP's PPS-mode cb/eb fields are a
+    // *millisecond* burst window, not a packet count (see the
+    // vpp-policer-burst-unit-audit skill / platform-vpp's xlate.h: "if pps,
+    // then burst is in ms"). attr_list order is not guaranteed, so the raw
+    // packet-count values are captured here and converted to cb/eb only
+    // after the loop, once the corresponding CIR/PIR rate is known.
+    uint64_t cbs_packets = 0;
+    uint64_t pbs_packets = 0;
 
     for (uint32_t i = 0; i < attr_count; i++)
     {
@@ -121,7 +132,8 @@ sai_status_t SwitchVpp::programPolicer(
                 break;
 
             case SAI_POLICER_ATTR_CBS:
-                vpp_policer.cb = attr.value.u64;
+                cbs_packets = attr.value.u64;
+                has_cbs = true;
                 break;
 
             case SAI_POLICER_ATTR_PIR:
@@ -130,7 +142,7 @@ sai_status_t SwitchVpp::programPolicer(
                 break;
 
             case SAI_POLICER_ATTR_PBS:
-                vpp_policer.eb = attr.value.u64;
+                pbs_packets = attr.value.u64;
                 has_pbs = true;
                 break;
 
@@ -152,6 +164,54 @@ sai_status_t SwitchVpp::programPolicer(
     }
 
     vpp_policer.type = vpp_policer_mode_from_sai(mode, has_pir, has_pbs);
+
+    if (vpp_policer.rate_type == VPP_POLICER_RATE_PPS)
+    {
+        // Inverse of platform-vpp's qos_convert_burst_ms_to_bytes(): given a
+        // packet-count burst and its rate in pps, recover the millisecond
+        // burst window VPP's PPS-mode cb/eb actually expect.
+        // cir/rate == 0 (no rate configured, e.g. tests probing defaults) has
+        // no meaningful burst window; leave cb/eb at 0 rather than divide by
+        // zero.
+        if (has_cbs)
+        {
+            vpp_policer.cb = (vpp_policer.cir != 0)
+                ? (cbs_packets * 1000ull + vpp_policer.cir / 2) / vpp_policer.cir
+                : 0;
+        }
+
+        if (has_pbs)
+        {
+            // RFC2697 (SR_TCM/1R3C) PBS: VPP derives its excess-burst window
+            // as cb_bytes + eb_bytes for this mode (see platform-vpp's
+            // pol_convert_cfg_burst_to_hw()), so eb must be converted at the
+            // *same* CIR-based ms/packet ratio as cb, not PIR -- there is no
+            // separate PBS rate for this mode (SAI_POLICER_ATTR_PIR is
+            // validonly for TR_TCM). Two-rate modes (TR_TCM) use PIR's own
+            // rate for their excess bucket instead.
+            uint32_t pbs_rate = (vpp_policer.type == VPP_POLICER_TYPE_1R3C_RFC2697)
+                ? vpp_policer.cir
+                : vpp_policer.eir;
+
+            vpp_policer.eb = (pbs_rate != 0)
+                ? (pbs_packets * 1000ull + pbs_rate / 2) / pbs_rate
+                : 0;
+        }
+    }
+    else
+    {
+        // KBPS mode: SAI CBS/PBS are already bytes, matching VPP's cb/eb
+        // semantics directly -- no conversion needed.
+        if (has_cbs)
+        {
+            vpp_policer.cb = cbs_packets;
+        }
+
+        if (has_pbs)
+        {
+            vpp_policer.eb = pbs_packets;
+        }
+    }
 
     // VPP policer names are unique keys in its policer table
     snprintf(vpp_policer.name, sizeof(vpp_policer.name), "copp-policer-0x%lx",
