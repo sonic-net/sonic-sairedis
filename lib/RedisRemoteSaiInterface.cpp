@@ -144,6 +144,16 @@ sai_status_t RedisRemoteSaiInterface::apiUninitialize(void)
     return SAI_STATUS_SUCCESS;
 }
 
+void RedisRemoteSaiInterface::shutdown()
+{
+    SWSS_LOG_ENTER();
+
+    if (m_communicationChannel)
+    {
+        m_communicationChannel->setShutdown();
+    }
+}
+
 sai_status_t RedisRemoteSaiInterface::create(
         _In_ sai_object_type_t objectType,
         _Out_ sai_object_id_t* objectId,
