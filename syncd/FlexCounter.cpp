@@ -820,8 +820,11 @@ public:
                 for (auto &token: tokens)
                 {
                     auto counter_name_bulk_size = swss::tokenize(token, ':');
-                    SWSS_LOG_INFO("New partition %s bulk chunk size %s", counter_name_bulk_size[0].c_str(), counter_name_bulk_size[1].c_str());
-                    m_counterChunkSizeMapFromPrefix[counter_name_bulk_size[0]] = stoi(counter_name_bulk_size[1]);
+
+                    SWSS_LOG_INFO("New partition %s bulk chunk size %s",
+                            counter_name_bulk_size.at(0).c_str(),
+                            counter_name_bulk_size.at(1).c_str());
+                    m_counterChunkSizeMapFromPrefix[counter_name_bulk_size.at(0)] = stoi(counter_name_bulk_size.at(1));
                 }
             }
             catch (...)
