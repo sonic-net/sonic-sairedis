@@ -3,8 +3,17 @@
 
 #include "meta/sai_serialize.h"
 #include "swss/logger.h"
+#include "vppxlate/SaiVppXlate.h"
+
+#include <cstdlib>
+#include <cstring>
 
 using namespace saivs;
+
+// Reserved VPP FIB id range for ERSPAN outer lookups. Kept far above the Linux
+// routing table ids SONiC derives its VRF ids from, so it cannot alias a VRF.
+static constexpr uint32_t VPP_MIRROR_OUTER_FIB_BASE = 0xe0000000u;
+static constexpr uint32_t VPP_MIRROR_OUTER_FIB_NONE = 0xffffffffu;
 
 sai_status_t SwitchVpp::createMirrorSession(
         _In_ sai_object_id_t object_id,
@@ -17,6 +26,7 @@ sai_status_t SwitchVpp::createMirrorSession(
     const sai_attribute_value_t *value;
     uint32_t attr_index;
     MirrorSessionInfo info{};
+    info.outer_fib_id = VPP_MIRROR_OUTER_FIB_NONE;
 
     if(m_mirror_session_count >= m_maxMirrorSessions) {
         SWSS_LOG_ERROR("Cannot create mirror session %s: max mirror sessions reached (%d)", sai_serialize_object_id(object_id).c_str(), m_maxMirrorSessions);
@@ -49,12 +59,153 @@ sai_status_t SwitchVpp::createMirrorSession(
 
         info.sw_if_index = (uint32_t)sw_idx;
         info.is_erspan = false;
+    } else if(mirror_type == SAI_MIRROR_SESSION_TYPE_ENHANCED_REMOTE) {
+        CHECK_STATUS(find_attrib_in_list(attr_count, attr_list, SAI_MIRROR_SESSION_ATTR_SRC_IP_ADDRESS, &value, &attr_index));
+        sai_ip_address_t src_ip = value->ipaddr;
+
+        CHECK_STATUS(find_attrib_in_list(attr_count, attr_list, SAI_MIRROR_SESSION_ATTR_DST_IP_ADDRESS, &value, &attr_index));
+        sai_ip_address_t dst_ip = value->ipaddr;
+
+        // SAI marks this MANDATORY_ON_CREATE but orchagent may program it via a
+        // later SET, so default rather than fail and orphan every ACL rule.
+        uint16_t gre_protocol = 0x88BE;
+        if (find_attrib_in_list(attr_count, attr_list, SAI_MIRROR_SESSION_ATTR_GRE_PROTOCOL_TYPE, &value, &attr_index) == SAI_STATUS_SUCCESS) {
+            gre_protocol = value->u16;
+        }
+
+        // Outer tunnel header TTL. Optional (SAI default 255). The fixup node
+        // stamps this exact value, so reject 0 rather than black-hole every
+        // mirrored packet with an immediate TTL-expired drop.
+        uint8_t session_ttl = 255;
+        if (find_attrib_in_list(attr_count, attr_list, SAI_MIRROR_SESSION_ATTR_TTL, &value, &attr_index) == SAI_STATUS_SUCCESS) {
+            if (value->u8 == 0) {
+                SWSS_LOG_ERROR("Rejecting mirror session %s: TTL 0 would black-hole every mirrored packet", sid.c_str());
+                return (int32_t)SAI_STATUS_INVALID_ATTR_VALUE_0 + (int32_t)attr_index;
+            }
+            session_ttl = value->u8;
+        }
+
+        vpp_gre_tunnel_t tunnel{};
+        sai_ip_address_t_to_vpp_ip_addr_t(src_ip, tunnel.src);
+        sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, tunnel.dst);
+        // Stock TEB tunnel: its L2 delivery path forwards the ACL-injected clone.
+        // The outer TTL and the Everflow GRE ethertype are stamped later by the
+        // sonic-ext-mirror-encap-fixup node, so nothing is set on the tunnel here.
+        tunnel.type = 1;
+
+        // Must stay monotonic: naming a new tunnel greN while VPP still tears down
+        // the old greN corrupts its interface-name hash.
+        tunnel.instance = m_next_gre_instance++;
+
+        uint32_t gre_instance = tunnel.instance;
+        uint32_t gre_sw_if_index = 0;
+
+        // Pin the encap to the one monitor port MirrorOrch already resolved, so the
+        // constant outer header does not hash across the mirror-dst ECMP group.
+        // Must run BEFORE the tunnel is created: the outer L2 midchain stacks at
+        // creation time and does not reliably re-stack onto a later /32.
+        info.src_ip = tunnel.src;
+        info.dst_ip = tunnel.dst;
+        info.monitor_pinned = false;
+        info.monitor_port = SAI_NULL_OBJECT_ID;
+
+        // Resolve the outer header in a FIB this session alone owns: the collector
+        // host route then cannot replace, or be replaced by, an orchagent route or
+        // another session aimed at the same collector.
+        CHECK_STATUS(createErspanOuterFib(info));
+        tunnel.outer_table_id = info.outer_fib_id;
+
+        sai_object_id_t mon_port = SAI_NULL_OBJECT_ID;
+        sai_mac_t mon_mac;
+        memset(mon_mac, 0, sizeof(mon_mac));
+
+        const sai_attribute_value_t *mon_value;
+        uint32_t mon_index;
+        if (find_attrib_in_list(attr_count, attr_list, SAI_MIRROR_SESSION_ATTR_MONITOR_PORT, &mon_value, &mon_index) == SAI_STATUS_SUCCESS)
+        {
+            mon_port = mon_value->oid;
+        }
+        if (find_attrib_in_list(attr_count, attr_list, SAI_MIRROR_SESSION_ATTR_DST_MAC_ADDRESS, &mon_value, &mon_index) == SAI_STATUS_SUCCESS)
+        {
+            memcpy(mon_mac, mon_value->mac, sizeof(sai_mac_t));
+        }
+
+        // Always runs: an unresolved monitor still needs the fall-through route that
+        // keeps the tunnel's outer lookup deferring to the main FIB.
+        sai_status_t mon_status = applyErspanMonitor(info, mon_port, mon_mac);
+        if (mon_status != SAI_STATUS_SUCCESS)
+        {
+            destroyErspanOuterFib(info);
+            return mon_status;
+        }
+
+        SWSS_LOG_NOTICE("Creating GRE mirror tunnel: type=%u instance=%u gre_protocol=0x%04x ttl=%u",
+            tunnel.type, tunnel.instance, gre_protocol, session_ttl);
+        int ret = vpp_gre_tunnel_add_del(&tunnel, true, &gre_sw_if_index);
+        if(ret != 0) {
+            SWSS_LOG_ERROR("Failed to add GRE tunnel for ERSPAN session, ret=%d", ret);
+            destroyErspanOuterFib(info);
+            return SAI_STATUS_FAILURE;
+        }
+        SWSS_LOG_NOTICE("GRE mirror tunnel created: instance=%u sw_if_index=%u", gre_instance, gre_sw_if_index);
+
+        // Set state by index rather than by name: the name lookup would need
+        // refresh_interfaces_list(), whose repeated rebuild of VPP's interface-name
+        // hashes churns the clib heap until a realloc trips its integrity check.
+        std::string gre_ifname = "gre" + std::to_string(gre_instance);
+        SWSS_LOG_INFO("gre tunnel created with ifname %s sw_if_index %u", gre_ifname.c_str(), gre_sw_if_index);
+        int up_ret = interface_set_state_by_index(gre_sw_if_index, true);
+        if(up_ret != 0) {
+            SWSS_LOG_ERROR("Failed to bring up gre tunnel %s (sw_if_index %u), ret=%d", gre_ifname.c_str(), gre_sw_if_index, up_ret);
+            vpp_gre_tunnel_add_del(&tunnel, false, &gre_sw_if_index);
+            destroyErspanOuterFib(info);
+            return SAI_STATUS_FAILURE;
+        }
+
+        // Stamp the exact outer TTL and Everflow GRE ethertype on the encapped
+        // copy: a stock TEB tunnel carries neither. Registered per tunnel
+        // sw_if_index and torn down with the session.
+        int fixup_ret = vpp_sonic_ext_mirror_encap_fixup_enable_disable(gre_sw_if_index, gre_protocol, session_ttl, true);
+        if(fixup_ret != 0) {
+            SWSS_LOG_ERROR("Failed to register mirror encap fixup on gre tunnel %s (sw_if_index %u), ret=%d", gre_ifname.c_str(), gre_sw_if_index, fixup_ret);
+            vpp_gre_tunnel_add_del(&tunnel, false, &gre_sw_if_index);
+            destroyErspanOuterFib(info);
+            return SAI_STATUS_FAILURE;
+        }
+
+        info.sw_if_index = gre_sw_if_index;
+        info.is_erspan = true;
+        info.gre_protocol = gre_protocol;
+        info.ttl = session_ttl;
+        info.gre_instance = gre_instance;
     } else {
         SWSS_LOG_ERROR("Unsupported mirror session type %d", mirror_type);
         return SAI_STATUS_FAILURE;
     }
 
-    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_MIRROR_SESSION, sid, switch_id, attr_count, attr_list));
+    sai_status_t create_status = create_internal(SAI_OBJECT_TYPE_MIRROR_SESSION, sid, switch_id, attr_count, attr_list);
+    if(create_status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to create mirror session %s in SAI DB, status=%d", sid.c_str(), create_status);
+        // Tunnel-scoped locals are out of scope here, so rebuild the delete key
+        // from info exactly as removeMirrorSession does.
+        if(info.is_erspan) {
+            vpp_sonic_ext_mirror_encap_fixup_enable_disable(info.sw_if_index, 0, 0, false);
+            vpp_gre_tunnel_t tunnel{};
+            tunnel.instance = info.gre_instance;
+            tunnel.type = 1;
+            tunnel.src = info.src_ip;
+            tunnel.dst = info.dst_ip;
+            tunnel.outer_table_id = info.outer_fib_id;
+            uint32_t sw_if_index = 0;
+            int ret = vpp_gre_tunnel_add_del(&tunnel, false, &sw_if_index);
+            if(ret != 0) {
+                SWSS_LOG_ERROR("Failed to remove GRE tunnel for ERSPAN session after SAI DB create failure, ret=%d", ret);
+            }
+            // After the tunnel: VPP rejects deleting a FIB the tunnel still stacks on.
+            destroyErspanOuterFib(info);
+        }
+        return create_status;
+    }
 
     m_mirror_sessions[object_id] = info;
     m_mirror_session_count++;
@@ -79,6 +230,31 @@ sai_status_t SwitchVpp::removeMirrorSession(
     if(it == m_mirror_sessions.end()) {
         SWSS_LOG_ERROR("Mirror session %s not found", sai_serialize_object_id(object_id).c_str());
         return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    MirrorSessionInfo &info = it->second;
+
+    if(info.is_erspan) {
+        // Disable the fixup feature while the tunnel sw_if_index is still valid.
+        vpp_sonic_ext_mirror_encap_fixup_enable_disable(info.sw_if_index, 0, 0, false);
+
+        vpp_gre_tunnel_t tunnel{};
+        // VPP keys the delete on (src, dst, fib, type), not instance.
+        tunnel.instance = info.gre_instance;
+        tunnel.type = 1;
+        tunnel.src = info.src_ip;
+        tunnel.dst = info.dst_ip;
+        tunnel.outer_table_id = info.outer_fib_id;
+
+        uint32_t sw_if_index = 0;
+        int ret = vpp_gre_tunnel_add_del(&tunnel, false, &sw_if_index);
+        if(ret != 0) {
+            // Not usefully retryable, so drop the entry anyway rather than leak.
+            SWSS_LOG_ERROR("Failed to remove GRE tunnel for ERSPAN session, ret=%d; dropping entry anyway", ret);
+        }
+
+        // After the tunnel: VPP rejects deleting a FIB the tunnel still stacks on.
+        destroyErspanOuterFib(info);
     }
 
     // Unprogram and erase any port mirror bindings that still reference this
@@ -121,6 +297,280 @@ sai_status_t SwitchVpp::removeMirrorSession(
     SWSS_LOG_NOTICE("Removed mirror session %s, mirror session count: %u", sai_serialize_object_id(object_id).c_str(), m_mirror_session_count);
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::createErspanOuterFib(
+        _In_ MirrorSessionInfo &info)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t fib_id = VPP_MIRROR_OUTER_FIB_NONE;
+
+    for (uint32_t i = 0; i < (uint32_t)m_maxMirrorSessions; i++)
+    {
+        if (m_mirror_outer_fibs.insert(VPP_MIRROR_OUTER_FIB_BASE + i).second)
+        {
+            fib_id = VPP_MIRROR_OUTER_FIB_BASE + i;
+            break;
+        }
+    }
+
+    if (fib_id == VPP_MIRROR_OUTER_FIB_NONE)
+    {
+        SWSS_LOG_ERROR("No free ERSPAN outer FIB id left");
+        return SAI_STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    init_vpp_client();
+
+    int ret = ip_vrf_add(fib_id, "", info.dst_ip.sa_family == AF_INET6);
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("Failed to create ERSPAN outer FIB %u, ret=%d", fib_id, ret);
+        m_mirror_outer_fibs.erase(fib_id);
+        return SAI_STATUS_FAILURE;
+    }
+
+    info.outer_fib_id = fib_id;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::destroyErspanOuterFib(
+        _In_ MirrorSessionInfo &info)
+{
+    SWSS_LOG_ENTER();
+
+    if (info.outer_fib_id == VPP_MIRROR_OUTER_FIB_NONE)
+    {
+        return;
+    }
+
+    programErspanOuterRoute(info, false);
+
+    init_vpp_client();
+
+    int ret = ip_vrf_del(info.outer_fib_id, "", info.dst_ip.sa_family == AF_INET6);
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("Failed to delete ERSPAN outer FIB %u, ret=%d", info.outer_fib_id, ret);
+    }
+
+    m_mirror_outer_fibs.erase(info.outer_fib_id);
+    info.outer_fib_id = VPP_MIRROR_OUTER_FIB_NONE;
+    info.monitor_pinned = false;
+}
+
+sai_status_t SwitchVpp::programErspanOuterRoute(
+        _In_ MirrorSessionInfo &info,
+        _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    if (info.outer_fib_id == VPP_MIRROR_OUTER_FIB_NONE)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    init_vpp_client();
+
+    vpp_ip_route_t *route = (vpp_ip_route_t *)
+        calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
+    if (!route)
+    {
+        SWSS_LOG_ERROR("ERSPAN outer route: failed to allocate route");
+        return SAI_STATUS_FAILURE;
+    }
+
+    route->prefix_addr = info.dst_ip;
+    route->prefix_len = (info.dst_ip.sa_family == AF_INET) ? 32 : 128;
+    route->vrf_id = info.outer_fib_id;
+    // Sole prefix of a FIB this session owns, so replacing it disturbs nothing else.
+    route->is_multipath = false;
+    route->nexthop_cnt = 1;
+
+    route->nexthop[0].sw_if_index = (uint32_t)~0;
+    route->nexthop[0].weight = 1;
+    route->nexthop[0].preference = 0;
+    route->nexthop[0].type = VPP_NEXTHOP_NORMAL;
+    route->nexthop[0].flags = 0;
+
+    if (info.monitor_pinned)
+    {
+        // Route via the connected nexthop IP, not a static neighbor for the mirror dst
+        // itself: the latter has no connected cover and would resolve to a drop.
+        sai_ip_address_t_to_vpp_ip_addr_t(info.monitor_nh, route->nexthop[0].addr);
+        route->nexthop[0].hwif_name = info.monitor_hwif.c_str();
+    }
+    else
+    {
+        // A zero next hop with no egress interface is a VPP deaggregation path, so the
+        // outer lookup falls through to the main FIB (and its ECMP) as before.
+        route->nexthop[0].addr.sa_family = info.dst_ip.sa_family;
+    }
+
+    int ret = ip_route_add_del(route, is_add);
+    free(route);
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("ERSPAN outer route %s in fib %u failed, ret=%d",
+            (is_add ? "add" : "del"), info.outer_fib_id, ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+bool SwitchVpp::resolveMonitorNexthop(
+        _In_ sai_object_id_t monitor_port,
+        _In_ const sai_mac_t mac,
+        _Out_ sai_ip_address_t &nexthop)
+{
+    SWSS_LOG_ENTER();
+
+    auto pit = m_port_neighbor_mac.find(monitor_port);
+    if (pit == m_port_neighbor_mac.end())
+    {
+        return false;
+    }
+
+    std::string macStr = sai_serialize_mac(mac);
+
+    // Find a neighbor on the monitor port whose L2 address matches the mirror
+    // DST_MAC; that neighbor's IP is the ERSPAN nexthop orchagent resolved.
+    for (const auto &kv : pit->second)
+    {
+        if (kv.second == macStr)
+        {
+            sai_deserialize_ip_address(kv.first, nexthop);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+sai_status_t SwitchVpp::applyErspanMonitor(
+        _In_ MirrorSessionInfo &info,
+        _In_ sai_object_id_t monitor_port,
+        _In_ const sai_mac_t mac)
+{
+    SWSS_LOG_ENTER();
+
+    std::string hwif;
+    sai_ip_address_t nh;
+
+    bool resolved =
+        monitor_port != SAI_NULL_OBJECT_ID
+        && !(hwif = m_ifaceRegistry.resolveHwIfName(monitor_port, 0)).empty()
+        && resolveMonitorNexthop(monitor_port, mac, nh);
+
+    if (!resolved && monitor_port != SAI_NULL_OBJECT_ID)
+    {
+        // LAG uplink: orchagent's MONITOR_PORT is a physical member, but the
+        // nexthop neighbor is learned on the parent PortChannel; resolve and
+        // pin via the bond (BondEthernet<id>) instead of the member port.
+        sai_object_id_t lag_oid = SAI_NULL_OBJECT_ID;
+        if (getLagFromPort(monitor_port, lag_oid)
+            && !(hwif = m_ifaceRegistry.resolveHwIfName(lag_oid, 0)).empty()
+            && resolveMonitorNexthop(lag_oid, mac, nh))
+        {
+            resolved = true;
+        }
+    }
+
+    // programErspanOuterRoute() reads the target from info, so stage it there and
+    // roll back if the dataplane refuses the transition.
+    bool prev_pinned = info.monitor_pinned;
+    std::string prev_hwif = info.monitor_hwif;
+    sai_ip_address_t prev_nh = info.monitor_nh;
+
+    info.monitor_pinned = resolved;
+    if (resolved)
+    {
+        info.monitor_hwif = hwif;
+        info.monitor_nh = nh;
+    }
+    else
+    {
+        info.monitor_hwif.clear();
+    }
+
+    sai_status_t status = programErspanOuterRoute(info, true);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        info.monitor_pinned = prev_pinned;
+        info.monitor_hwif = prev_hwif;
+        info.monitor_nh = prev_nh;
+        return status;
+    }
+
+    info.monitor_port = monitor_port;
+    memcpy(info.monitor_mac, mac, sizeof(sai_mac_t));
+
+    if (resolved)
+    {
+        SWSS_LOG_NOTICE("ERSPAN monitor pinned: nexthop %s out %s",
+            sai_serialize_ip_address(nh).c_str(), hwif.c_str());
+    }
+    else
+    {
+        // Monitor port or nexthop unresolved: record what we know for a later
+        // re-point, but leave outer forwarding to the FIB (ECMP) for now.
+        SWSS_LOG_NOTICE("ERSPAN monitor port/nexthop unresolved; "
+            "falling back to FIB-resolved forwarding for the mirror destination");
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::setMirrorSession(
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(object_id);
+
+    auto it = m_mirror_sessions.find(object_id);
+
+    // Only ERSPAN sessions carry a monitor-port pin; everything else just persists.
+    if (attr != nullptr && it != m_mirror_sessions.end() && it->second.is_erspan)
+    {
+        MirrorSessionInfo &info = it->second;
+
+        if (attr->id == SAI_MIRROR_SESSION_ATTR_MONITOR_PORT)
+        {
+            // orchagent re-resolved the next hop; re-point using the current DST_MAC.
+            CHECK_STATUS(applyErspanMonitor(info, attr->value.oid, info.monitor_mac));
+            SWSS_LOG_NOTICE("ERSPAN session %s monitor port updated", sid.c_str());
+        }
+        else if (attr->id == SAI_MIRROR_SESSION_ATTR_DST_MAC_ADDRESS)
+        {
+            // Neighbor MAC changed; re-resolve against the current monitor port.
+            CHECK_STATUS(applyErspanMonitor(info, info.monitor_port, attr->value.mac));
+            SWSS_LOG_NOTICE("ERSPAN session %s dst mac updated", sid.c_str());
+        }
+        else if (attr->id == SAI_MIRROR_SESSION_ATTR_TTL)
+        {
+            if (attr->value.u8 == 0) {
+                SWSS_LOG_ERROR("Rejecting TTL 0 on mirror session %s: would black-hole every mirrored packet", sid.c_str());
+                return SAI_STATUS_INVALID_ATTR_VALUE_0;
+            }
+            info.ttl = attr->value.u8;
+            vpp_sonic_ext_mirror_encap_fixup_enable_disable(info.sw_if_index, info.gre_protocol, info.ttl, true);
+            SWSS_LOG_NOTICE("ERSPAN session %s ttl updated to %u", sid.c_str(), info.ttl);
+        }
+        else if (attr->id == SAI_MIRROR_SESSION_ATTR_GRE_PROTOCOL_TYPE)
+        {
+            info.gre_protocol = attr->value.u16;
+            vpp_sonic_ext_mirror_encap_fixup_enable_disable(info.sw_if_index, info.gre_protocol, info.ttl, true);
+            SWSS_LOG_NOTICE("ERSPAN session %s gre protocol updated to 0x%04x", sid.c_str(), info.gre_protocol);
+        }
+    }
+
+    return set_internal(SAI_OBJECT_TYPE_MIRROR_SESSION, sid, attr);
 }
 
 sai_status_t SwitchVpp::bindMirrorPort(
