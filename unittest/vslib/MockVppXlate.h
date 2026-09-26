@@ -195,6 +195,8 @@ struct VppMock
     std::map<uint32_t, std::string> swifNames;
     // vpp_ipip_tunnel_del() result: on failure, VPP keeps the tunnel
     int ipipDelResult = 0;
+    // vpp_sw_interface_find_by_ip() result: -1 when no interface owns the IP
+    int findByIpResult = -1;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
