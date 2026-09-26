@@ -2039,6 +2039,34 @@ sai_status_t Syncd::processBulkQuadEvent(
         attributes.push_back(list);
     }
 
+    // Each bulk SET item requires exactly one attribute. Validate the entire
+    // request before translating or dispatching any item.
+    if (api == SAI_COMMON_API_BULK_SET)
+    {
+        for (size_t idx = 0; idx < attributes.size(); ++idx)
+        {
+            if (attributes[idx]->get_attr_count() != 1)
+            {
+                SWSS_LOG_ERROR(
+                        "bulk SET entry %zu for %s has %u attributes; exactly one is required",
+                        idx,
+                        sai_serialize_object_type(objectType).c_str(),
+                        attributes[idx]->get_attr_count());
+
+                std::vector<sai_status_t> statuses(
+                        objectIds.size(), SAI_STATUS_INVALID_PARAMETER);
+
+                sendApiResponse(
+                        api,
+                        SAI_STATUS_INVALID_PARAMETER,
+                        static_cast<uint32_t>(statuses.size()),
+                        statuses.data());
+
+                return SAI_STATUS_INVALID_PARAMETER;
+            }
+        }
+    }
+
     SWSS_LOG_INFO("bulk %s executing with %zu items",
             strObjectType.c_str(),
             objectIds.size());
@@ -4456,6 +4484,20 @@ sai_status_t Syncd::processQuadEvent(
 
     sai_attribute_t *attr_list = list.get_attr_list();
     uint32_t attr_count = list.get_attr_count();
+
+    // A SET request requires exactly one attribute. Check before the
+    // INIT_VIEW, translation, or vendor paths consume the list.
+    if (api == SAI_COMMON_API_SET && attr_count != 1)
+    {
+        SWSS_LOG_ERROR(
+                "SET operation for %s has %u attributes; exactly one is required",
+                key.c_str(),
+                attr_count);
+
+        sendApiResponse(api, SAI_STATUS_INVALID_PARAMETER);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
 
     /*
      * NOTE: This check pointers must be executed before init view mode, since
