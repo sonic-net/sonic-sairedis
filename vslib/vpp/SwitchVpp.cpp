@@ -1340,6 +1340,13 @@ sai_status_t SwitchVpp::create(
         return createRouterif(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_VIRTUAL_ROUTER)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createVrf(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_ROUTE_ENTRY)
     {
         sai_status_t status = addIpRoute(serializedObjectId, switch_id, attr_count, attr_list);

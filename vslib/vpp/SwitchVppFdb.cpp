@@ -1597,6 +1597,17 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
         }
     }
 
+    // Put the BVI in its virtual router's table while it has no address yet;
+    // the SVI addresses arrive later, from the IP2ME routes.
+    auto attr_vr_id = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID, attr_count, attr_list);
+
+    if (attr_vr_id != NULL)
+    {
+        std::string linux_ifname = std::string("Vlan") + std::to_string(vlan_id);
+
+        return vpp_router_interface_set_vrf(attr_vr_id->value.oid, hw_ifname, 0, linux_ifname.c_str());
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 
