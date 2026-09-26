@@ -87,6 +87,22 @@ sai_status_t get_exact_vxlan_term_match(
     return SAI_STATUS_SUCCESS;
 }
 
+// Bind a decap BVI to its VRF in both address families: the tunnel carries
+// IPv4 and IPv6, and an inner IPv6 packet would otherwise be routed in
+// table 0.
+int set_decap_bvi_table(
+    _In_ const char *hw_bvi_ifname,
+    _In_ uint32_t vrf_id)
+{
+    SWSS_LOG_ENTER();
+
+    int ret = set_interface_vrf(hw_bvi_ifname, 0, vrf_id, false);
+    if (ret == 0) {
+        ret = set_interface_vrf(hw_bvi_ifname, 0, vrf_id, true);
+    }
+    return ret;
+}
+
 }
 
 TunnelManager::TunnelManager(SwitchVpp* switch_db): m_switch_db(switch_db)
@@ -632,7 +648,7 @@ TunnelManager::create_vpp_vxlan_decap(
     bridge_created = true;
 
     //bind bvi to vrf
-    vpp_status = set_interface_vrf(hw_bvi_ifname, 0, tunnel_data.ip_vrf->m_vrf_id, tunnel_data.ip_vrf->m_is_ipv6);
+    vpp_status = set_decap_bvi_table(hw_bvi_ifname, tunnel_data.ip_vrf->m_vrf_id);
     if (vpp_status != 0) {
         SWSS_LOG_ERROR("Failed to bind VXLAN bvi interface to vrf");
         return rollback();
@@ -1926,7 +1942,7 @@ TunnelManager::create_vxlan_decap_term(
         rollback_bd_bvi();
         return SAI_STATUS_FAILURE;
     }
-    if (set_interface_vrf(hw_bvi_ifname, 0, ip_vrf->m_vrf_id, ip_vrf->m_is_ipv6) != 0) {
+    if (set_decap_bvi_table(hw_bvi_ifname, ip_vrf->m_vrf_id) != 0) {
         SWSS_LOG_ERROR("VXLAN decap term: failed to set VRF %u on BVI %s for VNI %u",
                        ip_vrf->m_vrf_id, hw_bvi_ifname, vni);
         rollback_bd_bvi();

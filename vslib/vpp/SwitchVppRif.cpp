@@ -1647,6 +1647,10 @@ sai_status_t SwitchVpp::vpp_add_lpb_intf_ip_addr (
     SWSS_LOG_NOTICE("get_intf_name_for_prefix:%s", hostIfname.c_str());
     lpbHostIfToVppIfMap[hostIfname] = vppIfName;
 
+    // The IP2ME route carrying the address is in the loopback's virtual
+    // router. Bind the loopback to that table before the address goes on.
+    vpp_router_interface_set_vrf(route_entry.vr_id, vppIfName.c_str(), 0, hostIfname.c_str());
+
     // create lcp tap between vpp and host
     {
         init_vpp_client();
@@ -1725,10 +1729,22 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
 
     std::string vrf_name = "vrf_" + std::to_string(vrf_id);
 
-    if (vrf_id && ip_vrf_add(vrf_id, vrf_name.c_str(), false) != 0) {
-        SWSS_LOG_ERROR("Failed to create IPv4 VRF table %u for %s",
-                       vrf_id, sai_serialize_object_id(objectId).c_str());
-        return -1;
+    /*
+     * Table 0 always exists. Any other table has to exist in both address
+     * families before an interface can be bound to it or a route added.
+     */
+    if (vrf_id != 0) {
+        if (ip_vrf_add(vrf_id, vrf_name.c_str(), false) != 0) {
+            SWSS_LOG_ERROR("Failed to create IPv4 VRF table %u for %s",
+                           vrf_id, sai_serialize_object_id(objectId).c_str());
+            return -1;
+        }
+        if (ip_vrf_add(vrf_id, vrf_name.c_str(), true) != 0) {
+            SWSS_LOG_ERROR("Failed to create IPv6 VRF table %u for %s",
+                           vrf_id, sai_serialize_object_id(objectId).c_str());
+            ip_vrf_del(vrf_id, vrf_name.c_str(), false);
+            return -1;
+        }
     }
     SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
     vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
@@ -1756,12 +1772,194 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
     if (it != vrf_objMap.end()) {
         auto sw = it->second;
         if (sw != nullptr) {
-                 SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
-           ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), sw->m_is_ipv6);
-           vrf_objMap.erase(it);
+            SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
+            if (sw->m_vrf_id != 0) {
+                ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), false);
+                ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), true);
+            }
+            if (sw->m_vrf_id >= vrf_table_id_base &&
+                sw->m_vrf_id < vrf_table_id_base + vrf_table_id_pool_size) {
+                vrf_table_id_pool.free(sw->m_vrf_id);
+            }
+            vrf_objMap.erase(it);
         }
     }
     return 0;
+}
+
+/*
+ * Give a virtual router created through SAI a VPP table of its own, before any
+ * router interface or route refers to it. The default virtual router is created
+ * at switch init without passing through here and keeps table 0.
+ *
+ * Nothing in SAI ties a virtual router to a kernel VRF, and saivpp programs the
+ * routes itself, so the id is allocated rather than read from the kernel. The
+ * exception is NO_LINUX_NL=n: linux-cp then syncs the kernel routes, into VPP
+ * tables keyed by the kernel table id, so the virtual router has to use that
+ * id. It is resolved per router interface by vpp_router_interface_set_vrf.
+ */
+sai_status_t SwitchVpp::vpp_create_vrf_table(
+        _In_ sai_object_id_t objectId)
+{
+    SWSS_LOG_ENTER();
+
+    if (is_ip_nbr_active() == false)
+    {
+        SWSS_LOG_NOTICE("VRF(%s) takes its table id from the kernel VRF, routes are synced by linux-cp",
+                        sai_serialize_object_id(objectId).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
+    int id = vrf_table_id_pool.alloc();
+
+    if (id < 0)
+    {
+        SWSS_LOG_ERROR("No free VPP table id for VRF(%s)", sai_serialize_object_id(objectId).c_str());
+        return SAI_STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    uint32_t vrf_id = (uint32_t)id;
+
+    if (vpp_add_ip_vrf(objectId, vrf_id) != 0)
+    {
+        vrf_table_id_pool.free(vrf_id);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("VRF(%s) allocated VPP table %u", sai_serialize_object_id(objectId).c_str(), vrf_id);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+/*
+ * Bind an interface to a table in both address families. VPP refuses to move an
+ * interface that still has an address (-114).
+ */
+static int vpp_set_interface_table(
+        _In_ const char *hwif_name,
+        _In_ uint32_t sub_id,
+        _In_ uint32_t vrf_id)
+{
+    SWSS_LOG_ENTER();
+
+    int ret4 = set_interface_vrf(hwif_name, sub_id, vrf_id, false);
+    if (ret4 != 0)
+    {
+        SWSS_LOG_ERROR("Failed to bind %s (sub %u) to IPv4 table %u: %d",
+                       hwif_name, sub_id, vrf_id, ret4);
+        return ret4;
+    }
+
+    int ret6 = set_interface_vrf(hwif_name, sub_id, vrf_id, true);
+    if (ret6 != 0)
+    {
+        SWSS_LOG_ERROR("Failed to bind %s (sub %u) to IPv6 table %u: %d",
+                       hwif_name, sub_id, vrf_id, ret6);
+    }
+
+    return ret6;
+}
+
+/*
+ * Bind the VPP interface of a router interface to its virtual router's table.
+ * Callers run this before the interface has an address; addresses arrive
+ * later, from the IP2ME routes.
+ */
+sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
+        _In_ sai_object_id_t vr_oid,
+        _In_ const char *hwif_name,
+        _In_ uint32_t sub_id,
+        _In_ const char *linux_ifname,
+        _Inout_ RifCreateState *state)
+{
+    SWSS_LOG_ENTER();
+
+    if (vr_oid == SAI_NULL_OBJECT_ID || hwif_name == NULL)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    uint32_t vrf_id = 0;
+    auto vrf = vpp_get_ip_vrf(vr_oid);
+
+    if (vrf != nullptr)
+    {
+        vrf_id = vrf->m_vrf_id;
+    }
+    else
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+
+        if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) == SAI_STATUS_SUCCESS &&
+            attr.value.oid == vr_oid)
+        {
+            // registering the default table sets its flow hash
+            vpp_add_ip_vrf(vr_oid, 0);
+        }
+        else
+        {
+            /*
+             * A virtual router without a table of its own (routes synced by
+             * linux-cp): follow the kernel VRF of the host interface. Leave the
+             * virtual router unregistered when that gives nothing usable, so a
+             * later router interface can still resolve it.
+             */
+            if (linux_ifname == NULL || vpp_get_vrf_id(linux_ifname, &vrf_id) != 0 || vrf_id == 0)
+            {
+                SWSS_LOG_ERROR("VRF(%s) has no VPP table and %s is in no kernel VRF, not binding %s",
+                               sai_serialize_object_id(vr_oid).c_str(),
+                               linux_ifname ? linux_ifname : "(none)", hwif_name);
+                return SAI_STATUS_FAILURE;
+            }
+
+            if (vrf_id >= vrf_table_id_base && vrf_id < vrf_table_id_base + vrf_table_id_pool_size)
+            {
+                SWSS_LOG_ERROR("Kernel table %u of %s is inside the allocated VPP table range, not binding %s",
+                               vrf_id, linux_ifname, hwif_name);
+                return SAI_STATUS_FAILURE;
+            }
+
+            if (vpp_add_ip_vrf(vr_oid, vrf_id) != 0)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+        }
+    }
+
+    uint32_t previous_vrf = 0;
+
+    if (state != nullptr && !state->interface_created)
+    {
+        int ret = get_interface_vrf(state->hwif.c_str(), false, &state->previous_vrf);
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("Failed to query IPv4 VRF for %s (%d)", state->hwif.c_str(), ret);
+            return SAI_STATUS_FAILURE;
+        }
+        previous_vrf = state->previous_vrf;
+    }
+
+    if (vrf_id == previous_vrf)
+    {
+        // a new interface is already in table 0
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SWSS_LOG_NOTICE("Binding %s (sub %u) to VRF(%s) table %u",
+                    hwif_name, sub_id, sai_serialize_object_id(vr_oid).c_str(), vrf_id);
+
+    if (vpp_set_interface_table(hwif_name, sub_id, vrf_id) != 0)
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (state != nullptr)
+    {
+        state->vrf_changed = !state->interface_created;
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 std::shared_ptr<IpVrfInfo> SwitchVpp::vpp_get_ip_vrf (_In_ sai_object_id_t objectId)
@@ -1994,8 +2192,8 @@ sai_status_t SwitchVpp::rollbackRifCreate(
         }
         if (state.vrf_changed)
         {
-            check(set_interface_vrf(state.hwif.c_str(), 0, state.previous_vrf, false),
-                    "restore IPv4 VRF");
+            check(vpp_set_interface_table(state.hwif.c_str(), 0, state.previous_vrf),
+                    "restore VRF");
         }
     }
 
@@ -2224,39 +2422,7 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
                         sai_serialize_object_id(vrf_obj_id).c_str());
     }
 
-    uint32_t vrf_id = 0;
-    int ret = vpp_get_vrf_id(osif_name.c_str(), &vrf_id);
-    if (ret != 0)
-    {
-        SWSS_LOG_ERROR("Failed to resolve VRF for %s (%d)", osif_name.c_str(), ret);
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (!state.interface_created)
-    {
-        ret = get_interface_vrf(state.hwif.c_str(), false, &state.previous_vrf);
-        if (ret != 0)
-        {
-            SWSS_LOG_ERROR("Failed to query IPv4 VRF for %s (%d)", state.hwif.c_str(), ret);
-            return SAI_STATUS_FAILURE;
-        }
-    }
-    if (vpp_add_ip_vrf(vrf_obj_id, vrf_id) != 0)
-    {
-        SWSS_LOG_ERROR("Failed to create IPv4 VRF %u for %s", vrf_id, state.hwif.c_str());
-        return SAI_STATUS_FAILURE;
-    }
-    // New sub-interfaces start in table 0; persistent ports/LAGs may not.
-    if (vrf_id != state.previous_vrf)
-    {
-        ret = set_interface_vrf(parent_hwif.c_str(), vlan_id, vrf_id, false);
-        if (ret != 0)
-        {
-            SWSS_LOG_ERROR("Failed to set IPv4 VRF %u on %s (%d)", vrf_id, state.hwif.c_str(), ret);
-            return SAI_STATUS_FAILURE;
-        }
-        state.vrf_changed = !state.interface_created;
-    }
+    CHECK_STATUS(vpp_router_interface_set_vrf(vrf_obj_id, parent_hwif.c_str(), vlan_id, osif_name.c_str(), &state));
     auto attr_type_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
     auto attr_type_mpls = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_MPLS_STATE, attr_count, attr_list);
     auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
@@ -2621,9 +2787,7 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
          * (returns VNET_API_ERROR_ADDRESS_FOUND_FOR_INTERFACE / -114 otherwise). */
         interface_ip_address_del_all(hwif_name.c_str());
 
-        uint32_t vrf_id = 0;
-        /* For now support is only for ipv4 tables */
-        set_interface_vrf(hwif_name.c_str(), 0, vrf_id, false);
+        vpp_set_interface_table(hwif_name.c_str(), 0, 0);
 
         return SAI_STATUS_SUCCESS;
     }
@@ -2776,6 +2940,33 @@ sai_status_t SwitchVpp::removeRouterif(
 
     m_ifaceRegistry.clearRifOid(objectId);
     m_rifStatsBaseMap.erase(objectId);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::createVrf(
+        _In_ sai_object_id_t object_id,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(object_id);
+
+    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, sid, switch_id, attr_count, attr_list));
+
+    if (m_switchConfig->m_useTapDevice == true)
+    {
+        sai_status_t status = vpp_create_vrf_table(object_id);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            remove_internal(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, sid);
+
+            return status;
+        }
+    }
 
     return SAI_STATUS_SUCCESS;
 }

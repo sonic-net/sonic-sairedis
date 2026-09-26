@@ -472,3 +472,11 @@ subtree
 iface
 loopback
 resync
+BVI
+VNI
+VRF
+saivpp
+EVPN
+SVI
+VTEP
+VNIs
