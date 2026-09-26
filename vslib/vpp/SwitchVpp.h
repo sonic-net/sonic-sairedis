@@ -712,6 +712,12 @@ namespace saivs
             sai_status_t vpp_remove_router_interface(
                     _In_ sai_object_id_t objectId);
 
+            sai_status_t vpp_router_interface_set_vrf(
+                    _In_ sai_object_id_t vr_oid,
+                    _In_ const char *hwif_name,
+                    _In_ uint32_t sub_id,
+                    _In_ const char *linux_ifname);
+
             sai_status_t vpp_add_del_intf_ip_addr_norif (
                     _In_ const std::string& ip_prefix_key,
                     _In_ sai_route_entry_t& route_entry,
@@ -781,7 +787,16 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+            sai_status_t createVrf(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
             sai_status_t removeVrf(
+                    _In_ sai_object_id_t objectId);
+
+            sai_status_t vpp_create_vrf_table(
                     _In_ sai_object_id_t objectId);
 
             std::shared_ptr<IpVrfInfo> vpp_get_ip_vrf(
@@ -1400,6 +1415,17 @@ namespace saivs
             static const uint16_t dynamic_bd_id_pool_size =  12*1024;
 
             BitResourcePool dynamic_bd_id_pool = BitResourcePool(dynamic_bd_id_pool_size, dynamic_bd_id_base);
+
+            // VPP ip table ids for virtual routers created through SAI; the
+            // default virtual router uses table 0. The only other tables come
+            // from kernel VRF table ids (linux-cp route sync, and the fallback
+            // in vpp_router_interface_set_vrf), which SONiC allocates from 1001
+            // (the management VRF is 6000). The range starts far above those,
+            // and the fallback refuses a kernel id inside it.
+            static const uint32_t vrf_table_id_base = 0x100000;
+            static const uint16_t vrf_table_id_pool_size = 16*1024;
+
+            BitResourcePool vrf_table_id_pool = BitResourcePool(vrf_table_id_pool_size, vrf_table_id_base);
 
             // Snapshot of VPP L2FIB: {mac, bd_id} -> sw_if_index.
             // Kept in sync with MAC events from VPP to support flush operations
