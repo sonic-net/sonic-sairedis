@@ -423,6 +423,18 @@ protected:
         clearDB();
     }
 
+    void processEvent(const swss::KeyOpFieldsValuesTuple& kco)
+    {
+        MockSelectableChannel channel;
+
+        EXPECT_CALL(channel, pop(testing::_, testing::_))
+            .WillOnce(testing::SetArgReferee<0>(kco));
+        EXPECT_CALL(channel, empty())
+            .WillOnce(testing::Return(true));
+
+        m_syncd->processEvent(channel);
+    }
+
     std::shared_ptr<MockableSaiInterface> m_sai;
     std::shared_ptr<CommandLineOptions> m_opt;
     std::shared_ptr<Syncd> m_syncd;
@@ -697,6 +709,89 @@ TEST_F(SyncdTest, BulkSetTest)
     };
 
     m_syncd->processEvent(*channel);
+}
+
+TEST_F(SyncdTest, SetRequiresOneAttribute)
+{
+    bool vendorSetCalled = false;
+    m_sai->mock_set = [&vendorSetCalled](
+            sai_object_type_t,
+            sai_object_id_t,
+            const sai_attribute_t*) -> sai_status_t {
+        vendorSetCalled = true;
+        return SAI_STATUS_SUCCESS;
+    };
+
+    const std::vector<std::string> keys = {
+        "SAI_OBJECT_TYPE_VLAN:oid:0x26000000000001",
+        "SAI_OBJECT_TYPE_ROUTE_ENTRY:{\"dest\":\"192.0.2.99/32\","
+            "\"switch_id\":\"oid:0x21000000000000\","
+            "\"vr\":\"oid:0x21000000000000\"}",
+    };
+
+    for (const auto& key: keys)
+    {
+        swss::KeyOpFieldsValuesTuple kco(
+                key,
+                REDIS_ASIC_STATE_COMMAND_SET,
+                {});
+
+        EXPECT_NO_THROW(processEvent(kco));
+    }
+
+    EXPECT_FALSE(vendorSetCalled);
+}
+
+TEST_F(SyncdTest, BulkSetRequiresOneAttributePerItem)
+{
+    m_opt->m_enableSaiBulkSupport = true;
+
+    bool vendorBulkSetCalled = false;
+    bool vendorSetCalled = false;
+
+    m_sai->mock_bulkSet = [&vendorBulkSetCalled](
+            sai_object_type_t,
+            uint32_t,
+            const sai_object_id_t*,
+            const sai_attribute_t*,
+            sai_bulk_op_error_mode_t,
+            sai_status_t*) -> sai_status_t {
+        vendorBulkSetCalled = true;
+        return SAI_STATUS_SUCCESS;
+    };
+    m_sai->mock_set = [&vendorSetCalled](
+            sai_object_type_t,
+            sai_object_id_t,
+            const sai_attribute_t*) -> sai_status_t {
+        vendorSetCalled = true;
+        return SAI_STATUS_SUCCESS;
+    };
+
+    const std::vector<swss::KeyOpFieldsValuesTuple> events = {
+        {
+            "SAI_OBJECT_TYPE_VLAN:bulk:1",
+            REDIS_ASIC_STATE_COMMAND_BULK_SET,
+            {{"oid:0x26000000000001", ""}},
+        },
+        {
+            "SAI_OBJECT_TYPE_ROUTE_ENTRY:bulk:1",
+            REDIS_ASIC_STATE_COMMAND_BULK_SET,
+            {{
+                "{\"dest\":\"192.0.2.99/32\","
+                    "\"switch_id\":\"oid:0x21000000000000\","
+                    "\"vr\":\"oid:0x21000000000000\"}",
+                "",
+            }},
+        },
+    };
+
+    for (const auto& kco: events)
+    {
+        EXPECT_NO_THROW(processEvent(kco));
+    }
+
+    EXPECT_FALSE(vendorBulkSetCalled);
+    EXPECT_FALSE(vendorSetCalled);
 }
 
 TEST_F(SyncdTest, BulkRemoveTest)
