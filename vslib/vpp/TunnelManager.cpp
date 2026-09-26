@@ -1,5 +1,9 @@
 #include <algorithm>
+#include <climits>
+#include <cstring>
 #include <functional>
+
+#include <unistd.h>
 
 #include "SwitchVppUtils.h"
 #include "SwitchVpp.h"
@@ -29,6 +33,9 @@ TunnelManager::TunnelManager(SwitchVpp* switch_db): m_switch_db(switch_db)
 
     m_router_mac = {0, 0, 0, 0, 0, 1};
     m_vxlan_port = 4789;
+
+    m_netdev_master = TunnelManager::read_netdev_master;
+    m_add_tc_redirect = SwitchVpp::add_tc_filter_redirect;
 }
 
 const std::array<uint8_t, 6>&
@@ -216,6 +223,18 @@ TunnelManager::tunnel_encap_nexthop_action(
         nh_vni = attr.value.u32;
     }
 
+    // An EVPN type-5 next hop names the router MAC its remote VTEP advertised.
+    // That is the inner destination MAC the remote accepts, and the kernel's
+    // own VXLAN device already encapsulates switch-originated traffic with it.
+    bool nh_has_mac = false;
+    std::array<uint8_t, 6> nh_mac = {};
+
+    attr.id = SAI_NEXT_HOP_ATTR_TUNNEL_MAC;
+    if (tunnel_nh_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+        nh_has_mac = true;
+        memcpy(nh_mac.data(), attr.value.mac, nh_mac.size());
+    }
+
     // Iterate tunnel encap mapper
     auto tunnel_encap_mappers = tunnel_obj->get_linked_objects(SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_ENCAP_MAPPERS);
 
@@ -270,6 +289,8 @@ TunnelManager::tunnel_encap_nexthop_action(
             }
             tunnel_data.ip_vrf = ip_vrf;
             tunnel_data.vni = tunnel_vni;
+            tunnel_data.has_remote_router_mac = nh_has_mac;
+            tunnel_data.remote_router_mac = nh_mac;
             fill_vxlan_req(req, tunnel_vni);
 
             if (create_vpp_vxlan_encap(req, tunnel_data) != SAI_STATUS_SUCCESS) {
@@ -339,8 +360,11 @@ TunnelManager::create_vpp_vxlan_encap(
     u_int32_t                   sw_if_index;
     char                        src_ip_str[INET6_ADDRSTRLEN];
     char                        dst_ip_str[INET6_ADDRSTRLEN];
-    auto                        router_mac = get_router_mac();
+    auto                        router_mac = tunnel_data.has_remote_router_mac ?
+                                    tunnel_data.remote_router_mac : get_router_mac();
     auto                        bvi_mac = router_mac.data();
+    // the inner source MAC is this switch's router MAC, the one its decap BVI answers to
+    auto                        local_router_mac = get_decap_router_mac(tunnel_data);
 
     vpp_status = vpp_vxlan_tunnel_add_del(&req, 1, &sw_if_index);
     vpp_ip_addr_t_to_string(&req.src_address, src_ip_str, INET6_ADDRSTRLEN);
@@ -366,7 +390,7 @@ TunnelManager::create_vpp_vxlan_encap(
          * Ethernet header using the tunnel interface's hardware MAC as the source.
          * Without this, the inner source MAC is VPP's auto MAC (02:fe:..) instead
          * of the router MAC that HW ASICs (and the VNET decap test) expect. */
-        if (sw_interface_set_mac_by_index(sw_if_index, bvi_mac) != 0) {
+        if (sw_interface_set_mac_by_index(sw_if_index, local_router_mac.data()) != 0) {
             SWSS_LOG_ERROR("Failed to set router MAC on vxlan tunnel sw_if %u; "
                            "inner source MAC will remain VPP's auto MAC (02:fe:..)",
                            sw_if_index);
@@ -389,7 +413,8 @@ TunnelManager::remove_vpp_vxlan_encap(
     u_int32_t                   sw_if_index = tunnel_data.sw_if_index;
     char                        src_ip_str[INET6_ADDRSTRLEN];
     char                        dst_ip_str[INET6_ADDRSTRLEN];
-    auto                        router_mac = get_router_mac();
+    auto                        router_mac = tunnel_data.has_remote_router_mac ?
+                                    tunnel_data.remote_router_mac : get_router_mac();
     auto                        bvi_mac = router_mac.data();
 
     if (!skip_neighbor) {
@@ -420,7 +445,7 @@ TunnelManager::create_vpp_vxlan_decap(
 
     int                         vpp_status;
     char                        hw_bvi_ifname[32];
-    auto                        router_mac = get_router_mac();
+    auto                        router_mac = get_decap_router_mac(tunnel_data);
     auto                        bvi_mac = router_mac.data();
     vpp_ip_route_t              bvi_ip_prefix;
     uint32_t                    tunnel_if_index = tunnel_data.sw_if_index;
@@ -449,6 +474,11 @@ TunnelManager::create_vpp_vxlan_decap(
         SWSS_LOG_ERROR("Failed to bring up bvi interface");
         return SAI_STATUS_FAILURE;
     }
+
+    // Before the BVI joins its bridge domain, see create_decap_host_path.
+    // Without a host path the switch's own addresses in the VRF are unreachable
+    // over the tunnel, but transit still works, so a failure is not fatal.
+    create_decap_host_path(tunnel_data, hw_bvi_ifname);
 
     //Create bridge and set BVI to the BD
     vpp_status = set_sw_interface_l2_bridge(hw_bvi_ifname, bd_id, true, VPP_API_PORT_TYPE_BVI);
@@ -513,6 +543,8 @@ TunnelManager::remove_vpp_vxlan_decap(
 
     snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", tunnel_data.bd_id);
 
+    remove_decap_host_path(tunnel_data, hw_bvi_ifname);
+
     delete_bvi_interface(hw_bvi_ifname);
 
     // Detach the vxlan tunnel interface from the BD before deleting the BD. The
@@ -532,6 +564,169 @@ TunnelManager::remove_vpp_vxlan_decap(
     SWSS_LOG_INFO("successfully deleted decap of vxlan tunnel %d with BD %d",
                         tunnel_data.sw_if_index, tunnel_data.bd_id);
     return SAI_STATUS_SUCCESS;
+}
+
+std::string
+TunnelManager::read_netdev_master(
+    _In_ const std::string& netdev)
+{
+    SWSS_LOG_ENTER();
+
+    std::string link = "/sys/class/net/" + netdev + "/master";
+    char target[PATH_MAX];
+
+    ssize_t len = readlink(link.c_str(), target, sizeof(target) - 1);
+    if (len <= 0) {
+        return "";
+    }
+    target[len] = '\0';
+
+    // the link reads ../<master>
+    const char *slash = strrchr(target, '/');
+    return slash ? std::string(slash + 1) : std::string(target);
+}
+
+std::array<uint8_t, 6>
+TunnelManager::get_decap_router_mac(
+    _In_ const TunnelVPPData& tunnel_data)
+{
+    SWSS_LOG_ENTER();
+
+    // A next hop without a remote router MAC means every VTEP shares the one
+    // VXLAN router MAC (the VNET model), for decap as for encap.
+    if (!tunnel_data.has_remote_router_mac) {
+        return get_router_mac();
+    }
+
+    // With per-VTEP router MACs (EVPN), a remote VTEP, and the kernel VXLAN
+    // device of any switch, address this switch with the router MAC it
+    // advertises: its L3VNI SVI's MAC, which SONiC sets to the switch MAC.
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+    if (m_switch_db->get(SAI_OBJECT_TYPE_SWITCH, m_switch_db->m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to read the switch MAC, decap BVI of VNI %u keeps the default router MAC",
+            tunnel_data.vni);
+        return get_router_mac();
+    }
+
+    std::array<uint8_t, 6> mac;
+
+    memcpy(mac.data(), attr.value.mac, mac.size());
+    return mac;
+}
+
+std::string
+TunnelManager::get_kernel_vrf(
+    _In_ sai_object_id_t vr_oid)
+{
+    SWSS_LOG_ENTER();
+
+    auto& objects = m_switch_db->m_objectHash;
+    auto rifs = objects.find(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto vlans = objects.find(SAI_OBJECT_TYPE_VLAN);
+
+    if (rifs == objects.end() || vlans == objects.end()) {
+        return "";
+    }
+
+    auto md_type = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_TYPE);
+    auto md_vr = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID);
+    auto md_vlan = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
+    auto md_vlan_id = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_VLAN, SAI_VLAN_ATTR_VLAN_ID);
+
+    for (auto& rif: rifs->second) {
+        auto& attrs = rif.second;
+        auto type = attrs.find(md_type->attridname);
+        auto vr = attrs.find(md_vr->attridname);
+        auto vlan = attrs.find(md_vlan->attridname);
+
+        if (type == attrs.end() || vr == attrs.end() || vlan == attrs.end() ||
+            type->second->getAttr()->value.s32 != SAI_ROUTER_INTERFACE_TYPE_VLAN ||
+            vr->second->getAttr()->value.oid != vr_oid) {
+            continue;
+        }
+
+        auto vlan_obj = vlans->second.find(sai_serialize_object_id(vlan->second->getAttr()->value.oid));
+        if (vlan_obj == vlans->second.end()) {
+            continue;
+        }
+        auto vid = vlan_obj->second.find(md_vlan_id->attridname);
+        if (vid == vlan_obj->second.end()) {
+            continue;
+        }
+
+        // SONiC names a VLAN's SVI Vlan<id>, and enslaves it to the VRF.
+        std::string vrf = m_netdev_master("Vlan" + std::to_string(vid->second->getAttr()->value.u16));
+        if (!vrf.empty()) {
+            return vrf;
+        }
+    }
+    return "";
+}
+
+sai_status_t
+TunnelManager::create_decap_host_path(
+    _Inout_ TunnelVPPData& tunnel_data,
+    _In_ const char* hw_bvi_ifname)
+{
+    SWSS_LOG_ENTER();
+
+    // A packet decapsulated into the VRF for one of the switch's own addresses
+    // (a BGP session to a loopback, say) is punted from the BVI, and without a
+    // linux-cp pair VPP has nowhere to punt it and drops it. Pair the BVI with
+    // a tap and redirect the tap into the VRF's kernel device, the same tc
+    // arrangement vpp_add_lpb uses for a loopback.
+    //
+    // The pair has to exist before the BVI joins its bridge domain. The
+    // sonic_ext plugin classifies a pair once, when it is added, and turns on
+    // aggr-tap-redirect for the tap of any BVI. That feature re-steers a punt
+    // to the tap of the port the packet arrived on, which is right for a VLAN
+    // SVI and wrong here: that port is the underlay, so the inner packet would
+    // reach the kernel on it, outside the VRF.
+    if (!tunnel_data.ip_vrf) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string vrf = get_kernel_vrf(tunnel_data.ip_vrf->m_obj_id);
+    if (vrf.empty()) {
+        SWSS_LOG_NOTICE("No kernel VRF found for the VR of VNI %u, %s gets no host path",
+            tunnel_data.vni, hw_bvi_ifname);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string tap = std::string("tap_") + hw_bvi_ifname;
+
+    if (configure_lcp_interface(hw_bvi_ifname, tap.c_str(), true) != 0) {
+        SWSS_LOG_ERROR("Failed to pair %s with host tap %s", hw_bvi_ifname, tap.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+    tunnel_data.decap_host_if = tap;
+
+    if (m_add_tc_redirect(tap, vrf) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to redirect host tap %s into VRF %s", tap.c_str(), vrf.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("%s punts to host tap %s, redirected into VRF %s",
+        hw_bvi_ifname, tap.c_str(), vrf.c_str());
+    return SAI_STATUS_SUCCESS;
+}
+
+void
+TunnelManager::remove_decap_host_path(
+    _Inout_ TunnelVPPData& tunnel_data,
+    _In_ const char* hw_bvi_ifname)
+{
+    SWSS_LOG_ENTER();
+
+    if (tunnel_data.decap_host_if.empty()) {
+        return;
+    }
+
+    // the tc filter goes with the tap
+    configure_lcp_interface(hw_bvi_ifname, tunnel_data.decap_host_if.c_str(), false);
+    tunnel_data.decap_host_if.clear();
 }
 
 sai_status_t

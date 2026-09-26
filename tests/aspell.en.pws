@@ -549,3 +549,6 @@ VNI
 VPP
 VRF
 saivpp
+EVPN
+SVI
+VTEP

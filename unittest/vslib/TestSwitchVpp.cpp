@@ -6,7 +6,9 @@
 
 #include <arpa/inet.h>
 
+#include <array>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,6 +34,37 @@ namespace
     std::vector<VppCall> g_vppCalls;
 
     uint32_t g_nextSwIfIndex = 100;
+
+    std::string macStr(
+            const uint8_t *mac)
+    {
+        SWSS_LOG_ENTER();
+
+        char buf[18];
+
+        snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+        return buf;
+    }
+
+    // position of the first recorded call matching api and name, or -1
+    int vppCallIndex(
+            const std::string& api,
+            const std::string& name)
+    {
+        SWSS_LOG_ENTER();
+
+        for (size_t i = 0; i < g_vppCalls.size(); i++)
+        {
+            if (g_vppCalls[i].api == api && g_vppCalls[i].name == name)
+            {
+                return (int)i;
+            }
+        }
+
+        return -1;
+    }
 
     std::vector<VppCall> vppCallsTo(
             const std::string& api)
@@ -59,11 +92,26 @@ int __wrap_vpp_sync_for_events() { return 0; }
 vpp_event_info_t * __wrap_vpp_ev_dequeue() { return NULL; }
 int __wrap_vpp_want_l2_macs_events2(bool enable, vpp_mac_event_cb_fn cb, void *ctx) { return 0; }
 int __wrap_refresh_interfaces_list() { return 0; }
-int __wrap_set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type) { return 0; }
+int __wrap_set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type)
+{
+    SWSS_LOG_ENTER();
+
+    g_vppCalls.push_back({"set_sw_interface_l2_bridge", hwif_name ? hwif_name : "", bridge_id, port_type, l2_enable});
+    return 0;
+}
+
 int __wrap_set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_enable, uint32_t port_type) { return 0; }
 int __wrap_interface_set_state(const char *hwif_name, bool is_up) { return 0; }
 int __wrap_sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address) { return 0; }
-int __wrap_configure_lcp_interface(const char *hwif_name, const char *hostif_name, bool is_add) { return 0; }
+int __wrap_configure_lcp_interface(const char *hwif_name, const char *hostif_name, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    g_vppCalls.push_back({"configure_lcp_interface",
+            std::string(hwif_name ? hwif_name : "") + " " + (hostif_name ? hostif_name : ""), 0, 0, is_add});
+    return 0;
+}
+
 int __wrap_interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add) { return 0; }
 int __wrap_vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add) { return 0; }
 
@@ -72,6 +120,7 @@ int __wrap_ip4_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct s
 {
     SWSS_LOG_ENTER();
 
+    g_vppCalls.push_back({"ip4_nbr_add_del", macStr(mac), sw_if_index, 0, is_add});
     return 0;
 }
 
@@ -119,7 +168,7 @@ int __wrap_create_bvi_interface(uint8_t *mac_address, uint32_t instance)
 {
     SWSS_LOG_ENTER();
 
-    g_vppCalls.push_back({"create_bvi_interface", "", instance, 0, true});
+    g_vppCalls.push_back({"create_bvi_interface", macStr(mac_address), instance, 0, true});
     return 0;
 }
 
@@ -472,7 +521,52 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
             ASSERT_EQ(SAI_STATUS_SUCCESS,
                     m_sw->create_internal(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(m_tunnel), m_switchId, 3, tattrs));
 
+            // stand-ins for the kernel side of the decap host path
+            m_sw->m_tunnel_mgr.m_netdev_master = [this](const std::string& netdev)
+            {
+                SWSS_LOG_ENTER();
+
+                auto it = m_kernelMasters.find(netdev);
+
+                return it == m_kernelMasters.end() ? std::string() : it->second;
+            };
+
+            m_sw->m_tunnel_mgr.m_add_tc_redirect = [this](const std::string& tap, const std::string& dev)
+            {
+                SWSS_LOG_ENTER();
+
+                m_redirects.push_back(tap + " " + dev);
+
+                return SAI_STATUS_SUCCESS;
+            };
+
             g_vppCalls.clear();
+        }
+
+        void setSwitchMac(
+                const std::array<uint8_t, 6>& mac)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+            memcpy(attr.value.mac, mac.data(), mac.size());
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->set_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), &attr));
+        }
+
+        // name of the one decap BVI created since the last clear
+        std::string decapBvi()
+        {
+            SWSS_LOG_ENTER();
+
+            auto bvis = vppCallsTo("create_bvi_interface");
+
+            EXPECT_EQ(1u, bvis.size());
+
+            return bvis.empty() ? std::string() : "bvi" + std::to_string(bvis[0].id);
         }
 
         static sai_ip_address_t ipv4(
@@ -516,13 +610,15 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
 
         sai_status_t createNexthop(
                 uint32_t vni,
-                sai_object_id_t& nh)
+                sai_object_id_t& nh,
+                const uint8_t *remoteRouterMac = nullptr)
         {
             SWSS_LOG_ENTER();
 
             nh = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_NEXT_HOP, m_switchId);
 
-            sai_attribute_t attrs[4];
+            sai_attribute_t attrs[5];
+            uint32_t count = 4;
 
             attrs[0].id = SAI_NEXT_HOP_ATTR_TYPE;
             attrs[0].value.s32 = SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP;
@@ -533,14 +629,31 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
             attrs[3].id = SAI_NEXT_HOP_ATTR_TUNNEL_VNI;
             attrs[3].value.u32 = vni;
 
-            return m_sw->create(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh), m_switchId, 4, attrs);
+            if (remoteRouterMac)
+            {
+                attrs[4].id = SAI_NEXT_HOP_ATTR_TUNNEL_MAC;
+                memcpy(attrs[4].value.mac, remoteRouterMac, sizeof(sai_mac_t));
+                count = 5;
+            }
+
+            return m_sw->create(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh), m_switchId, count, attrs);
         }
 
         sai_object_id_t m_vrA = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_vrB = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_vrUnknown = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_tunnel = SAI_NULL_OBJECT_ID;
+
+        std::map<std::string, std::string> m_kernelMasters;
+
+        std::vector<std::string> m_redirects;
 };
+
+namespace
+{
+    // what an EVPN type-5 next hop carries: the remote VTEP's router MAC
+    const uint8_t REMOTE_ROUTER_MAC[6] = { 0x22, 0x36, 0x29, 0xc2, 0x14, 0xf1 };
+}
 
 TEST_F(SwitchVppTunnelNexthop, UsesTheMapEntryOfItsVni)
 {
@@ -604,4 +717,149 @@ TEST_F(SwitchVppTunnelNexthop, FailsWhenItsVniHasNoUsableVirtualRouter)
     EXPECT_NE(SAI_STATUS_SUCCESS, createNexthop(4000, nh));
 
     EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
+}
+
+TEST_F(SwitchVppTunnelNexthop, EncapsulatesToTheRouterMacOfTheRemoteVtep)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto nbrs = vppCallsTo("ip4_nbr_add_del");
+
+    ASSERT_EQ(1u, nbrs.size());
+    EXPECT_EQ("22:36:29:c2:14:f1", nbrs[0].name);
+    EXPECT_TRUE(nbrs[0].flag);
+
+    g_vppCalls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh)));
+
+    // the remove takes out the neighbour the create added
+    nbrs = vppCallsTo("ip4_nbr_add_del");
+
+    ASSERT_EQ(1u, nbrs.size());
+    EXPECT_EQ("22:36:29:c2:14:f1", nbrs[0].name);
+    EXPECT_FALSE(nbrs[0].flag);
+}
+
+TEST_F(SwitchVppTunnelNexthop, DecapBviAnswersToTheSwitchMac)
+{
+    setSwitchMac({ 0x22, 0xfd, 0xe1, 0x99, 0x49, 0x9e });
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+    EXPECT_EQ("22:fd:e1:99:49:9e", bvis[0].name);
+}
+
+TEST_F(SwitchVppTunnelNexthop, WithoutARemoteRouterMacBothSidesKeepTheSharedOne)
+{
+    setSwitchMac({ 0x22, 0xfd, 0xe1, 0x99, 0x49, 0x9e });
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh));
+
+    auto nbrs = vppCallsTo("ip4_nbr_add_del");
+
+    ASSERT_EQ(1u, nbrs.size());
+    EXPECT_EQ("00:00:00:00:00:01", nbrs[0].name);
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+    EXPECT_EQ("00:00:00:00:00:01", bvis[0].name);
+}
+
+TEST_F(SwitchVppTunnelNexthop, DecapBviGetsAHostPathIntoItsKernelVrf)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan3000"] = "Vrft";
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvi = decapBvi();
+
+    int pair = vppCallIndex("configure_lcp_interface", bvi + " tap_" + bvi);
+    int bridge = vppCallIndex("set_sw_interface_l2_bridge", bvi);
+
+    ASSERT_NE(-1, pair);
+    ASSERT_NE(-1, bridge);
+    EXPECT_TRUE(g_vppCalls[pair].flag);
+
+    // paired before it becomes its bridge domain's BVI, or sonic_ext steers
+    // the punts to the underlay port's tap
+    EXPECT_LT(pair, bridge);
+
+    ASSERT_EQ(1u, m_redirects.size());
+    EXPECT_EQ("tap_" + bvi + " Vrft", m_redirects[0]);
+}
+
+TEST_F(SwitchVppTunnelNexthop, NoKernelVrfMeansNoHostPath)
+{
+    // the VR has a VLAN router interface, but its SVI is in no kernel VRF
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
+    EXPECT_TRUE(m_redirects.empty());
+}
+
+TEST_F(SwitchVppTunnelNexthop, DoesNotBorrowTheKernelVrfOfAnotherVirtualRouter)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrA, 100));
+
+    m_kernelMasters["Vlan100"] = "VrfA";
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    // VNI 2000 belongs to VR B
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
+    EXPECT_TRUE(m_redirects.empty());
+}
+
+TEST_F(SwitchVppTunnelNexthop, RemoveTearsDownTheHostPath)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan3000"] = "Vrft";
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvi = decapBvi();
+
+    g_vppCalls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh)));
+
+    int unpair = vppCallIndex("configure_lcp_interface", bvi + " tap_" + bvi);
+    int del = vppCallIndex("delete_bvi_interface", bvi);
+
+    ASSERT_NE(-1, unpair);
+    ASSERT_NE(-1, del);
+    EXPECT_FALSE(g_vppCalls[unpair].flag);
+    EXPECT_LT(unpair, del);
 }
