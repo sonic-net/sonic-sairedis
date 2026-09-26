@@ -487,3 +487,6 @@ cp
 ethertype
 fixup
 nexts
+saivpp
+SVI
+VNIs
