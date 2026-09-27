@@ -425,6 +425,8 @@ protected:
 
     void processEvent(const swss::KeyOpFieldsValuesTuple& kco)
     {
+        SWSS_LOG_ENTER();
+
         MockSelectableChannel channel;
 
         EXPECT_CALL(channel, pop(testing::_, testing::_))
