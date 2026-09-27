@@ -537,7 +537,7 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
 
                 m_redirects.push_back(tap + " " + dev);
 
-                return SAI_STATUS_SUCCESS;
+                return m_redirectStatus;
             };
 
             g_vppCalls.clear();
@@ -647,6 +647,8 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
         std::map<std::string, std::string> m_kernelMasters;
 
         std::vector<std::string> m_redirects;
+
+        sai_status_t m_redirectStatus = SAI_STATUS_SUCCESS;
 };
 
 namespace
@@ -835,6 +837,38 @@ TEST_F(SwitchVppTunnelNexthop, DoesNotBorrowTheKernelVrfOfAnotherVirtualRouter)
 
     EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
     EXPECT_TRUE(m_redirects.empty());
+}
+
+TEST_F(SwitchVppTunnelNexthop, AFailedRedirectLeavesNoHalfBuiltHostPath)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan3000"] = "Vrft";
+    m_redirectStatus = SAI_STATUS_FAILURE;
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    // the host path is best effort: the tunnel still comes up without one
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvi = decapBvi();
+    auto pairs = vppCallsTo("configure_lcp_interface");
+
+    // paired, then unpaired again, so no tap is left punting outside the VRF
+    ASSERT_EQ(2u, pairs.size());
+    EXPECT_EQ(bvi + " tap_" + bvi, pairs[0].name);
+    EXPECT_TRUE(pairs[0].flag);
+    EXPECT_EQ(bvi + " tap_" + bvi, pairs[1].name);
+    EXPECT_FALSE(pairs[1].flag);
+
+    // and removing the next hop has no host path left to tear down
+    g_vppCalls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh)));
+
+    EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
 }
 
 TEST_F(SwitchVppTunnelNexthop, RemoveTearsDownTheHostPath)

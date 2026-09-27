@@ -477,8 +477,12 @@ TunnelManager::create_vpp_vxlan_decap(
 
     // Before the BVI joins its bridge domain, see create_decap_host_path.
     // Without a host path the switch's own addresses in the VRF are unreachable
-    // over the tunnel, but transit still works, so a failure is not fatal.
-    create_decap_host_path(tunnel_data, hw_bvi_ifname);
+    // over the tunnel, but transit still works, so a failure is not fatal; a
+    // failed attempt leaves nothing half-built behind.
+    if (create_decap_host_path(tunnel_data, hw_bvi_ifname) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_WARN("%s has no host path: the switch's own addresses in the VRF of VNI %u are unreachable over the tunnel",
+            hw_bvi_ifname, tunnel_data.vni);
+    }
 
     //Create bridge and set BVI to the BD
     vpp_status = set_sw_interface_l2_bridge(hw_bvi_ifname, bd_id, true, VPP_API_PORT_TYPE_BVI);
@@ -705,6 +709,9 @@ TunnelManager::create_decap_host_path(
 
     if (m_add_tc_redirect(tap, vrf) != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("Failed to redirect host tap %s into VRF %s", tap.c_str(), vrf.c_str());
+        // Without the redirect the pair punts into the tap outside the VRF,
+        // which is worse than no host path at all. Take it back down.
+        remove_decap_host_path(tunnel_data, hw_bvi_ifname);
         return SAI_STATUS_FAILURE;
     }
 
