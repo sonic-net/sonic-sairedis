@@ -2158,6 +2158,11 @@ sai_status_t SwitchVpp::set(
         return updateIpRoute(serializedObjectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_NEIGHBOR_ENTRY)
+    {
+        return setIpNbr(serializedObjectId, attr);
+    }
+
     if (objectType == SAI_OBJECT_TYPE_SWITCH)
     {
         switch(attr->id)

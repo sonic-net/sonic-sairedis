@@ -292,6 +292,11 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
         const char *vpp_ifname = hwif_name.c_str();
         init_vpp_client();
 
+        // VPP installs an adjacency-sourced /32 (/128) for every neighbor unless it
+        // is flagged no-fib-entry. Honor NO_HOST_ROUTE so the address is reachable
+        // only through an explicit route, e.g. the dual-ToR mux prefix route.
+        bool no_fib_entry = is_add && neighbor_no_host_route(this, serializedObjectId, attr_count, attr_list, is_add);
+
         switch (nbr_entry.ip_address.addr_family) {
         case SAI_IP_ADDR_FAMILY_IPV4:
             struct sockaddr_in sin;
@@ -299,7 +304,7 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
             sin.sin_family = AF_INET;
             sin.sin_addr.s_addr = nbr_entry.ip_address.addr.ip4;
 
-            ip4_nbr_add_del(vpp_ifname, ~0, &sin, is_static, false, nbr_mac, is_add);
+            ip4_nbr_add_del(vpp_ifname, ~0, &sin, is_static, no_fib_entry, nbr_mac, is_add);
 
             break;
 
@@ -309,7 +314,7 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
             sin6.sin6_family = AF_INET6;
             memcpy(sin6.sin6_addr.s6_addr, nbr_entry.ip_address.addr.ip6, sizeof(sin6.sin6_addr.s6_addr));
 
-            ip6_nbr_add_del(vpp_ifname, ~0, &sin6, is_static, false, nbr_mac, is_add);
+            ip6_nbr_add_del(vpp_ifname, ~0, &sin6, is_static, no_fib_entry, nbr_mac, is_add);
 
             break;
         }
@@ -371,4 +376,63 @@ sai_status_t SwitchVpp::removeIpNbr(
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId));
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::setIpNbr(
+        _In_ const std::string &serializedObjectId,
+        _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (is_ip_nbr_active() == false)
+    {
+        return set_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, attr);
+    }
+
+    sai_attribute_t cur_attr;
+    cur_attr.id = SAI_NEIGHBOR_ENTRY_ATTR_NO_HOST_ROUTE;
+
+    bool cur_no_host_route = false;
+
+    if (get(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, 1, &cur_attr) == SAI_STATUS_SUCCESS)
+    {
+        cur_no_host_route = cur_attr.value.booldata;
+    }
+
+    if (attr->id == SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS)
+    {
+        SWSS_LOG_NOTICE("Update neighbor MAC in VS %s", serializedObjectId.c_str());
+
+        // VPP updates an existing neighbor in place, so re-adding it rewrites the
+        // adjacency with the new MAC. NO_HOST_ROUTE is passed along so the
+        // no-fib-entry flag stays consistent.
+        sai_attribute_t attrs[2];
+        attrs[0] = *attr;
+        attrs[1].id = SAI_NEIGHBOR_ENTRY_ATTR_NO_HOST_ROUTE;
+        attrs[1].value.booldata = cur_no_host_route;
+
+        CHECK_STATUS(addRemoveIpNbr(serializedObjectId, 2, attrs, true, true, false));
+    }
+    else if (attr->id == SAI_NEIGHBOR_ENTRY_ATTR_NO_HOST_ROUTE &&
+             attr->value.booldata != cur_no_host_route)
+    {
+        SWSS_LOG_NOTICE("Update neighbor NO_HOST_ROUTE to %s in VS %s",
+                        attr->value.booldata ? "true" : "false", serializedObjectId.c_str());
+
+        // VPP does not change the flags of an existing neighbor, so the adjacency
+        // keeps the no-fib-entry setting it was created with. An explicit route to
+        // the address takes precedence over the adjacency-sourced entry either way.
+        if (attr->value.booldata)
+        {
+            // Retracts only the neighbor's own path, so a dual-ToR prefix or
+            // tunnel route sharing the prefix is kept.
+            CHECK_STATUS(addRemoveIpNbr(serializedObjectId, 0, NULL, false, false, true));
+        }
+        else
+        {
+            CHECK_STATUS(addRemoveIpNbr(serializedObjectId, 1, attr, true, false, true));
+        }
+    }
+
+    return set_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, attr);
 }
