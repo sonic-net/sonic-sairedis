@@ -8,6 +8,7 @@
 #include <inttypes.h>
 
 #include <algorithm>
+#include <map>
 
 using namespace syncd;
 
@@ -212,6 +213,189 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForNextHopGroup
     SWSS_LOG_NOTICE("failed to find best candidate for NEXT_HOP_GROUP using route_entry");
 
     return nullptr;
+}
+
+std::string BestCandidateFinder::getNextHopGroupsSignature(
+        _In_ const AsicView &view,
+        _In_ sai_object_id_t nextHopVid)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Describes the groups a next hop is a member of without using any VID:
+     * per group its dependency tree size and the non object id attributes of
+     * each of its members' next hops.
+     */
+
+    const auto members = view.getObjectsByObjectType(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER);
+
+    std::vector<std::string> groups;
+
+    for (const auto &member: members)
+    {
+        auto nhAttr = member->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID);
+        auto groupAttr = member->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID);
+
+        if (!nhAttr || !groupAttr || nhAttr->getOid() != nextHopVid)
+            continue;
+
+        sai_object_id_t groupVid = groupAttr->getOid();
+
+        auto groupIt = view.m_oOids.find(groupVid);
+
+        if (groupIt == view.m_oOids.end())
+            continue;
+
+        std::vector<std::string> nextHops;
+
+        for (const auto &peer: members)
+        {
+            auto peerGroupAttr = peer->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID);
+            auto peerNhAttr = peer->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID);
+
+            if (!peerGroupAttr || !peerNhAttr || peerGroupAttr->getOid() != groupVid)
+                continue;
+
+            auto nhIt = view.m_oOids.find(peerNhAttr->getOid());
+
+            if (nhIt == view.m_oOids.end())
+                continue;
+
+            std::map<sai_attr_id_t, std::string> attrs;
+
+            for (const auto &attr: nhIt->second->getAllAttributes())
+            {
+                auto valueType = attr.second->getAttrMetadata()->attrvaluetype;
+
+                if (valueType == SAI_ATTR_VALUE_TYPE_OBJECT_ID || valueType == SAI_ATTR_VALUE_TYPE_OBJECT_LIST)
+                    continue;
+
+                attrs[attr.first] = attr.second->getStrAttrId() + "=" + attr.second->getStrAttrValue();
+            }
+
+            std::string nh;
+
+            for (const auto &attr: attrs)
+                nh += attr.second + ",";
+
+            nextHops.push_back(nh);
+        }
+
+        std::sort(nextHops.begin(), nextHops.end());
+
+        std::string group = std::to_string(findAllChildsInDependencyTreeCount(view, groupIt->second)) + ":";
+
+        for (const auto &nh: nextHops)
+            group += "[" + nh + "]";
+
+        groups.push_back(group);
+    }
+
+    std::sort(groups.begin(), groups.end());
+
+    std::string signature;
+
+    for (const auto &group: groups)
+        signature += "{" + group + "}";
+
+    return signature;
+}
+
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForNextHop(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Next hops with equal attributes (for example one bridge port next hop
+     * per next hop group for the same remote tunnel endpoint) differ only in
+     * the groups they are members of. Picking the wrong one turns into
+     * NEXT_HOP_ID sets that swap members between groups. Match through a
+     * member whose group is already matched, otherwise through the shape of
+     * the groups.
+     */
+
+    const auto tmpMembers = m_temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER);
+    const auto curMembers = m_currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER);
+
+    for (const auto &tmpMember: tmpMembers)
+    {
+        auto nhAttr = tmpMember->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID);
+        auto groupAttr = tmpMember->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID);
+
+        if (!nhAttr || !groupAttr || nhAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        auto tmpGroupIt = m_temporaryView.m_oOids.find(groupAttr->getOid());
+
+        if (tmpGroupIt == m_temporaryView.m_oOids.end() ||
+            tmpGroupIt->second->getObjectStatus() != SAI_OBJECT_STATUS_FINAL)
+            continue;
+
+        auto ridIt = m_temporaryView.m_vidToRid.find(groupAttr->getOid());
+
+        if (ridIt == m_temporaryView.m_vidToRid.end())
+            continue;
+
+        auto curGroupIt = m_currentView.m_ridToVid.find(ridIt->second);
+
+        if (curGroupIt == m_currentView.m_ridToVid.end())
+            continue;
+
+        for (const auto &curMember: curMembers)
+        {
+            auto curGroupAttr = curMember->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID);
+            auto curNhAttr = curMember->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID);
+
+            if (!curGroupAttr || !curNhAttr || curGroupAttr->getOid() != curGroupIt->second)
+                continue;
+
+            for (const auto &c: candidateObjects)
+            {
+                if (c.obj->getVid() == curNhAttr->getOid())
+                {
+                    SWSS_LOG_NOTICE("found best candidate for next hop %s via matched group: %s",
+                            temporaryObj->m_str_object_id.c_str(),
+                            c.obj->m_str_object_id.c_str());
+
+                    return c.obj;
+                }
+            }
+        }
+    }
+
+    const std::string tmpSignature = getNextHopGroupsSignature(m_temporaryView, temporaryObj->getVid());
+
+    if (tmpSignature.empty())
+        return nullptr;
+
+    std::shared_ptr<SaiObj> match;
+
+    for (const auto &c: candidateObjects)
+    {
+        if (getNextHopGroupsSignature(m_currentView, c.obj->getVid()) != tmpSignature)
+            continue;
+
+        if (match)
+        {
+            SWSS_LOG_NOTICE("next hop %s: several candidates in groups of the same shape",
+                    temporaryObj->m_str_object_id.c_str());
+
+            return nullptr;
+        }
+
+        match = c.obj;
+    }
+
+    if (match)
+    {
+        SWSS_LOG_NOTICE("found best candidate for next hop %s via group shape: %s",
+                temporaryObj->m_str_object_id.c_str(),
+                match->m_str_object_id.c_str());
+    }
+
+    return match;
 }
 
 std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForAclCounter(
@@ -1502,6 +1686,10 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
 
         case SAI_OBJECT_TYPE_NEXT_HOP_GROUP:
             candidate = findCurrentBestMatchForNextHopGroup(temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_NEXT_HOP:
+            candidate = findCurrentBestMatchForNextHop(temporaryObj, candidateObjects);
             break;
 
         case SAI_OBJECT_TYPE_ACL_TABLE_GROUP:
