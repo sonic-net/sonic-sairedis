@@ -37,8 +37,7 @@ namespace saivs
             void onRouteRemoved(bool ipv4);
 
             // FDB tracking
-            void onFdbCreated();
-            void onFdbRemoved();
+            void syncFdbCount(uint32_t count);
 
             // Neighbor tracking
             void onNeighborCreated(bool ipv4);

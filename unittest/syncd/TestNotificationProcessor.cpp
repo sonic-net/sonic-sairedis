@@ -143,4 +143,26 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->insertRidAndVid(0x123456789abcdef, 0x123456789abcdef);
     notificationProcessor->syncProcessNotification(flowBulkGetSessionEventItem);
     translator->eraseRidAndVid(0x123456789abcdef, 0x123456789abcdef);
+
+    // host_tx_ready notification with an unknown RID must be dropped, not abort syncd.
+    // Port RIDs are only mapped in SaiSwitch::onPostPortsCreate, so a port flap right
+    // after switch create (warmboot) is translated before the port VID exists.
+    std::string hostTxReadyData =
+        "[{\"host_tx_ready_status\":\"SAI_PORT_HOST_TX_READY_STATUS_NOT_READY\","
+        "\"port_id\":\"oid:0x10000000000fd\",\"switch_id\":\"oid:0x21000000000000\"}]";
+    std::vector<swss::FieldValueTuple> hostTxReadyEntry;
+    swss::KeyOpFieldsValuesTuple hostTxReadyItem(
+            SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY,
+            hostTxReadyData,
+            hostTxReadyEntry);
+
+    // switch RID mapped, port RID unknown
+    translator->insertRidAndVid(0x21000000000000, 0x210000000000);
+    EXPECT_NO_THROW(notificationProcessor->syncProcessNotification(hostTxReadyItem));
+    translator->eraseRidAndVid(0x21000000000000, 0x210000000000);
+
+    // port RID mapped, switch RID unknown
+    translator->insertRidAndVid(0x10000000000fd, 0x1000000000019);
+    EXPECT_NO_THROW(notificationProcessor->syncProcessNotification(hostTxReadyItem));
+    translator->eraseRidAndVid(0x10000000000fd, 0x1000000000019);
 }

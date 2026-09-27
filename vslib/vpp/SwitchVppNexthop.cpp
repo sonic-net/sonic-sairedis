@@ -248,8 +248,10 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
             sai_attribute_t port_attr;
             port_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
             if (rif_obj &&
-                rif_obj->get_attr(port_attr) == SAI_STATUS_SUCCESS &&
-                vpp_get_hwif_name(port_attr.value.oid, 0, mpls_hwif)) {
+                rif_obj->get_attr(port_attr) == SAI_STATUS_SUCCESS) {
+                mpls_hwif = m_ifaceRegistry.resolveHwIfName(port_attr.value.oid, 0);
+            }
+            if (!mpls_hwif.empty()) {
                 int idx = get_sw_if_idx(mpls_hwif.c_str());
                 if (idx >= 0) {
                     nxt_grp_member->sw_if_index = (uint32_t)idx;

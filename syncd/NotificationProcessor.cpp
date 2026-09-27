@@ -474,15 +474,28 @@ void NotificationProcessor::process_on_port_host_tx_ready_change(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_DEBUG("Port ID before translating from RID to VID is %s", sai_serialize_object_id(port_id).c_str());
-    sai_object_id_t port_vid = m_translator->translateRidToVid(port_id, SAI_NULL_OBJECT_ID);
-    SWSS_LOG_DEBUG("Port ID after translating from RID to VID is %s", sai_serialize_object_id(port_id).c_str());
+    sai_object_id_t port_vid = SAI_NULL_OBJECT_ID;
+    sai_object_id_t switch_vid = SAI_NULL_OBJECT_ID;
 
-    sai_object_id_t switch_vid = m_translator->translateRidToVid(switch_id, SAI_NULL_OBJECT_ID);
+    /*
+     * Port should already be in local/redis db after creation. If this
+     * notification races ahead of create port (warmboot before
+     * onPostPortsCreate), do not allocate a new VID. orchagent gets
+     * SAI_PORT_ATTR_HOST_TX_READY_STATUS after ports exist.
+     */
+    if (!m_translator->tryTranslateRidToVid(port_id, port_vid))
+    {
+        SWSS_LOG_WARN("Port RID %s translated to null VID!!!", sai_serialize_object_id(port_id).c_str());
+        return;
+    }
+
+    if (!m_translator->tryTranslateRidToVid(switch_id, switch_vid))
+    {
+        SWSS_LOG_WARN("Switch RID %s translated to null VID!!!", sai_serialize_object_id(switch_id).c_str());
+        return;
+    }
 
     std::string s = sai_serialize_port_host_tx_ready_ntf(switch_vid, port_vid, *host_tx_ready_status);
-
-    SWSS_LOG_DEBUG("Host_tx_ready status after sai_serialize is %s", s.c_str());
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY, s);
 }

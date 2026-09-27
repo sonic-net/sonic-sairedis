@@ -4177,9 +4177,12 @@ sai_status_t Syncd::processFlexCounterEvent(
         sai_object_id_t vid;
         sai_deserialize_object_id(strVid, vid);
 
-        sai_object_id_t rid;
+        sai_object_id_t rid = SAI_NULL_OBJECT_ID;
 
-        if (!m_translator->tryTranslateVidToRid(vid, rid))
+        // RID is only needed when adding a counter. During removal the SAI
+        // object and its VID-to-RID mapping may already have been removed.
+        if (effective_op == SET_COMMAND &&
+                !m_translator->tryTranslateVidToRid(vid, rid))
         {
             if (fromAsicChannel)
             {

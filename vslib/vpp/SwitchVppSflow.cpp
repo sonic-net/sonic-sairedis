@@ -59,9 +59,9 @@ sai_status_t SwitchVpp::sflowEnableDisable(
 {
     SWSS_LOG_ENTER();
 
-    std::string if_name;
+    std::string if_name = m_ifaceRegistry.resolveHwIfName(port_id, 0);
 
-    if(!port_to_hwifname(port_id, if_name))
+    if (if_name.empty())
     {
         SWSS_LOG_ERROR("failed to get hwif name for port %s", sai_serialize_object_id(port_id).c_str());
         return SAI_STATUS_FAILURE;
@@ -237,9 +237,9 @@ sai_status_t SwitchVpp::sflowInterfaceSamplingRateSet(
 {
     SWSS_LOG_ENTER();
 
-    std::string if_name;
+    std::string if_name = m_ifaceRegistry.resolveHwIfName(port_id, 0);
 
-    if(!port_to_hwifname(port_id, if_name))
+    if (if_name.empty())
     {
         SWSS_LOG_ERROR("failed to get hwif name for port %s", sai_serialize_object_id(port_id).c_str());
         return SAI_STATUS_FAILURE;
@@ -263,9 +263,9 @@ sai_status_t SwitchVpp::sflowInterfaceDirectionSet(
 {
     SWSS_LOG_ENTER();
 
-    std::string if_name;
+    std::string if_name = m_ifaceRegistry.resolveHwIfName(port_id, 0);
 
-    if(!port_to_hwifname(port_id, if_name))
+    if (if_name.empty())
     {
         SWSS_LOG_ERROR("failed to get hwif name for port %s", sai_serialize_object_id(port_id).c_str());
         return SAI_STATUS_FAILURE;
