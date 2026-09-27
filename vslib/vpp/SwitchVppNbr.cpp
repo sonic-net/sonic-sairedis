@@ -297,6 +297,8 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
         // only through an explicit route, e.g. the dual-ToR mux prefix route.
         bool no_fib_entry = is_add && neighbor_no_host_route(this, serializedObjectId, attr_count, attr_list, is_add);
 
+        int ret = 0;
+
         switch (nbr_entry.ip_address.addr_family) {
         case SAI_IP_ADDR_FAMILY_IPV4:
             struct sockaddr_in sin;
@@ -304,7 +306,7 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
             sin.sin_family = AF_INET;
             sin.sin_addr.s_addr = nbr_entry.ip_address.addr.ip4;
 
-            ip4_nbr_add_del(vpp_ifname, ~0, &sin, is_static, no_fib_entry, nbr_mac, is_add);
+            ret = ip4_nbr_add_del(vpp_ifname, ~0, &sin, is_static, no_fib_entry, nbr_mac, is_add);
 
             break;
 
@@ -314,9 +316,16 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
             sin6.sin6_family = AF_INET6;
             memcpy(sin6.sin6_addr.s6_addr, nbr_entry.ip_address.addr.ip6, sizeof(sin6.sin6_addr.s6_addr));
 
-            ip6_nbr_add_del(vpp_ifname, ~0, &sin6, is_static, no_fib_entry, nbr_mac, is_add);
+            ret = ip6_nbr_add_del(vpp_ifname, ~0, &sin6, is_static, no_fib_entry, nbr_mac, is_add);
 
             break;
+        }
+
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("%s neighbor %s on %s failed: %d",
+                           (is_add ? "Add" : "Remove"), serializedObjectId.c_str(), vpp_ifname, ret);
+            return SAI_STATUS_FAILURE;
         }
     }
 
