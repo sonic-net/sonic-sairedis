@@ -72,6 +72,13 @@ namespace syncd
 
             void run();
 
+        private:
+
+            void handOverRequestChannel(
+                    _In_ bool answerPending);
+
+        public:
+
         public: // TODO private
 
             void processEvent(
