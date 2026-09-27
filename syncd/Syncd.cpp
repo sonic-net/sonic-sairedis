@@ -39,6 +39,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 
+#include <chrono>
 #include <iterator>
 #include <algorithm>
 #include <cmath>
@@ -6757,6 +6758,8 @@ void Syncd::run()
 
     volatile bool runMainLoop = true;
 
+    bool preShutdown = false;
+
     bool inShutdownWaitMode = false;
 
     std::shared_ptr<swss::Select> s = std::make_shared<swss::Select>();
@@ -6912,6 +6915,8 @@ void Syncd::run()
                 {
                     warmRestartTable.setPreShutdown(true);
 
+                    preShutdown = true;
+
                     s = std::make_shared<swss::Select>(); // make sure previous select is destroyed
 
                     s->addSelectable(m_restartQuery.get());
@@ -6983,6 +6988,15 @@ void Syncd::run()
 
     WatchdogScope ws(m_timerWatchdog, "shutting down syncd");
 
+    if (shutdownType == SYNCD_RESTART_TYPE_WARM ||
+        shutdownType == SYNCD_RESTART_TYPE_FAST ||
+        shutdownType == SYNCD_RESTART_TYPE_EXPRESS)
+    {
+        s = nullptr;
+
+        handOverRequestChannel(!preShutdown);
+    }
+
     if (shutdownType == SYNCD_RESTART_TYPE_WARM)
     {
         const char *warmBootWriteFile = profileGetValue(0, SAI_KEY_WARM_BOOT_WRITE_FILE);
@@ -7043,6 +7057,47 @@ void Syncd::run()
     }
 
     SWSS_LOG_NOTICE("uninitialize finished");
+}
+
+void Syncd::handOverRequestChannel(
+        _In_ bool answerPending)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * The client keeps running across a warm/fast/express syncd restart and
+     * the next syncd serves the same endpoint. A request that the ZMQ REP
+     * socket has accepted but this syncd never answers is dropped when the
+     * socket closes, and the client then times out on it. Answer what has
+     * already arrived while the switch is still usable, then close the
+     * channel before the switch teardown, so that later requests wait at the
+     * client for the next syncd.
+     */
+
+    if (answerPending)
+    {
+        swss::Select sel;
+
+        sel.addSelectable(m_selectableChannel.get());
+
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            swss::Selectable *ready = nullptr;
+
+            if (sel.select(&ready, 100) != swss::Select::OBJECT)
+                break;
+
+            SWSS_LOG_NOTICE("answering request received after the shutdown request");
+
+            processEvent(*m_selectableChannel.get());
+        }
+    }
+
+    m_selectableChannel = nullptr;
+
+    SWSS_LOG_NOTICE("request channel closed, further requests go to the next syncd");
 }
 
 syncd_restart_type_t Syncd::handleRestartQuery(
