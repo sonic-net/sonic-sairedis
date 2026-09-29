@@ -390,12 +390,24 @@ config_syncd_bcm()
     fi
 
     if [ -f "/tmp/sai.profile" ]; then
-        CMD_ARGS+=" -p /tmp/sai.profile"
+        BCM_SAI_PROFILE_FILE="/tmp/sai.profile"
 	elif [ -f "/etc/sai.d/sai.profile" ]; then
-        CMD_ARGS+=" -p /etc/sai.d/sai.profile"
+        BCM_SAI_PROFILE_FILE="/etc/sai.d/sai.profile"
     else
-        CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+        # $HWSKU_DIR is typically a read-only mount; copy the static profile
+        # to a writable location first so apply_sai_profile_configdb below
+        # can append to it.
+        cp -f "$HWSKU_DIR/sai.profile" /tmp/sai.profile
+        BCM_SAI_PROFILE_FILE="/tmp/sai.profile"
     fi
+
+    # Apply the generic SAI_PROFILE CONFIG_DB table last, so a hwsku's
+    # sai.profile[.j2] does not need its own
+    # '{% include "sai_profile_dynamic.j2" %}' to pick up CONFIG_DB-driven
+    # overrides - this alone is enough to support SAI_PROFILE on Broadcom.
+    apply_sai_profile_configdb "$BCM_SAI_PROFILE_FILE"
+
+    CMD_ARGS+=" -p $BCM_SAI_PROFILE_FILE"
 
     if [ "$SONIC_ASIC_SUBTYPE" = "broadcom" ]; then
         CMD_ARGS+=" -l"
