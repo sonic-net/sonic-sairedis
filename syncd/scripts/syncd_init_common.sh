@@ -318,9 +318,12 @@ apply_sai_profile_configdb()
     local dynamic_template="$TEMPLATES_DIR/sai_profile_dynamic.j2"
     local rendered
 
-    if [[ -f "$dynamic_template" ]] && [[ -f "$profile_file" ]]; then
+    if [[ -f "$dynamic_template" ]]; then
         rendered="$(sonic-cfggen -d -t "$dynamic_template")"
         if [[ -n "$rendered" ]]; then
+            # ">>" creates profile_file if it does not already exist, so
+            # SAI_PROFILE CONFIG_DB entries are still applied even when a
+            # vendor has no pre-existing static sai.profile at all.
             echo "$rendered" >> "$profile_file"
             # Surface exactly which CONFIG_DB-sourced key/value pairs were
             # applied (and to which file) in syslog, since these override
@@ -404,9 +407,11 @@ config_syncd_bcm()
         BCM_SAI_PROFILE_FILE="/etc/sai.d/sai.profile"
     else
         # $HWSKU_DIR is typically a read-only mount; copy the static profile
-        # to a writable location first so apply_sai_profile_configdb below
-        # can append to it.
-        cp -f "$HWSKU_DIR/sai.profile" /tmp/sai.profile
+        # (if any) to a writable location first so apply_sai_profile_configdb
+        # below can append to it. Tolerate the source being absent (no
+        # pre-existing static sai.profile at all): apply_sai_profile_configdb
+        # will still create /tmp/sai.profile from CONFIG_DB entries alone.
+        cp -f "$HWSKU_DIR/sai.profile" /tmp/sai.profile 2>/dev/null || true
         BCM_SAI_PROFILE_FILE="/tmp/sai.profile"
     fi
 
