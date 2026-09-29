@@ -316,9 +316,18 @@ apply_sai_profile_configdb()
 {
     local profile_file="$1"
     local dynamic_template="$TEMPLATES_DIR/sai_profile_dynamic.j2"
+    local rendered
 
     if [[ -f "$dynamic_template" ]] && [[ -f "$profile_file" ]]; then
-        sonic-cfggen -d -t "$dynamic_template" >> "$profile_file"
+        rendered="$(sonic-cfggen -d -t "$dynamic_template")"
+        if [[ -n "$rendered" ]]; then
+            echo "$rendered" >> "$profile_file"
+            # Surface exactly which CONFIG_DB-sourced key/value pairs were
+            # applied (and to which file) in syslog, since these override
+            # any static default with the same key and are otherwise not
+            # visible without enabling syncd's own debug-level logging.
+            logger -t syncd_init_common "SAI_PROFILE CONFIG_DB entries applied to $profile_file: $(echo "$rendered" | tr '\n' ' ' | sed 's/ *$//')"
+        fi
     fi
 }
 
