@@ -22,14 +22,16 @@ bool saivs::sonicExtFeatureEnabled(const char *feature)
         return it->second;
     }
 
-    bool enabled = true;
+    bool enabled = false;
 
     if (vpp_sonic_ext_feature_get(feature, &enabled) != 0)
     {
-        SWSS_LOG_WARN("sonic_ext_feature_get(%s) failed; assuming enabled", feature);
-        enabled = true;
+        // Not cached, so the next caller queries VPP again.
+        SWSS_LOG_WARN("sonic_ext_feature_get(%s) failed; treating as disabled", feature);
+        return false;
     }
-    else if (!enabled)
+
+    if (!enabled)
     {
         SWSS_LOG_NOTICE("sonic-ext feature %s disabled in startup.conf", feature);
     }

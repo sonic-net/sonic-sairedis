@@ -212,8 +212,8 @@ static int l2_punt_classify_init()
         return -1;
     }
     if (!sonicExtFeatureEnabled("l2-trap-fixup")) {
-        SWSS_LOG_NOTICE("l2_punt_classify_init: sonic-ext-l2-trap-fixup disabled in "
-                        "startup.conf; tagged DHCP/ARP/IPv6-mcast broadcast "
+        SWSS_LOG_NOTICE("l2_punt_classify_init: sonic-ext-l2-trap-fixup disabled; "
+                        "tagged DHCP/ARP/IPv6-mcast broadcast "
                         "will not be punted");
         s_trap_fixup_next_index = ~0;
     } else if (vpp_add_node_next("l2-input-classify", "sonic-ext-l2-trap-fixup",
@@ -239,8 +239,8 @@ static int l2_punt_classify_init()
      * unavailable: the ingress VLAN filter session is simply not
      * installed (tagged frames then follow the default L2 path). */
     if (!sonicExtFeatureEnabled("l2-vlan-filter")) {
-        SWSS_LOG_NOTICE("l2_punt_classify_init: sonic-ext-l2-vlan-filter disabled in "
-                        "startup.conf; ingress VLAN filtering on access members "
+        SWSS_LOG_NOTICE("l2_punt_classify_init: sonic-ext-l2-vlan-filter disabled; "
+                        "ingress VLAN filtering on access members "
                         "not installed");
         s_vlan_filter_next_index = ~0;
     } else if (vpp_add_node_next("l2-input-classify", "sonic-ext-l2-vlan-filter",
