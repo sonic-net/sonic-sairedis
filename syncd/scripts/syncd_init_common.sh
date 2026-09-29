@@ -407,8 +407,16 @@ config_syncd_mlnx()
     SAI_COMMON_FILE_PATH=/etc/mlnx/sai-common.profile
 
     if [[ -f $HWSKU_DIR/sai.profile.j2 ]]; then
-        export RESOURCE_TYPE="$(echo $SYNCD_VARS | jq -r '.resource_type')"
-        j2 -e RESOURCE_TYPE $HWSKU_DIR/sai.profile.j2 -o /tmp/sai-temp.profile
+        RESOURCE_TYPE="$(echo $SYNCD_VARS | jq -r '.resource_type')"
+        RESOURCE_TYPE_JSON="$(jq -n --arg rt "$RESOURCE_TYPE" '{RESOURCE_TYPE: $rt}')"
+        # -d makes CONFIG_DB tables (e.g. the generic SAI_PROFILE table,
+        # see sonic-buildimage's src/sonic-yang-models/yang-models/sonic-sai-profile.yang)
+        # available to the template, consistent with how other vendors
+        # (e.g. Broadcom, via sonic-cfggen -d in docker-syncd-brcm/start.sh)
+        # render their sai.profile.j2. RESOURCE_TYPE is passed through as
+        # additional data ({{ RESOURCE_TYPE }} in the template) for any
+        # template that relied on the previous j2-cli-based rendering.
+        sonic-cfggen -d -a "$RESOURCE_TYPE_JSON" -t $HWSKU_DIR/sai.profile.j2 > /tmp/sai-temp.profile
     else
         cat $HWSKU_DIR/sai.profile > /tmp/sai-temp.profile
     fi
@@ -432,6 +440,11 @@ config_syncd_mlnx()
     fi
 
     # keep only the first occurence of each prefix with '=' sign, and remove the others.
+    # NOTE: this is first-occurrence-wins (unlike e.g. Broadcom's syncd,
+    # which is last-occurrence-wins). A hwsku's sai.profile.j2 that wants
+    # SAI_PROFILE CONFIG_DB entries to override its own static defaults
+    # must place '{% include "sai_profile_dynamic.j2" %}' *before* those
+    # defaults, not after.
     awk -F= '!seen[$1]++' /tmp/sai-temp.profile > /tmp/sai.profile
     rm -f /tmp/sai-temp.profile
 
