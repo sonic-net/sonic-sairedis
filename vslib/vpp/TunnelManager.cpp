@@ -1487,12 +1487,11 @@ TunnelManagerIpIp::map_sai_to_vpp_flags(const SaiObject* tunnel_obj)
         }
     }
 
-    // Encap ECN mode (copy_from_outer)
+    // Encap ECN mode: STANDARD, the SAI default, copies the inner ECN (RFC 6040 4.1)
     attr.id = SAI_TUNNEL_ATTR_ENCAP_ECN_MODE;
-    if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
-        if (attr.value.s32 == SAI_TUNNEL_ENCAP_ECN_MODE_USER_DEFINED) {
-            vpp_flags |= 0x08; // TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_ECN
-        }
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS ||
+        attr.value.s32 == SAI_TUNNEL_ENCAP_ECN_MODE_STANDARD) {
+        vpp_flags |= 0x08; // TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_ECN
     }
 
     return vpp_flags;
