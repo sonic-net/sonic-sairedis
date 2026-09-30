@@ -1,2 +1,7 @@
 **/*
 !*.deb
+# Also publish build-env/ so downstream consumers (sonic-swss) can cascade this
+# repo's dependency declarations via buildenv_setup (reads build-env/ out of the
+# downloaded artifact). Both the dir entry and its contents must be un-ignored.
+!build-env
+!build-env/**

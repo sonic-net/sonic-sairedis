@@ -56,6 +56,16 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
             return SAI_STATUS_FAILURE;
         }
 
+        if (sw->hasNativePacketSampling())
+        {
+            // Do not install the kernel sampling action when the selected switch
+            // performs packet sampling directly. Enabling both paths would export
+            // each ingress sample twice.
+            SWSS_LOG_INFO("native packet sampling; skipping kernel tc sampler for port %s",
+                    sai_serialize_object_id(port_id).c_str());
+            return SAI_STATUS_SUCCESS;
+        }
+
         if (sw->getTapNameFromPortId(port_id, if_name) == false)
         {
             SWSS_LOG_ERROR("tap interface name corresponding to the port id %s is not found",

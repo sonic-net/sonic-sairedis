@@ -54,6 +54,10 @@ namespace saivs
 
             virtual ~SwitchStateBase();
 
+            // Derived switch implementations may perform packet sampling directly.
+            // The base virtual switch keeps the kernel sampling path enabled.
+            virtual bool hasNativePacketSampling() const { return false; }
+
         protected:
 
             virtual sai_status_t set_switch_mac_address();

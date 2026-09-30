@@ -25,6 +25,13 @@ using json = nlohmann::json;
 #define MUTEX std::unique_lock<std::mutex> _lock(m_mtx);
 #define MUTEX_UNLOCK _lock.unlock();
 
+// Reconnect backoff used when the poll interval is not yet configured.
+#define FLEX_COUNTER_RECONNECT_BACKOFF_MS 1000
+
+// Log one message per this many consecutive poll failures, so that a persistent
+// COUNTERS_DB outage does not flood syslog at the poll rate.
+#define FLEX_COUNTER_POLL_FAILURE_LOG_INTERVAL 60
+
 static const std::string COUNTER_TYPE_PORT = "Port Counter";
 static const std::string ATTR_TYPE_PORT_PHY_ATTR = "Port Phy Attributes";
 static const std::string ATTR_TYPE_PORT_PHY_SERDES_ATTR = "Port Phy Serdes Attributes";
@@ -50,6 +57,8 @@ static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
 static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
 static const std::string COUNTER_TYPE_WRED_ECN_QUEUE = "WRED Queue Counter";
 static const std::string COUNTER_TYPE_WRED_ECN_PORT = "WRED Port Counter";
+static const std::string ATTR_TYPE_OTN_ATTENUATOR_ATTR = "OTN Attenuator Attributes";
+static const std::string ATTR_TYPE_OTN_OA_ATTR = "OTN OA Attributes";
 
 static const std::unordered_map<std::string, bool> statusMap =
 {
@@ -72,7 +81,10 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
     {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW},
     {WRED_QUEUE_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_QUEUE},
-    {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT}};
+    {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT},
+    {OTN_ATTENUATOR_PLUGIN_FIELD, ATTR_TYPE_OTN_ATTENUATOR_ATTR},
+    {OTN_OA_PLUGIN_FIELD, ATTR_TYPE_OTN_OA_ATTR},
+};
 
 const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
     {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
@@ -97,6 +109,8 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
     {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
     {{SAI_OBJECT_TYPE_SWITCH, SWITCH_COUNTER_ID_LIST}, COUNTER_TYPE_SWITCH},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, OTN_ATTENUATOR_ATTR_ID_LIST}, ATTR_TYPE_OTN_ATTENUATOR_ATTR},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, OTN_OA_ATTR_ID_LIST}, ATTR_TYPE_OTN_OA_ATTR},
 };
 
 BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
@@ -530,6 +544,24 @@ void deserializeAttr(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_port_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_otn_attenuator_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_otn_attenuator_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_otn_oa_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_otn_oa_attr(name, attr);
 }
 
 template <typename StatType>
@@ -1509,7 +1541,8 @@ public:
         SWSS_LOG_ENTER();
 
         auto iter = m_objectIdsMap.find(vid);
-        if (iter != m_objectIdsMap.end())
+        const bool removedFromObjectMap = iter != m_objectIdsMap.end();
+        if (removedFromObjectMap)
         {
             auto rid = iter->second->rid;
             m_failedPolls.erase({rid, vid});
@@ -1518,7 +1551,9 @@ public:
 
         // An object can be in both m_objectIdsMap and the bulk context
         // when bulk polling is supported by some counter prefixes but unsupported by some others
-        if (!removeBulkStatsContext(vid) && log)
+        const bool removedFromBulkContext = removeBulkStatsContext(vid);
+
+        if (!removedFromObjectMap && !removedFromBulkContext && log)
         {
             SWSS_LOG_NOTICE("Trying to remove nonexisting %s %s",
                             sai_serialize_object_type(m_objectType).c_str(),
@@ -2598,27 +2633,33 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-            std::vector<sai_attribute_t> attrs(attrIds.size());
+            std::vector<sai_attribute_t> attrs = {};
             PortPhyAttributeData attrData;
 
             SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
 
-            bool attrDataInitialized = true;
             for (size_t i = 0; i < attrIds.size(); i++)
             {
-                attrs[i].id = attrIds[i];
-                if (!initAttrData(rid, &attrs[i], &attrData))
+                sai_attribute_t attr = {};
+                attr.id = attrIds[i];
+                if (!initAttrData(rid, &attr, &attrData))
                 {
-                    SWSS_LOG_WARN("PORT_PHY_ATTR: Failed to initialize attribute %d for RID:0x%" PRIx64 ", skipping object",
-                                  attrIds[i], rid);
-                    attrDataInitialized = false;
-                    break;
+                    SWSS_LOG_WARN(
+                        "PORT_PHY_ATTR: Failed to initialize attribute"
+                        " %d for RID:0x%" PRIx64 ", "
+                        "skipping this attribute only",
+                        attrIds[i], rid);
+                    continue;
                 }
+                attrs.push_back(attr);
             }
 
-            if (!attrDataInitialized)
+            if (attrs.empty())
             {
+                SWSS_LOG_WARN(
+                    "PORT_PHY_ATTR: No attributes could be initialized"
+                    " for RID:0x%" PRIx64 ", skipping object", rid);
                 continue;
             }
 
@@ -2626,7 +2667,7 @@ public:
             sai_status_t status = Base::m_vendorSai->get(
                     Base::m_objectType,
                     rid,
-                    static_cast<uint32_t>(attrIds.size()),
+                    static_cast<uint32_t>(attrs.size()),
                     attrs.data());
 
             if (status != SAI_STATUS_SUCCESS)
@@ -2639,7 +2680,7 @@ public:
             // Store in PORT_PHY_ATTR table using VID as key
             std::string vid_str = sai_serialize_object_id(vid);
 
-            for (size_t i = 0; i != attrIds.size(); i++)
+            for (size_t i = 0; i != attrs.size(); i++)
             {
                 auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
                 if (!meta)
@@ -2648,10 +2689,10 @@ public:
                     continue;
                 }
 
-                auto it = m_attrAliases.find(attrIds[i]);
+                auto it = m_attrAliases.find(static_cast<sai_port_attr_t>(attrs[i].id));
                 if (it == m_attrAliases.end())
                 {
-                    SWSS_LOG_ERROR("Unsupported PORT_PHY_ATTR: %d", attrIds[i]);
+                    SWSS_LOG_ERROR("Unsupported PORT_PHY_ATTR: %d", attrs[i].id);
                     continue;
                 }
 
@@ -2661,10 +2702,10 @@ public:
                 if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST)
                 {
                     // Compare current lane values with previous and update metadata
-                    updateLatchedLaneMetadata(vid, attrIds[i], attrs[i]);
+                    updateLatchedLaneMetadata(vid, static_cast<sai_port_attr_t>(attrs[i].id), attrs[i]);
 
                     // Serialize with timestamp and count per lane
-                    attr_value = buildLatchStatusWithMetadata(vid, attrIds[i], attrs[i]);
+                    attr_value = buildLatchStatusWithMetadata(vid, static_cast<sai_port_attr_t>(attrs[i].id), attrs[i]);
                 }
                 else
                 {
@@ -3135,36 +3176,45 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-
-            std::vector<sai_attribute_t> attrs(attrIds.size());
+            std::vector<sai_attribute_t> attrs = {};
             PortPhySerdesAttributeData attrData;
 
-            SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
-                           attrIds.size(), vid, rid);
+            SWSS_LOG_DEBUG(
+                "PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes "
+                "with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
+                attrIds.size(), vid, rid);
 
-            // Initialize all attributes - if any fail, skip this object
-            bool attrDataInitialized = true;
+            // Initialize attributes - only collect successfully initialized ones
             for (size_t i = 0; i < attrIds.size(); i++)
             {
-                attrs[i].id = attrIds[i];
-                if (!initAttrData(rid, &attrs[i], &attrData))
+                sai_attribute_t attr = {};
+                attr.id = attrIds[i];
+                if (!initAttrData(rid, &attr, &attrData))
                 {
-                    SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Failed to initialize attribute %s for RID:0x%" PRIx64 ", skipping object",
-                                  sai_serialize_port_serdes_attr(attrIds[i]).c_str(), rid);
-                    attrDataInitialized = false;
-                    break;
+                    SWSS_LOG_WARN(
+                        "PORT_PHY_SERDES_ATTR: Failed to initialize "
+                        "attribute %s for RID:0x%" PRIx64 ", "
+                        "skipping this attribute only",
+                        sai_serialize_port_serdes_attr(attrIds[i]).c_str(),
+                        rid);
+                    continue;
                 }
+                attrs.push_back(attr);
             }
 
-            if (!attrDataInitialized)
+            if (attrs.empty())
             {
+                SWSS_LOG_WARN(
+                    "PORT_PHY_SERDES_ATTR: No attributes could be "
+                    "initialized for RID:0x%" PRIx64 ", "
+                    "skipping object", rid);
                 continue;
             }
 
             sai_status_t status = Base::m_vendorSai->get(
                     Base::m_objectType,
                     rid,
-                    static_cast<uint32_t>(attrIds.size()),
+                    static_cast<uint32_t>(attrs.size()),
                     attrs.data());
 
             if (status != SAI_STATUS_SUCCESS)
@@ -3184,7 +3234,7 @@ public:
 
             std::string port_vid_str = sai_serialize_object_id(port_it->second.port_vid);
 
-            for (size_t i = 0; i != attrIds.size(); i++)
+            for (size_t i = 0; i != attrs.size(); i++)
             {
                 auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
                 if (!meta)
@@ -3193,10 +3243,10 @@ public:
                     continue;
                 }
 
-                auto it = m_attrAliases.find(attrIds[i]);
+                auto it = m_attrAliases.find(static_cast<sai_port_serdes_attr_t>(attrs[i].id));
                 if (it == m_attrAliases.end())
                 {
-                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Unsupported PORT_SERDES_ATTR: %d", attrIds[i]);
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Unsupported PORT_SERDES_ATTR: %d", attrs[i].id);
                     continue;
                 }
 
@@ -3657,6 +3707,7 @@ FlexCounter::FlexCounter(
         _In_ const bool noDoubleCheckBulkCapability):
     m_readyToPoll(false),
     m_pollInterval(0),
+    m_secondaryPollFactor(0),
     m_instanceId(instanceId),
     m_vendorSai(vendorSai),
     m_dbCounters(dbCounters),
@@ -3690,6 +3741,20 @@ void FlexCounter::setPollInterval(
         m_cvSleep.notify_all();
 
         SWSS_LOG_INFO("Set POLL INTERVAL %d for FC %s", pollInterval, m_instanceId.c_str());
+    }
+}
+
+void FlexCounter::setSecondaryPollFactor(
+        _In_ uint32_t secondaryPollFactor)
+{
+    SWSS_LOG_ENTER();
+
+    if (m_secondaryPollFactor != secondaryPollFactor)
+    {
+        m_secondaryPollFactor = secondaryPollFactor;
+        m_cvSleep.notify_all();
+
+        SWSS_LOG_INFO("Set SECONDARY POLL FACTOR %u for FC %s", secondaryPollFactor, m_instanceId.c_str());
     }
 }
 
@@ -3789,6 +3854,10 @@ void FlexCounter::addCounterPlugin(
         if (field == POLL_INTERVAL_FIELD)
         {
             setPollInterval(stoi(value));
+        }
+        else if (field == SECONDARY_POLL_FACTOR_FIELD)
+        {
+            setSecondaryPollFactor(stoi(value));
         }
         else if (field == BULK_CHUNK_SIZE_FIELD)
         {
@@ -4062,6 +4131,14 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->use_sai_stats_ext = m_vendorSai->isSwitchStatsExtSupported();
         return context;
     }
+    else if (context_name == ATTR_TYPE_OTN_ATTENUATOR_ATTR)
+    {
+        return std::make_shared<AttrContext<sai_otn_attenuator_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, m_vendorSai.get(), m_statsMode);
+    }
+    else if (context_name == ATTR_TYPE_OTN_OA_ATTR)
+    {
+        return std::make_shared<AttrContext<sai_otn_oa_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, m_vendorSai.get(), m_statsMode);
+    }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
     // GCC 8.3 requires a return value here
@@ -4132,12 +4209,17 @@ void FlexCounter::runPlugins(
 {
     SWSS_LOG_ENTER();
 
-    const std::vector<std::string> argv =
+    std::vector<std::string> argv =
     {
         std::to_string(counters_db.getDbId()),
         COUNTERS_TABLE,
         std::to_string(m_pollInterval)
     };
+
+    if (m_secondaryPollFactor > 0)
+    {
+        argv.push_back(std::to_string(m_secondaryPollFactor));
+    }
 
     for (const auto &it : m_counterContext)
     {
@@ -4149,21 +4231,168 @@ void FlexCounter::flexCounterThreadRunFunction()
 {
     SWSS_LOG_ENTER();
 
-    swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
-    swss::RedisPipeline pipeline(&db);
-    swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
+    // The COUNTERS_DB handles are held in rebuildable storage rather than as plain
+    // stack objects. Redis closes the connection after replying to a malformed
+    // request (CLIENT_CLOSE_AFTER_REPLY), so once a protocol error is observed the
+    // existing handles are unusable and have to be reconstructed, not merely reused.
+    std::unique_ptr<swss::DBConnector> db;
+    std::unique_ptr<swss::RedisPipeline> pipeline;
+    std::unique_ptr<swss::Table> countersTable;
+
+    auto connectCountersDb = [&]()
+    {
+        // Destroy in dependency order: Table refers to RedisPipeline, which refers
+        // to DBConnector.
+        countersTable.reset();
+        pipeline.reset();
+        db.reset();
+
+        db.reset(new swss::DBConnector(m_dbCounters, 0, m_isTcpConn));
+        pipeline.reset(new swss::RedisPipeline(db.get()));
+        countersTable.reset(new swss::Table(pipeline.get(), COUNTERS_TABLE, true));
+    };
+
+    uint64_t consecutivePollFailures = 0;
+    uint64_t consecutiveConnectFailures = 0;
 
     while (m_runFlexCounterThread)
     {
+        if (!countersTable)
+        {
+            // Connect outside the counter mutex so that a slow or refused connect
+            // never blocks addCounter()/removeCounter() on the calling thread.
+            // That guarantee is deliberately narrow: it covers this connect and the
+            // handle release further down, but not the poll itself, which still runs
+            // with the counter mutex held. See the comment on the poll below.
+            bool connectFailed = false;
+            std::string failureReason;
+
+            try
+            {
+                connectCountersDb();
+
+                consecutiveConnectFailures = 0;
+
+                SWSS_LOG_NOTICE("FC %s: COUNTERS_DB connection established",
+                        m_instanceId.c_str());
+            }
+            catch (const std::exception& e)
+            {
+                connectFailed = true;
+
+                failureReason = e.what();
+            }
+            catch (...)
+            {
+                // Not every exception reaching this thread is guaranteed to derive
+                // from std::exception: a vendor SAI implementation may throw a type
+                // of its own. Letting one escape would call std::terminate(), which
+                // is precisely the abort this guard exists to prevent.
+                connectFailed = true;
+
+                failureReason = "unknown exception";
+            }
+
+            if (connectFailed)
+            {
+                // Rate limit exactly as the poll path does: a sustained
+                // COUNTERS_DB outage would otherwise log once per backoff
+                // interval, for every counter group, for as long as it lasts.
+                if ((consecutiveConnectFailures++ % FLEX_COUNTER_POLL_FAILURE_LOG_INTERVAL) == 0)
+                {
+                    SWSS_LOG_ERROR("FC %s: failed to connect to COUNTERS_DB (%" PRIu64 " consecutive): %s",
+                            m_instanceId.c_str(), consecutiveConnectFailures, failureReason.c_str());
+                }
+
+                // m_pollInterval is written with m_mtx held: setPollInterval() does
+                // not take the lock itself, but its only caller, addCounterPlugin(),
+                // does. Reading it here without the lock would therefore be a data
+                // race. Take a snapshot rather than holding m_mtx across the wait
+                // below: this path is deliberately outside the counter mutex so that
+                // a slow or refused connect cannot block addCounter()/removeCounter().
+                uint32_t pollInterval;
+
+                {
+                    MUTEX;
+
+                    pollInterval = m_pollInterval;
+                }
+
+                // A constant wait with no jitter. Every counter group loses
+                // COUNTERS_DB on the same cycle and so retries in lockstep, once per
+                // interval each, for as long as the outage lasts. Replacing this with
+                // a jittered, growing backoff is tracked in
+                // https://github.com/sonic-net/sonic-sairedis/issues/2065.
+                uint32_t backoff = (pollInterval > 0) ? pollInterval : FLEX_COUNTER_RECONNECT_BACKOFF_MS;
+
+                std::unique_lock<std::mutex> lk(m_mtxSleep);
+
+                m_cvSleep.wait_for(lk, std::chrono::milliseconds(backoff));
+
+                continue;
+            }
+        }
+
         MUTEX;
 
         if (m_enable && !allIdsEmpty() && (m_pollInterval > 0))
         {
             auto start = std::chrono::steady_clock::now();
 
-            collectCounters(countersTable);
+            bool pollFailed = false;
+            std::string failureReason;
 
-            runPlugins(db);
+            // A counter poll must never take down syncd. Any failure here is
+            // transient by nature (Redis I/O, protocol desync, malformed reply), so
+            // log it, drop the connection and retry on the next cycle.
+            //
+            // Note that, unlike the connect and the release, this runs with the
+            // counter mutex held: collecting the counters flushes the pipeline, and
+            // that blocks while reading the replies. A Redis that refuses the
+            // connection fails fast and is handled outside the lock, but one that
+            // accepts and then stops answering, blocked on a background save for
+            // instance, holds up addCounter()/removeCounter() until the socket gives
+            // up. The guard does not change where the poll is serialized, so this is
+            // no worse than before; it is worth knowing that retrying forever also
+            // means such a stall can now repeat every cycle rather than ending in an
+            // abort.
+            try
+            {
+                collectCounters(*countersTable);
+
+                runPlugins(*db);
+            }
+            catch (const std::exception& e)
+            {
+                pollFailed = true;
+
+                failureReason = e.what();
+            }
+            catch (...)
+            {
+                // See the connect path above: an exception that does not derive from
+                // std::exception must not be allowed to reach the thread boundary.
+                pollFailed = true;
+
+                failureReason = "unknown exception";
+            }
+
+            if (pollFailed)
+            {
+                // Rate limit: a persistent failure would otherwise log every poll interval.
+                if ((consecutivePollFailures++ % FLEX_COUNTER_POLL_FAILURE_LOG_INTERVAL) == 0)
+                {
+                    SWSS_LOG_ERROR("FC %s: poll cycle failed (%" PRIu64 " consecutive), reconnecting COUNTERS_DB: %s",
+                            m_instanceId.c_str(), consecutivePollFailures, failureReason.c_str());
+                }
+            }
+            else if (consecutivePollFailures != 0)
+            {
+                SWSS_LOG_NOTICE("FC %s: poll cycle recovered after %" PRIu64 " failure(s)",
+                        m_instanceId.c_str(), consecutivePollFailures);
+
+                consecutivePollFailures = 0;
+            }
 
             auto finish = std::chrono::steady_clock::now();
 
@@ -4173,6 +4402,16 @@ void FlexCounter::flexCounterThreadRunFunction()
             uint32_t correction = delay % m_pollInterval;
             correction = m_pollInterval - correction;
             MUTEX_UNLOCK; // explicit unlock
+
+            if (pollFailed)
+            {
+                // Release the handles outside the counter mutex; the next iteration
+                // reconnects. The sleep below doubles as the retry backoff, so it is
+                // the second site that issue 2065 above applies to.
+                countersTable.reset();
+                pipeline.reset();
+                db.reset();
+            }
 
             SWSS_LOG_DEBUG("End of flex counter thread FC %s, took %d ms", m_instanceId.c_str(), delay);
 
@@ -4335,6 +4574,7 @@ void FlexCounter::removeCounter(
     {
         if (hasCounterContext(ATTR_TYPE_ACL_COUNTER))
         {
+            removeDataFromCountersDB(vid, "");
             getCounterContext(ATTR_TYPE_ACL_COUNTER)->removeObject(vid);
         }
     }
@@ -4389,6 +4629,20 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR))
         {
             getCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR)->removeObject(vid);
+        }
+    }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR)
+    {
+        if (hasCounterContext(ATTR_TYPE_OTN_ATTENUATOR_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_OTN_ATTENUATOR_ATTR)->removeObject(vid);
+        }
+    }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA)
+    {
+        if (hasCounterContext(ATTR_TYPE_OTN_OA_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_OTN_OA_ATTR)->removeObject(vid);
         }
     }
     else

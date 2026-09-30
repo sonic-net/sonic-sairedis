@@ -33,6 +33,8 @@ libSaiVS_a_SOURCES = \
 					  LaneMapContainer.cpp \
 					  LaneMap.cpp \
 					  LaneMapFileParser.cpp \
+					  PortConfigMap.cpp \
+					  PortConfigFileParser.cpp \
 					  MACsecAttr.cpp \
 					  MACsecFilterStateGuard.cpp \
 					  MACsecEgressFilter.cpp \
@@ -60,6 +62,7 @@ libSaiVS_a_SOURCES = \
 					  SwitchContainer.cpp \
 					  Switch.cpp \
 					  SwitchMLNX2700.cpp \
+					  SwitchMicas48CON2SFP.cpp \
 					  SwitchNokiaVS.cpp \
 					  SwitchNvdaMBF2H536C.cpp \
 					  SwitchStateBase.cpp \
@@ -77,6 +80,7 @@ if USE_VPP
 libSaiVS_a_SOURCES +=\
 					  vpp/CRMTracker.cpp \
 					  vpp/SaiObjectDB.cpp \
+					  vpp/VppInterfaceRegistry.cpp \
 					  vpp/SwitchVpp.cpp \
 					  vpp/SwitchVppAcl.cpp \
 					  vpp/SwitchVppNexthop.cpp \
@@ -90,6 +94,7 @@ libSaiVS_a_SOURCES +=\
 					  vpp/SwitchVppSRv6.cpp \
 					  vpp/SwitchVppMirror.cpp \
 					  vpp/SwitchVppSflow.cpp \
+					  vpp/SwitchVppMpls.cpp \
 					  vpp/TunnelManager.cpp \
 					  vpp/SaiVppLog.cpp \
 					  vpp/vppxlate/SaiVppXlate.c \

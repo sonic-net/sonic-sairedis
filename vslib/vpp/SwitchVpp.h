@@ -2,6 +2,8 @@
 
 #include "SwitchStateBase.h"
 
+#include "swss/logger.h"
+
 #include "IpVrfInfo.h"
 #include "SaiObjectDB.h"
 #include "BitResourcePool.h"
@@ -9,11 +11,15 @@
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
 #include "CRMTracker.h"
+#include "PortConfigMap.h"
+#include "VppInterfaceRegistry.h"
 
 #include "vppxlate/SaiVppXlate.h"
 #include "vppxlate/SaiRouteStats.h"
 
 #include <list>
+#include <set>
+#include <vector>
 #include <map>
 #include <unordered_map>
 #include <mutex>
@@ -51,6 +57,10 @@ namespace saivs
                     _In_ std::shared_ptr<WarmBootState> warmBootState);
 
             virtual ~SwitchVpp();
+
+            // This switch performs packet sampling directly in its data plane.
+            // Skip the base virtual switch kernel sampler to avoid duplicate ingress samples.
+            bool hasNativePacketSampling() const override { return true; }
 
         protected:
 
@@ -176,14 +186,6 @@ namespace saivs
             void removeRouteCounterBinding(
                     _In_ const std::string &serializedObjectId);
 
-            bool port_to_hostif_list(
-                    _In_ sai_object_id_t oid,
-                    _Inout_ std::string& if_name);
-
-            bool port_to_hwifname(
-                    _In_ sai_object_id_t oid,
-                    _Inout_ std::string& if_name);
-
         public: // from VirtualSwitchSaiInterface changed functions
 
             virtual sai_status_t queryAttributeCapability(
@@ -275,6 +277,22 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) override;
 
+            sai_status_t create_port_dependencies(
+                    _In_ sai_object_id_t port_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            /*
+             * Overridden purely to deregister the port from m_ifaceRegistry.
+             * The base class knows nothing about the registry, so without this
+             * a removed physical port would leave its record behind -- and
+             * because addPhysicalPort() refuses a hwif that is already
+             * registered, a later re-add of the same hwif would silently get no
+             * record at all. LAG and sub-port teardown already do this.
+             */
+            virtual sai_status_t removePort(
+                    _In_ sai_object_id_t objectId) override;
+
             virtual sai_status_t setPort(
                     _In_ sai_object_id_t portId,
                     _In_ const sai_attribute_t* attr) override;
@@ -322,6 +340,10 @@ namespace saivs
             static int vs_set_dev_mac_address(
                     _In_ const char *dev,
                     _In_ const sai_mac_t& mac);
+
+            static int vs_set_dev_admin_up(
+                    _In_ const char *dev,
+                    _In_ bool up);
 
             static int promisc(
                     _In_ const char *dev);
@@ -376,12 +398,52 @@ namespace saivs
             sai_status_t vpp_remove_vlan_member(
                     _In_ sai_object_id_t vlan_member_oid);
 
+            // Handles SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE and
+            // SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE, which
+            // orchagent sets when proxy ARP is toggled on a VLAN interface.
+            sai_status_t vpp_set_vlan_attribute(
+                    _In_ sai_object_id_t vlan_oid,
+                    _In_ const sai_attribute_t *attr);
+
+            // True if the given VLAN flood-control attribute is currently
+            // stored as SAI_VLAN_FLOOD_CONTROL_TYPE_NONE, i.e. the matching
+            // classify punt should be installed. The stored VLAN object is the
+            // single source of truth; an attribute that was never set falls
+            // back to the SAI default of ALL (no punt).
+            bool vlan_flood_punt_enabled(
+                    _In_ sai_object_id_t vlan_oid,
+                    _In_ sai_attr_id_t attr_id);
+
+            // Resolves SAI_BRIDGE_PORT_ATTR_PORT_ID on a bridge port. Returns
+            // false, rather than throwing or dereferencing a null attribute,
+            // if the bridge port or the attribute is not in the object store.
+            bool bridge_port_to_port_id(
+                    _In_ sai_object_id_t br_port_oid,
+                    _Out_ sai_object_id_t &port_id);
+
+            // Resolves a VLAN member to the VPP interface that actually is the
+            // bridge domain member (the parent for an untagged member,
+            // <parent>.<vid> for a tagged one) and its tagging mode. Returns
+            // false for members with no VPP interface, e.g. tunnel bridge
+            // ports, or if the interface name cannot be resolved.
+            bool vlan_member_hwif(
+                    _In_ const SaiObject &vlan_member,
+                    _In_ uint16_t vlan_id,
+                    _Out_ std::string &hwif_name,
+                    _Out_ bool &is_tagged);
+
             sai_status_t vpp_create_bvi_interface(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
             sai_status_t vpp_delete_bvi_interface(
                     _In_ sai_object_id_t bvi_obj_id);
+
+            sai_status_t vpp_update_bvi_interface(
+                    _In_ sai_object_id_t rif_obj_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
             sai_status_t createLag(
                     _In_ sai_object_id_t object_id,
                     _In_ sai_object_id_t switch_id,
@@ -427,8 +489,11 @@ namespace saivs
                     _In_ sai_object_id_t lag_member_oid);
 	    sai_status_t vpp_remove_lag_member(
                     _In_ sai_object_id_t lag_member_oid);
-	    void restorePortTapMac(
+	    sai_status_t restorePortTapMac(
                     _In_ sai_object_id_t port_oid);
+	    void vpp_set_lag_member_ip6(
+                    _In_ sai_object_id_t port_oid,
+                    _In_ bool enable);
 	    sai_status_t vpp_ensure_lag_lcp(
                     _In_ sai_object_id_t lag_oid);
 	    sai_status_t vpp_set_lag_member_egress_disable(
@@ -647,14 +712,6 @@ namespace saivs
             sai_status_t vpp_remove_router_interface(
                     _In_ sai_object_id_t objectId);
 
-            sai_status_t vpp_router_interface_remove_vrf(
-                    _In_ sai_object_id_t obj_id);
-
-            sai_status_t vpp_add_del_intf_ip_addr (
-                    _In_ sai_ip_prefix_t& ip_prefix,
-                    _In_ sai_object_id_t nexthop_oid,
-                    _In_ bool is_add);
-
             sai_status_t vpp_add_del_intf_ip_addr_norif (
                     _In_ const std::string& ip_prefix_key,
                     _In_ sai_route_entry_t& route_entry,
@@ -676,11 +733,6 @@ namespace saivs
             sai_status_t vpp_del_lpb_intf_ip_addr (
                     _In_ const std::string &serializedObjectId);
 
-            sai_status_t vpp_get_router_intf_name (
-                    _In_ sai_ip_prefix_t& ip_prefix,
-                    _In_ sai_object_id_t rif_id,
-                    std::string& nexthop_ifname);
-
             int getNextLoopbackInstance();
 
             void markLoopbackInstanceDeleted(
@@ -700,12 +752,16 @@ namespace saivs
             sai_status_t vpp_set_interface_state (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
-                    _In_ bool is_up);
+                    _In_ bool is_up,
+                    _In_ uint32_t attr_count = 0,
+                    _In_ const sai_attribute_t *attr_list = nullptr);
             // set ethernet interface mtu including L2 header
             sai_status_t vpp_set_port_mtu (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
-                    _In_ uint32_t mtu);
+                    _In_ uint32_t mtu,
+                    _In_ uint32_t attr_count = 0,
+                    _In_ const sai_attribute_t *attr_list = nullptr);
             // set sw interface mtu excluding L2 header
             sai_status_t vpp_set_interface_mtu (
                     _In_ sai_object_id_t object_id,
@@ -716,7 +772,9 @@ namespace saivs
             sai_status_t vpp_set_port_speed (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
-                    _In_ uint32_t speed);
+                    _In_ uint32_t speed,
+                    _In_ uint32_t attr_count = 0,
+                    _In_ const sai_attribute_t *attr_list = nullptr);
 
             sai_status_t UpdatePort(
                     _In_ sai_object_id_t object_id,
@@ -755,6 +813,27 @@ namespace saivs
                     _In_ const sai_attribute_t *attr_list);
             sai_status_t removeIpRoute(
                     _In_ const std::string &serializedObjectId);
+
+            sai_status_t addMplsRoute(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+            sai_status_t removeMplsRoute(
+                    _In_ const std::string &serializedObjectId);
+            sai_status_t mplsRouteAddRemove(
+                    _In_ const SaiObject *inseg_obj,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ bool is_add);
+            sai_status_t fillMplsNexthop(
+                    _In_ const SaiObject *nh_obj,
+                    _Out_ vpp_mpls_nexthop_t *vnh);
+            void getOutsegTtl(
+                    _In_ const SaiObject *nh_obj,
+                    _Out_ uint8_t *ttl,
+                    _Out_ uint8_t *exp,
+                    _Out_ uint8_t *is_uniform);
+            sai_status_t ensureMplsTable();
 
             sai_status_t IpRouteNexthopEntry(
                     _In_ uint32_t attr_count,
@@ -824,6 +903,36 @@ namespace saivs
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_mbr_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
+
+            // Generic per-port ACL table bookkeeping.
+            //
+            // m_port_acl_tables records, per VPP interface (hwif name), the set
+            // of ACL tables currently bound to it in each direction. It is not
+            // specific to any feature: it provides a forward (port -> tables)
+            // and, via getPortsWithAclTable(), a reverse (table -> ports)
+            // lookup for anything that needs to map ports to ACL tables (the
+            // ip2me hook today, egress features tomorrow).
+            struct PortAclTables
+            {
+                std::set<sai_object_id_t> ingress;
+                std::set<sai_object_id_t> egress;
+            };
+            std::map<std::string, PortAclTables> m_port_acl_tables;
+
+            // ip2me (receive-DPO check before ACL) tracking.
+            //
+            // A table is an "ip2me drop table" if it carries at least one
+            // DROP/deny rule and could therefore discard ip2me (for-us)
+            // traffic; the set is kept current by AclTblConfig. A table whose
+            // drop-ness flips after it is bound is re-evaluated against the
+            // ingress bindings in m_port_acl_tables. The sonic_ext ip2me
+            // feature is enabled on an interface while any of its bound ingress
+            // tables is a drop table, and disabled otherwise;
+            // m_ip2me_enabled_ports records the last programmed state to keep
+            // the enable/disable calls idempotent.
+            std::set<sai_object_id_t> m_ip2me_drop_tables;
+            std::set<std::string> m_ip2me_enabled_ports;
+
             std::map<std::string, uint32_t> m_routeStatsIndexMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsBaseMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsCarryMap;
@@ -838,7 +947,6 @@ namespace saivs
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
-            uint32_t m_sflow_sample_rate = 0;
 
         protected: // VPP
 
@@ -912,6 +1020,7 @@ namespace saivs
              * @note If protocol is not set but port or port_range is set, creates 2 rules: one with UDP and one with TCP.
              */
             sai_status_t fill_acl_rules(
+                    _In_ sai_object_id_t tbl_oid,
                     _In_ acl_tbl_entries_t *aces,
                     _In_ std::list<ordered_ace_list_t> &ordered_aces,
                     _Out_ std::list<vpp_acl_rule_t> &acl_rules,
@@ -931,6 +1040,27 @@ namespace saivs
                     _In_ sai_object_id_t tbl_oid,
                     _In_ acl_tbl_entries_t *aces,
                     _In_ std::list<ordered_ace_list_t> &ordered_aces);
+
+            /**
+             * @brief Reads SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS of an entry.
+             *
+             * @param[in] ace The ACL entry.
+             * @param[in] ace_oid Object ID of the entry, needed to re-read the port list.
+             * @param[out] scoped True if the entry is restricted to the ports it names,
+             * false if it applies to every port the table is bound to.
+             * @param[out] hwifs VPP interface names the entry is restricted to. Only
+             * meaningful when scoped is true, where an empty set means the entry names
+             * no port and so matches nothing.
+             * @return SAI_STATUS_SUCCESS if the scope of the entry was determined. An
+             * error if the port list could not be read or none of the ports it names
+             * resolve to a VPP interface; the scope is unknown in that case, so the
+             * caller has to fail instead of programming rules with the wrong scope.
+             */
+            sai_status_t acl_entry_in_ports_get(
+                    _In_ const acl_tbl_entries_t *ace,
+                    _In_ sai_object_id_t ace_oid,
+                    _Out_ bool &scoped,
+                    _Out_ std::set<std::string> &hwifs);
 
             /**
              * @brief Counts the total number of ACL rules and tunnel termination ACL rules, and sets is_tunterm in the ordered ACE list.
@@ -1080,6 +1210,34 @@ namespace saivs
                     _In_ sai_object_id_t tbl_oid,
                     _In_ bool is_bind);
 
+            /*
+             * Generic port <-> ACL-table binding bookkeeping (both
+             * directions), backing m_port_acl_tables. Not specific to ip2me --
+             * see SwitchVppAcl.cpp.
+             */
+            void updatePortAclTableBinding(
+                    _In_ const std::string &hwif_name,
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool is_input,
+                    _In_ bool is_bind);
+
+            std::vector<std::string> getPortsWithAclTable(
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool is_input);
+
+            /*
+             * ip2me (receive-DPO check before ACL) helpers -- see
+             * SwitchVppAcl.cpp. They keep the sonic_ext ip2me feature enabled
+             * on exactly the VPP interfaces that have an ingress drop ACL
+             * bound, so ip2me (for-us) traffic can bypass it.
+             */
+            void ip2meUpdateDropTable(
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool has_deny);
+
+            void ip2meRefreshPort(
+                    _In_ const std::string &hwif_name);
+
             sai_status_t getAclEntryStats(
                     _In_ sai_object_id_t ace_cntr_oid,
                     _In_ uint32_t attr_count,
@@ -1127,6 +1285,13 @@ namespace saivs
              sai_status_t sflowHostifTableEntryRemove(
                      _In_ const std::string &serializedObjectId);
 
+             sai_status_t sflowInterfaceSamplingRateSet(
+                     _In_ sai_object_id_t port_id,
+                     _In_ uint32_t rate);
+
+             sai_status_t sflowInterfaceDirectionSet(
+                     _In_ sai_object_id_t port_id,
+                     _In_ uint32_t direction);
 
         public: // VPP
 
@@ -1136,10 +1301,34 @@ namespace saivs
                     _Out_ uint32_t *vpp_rule_base_index,
                     _Out_ uint32_t *num_rules);
 
-            bool vpp_get_hwif_name (
+            /*
+             * VPP interface name of a PORT, on the port create/update path.
+             *
+             * Registry first, falling back to the hardware lane list, which is
+             * also what registers the port: create_ports() makes ports with no
+             * attributes at all and only later sets SAI_PORT_ATTR_HW_LANE_LIST,
+             * so this is the first moment a front panel port has a derivable
+             * name. That makes this the only entry point that can name a port
+             * which is not in the registry yet, and the reason it takes the
+             * attribute list -- during a set, the new lane list is in attr_list
+             * and not yet in the object store.
+             *
+             * Everywhere else the interface is necessarily already known, and
+             * the plain index lookup, VppInterfaceRegistry::resolveHwIfName(),
+             * is what should be used.
+             */
+            bool vppGetHwIfNameForPort (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
-                    _Out_ std::string& ifname);
+                    _Out_ std::string& ifname,
+                    _In_ uint32_t attr_count = 0,
+                    _In_ const sai_attribute_t *attr_list = nullptr);
+
+            const VppInterfaceRegistry& getInterfaceRegistry() const
+            {
+                                SWSS_LOG_ENTER();
+                return m_ifaceRegistry;
+            }
 
         public:
 
@@ -1152,25 +1341,17 @@ namespace saivs
             void deinitFdbEventHandling() override;
 
         protected: // VPP
-            typedef struct platform_bond_info_ {
-                uint32_t sw_if_index;
-                uint32_t id;
-                bool lcp_created;
-            } platform_bond_info_t;
-
-            void populate_if_mapping();
-
-            bool getTapNameFromPortOrLagId(
-                    _In_ sai_object_id_t obj_id,
+            bool getPortHwifNameFromLane(
+                    _In_ sai_object_id_t port_id,
                     _Out_ std::string& if_name);
 
-            const char *tap_to_hwif_name(const char *name);
-
-            const char *hwif_to_tap_name(const char *name);
+            bool getPortHwifNameFromLane(
+                    _In_ sai_object_id_t port_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _Out_ std::string& if_name);
 
             uint32_t find_new_bond_id();
-            sai_status_t get_lag_bond_info(const sai_object_id_t lag_id, platform_bond_info_t &bond_info);
-            int remove_lag_to_bond_entry (const sai_object_id_t lag_id);
 
             void vppProcessEvents ();
 
@@ -1188,20 +1369,26 @@ namespace saivs
             void startVppEventsThread();
 
         private: // VPP
+            void loadPortConfig();
 
-            std::map<std::string, std::string> m_hostif_hwif_map;
-            std::map<std::string, std::string> m_hwif_hostif_map;
-            int mapping_init = 0;
+            std::shared_ptr<PortConfigMap> m_portConfigMap;
+
+            /*
+             * Single owner of interface identity: hwif name, SONiC name, host
+             * tap, PORT/LAG oid, sw_if_index and bridge domain, for every kind
+             * of VPP interface.
+             */
+            VppInterfaceRegistry m_ifaceRegistry;
+
             bool m_run_vpp_events_thread = true;
             std::atomic<bool> m_operResyncDue { false };
             bool VppEventsThreadStarted = false;
             std::shared_ptr<std::thread> m_vpp_thread;
 
         private: // VPP
-	    // m_lag_bond_map and m_egress_disabled_lag_member_ports are only accessed on
-	    // the LAG create/set/remove path, which the VS layer serializes through a
-	    // single queue, so they require no additional locking.
-	    std::map<sai_object_id_t, platform_bond_info_t> m_lag_bond_map;
+	    // m_egress_disabled_lag_member_ports is only accessed on the LAG
+	    // create/set/remove path, which the VS layer serializes through a
+	    // single queue, so it requires no additional locking.
 	    std::set<sai_object_id_t> m_egress_disabled_lag_member_ports;
 
             static int currentMaxInstance;
@@ -1218,17 +1405,6 @@ namespace saivs
             // Kept in sync with MAC events from VPP to support flush operations
             // and de-duplication of events.
             std::map<VppFdbKey, uint32_t> m_vpp_fdb_entries;
-
-            // Cache: VPP sw_if_index -> SAI port OID, built from FDB learn events.
-            // Avoids per-entry VPP API calls in vpp_fdb_entries_invalidate_by_port().
-            // Invalidated per sw_if_index on port-leave via swif_bdid_untrack(),
-            // since VPP recycles sw_if_index values after an interface is deleted.
-            std::unordered_map<uint32_t, sai_object_id_t> m_swif_to_port_id;
-
-            // Maps VPP sw_if_index -> bridge domain ID.
-            // Maintained when ports are added/removed from bridge domains.
-            // Required because l2_macs_event carries sw_if_index but not bd_id.
-            std::map<uint32_t, uint32_t> m_swif_to_bdid;
 
             // MAC event queue — thread boundary between VPP and saivpp.
             //
@@ -1263,20 +1439,15 @@ namespace saivs
 
             bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
             bool generateFdbAgedEvent(const VppFdbKey &key);
-            sai_object_id_t getPortIdFromSwIfIndex(uint32_t sw_if_index);
-
-            // Cache-first resolution of sw_if_index -> SAI port OID.
-            // On a cache miss, falls back to the VPP API lookup and memoizes the result.
-            // Defined inline in SwitchVppFdb.cpp (its only translation unit).
-            sai_object_id_t resolvePortIdFromSwIfIndex(uint32_t sw_if_index);
 
             void vpp_fdb_entries_invalidate_all();
             void vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id);
             void vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id);
 
-            // Track/untrack sw_if_index→bd_id when ports join/leave bridge domains.
-            // Untrack also invalidates the m_swif_to_port_id cache for that
-            // sw_if_index, since both per-swif caches share the same lifecycle.
+            // Track/untrack bd_id on the interface record when ports join/leave
+            // bridge domains. Having a bd_id is the gate that admits an FDB
+            // event: every interface has a record, so record existence alone
+            // does not imply bridge domain membership.
             void swif_bdid_track(const char *hwif_name, uint32_t bd_id);
             void swif_bdid_untrack(const char *hwif_name);
 
@@ -1294,6 +1465,7 @@ namespace saivs
             // SRv6 object tracking for CRM
             constexpr static const int m_maxMySidEntries = 1000;
             uint32_t m_srv6_my_sid_count = 0;
+            bool m_mpls_table_created = false;
 
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
 

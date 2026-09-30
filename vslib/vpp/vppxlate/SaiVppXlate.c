@@ -56,6 +56,9 @@
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_enum.h>
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_types.h>
 
+#include <vpp_plugins/sonic_ext/sonic_ext.api_enum.h>
+#include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
+
 #include <vlibmemory/vlib.api_types.h>
 #include <vlibmemory/memclnt.api_enum.h>
 
@@ -73,9 +76,11 @@
 
 #include <vnet/srv6/sr.api_enum.h>
 #include <vnet/srv6/sr.api_types.h>
+#include <vnet/mpls/mpls.api_enum.h>
+#include <vnet/mpls/mpls.api_types.h>
 
-#include <vnet/ipip/ipip.api_enum.h>
-#include <vnet/ipip/ipip.api_types.h>
+#include <vpp_plugins/ipip/ipip.api_enum.h>
+#include <vpp_plugins/ipip/ipip.api_types.h>
 
 #include <vnet/classify/classify.api_enum.h>
 #include <vnet/classify/classify.api_types.h>
@@ -209,6 +214,24 @@
 #include <vnet/srv6/sr.api.h>
 #undef vl_api_version
 
+/* MPLS API inclusion */
+
+#define vl_typedefs
+#include <vnet/mpls/mpls.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vnet/mpls/mpls.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vnet/mpls/mpls.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 mpls_api_version = v;
+#include <vnet/mpls/mpls.api.h>
+#undef vl_api_version
+
 /* ipv4 API inclusion */
 
 #define vl_typedefs
@@ -313,6 +336,24 @@
 #include <vpp_plugins/sflow/sflow.api.h>
 #undef vl_api_version
 
+/* sonic_ext API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_api_version
+
 /* BOND API inclusion */
 
 #define vl_typedefs
@@ -354,19 +395,19 @@
 
 /* ipip API inclusion */
 #define vl_typedefs
-#include <vnet/ipip/ipip.api.h>
+#include <vpp_plugins/ipip/ipip.api.h>
 #undef vl_typedefs
 
 #define vl_endianfun
-#include <vnet/ipip/ipip.api.h>
+#include <vpp_plugins/ipip/ipip.api.h>
 #undef vl_endianfun
 
 #define vl_calcsizefun
-#include <vnet/ipip/ipip.api.h>
+#include <vpp_plugins/ipip/ipip.api.h>
 #undef vl_calcsizefun
 
 #define vl_api_version(n, v) static u32 ipip_api_version = v;
-#include <vnet/ipip/ipip.api.h>
+#include <vpp_plugins/ipip/ipip.api.h>
 #undef vl_api_version
 
 /* memclnt API inclusion */
@@ -1395,7 +1436,20 @@ vl_api_l2_macs_event_t_handler (vl_api_l2_macs_event_t *mp)
             vl_api_mac_entry_t *e = &mp->mac[off + i];
             memcpy(g_mac_event_batch[i].mac, e->mac_addr, 6);
             g_mac_event_batch[i].sw_if_index = ntohl(e->sw_if_index);
-            g_mac_event_batch[i].action = (uint8_t)e->action;
+            /*
+             * mac_entry.action is a 4-byte vl_api_mac_event_action_t that VPP
+             * sends in network byte order, exactly like sw_if_index above:
+             *   l2fib_scan(): mp->mac[evt_idx].action = htonl(...action);
+             * Casting the raw field to uint8_t without ntohl() truncates to the
+             * least significant byte, which on little-endian hosts is 0 for every
+             * non-zero action:
+             *   ADD    (0) -> htonl(0) = 0x00000000 -> 0 -> ADD    (correct by luck)
+             *   DELETE (1) -> htonl(1) = 0x01000000 -> 0 -> ADD    (WRONG)
+             *   MOVE   (2) -> htonl(2) = 0x02000000 -> 0 -> ADD    (WRONG)
+             * i.e. aged-out and flushed MACs were reported to SONiC as LEARNED,
+             * repopulating ASIC_DB/STATE_DB with entries VPP had just deleted.
+             */
+            g_mac_event_batch[i].action = (uint8_t)ntohl((uint32_t)e->action);
         }
         g_mac_event_cb(g_mac_event_batch, chunk, g_mac_event_ctx);
     }
@@ -1446,7 +1500,28 @@ vl_api_sflow_sampling_rate_set_reply_t_handler(vl_api_sflow_sampling_rate_set_re
 }
 
 static void
+vl_api_sonic_ext_ip2me_enable_disable_reply_t_handler(vl_api_sonic_ext_ip2me_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_bfd_udp_set_tos_reply_t_handler (vl_api_bfd_udp_set_tos_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sflow_interface_sampling_rate_set_reply_t_handler(vl_api_sflow_interface_sampling_rate_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sflow_interface_direction_set_reply_t_handler(vl_api_sflow_interface_direction_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
@@ -1775,6 +1850,7 @@ static u16 l2_msg_id_base, vxlan_msg_id_base, ipip_msg_id_base;
 static u16 tunterm_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
+static u16 mpls_msg_id_base;
 static u16 bond_msg_id_base;
 static u16 span_msg_id_base;
 static u16 classify_msg_id_base;
@@ -1887,6 +1963,7 @@ static void vpp_base_vpe_init(void)
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
 static u16 acl_msg_id_base;
 static u16 sflow_msg_id_base;
+static u16 sonic_ext_msg_id_base;
 
 static void vpp_ext_vpe_init(void)
 {
@@ -1951,6 +2028,26 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     set_reply_status(retval);
 }
 
+static void
+vl_api_sw_interface_set_mpls_enable_reply_t_handler (vl_api_sw_interface_set_mpls_enable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_mpls_table_add_del_reply_t_handler (vl_api_mpls_table_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
 
 #define LCP_MSG_ID(id) \
     (VL_API_##id + lcp_msg_id_base)
@@ -1970,6 +2067,12 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
 #define SR_MSG_ID(id) \
     (VL_API_##id + sr_msg_id_base)
 
+#define MPLS_MSG_ID(id) \
+    (VL_API_##id + mpls_msg_id_base)
+
+#define SONIC_EXT_MSG_ID(id) \
+    (VL_API_##id + sonic_ext_msg_id_base)
+
 #define foreach_vpe_plugin_api_reply_msg                                \
     _(LCP_MSG_ID(LCP_ITF_PAIR_ADD_DEL_REPLY), lcp_itf_pair_add_del_reply) \
     _(LCP_MSG_ID(LCP_ETHERTYPE_ENABLE_REPLY), lcp_ethertype_enable_reply) \
@@ -1988,8 +2091,14 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply) \
     _(SFLOW_MSG_ID(SFLOW_ENABLE_DISABLE_REPLY), sflow_enable_disable_reply) \
     _(SFLOW_MSG_ID(SFLOW_SAMPLING_RATE_SET_REPLY), sflow_sampling_rate_set_reply) \
+    _(SFLOW_MSG_ID(SFLOW_INTERFACE_SAMPLING_RATE_SET_REPLY), sflow_interface_sampling_rate_set_reply) \
+    _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
-    _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply)
+    _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
+    _(MPLS_MSG_ID(SW_INTERFACE_SET_MPLS_ENABLE_REPLY), sw_interface_set_mpls_enable_reply) \
+    _(MPLS_MSG_ID(MPLS_TABLE_ADD_DEL_REPLY), mpls_table_add_del_reply) \
+    _(MPLS_MSG_ID(MPLS_ROUTE_ADD_DEL_REPLY), mpls_route_add_del_reply)
 
 static void vpp_plugin_vpe_init(void)
 {
@@ -2047,6 +2156,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "sr_%08x%c", sr_api_version, 0);
     sr_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sr_msg_id_base != (u16) ~0);
+    msg_base_lookup_name = format (0, "mpls_%08x%c", mpls_api_version, 0);
+    mpls_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(mpls_msg_id_base != (u16) ~0);
+
 
     memclnt_msg_id_base = 0;
 
@@ -2077,6 +2190,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "sflow_%08x%c", sflow_api_version, 0);
     sflow_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sflow_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "sonic_ext_%08x%c", sonic_ext_api_version, 0);
+    sonic_ext_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(sonic_ext_msg_id_base != (u16) ~0);
 }
 
 #define API_SOCKET_FILE "/run/vpp/api.sock"
@@ -2874,6 +2991,172 @@ int ip6_nbr_add_del (const char *hwif_name, uint32_t sw_if_index, struct sockadd
     return ip_nbr_add_del(hwif_name, sw_if_index, (struct sockaddr *) addr, is_static, no_fib_entry, mac, is_add);
 }
 
+int sw_interface_set_mpls_enable (const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_mpls_enable_t *mp;
+    u32 sw_if_index;
+    int ret;
+
+    VPP_LOCK();
+
+    sw_if_index = get_swif_idx(vam, hwif_name);
+    if (sw_if_index == (u32) -1) {
+        SAIVPP_ERROR("%s: unknown interface %s", __func__, hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    __plugin_msg_base = mpls_msg_id_base;
+
+    M (SW_INTERFACE_SET_MPLS_ENABLE, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->enable = enable;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) intf %s enable %d", __func__, ret, hwif_name, enable); }
+    else { SAIVPP_INFO("%s intf %s enable %d", __func__, hwif_name, enable); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int mpls_table_add_del (uint32_t table_id, bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_mpls_table_add_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = mpls_msg_id_base;
+
+    M (MPLS_TABLE_ADD_DEL, mp);
+    mp->mt_is_add = is_add;
+    mp->mt_table.mt_table_id = htonl(table_id);
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u is_add %d", __func__, ret, table_id, is_add); }
+    else { SAIVPP_INFO("%s table %u is_add %d", __func__, table_id, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int mpls_route_add_del (vpp_mpls_route_t *route, bool is_add)
+{
+    u32 idx, path_count;
+    vat_main_t *vam = &vat_main;
+    vl_api_mpls_route_t *mr;
+    vl_api_mpls_route_add_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    path_count = route->nexthop_cnt;
+
+    /*
+     * Validate every path before allocating the API message: the message is
+     * only freed once it is sent, so an early return afterwards would leak it.
+     */
+    for (unsigned int i = 0; i < path_count; i++) {
+        if (route->nexthop[i].addr.sa_family != AF_INET &&
+            route->nexthop[i].addr.sa_family != AF_INET6) {
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+        if (route->nexthop[i].n_labels > VPP_MPLS_MAX_LABELS) {
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    }
+
+    __plugin_msg_base = mpls_msg_id_base;
+
+    M22 (MPLS_ROUTE_ADD_DEL, mp, sizeof (vl_api_fib_path_t) * path_count);
+    mr = &mp->mr_route;
+
+    mr->mr_table_id = htonl(route->table_id);
+    mr->mr_label = htonl(route->label);
+    mr->mr_eos = route->eos;
+    mr->mr_eos_proto = (u8)((route->eos_proto_af == AF_INET6) ?
+        FIB_API_PATH_NH_PROTO_IP6 : FIB_API_PATH_NH_PROTO_IP4);
+    mr->mr_is_multicast = false;
+    mr->mr_n_paths = (u8)path_count;
+
+    for (unsigned int i = 0; i < path_count; i++) {
+        vpp_mpls_nexthop_t *nexthop = &route->nexthop[i];
+        vl_api_fib_path_t *fib_path = &mr->mr_paths[i];
+        vl_api_address_union_t *nh_addr = &fib_path->nh.address;
+        vpp_ip_addr_t *addr = &nexthop->addr;
+
+        memset(fib_path, 0, sizeof(*fib_path));
+
+        if (nexthop->sw_if_index != (u32) -1) {
+            fib_path->sw_if_index = htonl(nexthop->sw_if_index);
+        } else if (nexthop->hwif_name) {
+            idx = get_swif_idx(vam, nexthop->hwif_name);
+            fib_path->sw_if_index = htonl(idx != (u32) -1 ? idx : (uint32_t)~0);
+        } else {
+            fib_path->sw_if_index = htonl((uint32_t)~0);
+        }
+
+        if (addr->sa_family == AF_INET) {
+            struct sockaddr_in *ip4 = &addr->addr.ip4;
+            memcpy(nh_addr->ip4, &ip4->sin_addr.s_addr, sizeof(nh_addr->ip4));
+            fib_path->proto = htonl(FIB_API_PATH_NH_PROTO_IP4);
+        } else if (addr->sa_family == AF_INET6) {
+            struct sockaddr_in6 *ip6 = &addr->addr.ip6;
+            memcpy(nh_addr->ip6, &ip6->sin6_addr.s6_addr, sizeof(nh_addr->ip6));
+            fib_path->proto = htonl(FIB_API_PATH_NH_PROTO_IP6);
+        }
+
+        if (nexthop->type == VPP_NEXTHOP_LOCAL) {
+            fib_path->type = htonl(FIB_API_PATH_TYPE_LOCAL);
+        } else {
+            fib_path->type = htonl(FIB_API_PATH_TYPE_NORMAL);
+        }
+
+        fib_path->table_id = 0;
+        fib_path->rpf_id = htonl((uint32_t)~0);
+        fib_path->weight = nexthop->weight;
+        fib_path->preference = nexthop->preference;
+
+        fib_path->n_labels = nexthop->n_labels;
+        for (uint8_t l = 0; l < nexthop->n_labels && l < VPP_MPLS_MAX_LABELS; l++) {
+            fib_path->label_stack[l].label = htonl(nexthop->label_stack[l].label);
+            fib_path->label_stack[l].ttl = nexthop->label_stack[l].ttl;
+            fib_path->label_stack[l].exp = nexthop->label_stack[l].exp;
+            fib_path->label_stack[l].is_uniform = nexthop->label_stack[l].is_uniform;
+        }
+    }
+
+    mp->mr_is_add = is_add;
+    mp->mr_is_multipath = route->is_multipath;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) label %u eos %u is_add %d", __func__, ret, route->label, route->eos, is_add); }
+    else { SAIVPP_INFO("%s label %u eos %u paths %u is_add %d", __func__, route->label, route->eos, path_count, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
 int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *stats_index)
 {
     u32 idx, path_count = 1;
@@ -2969,12 +3252,27 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
             fib_path->type = htonl(FIB_API_PATH_TYPE_NORMAL);
         } else if (nexthop->type == VPP_NEXTHOP_LOCAL) {
             fib_path->type = htonl(FIB_API_PATH_TYPE_LOCAL);
+        } else if (nexthop->type == VPP_NEXTHOP_DROP) {
+            fib_path->type = htonl(FIB_API_PATH_TYPE_DROP);
         }
         fib_path->table_id = 0;
         fib_path->rpf_id = htonl((uint32_t)~0);
         fib_path->weight = nexthop->weight;
         fib_path->preference = nexthop->preference;
-        fib_path->n_labels = 0;
+        /*
+         * Clamp before assigning: only VPP_MPLS_MAX_LABELS entries are ever
+         * populated below, so an unclamped n_labels would tell VPP the message
+         * carries more labels than it actually does.
+         */
+        uint8_t n_labels = nexthop->n_labels > VPP_MPLS_MAX_LABELS ?
+                           VPP_MPLS_MAX_LABELS : nexthop->n_labels;
+        fib_path->n_labels = n_labels;
+        for (uint8_t l = 0; l < n_labels; l++) {
+            fib_path->label_stack[l].label = htonl(nexthop->label_stack[l]);
+            fib_path->label_stack[l].ttl = nexthop->out_ttl;
+            fib_path->label_stack[l].exp = nexthop->out_exp;
+            fib_path->label_stack[l].is_uniform = nexthop->out_is_uniform;
+        }
     }
     ip_route->table_id = htonl(prefix->vrf_id);
 
@@ -3105,6 +3403,25 @@ int vpp_acl_add_replace (vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace
         vpp_rule->srcport_or_icmptype_last = htons(in_rule->srcport_or_icmptype_last);
         vpp_rule->dstport_or_icmpcode_first = htons(in_rule->dstport_or_icmpcode_first);
         vpp_rule->dstport_or_icmpcode_last = htons(in_rule->dstport_or_icmpcode_last);
+
+        /*
+         * Ingress interface match. Resolved here rather than by the caller so
+         * the SAI layer keeps working in interface names, as it does for
+         * binding. 0 means any, which is what the ACL plugin expects.
+         */
+        if (in_rule->in_hwif_name[0] != '\0') {
+            u32 in_idx = get_swif_idx(vam, in_rule->in_hwif_name);
+
+            if (in_idx == (u32) -1) {
+                SAIVPP_ERROR("Unable to get sw_index for %s in acl rule\n",
+                             in_rule->in_hwif_name);
+                VPP_UNLOCK();
+                return -EINVAL;
+            }
+            vpp_rule->in_sw_if_index = htonl(in_idx);
+        } else {
+            vpp_rule->in_sw_if_index = 0;
+        }
 
         if (vpp_rule->proto != 0) {
             if (vpp_rule->srcport_or_icmptype_first == 0 && vpp_rule->srcport_or_icmptype_last == 0) {
@@ -3460,6 +3777,8 @@ int vpp_sflow_enable_disable(const char *hwif_name, bool enable)
     S(mp);
     WR(ret);
 
+    ret = vpp_normalize_ret(ret, false, __func__);
+
     if (ret) {
         SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable);
     } else {
@@ -3491,6 +3810,49 @@ int vpp_sflow_sampling_rate_set(uint32_t sampling_n)
         SAIVPP_ERROR("%s failed(%d) sampling_N %u", __func__, ret, sampling_n);
     } else {
         SAIVPP_INFO("%s sampling_N %u", __func__, sampling_n);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_ip2me_enable_disable_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+    M(SONIC_EXT_IP2ME_ENABLE_DISABLE, mp);
+
+    if (hwif_name) {
+        u32 idx;
+        idx = get_swif_idx(vam, hwif_name);
+        if (idx != (u32) -1) {
+            mp->sw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        SAIVPP_ERROR("%s: hwif_name is NULL, cannot %s ip2me", __func__,
+                     enable ? "enable" : "disable");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->enable = enable;
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable);
+    } else {
+        SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable);
     }
 
     VPP_UNLOCK();
@@ -3531,6 +3893,87 @@ int vpp_ip_flow_hash_set (uint32_t vrf_id, uint32_t hash_mask, int addr_family)
     return ret;
 }
 
+int vpp_sflow_interface_sampling_rate_set(const char *hwif_name, uint32_t sampling_n)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_interface_sampling_rate_set_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_INTERFACE_SAMPLING_RATE_SET, mp);
+
+    if(hwif_name){
+        u32 idx = get_swif_idx(vam, hwif_name);
+        if(idx != (u32) - 1){
+            mp->hw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        SAIVPP_ERROR("No hwif_name provided");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->sampling_N = htonl(sampling_n);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s sampling_N %u", __func__, ret, hwif_name, sampling_n);
+    } else {
+        SAIVPP_INFO("%s %s sampling_N %u", __func__, hwif_name, sampling_n);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_interface_direction_set_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_INTERFACE_DIRECTION_SET, mp);
+
+    if(hwif_name){
+        u32 idx = get_swif_idx(vam, hwif_name);
+        if(idx != (u32) - 1){
+            mp->hw_if_index = htonl(idx);
+        } else {
+            SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+            VPP_UNLOCK();
+            return -EINVAL;
+        }
+    } else {
+        SAIVPP_ERROR("No hw_index provided");
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->direction = htonl(direction);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s direction %u", __func__, ret, hwif_name, direction);
+    } else {
+        SAIVPP_INFO("%s %s direction %u", __func__, hwif_name, direction);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
 /*
  * Set the global ECMP flow-hash "router ID" -- the per-router value VPP mixes
  * into the IPv4/IPv6 ECMP flow hash (see ip4_inlines.h / ip6_inlines.h:
@@ -4005,8 +4448,36 @@ int sw_interface_set_link_speed (const char *hwif_name, uint32_t link_speed)
 int sw_interface_set_mac (const char *hwif_name, uint8_t *mac_address)
 {
     vat_main_t *vam = &vat_main;
+    u32 idx;
+
+    if (hwif_name == NULL) {
+        SAIVPP_ERROR("hwif_name cannot be NULL");
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+    idx = get_swif_idx(vam, hwif_name);
+    VPP_UNLOCK();
+
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+        return -EINVAL;
+    }
+
+    /* Reuse the index based implementation for the actual VPP API call. */
+    return sw_interface_set_mac_by_index(idx, mac_address);
+}
+
+int sw_interface_set_mac_by_index (uint32_t sw_if_index, uint8_t *mac_address)
+{
+    vat_main_t *vam = &vat_main;
     vl_api_sw_interface_set_mac_address_t *mp;
     int ret;
+
+    if (mac_address == NULL) {
+        SAIVPP_ERROR("mac address can't be NULL");
+        return -EINVAL;
+    }
 
     VPP_LOCK();
 
@@ -4014,35 +4485,15 @@ int sw_interface_set_mac (const char *hwif_name, uint8_t *mac_address)
 
     M (SW_INTERFACE_SET_MAC_ADDRESS, mp);
 
-    if (hwif_name) {
-        u32 idx;
-        idx = get_swif_idx(vam, hwif_name);
-        if (idx != (u32) -1) {
-            mp->sw_if_index = htonl(idx);
-        } else {
-            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
-            VPP_UNLOCK();
-            return -EINVAL;
-        }
-    } else {
-        SAIVPP_ERROR("hwif_name cannot be NULL");
-        VPP_UNLOCK();
-        return -EINVAL;
-    }
-
-    if (mac_address == NULL) {
-        SAIVPP_ERROR("mac address can't be NULL");
-        VPP_UNLOCK();
-        return -EINVAL;
-    }
+    mp->sw_if_index = htonl(sw_if_index);
     memcpy(mp->mac_address, mac_address, sizeof(mp->mac_address));
 
     S (mp);
 
     WR (ret);
 
-    if (ret) { SAIVPP_ERROR("%s failed(%d) %s", __func__, ret, hwif_name); }
-    else { SAIVPP_INFO("%s %s", __func__, hwif_name); }
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u", __func__, ret, sw_if_index); }
+    else { SAIVPP_INFO("%s sw_if_index %u", __func__, sw_if_index); }
 
     VPP_UNLOCK();
 
@@ -4464,7 +4915,20 @@ int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, u32 *sw_if
     mp->encap_vrf_id = htonl(tunnel->encap_vrf_id);
     mp->vni = htonl(tunnel->vni);
     mp->is_l3 = tunnel->is_l3;
-    mp->decap_next_index = htonl(tunnel->decap_next_index);
+    {
+        /* SONiC VNET decap-any: signal a source-independent decap term by
+         * setting the high bit of the wire decap_next_index. Force a valid
+         * default next index if the caller left it unset (~0), so the bit is
+         * distinguishable and the stripped value stays valid in VPP. */
+        u32 dni = tunnel->decap_next_index;
+        if (tunnel->decap_any) {
+            if (dni == (u32)~0) {
+                dni = VPP_VXLAN_DECAP_NEXT_L2_INPUT;
+            }
+            dni |= VPP_VXLAN_DECAP_ANY_FLAG;
+        }
+        mp->decap_next_index = htonl(dni);
+    }
 
     S (mp);
     WR (ret);

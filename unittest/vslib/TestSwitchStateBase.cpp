@@ -582,3 +582,7 @@ TEST_F(SwitchStateBaseTest, queryLlrProfileCapability_FullySupported)
         EXPECT_TRUE(cap.get_implemented);
     }
 }
+TEST_F(SwitchStateBaseTest, hasNativePacketSamplingDefaultsToFalse)
+{
+    EXPECT_FALSE(m_ss->hasNativePacketSampling());
+}

@@ -2275,6 +2275,83 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForInsegEntry(
 }
 
 /**
+ * @brief Find current best match for my sid entry.
+ *
+ * For my sid entry we don't need to iterate via all current my sid entries, we
+ * can do dictionary lookup, but we need to do smart trick, since temporary
+ * object was processed we just need to check whether VID in my_sid_entry struct
+ * is matched/final and it has RID assigned from current view. If RID exists, we
+ * can use that RID to get VID of current view, exchange in my_sid_entry struct
+ * and do dictionary lookup on serialized my_sid_entry.
+ *
+ * With this approach for many entries this is the quickest possible way. In
+ * case when RID doesn't exist, that means we have invalid my sid entry, so we
+ * must return null.
+ *
+ * @param temporaryObj Temporary object.
+ *
+ * @return Best match object if found or nullptr.
+ */
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForMySidEntry(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Make a copy here to not destroy object data, later
+     * on this data should be read only.
+     */
+
+    sai_object_meta_key_t mk = temporaryObj->m_meta_key;
+
+    if (!exchangeTemporaryVidToCurrentVid(mk))
+    {
+        /*
+         * Not all oids inside struct object were translated, so there is no
+         * matching object in current view, we need to return null.
+         */
+
+        return nullptr;
+    }
+
+    std::string str_my_sid_entry = sai_serialize_my_sid_entry(mk.objectkey.key.my_sid_entry);
+
+    /*
+     * Now when we have serialized my sid entry with temporary vr_id VID
+     * replaced to current vr_id VID we can do dictionary lookup for my sid entry.
+     */
+    auto currentMySidIt = m_currentView.m_soMySidEntries.find(str_my_sid_entry);
+
+    if (currentMySidIt == m_currentView.m_soMySidEntries.end())
+    {
+        SWSS_LOG_DEBUG("unable to find my sid entry %s in current asic view", str_my_sid_entry.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same my sid entry in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentMySidObj = currentMySidIt->second;
+
+    if (currentMySidObj->getObjectStatus() == SAI_OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentMySidObj;
+    }
+
+    /*
+     * If we are here, that means this my sid entry was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_THROW("found my sid entry %s in current view, but it status is %d, FATAL",
+            str_my_sid_entry.c_str(),
+            currentMySidObj->getObjectStatus());
+}
+
+/**
  * @brief Find current best match for FDB.
  *
  * For FDB we don't need to iterate via all current FDBs, we can do dictionary
@@ -2516,6 +2593,9 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatch(
 
         case SAI_OBJECT_TYPE_INSEG_ENTRY:
             return findCurrentBestMatchForInsegEntry(temporaryObj);
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+            return findCurrentBestMatchForMySidEntry(temporaryObj);
 
             /*
              * We can have special case for switch since we know there should

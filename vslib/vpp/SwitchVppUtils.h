@@ -15,6 +15,17 @@ extern "C" {
 
 #define BONDETHERNET_PREFIX "BondEthernet"
 
+#define VLAN_PREFIX "Vlan"
+
+#define BVI_PREFIX "bvi"
+
+/*
+ * LCP host-interface (tap) name of a bond. Deliberately not PORTCHANNEL_PREFIX:
+ * "PortChannel<N>" is the kernel bond netdev owned by teamd, and naming the tap
+ * after it would collide with that device.
+ */
+#define BOND_TAP_PREFIX "be"
+
 /*
  * Kernel-only IP-in-IP mux tunnel interface created by swss tunnelmgrd on
  * dual-ToR devices (must match TUNIF in sonic-swss cfgmgr/tunnelmgr.cpp).

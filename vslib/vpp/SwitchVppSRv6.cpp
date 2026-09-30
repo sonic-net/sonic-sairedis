@@ -92,7 +92,8 @@ sai_status_t TunnelManagerSRv6::fill_next_hop(
         vlan_idx = 0;
     }
 
-    if(!m_switch_db->vpp_get_hwif_name(port_oid, vlan_idx, hwif_name)) {
+    hwif_name = m_switch_db->getInterfaceRegistry().resolveHwIfName(port_oid, vlan_idx);
+    if(hwif_name.empty()) {
         SWSS_LOG_WARN("VPP hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
         return SAI_STATUS_FAILURE;
     }

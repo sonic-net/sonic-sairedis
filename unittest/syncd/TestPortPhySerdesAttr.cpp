@@ -356,3 +356,158 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
     flexCounter->removeCounter(testPortSerdesOid);
 }
 
+/**
+ * Test that collectData() collects only the successfully initialized serdes
+ * attributes when one attribute fails initAttrData(), leaving others intact.
+ *
+ * Scenario: SAI returns failure for SAI_PORT_SERDES_ATTR_TX_FIR_COUNT so
+ * m_portSerdesTapsCountMap has no entry for this RID, causing initAttrData
+ * for TX_FIR_TAPS_LIST to return false. RX_VGA is fully supported.
+ *
+ * Expected behaviour after the fix:
+ *   - tx_fir_taps_list is NOT written to COUNTERS_DB
+ *   - rx_vga IS written to COUNTERS_DB with correct data
+ */
+TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
+{
+    sai_object_id_t partialSerdesOid = 0x57000000000002;
+    sai_object_id_t partialSerdesRid = 0x57000000000002;
+    sai_object_id_t partialPortOid   = 0x1000000000002;
+
+    sai->mock_get = [](sai_object_type_t object_type,
+                      sai_object_id_t /*object_id*/,
+                      uint32_t attr_count,
+                      sai_attribute_t *attr_list) -> sai_status_t
+    {
+        if (object_type == SAI_OBJECT_TYPE_PORT_SERDES)
+        {
+            for (uint32_t i = 0; i < attr_count; i++)
+            {
+                switch (attr_list[i].id)
+                {
+                    case SAI_PORT_SERDES_ATTR_PORT_ID:
+                        attr_list[i].value.oid = 0x1000000000002;
+                        break;
+
+                    case SAI_PORT_SERDES_ATTR_TX_FIR_COUNT:
+                        // Simulate SDK busy / not ready: fail the count query
+                        // so m_portSerdesTapsCountMap is never populated and
+                        // initAttrData for TX_FIR_TAPS_LIST returns false.
+                        return SAI_STATUS_OBJECT_IN_USE;
+
+                    case SAI_PORT_SERDES_ATTR_RX_VGA:
+                        if (attr_list[i].value.u32list.list == nullptr)
+                        {
+                            attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                            return SAI_STATUS_BUFFER_OVERFLOW;
+                        }
+                        for (uint32_t lane = 0;
+                             lane < attr_list[i].value.u32list.count
+                             && lane < TEST_LANE_COUNT; lane++)
+                        {
+                            attr_list[i].value.u32list.list[lane] = 200 + lane;
+                        }
+                        attr_list[i].value.u32list.count =
+                            std::min(attr_list[i].value.u32list.count,
+                                     TEST_LANE_COUNT);
+                        break;
+
+                    default:
+                        return SAI_STATUS_NOT_SUPPORTED;
+                }
+            }
+            return SAI_STATUS_SUCCESS;
+        }
+        else if (object_type == SAI_OBJECT_TYPE_PORT)
+        {
+            for (uint32_t i = 0; i < attr_count; i++)
+            {
+                if (attr_list[i].id == SAI_PORT_ATTR_HW_LANE_LIST)
+                {
+                    if (attr_list[i].value.u32list.list == nullptr)
+                    {
+                        attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    }
+                    for (uint32_t lane = 0;
+                         lane < attr_list[i].value.u32list.count
+                         && lane < TEST_LANE_COUNT; lane++)
+                    {
+                        attr_list[i].value.u32list.list[lane] = lane;
+                    }
+                    attr_list[i].value.u32list.count =
+                        std::min(attr_list[i].value.u32list.count,
+                                 TEST_LANE_COUNT);
+                    return SAI_STATUS_SUCCESS;
+                }
+            }
+        }
+        return SAI_STATUS_INVALID_PARAMETER;
+    };
+
+    // Register the serdes→port VID mapping in COUNTERS_DB
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table portSerdesIdToPortIdTable(
+        &db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
+    portSerdesIdToPortIdTable.hset(
+        "", toOid(partialSerdesOid), toOid(partialPortOid));
+
+    vector<swss::FieldValueTuple> portSerdesAttrValues;
+    std::string attrIds =
+        "SAI_PORT_SERDES_ATTR_RX_VGA,SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST";
+    portSerdesAttrValues.emplace_back(PORT_PHY_SERDES_ATTR_ID_LIST, attrIds);
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT_SERDES);
+    flexCounter->addCounter(
+        partialSerdesOid, partialSerdesRid, portSerdesAttrValues);
+
+    vector<swss::FieldValueTuple> pluginValues;
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    flexCounter->addCounterPlugin(pluginValues);
+
+    usleep(1000 * 1050); // 1.05 seconds - one poll cycle
+
+    swss::RedisPipeline pipeline(&db);
+    swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, false);
+
+    std::string expectedKey = toOid(partialPortOid);
+
+    // TX_FIR_TAPS_LIST failed initAttrData → must NOT appear in DB
+    std::string txFirTapsValue;
+    bool found = portPhyAttrTable.hget(
+        expectedKey, "tx_fir_taps_list", txFirTapsValue);
+    EXPECT_FALSE(found)
+        << "tx_fir_taps_list should NOT be in COUNTERS_DB "
+           "when TX_FIR_COUNT query fails";
+
+    // RX_VGA succeeded → MUST appear in DB with correct lane values
+    std::string rxVgaValue;
+    found = portPhyAttrTable.hget(expectedKey, "rx_vga", rxVgaValue);
+    EXPECT_TRUE(found)
+        << "rx_vga MUST be in COUNTERS_DB "
+           "even when TX_FIR_TAPS_LIST initAttrData failed";
+
+    if (found)
+    {
+        json rxVgaJson;
+        ASSERT_NO_THROW(rxVgaJson = json::parse(rxVgaValue))
+            << "rx_vga is not valid JSON: " << rxVgaValue;
+
+        EXPECT_EQ(rxVgaJson.size(), TEST_LANE_COUNT)
+            << "rx_vga should have " << TEST_LANE_COUNT << " lanes";
+
+        for (uint32_t lane = 0; lane < TEST_LANE_COUNT; lane++)
+        {
+            std::string lane_key = std::to_string(lane);
+            ASSERT_TRUE(rxVgaJson.contains(lane_key))
+                << "Missing lane " << lane << " in rx_vga";
+            EXPECT_EQ(rxVgaJson[lane_key].get<uint32_t>(), 200 + lane)
+                << "Lane " << lane << " VGA mismatch";
+        }
+    }
+
+    flexCounter->removeCounter(partialSerdesOid);
+}
+

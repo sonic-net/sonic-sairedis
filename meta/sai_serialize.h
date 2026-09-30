@@ -330,6 +330,10 @@ std::string sai_serialize_port_snr_list(
         _In_ const sai_port_snr_list_t& snr_list,
         _In_ bool countOnly);
 
+std::string sai_serialize_port_ilt_lane_training_status_list(
+        _In_ const sai_port_ilt_lane_training_status_list_t& status_list,
+        _In_ bool countOnly);
+
 std::string sai_serialize_taps_list(
         _In_ const sai_taps_list_t& port_serdes_taps_list,
         _In_ bool countOnly);
@@ -414,6 +418,13 @@ std::string sai_serialize_macsec_post_status(
 std::string sai_serialize_macsec_post_status_ntf(
          _In_ sai_object_id_t macsec_id,
          _In_ const sai_macsec_post_status_t macsec_post_status);
+
+// serialize OTN
+std::string sai_serialize_otn_attenuator_attr(
+        _In_ const sai_otn_attenuator_attr_t attr);
+
+std::string sai_serialize_otn_oa_attr(
+        _In_ const sai_otn_oa_attr_t attr);
 
 // deserialize
 
@@ -798,6 +809,11 @@ void sai_deserialize_port_snr_list(
         _Out_ sai_port_snr_list_t& snr_list,
         _In_ bool countOnly);
 
+void sai_deserialize_port_ilt_lane_training_status_list(
+        _In_ const std::string& s,
+        _Out_ sai_port_ilt_lane_training_status_list_t& status_list,
+        _In_ bool countOnly);
+
 void sai_deserialize_taps_list(
         _In_ const std::string& s,
         _Out_ sai_taps_list_t& port_serdes_taps_list,
@@ -820,3 +836,12 @@ void sai_deserialize_macsec_post_status_ntf(
         _In_ const std::string& s,
         _Out_ sai_object_id_t& macsec_id,
         _Out_ sai_macsec_post_status_t& macsec_post_status);
+
+// deserialize OTN
+void sai_deserialize_otn_attenuator_attr(
+        _In_ const std::string& s,
+        _Out_ sai_otn_attenuator_attr_t& attr);
+
+void sai_deserialize_otn_oa_attr(
+        _In_ const std::string& s,
+        _Out_ sai_otn_oa_attr_t& attr);
