@@ -804,6 +804,10 @@ namespace saivs
             sai_status_t removeIpNbr(
                     _In_ const std::string &serializedObjectId);
 
+            sai_status_t setIpNbr(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
             bool is_ip_nbr_active();
 
             sai_status_t addIpRoute(
