@@ -19,6 +19,7 @@ libSyncd_a_SOURCES = \
 				AsicView.cpp \
 				AttrVersionChecker.cpp \
 				BestCandidateFinder.cpp \
+				BestCandidateFinderIdentityIndex.cpp \
 				BreakConfig.cpp \
 				BreakConfigParser.cpp \
 				CommandLineOptions.cpp \

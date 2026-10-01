@@ -9,12 +9,16 @@
 #include <inttypes.h>
 
 #include <algorithm>
+#include <sstream>
+#include <unordered_set>
+#include <vector>
 
 using namespace syncd;
 using namespace saimeta;
 
 AsicView::AsicView():
-    m_asicOperationId(0)
+    m_asicOperationId(0),
+    m_nhgMemberIndexBuilt(false)
 {
     SWSS_LOG_ENTER();
 
@@ -23,7 +27,8 @@ AsicView::AsicView():
 
 AsicView::AsicView(
         _In_ const swss::TableDump &dump):
-    m_asicOperationId(0)
+    m_asicOperationId(0),
+    m_nhgMemberIndexBuilt(false)
 {
     SWSS_LOG_ENTER();
 
@@ -1338,4 +1343,287 @@ sai_object_id_t AsicView::getSwitchVid() const
     }
 
     SWSS_LOG_THROW("no SWITCH present in ASIC view, FATAL");
+}
+
+bool AsicView::isAttrIncludedInIdentityKey(
+        _In_ const sai_attr_metadata_t *meta)
+{
+    SWSS_LOG_ENTER();
+
+    if (meta == nullptr)
+    {
+        return false;
+    }
+
+    if (SAI_HAS_FLAG_READ_ONLY(meta->flags))
+    {
+        return false;
+    }
+
+    if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_LIST)
+    {
+        return false;
+    }
+
+    /*
+     * NEXT_HOP_ID on a group member is CREATE_AND_SET, but comparison logic
+     * treats the next-hop RID as identity. Members that only share a group
+     * must not be paired. Include it so a CREATE_ONLY-only key (group id)
+     * cannot uniquely match the wrong member.
+     */
+    if (meta->objecttype == SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER &&
+        meta->attrid == SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID)
+    {
+        return true;
+    }
+
+    /*
+     * Identity keys must use CREATE_ONLY attributes. CREATE_AND_SET values can
+     * be updated in place, so including them would match the object whose
+     * current value happens to be equal instead of the object the graph
+     * heuristics would select (for example ACL table groups bound to a port).
+     */
+    if (!SAI_HAS_FLAG_CREATE_ONLY(meta->flags))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+std::string AsicView::computeCreateOnlyKey(
+        _In_ const std::shared_ptr<const SaiObj> &obj,
+        _In_ const ObjectIdMap &vidToRid,
+        _In_ const std::set<sai_attr_id_t> *attrFilter)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_attr_id_t> attrIds;
+
+    for (const auto &kvp: obj->getAllAttributes())
+    {
+        attrIds.push_back(kvp.first);
+    }
+
+    std::sort(attrIds.begin(), attrIds.end());
+
+    std::ostringstream key;
+
+    for (sai_attr_id_t attrId: attrIds)
+    {
+        if (attrFilter != nullptr && attrFilter->find(attrId) == attrFilter->end())
+        {
+            continue;
+        }
+
+        const auto attrIt = obj->getAllAttributes().find(attrId);
+
+        if (attrIt == obj->getAllAttributes().end())
+        {
+            continue;
+        }
+
+        const auto &attr = attrIt->second;
+
+        const sai_attr_metadata_t *meta = attr->getAttrMetadata();
+
+        if (!isAttrIncludedInIdentityKey(meta))
+        {
+            continue;
+        }
+
+        if (key.tellp() > 0)
+        {
+            key << ";";
+        }
+
+        key << attr->getStrAttrId() << "=";
+
+        if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID ||
+            (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID &&
+             attr->getSaiAttr()->value.aclaction.enable))
+        {
+            sai_object_id_t vid = attr->getOid();
+
+            if (vid == SAI_NULL_OBJECT_ID)
+            {
+                key << sai_serialize_object_id(SAI_NULL_OBJECT_ID);
+                continue;
+            }
+
+            auto it = vidToRid.find(vid);
+
+            if (it == vidToRid.end())
+            {
+                return "";
+            }
+
+            key << sai_serialize_object_id(it->second);
+        }
+        else
+        {
+            key << attr->getStrAttrValue();
+        }
+    }
+
+    return key.str();
+}
+
+std::string AsicView::computeNhgMemberKey(
+        _In_ sai_object_id_t nhgVid,
+        _In_ const ObjectIdMap &vidToRid) const
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_object_id_t> nhRids;
+
+    for (const auto &member: getObjectsByObjectType(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER))
+    {
+        if (!member->hasAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID))
+        {
+            continue;
+        }
+
+        if (member->getSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID)->getOid() != nhgVid)
+        {
+            continue;
+        }
+
+        if (!member->hasAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID))
+        {
+            return "";
+        }
+
+        sai_object_id_t nhVid = member->getSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID)->getOid();
+
+        auto it = vidToRid.find(nhVid);
+
+        if (it == vidToRid.end())
+        {
+            return "";
+        }
+
+        nhRids.push_back(it->second);
+    }
+
+    if (nhRids.empty())
+    {
+        return "";
+    }
+
+    std::sort(nhRids.begin(), nhRids.end());
+
+    std::ostringstream key;
+
+    for (size_t i = 0; i < nhRids.size(); i++)
+    {
+        if (i > 0)
+        {
+            key << ";";
+        }
+
+        key << sai_serialize_object_id(nhRids.at(i));
+    }
+
+    return key.str();
+}
+
+std::string AsicView::attrFilterCacheKey(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::set<sai_attr_id_t> &attrFilter)
+{
+    SWSS_LOG_ENTER();
+
+    std::ostringstream oss;
+
+    oss << objectType << ":";
+
+    for (sai_attr_id_t id: attrFilter)
+    {
+        oss << id << ",";
+    }
+
+    return oss.str();
+}
+
+const std::unordered_map<std::string, std::shared_ptr<SaiObj>>* AsicView::getCreateOnlyIndex(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::set<sai_attr_id_t> &attrFilter) const
+{
+    SWSS_LOG_ENTER();
+
+    const std::string cacheKey = attrFilterCacheKey(objectType, attrFilter);
+
+    auto cacheIt = m_createOnlyIndexCache.find(cacheKey);
+
+    if (cacheIt != m_createOnlyIndexCache.end())
+    {
+        return &cacheIt->second;
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<SaiObj>> index;
+    std::unordered_set<std::string> duplicateKeys;
+
+    for (const auto &obj: getNotProcessedObjectsByObjectType(objectType))
+    {
+        const std::string key = computeCreateOnlyKey(obj, m_vidToRid, &attrFilter);
+
+        if (key.empty())
+        {
+            continue;
+        }
+
+        if (duplicateKeys.find(key) != duplicateKeys.end())
+        {
+            continue;
+        }
+
+        auto existingIt = index.find(key);
+
+        if (existingIt != index.end())
+        {
+            /*
+             * Two current objects project to the same CREATE_ONLY key. They are
+             * not interchangeable: types such as ACL_TABLE_GROUP are matched
+             * by graph heuristics (port/LAG binding). Drop the key so the
+             * identity index falls through to that slow path.
+             */
+
+            index.erase(existingIt);
+            duplicateKeys.insert(key);
+            continue;
+        }
+
+        index[key] = obj;
+    }
+
+    auto inserted = m_createOnlyIndexCache.emplace(cacheKey, std::move(index));
+
+    return &inserted.first->second;
+}
+
+const std::unordered_map<std::string, std::vector<std::shared_ptr<SaiObj>>>* AsicView::getNhgMemberIndex() const
+{
+    SWSS_LOG_ENTER();
+
+    if (m_nhgMemberIndexBuilt)
+    {
+        return &m_nhgMemberIndex;
+    }
+
+    for (const auto &nhg: getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_NEXT_HOP_GROUP))
+    {
+        const std::string key = computeNhgMemberKey(nhg->getVid(), m_vidToRid);
+
+        if (key.empty())
+        {
+            continue;
+        }
+
+        m_nhgMemberIndex[key].push_back(nhg);
+    }
+
+    m_nhgMemberIndexBuilt = true;
+
+    return &m_nhgMemberIndex;
 }
