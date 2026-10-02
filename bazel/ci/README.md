@@ -10,9 +10,9 @@ configuration matrix.
 The root `MODULE.bazel.lock` is generated and ignored, not committed. A clean
 checkout must build the required targets and run the tests without an existing
 lockfile. Use `--lockfile_mode=update` in CI and local commands so Bazel can
-generate resolution state. Keep module versions, immutable registry and source
-revisions, integrity hashes, and shared toolchain and package snapshots pinned
-in their checked-in declarations.
+generate resolution state. Use the maintained registry `main` URL in `.bazelrc`.
+Keep module versions, source revisions, integrity hashes, and shared toolchain
+and package snapshots pinned in their checked-in declarations.
 
 Each native architecture job is configured to retain these files under
 `artifacts/validation/dependencies/`:
@@ -105,7 +105,7 @@ The verifier checks:
 - Label/output mapping, hashes, checked configuration, and dependency pins in
   the artifact provenance report. Resolve SAI, Common, and build-infra's actual
   canonical repositories, check their fetched module versions against the root
-  declarations, and retain the selected immutable registry source hashes.
+  declarations, and retain the selected registry source hashes.
 - Agreement between the SAI module's source provenance and the Make gitlink.
 
 Inherited tar defaults and differences from the Make package inventory are
