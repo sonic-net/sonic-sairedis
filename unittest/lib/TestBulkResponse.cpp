@@ -276,7 +276,7 @@ TEST_P(BulkResponseTest, GetBufferOverflowStillTransfersOnlyListCount)
         attrs[i].value.u32list.count = 1;
         attrs[i].value.u32list.list = &buffers[i];
         channel->values.emplace_back(sai_serialize_status(SAI_STATUS_BUFFER_OVERFLOW),
-                "SAI_PORT_ATTR_HW_LANE_LIST=2:null");
+                "SAI_PORT_ATTR_HW_LANE_LIST=2");
     }
     std::vector<sai_status_t> statuses(GetParam(), SAI_STATUS_SUCCESS);
     EXPECT_EQ(SAI_STATUS_FAILURE, waitForGet(statuses));
