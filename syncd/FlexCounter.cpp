@@ -3005,28 +3005,64 @@ public:
 
         laneCount = attr.value.u32list.count;
 
+        if (laneCount == 0)
+        {
+            /*
+             * Some implementations answer the port lane count size query
+             * with zero (e.g. before the hardware is ready, or on external
+             * PHY ports). Fall back to the serdes object's own size-query
+             * convention: a zero-sized RX_VGA get reports the lane count
+             * via BUFFER_OVERFLOW.
+             */
+            attr.id = SAI_PORT_SERDES_ATTR_RX_VGA;
+            attr.value.u32list.count = 0;
+            attr.value.u32list.list = nullptr;
+            status = Base::m_vendorSai->get(Base::m_objectType, port_serdes_rid, 1, &attr);
+
+            if (status != SAI_STATUS_BUFFER_OVERFLOW || attr.value.u32list.count == 0)
+            {
+                SWSS_LOG_NOTICE("PORT_PHY_SERDES_ATTR: Lane count not yet available for port_serdes RID:0x%" PRIx64 ", deferring",
+                              port_serdes_rid);
+                return;
+            }
+
+            laneCount = attr.value.u32list.count;
+        }
+
         // Store the lane count in the map
         m_portSerdesIdToLaneCountMap[port_serdes_rid] = laneCount;
         SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Stored lane count for port_serdes_rid:0x%" PRIx64 " = %u lanes",
                       port_serdes_rid, laneCount);
     }
 
-    void updatePortSerdesTapsCountMap(sai_object_id_t port_serdes_rid)
+    /*
+     * Resolve tap counts for the taps-list attributes that were actually
+     * registered for polling, and drop the ones whose count attribute the
+     * vendor SAI cannot answer: without a count the taps list cannot be
+     * sized or polled, and that is a capability gap, not an error.
+     */
+    void updatePortSerdesTapsCountMap(
+            _In_ sai_object_id_t port_serdes_rid,
+            _Inout_ std::vector<sai_port_serdes_attr_t>& attrIds)
     {
         SWSS_LOG_ENTER();
 
-        std::vector<sai_port_serdes_attr_t> countAttrs = {
-            SAI_PORT_SERDES_ATTR_TX_FIR_COUNT,
-            SAI_PORT_SERDES_ATTR_RX_FFE_COUNT,
-            // enable the below attrs when implemented.
-            //SAI_PORT_SERDES_ATTR_RX_DFE_COUNT
+        static const std::map<sai_port_serdes_attr_t, sai_port_serdes_attr_t> tapsToCountAttr = {
+            { SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST, SAI_PORT_SERDES_ATTR_TX_FIR_COUNT },
+            { SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST, SAI_PORT_SERDES_ATTR_RX_FFE_COUNT },
         };
 
-        for (const auto& attrId : countAttrs)
+        for (auto it = attrIds.begin(); it != attrIds.end(); )
         {
-            uint32_t count;
+            auto taps_it = tapsToCountAttr.find(*it);
+            if (taps_it == tapsToCountAttr.end())
+            {
+                ++it;
+                continue;
+            }
+
             sai_attribute_t attr;
-            attr.id = attrId;
+            attr.id = taps_it->second;
 
             sai_status_t status = Base::m_vendorSai->get(
                 Base::m_objectType,
@@ -3036,16 +3072,17 @@ public:
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes count attr %s for port_serdes RID:0x%" PRIx64 ", status:%d",
-                              sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, status);
+                SWSS_LOG_NOTICE("PORT_PHY_SERDES_ATTR: %s unavailable for port_serdes RID:0x%" PRIx64 " (count attr %s status:%d), excluding it from polling",
+                              sai_serialize_port_serdes_attr(*it).c_str(), port_serdes_rid,
+                              sai_serialize_port_serdes_attr(taps_it->second).c_str(), status);
+                it = attrIds.erase(it);
                 continue;
             }
 
-            count = attr.value.u32;
-
-            m_portSerdesTapsCountMap[port_serdes_rid][attrId] = count;
+            m_portSerdesTapsCountMap[port_serdes_rid][taps_it->second] = attr.value.u32;
             SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Stored %s for port_serdes_rid:0x%" PRIx64 " = %u",
-                          sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, count);
+                          sai_serialize_port_serdes_attr(taps_it->second).c_str(), port_serdes_rid, attr.value.u32);
+            ++it;
         }
     }
 
@@ -3178,6 +3215,10 @@ public:
             attrIds.push_back(attr);
         }
 
+        // Size the registered taps lists and drop the ones this platform
+        // cannot answer a count for, before the ids are stored for polling.
+        updatePortSerdesTapsCountMap(rid, attrIds);
+
         auto attr_ids = std::make_shared<AttrIdsType>(rid, attrIds);
         auto it = Base::m_objectIdsMap.find(vid);
         if (it != Base::m_objectIdsMap.end())
@@ -3192,7 +3233,6 @@ public:
         // update member maps
         updatePortSerdesIdToPortIdMap(rid, vid);
         updatePortSerdesIdToLaneCountMap(rid);
-        updatePortSerdesTapsCountMap(rid);
     }
 
     void removeObject(_In_ sai_object_id_t vid) override
@@ -3276,9 +3316,19 @@ public:
                 attrs[i].id = attrIds[i];
                 if (!initAttrData(rid, &attrs[i], &attrData))
                 {
-                    SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Failed to initialize attribute %s for RID:0x%" PRIx64 ", skipping attr",
-                                  sai_serialize_port_serdes_attr(attrIds[i]).c_str(), rid);
-                    continue;
+                    /*
+                     * Sizing information can be missing when the hardware was
+                     * not ready at registration (e.g. a zero lane count was
+                     * reported); refresh it once per poll attempt so polling
+                     * self-heals without a re-registration.
+                     */
+                    updatePortSerdesIdToLaneCountMap(rid);
+                    if (!initAttrData(rid, &attrs[i], &attrData))
+                    {
+                        SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Failed to initialize attribute %s for RID:0x%" PRIx64 ", skipping attr",
+                                      sai_serialize_port_serdes_attr(attrIds[i]).c_str(), rid);
+                        continue;
+                    }
                 }
 
                 sai_status_t status = Base::m_vendorSai->get(
@@ -3289,8 +3339,10 @@ public:
 
                 /*
                  * PAI may return BUFFER_OVERFLOW if tap/lane sizing differs from
-                 * our cached RX_FFE_COUNT / HW_LANE_LIST (e.g. COUNT answered
-                 * before lanes were known). Retry once with the reported size.
+                 * our cached RX_FFE_COUNT / HW_LANE_LIST (e.g. a size answered
+                 * before the hardware was ready, which can leave a zero lane
+                 * count cached and every per-tap lane buffer empty). Refresh
+                 * both dimensions and retry once with the reported sizes.
                  */
                 if (status == SAI_STATUS_BUFFER_OVERFLOW &&
                     (attrIds[i] == SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST ||
@@ -3303,6 +3355,7 @@ public:
                             (attrIds[i] == SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST)
                                 ? SAI_PORT_SERDES_ATTR_RX_FFE_COUNT
                                 : SAI_PORT_SERDES_ATTR_TX_FIR_COUNT] = newTapCount;
+                        updatePortSerdesIdToLaneCountMap(rid);
                         if (initAttrData(rid, &attrs[i], &attrData))
                         {
                             status = Base::m_vendorSai->get(

@@ -621,3 +621,165 @@ TEST_F(TestPortPhyAttr, CollectDataPartialSuccess)
 
     flexCounter->removeCounter(partialPortOid);
 }
+
+/**
+ * Each PHY attribute individually unsupported: for every registered port PHY
+ * attribute, make the vendor SAI reject exactly that one and verify it is the
+ * only one missing from COUNTERS_DB — collection of every other attribute must
+ * be unaffected.
+ */
+TEST_F(TestPortPhyAttr, EachAttrIndividuallyUnsupported)
+{
+    static sai_attr_id_t s_unsupportedAttr;
+
+    static const std::vector<std::pair<sai_attr_id_t, std::string>> attrs = {
+        { SAI_PORT_ATTR_RX_SIGNAL_DETECT,    "phy_rx_signal_detect" },
+        { SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK,  "pcs_fec_lane_alignment_lock" },
+        { SAI_PORT_ATTR_RX_LOCK_STATUS,      "rx_lock_status" },
+        { SAI_PORT_ATTR_RX_SNR,              "rx_snr" },
+        { SAI_PORT_ATTR_PAM4_EYE_VALUES,     "pam4_eye_values" },
+        { SAI_PORT_ATTR_ERROR_STATUS,        "error_status" },
+        { SAI_PORT_ATTR_PCS_RX_LINK_STATUS,  "pcs_rx_link_status" },
+    };
+
+    sai->mock_get = [](sai_object_type_t object_type,
+                      sai_object_id_t /*object_id*/,
+                      uint32_t attr_count,
+                      sai_attribute_t *attr_list) -> sai_status_t
+    {
+        if (object_type != SAI_OBJECT_TYPE_PORT)
+        {
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            if (attr_list[i].id == s_unsupportedAttr)
+            {
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
+
+            switch (attr_list[i].id)
+            {
+                case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+                case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                case SAI_PORT_ATTR_RX_LOCK_STATUS:
+                    if (attr_list[i].value.portlanelatchstatuslist.list == nullptr ||
+                        attr_list[i].value.portlanelatchstatuslist.count < MAX_LANES_PER_PORT)
+                    {
+                        attr_list[i].value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    }
+                    for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++)
+                    {
+                        attr_list[i].value.portlanelatchstatuslist.list[lane].lane = lane;
+                        attr_list[i].value.portlanelatchstatuslist.list[lane].value.current_status = true;
+                        attr_list[i].value.portlanelatchstatuslist.list[lane].value.changed = false;
+                    }
+                    attr_list[i].value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+                    break;
+
+                case SAI_PORT_ATTR_RX_SNR:
+                    if (attr_list[i].value.portsnrlist.list == nullptr ||
+                        attr_list[i].value.portsnrlist.count < MAX_LANES_PER_PORT)
+                    {
+                        attr_list[i].value.portsnrlist.count = MAX_LANES_PER_PORT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    }
+                    for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++)
+                    {
+                        attr_list[i].value.portsnrlist.list[lane].lane = lane;
+                        attr_list[i].value.portsnrlist.list[lane].snr = 5248;
+                    }
+                    attr_list[i].value.portsnrlist.count = MAX_LANES_PER_PORT;
+                    break;
+
+                case SAI_PORT_ATTR_PAM4_EYE_VALUES:
+                    if (attr_list[i].value.portpam4eyevalues.list == nullptr ||
+                        attr_list[i].value.portpam4eyevalues.count < MAX_LANES_PER_PORT)
+                    {
+                        attr_list[i].value.portpam4eyevalues.count = MAX_LANES_PER_PORT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    }
+                    for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++)
+                    {
+                        attr_list[i].value.portpam4eyevalues.list[lane].lane = lane;
+                        attr_list[i].value.portpam4eyevalues.list[lane].upper_ht = 100;
+                        attr_list[i].value.portpam4eyevalues.list[lane].middle_ht = 100;
+                        attr_list[i].value.portpam4eyevalues.list[lane].lower_ht = 100;
+                        attr_list[i].value.portpam4eyevalues.list[lane].upper_wd = -1;
+                        attr_list[i].value.portpam4eyevalues.list[lane].middle_wd = -1;
+                        attr_list[i].value.portpam4eyevalues.list[lane].lower_wd = -1;
+                    }
+                    attr_list[i].value.portpam4eyevalues.count = MAX_LANES_PER_PORT;
+                    break;
+
+                case SAI_PORT_ATTR_ERROR_STATUS:
+                    attr_list[i].value.u32 = SAI_PORT_ERROR_STATUS_CLEAR;
+                    break;
+
+                case SAI_PORT_ATTR_PCS_RX_LINK_STATUS:
+                    attr_list[i].value.latchstatus.current_status = true;
+                    attr_list[i].value.latchstatus.changed = false;
+                    break;
+
+                default:
+                    return SAI_STATUS_NOT_SUPPORTED;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, PORT_PHY_ATTR_TABLE, false);
+
+    std::string attrIds =
+        "SAI_PORT_ATTR_RX_SIGNAL_DETECT,SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK,SAI_PORT_ATTR_RX_SNR,"
+        "SAI_PORT_ATTR_RX_LOCK_STATUS,SAI_PORT_ATTR_PAM4_EYE_VALUES,"
+        "SAI_PORT_ATTR_ERROR_STATUS,SAI_PORT_ATTR_PCS_RX_LINK_STATUS";
+
+    sai_object_id_t oid = 0x1000000000100;
+
+    for (const auto& unsupported : attrs)
+    {
+        s_unsupportedAttr = unsupported.first;
+        oid++;
+
+        auto fc = std::make_shared<FlexCounter>("TEST_PORT_PHY_ATTR_EACH", sai, "COUNTERS_DB");
+
+        vector<swss::FieldValueTuple> values;
+        values.emplace_back(PORT_PHY_ATTR_ID_LIST, attrIds);
+        fc->addCounter(oid, oid, values);
+
+        vector<swss::FieldValueTuple> pluginValues;
+        pluginValues.emplace_back(POLL_INTERVAL_FIELD, "500");
+        pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+        pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+        fc->addCounterPlugin(pluginValues);
+
+        usleep(1000 * 700);
+
+        std::string key = toOid(oid);
+        std::string value;
+        for (const auto& other : attrs)
+        {
+            bool found = countersTable.hget(key, other.second, value);
+            if (other.first == unsupported.first)
+            {
+                EXPECT_FALSE(found) << other.second
+                    << " must not be collected when unsupported";
+            }
+            else
+            {
+                EXPECT_TRUE(found) << other.second
+                    << " must still be collected when only "
+                    << unsupported.second << " is unsupported";
+            }
+        }
+
+        fc->removeCounter(oid);
+    }
+}
