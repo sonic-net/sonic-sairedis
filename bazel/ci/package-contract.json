@@ -1,0 +1,4087 @@
+{
+  "schema_version": 1,
+  "architectures": {
+    "amd64": {
+      "elf_class": 64,
+      "elf_machine": 62,
+      "elf_endianness": "little",
+      "multiarch": "x86_64-linux-gnu",
+      "native_machine": "x86_64"
+    },
+    "arm64": {
+      "elf_class": 64,
+      "elf_machine": 183,
+      "elf_endianness": "little",
+      "multiarch": "aarch64-linux-gnu",
+      "native_machine": "aarch64"
+    }
+  },
+  "metadata_policy": {
+    "required_metadata_basis": "Only mode, uid, and gid written literally in explicit sairedis mtree entries are requirements.",
+    "observation_reference_gates_pass_fail": false,
+    "observation_reference_treatment": "Report actual values and comparisons to inherited/default and measured Make references; these references never gate pass/fail.",
+    "root_ownership_inference": "Discarded: shared mtree defaults do not create a component metadata requirement for the archive root or any other directory.",
+    "required_public_label_count": 16,
+    "required_unique_tar_count": 13,
+    "required_elf_pair_count": 14,
+    "observation_reference": {
+      "make_inventory": {
+        "kind": "measured native Trixie AMD64 Make package inventory",
+        "sha256": "71e836279478f2a952a349ad2ea98c8ac95a76a2cfaf8ce500ff07358d492118",
+        "source_references": [
+          "debian/rules",
+          "debian/*.install"
+        ]
+      }
+    }
+  },
+  "debug_contract": {
+    "type": "file",
+    "path_template": "usr/lib/debug/.build-id/{build_id_prefix}/{build_id_rest}.debug",
+    "required_metadata": {},
+    "required_build_id": true,
+    "matching_elf_fields": [
+      "class",
+      "machine",
+      "endianness",
+      "build_id"
+    ],
+    "required_sections": [
+      ".debug_info",
+      ".debug_line"
+    ],
+    "required_sections_file_backed_nonempty": true,
+    "runtime_sections_absent": [
+      ".debug_info",
+      ".debug_line"
+    ],
+    "gnu_debuglink": {
+      "required": true,
+      "filename": "detached_file_basename",
+      "crc32": "detached_file_crc32"
+    },
+    "gdb_lookup": {
+      "package": "libsairedis",
+      "symbol": "sai_api_initialize"
+    },
+    "observation_reference": {
+      "inherited": {
+        "mode": "0755",
+        "uid": 0,
+        "gid": 0,
+        "source_references": [
+          "@sonic_build_infra//tar:debug_symbols_tar.bzl",
+          "@tar.bzl//tar/private:tar.bzl"
+        ],
+        "symbol": "_mtree_line",
+        "note": "The shared debug tar has no component mode or ownership override."
+      },
+      "make": {
+        "mode": "0644",
+        "uid": 0,
+        "gid": 0
+      }
+    }
+  },
+  "directory_contract": {
+    "path_policy": "optional_ancestors_only",
+    "allow_normalized_root": true,
+    "required_metadata": {},
+    "observation_reference": {
+      "inherited_generated_mtree": {
+        "mode": "0755",
+        "uid": 0,
+        "gid": 0,
+        "source": "@tar.bzl//tar/private:tar.bzl",
+        "symbol": "_mtree_line",
+        "scope": "Generated mtree directory entries only; this is not a component declaration for the archive root or synthetic entries."
+      },
+      "make": {
+        "mode": "0755",
+        "uid": 0,
+        "gid": 0
+      },
+      "archive_root": {
+        "path": ".",
+        "treatment": "Report actual metadata. No literal component metadata is declared for this directory."
+      }
+    },
+    "metadata_treatment": "All directory metadata, including every normalized root member, is observational and never gates pass/fail."
+  },
+  "packages": [
+    {
+      "key": "libsairedis",
+      "runtime_label": "//lib:libsairedis_pkg",
+      "debug_label": "//lib:libsairedis_pkg.debug_symbols",
+      "dev_label": "//lib:libsairedis_dev_pkg",
+      "dev_debug_alias": "//lib:libsairedis_dev_pkg.debug_symbols",
+      "dev_debug_alias_target": "//lib:libsairedis_pkg.debug_symbols",
+      "elf_pair_count": 1,
+      "observation_reference": {
+        "make_runtime_package": "libsairedis",
+        "make_development_package": "libsairedis-dev"
+      },
+      "runtime_entries": [
+        {
+          "path": "usr/lib/{multiarch}/libsairedis.so.0",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "libsairedis.so.0.0.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "lib/BUILD.bazel:113"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/{multiarch}/libsairedis.so.0.0.0",
+          "type": "file",
+          "role": "elf",
+          "label": "//lib:sairedis",
+          "soname": "libsairedis.so.0",
+          "required_metadata": {
+            "mode": "0644",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "lib/BUILD.bazel:110"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        }
+      ],
+      "dev_additions": [
+        {
+          "path": "usr/include/sai/sairedis.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {
+            "mode": "0644",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "lib/BUILD.bazel:135"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            }
+          },
+          "source_reference": "lib/sairedis.h"
+        },
+        {
+          "path": "usr/lib/{multiarch}/libsairedis.so",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "libsairedis.so.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "lib/BUILD.bazel:136"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "key": "libsaimetadata",
+      "runtime_label": "//meta:libsaimetadata_pkg",
+      "debug_label": "//meta:libsaimetadata_pkg.debug_symbols",
+      "dev_label": "//meta:libsaimetadata_dev_pkg",
+      "dev_debug_alias": "//meta:libsaimetadata_dev_pkg.debug_symbols",
+      "dev_debug_alias_target": "//meta:libsaimetadata_pkg.debug_symbols",
+      "elf_pair_count": 2,
+      "observation_reference": {
+        "make_runtime_package": "libsaimetadata",
+        "make_development_package": "libsaimetadata-dev"
+      },
+      "runtime_entries": [
+        {
+          "path": "usr/lib/{multiarch}/libsaimeta.so.0",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "libsaimeta.so.0.0.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "meta/BUILD.bazel:166"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/{multiarch}/libsaimeta.so.0.0.0",
+          "type": "file",
+          "role": "elf",
+          "label": "//meta:saimeta",
+          "soname": "libsaimeta.so.0",
+          "required_metadata": {
+            "mode": "0644",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "meta/BUILD.bazel:162"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/{multiarch}/libsaimetadata.so.0",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "libsaimetadata.so.0.0.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "meta/BUILD.bazel:167"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/{multiarch}/libsaimetadata.so.0.0.0",
+          "type": "file",
+          "role": "elf",
+          "label": "//meta:saimetadata",
+          "soname": "libsaimetadata.so.0",
+          "required_metadata": {
+            "mode": "0644",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "meta/BUILD.bazel:163"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        }
+      ],
+      "dev_additions": [
+        {
+          "path": "usr/include/sai/AttrKeyMap.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/AttrKeyMap.h"
+        },
+        {
+          "path": "usr/include/sai/Globals.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/Globals.h"
+        },
+        {
+          "path": "usr/include/sai/Meta.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/Meta.h"
+        },
+        {
+          "path": "usr/include/sai/MetaKeyHasher.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/MetaKeyHasher.h"
+        },
+        {
+          "path": "usr/include/sai/Notification.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/Notification.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationBfdSessionStateChange.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationBfdSessionStateChange.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationFactory.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationFactory.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationFdbEvent.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationFdbEvent.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationFlowBulkGetSessionEvent.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationFlowBulkGetSessionEvent.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationHaScopeEvent.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationHaScopeEvent.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationHaSetEvent.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationHaSetEvent.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationIcmpEchoSessionStateChange.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationIcmpEchoSessionStateChange.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationMacsecPostStatus.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationMacsecPostStatus.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationNatEvent.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationNatEvent.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationPortHostTxReadyEvent.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationPortHostTxReadyEvent.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationPortStateChange.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationPortStateChange.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationQueuePfcDeadlock.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationQueuePfcDeadlock.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationSwitchAsicSdkHealthEvent.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationSwitchAsicSdkHealthEvent.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationSwitchMacsecPostStatus.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationSwitchMacsecPostStatus.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationSwitchShutdownRequest.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationSwitchShutdownRequest.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationSwitchStateChange.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationSwitchStateChange.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationTamTelTypeConfigChange.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationTamTelTypeConfigChange.h"
+        },
+        {
+          "path": "usr/include/sai/NotificationTwampSessionEvent.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/NotificationTwampSessionEvent.h"
+        },
+        {
+          "path": "usr/include/sai/OidRefCounter.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/OidRefCounter.h"
+        },
+        {
+          "path": "usr/include/sai/PortRelatedSet.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/PortRelatedSet.h"
+        },
+        {
+          "path": "usr/include/sai/SaiAttrWrapper.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/SaiAttrWrapper.h"
+        },
+        {
+          "path": "usr/include/sai/SaiAttributeList.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/SaiAttributeList.h"
+        },
+        {
+          "path": "usr/include/sai/SaiInterface.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/SaiInterface.h"
+        },
+        {
+          "path": "usr/include/sai/SaiObject.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/SaiObject.h"
+        },
+        {
+          "path": "usr/include/sai/SaiObjectCollection.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/SaiObjectCollection.h"
+        },
+        {
+          "path": "usr/include/sai/SaiOptions.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/SaiOptions.h"
+        },
+        {
+          "path": "usr/include/sai/sai_serialize.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "meta/sai_serialize.h"
+        },
+        {
+          "path": "usr/include/sai/saiattrversion.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:meta/saiattrversion.h"
+        },
+        {
+          "path": "usr/include/sai/saimetadata.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:saimetadata.h"
+        },
+        {
+          "path": "usr/include/sai/saimetadatalogger.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:meta/saimetadatalogger.h"
+        },
+        {
+          "path": "usr/include/sai/saimetadatatypes.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:meta/saimetadatatypes.h"
+        },
+        {
+          "path": "usr/include/sai/saimetadatautils.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:meta/saimetadatautils.h"
+        },
+        {
+          "path": "usr/include/sai/saiserialize.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "meta/BUILD.bazel:183"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:meta/saiserialize.h"
+        },
+        {
+          "path": "usr/lib/{multiarch}/libsaimeta.so",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "libsaimeta.so.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "meta/BUILD.bazel:195"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/{multiarch}/libsaimetadata.so",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "libsaimetadata.so.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "meta/BUILD.bazel:194"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "key": "libsaivs",
+      "runtime_label": "//vslib:libsaivs_pkg",
+      "debug_label": "//vslib:libsaivs_pkg.debug_symbols",
+      "dev_label": "//vslib:libsaivs_dev_pkg",
+      "dev_debug_alias": "//vslib:libsaivs_dev_pkg.debug_symbols",
+      "dev_debug_alias_target": "//vslib:libsaivs_pkg.debug_symbols",
+      "elf_pair_count": 1,
+      "observation_reference": {
+        "make_runtime_package": "libsaivs",
+        "make_development_package": "libsaivs-dev"
+      },
+      "runtime_entries": [
+        {
+          "path": "usr/lib/{multiarch}/libsaivs.so.0",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "libsaivs.so.0.0.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "vslib/BUILD.bazel:244"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/{multiarch}/libsaivs.so.0.0.0",
+          "type": "file",
+          "role": "elf",
+          "label": "//vslib:libsaivs_shared",
+          "soname": "libsaivs.so.0",
+          "required_metadata": {
+            "mode": "0644",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "vslib/BUILD.bazel:241"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        }
+      ],
+      "dev_additions": [
+        {
+          "path": "usr/include/sai/sai.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/sai.h"
+        },
+        {
+          "path": "usr/include/sai/saiacl.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiacl.h"
+        },
+        {
+          "path": "usr/include/sai/saiars.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiars.h"
+        },
+        {
+          "path": "usr/include/sai/saiarsprofile.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiarsprofile.h"
+        },
+        {
+          "path": "usr/include/sai/saibfd.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saibfd.h"
+        },
+        {
+          "path": "usr/include/sai/saibridge.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saibridge.h"
+        },
+        {
+          "path": "usr/include/sai/saibuffer.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saibuffer.h"
+        },
+        {
+          "path": "usr/include/sai/saicounter.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saicounter.h"
+        },
+        {
+          "path": "usr/include/sai/saidebugcounter.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saidebugcounter.h"
+        },
+        {
+          "path": "usr/include/sai/saidtel.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saidtel.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentalbmtor.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentalbmtor.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashacl.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashacl.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashappliance.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashappliance.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashdirectionlookup.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashdirectionlookup.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldasheni.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldasheni.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashflow.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashflow.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashha.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashha.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashinboundrouting.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashinboundrouting.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashmeter.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashmeter.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashoutboundcatopa.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashoutboundcatopa.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashoutboundportmap.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashoutboundportmap.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashoutboundrouting.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashoutboundrouting.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashpavalidation.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashpavalidation.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashtrustedvni.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashtrustedvni.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashtunnel.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashtunnel.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashvip.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashvip.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentaldashvnet.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentaldashvnet.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentalocs.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentalocs.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentalotnattenuator.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentalotnattenuator.h"
+        },
+        {
+          "path": "usr/include/sai/saiexperimentalotnoa.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentalotnoa.h"
+        },
+        {
+          "path": "usr/include/sai/saiextensions.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiextensions.h"
+        },
+        {
+          "path": "usr/include/sai/saifdb.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saifdb.h"
+        },
+        {
+          "path": "usr/include/sai/saigenericprogrammable.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saigenericprogrammable.h"
+        },
+        {
+          "path": "usr/include/sai/saihash.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saihash.h"
+        },
+        {
+          "path": "usr/include/sai/saihostif.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saihostif.h"
+        },
+        {
+          "path": "usr/include/sai/saiicmpecho.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiicmpecho.h"
+        },
+        {
+          "path": "usr/include/sai/saiipmc.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiipmc.h"
+        },
+        {
+          "path": "usr/include/sai/saiipmcgroup.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiipmcgroup.h"
+        },
+        {
+          "path": "usr/include/sai/saiipsec.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiipsec.h"
+        },
+        {
+          "path": "usr/include/sai/saiisolationgroup.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiisolationgroup.h"
+        },
+        {
+          "path": "usr/include/sai/sail2mc.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/sail2mc.h"
+        },
+        {
+          "path": "usr/include/sai/sail2mcgroup.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/sail2mcgroup.h"
+        },
+        {
+          "path": "usr/include/sai/sailag.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/sailag.h"
+        },
+        {
+          "path": "usr/include/sai/saimacsec.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saimacsec.h"
+        },
+        {
+          "path": "usr/include/sai/saimcastfdb.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saimcastfdb.h"
+        },
+        {
+          "path": "usr/include/sai/saimirror.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saimirror.h"
+        },
+        {
+          "path": "usr/include/sai/saimpls.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saimpls.h"
+        },
+        {
+          "path": "usr/include/sai/saimymac.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saimymac.h"
+        },
+        {
+          "path": "usr/include/sai/sainat.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/sainat.h"
+        },
+        {
+          "path": "usr/include/sai/saineighbor.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saineighbor.h"
+        },
+        {
+          "path": "usr/include/sai/sainexthop.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/sainexthop.h"
+        },
+        {
+          "path": "usr/include/sai/sainexthopgroup.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/sainexthopgroup.h"
+        },
+        {
+          "path": "usr/include/sai/saiobject.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiobject.h"
+        },
+        {
+          "path": "usr/include/sai/saiperfmon.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiperfmon.h"
+        },
+        {
+          "path": "usr/include/sai/saipoe.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saipoe.h"
+        },
+        {
+          "path": "usr/include/sai/saipolicer.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saipolicer.h"
+        },
+        {
+          "path": "usr/include/sai/saiport.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiport.h"
+        },
+        {
+          "path": "usr/include/sai/saiportextensions.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiportextensions.h"
+        },
+        {
+          "path": "usr/include/sai/saiprefixcompression.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiprefixcompression.h"
+        },
+        {
+          "path": "usr/include/sai/saiqosmap.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiqosmap.h"
+        },
+        {
+          "path": "usr/include/sai/saiqueue.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiqueue.h"
+        },
+        {
+          "path": "usr/include/sai/sairoute.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/sairoute.h"
+        },
+        {
+          "path": "usr/include/sai/sairouterinterface.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/sairouterinterface.h"
+        },
+        {
+          "path": "usr/include/sai/sairpfgroup.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/sairpfgroup.h"
+        },
+        {
+          "path": "usr/include/sai/saisamplepacket.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saisamplepacket.h"
+        },
+        {
+          "path": "usr/include/sai/saischeduler.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saischeduler.h"
+        },
+        {
+          "path": "usr/include/sai/saischedulergroup.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saischedulergroup.h"
+        },
+        {
+          "path": "usr/include/sai/saisrv6.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saisrv6.h"
+        },
+        {
+          "path": "usr/include/sai/saistatus.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saistatus.h"
+        },
+        {
+          "path": "usr/include/sai/saistp.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saistp.h"
+        },
+        {
+          "path": "usr/include/sai/saiswitch.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiswitch.h"
+        },
+        {
+          "path": "usr/include/sai/saiswitchextensions.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiswitchextensions.h"
+        },
+        {
+          "path": "usr/include/sai/saisynce.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saisynce.h"
+        },
+        {
+          "path": "usr/include/sai/saisystemport.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saisystemport.h"
+        },
+        {
+          "path": "usr/include/sai/saitam.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saitam.h"
+        },
+        {
+          "path": "usr/include/sai/saitunnel.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saitunnel.h"
+        },
+        {
+          "path": "usr/include/sai/saitwamp.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saitwamp.h"
+        },
+        {
+          "path": "usr/include/sai/saitypes.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saitypes.h"
+        },
+        {
+          "path": "usr/include/sai/saitypesextensions.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saitypesextensions.h"
+        },
+        {
+          "path": "usr/include/sai/saiudf.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiudf.h"
+        },
+        {
+          "path": "usr/include/sai/saiversion.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiversion.h"
+        },
+        {
+          "path": "usr/include/sai/saivirtualchannel.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saivirtualchannel.h"
+        },
+        {
+          "path": "usr/include/sai/saivirtualrouter.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saivirtualrouter.h"
+        },
+        {
+          "path": "usr/include/sai/saivlan.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saivlan.h"
+        },
+        {
+          "path": "usr/include/sai/saiwred.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "vslib/BUILD.bazel:260"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiwred.h"
+        },
+        {
+          "path": "usr/lib/{multiarch}/libsaivs.so",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "libsaivs.so.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "vslib/BUILD.bazel:287"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "vslib/saivs.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {
+            "mode": "0644",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "vslib/BUILD.bazel:271"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            }
+          },
+          "source_reference": "vslib/saivs.h"
+        }
+      ]
+    },
+    {
+      "key": "pysairedis",
+      "runtime_label": "//pyext:pysairedis_pkg",
+      "debug_label": "//pyext:pysairedis_pkg.debug_symbols",
+      "elf_pair_count": 1,
+      "observation_reference": {
+        "make_runtime_package": "python3-pysairedis"
+      },
+      "runtime_entries": [
+        {
+          "path": "usr/lib/python3/dist-packages/sairedis/__init__.py",
+          "type": "file",
+          "role": "python",
+          "required_metadata": {
+            "mode": "0644",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "pyext/BUILD.bazel:112"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            }
+          },
+          "source_reference": "pyext/py3/__init__.py"
+        },
+        {
+          "path": "usr/lib/python3/dist-packages/sairedis/_pysairedis.so",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "_pysairedis.so.0.0.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "pyext/BUILD.bazel:99"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/python3/dist-packages/sairedis/_pysairedis.so.0",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "_pysairedis.so.0.0.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "pyext/BUILD.bazel:100"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/python3/dist-packages/sairedis/_pysairedis.so.0.0.0",
+          "type": "file",
+          "role": "elf",
+          "label": "//pyext:pysairedis_py3",
+          "soname": "_pysairedis.so.0",
+          "required_metadata": {
+            "mode": "0644",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "pyext/BUILD.bazel:96"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/python3/dist-packages/sairedis/pysairedis.py",
+          "type": "file",
+          "role": "python",
+          "required_metadata": {
+            "mode": "0644",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "pyext/BUILD.bazel:113"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            }
+          },
+          "source_reference": "//pyext:pysairedis.py"
+        }
+      ],
+      "dev_additions": []
+    },
+    {
+      "key": "syncd",
+      "runtime_label": "//syncd:syncd_pkg",
+      "debug_label": "//syncd:syncd_pkg.debug_symbols",
+      "elf_pair_count": 9,
+      "observation_reference": {
+        "make_runtime_package": "syncd-vs"
+      },
+      "runtime_entries": [
+        {
+          "path": "etc/init.d/syncd",
+          "type": "file",
+          "role": "init",
+          "required_metadata": {
+            "mode": "0755",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:304"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            }
+          },
+          "source_reference": "debian/syncd-vs.init"
+        },
+        {
+          "path": "usr/bin/brcm_common_config_ut.sh",
+          "type": "file",
+          "role": "script",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "syncd/BUILD.bazel:291"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "syncd/scripts/brcm_common_config_ut.sh"
+        },
+        {
+          "path": "usr/bin/gbsyncdmgrd",
+          "type": "file",
+          "role": "script",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "syncd/BUILD.bazel:291"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "syncd/scripts/gbsyncdmgrd"
+        },
+        {
+          "path": "usr/bin/sai_failure_dump.sh",
+          "type": "file",
+          "role": "script",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "syncd/BUILD.bazel:291"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "syncd/scripts/sai_failure_dump.sh"
+        },
+        {
+          "path": "usr/bin/saiasiccmp",
+          "type": "file",
+          "role": "elf",
+          "label": "//saiasiccmp:saiasiccmp",
+          "soname": null,
+          "required_metadata": {
+            "mode": "0755",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:274"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/bin/saidiscovery",
+          "type": "file",
+          "role": "elf",
+          "label": "//saidiscovery:saidiscovery",
+          "soname": null,
+          "required_metadata": {
+            "mode": "0755",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:273"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/bin/saidump",
+          "type": "file",
+          "role": "elf",
+          "label": "//saidump:saidump",
+          "soname": null,
+          "required_metadata": {
+            "mode": "0755",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:270"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/bin/saidump.sh",
+          "type": "file",
+          "role": "script",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "syncd/BUILD.bazel:291"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "syncd/scripts/saidump.sh"
+        },
+        {
+          "path": "usr/bin/saiplayer",
+          "type": "file",
+          "role": "elf",
+          "label": "//saiplayer:saiplayer",
+          "soname": null,
+          "required_metadata": {
+            "mode": "0755",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:271"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/bin/saisdkdump",
+          "type": "file",
+          "role": "elf",
+          "label": "//saisdkdump:saisdkdump",
+          "soname": null,
+          "required_metadata": {
+            "mode": "0755",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:272"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/bin/syncd",
+          "type": "file",
+          "role": "elf",
+          "label": "//syncd:syncd",
+          "soname": null,
+          "required_metadata": {
+            "mode": "0755",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:275"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/bin/syncd_init_common.sh",
+          "type": "file",
+          "role": "script",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "syncd/BUILD.bazel:291"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "syncd/scripts/syncd_init_common.sh"
+        },
+        {
+          "path": "usr/bin/syncd_request_shutdown",
+          "type": "file",
+          "role": "elf",
+          "label": "//syncd:syncd_request_shutdown",
+          "soname": null,
+          "required_metadata": {
+            "mode": "0755",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:276"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/bin/syncd_start.sh",
+          "type": "file",
+          "role": "script",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "syncd/BUILD.bazel:291"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "syncd/scripts/syncd_start.sh"
+        },
+        {
+          "path": "usr/bin/syncd_tests",
+          "type": "file",
+          "role": "elf",
+          "label": "//syncd:syncd_tests",
+          "soname": null,
+          "required_metadata": {
+            "mode": "0755",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:277"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/{multiarch}/libMdioIpcClient.so.0",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "libMdioIpcClient.so.0.0.0",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:287"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "usr/lib/{multiarch}/libMdioIpcClient.so.0.0.0",
+          "type": "file",
+          "role": "elf",
+          "label": "//syncd:libmdio_ipc_client.so",
+          "soname": "libMdioIpcClient.so.0",
+          "required_metadata": {
+            "mode": "0644",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel:284"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        }
+      ],
+      "dev_additions": []
+    }
+  ]
+}
