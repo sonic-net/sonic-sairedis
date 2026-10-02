@@ -44,16 +44,34 @@ Set `COMMON_CONFIGURED_REUSE=0` only for legacy single-invocation debugging (one
 
 ### Supported tests
 
-The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-07-14** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test` on `sai_vpp_ut_phase3`, `ISOLATE_EACH_TEST=1`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
+The table below lists OCP `sai_test` classes that **pass** on the current VPP SAI backend (last validated **2026-07-21** against `sai_route_test sai_rif_test sai_neighbor_test sai_ecmp_test` on `sai_vpp_ut_phase3`, `ISOLATE_EACH_TEST=1`). It is the published substitute for a full compatibility matrix: only passing tests are listed. After a local matrix run, update this section when the pass set changes (see **Collecting results** below).
 
-| Module | Passing test classes |
+| Module | Passing test classes (CI required) |
 |---|---|
-| `sai_ecmp_test` | `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `ReAddLagEcmpTestV4`, `RemoveAllNextHopMemeberTestV4`, `RemoveLagEcmpTestV4`, `RemoveLagEcmpTestV6`, `RemoveNexthopGroupTestV4` |
+| `sai_ecmp_test` | `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `RemoveAllNextHopMemeberTestV4`, `RemoveNexthopGroupTestV4` |
 | `sai_neighbor_test` | `AddHostRouteTest`, `AddHostRouteTestV6`, `NhopDiffPrefixRemoveLonger`, `NhopDiffPrefixRemoveLongerV6`, `NhopDiffPrefixRemoveShorter`, `NhopDiffPrefixRemoveShorterV6`, `NoHostRouteTestV6` |
-| `sai_rif_test` | `IngressDisableTestV4`, `IngressDisableTestV6` |
-| `sai_route_test` | `DefaultRouteV4Test`, `DefaultRouteV6Test`, `DropRouteTest`, `DropRoutev6Test`, `LagMultipleRouteTest`, `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteRifTest`, `RouteRifv6Test`, `RouteSameSipDipv4Test`, `RouteSameSipDipv6Test`, `RouteUpdateTest`, `RouteUpdatev6Test`, `StaicSviMacFloodingTest`, `StaicSviMacFloodingV6Test` |
+| `sai_rif_test` | — |
+| `sai_route_test` | `DefaultRouteV4Test`, `DefaultRouteV6Test`, `LagMultipleRouteTest`, `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteRifTest`, `RouteRifv6Test`, `RouteSameSipDipv4Test`, `RouteSameSipDipv6Test`, `RouteUpdateTest`, `RouteUpdatev6Test`, `StaicSviMacFloodingTest`, `StaicSviMacFloodingV6Test` |
 
-**37** classes passing. The harness plans **87** test targets across the four modules above; `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries.
+**30** classes are required to pass the PR check (`ci-pass-tests.txt`). The harness plans **87** test targets across the four modules above; `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries.
+
+#### Flaky L3-over-LAG ECMP tests (run, not gated)
+
+Three additional `sai_ecmp_test` classes have passed in clean local matrix runs but are **dataplane-flaky** (hash/L3-over-LAG forwarding: pass/fail can flip run-to-run with no code change). They remain in the full matrix (`ci-matrix-tests.txt`) for visibility but are **not** in `ci-pass-tests.txt` and do not fail the PR check:
+
+| Module | Flaky test classes |
+|---|---|
+| `sai_ecmp_test` | `ReAddLagEcmpTestV4`, `RemoveLagEcmpTestV4`, `RemoveLagEcmpTestV6` |
+
+Promote one of these into `ci-pass-tests.txt` only after repeated clean runs show it is stable.
+
+### CI regression baseline
+
+`ci-matrix-tests.txt` is the expected set of 85 runnable selectors from the four-module plan (the 87 planned classes include two non-runnable base classes). `ci-pass-tests.txt` is the **30-selector** stable-pass subset used by the PR check. CI requires the observed JUnit selector set to match the matrix contract, then leaves failures outside the stable baseline visible while failing on a missing, failed, errored, or skipped baseline selector.
+
+`evaluate_ci_baseline.py` compares the JUnit directory with the baseline, reports newly passing selectors as promotion candidates, and treats missing or malformed results and harness exit codes of 2 or greater as infrastructure failures. Baseline changes are reviewed explicitly; CI never updates the file automatically.
+
+When a runnable test class is added, removed, or renamed in one of the four CI modules, update the sorted, fully qualified selectors in `ci-matrix-tests.txt` in the same reviewed change.
 
 ## b) Building the framework
 
@@ -71,7 +89,8 @@ The framework is designed to support three distinct deployment and testing scena
 #### **Use case 2: `sonic-sairedis` PR CI**
 - **What changes:** `vslib/` C++ backend, harness files, or OCP tests.
 - **How dependencies are supplied:** The pipeline's **Build** stage compiles and produces fresh `libsairedis` / `libsaivs` / `saiserver` / `python-saithrift` artifacts. Other runtime `.deb`s (`libswsscommon`, `libyang`, VPP) must be downloaded from existing pipeline artifacts — following the same pattern as `.azure-pipelines/build-docker-sonic-vs-template.yml` (swss-common pipeline, sonic-platform-vpp `vpp-trixie`, buildimage common libs).
-- **Status:** Documented intent; CI wiring is follow-up work for this PR (Phase 3).
+- **VPP selection:** `BuildTrixie` resolves the latest successful VPP master run once, or uses the optional root `vpp_run_id` override. The resolved immutable run ID is used for both the compile-time VPP packages and the runtime packages installed by `BuildSaiTestVpp`.
+- **Status:** Pipeline wiring is implemented by `BuildSaiTestVpp` and `TestSaiVpp`; Azure artifact authorization and burn-in are required before making the check mandatory.
 - **Required runtime packages and typical artifact sources:**
 
 | Package glob | PR build produces? | Typical CI download source |
@@ -83,9 +102,9 @@ The framework is designed to support three distinct deployment and testing scena
 
 #### **Use case 3: `sonic-platform-vpp` PR CI**
 - **What changes:** VPP `.deb`s only.
-- **How dependencies are supplied:** Pull a pre-built `docker-sai-test-vpp` image from the `sonic-sairedis` pipeline artifact, then rebuild/replace only the VPP packages inside `debs/` (or `docker build` with updated VPP debs on top of the cached layers).
-- **Status:** Documented intent; requires Use Case 2 image publish first.
-- **Workflow:** After the harness image is published as a pipeline artifact in Use Case 2, a platform-vpp job can `docker load` that image, overlay freshly built VPP `.deb`s into `debs/`, and rebuild only the package-install layer (or run tests in a container with VPP packages swapped in).
+- **How dependencies are supplied:** Pull an approved `docker-sai-test-vpp` image and its CI contract from the `sonic-sairedis` pipeline artifact, then build a derivative image that reinstalls only the VPP runtime packages produced by the current `sonic-platform-vpp` run.
+- **Status:** The producer artifact includes `ci-contract/` for the platform-vpp consumer; the consumer pipeline implementation and hosted validation are owned by `sonic-platform-vpp`.
+- **Workflow:** The platform-vpp pipeline loads the approved image, overlays fresh `libvppinfra`, `vpp`, `vpp-plugin-core`, and `vpp-plugin-dpdk` packages, verifies that every non-VPP Debian package is unchanged, and runs the artifact's matrix and baseline evaluator.
 
 ### Required `.deb` packages (validated by the Dockerfile)
 
@@ -271,7 +290,18 @@ python3 gen_compatibility_matrix.py        # writes results/compatibility-matrix
 
 `gen_compatibility_matrix.py` walks `results/xml/TEST-*.xml` and writes a PASS/FAIL/ERROR/SKIP table with a count summary. You can also pass an explicit `<xml_dir> [output.md]` to point it elsewhere.
 
-**Publishing pass results:** when the set of passing tests changes, update the **Supported tests** section in this `README.md` from the local matrix (list only classes with PASS; do not commit the matrix itself). Working notes and deep-dive logs may be kept under `devdocs/` (also local-only and git-ignored).
+Evaluate the same results against the PR baseline with the matrix process exit code (`0` for an all-pass matrix, `1` when test failures are present, or `2+` for setup failure):
+
+```bash
+python3 evaluate_ci_baseline.py \
+  --xml-dir results/xml \
+  --baseline ci-pass-tests.txt \
+  --expected ci-matrix-tests.txt \
+  --matrix-rc 1 \
+  --report results/baseline-report.txt
+```
+
+**Publishing pass results:** when repeated clean runs establish a newly stable pass, add its fully qualified selector to `ci-pass-tests.txt` and update the **Supported tests** section in this `README.md` in the same reviewed change. List only PASS classes and do not commit the generated matrix; working notes and deep-dive logs may be kept under `devdocs/` (also local-only and git-ignored).
 
 ## d) Additional information
 
@@ -312,6 +342,7 @@ In `--debug` the container leaves the dataplane running after the test so you ca
 | `LAG_RIF_IPS` | 1 | enable LAG RIF connected-IP assignment in sai_test setUp (`SIMULATE_SONIC`) |
 | `SVI_RIF_IPS` | 1 | enable SVI RIF connected-IP assignment in sai_test setUp |
 | `SIMULATE_SONIC` | 1 | set by `run_test.sh`; enables sai_test's SONiC control-plane simulation (PortChannel netdevs + LAG/SVI RIF IPs) |
+| `SIMULATE_SONIC_IPV6_CONTROL_SRC_MAC` | `00:77:66:55:44:00` | discard only simulated-router RS/MLDv2 startup frames from this source MAC; empty disables the filter |
 | `TEST_FILTER` | — | alternative way to pass a single selector via env |
 
 These are read by `run_test.sh` at container start (defaults shown).
