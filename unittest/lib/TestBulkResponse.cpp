@@ -6,6 +6,7 @@
 #include "sai_serialize.h"
 
 #include <gtest/gtest.h>
+#include <array>
 #include <memory>
 #include <stdexcept>
 
@@ -94,6 +95,14 @@ protected:
     const std::vector<sai_common_api_t> apis = {
         SAI_COMMON_API_BULK_CREATE, SAI_COMMON_API_BULK_SET, SAI_COMMON_API_BULK_REMOVE
     };
+    const std::array<sai_status_t, 2> nonSuccessStatuses = {{
+        static_cast<sai_status_t>(SAI_STATUS_FAILURE),
+        static_cast<sai_status_t>(SAI_STATUS_UNINITIALIZED),
+    }};
+    const std::array<sai_status_t, 2> completeStatuses = {{
+        static_cast<sai_status_t>(SAI_STATUS_SUCCESS),
+        static_cast<sai_status_t>(SAI_STATUS_FAILURE),
+    }};
     std::shared_ptr<BulkResponseChannel> channel;
     std::unique_ptr<RedisRemoteSaiInterface> remote;
     ClientSai client;
@@ -106,7 +115,7 @@ TEST_P(BulkResponseTest, RemoteNonSuccessWithoutFields)
 {
     for (auto api : apis)
     {
-        for (auto status : {SAI_STATUS_FAILURE, SAI_STATUS_UNINITIALIZED})
+        for (auto status : nonSuccessStatuses)
         {
             SCOPED_TRACE(sai_serialize_common_api(api));
             channel->status = status;
@@ -134,7 +143,7 @@ TEST_P(BulkResponseTest, RemoteMalformedResponseRejected)
                 continue;
             }
             setResponse(std::vector<sai_status_t>(responseCount, SAI_STATUS_SUCCESS));
-            for (auto status : {SAI_STATUS_SUCCESS, SAI_STATUS_FAILURE})
+            for (auto status : completeStatuses)
             {
                 channel->status = status;
                 EXPECT_THROW(remote->waitForBulkResponse(api, GetParam(), statuses.data()), std::runtime_error);
@@ -147,7 +156,7 @@ TEST_P(BulkResponseTest, RemoteCompleteResponsePreserved)
 {
     for (auto api : apis)
     {
-        for (auto status : {SAI_STATUS_SUCCESS, SAI_STATUS_FAILURE})
+        for (auto status : completeStatuses)
         {
             channel->status = status;
             std::vector<sai_status_t> expected(GetParam(),
@@ -191,7 +200,7 @@ TEST_P(BulkResponseTest, RemoteAsyncBehaviorUnchanged)
 
 TEST_P(BulkResponseTest, GetNonSuccessWithoutFieldsLeavesAttributesUntouched)
 {
-    for (auto status : {SAI_STATUS_FAILURE, SAI_STATUS_UNINITIALIZED})
+    for (auto status : nonSuccessStatuses)
     {
         channel->status = status;
         std::vector<sai_status_t> statuses(GetParam(), SAI_STATUS_SUCCESS);
@@ -217,7 +226,7 @@ TEST_P(BulkResponseTest, GetMalformedResponseRejected)
             continue;
         }
         setResponse(std::vector<sai_status_t>(responseCount, SAI_STATUS_SUCCESS));
-        for (auto status : {SAI_STATUS_SUCCESS, SAI_STATUS_FAILURE})
+        for (auto status : completeStatuses)
         {
             channel->status = status;
             EXPECT_THROW(waitForGet(statuses), std::runtime_error);
@@ -282,7 +291,7 @@ TEST_P(BulkResponseTest, ClientNonSuccessWithoutFieldsDropsPreviousCreateOids)
 {
     for (auto api : apis)
     {
-        for (auto status : {SAI_STATUS_FAILURE, SAI_STATUS_UNINITIALIZED})
+        for (auto status : nonSuccessStatuses)
         {
             channel->status = status;
             client.m_lastCreateOids.assign(GetParam(), 0x123);
@@ -309,7 +318,7 @@ TEST_P(BulkResponseTest, ClientMalformedResponseRejected)
 
         setResponse(std::vector<sai_status_t>(GetParam(), SAI_STATUS_SUCCESS),
                 api != SAI_COMMON_API_BULK_CREATE);
-        for (auto status : {SAI_STATUS_SUCCESS, SAI_STATUS_FAILURE})
+        for (auto status : completeStatuses)
         {
             channel->status = status;
             EXPECT_THROW(client.waitForBulkResponse(api, GetParam(), statuses.data()), std::runtime_error);
@@ -321,7 +330,7 @@ TEST_P(BulkResponseTest, ClientCompleteResponsePreserved)
 {
     for (auto api : apis)
     {
-        for (auto status : {SAI_STATUS_SUCCESS, SAI_STATUS_FAILURE})
+        for (auto status : completeStatuses)
         {
             channel->status = status;
             std::vector<sai_status_t> expected(GetParam(),
