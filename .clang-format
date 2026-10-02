@@ -1,0 +1,66 @@
+# sonic-sairedis C/C++ formatting configuration
+# Based on existing codebase conventions:
+#   - Allman brace style (every { on its own line)
+#   - 4-space indentation, no tabs
+#   - Namespace body indented
+#   - Pointer attached to variable name (type *var)
+#   - No hard line length limit (soft 120)
+
+BasedOnStyle: Google
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 8
+
+# Allman brace style — every opening brace on its own line
+BreakBeforeBraces: Allman
+
+# Access modifiers indented 4 spaces inside class body
+# (i.e., same indent as class keyword, not as members)
+AccessModifierOffset: -4
+
+# No short constructs on single lines (matches codebase style)
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+
+# Pointer/reference attached to variable name (majority convention)
+PointerAlignment: Right
+
+# Soft line length limit (120 matches current practice)
+ColumnLimit: 120
+
+# Namespace — indent body (matches current style)
+NamespaceIndentation: All
+
+# Includes — do NOT auto-sort (existing grouping is intentional)
+SortIncludes: false
+IncludeBlocks: Preserve
+
+# Constructor initializer list
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 8
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+
+# Function parameters — break before all if they don't fit
+BinPackParameters: false
+BinPackArguments: false
+
+# Template parameters
+AlwaysBreakTemplateDeclarations: Yes
+
+# Misc
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+Cpp11BracedListStyle: true
+Standard: c++17
+
+# Empty lines
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
