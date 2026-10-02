@@ -369,32 +369,32 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForNextHop(
     if (tmpSignature.empty())
         return nullptr;
 
-    std::shared_ptr<SaiObj> match;
+    std::vector<std::shared_ptr<SaiObj>> matches;
 
     for (const auto &c: candidateObjects)
     {
-        if (getNextHopGroupsSignature(m_currentView, c.obj->getVid()) != tmpSignature)
-            continue;
-
-        if (match)
-        {
-            SWSS_LOG_NOTICE("next hop %s: several candidates in groups of the same shape",
-                    temporaryObj->m_str_object_id.c_str());
-
-            return nullptr;
-        }
-
-        match = c.obj;
+        if (getNextHopGroupsSignature(m_currentView, c.obj->getVid()) == tmpSignature)
+            matches.push_back(c.obj);
     }
 
-    if (match)
+    if (matches.size() > 1)
+    {
+        SWSS_LOG_NOTICE("next hop %s: several candidates in groups of the same shape",
+                temporaryObj->m_str_object_id.c_str());
+
+        return nullptr;
+    }
+
+    if (matches.size() == 1)
     {
         SWSS_LOG_NOTICE("found best candidate for next hop %s via group shape: %s",
                 temporaryObj->m_str_object_id.c_str(),
-                match->m_str_object_id.c_str());
+                matches[0]->m_str_object_id.c_str());
+
+        return matches[0];
     }
 
-    return match;
+    return nullptr;
 }
 
 std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForAclCounter(
