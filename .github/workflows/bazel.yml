@@ -1,0 +1,173 @@
+name: Bazel
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  component:
+    name: Component (${{ matrix.arch }})
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: AMD64
+            architecture: amd64
+            machine: x86_64
+            runner: ubuntu-24.04
+            bazel_args: ""
+            bazel_config: ""
+            image: debian:trixie-20260918@sha256:d5ce19d4736f0ebbacd686d1040271a5aeb0cc920f5990c1bfae1717627f0674
+          - arch: ARM64
+            architecture: arm64
+            machine: aarch64
+            runner: ubuntu-24.04-arm
+            bazel_args: --config=aarch64
+            bazel_config: aarch64
+            image: debian:trixie-20260918@sha256:1808211ab6f37c6fc6a75368651697536f7bf47993f2797befa8908b1254979d
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.image }}
+      options: --init
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install host build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            binutils build-essential ca-certificates gdb git python3 tar
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Configure Git for the container checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-version: 1.29.0
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: ${{ github.workflow }}-${{ matrix.arch }}
+          cache-version: "8.5.1"
+
+      - name: Verify native Trixie environment
+        run: |
+          source /etc/os-release
+          test "$ID" = debian
+          test "$VERSION_CODENAME" = trixie
+          test "$(dpkg --print-architecture)" = '${{ matrix.architecture }}'
+          test "$(uname -m)" = '${{ matrix.machine }}'
+          mkdir -p artifacts/validation
+          cp /etc/os-release artifacts/validation/os-release
+          dpkg-query -W -f='${binary:Package}\t${Version}\n' > artifacts/validation/host-packages.txt
+
+      - name: Verify clean checkout without generated lock
+        run: |
+          test -z "$(git ls-files -- MODULE.bazel.lock)"
+          test ! -e MODULE.bazel.lock
+          git check-ignore --quiet MODULE.bazel.lock
+          git diff --exit-code HEAD --
+
+      - name: Check Bazel formatting
+        run: >-
+          bazel run ${{ matrix.bazel_args }}
+          --jobs=4 --lockfile_mode=update
+          @buildifier_prebuilt//:buildifier --
+          -mode=check -r "$GITHUB_WORKSPACE"
+
+      # Omit the YANG flag to exercise the dependency's current default.
+      # verify_packages.py must confirm that the selected value is true.
+      - name: Build required component outputs
+        run: >-
+          bazel build ${{ matrix.bazel_args }}
+          --jobs=4 --lockfile_mode=update
+          //:canonical_outputs
+
+      - name: Run service-free component tests
+        run: >-
+          bazel test ${{ matrix.bazel_args }}
+          --jobs=4 --lockfile_mode=update
+          --nocache_test_results --test_output=errors
+          //lib:tests_test
+          //tests:tests_test
+          //saiasiccmp:tests
+          //unittest/meta:tests
+          //unittest/proxylib:tests
+          //unittest/saidump:tests
+          //unittest/saisdkdump:tests
+
+      - name: Check component source reachability
+        run: |
+          bazel aquery ${{ matrix.bazel_args }} \
+            --jobs=4 --lockfile_mode=update \
+            --output=jsonproto --noinclude_artifacts --include_commandline \
+            'mnemonic("CppCompile", deps(//:canonical_outputs))' \
+            | python3 bazel/ci/check_source_reachability.py \
+                --manifest bazel/ci/expected_no_vpp_sources.json \
+                --output artifacts/validation/source-reachability.json
+
+      - name: Build required package artifacts
+        run: >-
+          bazel build ${{ matrix.bazel_args }}
+          --jobs=4 --lockfile_mode=update
+          //lib:libsairedis_pkg
+          //lib:libsairedis_pkg.debug_symbols
+          //lib:libsairedis_dev_pkg
+          //lib:libsairedis_dev_pkg.debug_symbols
+          //meta:libsaimetadata_pkg
+          //meta:libsaimetadata_pkg.debug_symbols
+          //meta:libsaimetadata_dev_pkg
+          //meta:libsaimetadata_dev_pkg.debug_symbols
+          //vslib:libsaivs_pkg
+          //vslib:libsaivs_pkg.debug_symbols
+          //vslib:libsaivs_dev_pkg
+          //vslib:libsaivs_dev_pkg.debug_symbols
+          //syncd:syncd_pkg
+          //syncd:syncd_pkg.debug_symbols
+          //pyext:pysairedis_pkg
+          //pyext:pysairedis_pkg.debug_symbols
+
+      - name: Verify package and debug artifacts
+        run: |
+          python3 bazel/ci/verify_packages.py \
+            --architecture '${{ matrix.architecture }}' \
+            --bazel-config '${{ matrix.bazel_config }}' \
+            --image '${{ matrix.image }}' \
+            --targets bazel/ci/required-targets.json \
+            --contract bazel/ci/package-contract.json \
+            --output-dir artifacts
+
+      - name: Retain available dependency resolution on failure
+        if: failure()
+        run: |
+          if [ -f MODULE.bazel.lock ] && [ ! -f artifacts/validation/dependencies/MODULE.bazel.lock ]; then
+            mkdir -p artifacts/validation/dependencies
+            cp MODULE.bazel.lock artifacts/validation/dependencies/MODULE.bazel.lock
+          fi
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sonic-sairedis-bazel-validation-${{ matrix.arch }}-${{ github.sha }}
+          path: artifacts/validation/
+          if-no-files-found: warn
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sonic-sairedis-bazel-trixie-${{ matrix.arch }}-${{ github.sha }}
+          path: |
+            artifacts/packages/
+            artifacts/provenance.json
+            artifacts/validation/dependencies/
+          if-no-files-found: error

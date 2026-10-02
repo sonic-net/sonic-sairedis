@@ -1,0 +1,39 @@
+{
+  "configuration": "native Trixie, VS, Python 3, no VPP, default YANG",
+  "debug_aliases": {
+    "//lib:libsairedis_dev_pkg.debug_symbols": "//lib:libsairedis_pkg.debug_symbols",
+    "//meta:libsaimetadata_dev_pkg.debug_symbols": "//meta:libsaimetadata_pkg.debug_symbols",
+    "//vslib:libsaivs_dev_pkg.debug_symbols": "//vslib:libsaivs_pkg.debug_symbols"
+  },
+  "package_build": [
+    "//lib:libsairedis_pkg",
+    "//lib:libsairedis_pkg.debug_symbols",
+    "//lib:libsairedis_dev_pkg",
+    "//lib:libsairedis_dev_pkg.debug_symbols",
+    "//meta:libsaimetadata_pkg",
+    "//meta:libsaimetadata_pkg.debug_symbols",
+    "//meta:libsaimetadata_dev_pkg",
+    "//meta:libsaimetadata_dev_pkg.debug_symbols",
+    "//vslib:libsaivs_pkg",
+    "//vslib:libsaivs_pkg.debug_symbols",
+    "//vslib:libsaivs_dev_pkg",
+    "//vslib:libsaivs_dev_pkg.debug_symbols",
+    "//syncd:syncd_pkg",
+    "//syncd:syncd_pkg.debug_symbols",
+    "//pyext:pysairedis_pkg",
+    "//pyext:pysairedis_pkg.debug_symbols"
+  ],
+  "raw_build": [
+    "//:canonical_outputs"
+  ],
+  "schema_version": 1,
+  "service_free_tests": [
+    "//lib:tests_test",
+    "//tests:tests_test",
+    "//saiasiccmp:tests",
+    "//unittest/meta:tests",
+    "//unittest/proxylib:tests",
+    "//unittest/saidump:tests",
+    "//unittest/saisdkdump:tests"
+  ]
+}
