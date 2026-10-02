@@ -79,8 +79,8 @@
 #include <vnet/mpls/mpls.api_enum.h>
 #include <vnet/mpls/mpls.api_types.h>
 
-#include <vnet/ipip/ipip.api_enum.h>
-#include <vnet/ipip/ipip.api_types.h>
+#include <vpp_plugins/ipip/ipip.api_enum.h>
+#include <vpp_plugins/ipip/ipip.api_types.h>
 
 #include <vnet/classify/classify.api_enum.h>
 #include <vnet/classify/classify.api_types.h>
@@ -395,19 +395,19 @@
 
 /* ipip API inclusion */
 #define vl_typedefs
-#include <vnet/ipip/ipip.api.h>
+#include <vpp_plugins/ipip/ipip.api.h>
 #undef vl_typedefs
 
 #define vl_endianfun
-#include <vnet/ipip/ipip.api.h>
+#include <vpp_plugins/ipip/ipip.api.h>
 #undef vl_endianfun
 
 #define vl_calcsizefun
-#include <vnet/ipip/ipip.api.h>
+#include <vpp_plugins/ipip/ipip.api.h>
 #undef vl_calcsizefun
 
 #define vl_api_version(n, v) static u32 ipip_api_version = v;
-#include <vnet/ipip/ipip.api.h>
+#include <vpp_plugins/ipip/ipip.api.h>
 #undef vl_api_version
 
 /* memclnt API inclusion */
