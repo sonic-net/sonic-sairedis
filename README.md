@@ -50,6 +50,9 @@ For your convenience, you can install prepared packages on Debian Jessie:
 
 #### Install from Source
 
+For the native Trixie VS Bazel build and validation commands, see
+[Building sonic-sairedis with Bazel](docs/bazel.md).
+
 Checkout the source: `git clone https://github.com/sonic-net/sonic-sairedis.git` and install it yourself.
 
 You will also need SAI submodule: `git submodule update --init --recursive`
