@@ -29,7 +29,7 @@ jobs:
   steps:
   - checkout: self
     clean: true
-    submodules: recursive
+    submodules: true
 
   - task: DownloadPipelineArtifact@2
     inputs:
@@ -87,11 +87,9 @@ jobs:
       deb_dir="$(System.DefaultWorkingDirectory)/.azure-pipelines/docker-sai-test-vpp/debs"
       context_dir="$(Build.ArtifactStagingDirectory)/docker-context"
       image_tag="docker-sai-test-vpp:$(Build.DefinitionName).$(Build.BuildNumber)"
-      ptf_dir="$(System.DefaultWorkingDirectory)/SAI/test/ptf"
       sai_revision="$(git -C SAI rev-parse HEAD)"
-      ptf_revision="$(git -C "$ptf_dir" rev-parse HEAD)"
-      ptf_describe="$(git -C "$ptf_dir" describe --tags --long --always HEAD)"
-      ptf_version="$(python3 .azure-pipelines/docker-sai-test-vpp/derive_ptf_version.py "$ptf_dir")"
+      ptf_ref="$(sed -n 's/^ARG PTF_REF=//p' .azure-pipelines/docker-sai-test-vpp/Dockerfile)"
+      ptf_version="$(sed -n 's/^ARG PTF_VERSION=//p' .azure-pipelines/docker-sai-test-vpp/Dockerfile)"
 
       rm -rf "$deb_dir"
       mkdir -p "$deb_dir"
@@ -144,8 +142,7 @@ jobs:
           echo "source_version=$(Build.SourceVersion)"
           echo "source_branch=$(Build.SourceBranch)"
           echo "sai_revision=$sai_revision"
-          echo "ptf_revision=$ptf_revision"
-          echo "ptf_describe=$ptf_describe"
+          echo "ptf_revision=$ptf_ref"
           echo "ptf_version=$ptf_version"
           echo "vpp_resolved_run_id=${{ parameters.vpp_run_id }}"
           echo "vpp_artifact_name=${{ parameters.vpp_artifact_name }}"
@@ -176,12 +173,10 @@ jobs:
             cp -a ".azure-pipelines/docker-sai-test-vpp/$harness_file" "$context_harness/"
       done
       cp -a "$deb_dir" "$context_harness/"
-      cp -a SAI/test/ptf "$context_dir/SAI/test/"
       cp -a SAI/test/sai_test "$context_dir/SAI/test/"
 
       build_args=(
           --no-cache
-          --build-arg "PTF_VERSION=$ptf_version"
           --label com.sonic.saivpp-ci=true
           -f "$context_harness/Dockerfile"
           -t "$image_tag"

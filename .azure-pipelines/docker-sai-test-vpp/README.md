@@ -210,7 +210,7 @@ The container entrypoint is `run_test.sh`. Test selectors are PTF targets: `modu
 
 ### Where the tests come from
 
-The OCP `sai_test` suite is baked into the image at `/sai_test` (copied from `SAI/test/sai_test/` in the repo). PTF and the SAI Thrift client come from `SAI/test/ptf` and the `python-saithrift` / `python-saithriftv2` package. `run_test.sh` discovers test classes under `/sai_test` automatically.
+The OCP `sai_test` suite is baked into the image at `/sai_test` (copied from `SAI/test/sai_test/` in the repo). PTF is installed from `p4lang/ptf` at the commit pinned by `PTF_REF` in the `Dockerfile` (not from `SAI/test/ptf`, whose pin predates Python 3.12 support), and the SAI Thrift client comes from the `python-saithrift` / `python-saithriftv2` package. `run_test.sh` discovers test classes under `/sai_test` automatically.
 
 ### Run a single test
 
