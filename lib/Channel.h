@@ -51,6 +51,13 @@ namespace sairedis
                     _In_ const std::string& key,
                     _In_ const std::string& command) = 0;
 
+            /**
+             * @brief Wait for a response and return its aggregate SAI status.
+             *
+             * A transport failure may return a non-success status without
+             * response fields. A non-success response with fields can still
+             * contain valid per-object results and must not be discarded.
+             */
             virtual sai_status_t wait(
                     _In_ const std::string& command,
                     _Out_ swss::KeyOpFieldsValuesTuple& kco) = 0;

@@ -14,6 +14,7 @@
 #include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
 
+#include <algorithm>
 #include <inttypes.h>
 
 #define REDIS_CHECK_API_INITIALIZED()                                       \
@@ -1583,17 +1584,35 @@ sai_status_t ClientSai::waitForBulkResponse(
 {
     SWSS_LOG_ENTER();
 
+    std::fill_n(object_statuses, object_count, SAI_STATUS_FAILURE);
+
+    if (api == SAI_COMMON_API_BULK_CREATE)
+    {
+        m_lastCreateOids.clear();
+    }
+
     swss::KeyOpFieldsValuesTuple kco;
 
     auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
 
     auto &values = kfvFieldsValues(kco);
 
-    // double object count may show up when bulk create api is executed
-
-    if ((values.size() != 2 * object_count) && (values.size() != object_count))
+    if (status != SAI_STATUS_SUCCESS && values.empty())
     {
-        SWSS_LOG_THROW("wrong number of counters, got %zu, expected %u", values.size(), object_count);
+        std::fill_n(object_statuses, object_count, status);
+        SWSS_LOG_ERROR("%s failed without object statuses, count %u, status %s",
+                sai_serialize_common_api(api).c_str(), object_count,
+                sai_serialize_status(status).c_str());
+        return status;
+    }
+
+    const auto expectedFieldCount = static_cast<size_t>(object_count) *
+        (api == SAI_COMMON_API_BULK_CREATE ? 2u : 1u);
+
+    if (values.size() != expectedFieldCount)
+    {
+        SWSS_LOG_THROW("wrong number of bulk response fields, got %zu, expected %zu",
+                values.size(), expectedFieldCount);
     }
 
     // deserialize statuses for all objects
@@ -1605,8 +1624,6 @@ sai_status_t ClientSai::waitForBulkResponse(
 
     if (api == SAI_COMMON_API_BULK_CREATE)
     {
-        m_lastCreateOids.clear();
-
         // since last api was create, we need to extract OID that was created in that api
         // if create was for entry, oid is NULL
 
@@ -1621,6 +1638,10 @@ sai_status_t ClientSai::waitForBulkResponse(
                 sai_deserialize_object_id(value, oid);
 
                 m_lastCreateOids.push_back(oid);
+            }
+            else
+            {
+                SWSS_LOG_THROW("expected oid field in bulk create response, got %s", field.c_str());
             }
         }
     }

@@ -18,6 +18,7 @@
 
 #include "config.h"
 
+#include <algorithm>
 #include <inttypes.h>
 
 #define SAI_ZMQ_DEFAULT_RESPONSE_BUFFER_SIZE (128*1024*1024)
@@ -1911,6 +1912,8 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
 {
     SWSS_LOG_ENTER();
 
+    std::fill_n(object_statuses, object_count, SAI_STATUS_FAILURE);
+
     if (m_syncMode)
     {
         swss::KeyOpFieldsValuesTuple kco;
@@ -1918,6 +1921,16 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
         auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
 
         auto &values = kfvFieldsValues(kco);
+
+        if (status != SAI_STATUS_SUCCESS && values.empty())
+        {
+            std::fill_n(object_statuses, object_count, status);
+            SWSS_LOG_ERROR("%s failed without object statuses, count %u, status %s",
+                    sai_serialize_common_api(api).c_str(), object_count,
+                    sai_serialize_status(status).c_str());
+            m_recorder->recordBulkGenericResponse(status, object_count, object_statuses);
+            return status;
+        }
 
         if (values.size () != object_count)
         {
@@ -1958,11 +1971,22 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkGetResponse(
 {
     SWSS_LOG_ENTER();
 
+    std::fill_n(object_statuses, object_count, SAI_STATUS_FAILURE);
+
     swss::KeyOpFieldsValuesTuple kco;
 
     const auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
 
     const auto &values = kfvFieldsValues(kco);
+
+    if (status != SAI_STATUS_SUCCESS && values.empty())
+    {
+        std::fill_n(object_statuses, object_count, status);
+        SWSS_LOG_ERROR("bulk get failed without object statuses, count %u, status %s",
+                object_count, sai_serialize_status(status).c_str());
+        m_recorder->recordBulkGenericGetResponse(status, values);
+        return status;
+    }
 
     if (values.size() != object_count)
     {
