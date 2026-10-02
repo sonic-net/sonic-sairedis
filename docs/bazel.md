@@ -39,7 +39,7 @@ AMD64 and ARM64. There are no component-owned source overrides or toolchain
 patches. SAI headers, metadata generation, and its pinned execution tools come
 from the `sai` registry module, version `1.18.0-sonic.1`.
 
-The immutable main-branch registry snapshot in `.bazelrc` includes merged
+The maintained registry `main` branch in `.bazelrc` includes merged
 [Common registration](https://github.com/securely1g/sonic-bazel-registry/pull/16),
 [SAI registration](https://github.com/securely1g/sonic-bazel-registry/pull/17),
 and [shared launcher registration](https://github.com/securely1g/sonic-bazel-registry/pull/27).
@@ -52,8 +52,8 @@ omits swss-common's decorator and default value provider implementations.
 The commands below keep YANG enabled by omitting that override.
 
 The repository pins Bazel 8.5.1 in `.bazelversion`. Use Bazelisk to select that
-version. The module and registry pins in `MODULE.bazel` and `.bazelrc` provide
-the compiler, sysroot, native dependencies, and build tools.
+version. The module versions in `MODULE.bazel` and registry selection in
+`.bazelrc` provide the compiler, sysroot, native dependencies, and build tools.
 
 ## Dependency inputs and generated resolution
 
@@ -61,8 +61,9 @@ The root `MODULE.bazel.lock` is generated locally and ignored by Git. A clean
 checkout starts without this file; the commands below use
 `--lockfile_mode=update` to generate it as dependencies are resolved. This is
 the repository's lockfile policy. Keep the checked-in module versions,
-immutable registry and source revisions, integrity hashes, and shared toolchain
-and package snapshots pinned when changing dependencies.
+source revisions, integrity hashes, and shared toolchain and package snapshots
+pinned when changing dependencies. Use the maintained registry `main` URL in
+`.bazelrc` for dependency resolution.
 
 Each native CI job is configured to retain its generated resolution in
 `artifacts/validation/dependencies/`: `MODULE.bazel.lock`, `dependency-graph.json`,

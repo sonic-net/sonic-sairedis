@@ -1,8 +1,8 @@
 common --check_direct_dependencies=off
 common --noincompatible_disallow_empty_glob
 
-# Resolve SONiC modules from an immutable registry revision, then the BCR.
-common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/805902d076b87b41a99a4845daa17c12268a3963
+# Resolve SONiC modules from the maintained registry branch, then the BCR.
+common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
 common --registry=https://bcr.bazel.build/
 
 # These toolchains are native and require matching Trixie execution userspace.
