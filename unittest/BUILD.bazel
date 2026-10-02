@@ -1,0 +1,28 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "all_test_binaries",
+    testonly = True,
+    srcs = [
+        "//unittest/lib:tests_binary",
+        "//unittest/meta:tests_binary",
+        "//unittest/proxylib:tests_binary",
+        "//unittest/saidump:tests_binary",
+        "//unittest/saisdkdump:tests_binary",
+        "//unittest/syncd:tests_binary",
+        "//unittest/vslib:tests_binary",
+    ],
+)
+
+filegroup(
+    name = "source_files",
+    srcs = ["Makefile.am"] + [
+        "//unittest/lib:source_files",
+        "//unittest/meta:source_files",
+        "//unittest/proxylib:source_files",
+        "//unittest/saidump:source_files",
+        "//unittest/saisdkdump:source_files",
+        "//unittest/syncd:source_files",
+        "//unittest/vslib:source_files",
+    ],
+)

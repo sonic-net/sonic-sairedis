@@ -1,0 +1,164 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "GTEST_DEPS", "PRODUCTION_COPTS", "RPC_DEPS", "TEST_COPTS", "working_directory_test")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+        "*.sh",
+        "*.pl",
+        "*.pm",
+        "*.pws",
+        "**/*.ini",
+        "**/*.json",
+    ]),
+)
+
+# These checks inspect the Make workspace and object filenames. Keep their
+# inputs explicit until a Bazel-aware object/source check is supplied.
+filegroup(
+    name = "source_checks",
+    srcs = [
+        "aspell.en.pws",
+        "aspellcheck.pl",
+        "checksaiapi.sh",
+        "checkwhitespace.sh",
+        "conflictnames.pl",
+        "swsslogentercheck.pl",
+        "swsslogentercheck.sh",
+    ],
+    tags = ["manual"],
+)
+
+cc_binary(
+    name = "vssyncd",
+    testonly = True,
+    srcs = ["main.cpp"],
+    copts = PRODUCTION_COPTS,
+    linkopts = [
+        "-ldl",
+        "-pthread",
+    ] + CODE_COVERAGE_LINKOPTS,
+    deps = [
+        "//:native_zlib",
+        "//lib:sairedis.a",
+        "//meta:saimeta_shared",
+        "//syncd:libsyncd",
+        "//vslib:saivs_shared",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ] + RPC_DEPS,
+)
+
+TEST_RUNTIME_DEPS = [
+    "//lib:sairedis_shared",
+    "//syncd:libsyncd",
+    "//meta:saimeta_shared",
+    "//:native_zlib",
+    "@sonic_swss_common//:libswsscommon_shared",
+]
+
+cc_test(
+    name = "tests",
+    srcs = ["tests.cpp"],
+    copts = TEST_COPTS,
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    tags = [
+        "exclusive",
+        "manual",
+    ],
+    deps = TEST_RUNTIME_DEPS,
+)
+
+cc_binary(
+    name = "testclient",
+    testonly = True,
+    srcs = [
+        "TestClient.cpp",
+        "TestClient.h",
+        "testclient_main.cpp",
+    ],
+    copts = TEST_COPTS,
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    deps = TEST_RUNTIME_DEPS,
+)
+
+cc_test(
+    name = "testdash_gtest",
+    srcs = [
+        "TestDash.cpp",
+        "TestDashEnv.cpp",
+        "TestDashEnv.h",
+        "TestDashMain.cpp",
+    ],
+    copts = TEST_COPTS,
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    tags = [
+        "exclusive",
+        "manual",
+        "no-sandbox",
+        "requires-redis",
+        "requires-root",
+    ],
+    deps = TEST_RUNTIME_DEPS + GTEST_DEPS,
+)
+
+working_directory_test(
+    name = "tests_test",
+    program = ":tests",
+    tags = ["exclusive"],
+    working_directory = "tests",
+)
+
+working_directory_test(
+    name = "testdash_gtest_test",
+    data = glob(["NVDAMBF2H536C/*"]) + [":vssyncd"],
+    program = ":testdash_gtest",
+    tags = [
+        "exclusive",
+        "manual",
+        "no-sandbox",
+        "requires-redis",
+        "requires-root",
+    ],
+    working_directory = "tests",
+)
+
+MODEL_DATA = glob([
+    "BCM56850/*",
+    "BCM56971B0/*",
+    "MLNX2700/*",
+    "NVDAMBF2H536C/*",
+]) + [
+    "utils.pm",
+    ":vssyncd",
+    ":testclient",
+    "//saiplayer:saiplayer",
+    "//syncd:syncd_request_shutdown",
+]
+
+[
+    working_directory_test(
+        name = model,
+        data = MODEL_DATA,
+        program = model + ".pl",
+        tags = [
+            "exclusive",
+            "manual",
+            "no-sandbox",
+            "requires-redis",
+            "requires-root",
+        ],
+        working_directory = "tests",
+    )
+    for model in [
+        "BCM56850",
+        "MLNX2700",
+        "BCM56971B0",
+        "NVDAMBF2H536C",
+    ]
+]

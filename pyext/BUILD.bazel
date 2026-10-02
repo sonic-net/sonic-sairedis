@@ -1,0 +1,137 @@
+load("@bazel_lib//lib:copy_file.bzl", "copy_file")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_distroless//distroless:defs.bzl", "flatten")
+load("@tar.bzl", "tar")
+load("//bazel:common.bzl", "CXXFLAGS_COMMON", "sairedis_swig")
+load("//bazel:packaging.bzl", "multiarch_deploy_tar")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.i",
+        "*.py",
+        "*.am",
+        "py3/*.py",
+        "py3/*.am",
+        "py2/*.py",
+        "py2/*.am",
+    ]),
+)
+
+cc_library(
+    name = "headers",
+    hdrs = ["pysairedis.h"],
+    includes = ["."],
+    deps = [
+        "//:sai_headers",
+        "//lib:headers",
+    ],
+)
+
+sairedis_swig(
+    name = "pysairedis_swig_py3",
+    src = "pysairedis.i",
+    python = "pysairedis.py",
+    sai_swig = "//bazel/sai:saiswig_i",
+    wordsize64 = select({
+        "@platforms//cpu:x86_64": True,
+        "@platforms//cpu:aarch64": True,
+        "//conditions:default": False,
+    }),
+    wrapper = "pysairedis_wrap.cpp",
+    deps = [":headers"],
+)
+
+# Make deliberately omits DBGFLAGS and coverage instrumentation here.
+cc_binary(
+    name = "_pysairedis.so",
+    srcs = [
+        "pysairedis.cpp",
+        ":pysairedis_wrap.cpp",
+    ],
+    copts = CXXFLAGS_COMMON + [
+        "-Wno-cast-align",
+        "-Wno-cast-qual",
+        "-Wno-shadow",
+        "-Wno-redundant-decls",
+        "-Wno-error=disabled-optimization",
+    ],
+    linkopts = [
+        "-pthread",
+        "-Wl,-soname,_pysairedis.so.0",
+    ],
+    linkshared = True,
+    linkstatic = True,
+    deps = [
+        ":headers",
+        "//:native_python3",
+        "//lib:sairedis_shared",
+        "//meta:saimeta_shared",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ],
+)
+
+alias(
+    name = "pysairedis_py3",
+    actual = ":_pysairedis.so",
+)
+
+filegroup(
+    name = "python3_files",
+    srcs = [
+        "py3/__init__.py",
+        ":_pysairedis.so",
+        ":pysairedis.py",
+    ],
+)
+
+multiarch_deploy_tar(
+    name = "pysairedis_runtime",
+    binaries = {
+        "usr/lib/python3/dist-packages/sairedis/_pysairedis.so.0.0.0 uid=0 gid=0 mode=0644 type=file": ":pysairedis_py3",
+    },
+    mtree = [
+        "usr/lib/python3/dist-packages/sairedis/_pysairedis.so uid=0 gid=0 mode=0777 type=link link=_pysairedis.so.0.0.0",
+        "usr/lib/python3/dist-packages/sairedis/_pysairedis.so.0 uid=0 gid=0 mode=0777 type=link link=_pysairedis.so.0.0.0",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+tar(
+    name = "pysairedis_python_files",
+    srcs = [
+        "py3/__init__.py",
+        ":pysairedis.py",
+    ],
+    mtree = [
+        "usr/lib/python3/dist-packages/sairedis/__init__.py uid=0 gid=0 mode=0644 type=file content=$(location py3/__init__.py)",
+        "usr/lib/python3/dist-packages/sairedis/pysairedis.py uid=0 gid=0 mode=0644 type=file content=$(location :pysairedis.py)",
+    ],
+)
+
+flatten(
+    name = "pysairedis_pkg",
+    tars = [
+        ":pysairedis_runtime",
+        ":pysairedis_python_files",
+    ],
+)
+
+copy_file(
+    name = "pysairedis_pkg.debug_symbols",
+    src = ":pysairedis_runtime.debug_symbols",
+    out = "pysairedis_pkg.debug_symbols.tar",
+)
+
+# Python 2 remains part of the Make build only. The existing Python test is
+# manual and requires a running Redis/syncd environment.
+filegroup(
+    name = "manual_test",
+    srcs = ["test.py"],
+    tags = ["manual"],
+)

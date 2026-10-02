@@ -1,0 +1,72 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "PRODUCTION_COPTS", "sairedis_shared_library")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "all_headers",
+    srcs = glob(["*.h"]),
+)
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+    ]),
+)
+
+cc_library(
+    name = "headers",
+    hdrs = [":all_headers"],
+    includes = ["."],
+    deps = [
+        "//:sai_headers",
+        "//lib:headers",
+        "//meta:headers",
+        "//syncd:headers",
+    ],
+)
+
+PROXY_RUNTIME_DEPS = [
+    "//meta:saimeta_shared",
+    "//:native_hiredis",
+    "//:native_json",
+    "//:native_zmq",
+    "@sonic_swss_common//:libswsscommon_shared",
+]
+
+cc_library(
+    name = "saiproxy.a",
+    srcs = [
+        "Options.cpp",
+        "Proxy.cpp",
+        "Sai.cpp",
+    ],
+    copts = PRODUCTION_COPTS,
+    linkopts = CODE_COVERAGE_LINKOPTS,
+    deps = [":headers"] + PROXY_RUNTIME_DEPS,
+)
+
+cc_library(
+    name = "libsaiproxy",
+    srcs = ["//bazel/sai:proxy_stub"],
+    copts = PRODUCTION_COPTS,
+    deps = [":saiproxy.a"],
+    alwayslink = True,
+)
+
+# Proxy uses Redis channel helpers and two syncd helpers. Embed the required
+# core objects while keeping the Redis C entry stub out of this DSO.
+sairedis_shared_library(
+    name = "saiproxy",
+    consumer_deps = [":headers"] + PROXY_RUNTIME_DEPS,
+    consumer_name = "saiproxy_shared",
+    soname = "libsaiproxy.so.0",
+    deps = [
+        ":libsaiproxy",
+        "//lib:sairedis.a",
+        "//syncd:libsyncd",
+    ],
+)

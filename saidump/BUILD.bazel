@@ -1,0 +1,41 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "PRODUCTION_COPTS")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+        "*.sh",
+        "*.json",
+    ]),
+)
+
+cc_library(
+    name = "libsaidump",
+    srcs = ["SaiDump.cpp"],
+    hdrs = ["SaiDump.h"],
+    copts = PRODUCTION_COPTS,
+    includes = ["."],
+    linkopts = CODE_COVERAGE_LINKOPTS,
+    deps = [
+        "//lib:headers",
+        "//meta:saimeta_shared",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ],
+)
+
+cc_binary(
+    name = "saidump",
+    srcs = ["main.cpp"],
+    copts = PRODUCTION_COPTS,
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    deps = [
+        ":libsaidump",
+        "//lib:sairedis_shared",
+    ],
+)
