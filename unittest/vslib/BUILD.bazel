@@ -1,0 +1,103 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "GTEST_DEPS", "TEST_COPTS", "VPP_DEPS", "working_directory_test")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+        "*.json",
+        "*.ini",
+        "files/**",
+    ]),
+)
+
+cc_binary(
+    name = "tests_binary",
+    testonly = True,
+    srcs = [
+        "TestBuffer.cpp",
+        "TestContextConfigContainer.cpp",
+        "TestCorePortIndexMap.cpp",
+        "TestCorePortIndexMapContainer.cpp",
+        "TestCorePortIndexMapFileParser.cpp",
+        "TestEventPayloadNetLinkMsg.cpp",
+        "TestEventPayloadPacket.cpp",
+        "TestEventQueue.cpp",
+        "TestFdbInfo.cpp",
+        "TestHostInterfaceInfo.cpp",
+        "TestLaneMap.cpp",
+        "TestLaneMapContainer.cpp",
+        "TestLaneMapFileParser.cpp",
+        "TestMACsecAttr.cpp",
+        "TestMACsecEgressFilter.cpp",
+        "TestMACsecFilterStateGuard.cpp",
+        "TestMACsecForwarder.cpp",
+        "TestMACsecIngressFilter.cpp",
+        "TestMACsecManager.cpp",
+        "TestNetMsgRegistrar.cpp",
+        "TestPortConfigFileParser.cpp",
+        "TestRealObjectIdManager.cpp",
+        "TestResourceLimiter.cpp",
+        "TestResourceLimiterContainer.cpp",
+        "TestResourceLimiterParser.cpp",
+        "TestSai.cpp",
+        "TestSaiAttrWrap.cpp",
+        "TestSaiUnittests.cpp",
+        "TestSelectableFd.cpp",
+        "TestSignal.cpp",
+        "TestSwitch.cpp",
+        "TestSwitchBCM56850.cpp",
+        "TestSwitchBCM56971B0.cpp",
+        "TestSwitchBCM81724.cpp",
+        "TestSwitchConfig.cpp",
+        "TestSwitchConfigContainer.cpp",
+        "TestSwitchContainer.cpp",
+        "TestSwitchMLNX2700.cpp",
+        "TestSwitchMicas48CON2SFP.cpp",
+        "TestSwitchNokiaVS.cpp",
+        "TestSwitchNvdaMBF2H536C.cpp",
+        "TestSwitchStateBase.cpp",
+        "TestSwitchStateBaseMACsec.cpp",
+        "TestTAM.cpp",
+        "TestTrafficFilterPipes.cpp",
+        "TestTrafficForwarder.cpp",
+        "TestVirtualSwitchSaiInterface.cpp",
+        "main.cpp",
+    ] + glob(["*.h"]) + select({
+        "//:vpp_enabled": ["TestSwitchVpp.cpp"],
+        "//conditions:default": [],
+    }),
+    copts = TEST_COPTS + ["-fno-access-control"],
+    includes = ["."],
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    tags = ["manual"],
+    deps = [
+        # Several bare header names exist in both lib and vslib. Give the VS
+        # headers the same precedence as Make for this test target.
+        "//vslib:headers",
+        "//meta:saimeta_shared",
+        "//vslib:saivs.a",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ] + GTEST_DEPS + VPP_DEPS,
+)
+
+working_directory_test(
+    name = "tests",
+    data = glob([
+        "*.json",
+        "*.ini",
+        "files/**",
+    ]),
+    program = ":tests_binary",
+    tags = [
+        "exclusive",
+        "manual",
+        "requires-redis",
+        "requires-root",
+    ],
+    working_directory = "unittest/vslib",
+)

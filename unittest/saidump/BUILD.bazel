@@ -1,0 +1,54 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "GTEST_DEPS", "TEST_COPTS", "working_directory_test")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+        "*.json",
+        "*.ini",
+        "files/**",
+    ]),
+)
+
+cc_binary(
+    name = "tests_binary",
+    testonly = True,
+    srcs = [
+        "TestSaiDump.cpp",
+        "main.cpp",
+    ] + glob(["*.h"]),
+    copts = TEST_COPTS,
+    includes = ["."],
+    linkopts = [
+        "-pthread",
+        "-D_UNITTEST_",
+    ] + CODE_COVERAGE_LINKOPTS,
+    tags = ["manual"],
+    deps = [
+        "//:native_nl",
+        "//:native_nl_genl",
+        "//:native_nl_nf",
+        "//:native_nl_route",
+        "//lib:sairedis_shared",
+        "//meta:saimeta_shared",
+        "//saidump:libsaidump",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ] + GTEST_DEPS,
+)
+
+working_directory_test(
+    name = "tests",
+    data = glob([
+        "*.json",
+        "*.ini",
+        "files/**",
+    ]),
+    program = ":tests_binary",
+    tags = [],
+    working_directory = "unittest/saidump",
+)

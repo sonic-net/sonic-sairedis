@@ -1,0 +1,66 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "PRODUCTION_COPTS", "working_directory_test")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+        "*.sh",
+        "*.json",
+    ]),
+)
+
+cc_library(
+    name = "libsaiasiccmp",
+    srcs = [
+        "AsicCmp.cpp",
+        "CommandLineOptions.cpp",
+        "CommandLineOptionsParser.cpp",
+        "SaiSwitchAsic.cpp",
+        "View.cpp",
+        "ViewCmp.cpp",
+    ],
+    hdrs = glob(["*.h"]),
+    copts = PRODUCTION_COPTS,
+    includes = ["."],
+    linkopts = CODE_COVERAGE_LINKOPTS,
+    deps = [
+        "//lib:headers",
+        "//meta:saimeta_shared",
+        "//syncd:headers",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ],
+)
+
+cc_binary(
+    name = "saiasiccmp",
+    srcs = ["main.cpp"],
+    copts = PRODUCTION_COPTS,
+    linkopts = [
+        "-ldl",
+        "-pthread",
+    ] + CODE_COVERAGE_LINKOPTS,
+    deps = [
+        ":libsaiasiccmp",
+        "//:native_zlib",
+        "//lib:sairedis.a",
+        "//syncd:libsyncd",
+    ],
+)
+
+working_directory_test(
+    name = "tests",
+    data = [
+        "dump1.json",
+        "dump2.json",
+        "dump3.json",
+        ":saiasiccmp",
+    ],
+    program = "test.sh",
+    working_directory = "saiasiccmp",
+)

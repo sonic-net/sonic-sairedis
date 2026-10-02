@@ -1,0 +1,72 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "GTEST_DEPS", "TEST_COPTS", "working_directory_test")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+        "*.json",
+        "*.ini",
+        "files/**",
+    ]),
+)
+
+cc_binary(
+    name = "tests_binary",
+    testonly = True,
+    srcs = [
+        "MockSaiInterface.cpp",
+        "TestClientConfig.cpp",
+        "TestClientSai.cpp",
+        "TestClientServerSai.cpp",
+        "TestContext.cpp",
+        "TestContextConfig.cpp",
+        "TestContextConfigContainer.cpp",
+        "TestRecorder.cpp",
+        "TestRedisChannel.cpp",
+        "TestRedisRemoteSaiInterface.cpp",
+        "TestRedisVidIndexGenerator.cpp",
+        "TestSai.cpp",
+        "TestServerConfig.cpp",
+        "TestServerSai.cpp",
+        "TestSkipRecordAttrContainer.cpp",
+        "TestSwitch.cpp",
+        "TestSwitchConfigContainer.cpp",
+        "TestSwitchContainer.cpp",
+        "TestUtils.cpp",
+        "TestVirtualObjectIdManager.cpp",
+        "TestZeroMQChannel.cpp",
+        "main.cpp",
+        "//meta:NumberOidIndexGenerator.cpp",
+    ] + glob(["*.h"]),
+    copts = TEST_COPTS + ["-fno-access-control"],
+    includes = ["."],
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    tags = ["manual"],
+    deps = [
+        "//lib:sairedis.a",
+        "//meta:saimeta_shared",
+        "//vslib:headers",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ] + GTEST_DEPS,
+)
+
+working_directory_test(
+    name = "tests",
+    data = glob([
+        "*.json",
+        "*.ini",
+        "files/**",
+    ]),
+    program = ":tests_binary",
+    tags = [
+        "exclusive",
+        "manual",
+        "requires-redis",
+    ],
+    working_directory = "unittest/lib",
+)

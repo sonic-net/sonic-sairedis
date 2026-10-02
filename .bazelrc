@@ -1,0 +1,22 @@
+common --check_direct_dependencies=off
+common --noincompatible_disallow_empty_glob
+
+# Resolve SONiC modules from an immutable registry revision, then the BCR.
+common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/805902d076b87b41a99a4845daa17c12268a3963
+common --registry=https://bcr.bazel.build/
+
+# These toolchains are native and require matching Trixie execution userspace.
+# Select the pinned compiler for execution tools as well as target binaries.
+# Launch Bazel in Trixie; --host_platform declares that execution environment.
+# Bookworm and ARMHF require additional shared toolchains.
+common --platforms=@sonic_build_infra//platforms:x86_64_trixie
+common --host_platform=@sonic_build_infra//platforms:x86_64_trixie
+common:aarch64 --platforms=@sonic_build_infra//platforms:aarch64_trixie
+common:aarch64 --host_platform=@sonic_build_infra//platforms:aarch64_trixie
+
+# Allow LD_LIBRARY_PATH to select the matching Bazel DSOs in standalone runs.
+build --linkopt=-Wl,--enable-new-dtags
+
+build:stamp --stamp
+build:stamp --workspace_status_command=bazel/stamp_vars.sh
+build --config=stamp

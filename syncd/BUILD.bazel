@@ -1,0 +1,341 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_distroless//distroless:defs.bzl", "flatten")
+load("@tar.bzl", "mutate", "tar")
+load("//bazel:common.bzl", "ASAN_CORE_COPTS", "CFLAGS_ASAN", "CODE_COVERAGE_LINKOPTS", "LDFLAGS_ASAN", "PRODUCTION_COPTS", "RPC_COPTS", "RPC_DEPS", "TEST_COPTS", "VPP_DEPS", "sairedis_shared_library", "working_directory_test")
+load("//bazel:packaging.bzl", "multiarch_deploy_tar")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "all_headers",
+    srcs = glob(["*.h"]),
+)
+
+filegroup(
+    name = "script_files",
+    srcs = glob(["scripts/*"]),
+)
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+        "scripts/*",
+    ]) + ["//syncd/tests:source_files"],
+)
+
+cc_library(
+    name = "headers",
+    hdrs = [":all_headers"],
+    includes = ["."],
+    deps = [
+        "//:native_zlib",
+        "//:sai_headers",
+        "//lib:headers",
+        "//meta:headers",
+        "//vslib:headers",
+    ],
+)
+
+SYNC_RUNTIME_DEPS = [
+    "//meta:saimeta_shared",
+    "//:native_boost",
+    "//:native_hiredis",
+    "//:native_json",
+    "//:native_zlib",
+    "//:native_zmq",
+    "@sonic_swss_common//:libswsscommon_shared",
+]
+
+PLATFORM_CORE_COPTS = select({
+    "//:platform_broadcom": ["-DMDIO_ACCESS_USE_NPU"],
+    "//:platform_clounix": ["-DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL"],
+    "//conditions:default": [],
+})
+
+PLATFORM_EXECUTABLE_COPTS = select({
+    "//:platform_clounix": ["-DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL"],
+    "//conditions:default": [],
+})
+
+# Keep backend and Redis C-entry choices at final link sites. Unit tests and
+# helpers reuse this archive with different implementations.
+cc_library(
+    name = "libsyncd",
+    srcs = [
+        "AsicOperation.cpp",
+        "AsicView.cpp",
+        "AttrVersionChecker.cpp",
+        "BestCandidateFinder.cpp",
+        "BreakConfig.cpp",
+        "BreakConfigParser.cpp",
+        "CommandLineOptions.cpp",
+        "CommandLineOptionsParser.cpp",
+        "ComparisonLogic.cpp",
+        "DisabledRedisClient.cpp",
+        "FlexCounter.cpp",
+        "FlexCounterManager.cpp",
+        "FlowDump.cpp",
+        "GlobalSwitchId.cpp",
+        "HardReiniter.cpp",
+        "MdioIpcServer.cpp",
+        "MetadataLogger.cpp",
+        "NotificationHandler.cpp",
+        "NotificationProcessor.cpp",
+        "NotificationQueue.cpp",
+        "PortMap.cpp",
+        "PortMapParser.cpp",
+        "PortStateChangeHandler.cpp",
+        "RedisClient.cpp",
+        "RedisNotificationProducer.cpp",
+        "RequestShutdownCommandLineOptions.cpp",
+        "SaiAttr.cpp",
+        "SaiDiscovery.cpp",
+        "SaiObj.cpp",
+        "SaiSwitch.cpp",
+        "SaiSwitchInterface.cpp",
+        "SelectablesTracker.cpp",
+        "ServiceMethodTable.cpp",
+        "SingleReiniter.cpp",
+        "SwitchNotifications.cpp",
+        "Syncd.cpp",
+        "TimerWatchdog.cpp",
+        "VendorSai.cpp",
+        "VidManager.cpp",
+        "VirtualOidTranslator.cpp",
+        "WarmRestartTable.cpp",
+        "WatchdogScope.cpp",
+        "Workaround.cpp",
+        "ZeroMQNotificationProducer.cpp",
+        "ZmqRedisClient.cpp",
+        "syncd_main.cpp",
+    ],
+    copts = PRODUCTION_COPTS + ASAN_CORE_COPTS + RPC_COPTS + PLATFORM_CORE_COPTS,
+    linkopts = CODE_COVERAGE_LINKOPTS,
+    deps = [
+        ":headers",
+        "//:config_headers",
+        "//lib:sairedis.a",
+    ] + SYNC_RUNTIME_DEPS + RPC_DEPS,
+)
+
+SYNCD_SRCS = ["main.cpp"] + select({
+    "//:asan_enabled": ["Asan.cpp"],
+    "//conditions:default": [],
+})
+
+SYNCD_COPTS = PRODUCTION_COPTS + CFLAGS_ASAN + RPC_COPTS + PLATFORM_EXECUTABLE_COPTS
+
+SYNCD_LINKOPTS = [
+    "-rdynamic",
+    "-ldl",
+    "-pthread",
+] + CODE_COVERAGE_LINKOPTS + LDFLAGS_ASAN
+
+cc_binary(
+    name = "syncd",
+    srcs = SYNCD_SRCS,
+    copts = SYNCD_COPTS,
+    linkopts = SYNCD_LINKOPTS,
+    deps = [
+        ":libsyncd",
+        "//:sailib",
+        "//lib:sairedis.a",
+    ] + SYNC_RUNTIME_DEPS + RPC_DEPS,
+)
+
+cc_library(
+    name = "libsyncd_request_shutdown",
+    srcs = [
+        "RequestShutdown.cpp",
+        "RequestShutdownCommandLineOptions.cpp",
+        "RequestShutdownCommandLineOptionsParser.cpp",
+    ],
+    copts = PRODUCTION_COPTS,
+    linkopts = CODE_COVERAGE_LINKOPTS,
+    deps = [":headers"] + SYNC_RUNTIME_DEPS,
+)
+
+cc_binary(
+    name = "syncd_request_shutdown",
+    srcs = ["syncd_request_shutdown.cpp"],
+    copts = PRODUCTION_COPTS,
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    deps = [
+        ":libsyncd_request_shutdown",
+        "//lib:sairedis.a",
+    ] + VPP_DEPS,
+)
+
+cc_library(
+    name = "mdio_headers",
+    hdrs = [
+        "MdioIpcClient.h",
+        "MdioIpcCommon.h",
+    ],
+    includes = ["."],
+    deps = ["//:sai_headers"],
+)
+
+cc_library(
+    name = "libmdio_ipc_client.a",
+    srcs = ["MdioIpcClient.cpp"],
+    copts = PRODUCTION_COPTS + ["-Wno-format-truncation"],
+    linkopts = CODE_COVERAGE_LINKOPTS,
+    deps = [
+        ":mdio_headers",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ],
+)
+
+cc_library(
+    name = "libmdio_ipc_client.la",
+    srcs = ["MdioIpcClient.cpp"],
+    copts = PRODUCTION_COPTS + ["-Wno-format-truncation"],
+    linkopts = CODE_COVERAGE_LINKOPTS,
+    deps = [
+        ":mdio_headers",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ],
+    alwayslink = True,
+)
+
+sairedis_shared_library(
+    name = "libmdio_ipc_client.so",
+    consumer_deps = [
+        ":mdio_headers",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ],
+    consumer_name = "mdio_ipc_client_shared",
+    soname = "libMdioIpcClient.so.0",
+    deps = [":libmdio_ipc_client.la"],
+)
+
+cc_binary(
+    name = "syncd_tests",
+    srcs = ["tests.cpp"],
+    copts = TEST_COPTS,
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    tags = [
+        "exclusive",
+        "manual",
+        "requires-cap-sys-time",
+        "requires-redis",
+    ],
+    deps = [
+        # This test defines swss::exec; the archive permits that override.
+        "@sonic_swss_common//:libswsscommon",
+        ":libsyncd",
+        "//lib:sairedis_shared",
+    ],
+)
+
+working_directory_test(
+    name = "syncd_tests_test",
+    program = ":syncd_tests",
+    tags = [
+        "exclusive",
+        "manual",
+        "requires-cap-sys-time",
+        "requires-redis",
+    ],
+    working_directory = "syncd",
+)
+
+# This target is available only after the caller supplies the DASH SDK.
+cc_binary(
+    name = "syncd_dash",
+    srcs = SYNCD_SRCS,
+    copts = SYNCD_COPTS,
+    linkopts = SYNCD_LINKOPTS,
+    target_compatible_with = select({
+        "//:dashsai_vs_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":libsyncd",
+        "//lib:sairedis.a",
+    ] + SYNC_RUNTIME_DEPS + RPC_DEPS + select({
+        "//:dashsai_vs_enabled": ["//:dash_sai"],
+        "//conditions:default": [],
+    }),
+)
+
+multiarch_deploy_tar(
+    name = "syncd_loose_files",
+    binaries = {
+        "usr/bin/saidump uid=0 gid=0 mode=0755 type=file": "//saidump:saidump",
+        "usr/bin/saiplayer uid=0 gid=0 mode=0755 type=file": "//saiplayer:saiplayer",
+        "usr/bin/saisdkdump uid=0 gid=0 mode=0755 type=file": "//saisdkdump:saisdkdump",
+        "usr/bin/saidiscovery uid=0 gid=0 mode=0755 type=file": "//saidiscovery:saidiscovery",
+        "usr/bin/saiasiccmp uid=0 gid=0 mode=0755 type=file": "//saiasiccmp:saiasiccmp",
+        "usr/bin/syncd uid=0 gid=0 mode=0755 type=file": ":syncd",
+        "usr/bin/syncd_request_shutdown uid=0 gid=0 mode=0755 type=file": ":syncd_request_shutdown",
+        "usr/bin/syncd_tests uid=0 gid=0 mode=0755 type=file": ":syncd_tests",
+    },
+)
+
+multiarch_deploy_tar(
+    name = "syncd_per_platform_files",
+    binaries = {
+        "usr/lib/{multiarch}/libMdioIpcClient.so.0.0.0 uid=0 gid=0 mode=0644 type=file": ":libmdio_ipc_client.so",
+    },
+    mtree = [
+        "usr/lib/{multiarch}/libMdioIpcClient.so.0 uid=0 gid=0 mode=0777 type=link link=libMdioIpcClient.so.0.0.0",
+    ],
+)
+
+tar(
+    name = "syncd_scripts",
+    srcs = [":script_files"],
+    mutate = mutate(
+        package_dir = "usr/bin",
+        strip_prefix = package_name() + "/scripts",
+    ),
+)
+
+tar(
+    name = "syncd_init",
+    srcs = ["//:debian/syncd-vs.init"],
+    mtree = [
+        "etc/init.d/syncd uid=0 gid=0 mode=0755 type=file content=$(location //:debian/syncd-vs.init)",
+    ],
+)
+
+config_setting(
+    name = "runtime_package_vs",
+    flag_values = {
+        "//:sai_backend": "vs",
+        "//:enable_vpp": "false",
+        "//:enable_rpcserver": "false",
+        "//:enable_dashsai": "false",
+    },
+)
+
+RUNTIME_PACKAGE_COMPATIBLE = select({
+    ":runtime_package_vs": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
+flatten(
+    name = "syncd_pkg",
+    target_compatible_with = RUNTIME_PACKAGE_COMPATIBLE,
+    tars = [
+        ":syncd_loose_files",
+        ":syncd_per_platform_files",
+        ":syncd_scripts",
+        ":syncd_init",
+    ],
+)
+
+flatten(
+    name = "syncd_pkg.debug_symbols",
+    target_compatible_with = RUNTIME_PACKAGE_COMPATIBLE,
+    tars = [
+        ":syncd_loose_files.debug_symbols",
+        ":syncd_per_platform_files.debug_symbols",
+    ],
+)

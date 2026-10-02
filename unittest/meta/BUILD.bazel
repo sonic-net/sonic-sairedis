@@ -1,0 +1,91 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "GTEST_DEPS", "TEST_COPTS", "working_directory_test")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+        "*.json",
+        "*.ini",
+        "files/**",
+    ]),
+)
+
+cc_binary(
+    name = "tests_binary",
+    testonly = True,
+    srcs = [
+        "MockMeta.cpp",
+        "TestAttrKeyMap.cpp",
+        "TestDummySaiInterface.cpp",
+        "TestGlobals.cpp",
+        "TestLegacy.cpp",
+        "TestLegacyFdbEntry.cpp",
+        "TestLegacyNeighborEntry.cpp",
+        "TestLegacyOther.cpp",
+        "TestLegacyRouteEntry.cpp",
+        "TestLegacyVlan.cpp",
+        "TestMeta.cpp",
+        "TestMetaDash.cpp",
+        "TestMetaKeyHasher.cpp",
+        "TestNotificationBfdSessionStateChange.cpp",
+        "TestNotificationFactory.cpp",
+        "TestNotificationFdbEvent.cpp",
+        "TestNotificationFlowBulkGetSessionEvent.cpp",
+        "TestNotificationHaScopeEvent.cpp",
+        "TestNotificationHaSetEvent.cpp",
+        "TestNotificationIcmpEchoSessionStateChange.cpp",
+        "TestNotificationMacsecPostStatus.cpp",
+        "TestNotificationNatEvent.cpp",
+        "TestNotificationPortHostTxReadyEvent.cpp",
+        "TestNotificationPortStateChange.cpp",
+        "TestNotificationQueuePfcDeadlock.cpp",
+        "TestNotificationSwitchAsicSdkHealthEvent.cpp",
+        "TestNotificationSwitchMacsecPostStatus.cpp",
+        "TestNotificationSwitchShutdownRequest.cpp",
+        "TestNotificationSwitchStateChange.cpp",
+        "TestNotificationTam.cpp",
+        "TestOidRefCounter.cpp",
+        "TestPerformanceIntervalTimer.cpp",
+        "TestPortRelatedSet.cpp",
+        "TestSaiAttrWrapper.cpp",
+        "TestSaiAttributeList.cpp",
+        "TestSaiInterface.cpp",
+        "TestSaiObject.cpp",
+        "TestSaiObjectCollection.cpp",
+        "TestSaiSerialize.cpp",
+        "TestZeroMQSelectableChannel.cpp",
+        "main.cpp",
+        "//lib:Channel.cpp",
+        "//lib:SwitchConfig.cpp",
+        "//lib:SwitchConfigContainer.cpp",
+        "//lib:VirtualObjectIdManager.cpp",
+        "//lib:ZeroMQChannel.cpp",
+        "//meta:MetaTestSaiInterface.cpp",
+    ] + glob(["*.h"]),
+    copts = TEST_COPTS,
+    includes = ["."],
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    tags = ["manual"],
+    deps = [
+        "//lib:headers",
+        "//meta:saimeta_shared",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ] + GTEST_DEPS,
+)
+
+working_directory_test(
+    name = "tests",
+    data = glob([
+        "*.json",
+        "*.ini",
+        "files/**",
+    ]),
+    program = ":tests_binary",
+    tags = ["exclusive"],
+    working_directory = "unittest/meta",
+)

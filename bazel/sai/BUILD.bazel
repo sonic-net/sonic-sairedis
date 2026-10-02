@@ -1,0 +1,93 @@
+load(":defs.bzl", "sai_stub")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["generate_stub.py"])
+
+# Reusable headers and generated metadata are owned by the SAI registry module.
+# Keep these aliases stable for the component build and package contracts.
+
+alias(
+    name = "metadata",
+    actual = "@sai_source//:metadata",
+)
+
+alias(
+    name = "saimetadata_c",
+    actual = "@sai_source//:saimetadata_c",
+)
+
+alias(
+    name = "saimetadata_h",
+    actual = "@sai_source//:saimetadata_h",
+)
+
+alias(
+    name = "saimetadatatest_c",
+    actual = "@sai_source//:saimetadatatest_c",
+)
+
+alias(
+    name = "saiswig_i",
+    actual = "@sai_source//:saiswig_i",
+)
+
+alias(
+    name = "saiattrversion_h",
+    actual = "@sai_source//:saiattrversion_h",
+)
+
+alias(
+    name = "api_header_files",
+    actual = "@sai_source//:api_header_files",
+)
+
+alias(
+    name = "metadata_support_sources",
+    actual = "@sai_source//:metadata_support_sources",
+)
+
+alias(
+    name = "metadata_header_files",
+    actual = "@sai_source//:metadata_header_files",
+)
+
+alias(
+    name = "headers",
+    actual = "@sai_source//:headers",
+)
+
+alias(
+    name = "license",
+    actual = "@sai_source//:LICENSE.txt",
+)
+
+sai_stub(
+    name = "redis_stub",
+    srcs = ["@sai_source//:stub_inputs"],
+    out = "sai_redis.cpp",
+    class_name = "ClientServerSai",
+    marker = "@sai_source//:inc/sai.h",
+    namespace = "sairedis",
+    stub = "//:stub.pl",
+)
+
+sai_stub(
+    name = "vs_stub",
+    srcs = ["@sai_source//:stub_inputs"],
+    out = "sai_vs.cpp",
+    class_name = "Sai",
+    marker = "@sai_source//:inc/sai.h",
+    namespace = "saivs",
+    stub = "//:stub.pl",
+)
+
+sai_stub(
+    name = "proxy_stub",
+    srcs = ["@sai_source//:stub_inputs"],
+    out = "sai_proxy.cpp",
+    class_name = "Sai",
+    marker = "@sai_source//:inc/sai.h",
+    namespace = "saiproxy",
+    stub = "//:stub.pl",
+)

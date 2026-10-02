@@ -1,0 +1,45 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "GTEST_DEPS", "PRODUCTION_COPTS", "working_directory_test")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+        "*.json",
+        "*.ini",
+        "files/**",
+    ]),
+)
+
+cc_binary(
+    name = "tests_binary",
+    testonly = True,
+    srcs = [
+        "TestProfileMap.cpp",
+        "main.cpp",
+    ] + glob(["*.h"]),
+    copts = PRODUCTION_COPTS,
+    includes = ["."],
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    tags = ["manual"],
+    deps = [
+        "//saisdkdump:libsaisdkdump_profile",
+        "@sonic_swss_common//:libswsscommon_shared",
+    ] + GTEST_DEPS,
+)
+
+working_directory_test(
+    name = "tests",
+    data = glob([
+        "*.json",
+        "*.ini",
+        "files/**",
+    ]),
+    program = ":tests_binary",
+    tags = [],
+    working_directory = "unittest/saisdkdump",
+)

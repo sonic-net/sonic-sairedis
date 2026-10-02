@@ -1,0 +1,335 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//bazel:common.bzl", "sairedis_config", "unavailable_cc_dependency")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "stub.pl",
+    "debian/syncd-vs.init",
+])
+
+# The optional Bazel path initially builds VS with Python 3 and no VPP.
+# The Make path continues to support the wider vendor and Python 2 matrix.
+string_flag(
+    name = "sai_backend",
+    build_setting_default = "vs",
+    values = [
+        "vs",
+        "vendor",
+    ],
+)
+
+string_flag(
+    name = "asic_platform",
+    build_setting_default = "generic",
+    values = [
+        "generic",
+        "broadcom",
+        "mellanox",
+        "clounix",
+        "barefoot",
+    ],
+)
+
+[
+    bool_flag(
+        name = "enable_" + feature,
+        build_setting_default = False,
+    )
+    for feature in [
+        "debug",
+        "coverage",
+        "asan",
+        "vpp",
+        "rpcserver",
+        "dashsai",
+    ]
+]
+
+[
+    config_setting(
+        name = feature + "_enabled",
+        flag_values = {":enable_" + feature: "true"},
+    )
+    for feature in [
+        "debug",
+        "coverage",
+        "asan",
+        "vpp",
+        "rpcserver",
+        "dashsai",
+    ]
+]
+
+[
+    config_setting(
+        name = "backend_" + backend,
+        flag_values = {":sai_backend": backend},
+    )
+    for backend in [
+        "vs",
+        "vendor",
+    ]
+]
+
+[
+    config_setting(
+        name = "platform_" + platform,
+        flag_values = {":asic_platform": platform},
+    )
+    for platform in [
+        "generic",
+        "broadcom",
+        "mellanox",
+        "clounix",
+        "barefoot",
+    ]
+]
+
+config_setting(
+    name = "debug_coverage_enabled",
+    flag_values = {
+        ":enable_debug": "true",
+        ":enable_coverage": "true",
+    },
+)
+
+config_setting(
+    name = "dashsai_vs_enabled",
+    flag_values = {
+        ":enable_dashsai": "true",
+        ":sai_backend": "vs",
+    },
+)
+
+unavailable_cc_dependency(
+    name = "invalid_debug_coverage",
+    message = "--//:enable_debug and --//:enable_coverage conflict, as in configure.ac (DEBUG versus NDEBUG)",
+    tags = ["manual"],
+)
+
+cc_library(
+    name = "build_mode",
+    deps = select({
+        ":debug_coverage_enabled": [":invalid_debug_coverage"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "sai_headers",
+    deps = [
+        ":build_mode",
+        "//bazel/sai:headers",
+    ],
+)
+
+sh_binary(
+    name = "create_config",
+    srcs = ["create_config.bazel.sh"],
+)
+
+sairedis_config(
+    name = "config",
+    platform = select({
+        ":platform_mellanox": "mellanox",
+        "//conditions:default": "generic",
+    }),
+)
+
+cc_library(
+    name = "vs_config_headers",
+    hdrs = [":config"],
+)
+
+unavailable_cc_dependency(
+    name = "missing_vendor_sai",
+    message = "Vendor SAI is not supplied. Set --//:vendor_sai to a CcInfo target with the vendor SAI DSO and its runtime dependencies.",
+    tags = ["manual"],
+)
+
+unavailable_cc_dependency(
+    name = "missing_vendor_config",
+    message = "Vendor SAI capability configuration is not supplied. Set --//:vendor_config to a CcInfo target exposing config.h with revision, platform, and probed HAVE_SAI_* defines.",
+    tags = ["manual"],
+)
+
+unavailable_cc_dependency(
+    name = "missing_rpcserver",
+    message = "RPC server inputs are not supplied. Set --//:rpcserver to a CcInfo target exposing switch_sai_rpc_server.h, rpcserver, thrift, and their runtime dependencies.",
+    tags = ["manual"],
+)
+
+unavailable_cc_dependency(
+    name = "missing_dash_sai",
+    message = "DASH SAI inputs are not supplied. Set --//:dash_sai to a CcInfo target exposing the DASH libsai, protobuf, piprotobuf, piprotogrpc, grpc++, and runtime dependencies.",
+    tags = ["manual"],
+)
+
+unavailable_cc_dependency(
+    name = "missing_vpp_sdk",
+    message = "VPP inputs are not supplied. Set --//:vpp_sdk to a CcInfo target exposing VPP and SONiC plugin headers plus vlib, vlibapi, vlibmemory, vppinfra, vppapiclient, and runtime dependencies.",
+    tags = ["manual"],
+)
+
+label_flag(
+    name = "vendor_sai",
+    build_setting_default = ":missing_vendor_sai",
+    tags = ["manual"],
+)
+
+label_flag(
+    name = "vendor_config",
+    build_setting_default = ":missing_vendor_config",
+    tags = ["manual"],
+)
+
+label_flag(
+    name = "rpcserver",
+    build_setting_default = ":missing_rpcserver",
+    tags = ["manual"],
+)
+
+label_flag(
+    name = "dash_sai",
+    build_setting_default = ":missing_dash_sai",
+    tags = ["manual"],
+)
+
+label_flag(
+    name = "vpp_sdk",
+    build_setting_default = ":missing_vpp_sdk",
+    tags = ["manual"],
+)
+
+alias(
+    name = "config_headers",
+    actual = select({
+        ":backend_vs": ":vs_config_headers",
+        ":backend_vendor": ":vendor_config",
+    }),
+)
+
+alias(
+    name = "sailib",
+    actual = select({
+        ":backend_vs": "//vslib:saivs_shared",
+        ":backend_vendor": ":vendor_sai",
+    }),
+)
+
+# Keep native repository names out of the component BUILD files.
+alias(
+    name = "native_hiredis",
+    actual = "@trixie//libhiredis-dev:libhiredis",
+)
+
+alias(
+    name = "native_json",
+    actual = "@trixie//nlohmann-json3-dev:nlohmann-json3",
+)
+
+alias(
+    name = "native_zmq",
+    actual = "@trixie//libzmq3-dev:libzmq3",
+)
+
+alias(
+    name = "native_boost",
+    actual = "@trixie//libboost-dev:libboost",
+)
+
+alias(
+    name = "native_boost_serialization",
+    actual = "@trixie//libboost-serialization-dev:libboost-serialization",
+)
+
+alias(
+    name = "native_nl",
+    actual = "@libnl3//:libnl_3",
+)
+
+alias(
+    name = "native_nl_route",
+    actual = "@libnl3//:libnl_route_3",
+)
+
+alias(
+    name = "native_nl_nf",
+    actual = "@libnl3//:libnl_nf_3",
+)
+
+alias(
+    name = "native_nl_genl",
+    actual = "@libnl3//:libnl_genl_3",
+)
+
+alias(
+    name = "native_zlib",
+    actual = "@trixie//zlib1g-dev:zlib1g",
+)
+
+alias(
+    name = "native_python3",
+    actual = "@trixie//python3-dev:python3",
+)
+
+filegroup(
+    name = "canonical_outputs",
+    testonly = True,
+    srcs = [
+        "//lib:sairedis",
+        "//lib:tests",
+        "//meta:saimeta",
+        "//meta:saimetadata",
+        "//proxylib:saiproxy",
+        "//pyext:pysairedis_py3",
+        "//saiasiccmp",
+        "//saidiscovery",
+        "//saidump",
+        "//saiplayer",
+        "//saisdkdump",
+        "//syncd",
+        "//syncd:libmdio_ipc_client.so",
+        "//syncd:syncd_request_shutdown",
+        "//syncd:syncd_tests",
+        "//syncd/tests",
+        "//tests",
+        "//tests:testclient",
+        "//tests:testdash_gtest",
+        "//tests:vssyncd",
+        "//unittest:all_test_binaries",
+        "//vslib:libsaivs_shared",
+        "//vslib:tests",
+    ],
+)
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.ac",
+        "*.am",
+        "*.pl",
+        "*.sh",
+    ]) + glob(
+        ["*.h"],
+        allow_empty = True,
+    ) + [
+        "//bazel:stamp_vars.sh",
+        "//lib:source_files",
+        "//meta:source_files",
+        "//proxylib:source_files",
+        "//pyext:source_files",
+        "//saiasiccmp:source_files",
+        "//saidiscovery:source_files",
+        "//saidump:source_files",
+        "//saiplayer:source_files",
+        "//saisdkdump:source_files",
+        "//syncd:source_files",
+        "//tests:source_files",
+        "//unittest:source_files",
+        "//vslib:source_files",
+    ],
+)

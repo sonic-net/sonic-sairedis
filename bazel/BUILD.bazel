@@ -1,0 +1,7 @@
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "common.bzl",
+    "packaging.bzl",
+    "stamp_vars.sh",
+])

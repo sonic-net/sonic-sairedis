@@ -1,0 +1,168 @@
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_distroless//distroless:defs.bzl", "flatten")
+load("@tar.bzl", "tar")
+load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "PRODUCTION_COPTS", "TEST_COPTS", "multiarch_mtree", "sairedis_shared_library", "working_directory_test")
+load("//bazel:packaging.bzl", "multiarch_deploy_tar")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "all_headers",
+    srcs = glob(["*.h"]),
+)
+
+filegroup(
+    name = "source_files",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.am",
+    ]),
+)
+
+filegroup(
+    name = "dev_headers",
+    srcs = ["sairedis.h"],
+)
+
+exports_files([
+    "Channel.cpp",
+    "SwitchConfig.cpp",
+    "SwitchConfigContainer.cpp",
+    "VirtualObjectIdManager.cpp",
+    "ZeroMQChannel.cpp",
+    "sairedis.h",
+])
+
+cc_library(
+    name = "headers",
+    hdrs = [":all_headers"],
+    includes = ["."],
+    deps = ["//:sai_headers"],
+)
+
+REDIS_RUNTIME_DEPS = [
+    "//meta:saimeta_shared",
+    "//:native_boost",
+    "//:native_hiredis",
+    "//:native_json",
+    "//:native_zmq",
+    "@sonic_swss_common//:libswsscommon_shared",
+]
+
+# This core has no SAI C entry points. syncd and helpers embed it while
+# selecting one separate SAI implementation.
+cc_library(
+    name = "sairedis.a",
+    srcs = [
+        "Channel.cpp",
+        "ClientConfig.cpp",
+        "ClientSai.cpp",
+        "ClientServerSai.cpp",
+        "Context.cpp",
+        "ContextConfig.cpp",
+        "ContextConfigContainer.cpp",
+        "Recorder.cpp",
+        "RedisChannel.cpp",
+        "RedisRemoteSaiInterface.cpp",
+        "RedisVidIndexGenerator.cpp",
+        "Sai.cpp",
+        "ServerConfig.cpp",
+        "ServerSai.cpp",
+        "SkipRecordAttrContainer.cpp",
+        "Switch.cpp",
+        "SwitchConfig.cpp",
+        "SwitchConfigContainer.cpp",
+        "SwitchContainer.cpp",
+        "Utils.cpp",
+        "VirtualObjectIdManager.cpp",
+        "ZeroMQChannel.cpp",
+    ],
+    copts = PRODUCTION_COPTS,
+    linkopts = CODE_COVERAGE_LINKOPTS,
+    deps = [
+        ":headers",
+        "//:config_headers",
+    ] + REDIS_RUNTIME_DEPS,
+)
+
+cc_library(
+    name = "libsairedis",
+    srcs = ["//bazel/sai:redis_stub"],
+    copts = PRODUCTION_COPTS,
+    deps = [":sairedis.a"],
+    alwayslink = True,
+)
+
+sairedis_shared_library(
+    name = "sairedis",
+    consumer_deps = [":headers"] + REDIS_RUNTIME_DEPS,
+    consumer_name = "sairedis_shared",
+    soname = "libsairedis.so.0",
+    deps = [":libsairedis"],
+)
+
+multiarch_deploy_tar(
+    name = "libsairedis_runtime",
+    binaries = {
+        "usr/lib/{multiarch}/libsairedis.so.0.0.0 uid=0 gid=0 mode=0644 type=file": ":sairedis",
+    },
+    mtree = [
+        "usr/lib/{multiarch}/libsairedis.so.0 uid=0 gid=0 mode=0777 type=link link=libsairedis.so.0.0.0",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+flatten(
+    name = "libsairedis_pkg",
+    tars = [":libsairedis_runtime"],
+)
+
+copy_file(
+    name = "libsairedis_pkg.debug_symbols",
+    src = ":libsairedis_runtime.debug_symbols",
+    out = "libsairedis_pkg.debug_symbols.tar",
+)
+
+tar(
+    name = "libsairedis_dev_files",
+    srcs = ["sairedis.h"],
+    mtree = multiarch_mtree(
+        name = "libsairedis_dev_files",
+        contents = [
+            "usr/include/sai/sairedis.h uid=0 gid=0 mode=0644 type=file content=$(location sairedis.h)",
+            "usr/lib/{multiarch}/libsairedis.so uid=0 gid=0 mode=0777 type=link link=libsairedis.so.0",
+        ],
+        data = ["sairedis.h"],
+    ),
+)
+
+flatten(
+    name = "libsairedis_dev_pkg",
+    tars = [
+        ":libsairedis_pkg",
+        ":libsairedis_dev_files",
+    ],
+)
+
+alias(
+    name = "libsairedis_dev_pkg.debug_symbols",
+    actual = ":libsairedis_pkg.debug_symbols",
+)
+
+cc_test(
+    name = "tests",
+    srcs = ["tests.cpp"],
+    copts = TEST_COPTS,
+    linkopts = ["-pthread"] + CODE_COVERAGE_LINKOPTS,
+    tags = ["manual"],
+    deps = [":sairedis_shared"],
+)
+
+working_directory_test(
+    name = "tests_test",
+    program = ":tests",
+    working_directory = "lib",
+)
