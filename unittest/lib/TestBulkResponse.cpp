@@ -20,6 +20,7 @@ class BulkResponseChannel : public Channel
 public:
     BulkResponseChannel() : Channel(nullptr)
     {
+        SWSS_LOG_ENTER();
     }
 
     void setBuffered(bool) override {}
@@ -88,6 +89,7 @@ protected:
 
     sai_status_t waitForGet(std::vector<sai_status_t>& statuses)
     {
+        SWSS_LOG_ENTER();
         return remote->waitForBulkGetResponse(SAI_OBJECT_TYPE_PORT, GetParam(),
                 attrCounts.data(), attrLists.data(), statuses.data());
     }
