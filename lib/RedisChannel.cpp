@@ -6,7 +6,10 @@
 
 #include "swss/logger.h"
 #include "swss/select.h"
+
+#ifdef HAVE_MSGPACK_PRODUCER_TABLE
 #include "swss/msgpackproducertable.h"
+#endif
 
 using namespace sairedis;
 
@@ -30,6 +33,7 @@ RedisChannel::RedisChannel(
     const char* msgpackEnv = std::getenv("ASIC_DB_MSGPACK_ENABLED");
     bool useMsgpack = msgpackEnv && std::string(msgpackEnv) == "true";
 
+#ifdef HAVE_MSGPACK_PRODUCER_TABLE
     if (useMsgpack)
     {
         SWSS_LOG_NOTICE("ASIC_DB msgpack encoding enabled for ASIC_STATE producer");
@@ -39,6 +43,15 @@ RedisChannel::RedisChannel(
     {
         m_asicState = std::make_shared<swss::ProducerTable>(m_redisPipeline.get(), ASIC_STATE_TABLE, true);
     }
+#else
+    // Fallback: if HAVE_MSGPACK_PRODUCER_TABLE is not defined, always use ProducerTable
+    // (MsgPackProducerTable requires sonic-swss-common with msgpack support)
+    if (useMsgpack)
+    {
+        SWSS_LOG_WARN("ASIC_DB_MSGPACK_ENABLED set but msgpack support not available, using ProducerTable");
+    }
+    m_asicState = std::make_shared<swss::ProducerTable>(m_redisPipeline.get(), ASIC_STATE_TABLE, true);
+#endif
 
     m_getConsumer           = std::make_shared<swss::ConsumerTable>(m_db.get(), REDIS_TABLE_GETRESPONSE);
 

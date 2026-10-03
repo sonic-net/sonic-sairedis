@@ -1,7 +1,10 @@
 #include "RedisSelectableChannel.h"
 
 #include "swss/logger.h"
+
+#ifdef HAVE_MSGPACK_CONSUMER_TABLE
 #include "swss/msgpackconsumertable.h"
+#endif
 
 using namespace sairedis;
 
@@ -25,6 +28,7 @@ RedisSelectableChannel::RedisSelectableChannel(
     const char* msgpackEnv = std::getenv("ASIC_DB_MSGPACK_ENABLED");
     bool useMsgpack = msgpackEnv && std::string(msgpackEnv) == "true";
 
+#ifdef HAVE_MSGPACK_CONSUMER_TABLE
     if (useMsgpack)
     {
         SWSS_LOG_NOTICE("ASIC_DB msgpack decoding enabled for ASIC_STATE consumer");
@@ -34,6 +38,15 @@ RedisSelectableChannel::RedisSelectableChannel(
     {
         m_asicState = std::make_shared<swss::ConsumerTable>(m_dbAsic.get(), asicStateTable);
     }
+#else
+    // Fallback: if HAVE_MSGPACK_CONSUMER_TABLE is not defined, always use ConsumerTable
+    // (MsgPackConsumerTable requires sonic-swss-common with msgpack support)
+    if (useMsgpack)
+    {
+        SWSS_LOG_WARN("ASIC_DB_MSGPACK_ENABLED set but msgpack support not available, using ConsumerTable");
+    }
+    m_asicState = std::make_shared<swss::ConsumerTable>(m_dbAsic.get(), asicStateTable);
+#endif
 
     m_asicState->setModifyRedis(m_modifyRedis);
 

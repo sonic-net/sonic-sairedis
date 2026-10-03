@@ -297,6 +297,15 @@ AC_DEFINE([SAI_GIT_REVISION],
         "[m4_esyscmd([echo -n $(cd SAI && git rev-parse --short HEAD || echo 0000000)])]",
         [SAI git revision information])
 
+# Check for msgpack support in sonic-swss-common (WS2 feature)
+AC_CHECK_HEADER([swss/msgpackproducertable.h],
+        [AC_DEFINE([HAVE_MSGPACK_PRODUCER_TABLE], [1], [Define if msgpackproducertable.h is available])],
+        [AC_MSG_WARN(msgpackproducertable.h not found - msgpack encoding disabled)])
+
+AC_CHECK_HEADER([swss/msgpackconsumertable.h],
+        [AC_DEFINE([HAVE_MSGPACK_CONSUMER_TABLE], [1], [Define if msgpackconsumertable.h is available])],
+        [AC_MSG_WARN(msgpackconsumertable.h not found - msgpack decoding disabled)])
+
 AC_OUTPUT(Makefile
           meta/Makefile
           lib/Makefile
