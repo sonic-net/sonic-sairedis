@@ -10,6 +10,7 @@
 #include "TunnelManager.h"
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
+#include "SwitchVppPbh.h"
 #include "CRMTracker.h"
 #include "PortConfigMap.h"
 #include "VppInterfaceRegistry.h"
@@ -635,11 +636,13 @@ namespace saivs
         public: // VPP
 
             friend class TunnelManager;
+            friend class SwitchVppPbh;
 
         private: // VPP
 
             SaiObjectDB m_object_db;
             TunnelManager m_tunnel_mgr;
+            SwitchVppPbh m_pbh;
 
         private: // VPP
 

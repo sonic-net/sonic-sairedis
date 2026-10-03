@@ -54,6 +54,7 @@ SwitchVpp::SwitchVpp(
     SwitchStateBase(switch_id, manager, config),
     m_object_db(this),
     m_tunnel_mgr(this),
+    m_pbh(this),
     m_tunnel_mgr_srv6(this),
     m_tunnel_mgr_ipip(this)
 {
@@ -72,6 +73,7 @@ SwitchVpp::SwitchVpp(
     SwitchStateBase(switch_id, manager, config, warmBootState),
     m_object_db(this),
     m_tunnel_mgr(this),
+    m_pbh(this),
     m_tunnel_mgr_srv6(this),
     m_tunnel_mgr_ipip(this)
 {
@@ -1431,6 +1433,13 @@ sai_status_t SwitchVpp::create(
         return createAclGrpMbr(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_HASH)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return m_pbh.createHash(object_id, switch_id, attr_count, attr_list);
+    }
+
     if(object_type == SAI_OBJECT_TYPE_SAMPLEPACKET)
     {
         sai_object_id_t object_id;
@@ -1909,6 +1918,11 @@ sai_status_t SwitchVpp::remove(
         return removeAclGrp(serializedObjectId);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_HASH)
+    {
+        return m_pbh.removeHash(serializedObjectId);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
     {
         sai_object_id_t objectId;
@@ -2293,6 +2307,17 @@ sai_status_t SwitchVpp::get(
         sai_object_id_t object_id;
 
         sai_deserialize_object_id(serializedObjectId, object_id);
+
+        /*
+         * PBH and ACL counters are the same SAI object type but live in
+         * different VPP stat trees, so the counter is routed by which table
+         * claimed it rather than by anything on the counter itself.
+         */
+        if (m_pbh.isPbhCounterOid(object_id))
+        {
+            return m_pbh.getEntryStats(object_id, attr_count, attr_list);
+        }
+
         return getAclEntryStats(object_id, attr_count, attr_list);
     }
 
@@ -2712,6 +2737,10 @@ sai_status_t SwitchVpp::initialize_default_objects(
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    // Ask VPP once whether the sonic_ext PBH feature is present, before any
+    // object that might need it can be created.
+    m_pbh.featureQuery();
 
     CHECK_STATUS(set_switch_mac_address());
     CHECK_STATUS(create_cpu_port());

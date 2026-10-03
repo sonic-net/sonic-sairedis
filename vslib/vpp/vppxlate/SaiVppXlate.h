@@ -110,6 +110,57 @@ typedef struct vpp_ip_addr_ {
         vpp_acl_rule_t rules[0];
     } vpp_acl_t;
 
+    /*
+     * Policy Based Hashing.
+     *
+     * These mirror the sonic_ext plugin's sonic_ext_pbh_hash_field_t and
+     * sonic_ext_pbh_rule_t.  The values of the field and qualifier enums are
+     * part of the binary API contract and must stay in step with pbh.h in the
+     * plugin; they are spelled out here rather than pulled from the generated
+     * api_enum.h because the qualifier bitmap is built from an X-macro that
+     * vppapigen does not export.
+     */
+    typedef enum {
+        VPP_PBH_HF_INNER_IP_PROTOCOL = 0,
+        VPP_PBH_HF_INNER_L4_SRC_PORT,
+        VPP_PBH_HF_INNER_L4_DST_PORT,
+        VPP_PBH_HF_INNER_SRC_IPV4,
+        VPP_PBH_HF_INNER_DST_IPV4,
+        VPP_PBH_HF_INNER_SRC_IPV6,
+        VPP_PBH_HF_INNER_DST_IPV6,
+    } vpp_pbh_hash_field_e;
+
+    typedef enum {
+        VPP_PBH_Q_ETHER_TYPE       = (1 << 0),
+        VPP_PBH_Q_IP_PROTOCOL      = (1 << 1),
+        VPP_PBH_Q_IPV6_NEXT_HEADER = (1 << 2),
+        VPP_PBH_Q_L4_DST_PORT      = (1 << 3),
+        VPP_PBH_Q_GRE_KEY          = (1 << 4),
+        VPP_PBH_Q_INNER_ETHER_TYPE = (1 << 5),
+    } vpp_pbh_qualifier_e;
+
+    typedef struct _vpp_pbh_hash_field {
+        uint8_t field;          /* vpp_pbh_hash_field_e */
+        uint32_t sequence_id;   /* order; equal ids are XOR-folded together */
+        uint8_t mask[16];       /* wire order; ignored by non-IP fields */
+    } vpp_pbh_hash_field_t;
+
+    typedef struct _vpp_pbh_rule {
+        uint32_t rule_id;       /* caller's id, echoed by `show` */
+        uint32_t priority;      /* higher wins; first match stops the walk */
+        uint32_t qualifiers;    /* bitmap of vpp_pbh_qualifier_e */
+        uint16_t ether_type;
+        uint16_t inner_ether_type;
+        uint16_t l4_dst_port;
+        uint8_t ip_protocol;
+        uint8_t ipv6_next_header;
+        uint32_t gre_key;
+        uint32_t gre_key_mask;
+        uint32_t ecmp_profile;  /* profile index, ~0 for no action */
+        uint32_t lag_profile;   /* profile index, ~0 for no action */
+        bool flow_counter;
+    } vpp_pbh_rule_t;
+
     typedef struct {
         vpp_ip_addr_t dst_prefix;
         vpp_ip_addr_t dst_prefix_mask;
@@ -397,6 +448,22 @@ typedef enum {
 				      bool is_input);
     extern int vpp_acl_interface_unbind(const char *hwif_name, uint32_t acl_index,
 					bool is_input);
+    /*
+     * PBH.  profile_index and table_index are allocated by VPP and returned;
+     * pass ~0 in *table_index to create a table rather than replace one.
+     * Counters are deliberately absent: they are read from the stats segment
+     * by vpp_rule_stats_query(), not over the binary API.
+     */
+    extern int vpp_pbh_profile_add_del(bool is_add,
+				       const vpp_pbh_hash_field_t *fields,
+				       uint32_t n_fields, uint32_t *profile_index);
+    extern int vpp_pbh_table_add_replace(const char *name,
+					 const vpp_pbh_rule_t *rules,
+					 uint32_t n_rules, uint32_t *table_index);
+    extern int vpp_pbh_table_del(uint32_t table_index);
+    extern int vpp_pbh_interface_attach_detach(const char *hwif_name,
+					       uint32_t table_index, bool attach);
+
     extern int vpp_tunterm_acl_add_replace (uint32_t *tunterm_index, uint32_t count, vpp_tunterm_acl_t *acl);
     extern int vpp_tunterm_acl_del (uint32_t tunterm_index);
     extern int vpp_tunterm_acl_interface_add_del (uint32_t tunterm_index,
@@ -480,6 +547,15 @@ typedef enum {
     extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
 
     extern int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable);
+
+    /*
+     * Ask VPP whether a sonic-ext feature is enabled in startup.conf.  An
+     * unrecognised keyword replies disabled, so a newer saivpp against an
+     * older VPP finds the feature off and leaves the hardware alone rather
+     * than configuring something that will never run.
+     */
+    extern int vpp_sonic_ext_feature_get(const char *feature, bool *enabled);
+
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
     extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
     extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
