@@ -4,6 +4,9 @@
 
 #include "swss/logger.h"
 
+#include <climits>
+#include <ctime>
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow"
 #include <nlohmann/json.hpp>
@@ -166,4 +169,16 @@ void FdbInfo::setTimestamp(
     SWSS_LOG_ENTER();
 
     m_timestamp = timestamp;
+}
+
+uint32_t FdbInfo::currentEpochTimeSec()
+{
+    SWSS_LOG_ENTER();
+
+    time_t now = time(nullptr);
+
+    if (now > static_cast<time_t>(UINT32_MAX))
+        return UINT32_MAX;
+
+    return static_cast<uint32_t>(now);
 }

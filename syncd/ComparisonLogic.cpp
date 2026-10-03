@@ -12,6 +12,7 @@
 #include "meta/SaiAttributeList.h"
 
 #include <inttypes.h>
+#include <random>
 
 using namespace syncd;
 using namespace saimeta;
@@ -64,7 +65,8 @@ ComparisonLogic::ComparisonLogic(
     m_current->m_defaultTrapGroupRid     = m_switch->getSwitchDefaultAttrOid(SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP);
     m_temp->m_defaultTrapGroupRid        = m_switch->getSwitchDefaultAttrOid(SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP);
 
-    auto seed = (unsigned int)std::time(0);
+    std::random_device rd;
+    auto seed = rd();
 
     SWSS_LOG_NOTICE("srand seed for switch %s: %u", sai_serialize_object_id(m_switch->getVid()).c_str(), seed);
 
