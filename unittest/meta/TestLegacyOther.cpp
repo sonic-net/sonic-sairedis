@@ -1040,3 +1040,50 @@ TEST(Legacy, bulk_route_entry_create)
     std::cout << "ms: " << (double)us.count()/1000 << " / " << n << "/" << object_count << std::endl;
 }
 
+TEST(Legacy, acl_entry_udf_uint8_list_field)
+{
+    SWSS_LOG_ENTER();
+
+    clear_local();
+
+    sai_object_id_t switch_id = create_switch();
+    sai_object_id_t aclentry;
+    sai_object_id_t table_id = insert_dummy_object(SAI_OBJECT_TYPE_ACL_TABLE, switch_id);
+
+    uint8_t data[4] = {0x11, 0x22, 0x33, 0x44};
+    uint8_t mask[4] = {0xff, 0xff, 0xff, 0xff};
+
+    std::vector<sai_attribute_t> vattrs;
+
+    sai_attribute_t a_table;
+    memset(&a_table, 0, sizeof(a_table));
+    a_table.id = SAI_ACL_ENTRY_ATTR_TABLE_ID;
+    a_table.value.oid = table_id;
+    vattrs.push_back(a_table);
+
+    sai_attribute_t a_udf;
+    memset(&a_udf, 0, sizeof(a_udf));
+    a_udf.id = SAI_ACL_ENTRY_ATTR_USER_DEFINED_FIELD_GROUP_MIN;
+    a_udf.value.aclfield.enable = true;
+    a_udf.value.aclfield.data.u8list.count = 4;
+    a_udf.value.aclfield.data.u8list.list = data;
+    a_udf.value.aclfield.mask.u8list.count = 4;
+    a_udf.value.aclfield.mask.u8list.list = mask;
+    vattrs.push_back(a_udf);
+
+    auto status = g_meta->create(SAI_OBJECT_TYPE_ACL_ENTRY, &aclentry, switch_id,
+                                 (uint32_t)vattrs.size(), vattrs.data());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    status = g_meta->set(SAI_OBJECT_TYPE_ACL_ENTRY, aclentry, &a_udf);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    status = g_meta->get(SAI_OBJECT_TYPE_ACL_ENTRY, aclentry, 1, &a_udf);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    status = g_meta->remove(SAI_OBJECT_TYPE_ACL_ENTRY, aclentry);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    remove_switch(switch_id);
+}
+
