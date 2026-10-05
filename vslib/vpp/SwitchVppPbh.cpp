@@ -104,22 +104,26 @@ SwitchVppPbh::SwitchVppPbh(
     SWSS_LOG_ENTER();
 }
 
-void SwitchVppPbh::featureQuery(void)
+/*
+ * sonicExtFeatureEnabled() caches the answer, so this is a map lookup after
+ * the first call and needs no init-time query. The refusal is logged once per
+ * switch rather than once per object: PbhOrch keeps retrying what it cannot
+ * create, and a message per attempt would bury everything else in the log.
+ */
+bool SwitchVppPbh::pbhSupported(
+        _In_ const char *what,
+        _In_ const std::string &sid)
 {
     SWSS_LOG_ENTER();
 
-    bool enabled = false;
-
-    if (vpp_sonic_ext_feature_get("pbh", &enabled) != 0)
+    if (sonicExtFeatureEnabled("pbh"))
     {
-        SWSS_LOG_NOTICE("sonic-ext feature query failed, PBH disabled");
-        m_supported = false;
-        return;
+        return true;
     }
 
-    m_supported = enabled;
+    SWSS_LOG_NOTICE("PBH is disabled in VPP, refusing %s %s", what, sid.c_str());
 
-    SWSS_LOG_NOTICE("PBH %s", m_supported ? "supported" : "not supported");
+    return false;
 }
 
 /*
@@ -219,14 +223,8 @@ sai_status_t SwitchVppPbh::createHash(
         return m_switch_db->create_internal(SAI_OBJECT_TYPE_HASH, sid, switch_id, attr_count, attr_list);
     }
 
-    if (!m_supported)
+    if (!pbhSupported("fine grained hash", sid))
     {
-        if (!m_unsupported_logged)
-        {
-            SWSS_LOG_NOTICE("PBH is disabled in VPP, refusing fine grained hash %s", sid.c_str());
-            m_unsupported_logged = true;
-        }
-
         return SAI_STATUS_NOT_SUPPORTED;
     }
 
@@ -356,15 +354,8 @@ sai_status_t SwitchVppPbh::tableCreate(
 {
     SWSS_LOG_ENTER();
 
-    if (!m_supported)
+    if (!pbhSupported("PBH ACL table", sai_serialize_object_id(tbl_oid)))
     {
-        if (!m_unsupported_logged)
-        {
-            SWSS_LOG_NOTICE("PBH is disabled in VPP, refusing PBH ACL table %s",
-                            sai_serialize_object_id(tbl_oid).c_str());
-            m_unsupported_logged = true;
-        }
-
         return SAI_STATUS_NOT_SUPPORTED;
     }
 

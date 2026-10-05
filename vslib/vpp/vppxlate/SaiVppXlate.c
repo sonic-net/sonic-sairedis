@@ -2145,21 +2145,6 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
 }
 
 static void
-vl_api_sonic_ext_feature_get_reply_t_handler (vl_api_sonic_ext_feature_get_reply_t *msg)
-{
-    int retval = (int)ntohl((uint32_t)msg->retval);
-
-    bool *enabled = (bool *) get_index_ptr(msg->context);
-    if (!enabled) {
-        return;
-    }
-    set_reply_status(retval);
-    *enabled = msg->enabled ? true : false;
-
-    release_index(msg->context);
-}
-
-static void
 vl_api_sonic_ext_pbh_profile_add_del_reply_t_handler (vl_api_sonic_ext_pbh_profile_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);

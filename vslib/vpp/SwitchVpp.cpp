@@ -2787,10 +2787,6 @@ sai_status_t SwitchVpp::initialize_default_objects(
 {
     SWSS_LOG_ENTER();
 
-    // Ask VPP once whether the sonic_ext PBH feature is present, before any
-    // object that might need it can be created.
-    m_pbh.featureQuery();
-
     CHECK_STATUS(set_switch_mac_address());
     CHECK_STATUS(create_cpu_port());
     CHECK_STATUS(create_default_vlan());

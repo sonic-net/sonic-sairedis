@@ -51,14 +51,6 @@ namespace saivs
                     _In_ SwitchVpp *switch_db);
 
             /**
-             * @brief Ask VPP once whether the sonic_ext PBH feature is present.
-             *
-             * Called at switch init, before any object that might need PBH can
-             * be created.
-             */
-            void featureQuery(void);
-
-            /**
              * @brief Whether an ACL table is a PBH table.
              *
              * @param tbl_oid The ACL table object ID.
@@ -171,6 +163,17 @@ namespace saivs
             } pbh_cntr_info_t;
 
             /**
+             * @brief Whether the sonic_ext PBH feature is enabled in VPP,
+             * logging the first object refused because it is not.
+             *
+             * @param what Kind of object being refused, for the log line.
+             * @param sid Serialized object ID being refused.
+             */
+            bool pbhSupported(
+                    _In_ const char *what,
+                    _In_ const std::string &sid);
+
+            /**
              * @brief Drop every counter recorded for a table.
              *
              * @param tbl_oid The ACL table object ID.
@@ -191,11 +194,5 @@ namespace saivs
 
             // ACL counter OID -> the VPP rule it counts.
             std::map<sai_object_id_t, pbh_cntr_info_t> m_cntr_info_map;
-
-            // Answer of sonic_ext_feature_get("pbh"), asked once at switch
-            // init. False also covers a VPP that predates the feature, which
-            // replies disabled for an unknown keyword.
-            bool m_supported = false;
-            bool m_unsupported_logged = false;
     };
 }
