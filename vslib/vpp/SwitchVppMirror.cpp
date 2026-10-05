@@ -10,9 +10,6 @@
 
 using namespace saivs;
 
-// Reserved VPP FIB id range for ERSPAN outer lookups. Kept far above the Linux
-// routing table ids SONiC derives its VRF ids from, so it cannot alias a VRF.
-static constexpr uint32_t VPP_MIRROR_OUTER_FIB_BASE = 0xe0000000u;
 static constexpr uint32_t VPP_MIRROR_OUTER_FIB_NONE = 0xffffffffu;
 
 sai_status_t SwitchVpp::createMirrorSession(
@@ -93,9 +90,14 @@ sai_status_t SwitchVpp::createMirrorSession(
         // sonic-ext-mirror-encap-fixup node, so nothing is set on the tunnel here.
         tunnel.type = 1;
 
-        // Must stay monotonic: naming a new tunnel greN while VPP still tears down
-        // the old greN corrupts its interface-name hash.
-        tunnel.instance = m_next_gre_instance++;
+        // greN is named after this instance; the pool withholds an id until VPP
+        // confirms the previous tunnel of that name is gone.
+        int gre_slot = m_gre_instance_pool.alloc();
+        if(gre_slot < 0) {
+            SWSS_LOG_ERROR("Cannot create mirror session %s: no free GRE tunnel instance", sid.c_str());
+            return SAI_STATUS_INSUFFICIENT_RESOURCES;
+        }
+        tunnel.instance = (uint32_t)gre_slot;
 
         uint32_t gre_instance = tunnel.instance;
         uint32_t gre_sw_if_index = 0;
@@ -106,13 +108,18 @@ sai_status_t SwitchVpp::createMirrorSession(
         // creation time and does not reliably re-stack onto a later /32.
         info.src_ip = tunnel.src;
         info.dst_ip = tunnel.dst;
+        info.gre_instance = gre_instance;
         info.monitor_pinned = false;
         info.monitor_port = SAI_NULL_OBJECT_ID;
 
         // Resolve the outer header in a FIB this session alone owns: the collector
         // host route then cannot replace, or be replaced by, an orchagent route or
         // another session aimed at the same collector.
-        CHECK_STATUS(createErspanOuterFib(info));
+        sai_status_t fib_status = createErspanOuterFib(info);
+        if(fib_status != SAI_STATUS_SUCCESS) {
+            m_gre_instance_pool.free(gre_instance);
+            return fib_status;
+        }
         tunnel.outer_table_id = info.outer_fib_id;
 
         sai_object_id_t mon_port = SAI_NULL_OBJECT_ID;
@@ -136,6 +143,7 @@ sai_status_t SwitchVpp::createMirrorSession(
         if (mon_status != SAI_STATUS_SUCCESS)
         {
             destroyErspanOuterFib(info);
+            m_gre_instance_pool.free(gre_instance);
             return mon_status;
         }
 
@@ -145,6 +153,7 @@ sai_status_t SwitchVpp::createMirrorSession(
         if(ret != 0) {
             SWSS_LOG_ERROR("Failed to add GRE tunnel for ERSPAN session, ret=%d", ret);
             destroyErspanOuterFib(info);
+            m_gre_instance_pool.free(gre_instance);
             return SAI_STATUS_FAILURE;
         }
         SWSS_LOG_NOTICE("GRE mirror tunnel created: instance=%u sw_if_index=%u", gre_instance, gre_sw_if_index);
@@ -157,7 +166,7 @@ sai_status_t SwitchVpp::createMirrorSession(
         int up_ret = interface_set_state_by_index(gre_sw_if_index, true);
         if(up_ret != 0) {
             SWSS_LOG_ERROR("Failed to bring up gre tunnel %s (sw_if_index %u), ret=%d", gre_ifname.c_str(), gre_sw_if_index, up_ret);
-            vpp_gre_tunnel_add_del(&tunnel, false, &gre_sw_if_index);
+            removeGreMirrorTunnel(info);
             destroyErspanOuterFib(info);
             return SAI_STATUS_FAILURE;
         }
@@ -168,7 +177,7 @@ sai_status_t SwitchVpp::createMirrorSession(
         int fixup_ret = vpp_sonic_ext_mirror_encap_fixup_enable_disable(gre_sw_if_index, gre_protocol, session_ttl, true);
         if(fixup_ret != 0) {
             SWSS_LOG_ERROR("Failed to register mirror encap fixup on gre tunnel %s (sw_if_index %u), ret=%d", gre_ifname.c_str(), gre_sw_if_index, fixup_ret);
-            vpp_gre_tunnel_add_del(&tunnel, false, &gre_sw_if_index);
+            removeGreMirrorTunnel(info);
             destroyErspanOuterFib(info);
             return SAI_STATUS_FAILURE;
         }
@@ -177,7 +186,6 @@ sai_status_t SwitchVpp::createMirrorSession(
         info.is_erspan = true;
         info.gre_protocol = gre_protocol;
         info.ttl = session_ttl;
-        info.gre_instance = gre_instance;
     } else {
         SWSS_LOG_ERROR("Unsupported mirror session type %d", mirror_type);
         return SAI_STATUS_FAILURE;
@@ -186,18 +194,9 @@ sai_status_t SwitchVpp::createMirrorSession(
     sai_status_t create_status = create_internal(SAI_OBJECT_TYPE_MIRROR_SESSION, sid, switch_id, attr_count, attr_list);
     if(create_status != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("Failed to create mirror session %s in SAI DB, status=%d", sid.c_str(), create_status);
-        // Tunnel-scoped locals are out of scope here, so rebuild the delete key
-        // from info exactly as removeMirrorSession does.
         if(info.is_erspan) {
             vpp_sonic_ext_mirror_encap_fixup_enable_disable(info.sw_if_index, 0, 0, false);
-            vpp_gre_tunnel_t tunnel{};
-            tunnel.instance = info.gre_instance;
-            tunnel.type = 1;
-            tunnel.src = info.src_ip;
-            tunnel.dst = info.dst_ip;
-            tunnel.outer_table_id = info.outer_fib_id;
-            uint32_t sw_if_index = 0;
-            int ret = vpp_gre_tunnel_add_del(&tunnel, false, &sw_if_index);
+            int ret = removeGreMirrorTunnel(info);
             if(ret != 0) {
                 SWSS_LOG_ERROR("Failed to remove GRE tunnel for ERSPAN session after SAI DB create failure, ret=%d", ret);
             }
@@ -238,16 +237,7 @@ sai_status_t SwitchVpp::removeMirrorSession(
         // Disable the fixup feature while the tunnel sw_if_index is still valid.
         vpp_sonic_ext_mirror_encap_fixup_enable_disable(info.sw_if_index, 0, 0, false);
 
-        vpp_gre_tunnel_t tunnel{};
-        // VPP keys the delete on (src, dst, fib, type), not instance.
-        tunnel.instance = info.gre_instance;
-        tunnel.type = 1;
-        tunnel.src = info.src_ip;
-        tunnel.dst = info.dst_ip;
-        tunnel.outer_table_id = info.outer_fib_id;
-
-        uint32_t sw_if_index = 0;
-        int ret = vpp_gre_tunnel_add_del(&tunnel, false, &sw_if_index);
+        int ret = removeGreMirrorTunnel(info);
         if(ret != 0) {
             // Not usefully retryable, so drop the entry anyway rather than leak.
             SWSS_LOG_ERROR("Failed to remove GRE tunnel for ERSPAN session, ret=%d; dropping entry anyway", ret);
@@ -304,18 +294,8 @@ sai_status_t SwitchVpp::createErspanOuterFib(
 {
     SWSS_LOG_ENTER();
 
-    uint32_t fib_id = VPP_MIRROR_OUTER_FIB_NONE;
-
-    for (uint32_t i = 0; i < (uint32_t)m_maxMirrorSessions; i++)
-    {
-        if (m_mirror_outer_fibs.insert(VPP_MIRROR_OUTER_FIB_BASE + i).second)
-        {
-            fib_id = VPP_MIRROR_OUTER_FIB_BASE + i;
-            break;
-        }
-    }
-
-    if (fib_id == VPP_MIRROR_OUTER_FIB_NONE)
+    int fib_id = m_mirror_outer_fib_pool.alloc();
+    if (fib_id < 0)
     {
         SWSS_LOG_ERROR("No free ERSPAN outer FIB id left");
         return SAI_STATUS_INSUFFICIENT_RESOURCES;
@@ -323,15 +303,15 @@ sai_status_t SwitchVpp::createErspanOuterFib(
 
     init_vpp_client();
 
-    int ret = ip_vrf_add(fib_id, "", info.dst_ip.sa_family == AF_INET6);
+    int ret = ip_vrf_add((uint32_t)fib_id, "", info.dst_ip.sa_family == AF_INET6);
     if (ret != 0)
     {
-        SWSS_LOG_ERROR("Failed to create ERSPAN outer FIB %u, ret=%d", fib_id, ret);
-        m_mirror_outer_fibs.erase(fib_id);
+        SWSS_LOG_ERROR("Failed to create ERSPAN outer FIB %d, ret=%d", fib_id, ret);
+        m_mirror_outer_fib_pool.free((uint32_t)fib_id);
         return SAI_STATUS_FAILURE;
     }
 
-    info.outer_fib_id = fib_id;
+    info.outer_fib_id = (uint32_t)fib_id;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -356,9 +336,35 @@ void SwitchVpp::destroyErspanOuterFib(
         SWSS_LOG_ERROR("Failed to delete ERSPAN outer FIB %u, ret=%d", info.outer_fib_id, ret);
     }
 
-    m_mirror_outer_fibs.erase(info.outer_fib_id);
+    m_mirror_outer_fib_pool.free(info.outer_fib_id);
     info.outer_fib_id = VPP_MIRROR_OUTER_FIB_NONE;
     info.monitor_pinned = false;
+}
+
+int SwitchVpp::removeGreMirrorTunnel(
+        _In_ MirrorSessionInfo &info)
+{
+    SWSS_LOG_ENTER();
+
+    vpp_gre_tunnel_t tunnel{};
+    // VPP keys the delete on (src, dst, fib, type), not instance.
+    tunnel.instance = info.gre_instance;
+    tunnel.type = 1;
+    tunnel.src = info.src_ip;
+    tunnel.dst = info.dst_ip;
+    tunnel.outer_table_id = info.outer_fib_id;
+
+    uint32_t sw_if_index = 0;
+    int ret = vpp_gre_tunnel_add_del(&tunnel, false, &sw_if_index);
+
+    // Withhold the instance if VPP still owns greN: handing the same name out
+    // again before the teardown lands corrupts its interface-name hash.
+    if (ret == 0)
+    {
+        m_gre_instance_pool.free(info.gre_instance);
+    }
+
+    return ret;
 }
 
 sai_status_t SwitchVpp::programErspanOuterRoute(

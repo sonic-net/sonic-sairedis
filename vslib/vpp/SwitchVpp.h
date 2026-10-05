@@ -1526,10 +1526,18 @@ namespace saivs
         private: // VPP mirror
             uint32_t m_mirror_session_count = 0;
 
-            // Names the greN interface, so it must never be reused: re-adding greN
-            // while VPP still tears down the old one corrupts its clib heap. Kept
-            // monotonic across the switch lifetime.
-            uint32_t m_next_gre_instance = 0;
+            // Names the greN interface. An instance only goes back to the pool once
+            // VPP has confirmed the tunnel is gone: re-adding greN while VPP still
+            // tears down the old one corrupts its interface-name hash.
+            static const uint32_t gre_instance_base = 0;
+
+            BitResourcePool m_gre_instance_pool = BitResourcePool((uint16_t)m_maxMirrorSessions, gre_instance_base);
+
+            // Reserved VPP FIB ids for the ERSPAN outer lookup, kept clear of the Linux
+            // routing table ids SONiC derives its VRF ids from so they cannot alias.
+            static const uint32_t mirror_outer_fib_base = 0x7f000000;
+
+            BitResourcePool m_mirror_outer_fib_pool = BitResourcePool((uint16_t)m_maxMirrorSessions, mirror_outer_fib_base);
 
             struct MirrorSessionInfo {
                 uint32_t sw_if_index;
@@ -1556,9 +1564,6 @@ namespace saivs
 
             std::map<sai_object_id_t, MirrorSessionInfo> m_mirror_sessions;
 
-            // Outer FIB ids currently handed out to ERSPAN sessions.
-            std::set<uint32_t> m_mirror_outer_fibs;
-
             // port oid -> (neighbor ip -> neighbor mac), maintained from SAI neighbor
             // create/remove; resolves the monitor port's nexthop from DST_MAC.
             std::map<sai_object_id_t, std::map<std::string, std::string>> m_port_neighbor_mac;
@@ -1583,6 +1588,10 @@ namespace saivs
 
             sai_status_t removeMirrorSession(
                     _In_ sai_object_id_t object_id);
+
+            // Deletes the session's GRE tunnel, releasing its instance only on success.
+            int removeGreMirrorTunnel(
+                    _In_ MirrorSessionInfo &info);
 
             sai_status_t setMirrorSession(
                     _In_ sai_object_id_t object_id,
