@@ -358,8 +358,6 @@ namespace sairedis
              * then all non list values will be transferred, but LIST objects
              * will only transfer COUNT item of list, without touching user
              * list at all.
-             * A failed wait without response fields reports the wait status
-             * for every object without transferring attributes.
              */
             sai_status_t waitForBulkGetResponse(
                     _In_ sai_object_type_t objectType,
