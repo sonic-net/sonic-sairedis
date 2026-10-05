@@ -62,6 +62,7 @@ libSaiVS_a_SOURCES = \
 					  SwitchContainer.cpp \
 					  Switch.cpp \
 					  SwitchMLNX2700.cpp \
+					  SwitchMicas48CON2SFP.cpp \
 					  SwitchNokiaVS.cpp \
 					  SwitchNvdaMBF2H536C.cpp \
 					  SwitchStateBase.cpp \
@@ -82,6 +83,8 @@ libSaiVS_a_SOURCES +=\
 					  vpp/VppInterfaceRegistry.cpp \
 					  vpp/SwitchVpp.cpp \
 					  vpp/SwitchVppAcl.cpp \
+					  vpp/SwitchVppPolicer.cpp \
+					  vpp/SwitchVppHostifTrap.cpp \
 					  vpp/SwitchVppNexthop.cpp \
 					  vpp/SwitchVppUtils.cpp \
 					  vpp/SwitchVppFdb.cpp \

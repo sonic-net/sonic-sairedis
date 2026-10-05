@@ -1,4 +1,5 @@
 #include "Syncd.h"
+#include "DisabledRedisClient.h"
 #include "RedisClient.h"
 #include "ZmqRedisClient.h"
 #include "sai_serialize.h"
@@ -405,6 +406,12 @@ public:
     MOCK_METHOD(void, eraseRidAndVid, (sai_object_id_t rid, sai_object_id_t vid));
 };
 
+class MockDisabledRedisClient : public DisabledRedisClient
+{
+public:
+    MOCK_METHOD(sai_object_id_t, getRidForVid, (sai_object_id_t vid), (override));
+};
+
 class SyncdTest : public ::testing::Test
 {
 protected:
@@ -427,6 +434,71 @@ protected:
     std::shared_ptr<CommandLineOptions> m_opt;
     std::shared_ptr<Syncd> m_syncd;
 };
+
+TEST_F(SyncdTest, FlexCounterRemoveDoesNotRequireVidToRidTranslation)
+{
+    auto client = std::make_shared<MockDisabledRedisClient>();
+    EXPECT_CALL(*client, getRidForVid(testing::_)).Times(0);
+
+    m_syncd->m_translator = std::make_shared<VirtualOidTranslator>(
+            client,
+            m_syncd->m_virtualObjectIdManager,
+            m_sai);
+
+    EXPECT_EQ(m_syncd->processFlexCounterEvent(
+                "PORT_PHY_SERDES_ATTR:oid:0x57000000000001",
+                DEL_COMMAND,
+                {},
+                false),
+            SAI_STATUS_SUCCESS);
+}
+
+TEST_F(SyncdTest, FlexCounterRemoveFromAsicChannelDoesNotRequireVidToRidTranslation)
+{
+    auto client = std::make_shared<MockDisabledRedisClient>();
+    EXPECT_CALL(*client, getRidForVid(testing::_)).Times(0);
+
+    m_syncd->m_translator = std::make_shared<VirtualOidTranslator>(
+            client,
+            m_syncd->m_virtualObjectIdManager,
+            m_sai);
+
+    auto channel = std::make_shared<MockSelectableChannel>();
+    m_syncd->m_selectableChannel = channel;
+    m_syncd->m_enableSyncMode = true;
+
+    EXPECT_CALL(*channel, set(
+                sai_serialize_status(SAI_STATUS_SUCCESS),
+                testing::IsEmpty(),
+                REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .Times(1);
+
+    const std::string key =
+        "PORT_PHY_SERDES_ATTR:oid:0x57000000000001";
+    const std::vector<swss::FieldValueTuple> values = {
+        {"TEST_FIELD", "TEST_VALUE"}
+    };
+
+    m_syncd->m_flexCounterTable->set(key, values);
+
+    std::string value;
+    ASSERT_TRUE(m_syncd->m_flexCounterTable->hget(
+                key,
+                "TEST_FIELD",
+                value));
+
+    EXPECT_EQ(m_syncd->processFlexCounterEvent(
+                key,
+                DEL_COMMAND,
+                {},
+                true),
+            SAI_STATUS_SUCCESS);
+
+    EXPECT_FALSE(m_syncd->m_flexCounterTable->hget(
+                key,
+                "TEST_FIELD",
+                value));
+}
 
 TEST_F(SyncdTest, processNotifySyncd)
 {

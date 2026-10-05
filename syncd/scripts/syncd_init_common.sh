@@ -771,6 +771,8 @@ config_syncd()
         config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "nokia-vs" ]; then
         config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "micas-vs" ]; then
+        config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "vpp" ]; then
         config_syncd_vpp
     elif [ "$SONIC_ASIC_TYPE" == "marvell-teralynx" ]; then
@@ -787,6 +789,8 @@ config_syncd()
 	config_syncd_pensando
     elif [ "$SONIC_ASIC_TYPE" == "clounix" ]; then
         config_syncd_clounix
+    elif [ "$SONIC_ASIC_TYPE" == "otn-kvm" ]; then
+        config_syncd_vs
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1

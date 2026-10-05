@@ -1168,6 +1168,11 @@ sai_status_t SwitchVpp::getStatsExt(
         }
     }
 
+    if (object_type == SAI_OBJECT_TYPE_POLICER)
+    {
+        return getPolicerStats(object_id, number_of_counters, counter_ids, counters);
+    }
+
     return SwitchStateBase::getStatsExt(
             object_type,
             object_id,
@@ -1333,6 +1338,27 @@ sai_status_t SwitchVpp::create(
         return createHostif(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_POLICER)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createPolicer(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createHostifTrapGroup(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createHostifTrap(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
     {
         sai_object_id_t object_id;
@@ -1438,13 +1464,6 @@ sai_status_t SwitchVpp::create(
         return samplePacketCreate(object_id, switch_id, attr_count, attr_list);
     }
 
-    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
-    {
-        sai_object_id_t object_id;
-        sai_deserialize_object_id(serializedObjectId, object_id);
-        return sflowHostifTrapSamplePacketCreate(object_id, switch_id, attr_count, attr_list);
-    }
-
     if(object_type == SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY)
     {
         sai_object_id_t object_id;
@@ -1488,12 +1507,7 @@ sai_status_t SwitchVpp::create(
 
     if (object_type == SAI_OBJECT_TYPE_FDB_ENTRY)
     {
-        sai_status_t status = FdbEntryadd(serializedObjectId, switch_id, attr_count, attr_list);
-        if (status == SAI_STATUS_SUCCESS)
-        {
-            m_crmTracker.onFdbCreated();
-        }
-        return status;
+        return FdbEntryadd(serializedObjectId, switch_id, attr_count, attr_list);
     }
 
     if (object_type == SAI_OBJECT_TYPE_BFD_SESSION)
@@ -1774,6 +1788,21 @@ sai_status_t SwitchVpp::remove(
         return removeHostif(objectId);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_POLICER)
+    {
+        return removePolicer(serializedObjectId);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
+    {
+        return removeHostifTrapGroup(serializedObjectId);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        return removeHostifTrap(serializedObjectId);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
     {
         sai_object_id_t objectId;
@@ -1884,11 +1913,6 @@ sai_status_t SwitchVpp::remove(
         return samplePacketRemove(serializedObjectId);
     }
 
-    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
-    {
-        return sflowHostifTrapSamplePacketRemove(serializedObjectId);
-    }
-
     if(object_type == SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY)
     {
         return sflowHostifTableEntryRemove(serializedObjectId);
@@ -1953,12 +1977,7 @@ sai_status_t SwitchVpp::remove(
     }
     else if (object_type == SAI_OBJECT_TYPE_FDB_ENTRY)
     {
-        sai_status_t status = FdbEntrydel(serializedObjectId);
-        if (status == SAI_STATUS_SUCCESS)
-        {
-            m_crmTracker.onFdbRemoved();
-        }
-        return status;
+        return FdbEntrydel(serializedObjectId);
     }
     else if (object_type == SAI_OBJECT_TYPE_BFD_SESSION)
     {
@@ -2168,6 +2187,11 @@ sai_status_t SwitchVpp::set(
         return updateIpRoute(serializedObjectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_NEIGHBOR_ENTRY)
+    {
+        return setIpNbr(serializedObjectId, attr);
+    }
+
     if (objectType == SAI_OBJECT_TYPE_SWITCH)
     {
         switch(attr->id)
@@ -2269,6 +2293,21 @@ sai_status_t SwitchVpp::set(
         }
 
         // Fall through to set_internal() below so the attribute is also cached
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_POLICER)
+    {
+        return setPolicer(serializedObjectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
+    {
+        return setHostifTrapGroup(serializedObjectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        return setHostifTrap(serializedObjectId, attr);
     }
 
     return set_internal(objectType, serializedObjectId, attr);
@@ -2938,6 +2977,19 @@ sai_status_t SwitchVpp::refresh_read_only(
     if (meta->objecttype == SAI_OBJECT_TYPE_SWITCH &&
         m_crmTracker.handles((sai_switch_attr_t)meta->attrid))
     {
+        if (meta->attrid == SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY)
+        {
+            // FDB entries appear and disappear outside create()/remove(): MACs
+            // learned and aged by VPP are written straight into the object
+            // store, and a flush erases them there as well. Counting what is
+            // actually held is therefore the only way to stay in step with
+            // orchagent's crm_stats_fdb_entry_used, which also counts learned
+            // MACs and drops them on flush.
+            auto it = m_objectHash.find(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+            m_crmTracker.syncFdbCount(it == m_objectHash.end() ? 0 : (uint32_t)it->second.size());
+        }
+
         sai_attribute_t attr;
         attr.id = meta->attrid;
         attr.value.u32 = m_crmTracker.getAvailable((sai_switch_attr_t)meta->attrid);
