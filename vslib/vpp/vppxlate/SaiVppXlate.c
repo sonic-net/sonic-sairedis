@@ -1363,6 +1363,13 @@ vl_api_bridge_flags_reply_t_handler (vl_api_bridge_flags_reply_t *msg)
 }
 
 static void
+vl_api_l2_flags_reply_t_handler (vl_api_l2_flags_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_l2fib_add_del_reply_t_handler (vl_api_l2fib_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1935,6 +1942,7 @@ static void vpp_base_vpe_init(void)
     _(L2_MSG_ID(BVI_CREATE_REPLY), bvi_create_reply) \
     _(L2_MSG_ID(BVI_DELETE_REPLY), bvi_delete_reply) \
     _(L2_MSG_ID(BRIDGE_FLAGS_REPLY), bridge_flags_reply) \
+    _(L2_MSG_ID(L2_FLAGS_REPLY), l2_flags_reply) \
     _(BOND_MSG_ID(BOND_CREATE_REPLY), bond_create_reply) \
     _(BOND_MSG_ID(BOND_DELETE_REPLY), bond_delete_reply) \
     _(BOND_MSG_ID(BOND_ADD_MEMBER_REPLY), bond_add_member_reply) \
@@ -4651,6 +4659,41 @@ int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id
     return ret;
 }
 
+int set_l2_interface_flags_by_index(uint32_t sw_if_index,
+                                     vpp_bd_flags_t flags, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2_flags_t *mp;
+    const uint32_t supported = VPP_BD_FLAG_LEARN | VPP_BD_FLAG_FWD |
+        VPP_BD_FLAG_FLOOD | VPP_BD_FLAG_UU_FLOOD | VPP_BD_FLAG_ARP_TERM;
+    int ret;
+
+    if (sw_if_index == (uint32_t)~0 || ((uint32_t)flags & ~supported)) {
+        SAIVPP_ERROR("Invalid L2 interface %u or unsupported flags %#x",
+                     sw_if_index, (uint32_t)flags);
+        return -EINVAL;
+    }
+    if (flags == VPP_BD_FLAG_NONE) {
+        return 0;
+    }
+
+    VPP_LOCK();
+    __plugin_msg_base = l2_msg_id_base;
+    M (L2_FLAGS, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->is_set = enable;
+    mp->feature_bitmap = htonl((uint32_t)flags);
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u flags %#x enable %d",
+                            __func__, ret, sw_if_index, (uint32_t)flags, enable); }
+    else { SAIVPP_INFO("%s sw_if_index %u flags %#x enable %d", __func__,
+                       sw_if_index, (uint32_t)flags, enable); }
+    VPP_UNLOCK();
+    return ret;
+}
+
 int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_mode, uint32_t port_type)
 {
     vat_main_t *vam = &vat_main;
@@ -5382,7 +5425,7 @@ static int vpp_lcp_ethertype_enable(u16 ethertype)
 }
 
 /* ========================================================================
- * VPP Classify API wrappers for L2 punt via l2-input-classify
+ * VPP Classify API wrappers for L2 input and output
  * ======================================================================== */
 
 int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
@@ -5515,20 +5558,18 @@ int vpp_classify_session_del(uint32_t table_index,
     return ret;
 }
 
-int vpp_classify_set_interface_l2_tables(const char *hwif_name,
-                                         uint32_t ip4_table_index,
-                                         uint32_t ip6_table_index,
-                                         uint32_t other_table_index,
-                                         bool is_input)
+int vpp_classify_set_interface_l2_tables_by_index(uint32_t sw_if_index,
+                                                  uint32_t ip4_table_index,
+                                                  uint32_t ip6_table_index,
+                                                  uint32_t other_table_index,
+                                                  bool is_input)
 {
     vat_main_t *vam = &vat_main;
     vl_api_classify_set_interface_l2_tables_t *mp;
     int ret;
-    u32 sw_if_index;
 
-    sw_if_index = get_swif_idx(vam, hwif_name);
     if (sw_if_index == (u32) -1) {
-        SAIVPP_ERROR("%s: hwif %s not found", __func__, hwif_name ? hwif_name : "<null>");
+        SAIVPP_ERROR("%s: invalid sw_if_index", __func__);
         return -1;
     }
 
@@ -5546,12 +5587,33 @@ int vpp_classify_set_interface_l2_tables(const char *hwif_name,
     S (mp);
     WR (ret);
 
-    if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s", __func__, ret, hwif_name); }
-    else { SAIVPP_INFO("%s hwif %s ip4=%u ip6=%u other=%u", __func__,
-                       hwif_name, ip4_table_index, ip6_table_index, other_table_index); }
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u", __func__, ret, sw_if_index); }
+    else { SAIVPP_INFO("%s sw_if_index %u ip4=%u ip6=%u other=%u", __func__,
+                       sw_if_index, ip4_table_index, ip6_table_index, other_table_index); }
 
     VPP_UNLOCK();
     return ret;
+}
+
+int vpp_classify_set_interface_l2_tables(const char *hwif_name,
+                                         uint32_t ip4_table_index,
+                                         uint32_t ip6_table_index,
+                                         uint32_t other_table_index,
+                                         bool is_input)
+{
+    vat_main_t *vam = &vat_main;
+    u32 sw_if_index = get_swif_idx(vam, hwif_name);
+
+    if (sw_if_index == (u32) -1) {
+        SAIVPP_ERROR("%s: hwif %s not found", __func__, hwif_name ? hwif_name : "<null>");
+        return -1;
+    }
+
+    return vpp_classify_set_interface_l2_tables_by_index(sw_if_index,
+                                                        ip4_table_index,
+                                                        ip6_table_index,
+                                                        other_table_index,
+                                                        is_input);
 }
 
 int vpp_add_node_next(const char *node_name, const char *next_name,

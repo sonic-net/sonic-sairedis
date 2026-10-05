@@ -1502,23 +1502,26 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
         return 0;
     }
 
-    std::string vrf_name = "vrf_" + vrf_id;
+    std::string vrf_name = "vrf_" + std::to_string(vrf_id);
 
-    if (!vrf_id || ip_vrf_add(vrf_id, vrf_name.c_str(), false) == 0) {
-        SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
-        vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
-
-        uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
-            VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
-            VPP_IP_API_FLOW_HASH_PROTO | VPP_IP_API_FLOW_HASH_PEEK_INNER;
-
-        int ret = vpp_ip_flow_hash_set(vrf_id, hash_mask, AF_INET);
-        SWSS_LOG_NOTICE("ip flow hash set for VRF %s with vrf_id %u in VS, status %d",
-                        sai_serialize_object_id(objectId).c_str(), vrf_id, ret);
-        ret = vpp_ip_flow_hash_set(vrf_id, hash_mask, AF_INET6);
-        SWSS_LOG_NOTICE("ip6 flow hash set for VRF %s with vrf_id %u in VS, status %d",
-                        sai_serialize_object_id(objectId).c_str(), vrf_id, ret);
+    if (vrf_id && ip_vrf_add(vrf_id, vrf_name.c_str(), false) != 0) {
+        SWSS_LOG_ERROR("Failed to create IPv4 VRF table %u for %s",
+                       vrf_id, sai_serialize_object_id(objectId).c_str());
+        return -1;
     }
+    SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
+    vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
+
+    uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
+        VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
+        VPP_IP_API_FLOW_HASH_PROTO | VPP_IP_API_FLOW_HASH_PEEK_INNER;
+
+    int ret = vpp_ip_flow_hash_set(vrf_id, hash_mask, AF_INET);
+    SWSS_LOG_NOTICE("ip flow hash set for VRF %s with vrf_id %u in VS, status %d",
+                    sai_serialize_object_id(objectId).c_str(), vrf_id, ret);
+    ret = vpp_ip_flow_hash_set(vrf_id, hash_mask, AF_INET6);
+    SWSS_LOG_NOTICE("ip6 flow hash set for VRF %s with vrf_id %u in VS, status %d",
+                    sai_serialize_object_id(objectId).c_str(), vrf_id, ret);
 
     return 0;
 }
@@ -2122,7 +2125,13 @@ sai_status_t SwitchVpp::createRouterif(
         tattr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
         if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &tattr) == SAI_STATUS_ITEM_NOT_FOUND)
         {
-            vpp_create_router_interface(attr_count, attr_list);
+            sai_status_t status = vpp_create_router_interface(attr_count, attr_list);
+            auto attr_type = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_TYPE,
+                                                         attr_count, attr_list);
+            if (attr_type != NULL && attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+            {
+                CHECK_STATUS(status);
+            }
         } else {
             vpp_update_router_interface(object_id, attr_count, attr_list);
         }
