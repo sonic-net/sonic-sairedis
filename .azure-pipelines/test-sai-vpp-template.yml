@@ -89,14 +89,15 @@ jobs:
           --baseline "$harness_dir/ci-pass-tests.txt" \
           --expected "$harness_dir/ci-matrix-tests.txt" \
           --matrix-rc "$matrix_rc" \
-          --report "$results_dir/baseline-report.txt"
+          --report "$results_dir/baseline-report.txt" \
+          --junit-out "$results_dir/junit/vpp-sai-ptf.xml"
     displayName: Evaluate VPP SAI stable baseline
 
   - task: PublishTestResults@2
     inputs:
       testResultsFormat: JUnit
-      searchFolder: $(Build.ArtifactStagingDirectory)/sai-vpp-results/xml
-      testResultsFiles: 'TEST-*.xml'
+      searchFolder: $(Build.ArtifactStagingDirectory)/sai-vpp-results/junit
+      testResultsFiles: 'vpp-sai-ptf.xml'
       testRunTitle: VPP SAI PTF
       failTaskOnFailedTests: false
       failTaskOnMissingResultsFile: true

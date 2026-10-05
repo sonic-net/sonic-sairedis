@@ -55,6 +55,22 @@ class EvaluateCiBaselineTest(unittest.TestCase):
         self.assertEqual([], regressions)
         self.assertIn("New pass candidates: 1", report)
         self.assertIn("Known non-baseline non-passes: 1", report)
+        self.assertIn("Stable baseline passes:\n  module.StableTest\n", report)
+
+    def test_merged_junit_names_tests_by_selector(self):
+        self.write_result("module.StableTest")
+        self.write_result("module.KnownFailure", "FAIL")
+        junit = os.path.join(self.temp_dir.name, "junit", "merged.xml")
+
+        BASELINE.write_junit(self.xml_dir, junit)
+
+        root = BASELINE.ET.parse(junit).getroot()
+        self.assertEqual("2", root.get("tests"))
+        self.assertEqual("1", root.get("failures"))
+        names = {tc.get("name"): tc for tc in root.iter("testcase")}
+        self.assertEqual({"module.StableTest", "module.KnownFailure"}, set(names))
+        self.assertIsNotNone(names["module.KnownFailure"].find("failure"))
+        self.assertIsNone(names["module.StableTest"].find("failure"))
 
     def test_regressed_and_missing_baseline_tests_fail(self):
         self.write_result("module.RegressedTest", "ERROR")

@@ -6,11 +6,13 @@ import glob
 import os
 import sys
 from collections import defaultdict
+from xml.sax.saxutils import escape, quoteattr
 
 import defusedxml.ElementTree as ET
 
 
 STATUS_ORDER = ("ERROR", "FAIL", "SKIP", "PASS")
+RESULT_TAGS = {"ERROR": "error", "FAIL": "failure", "SKIP": "skipped"}
 
 
 def read_baseline(path):
@@ -41,11 +43,20 @@ def testcase_status(testcase):
 
 
 def collect_results(xml_dir):
+    statuses = defaultdict(list)
+    for selector, testcase in iter_testcases(xml_dir):
+        statuses[selector].append(testcase_status(testcase))
+
+    if not statuses:
+        raise ValueError(f"no testcases found in {xml_dir}")
+    return statuses
+
+
+def iter_testcases(xml_dir):
     xml_paths = sorted(glob.glob(os.path.join(xml_dir, "TEST-*.xml")))
     if not xml_paths:
         raise ValueError(f"no TEST-*.xml files found in {xml_dir}")
 
-    statuses = defaultdict(list)
     for xml_path in xml_paths:
         try:
             root = ET.parse(xml_path).getroot()
@@ -62,11 +73,37 @@ def collect_results(xml_dir):
                     selector = f"{module}.{name}" if module and name else ""
                 if not selector:
                     raise ValueError(f"testcase without selector in {xml_path}")
-                statuses[selector].append(testcase_status(testcase))
+                yield selector, testcase
 
-    if not statuses:
-        raise ValueError(f"no testcases found in {xml_dir}")
-    return statuses
+
+def write_junit(xml_dir, path, suite_name="VPP SAI PTF"):
+    """Write one JUnit file whose testcases are named module.Class (PTF names them all runTest)."""
+    cases = []
+    counts = defaultdict(int)
+    for selector, testcase in iter_testcases(xml_dir):
+        status = testcase_status(testcase)
+        counts[status] += 1
+        body = ""
+        if status in RESULT_TAGS:
+            tag = RESULT_TAGS[status]
+            result = testcase.find(tag)
+            message = quoteattr(result.get("message") or "")
+            body = f"<{tag} message={message}>{escape(result.text or '')}</{tag}>"
+        time = quoteattr(testcase.get("time") or "0")
+        cases.append(
+            f"  <testcase classname={quoteattr(selector)} name={quoteattr(selector)} "
+            f"time={time}>{body}</testcase>"
+        )
+
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as junit_file:
+        junit_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        junit_file.write(
+            f"<testsuite name={quoteattr(suite_name)} tests=\"{len(cases)}\" "
+            f"failures=\"{counts['FAIL']}\" errors=\"{counts['ERROR']}\" "
+            f"skipped=\"{counts['SKIP']}\">\n"
+        )
+        junit_file.write("\n".join(cases) + "\n</testsuite>\n")
 
 
 def aggregate_status(statuses):
@@ -91,13 +128,15 @@ def format_report(baseline, results, matrix_rc):
                        if status == "PASS" and selector not in baseline)
     nonpasses = sorted((selector, status) for selector, status in observed.items()
                        if status != "PASS" and selector not in baseline)
+    regressed = {selector for selector, _ in regressions}
+    baseline_passes = sorted(baseline - regressed)
 
     lines = [
         "SAIVPP CI baseline evaluation",
         f"Matrix exit code: {matrix_rc}",
         f"Baseline selectors: {len(baseline)}",
         f"Observed selectors: {len(observed)}",
-        f"Stable baseline passes: {len(baseline) - len(regressions)}",
+        f"Stable baseline passes: {len(baseline_passes)}",
         f"Regressions: {len(regressions)}",
         f"New pass candidates: {len(candidates)}",
         f"Known non-baseline non-passes: {len(nonpasses)}",
@@ -105,6 +144,9 @@ def format_report(baseline, results, matrix_rc):
     if regressions:
         lines.append("Regressions:")
         lines.extend(f"  {selector}: {status}" for selector, status in regressions)
+    if baseline_passes:
+        lines.append("Stable baseline passes:")
+        lines.extend(f"  {selector}" for selector in baseline_passes)
     if candidates:
         lines.append("New pass candidates:")
         lines.extend(f"  {selector}" for selector in candidates)
@@ -138,6 +180,7 @@ def parse_args(argv):
     parser.add_argument("--expected", required=True)
     parser.add_argument("--matrix-rc", type=int, default=0)
     parser.add_argument("--report")
+    parser.add_argument("--junit-out", help="write a merged JUnit file with module.Class test names")
     return parser.parse_args(argv)
 
 
@@ -177,6 +220,11 @@ def main(argv=None):
         os.makedirs(report_dir, exist_ok=True)
         with open(args.report, "w", encoding="utf-8") as report_file:
             report_file.write(report)
+    if args.junit_out:
+        try:
+            write_junit(args.xml_dir, args.junit_out)
+        except (OSError, ValueError) as exc:
+            print(f"warning: cannot write {args.junit_out}: {exc}", file=sys.stderr)
     print(report, end="")
     return 1 if regressions else 0
 
