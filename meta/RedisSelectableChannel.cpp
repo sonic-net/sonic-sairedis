@@ -25,8 +25,10 @@ RedisSelectableChannel::RedisSelectableChannel(
     // ConsumerTable (JSON-only consumer_table_pops.lua) for ASIC_STATE.
     // MsgPackConsumerTable inherits from ConsumerTable, so m_asicState
     // (shared_ptr<ConsumerTable>) holds either type.
+    // LCOV_EXCL_START
     const char* msgpackEnv = std::getenv("ASIC_DB_MSGPACK_ENABLED");
     bool useMsgpack = msgpackEnv && std::string(msgpackEnv) == "true";
+    // LCOV_EXCL_STOP
 
 #ifdef HAVE_MSGPACK_CONSUMER_TABLE
     if (useMsgpack)
@@ -38,6 +40,7 @@ RedisSelectableChannel::RedisSelectableChannel(
     {
         m_asicState = std::make_shared<swss::ConsumerTable>(m_dbAsic.get(), asicStateTable);
     }
+// LCOV_EXCL_START
 #else
     // Fallback: if HAVE_MSGPACK_CONSUMER_TABLE is not defined, always use ConsumerTable
     // (MsgPackConsumerTable requires sonic-swss-common with msgpack support)
@@ -47,6 +50,7 @@ RedisSelectableChannel::RedisSelectableChannel(
     }
     m_asicState = std::make_shared<swss::ConsumerTable>(m_dbAsic.get(), asicStateTable);
 #endif
+// LCOV_EXCL_STOP
 
     m_asicState->setModifyRedis(m_modifyRedis);
 

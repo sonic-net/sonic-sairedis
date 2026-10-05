@@ -30,8 +30,10 @@ RedisChannel::RedisChannel(
     // (msgpack encoding) instead of ProducerTable (JSON) for ASIC_STATE.
     // The env var is exported by orchagent.sh from CONFIG_DB
     // DEVICE_METADATA|localhost asic_db_msgpack_enabled. Default: JSON.
+    // LCOV_EXCL_START
     const char* msgpackEnv = std::getenv("ASIC_DB_MSGPACK_ENABLED");
     bool useMsgpack = msgpackEnv && std::string(msgpackEnv) == "true";
+    // LCOV_EXCL_STOP
 
 #ifdef HAVE_MSGPACK_PRODUCER_TABLE
     if (useMsgpack)
@@ -43,6 +45,7 @@ RedisChannel::RedisChannel(
     {
         m_asicState = std::make_shared<swss::ProducerTable>(m_redisPipeline.get(), ASIC_STATE_TABLE, true);
     }
+// LCOV_EXCL_START
 #else
     // Fallback: if HAVE_MSGPACK_PRODUCER_TABLE is not defined, always use ProducerTable
     // (MsgPackProducerTable requires sonic-swss-common with msgpack support)
@@ -52,6 +55,7 @@ RedisChannel::RedisChannel(
     }
     m_asicState = std::make_shared<swss::ProducerTable>(m_redisPipeline.get(), ASIC_STATE_TABLE, true);
 #endif
+// LCOV_EXCL_STOP
 
     m_getConsumer           = std::make_shared<swss::ConsumerTable>(m_db.get(), REDIS_TABLE_GETRESPONSE);
 

@@ -53,7 +53,21 @@ TEST(CommandLineOptions, getCommandLineString)
     EXPECT_EQ(str, " EnableDiagShell=NO EnableTempView=NO DisableExitSleep=NO EnableUnittests=NO"
             " EnableConsistencyCheck=NO EnableSyncMode=NO RedisCommunicationMode=redis_async"
             " EnableSaiBulkSuport=NO StartType=cold ProfileMapFile= GlobalContext=0 ContextConfig= BreakConfig="
-            " WatchdogWarnTimeSpan=30000000 SupportingBulkCounters= EnableAttrVersionCheck=NO");
+            " WatchdogWarnTimeSpan=30000000 SupportingBulkCounters= EnableAttrVersionCheck=NO"
+            " EnableAsicDbMsgpack=NO");
+}
+
+TEST(CommandLineOptions, DefaultEnableAsicDbMsgpackIsFalse)
+{
+    CommandLineOptions o;
+    EXPECT_FALSE(o.m_enableAsicDbMsgpack);
+}
+
+TEST(CommandLineOptions, GetCommandLineStringContainsEnableAsicDbMsgpack)
+{
+    CommandLineOptions o;
+    std::string s = o.getCommandLineString();
+    EXPECT_NE(s.find("EnableAsicDbMsgpack"), std::string::npos);
 }
 
 TEST(CommandLineOptions, startTypeStringToStartType)
@@ -86,4 +100,18 @@ TEST(CommandLineOptionsParser, parseCommandLine)
     auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
     EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 1000);
     EXPECT_EQ(opt->m_supportingBulkCounterGroups, "WATERMARK");
+}
+
+TEST(CommandLineOptionsParser, ParseMsgpackFlag)
+{
+    char arg1[] = "syncd";
+    char arg2[] = "-P";
+    std::vector<char *> args = {arg1, arg2};
+
+    auto o = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+    EXPECT_TRUE(o->m_enableAsicDbMsgpack);
+
+    const char* env = getenv("ASIC_DB_MSGPACK_ENABLED");
+    EXPECT_NE(env, nullptr);
+    EXPECT_STREQ(env, "true");
 }
