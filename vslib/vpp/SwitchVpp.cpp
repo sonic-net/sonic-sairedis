@@ -1170,6 +1170,11 @@ sai_status_t SwitchVpp::getStatsExt(
         }
     }
 
+    if (object_type == SAI_OBJECT_TYPE_POLICER)
+    {
+        return getPolicerStats(object_id, number_of_counters, counter_ids, counters);
+    }
+
     return SwitchStateBase::getStatsExt(
             object_type,
             object_id,
@@ -1335,6 +1340,27 @@ sai_status_t SwitchVpp::create(
         return createHostif(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_POLICER)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createPolicer(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createHostifTrapGroup(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createHostifTrap(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
     {
         sai_object_id_t object_id;
@@ -1445,13 +1471,6 @@ sai_status_t SwitchVpp::create(
         sai_object_id_t object_id;
         sai_deserialize_object_id(serializedObjectId, object_id);
         return samplePacketCreate(object_id, switch_id, attr_count, attr_list);
-    }
-
-    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
-    {
-        sai_object_id_t object_id;
-        sai_deserialize_object_id(serializedObjectId, object_id);
-        return sflowHostifTrapSamplePacketCreate(object_id, switch_id, attr_count, attr_list);
     }
 
     if(object_type == SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY)
@@ -1778,6 +1797,21 @@ sai_status_t SwitchVpp::remove(
         return removeHostif(objectId);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_POLICER)
+    {
+        return removePolicer(serializedObjectId);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
+    {
+        return removeHostifTrapGroup(serializedObjectId);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        return removeHostifTrap(serializedObjectId);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
     {
         sai_object_id_t objectId;
@@ -1886,11 +1920,6 @@ sai_status_t SwitchVpp::remove(
     if (object_type == SAI_OBJECT_TYPE_SAMPLEPACKET)
     {
         return samplePacketRemove(serializedObjectId);
-    }
-
-    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
-    {
-        return sflowHostifTrapSamplePacketRemove(serializedObjectId);
     }
 
     if(object_type == SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY)
@@ -2172,6 +2201,11 @@ sai_status_t SwitchVpp::set(
         return updateIpRoute(serializedObjectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_NEIGHBOR_ENTRY)
+    {
+        return setIpNbr(serializedObjectId, attr);
+    }
+
     if (objectType == SAI_OBJECT_TYPE_SWITCH)
     {
         switch(attr->id)
@@ -2254,6 +2288,21 @@ sai_status_t SwitchVpp::set(
         }
 
         // Fall through to set_internal() below so the attribute is also cached
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_POLICER)
+    {
+        return setPolicer(serializedObjectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
+    {
+        return setHostifTrapGroup(serializedObjectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        return setHostifTrap(serializedObjectId, attr);
     }
 
     return set_internal(objectType, serializedObjectId, attr);
