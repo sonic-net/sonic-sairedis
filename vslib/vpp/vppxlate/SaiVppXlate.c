@@ -6795,6 +6795,8 @@ int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, u32 *sw_if_ind
     S (mp);
     WR (ret);
 
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
     *sw_if_index = vam->sw_if_index;
     SAIVPP_INFO("gre_add_del: is_add=%d type=%u instance=%u if_index=%d ret=%d", is_add, tunnel->type, tunnel->instance, vam->sw_if_index, ret);
 
