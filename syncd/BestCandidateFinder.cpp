@@ -1693,6 +1693,46 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
 
     const auto notProcessedObjects = m_currentView.getNotProcessedObjectsByObjectType(object_type);
 
+    if (object_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP)
+    {
+        auto match = findCurrentBestMatchForNextHopGroupUsingMemberIndex(temporaryObj);
+
+        if (match != nullptr)
+        {
+            return match;
+        }
+
+        std::vector<sai_object_compare_info_t> allCandidates;
+
+        for (const auto &obj: notProcessedObjects)
+        {
+            allCandidates.push_back({0, obj});
+        }
+
+        match = findCurrentBestMatchForNextHopGroup(temporaryObj, allCandidates);
+
+        if (match != nullptr)
+        {
+            return match;
+        }
+    }
+    else
+    {
+        auto match = findCurrentBestMatchUsingIdentityIndex(temporaryObj);
+
+        if (match != nullptr)
+        {
+            return match;
+        }
+    }
+
+    if (isSlowPathMatchType(object_type))
+    {
+        SWSS_LOG_WARN("APPLY_VIEW slow path for %s %s",
+                temporaryObj->m_str_object_type.c_str(),
+                temporaryObj->m_str_object_id.c_str());
+    }
+
     const auto attrs = temporaryObj->getAllAttributes();
 
     /*
@@ -1749,6 +1789,41 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
                         currentObj->m_str_object_id.c_str(),
                         attr.second->getStrAttrId().c_str(),
                         attr.second->getStrAttrValue().c_str());
+
+                if (object_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER &&
+                    attrId == SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID &&
+                    currentObj->hasAttr(attrId) &&
+                    temporaryObj->hasAttr(attrId))
+                {
+                    sai_object_id_t tmpVid = temporaryObj->getSaiAttr(attrId)->getOid();
+                    sai_object_id_t curVid = currentObj->getSaiAttr(attrId)->getOid();
+
+                    auto tmpIt = m_temporaryView.m_vidToRid.find(tmpVid);
+                    auto curIt = m_currentView.m_vidToRid.find(curVid);
+
+                    if (tmpIt != m_temporaryView.m_vidToRid.end() &&
+                        curIt != m_currentView.m_vidToRid.end())
+                    {
+                        if (tmpIt->second == curIt->second)
+                        {
+                            soci.equal_attributes++;
+
+                            SWSS_LOG_INFO("NHGM NEXT_HOP_ID equal by RID for %s %s",
+                                    temporaryObj->m_str_object_id.c_str(),
+                                    currentObj->m_str_object_id.c_str());
+
+                            continue;
+                        }
+
+                        has_different_create_only_attr = true;
+
+                        SWSS_LOG_INFO("NHGM NEXT_HOP_ID differs by RID for %s %s",
+                                temporaryObj->m_str_object_id.c_str(),
+                                currentObj->m_str_object_id.c_str());
+
+                        break;
+                    }
+                }
 
                 /*
                  * Function hasEqualAttribute returns true only when both
