@@ -57,6 +57,8 @@ protected:
 
     void setResponse(const std::vector<sai_status_t>& statuses)
     {
+        SWSS_LOG_ENTER();
+
         channel->values.clear();
         for (auto status : statuses)
         {
