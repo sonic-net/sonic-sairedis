@@ -255,6 +255,10 @@ namespace saivs
 
         protected:
 
+            sai_status_t check_create_internal(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::string &serializedObjectId) const;
+
             virtual sai_status_t create_internal(
                     _In_ sai_object_type_t object_type,
                     _In_ const std::string &serializedObjectId,

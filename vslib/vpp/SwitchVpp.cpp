@@ -1589,29 +1589,22 @@ sai_status_t SwitchVpp::create(
         }
 
         if (tunnel_type == SAI_TUNNEL_TYPE_VXLAN) {
-            // Publish first so duplicate/resource-limit failures cannot touch
-            // an existing term's data plane. Remove L2 resources on failure.
-            CHECK_STATUS(create_internal(
-                object_type, serializedObjectId, switch_id, attr_count, attr_list));
+            // Reject duplicates and resource limits before touching the data
+            // plane, then publish only after programming succeeds.
+            CHECK_STATUS(check_create_internal(object_type, serializedObjectId));
 
-            sai_status_t status = m_tunnel_mgr.create_l2_vxlan_tunnel_term(
-                serializedObjectId, attr_count, attr_list);
-            if (status == SAI_STATUS_SUCCESS) {
-                return status;
-            }
+            std::vector<uint32_t> created_vnis;
+            CHECK_STATUS(m_tunnel_mgr.create_l2_vxlan_tunnel_term(
+                serializedObjectId, attr_count, attr_list, created_vnis));
 
-            sai_status_t cleanup_status =
-                m_tunnel_mgr.remove_l2_vxlan_tunnel_term(
-                    serializedObjectId);
-            if (cleanup_status != SAI_STATUS_SUCCESS) {
-                return cleanup_status;
-            }
-            sai_status_t rollback_status =
-                remove_internal(object_type, serializedObjectId);
-            if (rollback_status != SAI_STATUS_SUCCESS) {
-                SWSS_LOG_ERROR("Failed to roll back VXLAN term %s after "
-                               "data-plane create failure: status=%d",
-                               serializedObjectId.c_str(), rollback_status);
+            sai_status_t status = create_internal(
+                object_type, serializedObjectId, switch_id, attr_count, attr_list);
+            if (status != SAI_STATUS_SUCCESS) {
+                sai_status_t rollback_status =
+                    m_tunnel_mgr.rollback_l2_vxlan_tunnels(created_vnis);
+                if (rollback_status != SAI_STATUS_SUCCESS) {
+                    return rollback_status;
+                }
             }
             return status;
         }
@@ -1623,16 +1616,13 @@ sai_status_t SwitchVpp::create(
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
 }
 
-sai_status_t SwitchVpp::create_internal(
+sai_status_t SwitchVpp::check_create_internal(
         _In_ sai_object_type_t object_type,
-        _In_ const std::string &serializedObjectId,
-        _In_ sai_object_id_t switch_id,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ const std::string &serializedObjectId) const
 {
     SWSS_LOG_ENTER();
 
-    auto &objectHash = m_objectHash.at(object_type);
+    const auto &objectHash = m_objectHash.at(object_type);
 
     if (m_switchConfig->m_resourceLimiter)
     {
@@ -1668,6 +1658,21 @@ sai_status_t SwitchVpp::create_internal(
         }
     }
 
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::create_internal(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &serializedObjectId,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    CHECK_STATUS(check_create_internal(object_type, serializedObjectId));
+
+    auto &objectHash = m_objectHash.at(object_type);
     if (objectHash.find(serializedObjectId) == objectHash.end())
     {
         /*

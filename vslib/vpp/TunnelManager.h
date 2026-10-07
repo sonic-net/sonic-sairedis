@@ -118,17 +118,20 @@ namespace saivs
          *
          * This method returns the tunnel interface associated with the given nexthop OID.
          * A VXLAN next hop without an explicit VNI uses the route VRF to select
-         * the tunnel map entry.
+         * the tunnel map entry. A missing profile is created from the current
+         * mapper when allow_create is true.
          *
          * @param nexthop_oid The nexthop OID.
          * @param vrf_oid The route's virtual router OID.
          * @param sw_if_index The output parameter to store the tunnel interface index.
+         * @param allow_create Allow a late VRF profile to be created on route addition.
          * @return The status of the operation.
          */
         sai_status_t get_tunnel_if(
             _In_  sai_object_id_t nexthop_oid,
             _In_  sai_object_id_t vrf_oid,
-            _Out_ u_int32_t &sw_if_index);
+            _Out_ u_int32_t &sw_if_index,
+            _In_  bool allow_create = false);
         /**
          * @brief Set VxLAN router default MAC address.
          */
@@ -166,11 +169,21 @@ namespace saivs
          * exact outer-source match from a P2P termination entry. Other term
          * shapes remain stored in SAI but are not programmed by this path.
          * Existing ENCAP_DST_IP/EVPN tunnels remain object-owned.
+         * Reads the pending term from the request, before SAI publication.
+         * Failure rolls back only VNIs created by this attempt. On success,
+         * created_vnis records those VNIs for rollback if publication fails.
          */
         sai_status_t create_l2_vxlan_tunnel_term(
             _In_ const std::string& serializedObjectId,
             _In_ uint32_t attr_count,
-            _In_ const sai_attribute_t *attr_list);
+            _In_ const sai_attribute_t *attr_list,
+            _Out_ std::vector<uint32_t>& created_vnis);
+
+        /**
+         * @brief Roll back only the VNIs created by one programming attempt.
+         */
+        sai_status_t rollback_l2_vxlan_tunnels(
+            _In_ const std::vector<uint32_t>& created_vnis);
 
         /**
          * @brief Remove L2 VXLAN decap objects owned by a termination entry.
@@ -296,7 +309,8 @@ namespace saivs
 
         sai_status_t tunnel_encap_nexthop_action(
                         _In_ const SaiObject* tunnel_nh_obj,
-                        _In_ Action action);
+                        _In_ Action action,
+                        _In_ sai_object_id_t vrf_oid = SAI_NULL_OBJECT_ID);
 
         sai_status_t remove_vxlan_encap_entries(
                         _Inout_ std::vector<VxlanEncapEntry>& entries);
@@ -346,7 +360,8 @@ namespace saivs
             _In_ sai_ip_address_t local_ip,
             _In_ sai_ip_address_t remote_ip,
             _In_ sai_object_id_t tunnel_term_oid,
-            _Out_ uint32_t& sw_if_index);
+            _Out_ uint32_t& sw_if_index,
+            _Out_ std::vector<uint32_t>* new_vnis = nullptr);
 
         /**
          * @brief Remove one VPP L2 VXLAN tunnel identified by VNI.

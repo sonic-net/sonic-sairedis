@@ -5558,7 +5558,8 @@ int vpp_classify_session_del(uint32_t table_index,
     return ret;
 }
 
-int vpp_classify_set_interface_l2_tables_by_index(uint32_t sw_if_index,
+static int vpp_classify_set_interface_l2_tables_internal(uint32_t sw_if_index,
+                                                  const char *hwif_name,
                                                   uint32_t ip4_table_index,
                                                   uint32_t ip6_table_index,
                                                   uint32_t other_table_index,
@@ -5566,14 +5567,28 @@ int vpp_classify_set_interface_l2_tables_by_index(uint32_t sw_if_index,
 {
     vat_main_t *vam = &vat_main;
     vl_api_classify_set_interface_l2_tables_t *mp;
+    char interface_name[64] = "<unknown>";
     int ret;
 
     if (sw_if_index == (u32) -1) {
-        SAIVPP_ERROR("%s: invalid sw_if_index", __func__);
+        SAIVPP_ERROR("%s: hwif %s invalid sw_if_index %u", __func__,
+                     hwif_name ? hwif_name : "<unknown>", sw_if_index);
         return -1;
     }
 
     VPP_LOCK();
+
+    if (hwif_name) {
+        snprintf(interface_name, sizeof(interface_name), "%s", hwif_name);
+    } else {
+        // Copy the cached name while locked; API replies can refresh the table.
+        INTF_TABLE_LOCK();
+        uword *name = hash_get(interface_name_by_sw_index, sw_if_index);
+        if (name) {
+            snprintf(interface_name, sizeof(interface_name), "%s", (const char *)name[0]);
+        }
+        INTF_TABLE_UNLOCK();
+    }
 
     __plugin_msg_base = classify_msg_id_base;
 
@@ -5587,12 +5602,28 @@ int vpp_classify_set_interface_l2_tables_by_index(uint32_t sw_if_index,
     S (mp);
     WR (ret);
 
-    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u", __func__, ret, sw_if_index); }
-    else { SAIVPP_INFO("%s sw_if_index %u ip4=%u ip6=%u other=%u", __func__,
-                       sw_if_index, ip4_table_index, ip6_table_index, other_table_index); }
+    if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s sw_if_index %u", __func__,
+                            ret, interface_name, sw_if_index); }
+    else { SAIVPP_INFO("%s hwif %s sw_if_index %u ip4=%u ip6=%u other=%u", __func__,
+                       interface_name, sw_if_index, ip4_table_index,
+                       ip6_table_index, other_table_index); }
 
     VPP_UNLOCK();
     return ret;
+}
+
+int vpp_classify_set_interface_l2_tables_by_index(uint32_t sw_if_index,
+                                                  uint32_t ip4_table_index,
+                                                  uint32_t ip6_table_index,
+                                                  uint32_t other_table_index,
+                                                  bool is_input)
+{
+    // A new VXLAN tunnel's index is usable before its name is cached.
+    return vpp_classify_set_interface_l2_tables_internal(sw_if_index, NULL,
+                                                        ip4_table_index,
+                                                        ip6_table_index,
+                                                        other_table_index,
+                                                        is_input);
 }
 
 int vpp_classify_set_interface_l2_tables(const char *hwif_name,
@@ -5602,14 +5633,14 @@ int vpp_classify_set_interface_l2_tables(const char *hwif_name,
                                          bool is_input)
 {
     vat_main_t *vam = &vat_main;
-    u32 sw_if_index = get_swif_idx(vam, hwif_name);
+    u32 sw_if_index = hwif_name ? get_swif_idx(vam, hwif_name) : (u32)~0;
 
     if (sw_if_index == (u32) -1) {
         SAIVPP_ERROR("%s: hwif %s not found", __func__, hwif_name ? hwif_name : "<null>");
         return -1;
     }
 
-    return vpp_classify_set_interface_l2_tables_by_index(sw_if_index,
+    return vpp_classify_set_interface_l2_tables_internal(sw_if_index, hwif_name,
                                                         ip4_table_index,
                                                         ip6_table_index,
                                                         other_table_index,
