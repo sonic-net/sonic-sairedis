@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <gtest/gtest.h>
 #include "swss/dbconnector.h"
+#include "swss/logger.h"
 
 using namespace saimeta;
 using namespace sairedis;
@@ -386,6 +387,45 @@ void testAddRemoveCounter(
     countersTable.getKeys(keys);
     removeTimeStamp(keys, countersTable);
     ASSERT_TRUE(keys.empty());
+}
+
+TEST(FlexCounter, removeCounterFromObjectMapDoesNotLogNonexisting)
+{
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t,
+            const sai_object_key_t *, uint32_t, const sai_stat_id_t *,
+            sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_NOT_SUPPORTED;
+    };
+
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+
+    const auto objectId = generateOids(1, SAI_OBJECT_TYPE_PORT)[0];
+    const std::vector<swss::FieldValueTuple> values = {
+        {PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS"},
+    };
+
+    // An unsupported bulk get makes this a regular-map-only counter.
+    fc.addCounter(objectId, objectId, values);
+    EXPECT_FALSE(fc.isEmpty());
+
+    const auto originalMinPrio = swss::Logger::getMinPrio();
+    swss::Logger::getInstance().swssOutputNotify("", "STDERR");
+    swss::Logger::setMinPrio(swss::Logger::SWSS_NOTICE);
+    testing::internal::CaptureStderr();
+
+    fc.removeCounter(objectId);
+
+    const std::string output = testing::internal::GetCapturedStderr();
+    swss::Logger::getInstance().swssOutputNotify("", "SYSLOG");
+    swss::Logger::setMinPrio(originalMinPrio);
+
+    EXPECT_TRUE(fc.isEmpty());
+    EXPECT_EQ(output.find("Trying to remove nonexisting"), std::string::npos);
 }
 
 TEST(FlexCounter, addRemoveCounter)
