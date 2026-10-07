@@ -33,12 +33,12 @@ resources:
     type: github
     name: sonic-net/sonic-swss
     endpoint: sonic-net
-    ref: refs/heads/$(BUILD_BRANCH)
+    ref: refs/heads/master
   - repository: sonic_swss_common
     type: github
     name: sonic-net/sonic-swss-common
     endpoint: sonic-net
-    ref: refs/heads/$(BUILD_BRANCH)
+    ref: refs/heads/master
 
 parameters:
   - name: debian_version
