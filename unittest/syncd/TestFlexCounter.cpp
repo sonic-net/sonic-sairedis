@@ -803,6 +803,78 @@ TEST(FlexCounter, addRemoveCounter)
         STATS_MODE_READ,
         true);
 
+    sai->mock_get = [] (sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attr_list) {
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            if (attr_list[i].id == SAI_OTN_ATTENUATOR_ATTR_ATTENUATION)
+            {
+                attr_list[i].value.u32 = 500;
+            }
+            else if (attr_list[i].id == SAI_OTN_ATTENUATOR_ATTR_ENABLED)
+            {
+                attr_list[i].value.booldata = true;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    testAddRemoveCounter(
+        1,
+        (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR,
+        OTN_ATTENUATOR_ATTR_ID_LIST,
+        {"SAI_OTN_ATTENUATOR_ATTR_ATTENUATION", "SAI_OTN_ATTENUATOR_ATTR_ENABLED"},
+        {"500", "true"},
+        counterVerifyFunc,
+        false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR,
+        OTN_ATTENUATOR_ATTR_ID_LIST,
+        {"SAI_OTN_ATTENUATOR_ATTR_ATTENUATION", "SAI_OTN_ATTENUATOR_ATTR_ENABLED"},
+        {"500", "true"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
+    sai->mock_get = [] (sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attr_list) {
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            if (attr_list[i].id == SAI_OTN_OA_ATTR_TARGET_GAIN)
+            {
+                attr_list[i].value.u32 = 2000;
+            }
+            else if (attr_list[i].id == SAI_OTN_OA_ATTR_ENABLED)
+            {
+                attr_list[i].value.booldata = true;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    testAddRemoveCounter(
+        1,
+        (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA,
+        OTN_OA_ATTR_ID_LIST,
+        {"SAI_OTN_OA_ATTR_TARGET_GAIN", "SAI_OTN_OA_ATTR_ENABLED"},
+        {"2000", "true"},
+        counterVerifyFunc,
+        false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA,
+        OTN_OA_ATTR_ID_LIST,
+        {"SAI_OTN_OA_ATTR_TARGET_GAIN", "SAI_OTN_OA_ATTR_ENABLED"},
+        {"2000", "true"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_COUNTER,
@@ -1042,7 +1114,9 @@ TEST(FlexCounter, addRemoveCounterPlugin)
                             TUNNEL_PLUGIN_FIELD,
                             FLOW_COUNTER_PLUGIN_FIELD,
                             WRED_QUEUE_PLUGIN_FIELD,
-                            WRED_PORT_PLUGIN_FIELD};
+                            WRED_PORT_PLUGIN_FIELD,
+                            OTN_ATTENUATOR_PLUGIN_FIELD,
+                            OTN_OA_PLUGIN_FIELD};
     for (auto &field : fields)
     {
         testAddRemovePlugin(field);
@@ -3232,6 +3306,59 @@ TEST_F(FlexCounterCountersDbUnreachable, pollLoopSurvivesCountersDbConnectFailur
     // call takes that mutex, so it would block here for as long as COUNTERS_DB
     // stayed down if the backoff wait were ever moved inside it.
     EXPECT_TRUE(fc.isEmpty());
+}
+
+TEST(FlexCounter, malformedBulkChunkSizePerPrefix)
+{
+    // Malformed BULK_CHUNK_SIZE_PER_PREFIX values (missing "name:size") must not
+    // crash; parse errors are caught and leave FlexCounter usable.
+
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+
+    sai_object_id_t oid{0x1000000000000};
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS");
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            counters[i] = 1;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *, uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    fc.m_statsMode = SAI_STATS_MODE_READ;
+    fc.addCounter(oid, oid, values);
+    EXPECT_EQ(fc.isEmpty(), false);
+
+    std::string malformedPrefixMaps[] = {
+        "bad_token",
+        "SAI_PORT_STAT_IF_OUT_QLEN",
+        "SAI_PORT_STAT_IF_OUT_QLEN:",
+        "SAI_PORT_STAT_IF_OUT_QLEN:not_a_number",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;bad_token"};
+    for (auto &bad : malformedPrefixMaps)
+    {
+        values.clear();
+        values.emplace_back(BULK_CHUNK_SIZE_PER_PREFIX_FIELD, bad);
+        fc.addCounterPlugin(values);
+        EXPECT_EQ(fc.isEmpty(), false);
+    }
+
+    // Valid map after malformed input should still be accepted
+    values.clear();
+    values.emplace_back(BULK_CHUNK_SIZE_PER_PREFIX_FIELD, "SAI_PORT_STAT_IF_OUT_QLEN:0");
+    fc.addCounterPlugin(values);
+
+    fc.removeCounter(oid);
+    EXPECT_EQ(fc.isEmpty(), true);
 }
 
 TEST(FlexCounter, queueAttrBulkGet)

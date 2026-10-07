@@ -397,14 +397,14 @@ namespace saivs
                     _In_ const FdbInfo &fi,
                     _In_ sai_fdb_event_t fdb_event);
 
-            bool getLagFromPort(
-                    _In_ sai_object_id_t port_id,
-                    _Inout_ sai_object_id_t& lag_id);
-
             bool isLagOrPortRifBased(
                     _In_ sai_object_id_t lag_or_port_id);
 
         protected:
+
+            bool getLagFromPort(
+                    _In_ sai_object_id_t port_id,
+                    _Inout_ sai_object_id_t& lag_id);
 
             void findBridgeVlanForPortVlan(
                     _In_ sai_object_id_t port_id,
