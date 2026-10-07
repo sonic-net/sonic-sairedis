@@ -1607,6 +1607,101 @@ int SwitchVpp::vpp_get_vrf_id (const char *linux_ifname, uint32_t *vrf_id)
     return 0;
 }
 
+bool SwitchVpp::vpp_get_rif_hwif_name(
+        _In_ sai_object_id_t rif_oid,
+        _Out_ std::string& ifname)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        return false;
+    }
+    int32_t rif_type = attr.value.s32;
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+    {
+        // A VLAN RIF is backed by the bridge's BVI interface (bvi<vlan-id>).
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+        sai_object_id_t vlan_oid = attr.value.oid;
+        if (objectTypeQuery(vlan_oid) != SAI_OBJECT_TYPE_VLAN)
+        {
+            return false;
+        }
+        sai_attribute_t vattr;
+        vattr.id = SAI_VLAN_ATTR_VLAN_ID;
+        if (get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &vattr) != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+        ifname = std::string("bvi") + std::to_string(vattr.value.u16);
+        return true;
+    }
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        return false;
+    }
+    sai_object_id_t port_oid = attr.value.oid;
+
+    sai_object_type_t ot = objectTypeQuery(port_oid);
+    if (ot != SAI_OBJECT_TYPE_PORT && ot != SAI_OBJECT_TYPE_LAG)
+    {
+        return false;
+    }
+
+    uint16_t vlan_id = 0;
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+    {
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+        vlan_id = attr.value.u16;
+    }
+
+    // Port/LAG/sub-port RIFs resolve through the registry, which DOES index the
+    // backing PORT/LAG oid (the RIF oid itself is not indexed).
+    ifname = m_ifaceRegistry.resolveHwIfName(port_oid, vlan_id);
+    return !ifname.empty();
+}
+
+sai_status_t SwitchVpp::vpp_apply_loopback_action(
+        _In_ const std::string& hwif_name,
+        _In_ int32_t packet_action)
+{
+    SWSS_LOG_ENTER();
+
+    // Only FORWARD and DROP are meaningful for a hairpin; the VPP dataplane has
+    // no trap/copy path for it. Reject anything else instead of silently
+    // treating it as forward.
+    if (packet_action != SAI_PACKET_ACTION_FORWARD &&
+        packet_action != SAI_PACKET_ACTION_DROP)
+    {
+        SWSS_LOG_ERROR("Unsupported RIF loopback packet action %d on %s",
+                       packet_action, hwif_name.c_str());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    int action = (packet_action == SAI_PACKET_ACTION_DROP) ? 1 : 0;
+
+    int ret = vpp_iface_loopback_set_action(hwif_name.c_str(), action);
+
+    SWSS_LOG_NOTICE("RIF loopback action %s on %s (ret %d)",
+                    action ? "drop" : "forward", hwif_name.c_str(), ret);
+
+    return (ret != 0) ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::vpp_create_router_interface(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -1830,6 +1925,18 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         }
     }
 
+    auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+
+    if (attr_loopback != NULL)
+    {
+        std::string loopback_hwif = m_ifaceRegistry.resolveHwIfName(obj_id, vlan_id);
+
+        if (!loopback_hwif.empty())
+        {
+            CHECK_STATUS(vpp_apply_loopback_action(loopback_hwif, attr_loopback->value.s32));
+        }
+    }
+
     bool v4_is_up = false, v6_is_up = false;
 
     auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
@@ -1955,6 +2062,24 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
         }
     }
 
+    auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+
+    if (attr_loopback != NULL)
+    {
+        std::string loopback_hwif = m_ifaceRegistry.resolveHwIfName(obj_id, vlan_id);
+
+        if (!loopback_hwif.empty())
+        {
+            CHECK_STATUS(vpp_apply_loopback_action(loopback_hwif, attr_loopback->value.s32));
+
+            // SwitchVpp::set() returns straight from vpp_update_router_interface()
+            // for a RIF, bypassing the generic object-store write, so persist the
+            // applied attribute here or a later get() would not see it.
+            set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                         sai_serialize_object_id(object_id), attr_loopback);
+        }
+    }
+
     bool v4_is_up = false, v6_is_up = false;
 
     auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
@@ -1981,6 +2106,10 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
 sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
 {
     SWSS_LOG_ENTER();
+
+    // Drop any per-RIF stats baseline so m_rifStatsBaseMap does not accumulate
+    // stale entries as RIFs are created and removed over the switch lifetime.
+    m_rifStatsBaseMap.erase(rif_id);
 
     sai_attribute_t attr;
     int32_t rif_type;
@@ -2055,6 +2184,16 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
 
     if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
+        // Clear any loopback (hairpin) DROP so a persistent port/LAG whose RIF
+        // is removed does not keep dropping if a later RIF is created on it
+        // without the attribute. Best-effort: a failure must not block the
+        // remove. Sub-ports are intentionally skipped here: their action lives
+        // on the sub-interface, which VPP auto-resets on delete_sub_interface
+        // (via the plugin's sw_if_add_del hook). Clearing the parent hwif for a
+        // sub-port remove would wrongly reset a coexisting parent-port RIF to
+        // FORWARD (hwif_name here is the parent, resolved with vlan_id=0).
+        vpp_apply_loopback_action(hwif_name, SAI_PACKET_ACTION_FORWARD);
+
         SWSS_LOG_NOTICE("Resetting to default vrf for interface %s, hwif %s",
                 sai_serialize_object_id(obj_id).c_str(), hwif_name.c_str());
 
