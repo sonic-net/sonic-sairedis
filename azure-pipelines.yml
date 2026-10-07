@@ -115,7 +115,7 @@ stages:
           artifact: vpp-trixie
           path: $(Build.ArtifactStagingDirectory)/vpp-resolution
           runVersion: latestFromBranch
-          runBranch: refs/heads/master
+          runBranch: refs/heads/$(BUILD_BRANCH)
           allowPartiallySucceededBuilds: true
         displayName: Resolve latest successful sonic platform-vpp build
     - ${{ if ne(parameters.vpp_run_id, '') }}:
