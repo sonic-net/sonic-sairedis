@@ -441,3 +441,124 @@ TEST_F(SwitchStateBaseFdbTest, learnedEntryRemovedByUserIsLearnedAgainAndNotAged
     EXPECT_TRUE(fdbEvents().empty());
     EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
 }
+
+TEST_F(SwitchStateBaseFdbTest, learnedMacOnAnotherPortIsMoved)
+{
+    auto port0 = m_sw->m_port_list.at(0);
+    auto port1 = m_sw->m_port_list.at(1);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x05 };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+
+    sendFrame(port0, mac);
+
+    ASSERT_TRUE(fdbEntryExists(fe));
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
+
+    sendFrame(port1, mac);
+
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_MOVE });
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID).value.oid, portBridgePort(port1));
+    ASSERT_EQ(m_sw->m_fdb_info_set.size(), 1u);
+    EXPECT_EQ(m_sw->m_fdb_info_set.begin()->getPortId(), port1);
+
+    // further traffic on the new port only refreshes the entry
+    sendFrame(port1, mac);
+
+    EXPECT_TRUE(fdbEvents().empty());
+
+    // and moving back is reported again
+    sendFrame(port0, mac);
+
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_MOVE });
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID).value.oid, portBridgePort(port0));
+}
+
+TEST_F(SwitchStateBaseFdbTest, staticEntryIsNotLearnedOverOrMoved)
+{
+    auto port0 = m_sw->m_port_list.at(0);
+    auto port1 = m_sw->m_port_list.at(1);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x06 };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = portBridgePort(port0);
+
+    ASSERT_EQ(m_sw->create(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe), m_switchId, 2, attrs), SAI_STATUS_SUCCESS);
+
+    sendFrame(port0, mac);
+    sendFrame(port1, mac);
+
+    EXPECT_TRUE(fdbEvents().empty());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_TYPE).value.s32, SAI_FDB_ENTRY_TYPE_STATIC);
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID).value.oid, portBridgePort(port0));
+}
+
+TEST_F(SwitchStateBaseFdbTest, staticEntryAllowingMacMoveIsMoved)
+{
+    auto port0 = m_sw->m_port_list.at(0);
+    auto port1 = m_sw->m_port_list.at(1);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x07 };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+
+    sai_attribute_t attrs[3];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = portBridgePort(port0);
+    attrs[2].id = SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE;
+    attrs[2].value.booldata = true;
+
+    ASSERT_EQ(m_sw->create(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe), m_switchId, 3, attrs), SAI_STATUS_SUCCESS);
+
+    sendFrame(port1, mac);
+
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_MOVE });
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_TYPE).value.s32, SAI_FDB_ENTRY_TYPE_DYNAMIC);
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID).value.oid, portBridgePort(port1));
+    EXPECT_EQ(m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).at(sai_serialize_fdb_entry(fe)).count("SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE"), 0u);
+    EXPECT_EQ(m_sw->m_fdb_info_set.size(), 1u);
+}
+
+TEST_F(SwitchStateBaseFdbTest, dynamicEntryCreatedByUserAgesOnTraffic)
+{
+    auto port0 = m_sw->m_port_list.at(0);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x08 };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = portBridgePort(port0);
+
+    ASSERT_EQ(m_sw->create(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe), m_switchId, 2, attrs), SAI_STATUS_SUCCESS);
+
+    sendFrame(port0, mac);
+
+    EXPECT_TRUE(fdbEvents().empty());
+    EXPECT_EQ(m_sw->m_fdb_info_set.size(), 1u);
+
+    ASSERT_NO_FATAL_FAILURE(setAgingTime(60));
+
+    ASSERT_NO_FATAL_FAILURE(backdate(mac, 1, 100));
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_FALSE(fdbEntryExists(fe));
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_AGED });
+}
