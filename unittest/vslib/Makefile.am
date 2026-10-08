@@ -64,6 +64,7 @@ tests_LDFLAGS = \
 				-Wl,--wrap=vpp_ev_dequeue \
 				-Wl,--wrap=vpp_want_l2_macs_events2 \
 				-Wl,--wrap=refresh_interfaces_list \
+				-Wl,--wrap=sw_interface_set_mac \
 				-Wl,--wrap=ip_vrf_add \
 				-Wl,--wrap=ip_vrf_del \
 				-Wl,--wrap=vpp_ip_flow_hash_set \

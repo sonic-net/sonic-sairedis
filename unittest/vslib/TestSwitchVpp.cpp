@@ -179,6 +179,14 @@ int __wrap_delete_bvi_interface(const char *hwif_name)
     return 0;
 }
 
+int __wrap_sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address)
+{
+    SWSS_LOG_ENTER();
+
+    g_vppCalls.push_back({"sw_interface_set_mac", std::string(hwif_name ? hwif_name : "") + " " + macStr(mac_address), 0, 0, true});
+    return 0;
+}
+
 int __wrap_sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address)
 {
     SWSS_LOG_ENTER();
@@ -301,7 +309,8 @@ class SwitchVppVrf : public ::testing::Test
 
         sai_status_t createVlanRif(
                 sai_object_id_t vr,
-                uint16_t vlanId)
+                uint16_t vlanId,
+                sai_object_id_t *rifOut = nullptr)
         {
             SWSS_LOG_ENTER();
 
@@ -328,6 +337,11 @@ class SwitchVppVrf : public ::testing::Test
             memcpy(attrs[3].value.mac, mac, sizeof(sai_mac_t));
 
             auto rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
+
+            if (rifOut)
+            {
+                *rifOut = rif;
+            }
 
             return m_sw->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(rif), m_switchId, 4, attrs);
         }
@@ -407,6 +421,29 @@ TEST_F(SwitchVppVrf, VlanRouterInterfaceBindsBviToItsVirtualRoutersTable)
 
     // the table was created with the virtual router, not with the interface
     EXPECT_TRUE(vppCallsTo("ip_vrf_add").empty());
+}
+
+TEST_F(SwitchVppVrf, VlanRouterInterfaceSourceMacUpdateReachesItsBvi)
+{
+    sai_object_id_t rif;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_defaultVr, 3310, &rif));
+
+    g_vppCalls.clear();
+
+    // orchagent applies the static anycast gateway MAC after the create
+    sai_attribute_t attr;
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+    const uint8_t gw[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 };
+    memcpy(attr.value.mac, gw, sizeof(gw));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(rif), &attr));
+
+    auto calls = vppCallsTo("sw_interface_set_mac");
+
+    ASSERT_EQ(1u, calls.size());
+    EXPECT_EQ("bvi3310 00:00:00:00:00:01", calls[0].name);
 }
 
 TEST_F(SwitchVppVrf, SubPortBindsToTheAllocatedTable)
