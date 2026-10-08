@@ -60,10 +60,22 @@ namespace syncd
 
         void removePlugins() {m_plugins.clear();}
 
+        virtual void addObjectWithCounterGroups(
+                _In_ sai_object_id_t vid,
+                _In_ sai_object_id_t rid,
+                _In_ const std::vector<std::string> &idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
         virtual void addObject(
                 _In_ sai_object_id_t vid,
                 _In_ sai_object_id_t rid,
                 _In_ const std::vector<std::string> &idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
+        virtual void bulkAddObjectWithCounterGroups(
+                _In_ const std::vector<sai_object_id_t>& vids,
+                _In_ const std::vector<sai_object_id_t>& rids,
+                _In_ const std::vector<std::string>& idStrings,
                 _In_ const std::string &per_object_stats_mode) = 0;
 
         virtual void bulkAddObject(
@@ -89,6 +101,7 @@ namespace syncd
         std::string m_instanceId;
         std::set<std::string> m_plugins;
         std::string m_bulkChunkSizePerPrefix;
+        std::map<std::pair<sai_object_id_t, sai_object_id_t>, uint32_t> m_failedPolls;
 
     public:
         bool always_check_supported_counters = false;
