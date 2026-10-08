@@ -15,6 +15,8 @@ extern "C" {
 #include <memory>
 #include <type_traits>
 #include <cstdint>
+#include <atomic>
+#include <functional>
 
 // Placeholder type for attributes not requiring data allocation
 // Used as default template parameter for simple attributes
@@ -44,7 +46,30 @@ namespace syncd
     class BaseCounterContext
     {
     public:
+        // Called with the group mutex held at safe object/chunk boundaries.
+        using PollCheckpoint = std::function<bool(swss::Table&)>;
+        struct ObjectRegistration
+        {
+            uint64_t generation;
+            uint64_t incarnation;
+            sai_object_id_t rid;
+        };
+        using ObjectGenerationMap = std::map<std::pair<std::string, sai_object_id_t>, ObjectRegistration>;
+        struct ObjectRid
+        {
+            sai_object_id_t rid;
+            bool consistent;
+        };
+        using ObjectRidMap = std::map<sai_object_id_t, ObjectRid>;
+
         BaseCounterContext(const std::string &name, const std::string &instance);
+
+        void setPollingState(
+                _In_ const ObjectGenerationMap& generations,
+                _In_ const bool& yielded);
+
+        void clearSamples(_In_ sai_stats_mode_t statsMode);
+
         void addPlugins(
             _In_ const std::vector<std::string>& shaStrings);
 
@@ -89,7 +114,8 @@ namespace syncd
                 _In_ sai_object_id_t vid) = 0;
 
         virtual void collectData(
-                _In_ swss::Table &countersTable) = 0;
+                _In_ swss::Table &countersTable,
+                _In_ const PollCheckpoint& checkpoint) = 0;
 
         virtual void runPlugin(
                 _In_ swss::DBConnector& counters_db,
@@ -97,12 +123,33 @@ namespace syncd
 
         virtual bool hasObject() const = 0;
 
+        // Report actual enrolled SDK keys, including all scalar/bulk fragments.
+        // Missing VIDs are omitted. Called only while the group mutex is held.
+        virtual ObjectRidMap getObjectRids(
+                _In_ const std::vector<sai_object_id_t>& vids) const = 0;
+
+        // Only ordinary single-object stats enrollment removes/replaces old keys.
+        virtual bool supportsRidReplacement() const { return false; }
+
     protected:
+        bool isPollRegistrationCurrent(_In_ sai_object_id_t vid) const;
+
+        bool isPollIncarnationCurrent(_In_ sai_object_id_t vid) const;
+
+        void markSampled(_In_ sai_object_id_t vid);
+
+        bool isSampleReady(_In_ sai_object_id_t vid) const;
+
         std::string m_name;
         std::string m_instanceId;
         std::set<std::string> m_plugins;
         std::string m_bulkChunkSizePerPrefix;
         std::map<std::pair<sai_object_id_t, sai_object_id_t>, uint32_t> m_failedPolls;
+        const ObjectGenerationMap* m_objectGenerations = nullptr;
+        const bool* m_pollYielded = nullptr;
+        std::map<sai_object_id_t, ObjectRegistration> m_pollGenerations;
+        std::map<sai_object_id_t, uint64_t> m_sampledGenerations;
+        sai_stats_mode_t m_pollStatsMode = SAI_STATS_MODE_READ;
 
     public:
         bool always_check_supported_counters = false;
@@ -176,6 +223,24 @@ namespace syncd
                     _In_ const std::string &ratePrefix);
 
         private:
+            bool hasSameRidRegistration(
+                    _In_ sai_object_id_t vid,
+                    _In_ sai_object_id_t rid) const;
+
+            void recordRegistration(
+                    _In_ const std::string& name,
+                    _In_ sai_object_id_t vid,
+                    _In_ sai_object_id_t rid);
+
+            void enrollCounterObjects(
+                    _In_ const std::string& name,
+                    _In_ const std::vector<sai_object_id_t>& vids,
+                    _In_ const std::vector<sai_object_id_t>& rids,
+                    _In_ const std::vector<std::string>& idStrings,
+                    _In_ const std::string& statsMode,
+                    _In_ bool bulk,
+                    _In_ bool perPortDiscovery);
+
             std::shared_ptr<BaseCounterContext> getCounterContext(
                     _In_ const std::string &name);
 
@@ -190,10 +255,13 @@ namespace syncd
                     _In_ const std::string &name) const;
 
             void collectCounters(
-                    _In_ swss::Table &countersTable);
+                    _In_ swss::Table &countersTable,
+                    _Inout_ std::unique_lock<std::mutex>& lock);
 
             void runPlugins(
                     _In_ swss::DBConnector& db,
+                    _In_ uint32_t pollInterval,
+                    _In_ uint32_t secondaryPollFactor,
                     _In_ int64_t cycleStartUs,
                     _In_ int64_t collectUs);
 
@@ -208,8 +276,10 @@ namespace syncd
 
             void notifyPoll();
 
+            void notifySleep();
+
         private:
-            bool m_runFlexCounterThread;
+            std::atomic<bool> m_runFlexCounterThread;
 
             std::shared_ptr<std::thread> m_flexCounterThread;
 
@@ -218,6 +288,20 @@ namespace syncd
             std::condition_variable m_cvSleep;
 
             std::mutex m_mtx;
+
+            // Registered before acquiring m_mtx, so the polling thread can yield.
+            std::atomic<uint32_t> m_pendingUpdates{0};
+
+            std::condition_variable m_updateCond;
+
+            // Same-object support probes may clear counters. Keep their ordering
+            // after the current complete sweep, without blocking its checkpoints.
+            uint32_t m_deferredUpdates = 0;
+
+            bool m_pollInProgress = false;
+
+            // Preserve configuration notifications even before wait_for().
+            std::atomic<uint64_t> m_sleepGeneration{0};
 
             std::condition_variable m_pollCond;
 
@@ -240,6 +324,12 @@ namespace syncd
             bool m_isTcpConn;
 
             bool m_isDiscarded;
+
+            BaseCounterContext::ObjectGenerationMap m_objectGenerations;
+
+            uint64_t m_nextObjectGeneration = 0;
+
+            bool m_pollYielded = false;
 
             std::map<std::string, std::shared_ptr<BaseCounterContext>> m_counterContext;
 
