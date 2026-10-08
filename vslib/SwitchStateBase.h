@@ -407,6 +407,14 @@ namespace saivs
             bool isLearnedFdbEntryPresent(
                     _In_ const FdbInfo &fi);
 
+            /**
+             * @brief Learns a MAC seen on a bridge port: reports it learned,
+             * or moved when it is a dynamic entry (or a static entry that
+             * allows MAC move) on another bridge port.
+             */
+            void learnFdbInfo(
+                    _In_ const FdbInfo &fi);
+
         protected:
 
             bool getLagFromPort(
