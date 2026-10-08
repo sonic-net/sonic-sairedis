@@ -268,6 +268,34 @@ void SwitchStateBase::findBridgeVlanForPortVlan(
     }
 }
 
+bool SwitchStateBase::isLearnedFdbEntryPresent(
+        _In_ const FdbInfo &fi)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_fdb_entry(fi.getFdbEntry());
+
+    auto &fdbs = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+    if (fdbs.find(sid) == fdbs.end())
+    {
+        return false;
+    }
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+
+    if (get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 2, attrs) != SAI_STATUS_SUCCESS)
+    {
+        return false;
+    }
+
+    return attrs[0].value.s32 == SAI_FDB_ENTRY_TYPE_DYNAMIC &&
+        attrs[1].value.oid == fi.getBridgePortId();
+}
+
 bool SwitchStateBase::getLagFromPort(
         _In_ sai_object_id_t port_id,
         _Inout_ sai_object_id_t& lag_id)
@@ -504,16 +532,25 @@ void SwitchStateBase::process_packet_for_fdb_event(
 
     if (it != m_fdb_info_set.end())
     {
-        // this key was found, update timestamp
-        // and since iterator is const we need to reinsert
+        if (isLearnedFdbEntryPresent(*it))
+        {
+            // the timestamp is not part of the set key, so insert() would
+            // keep the old element: replace it to refresh the entry age
 
-        fi = *it;
+            fi = *it;
 
-        fi.setTimestamp(frametime);
+            fi.setTimestamp(frametime);
 
-        m_fdb_info_set.insert(fi);
+            m_fdb_info_set.erase(it);
 
-        return;
+            m_fdb_info_set.insert(fi);
+
+            return;
+        }
+
+        // the user removed or replaced the learned entry, learn it again
+
+        m_fdb_info_set.erase(it);
     }
 
     // key was not found, get additional information

@@ -400,6 +400,13 @@ namespace saivs
             bool isLagOrPortRifBased(
                     _In_ sai_object_id_t lag_or_port_id);
 
+            /**
+             * @brief Tells whether a learned entry is still in the local DB,
+             * dynamic and on the bridge port it was learned on.
+             */
+            bool isLearnedFdbEntryPresent(
+                    _In_ const FdbInfo &fi);
+
         protected:
 
             bool getLagFromPort(

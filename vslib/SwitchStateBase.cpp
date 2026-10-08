@@ -2980,7 +2980,11 @@ void SwitchStateBase::processFdbEntriesForAging()
         {
             FdbInfo fi = *it;
 
-            processFdbInfo(fi, SAI_FDB_EVENT_AGED);
+            // an entry the user removed or replaced is not aged out
+            if (isLearnedFdbEntryPresent(fi))
+            {
+                processFdbInfo(fi, SAI_FDB_EVENT_AGED);
+            }
 
             it = m_fdb_info_set.erase(it);
         }

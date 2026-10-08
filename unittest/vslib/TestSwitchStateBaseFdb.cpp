@@ -224,6 +224,60 @@ class SwitchStateBaseFdbTest : public ::testing::Test
             return attr;
         }
 
+        void setAgingTime(
+                _In_ uint32_t seconds)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+            attr.value.u32 = seconds;
+
+            ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_SWITCH, m_switchId, &attr), SAI_STATUS_SUCCESS);
+        }
+
+        // moves the last time the MAC was seen into the past
+        void backdate(
+                _In_ const sai_mac_t& mac,
+                _In_ uint16_t vlanId,
+                _In_ uint32_t seconds)
+        {
+            SWSS_LOG_ENTER();
+
+            FdbInfo key;
+
+            key.setVlanId(vlanId);
+            memcpy(key.m_fdbEntry.mac_address, mac, sizeof(sai_mac_t));
+
+            auto it = m_sw->m_fdb_info_set.find(key);
+
+            ASSERT_NE(it, m_sw->m_fdb_info_set.end());
+
+            FdbInfo fi = *it;
+
+            fi.setTimestamp(fi.getTimestamp() - seconds);
+
+            m_sw->m_fdb_info_set.erase(it);
+            m_sw->m_fdb_info_set.insert(fi);
+        }
+
+        uint32_t timestamp(
+                _In_ const sai_mac_t& mac,
+                _In_ uint16_t vlanId)
+        {
+            SWSS_LOG_ENTER();
+
+            FdbInfo key;
+
+            key.setVlanId(vlanId);
+            memcpy(key.m_fdbEntry.mac_address, mac, sizeof(sai_mac_t));
+
+            auto it = m_sw->m_fdb_info_set.find(key);
+
+            return (it == m_sw->m_fdb_info_set.end()) ? 0 : it->getTimestamp();
+        }
+
         // fdb events sent since the last call
         std::vector<sai_fdb_event_t> fdbEvents()
         {
@@ -317,4 +371,73 @@ TEST_F(SwitchStateBaseFdbTest, untaggedFrameOnLagMemberLearnsInLagPortVlan)
     sendFrame(port, mac2);
 
     EXPECT_TRUE(fdbEntryExists(fdbEntry(mac2, m_vlan1)));
+}
+
+TEST_F(SwitchStateBaseFdbTest, trafficRefreshesLearnedEntryAge)
+{
+    auto port = m_sw->m_port_list.at(0);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x03 };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+
+    sendFrame(port, mac);
+
+    ASSERT_TRUE(fdbEntryExists(fe));
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
+
+    ASSERT_NO_FATAL_FAILURE(setAgingTime(60));
+
+    // first seen 100 s ago, seen again now: must not age out
+    ASSERT_NO_FATAL_FAILURE(backdate(mac, 1, 100));
+
+    sendFrame(port, mac);
+
+    EXPECT_GE(timestamp(mac, 1) + 5, (uint32_t)time(NULL));
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_TRUE(fdbEntryExists(fe));
+    EXPECT_TRUE(fdbEvents().empty());
+
+    // no traffic for longer than the aging time: ages out
+    ASSERT_NO_FATAL_FAILURE(backdate(mac, 1, 100));
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_FALSE(fdbEntryExists(fe));
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_AGED });
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+}
+
+TEST_F(SwitchStateBaseFdbTest, learnedEntryRemovedByUserIsLearnedAgainAndNotAged)
+{
+    auto port = m_sw->m_port_list.at(0);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x04 };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+
+    sendFrame(port, mac);
+
+    ASSERT_TRUE(fdbEntryExists(fe));
+    fdbEvents();
+
+    ASSERT_EQ(m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe)), SAI_STATUS_SUCCESS);
+
+    sendFrame(port, mac);
+
+    EXPECT_TRUE(fdbEntryExists(fe));
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
+
+    ASSERT_EQ(m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe)), SAI_STATUS_SUCCESS);
+
+    ASSERT_NO_FATAL_FAILURE(setAgingTime(60));
+
+    ASSERT_NO_FATAL_FAILURE(backdate(mac, 1, 100));
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_TRUE(fdbEvents().empty());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
 }
