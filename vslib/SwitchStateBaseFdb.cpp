@@ -54,6 +54,31 @@ void SwitchStateBase::updateLocalDB(
 
             break;
 
+        case SAI_FDB_EVENT_MOVE:
+
+            {
+                // the moved entry is a learned entry: attributes the user set
+                // on it before (static only, like ALLOW_MAC_MOVE) are dropped,
+                // as syncd does for the entry in ASIC_DB
+
+                auto sid = sai_serialize_fdb_entry(data.fdb_entry);
+
+                status = remove(SAI_OBJECT_TYPE_FDB_ENTRY, sid);
+
+                if (status == SAI_STATUS_SUCCESS)
+                {
+                    status = create(SAI_OBJECT_TYPE_FDB_ENTRY, sid, m_switch_id, data.attr_count, data.attr);
+                }
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("failed to move fdb entry %s",
+                            sai_serialize_fdb_entry(data.fdb_entry).c_str());
+                }
+            }
+
+            break;
+
         default:
             SWSS_LOG_ERROR("unsupported fdb event: %d", fdb_event);
             break;
@@ -87,6 +112,83 @@ void SwitchStateBase::processFdbInfo(
     updateLocalDB(data, fdb_event); // TODO we could move to send_fdb_event_notification and support flush
 
     send_fdb_event_notification(data);
+}
+
+void SwitchStateBase::learnFdbInfo(
+        _In_ const FdbInfo &fi)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_fdb_entry(fi.getFdbEntry());
+
+    auto &fdbs = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+    if (fdbs.find(sid) == fdbs.end())
+    {
+        SWSS_LOG_INFO("inserting to fdb_info set: %s, vlan id: %d",
+                sid.c_str(),
+                fi.getVlanId());
+
+        // the set key is MAC and VLAN number, replace a record of another bridge
+
+        m_fdb_info_set.erase(fi);
+        m_fdb_info_set.insert(fi);
+
+        processFdbInfo(fi, SAI_FDB_EVENT_LEARNED);
+
+        return;
+    }
+
+    // the MAC is already in the FDB: created by the user, or learned on another bridge port
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+
+    bool isStatic = get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 1, &attr) == SAI_STATUS_SUCCESS &&
+        attr.value.s32 == SAI_FDB_ENTRY_TYPE_STATIC;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+
+    sai_object_id_t bridgePortId = (get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 1, &attr) == SAI_STATUS_SUCCESS)
+        ? attr.value.oid
+        : SAI_NULL_OBJECT_ID;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE;
+
+    bool allowMacMove = get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 1, &attr) == SAI_STATUS_SUCCESS &&
+        attr.value.booldata;
+
+    if (bridgePortId == fi.getBridgePortId())
+    {
+        if (!isStatic)
+        {
+            // a dynamic entry created by the user ages like a learned one
+
+            m_fdb_info_set.erase(fi);
+            m_fdb_info_set.insert(fi);
+        }
+
+        return;
+    }
+
+    if (isStatic && !allowMacMove)
+    {
+        SWSS_LOG_INFO("static fdb entry %s is not moved to bridge port %s",
+                sid.c_str(),
+                sai_serialize_object_id(fi.getBridgePortId()).c_str());
+
+        return;
+    }
+
+    SWSS_LOG_INFO("moving fdb entry %s to bridge port %s",
+            sid.c_str(),
+            sai_serialize_object_id(fi.getBridgePortId()).c_str());
+
+    m_fdb_info_set.erase(fi);
+    m_fdb_info_set.insert(fi);
+
+    processFdbInfo(fi, SAI_FDB_EVENT_MOVE);
 }
 
 void SwitchStateBase::findBridgeVlanForPortVlan(
@@ -532,7 +634,9 @@ void SwitchStateBase::process_packet_for_fdb_event(
 
     if (it != m_fdb_info_set.end())
     {
-        if (isLearnedFdbEntryPresent(*it))
+        bool present = isLearnedFdbEntryPresent(*it);
+
+        if (present && it->getPortId() == fi.getPortId())
         {
             // the timestamp is not part of the set key, so insert() would
             // keep the old element: replace it to refresh the entry age
@@ -548,9 +652,14 @@ void SwitchStateBase::process_packet_for_fdb_event(
             return;
         }
 
-        // the user removed or replaced the learned entry, learn it again
+        if (!present)
+        {
+            // the user removed or replaced the learned entry, learn it again
 
-        m_fdb_info_set.erase(it);
+            m_fdb_info_set.erase(it);
+        }
+
+        // otherwise the MAC arrived on another port, learnFdbInfo moves it
     }
 
     // key was not found, get additional information
@@ -580,13 +689,7 @@ void SwitchStateBase::process_packet_for_fdb_event(
     {
         if (attr.value.s32 == SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW)
         {
-            SWSS_LOG_INFO("inserting to fdb_info set: %s, vlan id: %d",
-                    sai_serialize_fdb_entry(fi.getFdbEntry()).c_str(),
-                    fi.getVlanId());
-
-            m_fdb_info_set.insert(fi);
-
-            processFdbInfo(fi, SAI_FDB_EVENT_LEARNED);
+            learnFdbInfo(fi);
         }
         else if (attr.value.s32 == SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE)
         {
