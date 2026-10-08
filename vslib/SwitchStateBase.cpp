@@ -2417,6 +2417,44 @@ sai_status_t SwitchStateBase::refresh_bridge_port_list(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+std::vector<sai_object_id_t> SwitchStateBase::sort_bridge_port_list(
+        _In_ const std::map<sai_object_id_t, SwitchState::AttrHash>& bridge_ports) const
+{
+    SWSS_LOG_ENTER();
+
+    auto md_port_id = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
+
+    std::vector<sai_object_id_t> bridge_port_list;
+
+    std::set<sai_object_id_t> added;
+
+    for (const auto &p: m_port_list)
+    {
+        for (const auto &bp: bridge_ports)
+        {
+            auto it = bp.second.find(md_port_id->attridname);
+
+            if (it != bp.second.end() && it->second->getAttr()->value.oid == p)
+            {
+                bridge_port_list.push_back(bp.first);
+                added.insert(bp.first);
+            }
+        }
+    }
+
+    // bridge ports without a switch port: lag (PORT_ID is the lag) and tunnel (no PORT_ID)
+
+    for (const auto &bp: bridge_ports)
+    {
+        if (added.find(bp.first) == added.end())
+        {
+            bridge_port_list.push_back(bp.first);
+        }
+    }
+
+    return bridge_port_list;
+}
+
 sai_status_t SwitchStateBase::refresh_vlan_member_list(
         _In_ const sai_attr_metadata_t *meta,
         _In_ sai_object_id_t vlan_id)

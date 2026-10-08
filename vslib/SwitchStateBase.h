@@ -171,6 +171,14 @@ namespace saivs
                     _In_ const sai_attr_metadata_t *meta,
                     _In_ sai_object_id_t bridge_id);
 
+            /**
+             * @brief Orders bridge ports for SAI_BRIDGE_ATTR_PORT_LIST: bridge
+             * ports of switch ports first, in port list order, then all others
+             * (lag, tunnel) in object id order.
+             */
+            std::vector<sai_object_id_t> sort_bridge_port_list(
+                    _In_ const std::map<sai_object_id_t, SwitchState::AttrHash>& bridge_ports) const;
+
             virtual sai_status_t refresh_vlan_member_list(
                     _In_ const sai_attr_metadata_t *meta,
                     _In_ sai_object_id_t vlan_id);
