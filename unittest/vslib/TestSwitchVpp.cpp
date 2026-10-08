@@ -102,7 +102,6 @@ int __wrap_set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id,
 
 int __wrap_set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_enable, uint32_t port_type) { return 0; }
 int __wrap_interface_set_state(const char *hwif_name, bool is_up) { return 0; }
-int __wrap_sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address) { return 0; }
 int __wrap_configure_lcp_interface(const char *hwif_name, const char *hostif_name, bool is_add)
 {
     SWSS_LOG_ENTER();
@@ -180,16 +179,27 @@ int __wrap_delete_bvi_interface(const char *hwif_name)
     return 0;
 }
 
-int __wrap_vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, uint32_t *sw_if_index)
+int __wrap_sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address)
 {
     SWSS_LOG_ENTER();
 
-    g_vppCalls.push_back({"vpp_vxlan_tunnel_add_del", "", tunnel->vni, 0, is_add});
+    g_vppCalls.push_back({"sw_interface_set_mac_by_index", macStr(mac_address), sw_if_index, 0, true});
+    return 0;
+}
+
+int __wrap_vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, uint32_t *sw_if_index)
+{
+    SWSS_LOG_ENTER();
 
     if (is_add)
     {
         *sw_if_index = g_nextSwIfIndex++;
     }
+
+    // name: "decap_any" for a source-independent decap; sub_id: the
+    // sw_if_index a create hands out
+    g_vppCalls.push_back({"vpp_vxlan_tunnel_add_del", tunnel->decap_any ? "decap_any" : "",
+                          tunnel->vni, is_add ? *sw_if_index : 0, is_add});
 
     return 0;
 }
@@ -493,6 +503,7 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
             m_vrUnknown = createVrWithoutTable();
 
             auto map = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP, m_switchId);
+            m_map = map;
 
             sai_attribute_t mattr;
 
@@ -502,7 +513,7 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
             ASSERT_EQ(SAI_STATUS_SUCCESS,
                     m_sw->create_internal(SAI_OBJECT_TYPE_TUNNEL_MAP, sai_serialize_object_id(map), m_switchId, 1, &mattr));
 
-            addMapEntry(map, m_vrA, 1000);
+            m_entryA = addMapEntry(map, m_vrA, 1000);
             addMapEntry(map, m_vrB, 2000);
             addMapEntry(map, m_vrUnknown, 3000);
 
@@ -557,16 +568,18 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
                     m_sw->set_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), &attr));
         }
 
-        // name of the one decap BVI created since the last clear
-        std::string decapBvi()
+        // name of the next hop's own decap BVI: the first created since the
+        // last clear (the decap-only tunnels of the other L3VNIs follow it)
+        std::string decapBvi(
+                size_t index = 0)
         {
             SWSS_LOG_ENTER();
 
             auto bvis = vppCallsTo("create_bvi_interface");
 
-            EXPECT_EQ(1u, bvis.size());
+            EXPECT_LT(index, bvis.size());
 
-            return bvis.empty() ? std::string() : "bvi" + std::to_string(bvis[0].id);
+            return bvis.size() <= index ? std::string() : "bvi" + std::to_string(bvis[index].id);
         }
 
         static sai_ip_address_t ipv4(
@@ -584,7 +597,7 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
             return ip;
         }
 
-        void addMapEntry(
+        sai_object_id_t addMapEntry(
                 sai_object_id_t map,
                 sai_object_id_t vr,
                 uint32_t vni)
@@ -604,8 +617,11 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
             eattrs[3].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_VALUE;
             eattrs[3].value.u32 = vni;
 
-            ASSERT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->create_internal(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(entry), m_switchId, 4, eattrs));
+            // through create(), so the switch sees it the way syncd hands it over
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(entry), m_switchId, 4, eattrs));
+
+            return entry;
         }
 
         sai_status_t createNexthop(
@@ -643,6 +659,8 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
         sai_object_id_t m_vrB = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_vrUnknown = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_tunnel = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_entryA = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_map = SAI_NULL_OBJECT_ID;
 
         std::map<std::string, std::string> m_kernelMasters;
 
@@ -666,7 +684,8 @@ TEST_F(SwitchVppTunnelNexthop, UsesTheMapEntryOfItsVni)
 
     auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
 
-    ASSERT_EQ(1u, tunnels.size());
+    // its own tunnel first, then the decap-only one of VR A's VNI
+    ASSERT_EQ(2u, tunnels.size());
     EXPECT_EQ(2000u, tunnels[0].id);
     EXPECT_TRUE(tunnels[0].flag);
 
@@ -674,7 +693,7 @@ TEST_F(SwitchVppTunnelNexthop, UsesTheMapEntryOfItsVni)
     uint32_t table = tableOf(m_vrB);
     auto binds = vppCallsTo("set_interface_vrf");
 
-    ASSERT_EQ(2u, binds.size());
+    ASSERT_EQ(4u, binds.size());
     EXPECT_EQ(table, binds[0].id);
     EXPECT_FALSE(binds[0].flag);
     EXPECT_EQ(table, binds[1].id);
@@ -697,11 +716,14 @@ TEST_F(SwitchVppTunnelNexthop, RemoveTearsDownTheTunnelOfItsVni)
 
     auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
 
-    ASSERT_EQ(1u, tunnels.size());
+    // the VTEP's last next hop takes its decap-only tunnels with it
+    ASSERT_EQ(2u, tunnels.size());
     EXPECT_EQ(1000u, tunnels[0].id);
     EXPECT_FALSE(tunnels[0].flag);
+    EXPECT_EQ(2000u, tunnels[1].id);
+    EXPECT_FALSE(tunnels[1].flag);
 
-    EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface").size());
+    EXPECT_EQ(2u, vppCallsTo("delete_bvi_interface").size());
 
     uint32_t sw_if_index = 0;
 
@@ -755,8 +777,10 @@ TEST_F(SwitchVppTunnelNexthop, DecapBviAnswersToTheSwitchMac)
 
     auto bvis = vppCallsTo("create_bvi_interface");
 
-    ASSERT_EQ(1u, bvis.size());
+    // the decap-only BVI of VR A's VNI too
+    ASSERT_EQ(2u, bvis.size());
     EXPECT_EQ("22:fd:e1:99:49:9e", bvis[0].name);
+    EXPECT_EQ("22:fd:e1:99:49:9e", bvis[1].name);
 }
 
 TEST_F(SwitchVppTunnelNexthop, WithoutARemoteRouterMacBothSidesKeepTheSharedOne)
@@ -774,8 +798,9 @@ TEST_F(SwitchVppTunnelNexthop, WithoutARemoteRouterMacBothSidesKeepTheSharedOne)
 
     auto bvis = vppCallsTo("create_bvi_interface");
 
-    ASSERT_EQ(1u, bvis.size());
+    ASSERT_EQ(2u, bvis.size());
     EXPECT_EQ("00:00:00:00:00:01", bvis[0].name);
+    EXPECT_EQ("00:00:00:00:00:01", bvis[1].name);
 }
 
 TEST_F(SwitchVppTunnelNexthop, DecapBviGetsAHostPathIntoItsKernelVrf)
@@ -835,8 +860,177 @@ TEST_F(SwitchVppTunnelNexthop, DoesNotBorrowTheKernelVrfOfAnotherVirtualRouter)
     // VNI 2000 belongs to VR B
     ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
 
+    // neither the next hop's BVI nor VR A's decap-only one (decap-only BVIs
+    // get no host path) goes into VR A's kernel VRF
     EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
     EXPECT_TRUE(m_redirects.empty());
+}
+
+TEST_F(SwitchVppTunnelNexthop, GivesItsVtepADecapTunnelForEveryOtherL3Vni)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    // VR A's VNI gets a tunnel that only decapsulates: a BVI in VR A's table
+    // and no neighbour. VNI 3000 has no table and gets nothing.
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(2u, tunnels.size());
+    EXPECT_EQ(1000u, tunnels[1].id);
+    EXPECT_TRUE(tunnels[1].flag);
+
+    // it decapsulates like the next hop's own tunnel (P2MP: from any source),
+    // and carries the router MAC a next hop taking it over encapsulates with
+    EXPECT_EQ(tunnels[0].name, tunnels[1].name);
+    EXPECT_EQ("decap_any", tunnels[1].name);
+
+    auto macs = vppCallsTo("sw_interface_set_mac_by_index");
+
+    ASSERT_EQ(2u, macs.size());
+    EXPECT_EQ(tunnels[1].sub_id, macs[1].id);
+    EXPECT_EQ(macs[0].name, macs[1].name);
+
+    auto binds = vppCallsTo("set_interface_vrf");
+
+    ASSERT_EQ(4u, binds.size());
+    EXPECT_EQ(tableOf(m_vrA), binds[2].id);
+    EXPECT_EQ(tableOf(m_vrA), binds[3].id);
+
+    EXPECT_EQ(1u, vppCallsTo("ip4_nbr_add_del").size());
+}
+
+TEST_F(SwitchVppTunnelNexthop, DecapOnlyTunnelsGetNoHostPath)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrA, 100));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan100"] = "VrfA";
+    m_kernelMasters["Vlan3000"] = "Vrft";
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    // only the next hop's BVI pairs a host tap: each tap pins VPP buffers
+    auto own = decapBvi(0);
+
+    ASSERT_EQ(1u, vppCallsTo("configure_lcp_interface").size());
+    ASSERT_EQ(1u, m_redirects.size());
+    EXPECT_EQ("tap_" + own + " Vrft", m_redirects[0]);
+}
+
+TEST_F(SwitchVppTunnelNexthop, ALaterNexthopTakesOverTheDecapTunnelOfItsVni)
+{
+    sai_object_id_t nhB;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nhB, REMOTE_ROUTER_MAC));
+
+    uint32_t decapOnly = vppCallsTo("vpp_vxlan_tunnel_add_del")[1].sub_id;
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nhA;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(1000, nhA, REMOTE_ROUTER_MAC));
+
+    // no new tunnel, but the decap side is rebuilt so the next hop's BVI gets
+    // the host path the decap-only one went without, plus the encap neighbour
+    EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
+    EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface").size());
+    EXPECT_EQ(1u, vppCallsTo("create_bvi_interface").size());
+
+    auto nbrs = vppCallsTo("ip4_nbr_add_del");
+
+    ASSERT_EQ(1u, nbrs.size());
+    EXPECT_EQ("22:36:29:c2:14:f1", nbrs[0].name);
+    EXPECT_EQ(decapOnly, nbrs[0].id);
+    EXPECT_TRUE(nbrs[0].flag);
+
+    uint32_t sw_if_index = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nhA, sw_if_index));
+    EXPECT_EQ(decapOnly, sw_if_index);
+}
+
+TEST_F(SwitchVppTunnelNexthop, KeepsATunnelForDecapWhileItsVtepHasOtherNexthops)
+{
+    sai_object_id_t nhA, nhB;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nhB, REMOTE_ROUTER_MAC));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(1000, nhA, REMOTE_ROUTER_MAC));
+
+    g_vppCalls.clear();
+
+    // the VTEP still has nhA, so VNI 2000 keeps decapsulating
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nhB)));
+
+    EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
+    EXPECT_TRUE(vppCallsTo("delete_bvi_interface").empty());
+
+    auto nbrs = vppCallsTo("ip4_nbr_add_del");
+
+    ASSERT_EQ(1u, nbrs.size());
+    EXPECT_FALSE(nbrs[0].flag);
+
+    g_vppCalls.clear();
+
+    // its last next hop gone, every tunnel to the VTEP goes
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nhA)));
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(2u, tunnels.size());
+    EXPECT_EQ(1000u, tunnels[0].id);
+    EXPECT_FALSE(tunnels[0].flag);
+    EXPECT_EQ(2000u, tunnels[1].id);
+    EXPECT_FALSE(tunnels[1].flag);
+    EXPECT_EQ(2u, vppCallsTo("delete_bvi_interface").size());
+}
+
+TEST_F(SwitchVppTunnelNexthop, AVrfAddedLaterGetsADecapTunnelToEveryKnownVtep)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto vrC = createVr();
+
+    g_vppCalls.clear();
+
+    // a VRF and its L3VNI configured after the fabric converged
+    addMapEntry(m_map, vrC, 4000);
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, tunnels.size());
+    EXPECT_EQ(4000u, tunnels[0].id);
+    EXPECT_TRUE(tunnels[0].flag);
+
+    auto binds = vppCallsTo("set_interface_vrf");
+
+    ASSERT_EQ(2u, binds.size());
+    EXPECT_EQ(tableOf(vrC), binds[0].id);
+}
+
+TEST_F(SwitchVppTunnelNexthop, RemovingAVniMapEntryRemovesTheDecapTunnelsOfItsVni)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    g_vppCalls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(m_entryA)));
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, tunnels.size());
+    EXPECT_EQ(1000u, tunnels[0].id);
+    EXPECT_FALSE(tunnels[0].flag);
+    EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface").size());
 }
 
 TEST_F(SwitchVppTunnelNexthop, AFailedRedirectLeavesNoHalfBuiltHostPath)
