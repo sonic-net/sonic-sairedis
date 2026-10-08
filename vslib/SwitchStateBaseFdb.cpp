@@ -436,41 +436,28 @@ void SwitchStateBase::process_packet_for_fdb_event(
         }
     }
 
+    sai_object_id_t lag_id;
+
+    bool isLagMember = getLagFromPort(portId, lag_id);
+
     if (tagged == false)
     {
         // untagged ethernet frame
 
         sai_attribute_t attr;
 
-#ifdef SAI_LAG_ATTR_PORT_VLAN_ID
-
-        sai_object_id_t lag_id;
-
-        if (getLagFromPort(portid, lag_id))
+        if (isLagMember)
         {
-            // if port belongs to lag we need to get SAI_LAG_ATTR_PORT_VLAN_ID
+            // the port VLAN of a lag member is the one set on its lag
 
-            attr.id = SAI_LAG_ATTR_PORT_VLAN_ID
+            attr.id = SAI_LAG_ATTR_PORT_VLAN_ID;
 
-                sai_status_t status = get(SAI_OBJECT_TYPE_LAG, lag_id, 1, &attr);
+            sai_status_t status = get(SAI_OBJECT_TYPE_LAG, lag_id, 1, &attr);
 
-            if (status != SAI_STATUS_SUCCESS)
-            {
-                SWSS_LOG_WARN("failed to get lag vlan id from lag %s",
-                        sai_serialize_object_id(lag_id).c_str());
-                return;
-            }
-
-            vlan_id = attr.value.u16;
-
-            if (isLagOrPortRifBased(lag_id))
-            {
-                // this lag is router interface based, skip mac learning
-                return;
-            }
+            // attribute is not stored until it is set, the SAI default is 1
+            vlan_id = (status == SAI_STATUS_SUCCESS) ? attr.value.u16 : DEFAULT_VLAN_NUMBER;
         }
         else
-#endif
         {
             attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
 
@@ -488,8 +475,7 @@ void SwitchStateBase::process_packet_for_fdb_event(
         }
     }
 
-    sai_object_id_t lag_id;
-    if (getLagFromPort(portId, lag_id) && isLagOrPortRifBased(lag_id))
+    if (isLagMember && isLagOrPortRifBased(lag_id))
     {
         SWSS_LOG_DEBUG("lag %s is rif based, skip mac learning for port %s",
                 sai_serialize_object_id(lag_id).c_str(),
