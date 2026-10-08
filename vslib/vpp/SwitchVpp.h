@@ -880,6 +880,10 @@ namespace saivs
                     _In_ bool is_add,
                     _Out_ uint32_t *stats_index = nullptr);
 
+            bool resolveVlanRifHwif(
+                    _In_ sai_object_id_t rif_oid,
+                    _Out_ std::string &hwif_name);
+
             const char* resolveNexthopMemberHwif(
                     _In_ const nexthop_grp_member_t *member,
                     _Out_ std::string &member_hwif);

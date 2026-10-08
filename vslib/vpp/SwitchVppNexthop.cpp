@@ -245,11 +245,8 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
              * labelled path is dropped at the MPLS DROP DPO.
              */
             std::string mpls_hwif;
-            sai_attribute_t port_attr;
-            port_attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-            if (rif_obj &&
-                rif_obj->get_attr(port_attr) == SAI_STATUS_SUCCESS) {
-                mpls_hwif = m_ifaceRegistry.resolveHwIfName(port_attr.value.oid, 0);
+            if (rif_obj) {
+                resolveNexthopMemberHwif(nxt_grp_member, mpls_hwif);
             }
             if (!mpls_hwif.empty()) {
                 int idx = get_sw_if_idx(mpls_hwif.c_str());

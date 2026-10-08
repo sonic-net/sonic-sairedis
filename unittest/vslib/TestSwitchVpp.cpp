@@ -6,6 +6,7 @@
 
 #include <arpa/inet.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <map>
@@ -32,6 +33,21 @@ namespace
     };
 
     std::vector<VppCall> g_vppCalls;
+
+    struct VppRoutePath
+    {
+        std::string hwif_name;
+        uint32_t sw_if_index;
+    };
+
+    struct VppRoute
+    {
+        uint32_t vrf_id;
+        bool is_add;
+        std::vector<VppRoutePath> paths;
+    };
+
+    std::vector<VppRoute> g_vppRoutes;
 
     uint32_t g_nextSwIfIndex = 100;
 
@@ -212,6 +228,29 @@ int __wrap_vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, uin
     return 0;
 }
 
+int __wrap_ip_route_add_del_get_stats(vpp_ip_route_t *prefix, bool is_add, uint32_t *stats_index)
+{
+    SWSS_LOG_ENTER();
+
+    VppRoute route = { prefix->vrf_id, is_add, {} };
+
+    for (unsigned int i = 0; i < prefix->nexthop_cnt; i++)
+    {
+        auto& nh = prefix->nexthop[i];
+
+        route.paths.push_back({nh.hwif_name ? nh.hwif_name : "", nh.sw_if_index});
+    }
+
+    g_vppRoutes.push_back(route);
+
+    if (stats_index)
+    {
+        *stats_index = 7;
+    }
+
+    return 0;
+}
+
 }
 
 TEST(SwitchVpp, getLagMemberEgressDisableAction)
@@ -263,6 +302,7 @@ class SwitchVppVrf : public ::testing::Test
             m_defaultVr = attr.value.oid;
 
             g_vppCalls.clear();
+            g_vppRoutes.clear();
         }
 
         void TearDown() override
@@ -1127,4 +1167,199 @@ TEST_F(SwitchVppTunnelNexthop, RemoveTearsDownTheHostPath)
     ASSERT_NE(-1, del);
     EXPECT_FALSE(g_vppCalls[unpair].flag);
     EXPECT_LT(unpair, del);
+}
+
+/*
+ * Routes whose next hop is a host on a VLAN router interface (an SVI, realized
+ * in VPP as a BVI). The path must name the BVI as its egress interface, or VPP
+ * resolves the next hop recursively in table 0 and drops the traffic.
+ */
+class SwitchVppVlanRifRoute : public SwitchVppVrf
+{
+    protected:
+
+        static sai_ip_address_t ipv4(
+                const char *addr)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_ip_address_t ip;
+
+            memset(&ip, 0, sizeof(ip));
+            ip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+
+            EXPECT_EQ(1, inet_pton(AF_INET, addr, &ip.addr.ip4));
+
+            return ip;
+        }
+
+        sai_object_id_t createIpNexthop(
+                const char *addr,
+                sai_object_id_t rif)
+        {
+            SWSS_LOG_ENTER();
+
+            auto nh = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_NEXT_HOP, m_switchId);
+
+            sai_attribute_t attrs[3];
+
+            attrs[0].id = SAI_NEXT_HOP_ATTR_TYPE;
+            attrs[0].value.s32 = SAI_NEXT_HOP_TYPE_IP;
+            attrs[1].id = SAI_NEXT_HOP_ATTR_IP;
+            attrs[1].value.ipaddr = ipv4(addr);
+            attrs[2].id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
+            attrs[2].value.oid = rif;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh), m_switchId, 3, attrs));
+
+            return nh;
+        }
+
+        sai_object_id_t createEcmpGroup(
+                const std::vector<sai_object_id_t>& nexthops)
+        {
+            SWSS_LOG_ENTER();
+
+            auto nhg = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_NEXT_HOP_GROUP, m_switchId);
+
+            sai_attribute_t gattr;
+
+            gattr.id = SAI_NEXT_HOP_GROUP_ATTR_TYPE;
+            gattr.value.s32 = SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_UNORDERED_ECMP;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_NEXT_HOP_GROUP, sai_serialize_object_id(nhg), m_switchId, 1, &gattr));
+
+            for (auto nh: nexthops)
+            {
+                auto member = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, m_switchId);
+
+                sai_attribute_t mattrs[2];
+
+                mattrs[0].id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID;
+                mattrs[0].value.oid = nhg;
+                mattrs[1].id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
+                mattrs[1].value.oid = nh;
+
+                EXPECT_EQ(SAI_STATUS_SUCCESS,
+                        m_sw->create_internal(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, sai_serialize_object_id(member), m_switchId, 2, mattrs));
+            }
+
+            return nhg;
+        }
+
+        std::string routeId(
+                sai_object_id_t vr,
+                const char *prefix)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_route_entry_t entry;
+
+            memset(&entry, 0, sizeof(entry));
+            entry.switch_id = m_switchId;
+            entry.vr_id = vr;
+            entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+
+            EXPECT_EQ(1, inet_pton(AF_INET, prefix, &entry.destination.addr.ip4));
+            entry.destination.mask.ip4 = 0xffffffff;
+
+            return sai_serialize_route_entry(entry);
+        }
+
+        sai_status_t programRoute(
+                sai_object_id_t vr,
+                const char *prefix,
+                sai_object_id_t nexthop)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+            attr.value.oid = nexthop;
+
+            SaiCachedObject route(m_sw.get(), SAI_OBJECT_TYPE_ROUTE_ENTRY, routeId(vr, prefix), 1, &attr);
+
+            uint32_t stats_index = UINT32_MAX;
+
+            return m_sw->IpRouteAddRemove(&route, true, &stats_index);
+        }
+};
+
+TEST_F(SwitchVppVlanRifRoute, NexthopOnAVlanRouterInterfaceLeavesThroughItsBvi)
+{
+    auto vr = createVr();
+    sai_object_id_t rif;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(vr, 200, &rif));
+
+    auto nh = createIpNexthop("10.20.0.10", rif);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, programRoute(vr, "10.250.0.1", nh));
+
+    ASSERT_EQ(1u, g_vppRoutes.size());
+    EXPECT_TRUE(g_vppRoutes[0].is_add);
+    EXPECT_EQ(tableOf(vr), g_vppRoutes[0].vrf_id);
+
+    ASSERT_EQ(1u, g_vppRoutes[0].paths.size());
+    EXPECT_EQ("bvi200", g_vppRoutes[0].paths[0].hwif_name);
+}
+
+TEST_F(SwitchVppVlanRifRoute, EcmpMembersOnVlanRouterInterfacesLeaveThroughTheirBvis)
+{
+    auto vr = createVr();
+    sai_object_id_t rif200;
+    sai_object_id_t rif300;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(vr, 200, &rif200));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(vr, 300, &rif300));
+
+    auto nhg = createEcmpGroup({
+            createIpNexthop("10.20.0.10", rif200),
+            createIpNexthop("10.30.0.10", rif300) });
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, programRoute(vr, "10.250.0.1", nhg));
+
+    ASSERT_EQ(1u, g_vppRoutes.size());
+    ASSERT_EQ(2u, g_vppRoutes[0].paths.size());
+
+    std::vector<std::string> hwifs = {
+        g_vppRoutes[0].paths[0].hwif_name,
+        g_vppRoutes[0].paths[1].hwif_name };
+
+    std::sort(hwifs.begin(), hwifs.end());
+
+    EXPECT_EQ("bvi200", hwifs[0]);
+    EXPECT_EQ("bvi300", hwifs[1]);
+}
+
+TEST_F(SwitchVppVlanRifRoute, PathAddedOnAVlanRouterInterfaceLeavesThroughItsBvi)
+{
+    auto vr = createVr();
+    sai_object_id_t rif;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(vr, 200, &rif));
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+
+    SaiCachedObject route(m_sw.get(), SAI_OBJECT_TYPE_ROUTE_ENTRY, routeId(vr, "10.250.0.1"), 1, &attr);
+
+    nexthop_grp_member_t member;
+
+    memset(&member, 0, sizeof(member));
+    member.addr = ipv4("10.20.0.10");
+    member.rif_oid = rif;
+    member.weight = 1;
+    member.sw_if_index = ~0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->IpRoutePathAddRemove(&route, &member, true));
+
+    ASSERT_EQ(1u, g_vppRoutes.size());
+    ASSERT_EQ(1u, g_vppRoutes[0].paths.size());
+    EXPECT_EQ("bvi200", g_vppRoutes[0].paths[0].hwif_name);
 }
