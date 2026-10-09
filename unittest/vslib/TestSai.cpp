@@ -3,7 +3,11 @@
 
 #include <gtest/gtest.h>
 
+#include <arpa/inet.h>
+
 #include <chrono>
+#include <mutex>
+#include <set>
 #include <thread>
 
 #include <memory>
@@ -43,6 +47,35 @@ static sai_service_method_table_t test_services = {
     profile_get_next_value
 };
 
+static std::mutex g_operUpMutex;
+static std::set<sai_object_id_t> g_operUpPortIds;
+
+static bool isReportedOperUp(
+        _In_ sai_object_id_t portId)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(g_operUpMutex);
+
+    return g_operUpPortIds.find(portId) != g_operUpPortIds.end();
+}
+
+static void onPortStateChange(
+        _In_ uint32_t count,
+        _In_ const sai_port_oper_status_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(g_operUpMutex);
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        if (data[i].port_state == SAI_PORT_OPER_STATUS_UP)
+        {
+            g_operUpPortIds.insert(data[i].port_id);
+        }
+    }
+}
 
 TEST(Sai, bulkGet)
 {
@@ -116,5 +149,86 @@ TEST(Sai, fdbAgingWakeEvent)
     // remove(SWITCH) triggers stopFdbAgingThread() which joins the thread.
     // If the wake/shutdown paths are broken this would hang; the test passing
     // confirms the aging thread terminates correctly.
+    EXPECT_EQ(sai.remove(SAI_OBJECT_TYPE_SWITCH, switch_id), SAI_STATUS_SUCCESS);
+}
+
+TEST(Sai, p2pVxlanTunnelBridgePortOperUp)
+{
+    // The bridge port is created through the metadata, as syncd does: the
+    // metadata must accept the create and the state change is delivered.
+    Sai sai;
+
+    ASSERT_EQ(sai.apiInitialize(0, &test_services), SAI_STATUS_SUCCESS);
+
+    sai_attribute_t attrs[4];
+    sai_object_id_t switch_id = SAI_NULL_OBJECT_ID;
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+    attrs[1].id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
+    attrs[1].value.ptr = (void*)&onPortStateChange;
+
+    ASSERT_EQ(sai.create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 2, attrs), SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+    attrs[1].id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
+
+    ASSERT_EQ(sai.get(SAI_OBJECT_TYPE_SWITCH, switch_id, 2, attrs), SAI_STATUS_SUCCESS);
+
+    auto vr = attrs[0].value.oid;
+    auto bridge = attrs[1].value.oid;
+
+    attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+    attrs[0].value.oid = vr;
+    attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    attrs[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_LOOPBACK;
+
+    sai_object_id_t rif = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(sai.create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, &rif, switch_id, 2, attrs), SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_TUNNEL_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_TUNNEL_TYPE_VXLAN;
+    attrs[1].id = SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE;
+    attrs[1].value.oid = rif;
+    attrs[2].id = SAI_TUNNEL_ATTR_PEER_MODE;
+    attrs[2].value.s32 = SAI_TUNNEL_PEER_MODE_P2P;
+    attrs[3].id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
+    attrs[3].value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    attrs[3].value.ipaddr.addr.ip4 = htonl(0x0a000002);
+
+    sai_object_id_t tunnel = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(sai.create(SAI_OBJECT_TYPE_TUNNEL, &tunnel, switch_id, 4, attrs), SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_TUNNEL;
+    attrs[1].id = SAI_BRIDGE_PORT_ATTR_TUNNEL_ID;
+    attrs[1].value.oid = tunnel;
+    attrs[2].id = SAI_BRIDGE_PORT_ATTR_BRIDGE_ID;
+    attrs[2].value.oid = bridge;
+
+    sai_object_id_t bridgePort = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(sai.create(SAI_OBJECT_TYPE_BRIDGE_PORT, &bridgePort, switch_id, 3, attrs), SAI_STATUS_SUCCESS);
+
+    EXPECT_FALSE(isReportedOperUp(tunnel));
+
+    for (int i = 0; i < 500 && !isReportedOperUp(bridgePort); i++)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_TRUE(isReportedOperUp(bridgePort));
+
+    // the metadata knows the bridge port exactly once
+
+    attrs[0].id = SAI_BRIDGE_PORT_ATTR_TUNNEL_ID;
+
+    EXPECT_EQ(sai.get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridgePort, 1, attrs), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(attrs[0].value.oid, tunnel);
+
+    EXPECT_EQ(sai.remove(SAI_OBJECT_TYPE_BRIDGE_PORT, bridgePort), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(sai.remove(SAI_OBJECT_TYPE_TUNNEL, tunnel), SAI_STATUS_SUCCESS);
     EXPECT_EQ(sai.remove(SAI_OBJECT_TYPE_SWITCH, switch_id), SAI_STATUS_SUCCESS);
 }

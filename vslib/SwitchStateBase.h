@@ -532,9 +532,9 @@ namespace saivs
             static int promisc(
                     _In_ const char *dev);
 
-        protected: // custom tunnel
+        protected: // custom bridge port
 
-            sai_status_t createTunnel(
+            sai_status_t createBridgePort(
                     _In_ sai_object_id_t object_id,
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,

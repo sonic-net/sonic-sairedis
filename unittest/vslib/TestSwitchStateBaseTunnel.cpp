@@ -53,7 +53,7 @@ static std::vector<std::pair<sai_object_id_t, sai_port_oper_status_t>> portState
     return changes;
 }
 
-TEST(SwitchStateBaseTunnel, p2pVxlanTunnelReportsOperUp)
+TEST(SwitchStateBaseTunnel, p2pVxlanTunnelBridgePortReportsOperUp)
 {
     auto eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
 
@@ -104,8 +104,6 @@ TEST(SwitchStateBaseTunnel, p2pVxlanTunnelReportsOperUp)
 
     ASSERT_EQ(sw.create(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(p2mp), switchId, 2, attrs), SAI_STATUS_SUCCESS);
 
-    EXPECT_TRUE(portStateChanges(eventQueue).empty());
-
     attrs[1].value.s32 = SAI_TUNNEL_PEER_MODE_P2P;
     attrs[2].id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
     attrs[2].value.ipaddr = dip;
@@ -114,9 +112,32 @@ TEST(SwitchStateBaseTunnel, p2pVxlanTunnelReportsOperUp)
 
     ASSERT_EQ(sw.create(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(p2p), switchId, 3, attrs), SAI_STATUS_SUCCESS);
 
+    // a tunnel alone has no object the notification may carry
+
+    EXPECT_TRUE(portStateChanges(eventQueue).empty());
+
+    sai_attribute_t bpAttrs[2];
+
+    bpAttrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+    bpAttrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_TUNNEL;
+    bpAttrs[1].id = SAI_BRIDGE_PORT_ATTR_TUNNEL_ID;
+    bpAttrs[1].value.oid = p2mp;
+
+    auto p2mpBp = sw.m_realObjectIdManager->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, switchId);
+
+    ASSERT_EQ(sw.create(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(p2mpBp), switchId, 2, bpAttrs), SAI_STATUS_SUCCESS);
+
+    EXPECT_TRUE(portStateChanges(eventQueue).empty());
+
+    bpAttrs[1].value.oid = p2p;
+
+    auto p2pBp = sw.m_realObjectIdManager->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, switchId);
+
+    ASSERT_EQ(sw.create(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(p2pBp), switchId, 2, bpAttrs), SAI_STATUS_SUCCESS);
+
     auto changes = portStateChanges(eventQueue);
 
     ASSERT_EQ(changes.size(), 1u);
-    EXPECT_EQ(changes[0].first, p2p);
+    EXPECT_EQ(changes[0].first, p2pBp);
     EXPECT_EQ(changes[0].second, SAI_PORT_OPER_STATUS_UP);
 }
