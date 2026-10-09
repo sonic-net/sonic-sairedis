@@ -423,6 +423,13 @@ namespace saivs
             void learnFdbInfo(
                     _In_ const FdbInfo &fi);
 
+            /**
+             * @brief Tracks an FDB entry the user changed: a dynamic entry ages
+             * like a learned one, a static entry is not tracked.
+             */
+            void updateFdbInfoOnSet(
+                    _In_ const std::string &serializedObjectId);
+
         protected:
 
             bool getLagFromPort(
