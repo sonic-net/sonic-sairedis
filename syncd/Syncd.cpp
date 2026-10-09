@@ -42,6 +42,7 @@
 #include <iterator>
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 #define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
@@ -5850,6 +5851,9 @@ sai_status_t Syncd::applyView()
         cl->executeOperationsOnAsic(); // can throw, if so asic will be in inconsistent state
     }
 
+    // before the slow database update, so removed objects stop being polled as soon as possible
+    removeStaleFlexCounters(tempViews);
+
     updateRedisDatabase(tempViews);
 
     for (auto& cl: cls)
@@ -5982,6 +5986,50 @@ void Syncd::updateRedisDatabase(
     m_client->setVidAndRidMap(allVid2Rid);
 
     SWSS_LOG_NOTICE("updated redis database");
+}
+
+void Syncd::removeStaleFlexCounters(
+    _In_ const std::vector<std::shared_ptr<AsicView>>& temporaryViews)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Flex counters are registered by VID and they survive apply view.
+     * Objects matched by comparison logic took VIDs from temporary view, and
+     * objects missing in temporary view were removed, so counters registered
+     * with VIDs which are not present in the applied view will never be
+     * unregistered by the user, who knows only the new VIDs. Remove them here,
+     * otherwise they would be polled forever.
+     */
+
+    std::unordered_set<sai_object_id_t> vids;
+
+    for (auto& tv: temporaryViews)
+    {
+        for (auto& kv: tv->m_ridToVid)
+        {
+            vids.insert(kv.second);
+        }
+    }
+
+    auto removed = m_manager->removeCounters(
+            [&](sai_object_id_t vid) { return vids.find(vid) == vids.end(); });
+
+    for (auto& kv: removed)
+    {
+        auto strVid = sai_serialize_object_id(kv.second);
+
+        SWSS_LOG_INFO("removed flex counter %s:%s, VID is not present in applied view",
+                kv.first.c_str(),
+                strVid.c_str());
+
+        m_flexCounterTable->del(kv.first + ":" + strVid);
+    }
+
+    if (removed.size())
+    {
+        SWSS_LOG_NOTICE("removed %zu flex counters with VIDs not present in applied view", removed.size());
+    }
 }
 
 // TODO for future we can have each switch in separate redis db index or even
