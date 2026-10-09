@@ -2196,6 +2196,13 @@ sai_status_t SwitchVpp::set(
         return setAclGrpMbr(objectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_HASH)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return m_pbh.setHash(objectId, attr);
+    }
+
     if (objectType == SAI_OBJECT_TYPE_ROUTE_ENTRY)
     {
         return updateIpRoute(serializedObjectId, attr);

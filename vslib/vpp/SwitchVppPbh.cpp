@@ -188,29 +188,19 @@ void SwitchVppPbh::forgetTableCounters(
     }
 }
 
-sai_status_t SwitchVppPbh::createHash(
-        _In_ sai_object_id_t object_id,
-        _In_ sai_object_id_t switch_id,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+sai_status_t SwitchVppPbh::hashProfileFields(
+        _In_ const SaiObject &hash_obj,
+        _In_ const std::string &sid,
+        _Out_ std::vector<vpp_pbh_hash_field_t> &fields)
 {
     SWSS_LOG_ENTER();
 
-    auto sid = sai_serialize_object_id(object_id);
-
     /*
-     * The hash is not in the object store yet, so it is read through a
-     * SaiCachedObject over the caller's attribute list. Everything that can
-     * fail happens before create_internal(), which leaves a single failure
-     * after the commit point instead of a rollback at every step.
-     *
      * Only a fine-grained hash is a PBH profile. A hash carrying
      * SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST is the switch-global ECMP/LAG hash
      * and is handled by the existing vpp_ip_flow_hash_set() path, so it is
      * stored and otherwise left alone.
      */
-    SaiCachedObject hash_obj(m_switch_db, SAI_OBJECT_TYPE_HASH, sid, attr_count, attr_list);
-
     sai_attribute_t fg_attr;
     sai_object_id_t fg_list[MAX_OBJLIST_LEN];
 
@@ -220,7 +210,7 @@ sai_status_t SwitchVppPbh::createHash(
 
     if (hash_obj.get_attr(fg_attr) != SAI_STATUS_SUCCESS || fg_attr.value.objlist.count == 0)
     {
-        return m_switch_db->create_internal(SAI_OBJECT_TYPE_HASH, sid, switch_id, attr_count, attr_list);
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     if (!pbhSupported("fine grained hash", sid))
@@ -243,7 +233,7 @@ sai_status_t SwitchVppPbh::createHash(
         return SAI_STATUS_FAILURE;
     }
 
-    std::vector<vpp_pbh_hash_field_t> fields;
+    fields.clear();
 
     for (const auto &field_obj: field_objs)
     {
@@ -290,6 +280,41 @@ sai_status_t SwitchVppPbh::createHash(
         fields.push_back(field);
     }
 
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVppPbh::createHash(
+        _In_ sai_object_id_t object_id,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(object_id);
+
+    /*
+     * The hash is not in the object store yet, so it is read through a
+     * SaiCachedObject over the caller's attribute list. Everything that can
+     * fail happens before create_internal(), which leaves a single failure
+     * after the commit point instead of a rollback at every step.
+     */
+    SaiCachedObject hash_obj(m_switch_db, SAI_OBJECT_TYPE_HASH, sid, attr_count, attr_list);
+
+    std::vector<vpp_pbh_hash_field_t> fields;
+
+    sai_status_t status = hashProfileFields(hash_obj, sid, fields);
+
+    if (status == SAI_STATUS_ITEM_NOT_FOUND)
+    {
+        return m_switch_db->create_internal(SAI_OBJECT_TYPE_HASH, sid, switch_id, attr_count, attr_list);
+    }
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
     uint32_t profile_index = PBH_INVALID_INDEX;
 
     if (vpp_pbh_profile_add_del(true, fields.data(), (uint32_t) fields.size(), &profile_index) != 0)
@@ -298,7 +323,7 @@ sai_status_t SwitchVppPbh::createHash(
         return SAI_STATUS_FAILURE;
     }
 
-    sai_status_t status = m_switch_db->create_internal(SAI_OBJECT_TYPE_HASH, sid, switch_id, attr_count, attr_list);
+    status = m_switch_db->create_internal(SAI_OBJECT_TYPE_HASH, sid, switch_id, attr_count, attr_list);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -316,6 +341,69 @@ sai_status_t SwitchVppPbh::createHash(
                     profile_index, sid.c_str(), fields.size());
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVppPbh::setHash(
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(object_id);
+    auto it = m_profile_map.find(object_id);
+
+    /*
+     * The field list is the only attribute that changes what VPP hashes on,
+     * and a hash with no profile is not PBH's business at all. Everything
+     * else is stored and left alone.
+     */
+    if (it == m_profile_map.end() || attr == nullptr ||
+        attr->id != SAI_HASH_ATTR_FINE_GRAINED_HASH_FIELD_LIST)
+    {
+        return m_switch_db->set_internal(SAI_OBJECT_TYPE_HASH, sid, attr);
+    }
+
+    /*
+     * The new list is in the pending attribute, the rest of the hash is in
+     * the store, so the object is read through the view that overlays one on
+     * the other. As on create, everything that can fail happens before the
+     * store is touched.
+     */
+    SaiModDBObject hash_obj(m_switch_db, SAI_OBJECT_TYPE_HASH, sid, 1, attr);
+
+    std::vector<vpp_pbh_hash_field_t> fields;
+
+    sai_status_t status = hashProfileFields(hash_obj, sid, fields);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        /*
+         * A hash that had a profile cannot stop being fine grained: PbhOrch
+         * only ever replaces the list, and an empty one is rejected before it
+         * gets here.
+         */
+        SWSS_LOG_ERROR("PBH profile update rejected for hash %s", sid.c_str());
+        return status == SAI_STATUS_ITEM_NOT_FOUND ? SAI_STATUS_INVALID_PARAMETER : status;
+    }
+
+    /*
+     * Replaced in place so the profile index does not move. Rules carry the
+     * index, so a delete and re-create would strand every rule referencing
+     * this hash -- and would leave a window in which packets matching those
+     * rules hash on nothing at all.
+     */
+    uint32_t profile_index = it->second;
+
+    if (vpp_pbh_profile_add_del(true, fields.data(), (uint32_t) fields.size(), &profile_index) != 0)
+    {
+        SWSS_LOG_ERROR("PBH profile %u update failed for hash %s", it->second, sid.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("PBH profile %u updated for hash %s with %zu fields",
+                    profile_index, sid.c_str(), fields.size());
+
+    return m_switch_db->set_internal(SAI_OBJECT_TYPE_HASH, sid, attr);
 }
 
 sai_status_t SwitchVppPbh::removeHash(

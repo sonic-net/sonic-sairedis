@@ -24,8 +24,16 @@
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "SwitchVpp.h"
+#include "SaiObjectDB.h"
+
+/*
+ * SwitchVpp.h includes this header before it reaches its own includes, so
+ * anything named below has to be pulled in here rather than inherited.
+ */
+#include "vppxlate/SaiVppXlate.h"
 
 namespace saivs
 {
@@ -81,6 +89,21 @@ namespace saivs
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
+
+            /**
+             * @brief Update the PBH profile behind a fine grained hash.
+             *
+             * Only SAI_HASH_ATTR_FINE_GRAINED_HASH_FIELD_LIST changes what VPP
+             * hashes on; every other attribute, and every hash that is not a
+             * PBH profile, is stored and otherwise left alone.
+             *
+             * @param object_id The hash object ID.
+             * @param attr The attribute being set.
+             * @return The status of the operation.
+             */
+            sai_status_t setHash(
+                    _In_ sai_object_id_t object_id,
+                    _In_ const sai_attribute_t *attr);
 
             /**
              * @brief Remove a hash object and its PBH profile, if it had one.
@@ -172,6 +195,23 @@ namespace saivs
             bool pbhSupported(
                     _In_ const char *what,
                     _In_ const std::string &sid);
+
+            /**
+             * @brief Translate a fine grained hash into the VPP field vector.
+             *
+             * @param hash_obj The hash object, read through whichever view the
+             *                 caller has: the pending attribute list on create,
+             *                 the stored object overlaid with the set on update.
+             * @param sid Serialized hash object ID, for log lines.
+             * @param fields Receives the translated fields.
+             * @return SAI_STATUS_ITEM_NOT_FOUND if the hash is not fine grained
+             *         and so is not a PBH profile at all, SAI_STATUS_SUCCESS on
+             *         success, an error otherwise.
+             */
+            sai_status_t hashProfileFields(
+                    _In_ const SaiObject &hash_obj,
+                    _In_ const std::string &sid,
+                    _Out_ std::vector<vpp_pbh_hash_field_t> &fields);
 
             /**
              * @brief Drop every counter recorded for a table.
