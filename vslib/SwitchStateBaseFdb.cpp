@@ -191,6 +191,58 @@ void SwitchStateBase::learnFdbInfo(
     processFdbInfo(fi, SAI_FDB_EVENT_MOVE);
 }
 
+void SwitchStateBase::updateFdbInfoOnSet(
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_fdb_entry_t fdbEntry;
+
+    sai_deserialize_fdb_entry(serializedObjectId, fdbEntry);
+
+    FdbInfo fi;
+
+    fi.setFdbEntry(fdbEntry);
+
+    sai_attribute_t attr;
+
+    if (objectTypeQuery(fdbEntry.bv_id) == SAI_OBJECT_TYPE_VLAN)
+    {
+        attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+        if (get(SAI_OBJECT_TYPE_VLAN, fdbEntry.bv_id, 1, &attr) == SAI_STATUS_SUCCESS)
+        {
+            fi.setVlanId(attr.value.u16);
+        }
+    }
+
+    m_fdb_info_set.erase(fi);
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+
+    if (get(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, 2, attrs) != SAI_STATUS_SUCCESS ||
+            attrs[0].value.s32 != SAI_FDB_ENTRY_TYPE_DYNAMIC ||
+            attrs[1].value.oid == SAI_NULL_OBJECT_ID)
+    {
+        return;
+    }
+
+    fi.setBridgePortId(attrs[1].value.oid);
+
+    attr.id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+
+    fi.setPortId((get(SAI_OBJECT_TYPE_BRIDGE_PORT, attrs[1].value.oid, 1, &attr) == SAI_STATUS_SUCCESS)
+            ? attr.value.oid
+            : SAI_NULL_OBJECT_ID);
+
+    fi.setTimestamp((uint32_t)time(NULL));
+
+    m_fdb_info_set.insert(fi);
+}
+
 void SwitchStateBase::findBridgeVlanForPortVlan(
         _In_ sai_object_id_t port_id,
         _In_ sai_vlan_id_t vlan_id,

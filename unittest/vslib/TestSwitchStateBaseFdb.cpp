@@ -562,3 +562,75 @@ TEST_F(SwitchStateBaseFdbTest, dynamicEntryCreatedByUserAgesOnTraffic)
     EXPECT_FALSE(fdbEntryExists(fe));
     EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_AGED });
 }
+
+TEST_F(SwitchStateBaseFdbTest, entryChangedByUserToDynamicIsTracked)
+{
+    auto port0 = m_sw->m_port_list.at(0);
+    auto port1 = m_sw->m_port_list.at(1);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x09 };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+    auto sid = sai_serialize_fdb_entry(fe);
+
+    // static entry allowing MAC move, like a remote entry on a tunnel bridge port
+    sai_attribute_t attrs[3];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = portBridgePort(port0);
+    attrs[2].id = SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE;
+    attrs[2].value.booldata = true;
+
+    ASSERT_EQ(m_sw->create(SAI_OBJECT_TYPE_FDB_ENTRY, sid, m_switchId, 3, attrs), SAI_STATUS_SUCCESS);
+
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+
+    // the user makes it a local dynamic entry on another port
+    sai_attribute_t attr;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attr.value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+
+    ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, sid, &attr), SAI_STATUS_SUCCESS);
+
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attr.value.oid = portBridgePort(port1);
+
+    ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, sid, &attr), SAI_STATUS_SUCCESS);
+
+    ASSERT_EQ(m_sw->m_fdb_info_set.size(), 1u);
+    EXPECT_EQ(m_sw->m_fdb_info_set.begin()->getBridgePortId(), portBridgePort(port1));
+    EXPECT_EQ(m_sw->m_fdb_info_set.begin()->getPortId(), port1);
+
+    // traffic on that port refreshes it, nothing is reported
+    sendFrame(port1, mac);
+
+    EXPECT_TRUE(fdbEvents().empty());
+    EXPECT_EQ(m_sw->m_fdb_info_set.size(), 1u);
+
+    // and it ages like a learned entry
+    ASSERT_NO_FATAL_FAILURE(setAgingTime(60));
+    ASSERT_NO_FATAL_FAILURE(backdate(mac, 1, 100));
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_FALSE(fdbEntryExists(fe));
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_AGED });
+
+    // an entry made static again is not tracked
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attr.value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+
+    ASSERT_EQ(m_sw->create(SAI_OBJECT_TYPE_FDB_ENTRY, sid, m_switchId, 2, attrs), SAI_STATUS_SUCCESS);
+    ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, sid, &attr), SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(m_sw->m_fdb_info_set.size(), 1u);
+
+    attr.value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+
+    ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, sid, &attr), SAI_STATUS_SUCCESS);
+
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+}

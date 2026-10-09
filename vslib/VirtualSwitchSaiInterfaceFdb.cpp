@@ -197,14 +197,14 @@ sai_status_t VirtualSwitchSaiInterface::flushFdbEntries(
 
             auto fit = ss->m_fdb_info_set.find(fi);
 
-            if (fit == ss->m_fdb_info_set.end())
-            {
-                // this may happen if vlan is invalid
-                SWSS_LOG_ERROR("failed to find fdb entry in info set: %s, learn for this MAC will be disabled", it->first.c_str());
-            }
-            else
+            if (fit != ss->m_fdb_info_set.end())
             {
                 ss->m_fdb_info_set.erase(fit);
+            }
+            else if (type == SAI_FDB_ENTRY_TYPE_DYNAMIC)
+            {
+                // a dynamic entry the user created is tracked once traffic for it is seen
+                SWSS_LOG_INFO("fdb entry is not tracked for aging: %s", it->first.c_str());
             }
 
             /*

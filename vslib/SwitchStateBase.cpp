@@ -617,6 +617,16 @@ sai_status_t SwitchStateBase::set(
         return setTamTelType(objectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_FDB_ENTRY &&
+            (attr->id == SAI_FDB_ENTRY_ATTR_TYPE || attr->id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID))
+    {
+        CHECK_STATUS(set_internal(objectType, serializedObjectId, attr));
+
+        updateFdbInfoOnSet(serializedObjectId);
+
+        return SAI_STATUS_SUCCESS;
+    }
+
     return set_internal(objectType, serializedObjectId, attr);
 }
 
