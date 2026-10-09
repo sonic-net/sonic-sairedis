@@ -137,3 +137,40 @@ void FlexCounterManager::removeCounter(
     }
 }
 
+std::vector<std::pair<std::string, sai_object_id_t>> FlexCounterManager::removeCounters(
+        _In_ const std::function<bool(sai_object_id_t)>& shouldRemove)
+{
+    SWSS_LOG_ENTER();
+
+    std::map<std::string, std::shared_ptr<FlexCounter>> flexCounters;
+
+    {
+        MUTEX;
+
+        flexCounters = m_flexCounters;
+    }
+
+    std::vector<std::pair<std::string, sai_object_id_t>> removed;
+
+    for (auto& kv: flexCounters)
+    {
+        auto& fc = kv.second;
+
+        for (auto vid: fc->getCounterVids())
+        {
+            if (shouldRemove(vid))
+            {
+                fc->removeCounter(vid);
+
+                removed.emplace_back(kv.first, vid);
+            }
+        }
+
+        if (fc->isDiscarded())
+        {
+            removeInstance(kv.first);
+        }
+    }
+
+    return removed;
+}
