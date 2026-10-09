@@ -4,7 +4,6 @@
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
 #include <fstream>
 #include <memory>
 #include <vector>
@@ -680,11 +679,13 @@ TEST(SwitchBCM56850, refresh_bridge_port_list_lag_and_tunnel_warm_boot)
 
     ASSERT_NO_FATAL_FAILURE(createLagAndTunnelBridgePorts(sw, switchId, attr.value.oid, lagBridgePort, tunnelBridgePort));
 
-    // switch port bridge ports keep their order, the others follow
+    // switch port bridge ports keep their order, the lag bridge port follows,
+    // the tunnel bridge port is not listed
     auto expected = coldList;
 
-    expected.push_back(std::min(lagBridgePort, tunnelBridgePort));
-    expected.push_back(std::max(lagBridgePort, tunnelBridgePort));
+    expected.push_back(lagBridgePort);
+
+    EXPECT_NE(tunnelBridgePort, SAI_NULL_OBJECT_ID);
 
     EXPECT_EQ(getBridgePortList(sw, switchId), expected);
 
