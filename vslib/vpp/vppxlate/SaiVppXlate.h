@@ -501,6 +501,9 @@ typedef enum {
     extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
     extern int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
     extern int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
+    /* Per-interface ingress feature overrides. Uses the VPP_BD_FLAG_* bit
+     * values; ARP_UFWD is not supported by the VPP l2_flags API. */
+    extern int set_l2_interface_flags_by_index(uint32_t sw_if_index, vpp_bd_flags_t flags, bool enable);
     extern int set_l2_interface_vlan_tag_rewrite(const char *hwif_name, uint32_t tag1, uint32_t tag2, uint32_t push_dot1q, uint32_t vtr_op);
     extern int bridge_domain_get_member_count (uint32_t bd_id, uint32_t *member_count);
     extern int create_bvi_interface(uint8_t *mac_address, uint32_t instance);
@@ -602,6 +605,11 @@ typedef enum {
                                                     uint32_t ip6_table_index,
                                                     uint32_t other_table_index,
                                                     bool is_input);
+    extern int vpp_classify_set_interface_l2_tables_by_index(uint32_t sw_if_index,
+                                                             uint32_t ip4_table_index,
+                                                             uint32_t ip6_table_index,
+                                                             uint32_t other_table_index,
+                                                             bool is_input);
     extern int vpp_add_node_next(const char *node_name, const char *next_name,
                                        uint32_t *next_index);
     extern int sw_interface_set_mpls_enable(const char *hwif_name, bool enable);
