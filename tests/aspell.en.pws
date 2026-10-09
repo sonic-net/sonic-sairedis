@@ -552,3 +552,9 @@ saivpp
 EVPN
 SVI
 VTEP
+BVIs
+VNIs
+anycast
+decapsulates
+decapsulating
+nhA
