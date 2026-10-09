@@ -40,7 +40,7 @@ parameters:
     default: bookworm
   - name: vpp_run_id
     type: string
-    default: ''
+    default: '1243532'
 variables:
   - name: BUILD_BRANCH
     ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
