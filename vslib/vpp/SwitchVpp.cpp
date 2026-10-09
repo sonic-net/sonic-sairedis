@@ -18,6 +18,7 @@
 #include <string>
 #include <sstream>
 #include <cerrno>
+#include <algorithm>
 
 using namespace saivs;
 
@@ -2791,6 +2792,31 @@ sai_status_t SwitchVpp::initialize_default_objects(
     CHECK_STATUS(initialize_voq_switch_objects(attr_count, attr_list));
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::set_acl_capabilities()
+{
+    SWSS_LOG_ENTER();
+
+    CHECK_STATUS(SwitchStateBase::set_acl_capabilities());
+
+    // VPP cannot mirror a packet at the ingress pipeline from an egress ACL,
+    // so drop that action from the advertised egress stage capability.
+    m_egress_acl_action_list.erase(
+            std::remove(
+                m_egress_acl_action_list.begin(),
+                m_egress_acl_action_list.end(),
+                SAI_ACL_ACTION_TYPE_MIRROR_INGRESS),
+            m_egress_acl_action_list.end());
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_ACL_STAGE_EGRESS;
+    attr.value.aclcapability.is_action_list_mandatory = false;
+    attr.value.aclcapability.action_list.list = reinterpret_cast<int32_t*>(m_egress_acl_action_list.data());
+    attr.value.aclcapability.action_list.count = static_cast<uint32_t>(m_egress_acl_action_list.size());
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
 sai_status_t SwitchVpp::create_default_hash()

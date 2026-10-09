@@ -1434,6 +1434,8 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) override;
 
+            virtual sai_status_t set_acl_capabilities() override;
+
             // Set the callback to wake the FDB aging thread immediately on MAC events.
             void initFdbEventHandling(std::function<void()> fn) override;
             void deinitFdbEventHandling() override;
