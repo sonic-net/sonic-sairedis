@@ -6,6 +6,7 @@
 
 #include <fstream>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <unistd.h>
@@ -718,4 +719,50 @@ TEST(SwitchBCM56850, refresh_bridge_port_list_lag_and_tunnel_warm_boot)
     ASSERT_EQ(warm.warm_boot_initialize_objects(), SAI_STATUS_SUCCESS);
 
     EXPECT_EQ(getBridgePortList(warm, switchId), expected);
+}
+
+TEST(SwitchBCM56850, enum_values_capability_reports_count_on_overflow)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(0x2100000000, std::make_shared<RealObjectIdManager>(0, scc), sc);
+
+    const std::vector<std::pair<sai_object_type_t, sai_attr_id_t>> queries = {
+        { SAI_OBJECT_TYPE_TUNNEL, SAI_TUNNEL_ATTR_PEER_MODE },
+        { SAI_OBJECT_TYPE_VLAN, SAI_VLAN_ATTR_UNKNOWN_UNICAST_FLOOD_CONTROL_TYPE },
+        { SAI_OBJECT_TYPE_NEXT_HOP_GROUP, SAI_NEXT_HOP_GROUP_ATTR_TYPE },
+    };
+
+    for (const auto& q: queries)
+    {
+        // the user first asks for the count, then reads the values
+
+        sai_s32_list_t enumList;
+
+        enumList.count = 0;
+        enumList.list = nullptr;
+
+        EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000, q.first, q.second, &enumList), SAI_STATUS_BUFFER_OVERFLOW);
+        EXPECT_GT(enumList.count, 0u);
+
+        std::vector<int32_t> values(enumList.count);
+
+        enumList.list = values.data();
+
+        EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000, q.first, q.second, &enumList), SAI_STATUS_SUCCESS);
+        EXPECT_EQ(enumList.count, values.size());
+    }
 }
