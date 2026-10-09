@@ -2449,10 +2449,20 @@ std::vector<sai_object_id_t> SwitchStateBase::sort_bridge_port_list(
         }
     }
 
-    // bridge ports without a switch port: lag (PORT_ID is the lag) and tunnel (no PORT_ID)
+    // then lag bridge ports; tunnel bridge ports are not listed (as on ASIC SAI implementations),
+    // since a listed one stays in the user's warm restart view next to the one it creates again
+
+    auto md_type = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_TYPE);
 
     for (const auto &bp: bridge_ports)
     {
+        auto it = bp.second.find(md_type->attridname);
+
+        if (it != bp.second.end() && it->second->getAttr()->value.s32 == SAI_BRIDGE_PORT_TYPE_TUNNEL)
+        {
+            continue;
+        }
+
         if (added.find(bp.first) == added.end())
         {
             bridge_port_list.push_back(bp.first);
