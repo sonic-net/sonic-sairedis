@@ -2217,6 +2217,50 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     set_reply_status(retval);
 }
 
+static void
+vl_api_sonic_ext_pbh_profile_add_del_reply_t_handler (vl_api_sonic_ext_pbh_profile_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+
+    uint32_t *profile_index = (uint32_t *) get_index_ptr(msg->context);
+    if (!profile_index) {
+        return;
+    }
+    set_reply_status(retval);
+    *profile_index = ntohl(msg->profile_index);
+
+    release_index(msg->context);
+}
+
+static void
+vl_api_sonic_ext_pbh_table_add_replace_reply_t_handler (vl_api_sonic_ext_pbh_table_add_replace_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+
+    uint32_t *table_index = (uint32_t *) get_index_ptr(msg->context);
+    if (!table_index) {
+        return;
+    }
+    set_reply_status(retval);
+    *table_index = ntohl(msg->table_index);
+
+    release_index(msg->context);
+}
+
+static void
+vl_api_sonic_ext_pbh_table_del_reply_t_handler (vl_api_sonic_ext_pbh_table_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_pbh_interface_attach_detach_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
 #define LCP_MSG_ID(id) \
     (VL_API_##id + lcp_msg_id_base)
 
@@ -2270,6 +2314,10 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_FEATURE_GET_REPLY), sonic_ext_feature_get_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_PROFILE_ADD_DEL_REPLY), sonic_ext_pbh_profile_add_del_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_TABLE_ADD_REPLACE_REPLY), sonic_ext_pbh_table_add_replace_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_TABLE_DEL_REPLY), sonic_ext_pbh_table_del_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_INTERFACE_ATTACH_DETACH_REPLY), sonic_ext_pbh_interface_attach_detach_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
     _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
     _(MPLS_MSG_ID(SW_INTERFACE_SET_MPLS_ENABLE_REPLY), sw_interface_set_mpls_enable_reply) \
@@ -4526,6 +4574,222 @@ int vpp_sonic_ext_feature_get(const char *feature, bool *enabled)
         SAIVPP_ERROR("%s failed(%d) feature %s", __func__, ret, feature);
     } else {
         SAIVPP_INFO("%s %s -> %d", __func__, feature, *enabled);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_pbh_profile_add_del(bool is_add, const vpp_pbh_hash_field_t *fields,
+                            uint32_t n_fields, uint32_t *profile_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_pbh_profile_add_del_t *mp;
+    uint32_t context, idx;
+    int ret;
+
+    if (profile_index == NULL || (is_add && (fields == NULL || n_fields == 0))) {
+        return -EINVAL;
+    }
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    if (!is_add) {
+        n_fields = 0;
+    }
+
+    M22(SONIC_EXT_PBH_PROFILE_ADD_DEL, mp,
+        sizeof(vl_api_sonic_ext_pbh_hash_field_t) * n_fields);
+
+    mp->is_add = is_add;
+    mp->profile_index = htonl(*profile_index);
+    mp->n_fields = htonl(n_fields);
+
+    for (idx = 0; idx < n_fields; idx++) {
+        vl_api_sonic_ext_pbh_hash_field_t *f = &mp->fields[idx];
+
+        f->field = fields[idx].field;
+        f->sequence_id = htonl(fields[idx].sequence_id);
+        memcpy(f->mask, fields[idx].mask, sizeof(f->mask));
+    }
+
+    context = store_ptr(profile_index);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
+
+    S(mp);
+    WR(ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) is_add %d n_fields %u", __func__, ret,
+                     is_add, n_fields);
+    } else {
+        SAIVPP_INFO("%s is_add %d profile_index %u n_fields %u", __func__,
+                    is_add, *profile_index, n_fields);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_pbh_table_add_replace(const char *name, const vpp_pbh_rule_t *rules,
+                              uint32_t n_rules, uint32_t *table_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_pbh_table_add_replace_t *mp;
+    uint32_t context, idx;
+    int ret;
+
+    if (table_index == NULL || (n_rules != 0 && rules == NULL)) {
+        return -EINVAL;
+    }
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M22(SONIC_EXT_PBH_TABLE_ADD_REPLACE, mp,
+        sizeof(vl_api_sonic_ext_pbh_rule_t) * n_rules);
+
+    mp->table_index = htonl(*table_index);
+    mp->n_rules = htonl(n_rules);
+    if (name) {
+        strncpy((char *)mp->name, name, sizeof(mp->name) - 1);
+    }
+
+    for (idx = 0; idx < n_rules; idx++) {
+        const vpp_pbh_rule_t *in_rule = &rules[idx];
+        vl_api_sonic_ext_pbh_rule_t *vpp_rule = &mp->rules[idx];
+
+        vpp_rule->rule_id = htonl(in_rule->rule_id);
+        vpp_rule->priority = htonl(in_rule->priority);
+        vpp_rule->qualifiers = htonl(in_rule->qualifiers);
+        vpp_rule->ether_type = htons(in_rule->ether_type);
+        vpp_rule->inner_ether_type = htons(in_rule->inner_ether_type);
+        vpp_rule->l4_dst_port = htons(in_rule->l4_dst_port);
+        vpp_rule->ip_protocol = in_rule->ip_protocol;
+        vpp_rule->ipv6_next_header = in_rule->ipv6_next_header;
+        vpp_rule->gre_key = htonl(in_rule->gre_key);
+        vpp_rule->gre_key_mask = htonl(in_rule->gre_key_mask);
+        vpp_rule->ecmp_profile = htonl(in_rule->ecmp_profile);
+        vpp_rule->lag_profile = htonl(in_rule->lag_profile);
+        vpp_rule->flow_counter = in_rule->flow_counter;
+
+        SAIVPP_INFO("PBH rule %u: id %u priority %u qualifiers 0x%x "
+                    "ecmp_profile %u lag_profile %u",
+                    idx, in_rule->rule_id, in_rule->priority,
+                    in_rule->qualifiers, in_rule->ecmp_profile,
+                    in_rule->lag_profile);
+    }
+
+    context = store_ptr(table_index);
+    if (context == 0) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
+
+    S(mp);
+    WR(ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) table_index %u n_rules %u", __func__, ret,
+                     *table_index, n_rules);
+    } else {
+        SAIVPP_INFO("%s table_index %u n_rules %u", __func__, *table_index,
+                    n_rules);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_pbh_table_del(uint32_t table_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_pbh_table_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M(SONIC_EXT_PBH_TABLE_DEL, mp);
+    mp->table_index = htonl(table_index);
+
+    S(mp);
+    WR(ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) table_index %u", __func__, ret, table_index);
+    } else {
+        SAIVPP_INFO("%s table_index %u", __func__, table_index);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_pbh_interface_attach_detach(const char *hwif_name, uint32_t table_index,
+                                    bool attach)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_pbh_interface_attach_detach_t *mp;
+    u32 idx;
+    int ret;
+
+    if (hwif_name == NULL) {
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M(SONIC_EXT_PBH_INTERFACE_ATTACH_DETACH, mp);
+    mp->sw_if_index = htonl(idx);
+    mp->table_index = htonl(table_index);
+    mp->is_attach = attach;
+
+    S(mp);
+    WR(ret);
+
+    ret = vpp_normalize_ret(ret, !attach, __func__);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s table_index %u attach %d", __func__, ret,
+                     hwif_name, table_index, attach);
+    } else {
+        SAIVPP_INFO("%s %s table_index %u attach %d", __func__, hwif_name,
+                    table_index, attach);
     }
 
     VPP_UNLOCK();
