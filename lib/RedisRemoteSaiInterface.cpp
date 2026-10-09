@@ -1434,6 +1434,8 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeEnumValuesCapabilityR
 {
     SWSS_LOG_ENTER();
 
+    const uint32_t capacity = enumValuesCapability->count;
+
     swss::KeyOpFieldsValuesTuple kco;
 
     auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE, kco);
@@ -1453,6 +1455,17 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeEnumValuesCapabilityR
         const uint32_t num_capabilities = std::stoi(fvValue(values[1]));
 
         SWSS_LOG_DEBUG("Received payload: capabilities = '%s', count = %d", capability_str.c_str(), num_capabilities);
+
+        if (num_capabilities > capacity)
+        {
+            SWSS_LOG_ERROR("Response capability count %u exceeds request capacity %u",
+                    num_capabilities,
+                    capacity);
+
+            enumValuesCapability->count = num_capabilities;
+
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
 
         enumValuesCapability->count = num_capabilities;
 

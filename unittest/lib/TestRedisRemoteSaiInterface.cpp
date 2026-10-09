@@ -51,6 +51,68 @@ public:
   string m_set_command;
 };
 
+TEST(RedisRemoteSaiInterface, enumValuesCapabilityRejectsExcessResponseCount)
+{
+    auto ctx = ContextConfigContainer::loadFromFile("foo");
+    auto rec = make_shared<Recorder>();
+    RedisRemoteSaiInterface sai(ctx->get(0), nullptr, rec);
+
+    sai.m_communicationChannel = make_shared<TestRedisRemoteSaiInterfaceMockChannel>(
+        sai.m_contextConfig->m_dbAsic,
+        bind(&RedisRemoteSaiInterface::handleNotification, &sai,
+             placeholders::_1, placeholders::_2, placeholders::_3));
+
+    dynamic_cast<TestRedisRemoteSaiInterfaceMockChannel&>(
+        *sai.m_communicationChannel).m_wait_mock =
+        [](const string &command, KeyOpFieldsValuesTuple &kco) -> sai_status_t
+    {
+        kfvFieldsValues(kco).push_back(make_pair("", "10,20"));
+        kfvFieldsValues(kco).push_back(make_pair("", "2"));
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai_int32_t buffer[] = { 1234 };
+    sai_s32_list_t capabilities = { .count = 1, .list = buffer };
+
+    EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
+              sai.waitForQueryAttributeEnumValuesCapabilityResponse(
+                  &capabilities));
+    EXPECT_EQ(2u, capabilities.count);
+    EXPECT_EQ(1234, buffer[0]);
+}
+
+TEST(RedisRemoteSaiInterface, enumValuesCapabilityCopiesValidResponseCount)
+{
+    auto ctx = ContextConfigContainer::loadFromFile("foo");
+    auto rec = make_shared<Recorder>();
+    RedisRemoteSaiInterface sai(ctx->get(0), nullptr, rec);
+
+    sai.m_communicationChannel = make_shared<TestRedisRemoteSaiInterfaceMockChannel>(
+        sai.m_contextConfig->m_dbAsic,
+        bind(&RedisRemoteSaiInterface::handleNotification, &sai,
+             placeholders::_1, placeholders::_2, placeholders::_3));
+
+    dynamic_cast<TestRedisRemoteSaiInterfaceMockChannel&>(
+        *sai.m_communicationChannel).m_wait_mock =
+        [](const string &command, KeyOpFieldsValuesTuple &kco) -> sai_status_t
+    {
+        kfvFieldsValues(kco).push_back(make_pair("", "10,20"));
+        kfvFieldsValues(kco).push_back(make_pair("", "2"));
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai_int32_t buffer[] = { 0, 0, 1234 };
+    sai_s32_list_t capabilities = { .count = 3, .list = buffer };
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              sai.waitForQueryAttributeEnumValuesCapabilityResponse(
+                  &capabilities));
+    EXPECT_EQ(2u, capabilities.count);
+    EXPECT_EQ(10, buffer[0]);
+    EXPECT_EQ(20, buffer[1]);
+    EXPECT_EQ(1234, buffer[2]);
+}
+
 // Helper: build a ContextConfig with a given zmq state and unique IPC
 // endpoints, so each test stands up its own ZMQ socket files without
 // colliding with siblings under /tmp.
