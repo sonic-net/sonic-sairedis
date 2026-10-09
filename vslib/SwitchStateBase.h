@@ -525,6 +525,14 @@ namespace saivs
             static int promisc(
                     _In_ const char *dev);
 
+        protected: // custom tunnel
+
+            sai_status_t createTunnel(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
         protected: // custom hostif
 
             sai_status_t createHostif(

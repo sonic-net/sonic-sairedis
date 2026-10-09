@@ -145,16 +145,9 @@ void SwitchStateBase::send_port_oper_status_notification(
     data.port_id = portId;
     data.port_state = status;
 
-    auto meta = getMeta();
+    auto objectType = objectTypeQuery(portId); // can be port, bridge port, lag, tunnel
 
-    if (meta)
-    {
-        meta->meta_sai_on_port_state_change(1, &data);
-    }
-
-    auto objectType = objectTypeQuery(portId); // can be port, bridge port, lag
-
-    if (objectType != SAI_OBJECT_TYPE_PORT)
+    if (objectType != SAI_OBJECT_TYPE_PORT && objectType != SAI_OBJECT_TYPE_TUNNEL)
     {
         SWSS_LOG_ERROR("object type %s not supported on portId %s",
                 sai_serialize_object_type(objectType).c_str(),
@@ -162,11 +155,23 @@ void SwitchStateBase::send_port_oper_status_notification(
         return;
     }
 
+    auto meta = getMeta();
+
+    // the metadata only knows ports, lags and bridge ports in this notification
+    if (meta && objectType == SAI_OBJECT_TYPE_PORT)
+    {
+        meta->meta_sai_on_port_state_change(1, &data);
+    }
+
     sai_attribute_t attr;
 
     attr.id = SAI_PORT_ATTR_OPER_STATUS;
 
-    if (get(objectType, portId, 1, &attr) != SAI_STATUS_SUCCESS)
+    if (objectType == SAI_OBJECT_TYPE_TUNNEL)
+    {
+        // a tunnel has no operational status attribute to compare with
+    }
+    else if (get(objectType, portId, 1, &attr) != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("failed to get port attribute SAI_PORT_ATTR_OPER_STATUS");
     }
@@ -205,9 +210,10 @@ void SwitchStateBase::send_port_oper_status_notification(
 
     sn.on_port_state_change = (sai_port_state_change_notification_fn)attr.value.ptr;
 
-    attr.id = SAI_PORT_ATTR_OPER_STATUS;
-
-    update_port_oper_status(portId, data.port_state);
+    if (objectType == SAI_OBJECT_TYPE_PORT)
+    {
+        update_port_oper_status(portId, data.port_state);
+    }
 
     SWSS_LOG_NOTICE("send event SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY for port %s: %s",
             sai_serialize_object_id(data.port_id).c_str(),
