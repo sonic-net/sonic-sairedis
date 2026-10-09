@@ -1195,6 +1195,20 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
     /* hw_ifname now names the actual BD member (parent for untagged,
      * <parent>.<vid> for tagged). */
 
+    /*
+     * VPP clears the parent hardware interface's promiscuous flag as soon as
+     * its last L2 (sub-)interface leaves a bridge domain.
+     *
+     * Only PORT is restored here. A LAG is not affected: VPP's
+     * bond_set_l2_mode_function() handles the bond members, and
+     * vpp_create_lag_member()/vpp_set_lag_member_egress() already re-apply
+     * promiscuous on each member after enslaving.
+     */
+    if (objectTypeQuery(port_id) == SAI_OBJECT_TYPE_PORT)
+    {
+        interface_set_promiscuous(hwif_str.c_str(), true);
+    }
+
     //Check if the bridge has zero ports left, if so remove the bridge as well
     uint32_t member_count = 0;
     bridge_domain_get_member_count (bridge_id, &member_count);
