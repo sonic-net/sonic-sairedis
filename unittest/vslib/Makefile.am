@@ -50,6 +50,7 @@ tests_SOURCES = main.cpp \
 				TestMACsecManager.cpp \
 				TestSwitchStateBase.cpp \
 				TestSwitchStateBaseFdb.cpp \
+				TestSwitchStateBaseTunnel.cpp \
 				TestSai.cpp \
 				TestVirtualSwitchSaiInterface.cpp \
 				TestTAM.cpp
