@@ -21,6 +21,8 @@ extern "C" {
 #endif
 
 #include <netinet/in.h>
+#include <stdbool.h>
+#include <stdint.h>
 
     typedef enum {
 	VPP_NEXTHOP_NORMAL = 1,
@@ -81,7 +83,29 @@ typedef struct vpp_ip_addr_ {
         VPP_ACL_ACTION_API_DENY = 0,
         VPP_ACL_ACTION_API_PERMIT = 1,
         VPP_ACL_ACTION_API_PERMIT_STFULL = 2,
+        VPP_ACL_ACTION_PERMIT_MIRROR = 3,
     } vpp_acl_action_e;
+
+/*
+ * Packed mirror action carried on a PERMIT_MIRROR rule: destination
+ * sw_if_index in bits 27:0, action flags in bits 31:28.
+ */
+#define VPP_ACL_MIRROR_SW_IF_INDEX_MASK 0x0fffffffU
+#define VPP_ACL_MIRROR_FLAGS_SHIFT 28
+#define VPP_ACL_MIRROR_F_DEFERRED (1U << 0)
+#define VPP_ACL_MIRROR_FLAGS_MASK 0xfU
+
+#ifdef __cplusplus
+static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
+               (VPP_ACL_MIRROR_FLAGS_MASK << VPP_ACL_MIRROR_FLAGS_SHIFT)) ==
+                  UINT32_MAX,
+              "packed ACL mirror action must cover exactly 32 bits");
+#else
+_Static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
+                (VPP_ACL_MIRROR_FLAGS_MASK << VPP_ACL_MIRROR_FLAGS_SHIFT)) ==
+                   UINT32_MAX,
+               "packed ACL mirror action must cover exactly 32 bits");
+#endif
 
     typedef struct  _vpp_acl_rule {
         vpp_acl_action_e action;
@@ -96,6 +120,7 @@ typedef struct vpp_ip_addr_ {
         uint16_t dstport_or_icmpcode_last;
         uint8_t tcp_flags_mask;
         uint8_t tcp_flags_value;
+        uint32_t mirror_action;
         /*
          * Match only packets received on this interface. Empty for any, which
          * is what a rule with no SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS gets. The
@@ -123,6 +148,56 @@ typedef struct vpp_ip_addr_ {
         uint32_t count;
         vpp_tunterm_acl_rule_t rules[0];
     } vpp_tunterm_acl_t;
+
+    /* CoPP: SAI POLICER -> VPP native policer (vnet/policer) */
+    typedef enum {
+        VPP_POLICER_RATE_KBPS = 0,
+        VPP_POLICER_RATE_PPS = 1,
+    } vpp_policer_rate_type_e;
+
+    typedef enum {
+        VPP_POLICER_ROUND_CLOSEST = 0,
+        VPP_POLICER_ROUND_UP = 1,
+        VPP_POLICER_ROUND_DOWN = 2,
+    } vpp_policer_round_type_e;
+
+    typedef enum {
+        VPP_POLICER_TYPE_1R2C = 0,
+        VPP_POLICER_TYPE_1R3C_RFC2697 = 1,
+        VPP_POLICER_TYPE_2R3C_RFC2698 = 2,
+        VPP_POLICER_TYPE_2R3C_RFC4115 = 3,
+        VPP_POLICER_TYPE_2R3C_MEF5CF1 = 4,
+    } vpp_policer_type_e;
+
+    typedef enum {
+        VPP_POLICER_ACTION_DROP = 0,
+        VPP_POLICER_ACTION_TRANSMIT = 1,
+        VPP_POLICER_ACTION_MARK_AND_TRANSMIT = 2,
+    } vpp_policer_action_e;
+
+    typedef struct _vpp_policer_ {
+        char name[64];
+        uint32_t cir;
+        uint32_t eir;
+        uint64_t cb;
+        uint64_t eb;
+        vpp_policer_rate_type_e rate_type;
+        vpp_policer_round_type_e round_type;
+        vpp_policer_type_e type;
+        bool color_aware;
+        vpp_policer_action_e conform_action;
+        vpp_policer_action_e exceed_action;
+        vpp_policer_action_e violate_action;
+    } vpp_policer_t;
+
+    typedef struct _vpp_policer_counters_ {
+        uint64_t green_packets;
+        uint64_t green_bytes;
+        uint64_t yellow_packets;
+        uint64_t yellow_bytes;
+        uint64_t red_packets;
+        uint64_t red_bytes;
+    } vpp_policer_counters_t;
 
 
     typedef enum {
@@ -372,6 +447,7 @@ typedef enum {
     extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
     extern int interface_ip_address_del_all(const char *hwif_name);
     extern int interface_set_state (const char *hwif_name, bool is_up);
+    extern int interface_set_state_by_index (uint32_t sw_if_index, bool is_up);
     extern int interface_set_promiscuous (const char *hwif_name, bool enable);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
@@ -393,6 +469,23 @@ typedef enum {
 
     extern int vpp_acl_add_replace(vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace);
     extern int vpp_acl_del(uint32_t acl_index);
+    extern int vpp_sonic_ext_egress_mirror_enable_disable(bool enable);
+    extern int vpp_sonic_ext_mirror_encap_fixup_enable_disable(uint32_t sw_if_index,
+				      uint16_t gre_protocol, uint8_t ttl, bool enable);
+
+    /* CoPP policer: create/replace, delete, and read counters for a VPP
+     * native policer backing a SAI_OBJECT_TYPE_POLICER. */
+    extern int vpp_policer_add_replace(vpp_policer_t *in_policer, uint32_t *policer_index, bool is_replace);
+    extern int vpp_policer_del(uint32_t policer_index);
+    extern int vpp_policer_get_counters(uint32_t policer_index, vpp_policer_counters_t *counters);
+
+    /* interface-output-arc ethertype -> policer binding */
+    extern int vpp_sonic_ext_copp_ifout_bind(uint16_t ethertype,
+            const char *policer_name, bool is_bind, bool match_ip4_ttl_expiring);
+    extern int vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add);
+    extern int vpp_sonic_ext_copp_ip2me_bind(const char *policer_name, bool is_bind);
+    extern int vpp_sonic_ext_copp_ip2me_bind_condition(const char *policer_name, uint16_t tcp_port, bool is_bind);
+    extern int vpp_sonic_ext_copp_ttl_punt_bind(bool is_bind);
     extern int vpp_acl_interface_bind(const char *hwif_name, uint32_t acl_index,
 				      bool is_input);
     extern int vpp_acl_interface_unbind(const char *hwif_name, uint32_t acl_index,
@@ -483,6 +576,7 @@ typedef enum {
     extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
 
     extern int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable);
+    extern int vpp_sonic_ext_feature_get(const char *feature, bool *enabled);
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
     extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
     extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
@@ -521,6 +615,19 @@ typedef enum {
     extern int sw_interface_set_mpls_enable(const char *hwif_name, bool enable);
     extern int mpls_table_add_del(uint32_t table_id, bool is_add);
     extern int mpls_route_add_del(vpp_mpls_route_t *route, bool is_add);
+
+    /* GRE tunnel for mirror encap (stock TEB tunnel; the outer TTL and GRE
+     * ethertype override are applied by the sonic_ext mirror-encap-fixup node,
+     * not here). */
+    typedef struct _vpp_gre_tunnel {
+        vpp_ip_addr_t src;
+        vpp_ip_addr_t dst;
+        uint8_t type;           /* 0 = L3, 1 = TEB, 2 = ERSPAN */
+        uint32_t instance;
+        uint32_t outer_table_id;
+    } vpp_gre_tunnel_t;
+
+    extern int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, uint32_t *sw_if_index);
 #ifdef __cplusplus
 }
 #endif

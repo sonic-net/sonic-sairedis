@@ -28,6 +28,7 @@
 #include <vnet/api_errno.h>
 
 #include "SaiVppXlate.h"
+#include "SaiVppStats.h"
 
 #include <vnet/ip/ip_types_api.h>
 
@@ -46,6 +47,9 @@
 
 #include <vpp_plugins/linux_cp/lcp.api_enum.h>
 #include <vpp_plugins/linux_cp/lcp.api_types.h>
+
+#include <vpp_plugins/gre/gre.api_enum.h>
+#include <vpp_plugins/gre/gre.api_types.h>
 
 #include <vpp_plugins/acl/acl.api_enum.h>
 #include <vpp_plugins/acl/acl.api_types.h>
@@ -81,6 +85,9 @@
 
 #include <vpp_plugins/ipip/ipip.api_enum.h>
 #include <vpp_plugins/ipip/ipip.api_types.h>
+
+#include <vpp_plugins/policer/policer.api_enum.h>
+#include <vpp_plugins/policer/policer.api_types.h>
 
 #include <vnet/classify/classify.api_enum.h>
 #include <vnet/classify/classify.api_types.h>
@@ -169,6 +176,24 @@
 
 #define vl_api_version(n, v) static u32 tunterm_api_version = v;
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api.h>
+#undef vl_api_version
+
+/* sonic_ext API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
 #undef vl_api_version
 
 /* interface API inclusion */
@@ -282,6 +307,22 @@
 #include <vnet/ip-neighbor/ip_neighbor.api.h>
 #undef vl_api_version
 
+#define vl_typedefs
+#include <vpp_plugins/policer/policer.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vpp_plugins/policer/policer.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/policer/policer.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 policer_api_version = v;
+#include <vpp_plugins/policer/policer.api.h>
+#undef vl_api_version
+
 /* linux_cp API inclusion */
 
 #define vl_typedefs
@@ -334,24 +375,6 @@
 
 #define vl_api_version(n, v) static u32 sflow_api_version = v;
 #include <vpp_plugins/sflow/sflow.api.h>
-#undef vl_api_version
-
-/* sonic_ext API inclusion */
-
-#define vl_typedefs
-#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
-#undef vl_typedefs
-
-#define vl_endianfun
-#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
-#undef vl_endianfun
-
-#define vl_calcsizefun
-#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
-#undef vl_calcsizefun
-
-#define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
-#include <vpp_plugins/sonic_ext/sonic_ext.api.h>
 #undef vl_api_version
 
 /* BOND API inclusion */
@@ -482,6 +505,23 @@
 #include <vnet/span/span.api.h>
 #undef vl_api_version
 
+/* GRE API inclusion */
+#define vl_typedefs
+#include <vpp_plugins/gre/gre.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/gre/gre.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/gre/gre.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 gre_api_version = v;
+#include <vpp_plugins/gre/gre.api.h>
+#undef vl_api_version
+
 void classify_get_trace_chain(void ){}
 void os_exit(int code) {}
 
@@ -514,9 +554,14 @@ static inline int vpp_normalize_ret(int ret, bool is_del, const char *func)
 do {                                                            \
     socket_client_main_t *scm = vam->socket_client_main;	\
     vam->result_ready = 0;                                      \
-    if (scm && scm->socket_enable)                              \
+    if (scm && scm->socket_enable) {                            \
+      /* vl_socket_client_msg_alloc() only vec_set_len()s the fixed-size TX   \
+         buffer allocated at connect time, so a large variable-length message \
+         (e.g. an ACL add-replace with many rules) would overflow into the    \
+         adjacent heap. Grow the buffer to fit this message first. */         \
+      vec_validate (scm->socket_tx_buffer, (uword)(sizeof(*mp) + n) - 1); \
       mp = vl_socket_client_msg_alloc ((int)(sizeof(*mp) + n));        \
-    else                                                        \
+    } else                                                      \
       mp = vl_msg_api_alloc_as_if_client((int)(sizeof(*mp) + n));      \
     clib_memset (mp, 0, sizeof (*mp));                          \
     mp->_vl_msg_id = ntohs (VL_API_##T+__plugin_msg_base);      \
@@ -1514,6 +1559,21 @@ vl_api_sonic_ext_ip2me_enable_disable_reply_t_handler(vl_api_sonic_ext_ip2me_ena
 }
 
 static void
+vl_api_sonic_ext_feature_get_reply_t_handler(vl_api_sonic_ext_feature_get_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (msg->context) {
+        bool *enabled = (bool *) get_index_ptr(msg->context);
+        if (enabled) {
+            *enabled = msg->enabled ? true : false;
+        }
+        release_index(msg->context);
+    }
+}
+
+static void
 vl_api_bfd_udp_set_tos_reply_t_handler (vl_api_bfd_udp_set_tos_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1688,6 +1748,52 @@ vl_api_tunterm_acl_interface_add_del_reply_t_handler(vl_api_tunterm_acl_interfac
 }
 
 static void
+vl_api_sonic_ext_copp_ifout_bind_reply_t_handler(vl_api_sonic_ext_copp_ifout_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_copp_ip2me_addr_add_del_reply_t_handler(vl_api_sonic_ext_copp_ip2me_addr_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_copp_ip2me_bind_reply_t_handler(vl_api_sonic_ext_copp_ip2me_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_copp_ip2me_bind_condition_reply_t_handler(vl_api_sonic_ext_copp_ip2me_bind_condition_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_copp_ttl_punt_bind_reply_t_handler(vl_api_sonic_ext_copp_ttl_punt_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_egress_mirror_enable_disable_reply_t_handler(
+    vl_api_sonic_ext_egress_mirror_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (retval) { SAIVPP_ERROR("sonic_ext egress mirror feature update failed(%d)", retval); }
+    else { SAIVPP_INFO("sonic_ext egress mirror feature update successful"); }
+}
+
+static void
 vl_api_bond_create_reply_t_handler (vl_api_bond_create_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1836,6 +1942,50 @@ static void vl_api_add_node_next_reply_t_handler(
     }
 }
 
+static void
+vl_api_gre_tunnel_add_del_v2_reply_t_handler(vl_api_gre_tunnel_add_del_v2_reply_t *msg)
+{
+    set_reply_sw_if_index(ntohl(msg->sw_if_index));
+
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (retval) { SAIVPP_ERROR("gre_tunnel_add_del_v2 handler failed(%d)", retval); }
+    else { SAIVPP_INFO("gre_tunnel_add_del_v2 handler successful: if_idx,%d", ntohl(msg->sw_if_index)); }
+}
+
+static void
+vl_api_sonic_ext_mirror_encap_fixup_enable_disable_reply_t_handler(
+    vl_api_sonic_ext_mirror_encap_fixup_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    if (retval) { SAIVPP_ERROR("sonic_ext mirror encap fixup update failed(%d)", retval); }
+    else { SAIVPP_INFO("sonic_ext mirror encap fixup update successful"); }
+}
+
+/* policer API reply handlers */
+
+static void vl_api_policer_add_reply_t_handler(vl_api_policer_add_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    uint32_t *policer_index = (uint32_t *) get_index_ptr(msg->context);
+    if (policer_index) {
+        *policer_index = ntohl(msg->policer_index);
+    }
+
+    release_index(msg->context);
+}
+
+static void vl_api_policer_del_reply_t_handler(vl_api_policer_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
 #define vl_api_get_first_msg_id_reply_t_handler vl_noop_handler
 #define vl_api_get_first_msg_id_reply_t_handler_json vl_noop_handler
 
@@ -1860,6 +2010,7 @@ static u16 sr_msg_id_base;
 static u16 mpls_msg_id_base;
 static u16 bond_msg_id_base;
 static u16 span_msg_id_base;
+static u16 gre_msg_id_base;
 static u16 classify_msg_id_base;
 static u16 vlib_msg_id_base;
 
@@ -1900,6 +2051,12 @@ static void vpp_base_vpe_init(void)
 
 #define SPAN_MSG_ID(id) \
     (VL_API_##id + span_msg_id_base)
+
+#define GRE_MSG_ID(id) \
+    (VL_API_##id + gre_msg_id_base)
+
+#define POLICER_MSG_ID(id) \
+    (VL_API_##id + policer_msg_id_base)
 
 #define CLASSIFY_MSG_ID(id) \
     (VL_API_##id + classify_msg_id_base)
@@ -1972,6 +2129,7 @@ static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
 static u16 acl_msg_id_base;
 static u16 sflow_msg_id_base;
 static u16 sonic_ext_msg_id_base;
+static u16 policer_msg_id_base;
 
 static void vpp_ext_vpe_init(void)
 {
@@ -1988,6 +2146,16 @@ static void vpp_ext_vpe_init(void)
 
     foreach_vpe_ext_api_reply_msg;
 #undef _
+
+// no tojson/fromjson for gre
+vl_msg_api_set_handlers(GRE_MSG_ID(GRE_TUNNEL_ADD_DEL_V2_REPLY),
+                        "gre_tunnel_add_del_v2_reply",
+                        vl_api_gre_tunnel_add_del_v2_reply_t_handler,
+                        vl_noop_handler,
+                        vl_api_gre_tunnel_add_del_v2_reply_t_endian,
+                        sizeof(vl_api_gre_tunnel_add_del_v2_reply_t), 1,
+                        0, 0,
+                        vl_api_gre_tunnel_add_del_v2_reply_t_calc_size);
 }
 
 static void vl_api_lcp_itf_pair_add_del_reply_t_handler(vl_api_lcp_itf_pair_add_del_reply_t *msg)
@@ -2092,6 +2260,13 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(TUNTERM_MSG_ID(TUNTERM_ACL_INTERFACE_ADD_DEL_REPLY), tunterm_acl_interface_add_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_DEL_REPLY), tunterm_acl_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_ADD_REPLACE_REPLY), tunterm_acl_add_replace_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_EGRESS_MIRROR_ENABLE_DISABLE_REPLY), sonic_ext_egress_mirror_enable_disable_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_MIRROR_ENCAP_FIXUP_ENABLE_DISABLE_REPLY), sonic_ext_mirror_encap_fixup_enable_disable_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IFOUT_BIND_REPLY), sonic_ext_copp_ifout_bind_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_ADDR_ADD_DEL_REPLY), sonic_ext_copp_ip2me_addr_add_del_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_REPLY), sonic_ext_copp_ip2me_bind_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_CONDITION_REPLY), sonic_ext_copp_ip2me_bind_condition_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_TTL_PUNT_BIND_REPLY), sonic_ext_copp_ttl_punt_bind_reply) \
     _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_V2_REPLY), sr_localsid_add_del_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
@@ -2102,11 +2277,14 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_SAMPLING_RATE_SET_REPLY), sflow_interface_sampling_rate_set_reply) \
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_FEATURE_GET_REPLY), sonic_ext_feature_get_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
     _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
     _(MPLS_MSG_ID(SW_INTERFACE_SET_MPLS_ENABLE_REPLY), sw_interface_set_mpls_enable_reply) \
     _(MPLS_MSG_ID(MPLS_TABLE_ADD_DEL_REPLY), mpls_table_add_del_reply) \
-    _(MPLS_MSG_ID(MPLS_ROUTE_ADD_DEL_REPLY), mpls_route_add_del_reply)
+    _(MPLS_MSG_ID(MPLS_ROUTE_ADD_DEL_REPLY), mpls_route_add_del_reply) \
+    _(POLICER_MSG_ID(POLICER_ADD_REPLY), policer_add_reply) \
+    _(POLICER_MSG_ID(POLICER_DEL_REPLY), policer_del_reply)
 
 static void vpp_plugin_vpe_init(void)
 {
@@ -2147,6 +2325,14 @@ static void get_base_msg_id()
     acl_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(acl_msg_id_base != (u16) ~0);
 
+    msg_base_lookup_name = format (0, "policer_%08x%c", policer_api_version, 0);
+    policer_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(policer_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "classify_%08x%c", classify_api_version, 0);
+    classify_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(classify_msg_id_base != (u16) ~0);
+
     msg_base_lookup_name = format (0, "l2_%08x%c", l2_api_version, 0);
     l2_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(l2_msg_id_base != (u16) ~0);
@@ -2186,6 +2372,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "span_%08x%c", span_api_version, 0);
     span_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(span_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "gre_%08x%c", gre_api_version, 0);
+    gre_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(gre_msg_id_base != (u16) ~0);
 
     msg_base_lookup_name = format (0, "classify_%08x%c", classify_api_version, 0);
     classify_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
@@ -3445,6 +3635,7 @@ int vpp_acl_add_replace (vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace
         vpp_rule->tcp_flags_mask = in_rule->tcp_flags_mask;
         vpp_rule->tcp_flags_value = in_rule->tcp_flags_value;
         vpp_rule->is_permit = (vl_api_acl_action_t)in_rule->action;
+        vpp_rule->mirror_action = htonl(in_rule->mirror_action);
 
         SAIVPP_INFO("VPP Rule %u: proto: %u, "
                      "srcport/icmptype: %u-%u, dstport/icmpcode: %u-%u, "
@@ -3502,6 +3693,455 @@ int vpp_acl_del (uint32_t acl_index)
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) acl_index %u", __func__, ret, acl_index); }
     else { SAIVPP_INFO("%s acl_index %u", __func__, acl_index); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_egress_mirror_enable_disable(bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_egress_mirror_enable_disable_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M (SONIC_EXT_EGRESS_MIRROR_ENABLE_DISABLE, mp);
+    mp->enable = enable;
+
+    S (mp);
+    WR (ret);
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_mirror_encap_fixup_enable_disable(uint32_t sw_if_index,
+				      uint16_t gre_protocol, uint8_t ttl, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_mirror_encap_fixup_enable_disable_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M (SONIC_EXT_MIRROR_ENCAP_FIXUP_ENABLE_DISABLE, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->gre_protocol = htons(gre_protocol);
+    mp->hop_limit = ttl;
+    mp->enable = enable;
+
+    S (mp);
+    WR (ret);
+
+    SAIVPP_INFO("sonic_ext mirror encap fixup: sw_if_index=%u gre_protocol=0x%04x ttl=%u enable=%d ret=%d",
+		sw_if_index, gre_protocol, ttl, enable, ret);
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+#define foreach_vpp_policer_rate_type \
+    _(VPP_POLICER_RATE_KBPS, SSE2_QOS_RATE_API_KBPS) \
+    _(VPP_POLICER_RATE_PPS, SSE2_QOS_RATE_API_PPS)
+
+#define foreach_vpp_policer_round_type \
+    _(VPP_POLICER_ROUND_CLOSEST, SSE2_QOS_ROUND_API_TO_CLOSEST) \
+    _(VPP_POLICER_ROUND_UP, SSE2_QOS_ROUND_API_TO_UP) \
+    _(VPP_POLICER_ROUND_DOWN, SSE2_QOS_ROUND_API_TO_DOWN)
+
+#define foreach_vpp_policer_type \
+    _(VPP_POLICER_TYPE_1R2C, SSE2_QOS_POLICER_TYPE_API_1R2C) \
+    _(VPP_POLICER_TYPE_1R3C_RFC2697, SSE2_QOS_POLICER_TYPE_API_1R3C_RFC_2697) \
+    _(VPP_POLICER_TYPE_2R3C_RFC2698, SSE2_QOS_POLICER_TYPE_API_2R3C_RFC_2698) \
+    _(VPP_POLICER_TYPE_2R3C_RFC4115, SSE2_QOS_POLICER_TYPE_API_2R3C_RFC_4115) \
+    _(VPP_POLICER_TYPE_2R3C_MEF5CF1, SSE2_QOS_POLICER_TYPE_API_2R3C_RFC_MEF5CF1)
+
+#define foreach_vpp_policer_action \
+    _(VPP_POLICER_ACTION_DROP, SSE2_QOS_ACTION_API_DROP) \
+    _(VPP_POLICER_ACTION_TRANSMIT, SSE2_QOS_ACTION_API_TRANSMIT) \
+    _(VPP_POLICER_ACTION_MARK_AND_TRANSMIT, SSE2_QOS_ACTION_API_MARK_AND_TRANSMIT)
+
+static vl_api_sse2_qos_rate_type_t vpp_policer_xlate_rate_type(vpp_policer_rate_type_e rate_type)
+{
+#define _(vpp_type, api_type) case vpp_type: return api_type;
+    switch (rate_type)
+    {
+        foreach_vpp_policer_rate_type;
+        default: return SSE2_QOS_RATE_API_KBPS;
+    }
+#undef _
+}
+
+static vl_api_sse2_qos_round_type_t vpp_policer_xlate_round_type(vpp_policer_round_type_e round_type)
+{
+#define _(vpp_type, api_type) case vpp_type: return api_type;
+    switch (round_type)
+    {
+        foreach_vpp_policer_round_type;
+        default: return SSE2_QOS_ROUND_API_TO_CLOSEST;
+    }
+#undef _
+}
+
+static vl_api_sse2_qos_policer_type_t vpp_policer_xlate_type(vpp_policer_type_e type)
+{
+#define _(vpp_type, api_type) case vpp_type: return api_type;
+    switch (type)
+    {
+        foreach_vpp_policer_type;
+        default: return SSE2_QOS_POLICER_TYPE_API_1R2C;
+    }
+#undef _
+}
+
+static vl_api_sse2_qos_action_type_t vpp_policer_xlate_action(vpp_policer_action_e action)
+{
+#define _(vpp_type, api_type) case vpp_type: return api_type;
+    switch (action)
+    {
+        foreach_vpp_policer_action;
+        default: return SSE2_QOS_ACTION_API_DROP;
+    }
+#undef _
+}
+
+int vpp_policer_add_replace (vpp_policer_t *in_policer, uint32_t *policer_index, bool is_replace)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_policer_add_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    if (is_replace && *policer_index != (uint32_t)~0) {
+        vl_api_policer_del_t *dmp;
+        int dret;
+
+        __plugin_msg_base = policer_msg_id_base;
+        M (POLICER_DEL, dmp);
+        dmp->policer_index = htonl(*policer_index);
+        S (dmp);
+        WR (dret);
+        (void) dret;
+        /* Best-effort: proceed to (re)create even if the delete failed
+         * (e.g. index already gone); the add below is authoritative. */
+    }
+
+    __plugin_msg_base = policer_msg_id_base;
+
+    M (POLICER_ADD, mp);
+
+    // Bounded copy (avoid -Wstringop-truncation on strncpy with a
+    // possibly-full-length source): explicit memcpy of at most
+    // sizeof(mp->name)-1 bytes, always NUL-terminated.
+    {
+        size_t name_len = strnlen(in_policer->name, sizeof(mp->name) - 1);
+        memcpy((char *)mp->name, in_policer->name, name_len);
+        ((char *)mp->name)[name_len] = '\0';
+    }
+    mp->infos.cir = htonl(in_policer->cir);
+    mp->infos.eir = htonl(in_policer->eir);
+    mp->infos.cb = clib_host_to_net_u64(in_policer->cb);
+    mp->infos.eb = clib_host_to_net_u64(in_policer->eb);
+    mp->infos.rate_type = vpp_policer_xlate_rate_type(in_policer->rate_type);
+    mp->infos.round_type = vpp_policer_xlate_round_type(in_policer->round_type);
+    mp->infos.type = vpp_policer_xlate_type(in_policer->type);
+    mp->infos.color_aware = in_policer->color_aware;
+    mp->infos.conform_action.type = vpp_policer_xlate_action(in_policer->conform_action);
+    mp->infos.exceed_action.type = vpp_policer_xlate_action(in_policer->exceed_action);
+    mp->infos.violate_action.type = vpp_policer_xlate_action(in_policer->violate_action);
+
+    mp->context = store_ptr(policer_index);
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) name %s", __func__, ret, in_policer->name); }
+    else { SAIVPP_INFO("%s name %s -> policer_index %u", __func__, in_policer->name, *policer_index); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_policer_del (uint32_t policer_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_policer_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = policer_msg_id_base;
+
+    M (POLICER_DEL, mp);
+    mp->policer_index = htonl(policer_index);
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, true, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer_index %u", __func__, ret, policer_index); }
+    else { SAIVPP_INFO("%s policer_index %u", __func__, policer_index); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/* Read back one native VPP policer's cumulative color counters through
+ * the existing reentrant stats client. vpp_stats_dump() invokes the callback
+ * once per worker thread; accumulate matching indices across all workers. */
+typedef struct _vpp_policer_stats_query
+{
+    uint32_t policer_index;
+    vpp_policer_counters_t *counters;
+    bool found;
+} vpp_policer_stats_query_t;
+
+static void handle_policer_stat(
+        const char *stat_name,
+        uint32_t index,
+        uint64_t packets,
+        uint64_t bytes,
+        void *data)
+{
+    vpp_policer_stats_query_t *query = (vpp_policer_stats_query_t *)data;
+
+    if (index != query->policer_index)
+    {
+        return;
+    }
+
+    if (strcmp(stat_name, "conform") == 0)
+    {
+        query->counters->green_packets += packets;
+        query->counters->green_bytes += bytes;
+    }
+    else if (strcmp(stat_name, "exceed") == 0)
+    {
+        query->counters->yellow_packets += packets;
+        query->counters->yellow_bytes += bytes;
+    }
+    else if (strcmp(stat_name, "violate") == 0)
+    {
+        query->counters->red_packets += packets;
+        query->counters->red_bytes += bytes;
+    }
+    else
+    {
+        return;
+    }
+
+    query->found = true;
+}
+
+int vpp_policer_get_counters (uint32_t policer_index, vpp_policer_counters_t *counters)
+{
+    char path[] = "/net/policer/";
+    vpp_policer_stats_query_t query;
+
+    memset(counters, 0, sizeof(*counters));
+
+    query.policer_index = policer_index;
+    query.counters = counters;
+    query.found = false;
+
+    if (vpp_stats_dump(path, NULL, handle_policer_stat, &query) != 0)
+    {
+        SAIVPP_ERROR("%s: failed to dump /net/policer/* stats for policer_index %u",
+                __func__, policer_index);
+        return -1;
+    }
+
+    if (!query.found)
+    {
+        SAIVPP_ERROR("%s: no /net/policer/* stats entries found for policer_index %u",
+                __func__, policer_index);
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
+ * interface-output-arc ethertype -> policer binding (ARP/LACP/LLDP/
+ * UDLD/TTL_ERROR), part of sonic_ext.
+ */
+int vpp_sonic_ext_copp_ifout_bind(
+        uint16_t ethertype,
+        const char *policer_name,
+        bool is_bind,
+        bool match_ip4_ttl_expiring)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_ifout_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M (SONIC_EXT_COPP_IFOUT_BIND, mp);
+
+    mp->ethertype = htons(ethertype);
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
+    mp->is_bind = is_bind;
+    mp->match_ip4_ttl_expiring = match_ip4_ttl_expiring;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) ethertype 0x%04x policer_name %s is_bind %d", __func__, ret, ethertype, policer_name ? policer_name : "", is_bind); }
+    else { SAIVPP_INFO("%s ethertype 0x%04x policer_name %s is_bind %d", __func__, ethertype, policer_name ? policer_name : "", is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/*
+
+ * ip4-punt-arc IP2ME address set + shared policer binding, part of
+ * sonic_ext (formerly the standalone copp_ip2me_policer plugin).
+ */
+int vpp_sonic_ext_copp_ip2me_addr_add_del(
+        uint32_t addr,
+        bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_ip2me_addr_add_del_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M (SONIC_EXT_COPP_IP2ME_ADDR_ADD_DEL, mp);
+
+    mp->addr = addr;
+    mp->is_add = is_add;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) addr 0x%08x is_add %d", __func__, ret, addr, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_copp_ip2me_bind(
+        const char *policer_name,
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_ip2me_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M (SONIC_EXT_COPP_IP2ME_BIND, mp);
+
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer %s is_bind %d", __func__, ret, policer_name, is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_copp_ip2me_bind_condition(
+        const char *policer_name,
+        uint16_t tcp_port,
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_ip2me_bind_condition_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M (SONIC_EXT_COPP_IP2ME_BIND_CONDITION, mp);
+
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
+    mp->tcp_port = htons(tcp_port);
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer %s tcp_port %u is_bind %d", __func__, ret, policer_name, tcp_port, is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_copp_ttl_punt_bind(
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_ttl_punt_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M (SONIC_EXT_COPP_TTL_PUNT_BIND, mp);
+
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) is_bind %d", __func__, ret, is_bind); }
 
     VPP_UNLOCK();
 
@@ -3867,6 +4507,39 @@ int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable)
     return ret;
 }
 
+int vpp_sonic_ext_feature_get(const char *feature, bool *enabled)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_feature_get_t *mp;
+    int ret;
+
+    if (!feature || !enabled) {
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+    M (SONIC_EXT_FEATURE_GET, mp);
+
+    /* Fixed 64-byte field, and M() has already zeroed the message, so a bounded
+     * copy leaves it NUL-terminated. */
+    strncpy((char *)mp->feature, feature, sizeof(mp->feature) - 1);
+    mp->context = store_ptr(enabled);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) feature %s", __func__, ret, feature);
+    } else {
+        SAIVPP_INFO("%s %s -> %d", __func__, feature, *enabled);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
 int vpp_ip_flow_hash_set (uint32_t vrf_id, uint32_t hash_mask, int addr_family)
 {
     vat_main_t *vam = &vat_main;
@@ -4196,6 +4869,33 @@ int interface_set_promiscuous (const char *hwif_name, bool enable)
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable); }
     else { SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/*
+ * Set admin state by sw_if_index, skipping the name lookup that would otherwise
+ * require refresh_interfaces_list() and its rebuild of the interface-name hashes.
+ */
+int interface_set_state_by_index (uint32_t sw_if_index, bool is_up)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sw_interface_set_flags_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = interface_msg_id_base;
+
+    M (SW_INTERFACE_SET_FLAGS, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->flags = htonl ((is_up) ? IF_STATUS_API_FLAG_ADMIN_UP : 0);
+
+    S (mp);
+
+    WR (ret);
 
     VPP_UNLOCK();
 
@@ -6181,6 +6881,68 @@ int vpp_span_enable_disable(uint32_t sw_if_index_from, uint32_t sw_if_index_to, 
 
     VPP_UNLOCK();
 
+    return ret;
+
+}
+
+int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, u32 *sw_if_index)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_gre_tunnel_add_del_v2_t *mp;
+    int ret;
+    vpp_ip_addr_t *addr;
+    vl_api_address_t *api_addr;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = gre_msg_id_base;
+
+    M (GRE_TUNNEL_ADD_DEL_V2, mp);
+
+    mp->is_add = is_add;
+    mp->tunnel.type = tunnel->type;
+    mp->tunnel.instance = htonl(tunnel->instance);
+    mp->tunnel.outer_table_id = htonl(tunnel->outer_table_id);
+
+    api_addr = &mp->tunnel.src;
+    addr = &tunnel->src;
+    if (addr->sa_family == AF_INET) {
+        struct sockaddr_in *ip4 = &addr->addr.ip4;
+        api_addr->af = ADDRESS_IP4;
+        memcpy(api_addr->un.ip4, &ip4->sin_addr.s_addr, sizeof(api_addr->un.ip4));
+    } else if (addr->sa_family == AF_INET6) {
+        struct sockaddr_in6 *ip6 =  &addr->addr.ip6;
+        api_addr->af = ADDRESS_IP6;
+        memcpy(api_addr->un.ip6, &ip6->sin6_addr.s6_addr, sizeof(api_addr->un.ip6));
+    } else {
+            VPP_UNLOCK();
+            return -EINVAL;
+    }
+
+    api_addr = &mp->tunnel.dst;
+    addr = &tunnel->dst;
+    if (addr->sa_family == AF_INET) {
+        struct sockaddr_in *ip4 = &addr->addr.ip4;
+        api_addr->af = ADDRESS_IP4;
+        memcpy(api_addr->un.ip4, &ip4->sin_addr.s_addr, sizeof(api_addr->un.ip4));
+    } else if (addr->sa_family == AF_INET6) {
+        struct sockaddr_in6 *ip6 =  &addr->addr.ip6;
+        api_addr->af = ADDRESS_IP6;
+        memcpy(api_addr->un.ip6, &ip6->sin6_addr.s6_addr, sizeof(api_addr->un.ip6));
+    } else {
+            VPP_UNLOCK();
+            return -EINVAL;
+    }
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    *sw_if_index = vam->sw_if_index;
+    SAIVPP_INFO("gre_add_del: is_add=%d type=%u instance=%u if_index=%d ret=%d", is_add, tunnel->type, tunnel->instance, vam->sw_if_index, ret);
+
+    VPP_UNLOCK();
     return ret;
 }
 
