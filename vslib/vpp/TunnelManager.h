@@ -1,9 +1,11 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <vector>
 #include <map>
 #include <string>
+#include <utility>
 #include "SwitchVpp.h"
 #include "vppxlate/SaiVppXlate.h"
 
@@ -33,6 +35,24 @@ namespace saivs
         u_int32_t encap_vrf_id = 0;
         u_int32_t bd_id = 0;
         vpp_ip_addr_t bvi_addr;
+
+        // The remote VTEP's router MAC (SAI_NEXT_HOP_ATTR_TUNNEL_MAC), when the
+        // next hop carries one: the inner destination MAC to encapsulate with.
+        bool has_remote_router_mac = false;
+        std::array<uint8_t, 6> remote_router_mac = {};
+
+        // Host tap of the linux-cp pair giving the decap BVI a path to the
+        // kernel; empty when the BVI has none.
+        std::string decap_host_if;
+
+        // A decap-only tunnel's BVI gets no host path: every host tap pins
+        // VPP buffers for its rx ring, and a switch with dozens of VRF x VTEP
+        // pairs runs the buffer pool dry.
+        bool decap_only = false;
+
+        // L3 tunnel decapsulates from any outer source (P2MP), see
+        // fill_l3_vxlan_req.
+        bool decap_any = false;
 
         // L2 VXLAN fields
         u_int32_t vni = 0;
@@ -215,12 +235,126 @@ namespace saivs
         sai_status_t handle_l2_vxlan_tunnel_map_entry_removal(
             _In_ const std::string& serializedObjectId);
 
+        /**
+         * @brief Before a VR->VNI map entry is removed, drop the decap-only
+         * tunnels of its VNI so its VRF holds no BVI.
+         */
+        void handle_l3_vni_map_entry_removal(
+            _In_ const std::string& serializedObjectId);
+
+        /**
+         * @brief After a VR->VNI map entry is created, give every remote VTEP
+         * that already has an L3 next hop a decap-only tunnel for the new VNI.
+         * A VRF added after the fabric converged would otherwise never decap.
+         */
+        void handle_l3_vni_map_entry(
+            _In_ const std::string& serializedObjectId,
+            _In_ uint32_t attr_count,
+            _In_ const sai_attribute_t *attr_list);
+
     private:
         SwitchVpp* m_switch_db;
         std::array<uint8_t, 6> m_router_mac;
         u_int16_t m_vxlan_port;
+
+        /**
+         * @brief Kernel-side hooks of the decap host path. The constructor
+         * points them at the sysfs lookup and the tc redirect; unit tests
+         * replace them.
+         */
+        std::function<std::string(const std::string&)> m_netdev_master;
+        std::function<sai_status_t(const std::string&, const std::string&)> m_add_tc_redirect;
+
+        static std::string read_netdev_master(
+            _In_ const std::string& netdev);
+
+        /**
+         * @brief MAC the decap BVI of a tunnel answers to.
+         */
+        std::array<uint8_t, 6> get_decap_router_mac(
+            _In_ const TunnelVPPData& tunnel_data);
+
+        /**
+         * @brief Kernel VRF device of a virtual router, found through the
+         * kernel netdev of one of its VLAN router interfaces; empty if none.
+         */
+        std::string get_kernel_vrf(
+            _In_ sai_object_id_t vr_oid);
+
+        sai_status_t create_decap_host_path(
+            _Inout_ TunnelVPPData& tunnel_data,
+            _In_ const char* hw_bvi_ifname);
+
+        void remove_decap_host_path(
+            _Inout_ TunnelVPPData& tunnel_data,
+            _In_ const char* hw_bvi_ifname);
         //nexthop SAI object ID to sw_if_index map
         std::unordered_map<sai_object_id_t, TunnelVPPData> m_tunnel_encap_nexthop_map;
+
+        /**
+         * @brief Decap-only L3 VXLAN tunnels, by remote VTEP and VNI.
+         *
+         * A tunnel built for an encap next hop decapsulates only its own VNI,
+         * but a remote VTEP picks the VNI it sends: with a downstream VNI (a
+         * route leaked between VRFs by route-target import) it is the L3VNI
+         * of the VRF that originated the route, which this switch may never
+         * encapsulate to that VTEP. So once a VTEP has a next hop, every other
+         * local L3VNI gets a tunnel to it that only decapsulates. A next hop
+         * that later needs one of these takes it over.
+         */
+        std::map<std::pair<std::string, u_int32_t>, TunnelVPPData> m_l3_decap_tunnels;
+
+        static std::pair<std::string, u_int32_t> l3_tunnel_key(
+                        _In_ const sai_ip_address_t& dst_ip,
+                        _In_ u_int32_t vni);
+
+        void fill_l3_vxlan_req(
+                        _Out_ vpp_vxlan_tunnel_t& req,
+                        _In_ const sai_ip_address_t& src_ip,
+                        _In_ const sai_ip_address_t& dst_ip,
+                        _In_ u_int32_t vni,
+                        _In_ bool decap_any);
+
+        /**
+         * @brief Add or remove the neighbour that gives an L3 tunnel the
+         * inner destination MAC to encapsulate with.
+         */
+        void set_l3_tunnel_neighbor(
+                        _In_ const vpp_vxlan_tunnel_t& req,
+                        _In_ const TunnelVPPData& tunnel_data,
+                        _In_ bool is_add);
+
+        bool has_l3_nexthop_to(
+                        _In_ const sai_ip_address_t& dst_ip) const;
+
+        bool has_l3_tunnel(
+                        _In_ const sai_ip_address_t& dst_ip,
+                        _In_ u_int32_t vni) const;
+
+        /**
+         * @brief Give the VTEP of a new next hop a decap-only tunnel for every
+         * local L3VNI it has no tunnel for. Failures are logged, not fatal.
+         */
+        void create_l3_decap_tunnels(
+                        _In_ const SaiObject* tunnel_obj,
+                        _In_ const TunnelVPPData& nh_tunnel_data);
+
+        /**
+         * @brief Create one decap-only tunnel of a VNI to the VTEP of a next
+         * hop, in that VNI's VRF. Failures are logged, not fatal.
+         */
+        void create_l3_decap_tunnel(
+                        _In_ const TunnelVPPData& nh_tunnel_data,
+                        _In_ std::shared_ptr<IpVrfInfo> ip_vrf,
+                        _In_ u_int32_t vni);
+
+        /**
+         * @brief Remove the decap-only tunnels to a VTEP, or of a VNI
+         * (vni != 0) to every VTEP.
+         */
+        void remove_l3_decap_tunnels(
+                        _In_ const sai_ip_address_t* dst_ip,
+                        _In_ u_int32_t vni);
         // Map from VNI to VPP tunnel data (L2 VXLAN / EVPN)
         std::unordered_map<uint32_t, TunnelVPPData> m_l2_tunnel_map;
 
