@@ -117,6 +117,34 @@ namespace saivs
                     _In_ sai_stats_mode_t mode,
                     _Out_ uint64_t *counters);
 
+            /* RIF counters sourced from VPP per-interface stats, with a
+             * per-RIF baseline so READ_AND_CLEAR returns deltas since the
+             * last clear instead of VPP's absolute cumulative values. */
+            sai_status_t getRifStatsExt(
+                    _In_ sai_object_id_t oid,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Out_ uint64_t *counters);
+
+            /* Translate SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION into
+             * the sonic_ext plugin call. Returns SAI_STATUS_NOT_SUPPORTED for
+             * any action other than FORWARD/DROP, SAI_STATUS_FAILURE if the
+             * plugin call fails. */
+            sai_status_t vpp_apply_loopback_action(
+                    _In_ const std::string& hwif_name,
+                    _In_ int32_t packet_action);
+
+            /* Resolve a ROUTER_INTERFACE oid to its backing VPP hardware
+             * interface name: the port/LAG/sub-port hwif, or the bridge BVI
+             * (bvi<vlan-id>) for a VLAN RIF. The interface registry only indexes
+             * PORT/LAG/VLAN_BVI oids (not RIF oids), so RIF stats and cleanup
+             * must resolve through the RIF's SAI attributes here. Returns false
+             * if the RIF is not backed by a VPP interface. */
+            bool vpp_get_rif_hwif_name(
+                    _In_ sai_object_id_t rif_oid,
+                    _Out_ std::string& ifname);
+
             sai_status_t getRouteCounterStats(
                     _In_ sai_object_id_t oid,
                     _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
@@ -944,6 +972,10 @@ namespace saivs
 
             std::map<std::string, uint32_t> m_routeStatsIndexMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsBaseMap;
+
+            /* Per-RIF baseline of absolute VPP counters at the last
+             * READ_AND_CLEAR, so RIF stats read back as deltas (getRifStatsExt). */
+            std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_rifStatsBaseMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsCarryMap;
 
             // Short-lived cache of a full "/net/route/to" dump, keyed by VPP stats

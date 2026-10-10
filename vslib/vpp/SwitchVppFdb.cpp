@@ -1607,6 +1607,19 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
         }
     }
 
+    // Apply a create-time loopback (hairpin) packet action on the BVI so a VLAN
+    // RIF created with SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION=DROP is
+    // programmed immediately. SAI marks the attribute CREATE_AND_SET, so a
+    // conforming create can carry it; without this the BVI would forward until a
+    // later SET (vpp_update_bvi_interface) arrived.
+    auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+
+    if (attr_loopback != NULL)
+    {
+        std::string bvi_hwif = std::string("bvi") + std::to_string(vlan_id);
+        CHECK_STATUS(vpp_apply_loopback_action(bvi_hwif, attr_loopback->value.s32));
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -1705,6 +1718,16 @@ sai_status_t SwitchVpp::vpp_update_bvi_interface(
         SWSS_LOG_INFO("Set MTU %u on BVI %s", attr_mtu->value.u32, hwif_name);
 
         set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_mtu);
+    }
+
+    // Apply the loopback (hairpin) packet action on the BVI, so a VLAN RIF is
+    // covered like any port/LAG RIF.
+    auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+
+    if (attr_loopback != NULL)
+    {
+        CHECK_STATUS(vpp_apply_loopback_action(hwif_name, attr_loopback->value.s32));
+        set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_loopback);
     }
 
     return SAI_STATUS_SUCCESS;

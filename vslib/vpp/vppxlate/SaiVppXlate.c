@@ -1552,6 +1552,13 @@ vl_api_sonic_ext_ip2me_enable_disable_reply_t_handler(vl_api_sonic_ext_ip2me_ena
 }
 
 static void
+vl_api_sonic_ext_iface_loopback_set_action_reply_t_handler(vl_api_sonic_ext_iface_loopback_set_action_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_sonic_ext_feature_get_reply_t_handler(vl_api_sonic_ext_feature_get_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2269,6 +2276,7 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_SAMPLING_RATE_SET_REPLY), sflow_interface_sampling_rate_set_reply) \
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_IFACE_LOOPBACK_SET_ACTION_REPLY), sonic_ext_iface_loopback_set_action_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_FEATURE_GET_REPLY), sonic_ext_feature_get_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
     _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
@@ -4493,6 +4501,47 @@ int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable)
         SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable);
     } else {
         SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_iface_loopback_set_action(const char *hwif_name, int action)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_iface_loopback_set_action_t *mp;
+    u32 idx;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+    M(SONIC_EXT_IFACE_LOOPBACK_SET_ACTION, mp);
+
+    if (!hwif_name) {
+        SAIVPP_ERROR("%s: hwif_name is NULL", __func__);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->sw_if_index = htonl(idx);
+    mp->action = (u8) action;
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s action %d", __func__, ret, hwif_name, action);
+    } else {
+        SAIVPP_INFO("%s %s action %d", __func__, hwif_name, action);
     }
 
     VPP_UNLOCK();

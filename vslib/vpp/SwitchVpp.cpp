@@ -788,6 +788,95 @@ void SwitchVpp::setPortStats(
     debugSetStats(oid, stats);
 }
 
+sai_status_t SwitchVpp::getRifStatsExt(
+        _In_ sai_object_id_t oid,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters)
+{
+    SWSS_LOG_ENTER();
+
+    // Absolute cumulative counters as VPP reports them, keyed by SAI stat id.
+    std::map<sai_stat_id_t, uint64_t> absolute;
+
+    std::string if_name;
+    bool have_stats = false;
+
+    if (vpp_get_rif_hwif_name(oid, if_name) && !if_name.empty())
+    {
+        vpp_interface_stats_t rif_stats;
+
+        if (vpp_intf_stats_query(if_name.c_str(), &rif_stats) == 0)
+        {
+            have_stats = true;
+            absolute[SAI_ROUTER_INTERFACE_STAT_IN_OCTETS] = rif_stats.rx_bytes;
+            absolute[SAI_ROUTER_INTERFACE_STAT_IN_PACKETS] = rif_stats.rx;
+            absolute[SAI_ROUTER_INTERFACE_STAT_OUT_OCTETS] = rif_stats.tx_bytes;
+            absolute[SAI_ROUTER_INTERFACE_STAT_OUT_PACKETS] = rif_stats.tx;
+            absolute[SAI_ROUTER_INTERFACE_STAT_IN_ERROR_PACKETS] = rif_stats.rx_error;
+            absolute[SAI_ROUTER_INTERFACE_STAT_OUT_ERROR_PACKETS] = rif_stats.tx_error;
+        }
+    }
+
+    if (!have_stats)
+    {
+        // Could not resolve the RIF to a VPP interface or read its counters.
+        // Return zeros without touching the per-RIF baseline so a transient
+        // failure during a READ_AND_CLEAR cannot corrupt the delta accounting
+        // (and so an unresolvable RIF does not accumulate a stale base entry).
+        SWSS_LOG_WARN("getRifStatsExt: no VPP stats for RIF %s",
+                sai_serialize_object_id(oid).c_str());
+
+        for (uint32_t i = 0; i < number_of_counters; ++i)
+        {
+            counters[i] = 0;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    bool clear = mode == SAI_STATS_MODE_READ_AND_CLEAR ||
+        mode == SAI_STATS_MODE_BULK_READ_AND_CLEAR ||
+        mode == SAI_STATS_MODE_BULK_CLEAR;
+
+    // VPP exposes only ever-increasing absolute counters, so a SAI
+    // READ_AND_CLEAR is emulated by remembering the absolute value at the last
+    // clear and returning (absolute - baseline). Without this the base
+    // VirtualSwitch clear zeroes its own map but the next read reloads VPP's
+    // absolute value, restoring all pre-clear traffic.
+    auto& base = m_rifStatsBaseMap[oid];
+
+    for (uint32_t i = 0; i < number_of_counters; ++i)
+    {
+        sai_stat_id_t id = counter_ids[i];
+
+        uint64_t abs = 0;
+        auto it = absolute.find(id);
+        if (it != absolute.end())
+        {
+            abs = it->second;
+        }
+
+        uint64_t baseline = 0;
+        auto baseIt = base.find(id);
+        if (baseIt != base.end())
+        {
+            baseline = baseIt->second;
+        }
+
+        // Guard against a counter that went backwards (interface/stat reset).
+        counters[i] = (abs >= baseline) ? (abs - baseline) : abs;
+
+        if (clear)
+        {
+            base[id] = abs;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::getRouteCounterStats(
         _In_ sai_object_id_t oid,
         _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
@@ -1171,6 +1260,11 @@ sai_status_t SwitchVpp::getStatsExt(
     if (object_type == SAI_OBJECT_TYPE_POLICER)
     {
         return getPolicerStats(object_id, number_of_counters, counter_ids, counters);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
+    {
+        return getRifStatsExt(object_id, number_of_counters, counter_ids, mode, counters);
     }
 
     return SwitchStateBase::getStatsExt(
