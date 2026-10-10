@@ -35,6 +35,7 @@ using json = nlohmann::json;
 static const std::string COUNTER_TYPE_PORT = "Port Counter";
 static const std::string ATTR_TYPE_PORT_PHY_ATTR = "Port Phy Attributes";
 static const std::string ATTR_TYPE_PORT_PHY_SERDES_ATTR = "Port Phy Serdes Attributes";
+static const std::string ATTR_TYPE_PORT_LLR_ATTR = "Port LLR Attributes";
 static const std::string COUNTER_TYPE_PORT_DEBUG = "Port Debug Counter";
 static const std::string COUNTER_TYPE_QUEUE = "Queue Counter";
 static const std::string COUNTER_TYPE_PG = "Priority Group Counter";
@@ -89,6 +90,7 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
 const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
     {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
     {{SAI_OBJECT_TYPE_PORT, PORT_PHY_ATTR_ID_LIST}, ATTR_TYPE_PORT_PHY_ATTR},
+    {{SAI_OBJECT_TYPE_PORT, PORT_LLR_ATTR_ID_LIST}, ATTR_TYPE_PORT_LLR_ATTR},
     {{SAI_OBJECT_TYPE_PORT_SERDES, PORT_PHY_SERDES_ATTR_ID_LIST}, ATTR_TYPE_PORT_PHY_SERDES_ATTR},
     {{SAI_OBJECT_TYPE_PORT, PORT_DEBUG_COUNTER_ID_LIST}, COUNTER_TYPE_PORT_DEBUG},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_COUNTER_ID_LIST}, COUNTER_TYPE_QUEUE},
@@ -4100,6 +4102,11 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     {
         return std::make_shared<PortPhySerdesAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT_SERDES, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn);
     }
+    else if (context_name == ATTR_TYPE_PORT_LLR_ATTR)
+    {
+        // LLR TX/RX operational status are simple enum port attributes.
+        return std::make_shared<AttrContext<sai_port_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+    }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
         return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
@@ -4500,6 +4507,10 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(ATTR_TYPE_PORT_PHY_ATTR))
         {
             getCounterContext(ATTR_TYPE_PORT_PHY_ATTR)->removeObject(vid);
+        }
+        if (hasCounterContext(ATTR_TYPE_PORT_LLR_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_PORT_LLR_ATTR)->removeObject(vid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_QUEUE)

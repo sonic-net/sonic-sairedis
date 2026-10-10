@@ -586,3 +586,27 @@ TEST_F(SwitchStateBaseTest, hasNativePacketSamplingDefaultsToFalse)
 {
     EXPECT_FALSE(m_ss->hasNativePacketSampling());
 }
+
+// --- LLR operational TX/RX status attribute tests ---
+
+// The status attributes are simple read-only enum port attributes; the vs SAI
+// reports them GET-implemented (default capability path) so the flex-counter
+// capability probe in portsorch succeeds.
+TEST_F(SwitchStateBaseTest, queryLlrStatusCapability)
+{
+    sai_attr_capability_t cap;
+
+    EXPECT_EQ(m_ss->queryAttributeCapability(m_swid,
+                  SAI_OBJECT_TYPE_PORT,
+                  SAI_PORT_ATTR_LLR_TX_STATUS,
+                  &cap),
+              SAI_STATUS_SUCCESS);
+    EXPECT_TRUE(cap.get_implemented);
+
+    EXPECT_EQ(m_ss->queryAttributeCapability(m_swid,
+                  SAI_OBJECT_TYPE_PORT,
+                  SAI_PORT_ATTR_LLR_RX_STATUS,
+                  &cap),
+              SAI_STATUS_SUCCESS);
+    EXPECT_TRUE(cap.get_implemented);
+}
