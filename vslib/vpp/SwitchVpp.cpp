@@ -1550,6 +1550,15 @@ sai_status_t SwitchVpp::create(
         SWSS_LOG_INFO("L2 VXLAN tunnel create for %s: status=%d sw_if_index=%u",
             serializedObjectId.c_str(), status, sw_if_index);
 
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            // the create fails as a whole: no VPP tunnel of it, and no SAI
+            // object that syncd does not know about
+            m_tunnel_mgr.handle_l2_vxlan_tunnel_removal(object_id);
+            remove_internal(object_type, serializedObjectId);
+            return status;
+        }
+
         // Late-tunnel hook: install any L3 secondary-VTEP decap terms whose
         // TUNNEL_MAP_ENTRY was created before this tunnel existed (M3).
         m_tunnel_mgr.handle_l3_vxlan_tunnel_create(object_id);
@@ -2003,6 +2012,7 @@ sai_status_t SwitchVpp::remove(
         // before the SAI object and its DECAP_MAPPERS links are torn down, in case
         // the TUNNEL is deleted while its TUNNEL_MAP_ENTRYs are still present.
         m_tunnel_mgr.handle_l3_vxlan_tunnel_removal(object_id);
+        m_tunnel_mgr.handle_l2_vxlan_tunnel_removal(object_id);
         return remove_internal(object_type, serializedObjectId);
     }
 
@@ -2278,6 +2288,11 @@ sai_status_t SwitchVpp::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setLagMember(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_FDB_ENTRY)
+    {
+        return FdbEntryset(serializedObjectId, attr);
     }
 
     if (objectType == SAI_OBJECT_TYPE_VLAN)
