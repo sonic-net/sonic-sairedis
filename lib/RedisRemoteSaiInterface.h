@@ -340,6 +340,9 @@ namespace sairedis
              * Will wait for response from syncd. Method used only for bulk
              * object create/remove/set since they have common output which is
              * sai_status_t and object_statuses.
+             * A failed wait without response fields reports the wait status
+             * for every object; it does not establish whether syncd executed
+             * the request. Malformed responses remain errors.
              */
             sai_status_t waitForBulkResponse(
                     _In_ sai_common_api_t api,
