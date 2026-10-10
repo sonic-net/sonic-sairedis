@@ -147,21 +147,21 @@ void SwitchStateBase::send_port_oper_status_notification(
 
     auto objectType = objectTypeQuery(portId); // can be port, bridge port, lag
 
+    auto meta = getMeta();
+
+    // A bridge port is reported from inside its create call: the metadata
+    // learns it when the create returns and must not snoop it before that.
+    if (meta && objectType != SAI_OBJECT_TYPE_BRIDGE_PORT)
+    {
+        meta->meta_sai_on_port_state_change(1, &data);
+    }
+
     if (objectType != SAI_OBJECT_TYPE_PORT && objectType != SAI_OBJECT_TYPE_BRIDGE_PORT)
     {
         SWSS_LOG_ERROR("object type %s not supported on portId %s",
                 sai_serialize_object_type(objectType).c_str(),
                 sai_serialize_object_id(portId).c_str());
         return;
-    }
-
-    auto meta = getMeta();
-
-    // A bridge port is reported from inside its create call: the metadata
-    // learns it when the create returns and must not snoop it before that.
-    if (meta && objectType == SAI_OBJECT_TYPE_PORT)
-    {
-        meta->meta_sai_on_port_state_change(1, &data);
     }
 
     sai_attribute_t attr;
