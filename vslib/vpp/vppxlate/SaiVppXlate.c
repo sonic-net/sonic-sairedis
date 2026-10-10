@@ -18,6 +18,7 @@
 #include <endian.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <poll.h>
 #include <assert.h>
 #include "sai.h"
 
@@ -7112,6 +7113,59 @@ vpp_l2fib_set_scan_delay (uint16_t delay_10ms)
 
     VPP_UNLOCK();
     return ret;
+}
+
+/*
+ * VPP sends L2_MACS_EVENT on the connection that sent WANT_L2_MACS_EVENTS2,
+ * which is this command socket, and nothing reads that socket except WR()
+ * while a command waits for its reply. An event VPP sends while saivpp makes
+ * no other call (no route, neighbor, port or FDB change) therefore sits unread,
+ * and SONiC does not learn the MAC until some unrelated call happens, possibly
+ * minutes later.
+ *
+ * If the socket has data, send a control ping: WR() then reads everything
+ * queued ahead of the ping reply and dispatches each L2_MACS_EVENT to
+ * vl_api_l2_macs_event_t_handler on the way. An idle socket costs one poll()
+ * and no API message.
+ *
+ * Returns 1 if pending messages were read, 0 if there were none, <0 on error.
+ */
+int
+vpp_l2_macs_events_poll (void)
+{
+    vat_main_t *vam = &vat_main;
+    socket_client_main_t *cmd_scm = vam->socket_client_main;
+    vl_api_control_ping_t *mp_ping;
+    struct pollfd pfd;
+    int ret;
+
+    if (!cmd_scm || !cmd_scm->socket_enable || cmd_scm->socket_fd <= 0)
+        return 0;
+
+    pfd.fd = cmd_scm->socket_fd;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+
+    if (poll(&pfd, 1, 0) <= 0 || !(pfd.revents & POLLIN))
+        return 0;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = memclnt_msg_id_base;
+
+    PING (NULL, mp_ping);
+    S (mp_ping);
+    WR (ret);
+
+    VPP_UNLOCK();
+
+    if (ret)
+    {
+        SAIVPP_WARN("%s: control ping failed(%d)", __func__, ret);
+        return ret < 0 ? ret : -ret;
+    }
+
+    return 1;
 }
 
 uint32_t
