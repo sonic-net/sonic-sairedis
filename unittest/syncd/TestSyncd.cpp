@@ -24,6 +24,7 @@
 #include <gmock/gmock.h>
 
 #include <chrono>
+#include <cstring>
 #include <thread>
 
 #include "swss/table.h"
@@ -216,6 +217,327 @@ TEST(Syncd, inspectAsic)
     // TODO inspect asic on warm boot
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai->apiUninitialize());
+}
+
+static sai_s8_list_t toS8List(
+        _In_ const std::string& str)
+{
+    SWSS_LOG_ENTER();
+
+    sai_s8_list_t list;
+
+    list.count = (uint32_t)str.size();
+    list.list = (int8_t*)const_cast<char*>(str.data());
+
+    return list;
+}
+
+static sai_status_t setFlexCounterGroup(
+        _In_ std::shared_ptr<sairedis::Sai> sai,
+        _In_ sai_object_id_t switchId,
+        _In_ const std::string& group)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string pollInterval = "100";
+    const std::string operation = "enable";
+    const std::string statsMode = STATS_MODE_READ;
+
+    sai_redis_flex_counter_group_parameter_t param;
+
+    memset(&param, 0, sizeof(param));
+
+    param.counter_group_name = toS8List(group);
+    param.poll_interval = toS8List(pollInterval);
+    param.operation = toS8List(operation);
+    param.stats_mode = toS8List(statsMode);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP;
+    attr.value.ptr = &param;
+
+    return sai->set(SAI_OBJECT_TYPE_SWITCH, switchId, &attr);
+}
+
+static sai_status_t startFlexCounter(
+        _In_ std::shared_ptr<sairedis::Sai> sai,
+        _In_ sai_object_id_t switchId,
+        _In_ const std::string& group,
+        _In_ sai_object_id_t vid,
+        _In_ const std::string& fieldName,
+        _In_ const std::string& counterIds)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string key = group + ":" + sai_serialize_object_id(vid);
+
+    sai_redis_flex_counter_parameter_t param;
+
+    memset(&param, 0, sizeof(param));
+
+    param.counter_key = toS8List(key);
+    param.counter_field_name = toS8List(fieldName);
+    param.counter_ids = toS8List(counterIds);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER;
+    attr.value.ptr = &param;
+
+    return sai->set(SAI_OBJECT_TYPE_SWITCH, switchId, &attr);
+}
+
+static bool waitForKey(
+        _In_ swss::Table& table,
+        _In_ const std::string& key,
+        _In_ bool present)
+{
+    SWSS_LOG_ENTER();
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        std::vector<swss::FieldValueTuple> values;
+
+        if (table.get(key, values) == present)
+        {
+            return true;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    return false;
+}
+
+TEST(Syncd, applyViewRemovesStaleFlexCounters)
+{
+    // Syncd keeps running when only its user restarts. Objects matched in
+    // apply view take VIDs from the new view, and objects missing in the new
+    // view are removed. Flex counters registered with the previous VIDs must
+    // be dropped then, since the user can't unregister them anymore, while
+    // counters of objects which kept their VIDs must be polled as before.
+
+    auto db = std::make_shared<swss::DBConnector>("ASIC_DB", 0, true);
+
+    swss::RedisReply r(db.get(), "FLUSHALL", REDIS_REPLY_STATUS);
+
+    r.checkStatusOK();
+
+    sai_service_method_table_t smt;
+
+    smt.profile_get_value = &profileGetValue;
+    smt.profile_get_next_value = &profileGetNextValue;
+
+    auto vssai = std::make_shared<saivs::Sai>();
+
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+    cmd->m_enableTempView = true;
+    cmd->m_profileMapFile = "profile.ini";
+
+    auto syncd = std::make_shared<Syncd>(vssai, cmd, false);
+
+    std::thread thread(syncd_thread, syncd);
+
+    auto sai = std::make_shared<sairedis::Sai>();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->apiInitialize(0, &smt));
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE;
+    attr.value.s32 = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr));
+
+    auto notifySyncd = [&](sai_redis_notify_syncd_t notify)
+    {
+        sai_attribute_t a;
+
+        a.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+        a.value.s32 = notify;
+
+        return sai->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &a);
+    };
+
+    auto createSwitch = [&](sai_object_id_t& switchId)
+    {
+        sai_attribute_t a;
+
+        a.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+        a.value.booldata = true;
+
+        return sai->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &a);
+    };
+
+    auto createRif = [&](sai_object_id_t switchId, sai_object_id_t routerId, sai_object_id_t portId, sai_object_id_t& rifId)
+    {
+        sai_attribute_t attrs[3];
+
+        attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+        attrs[0].value.oid = routerId;
+        attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+        attrs[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+        attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+        attrs[2].value.oid = portId;
+
+        return sai->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, &rifId, switchId, 3, attrs);
+    };
+
+    // first view is applied directly
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, notifySyncd(SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW));
+
+    sai_object_id_t switchId = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createSwitch(switchId));
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sai->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, &attr));
+
+    sai_object_id_t routerId = attr.value.oid;
+
+    sai_object_id_t ports[32];
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = 32;
+    attr.value.objlist.list = ports;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sai->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, &attr));
+
+    sai_object_id_t rifKept = SAI_NULL_OBJECT_ID;
+    sai_object_id_t rifRemoved = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createRif(switchId, routerId, ports[0], rifKept));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createRif(switchId, routerId, ports[1], rifRemoved));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, notifySyncd(SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW));
+
+    const std::string rifGroup = "RIF_STAT_COUNTER";
+    const std::string portGroup = "PORT_STAT_COUNTER";
+    const std::string rifCounters = "SAI_ROUTER_INTERFACE_STAT_IN_OCTETS,SAI_ROUTER_INTERFACE_STAT_IN_PACKETS";
+    const std::string portCounters = "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_UCAST_PKTS";
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setFlexCounterGroup(sai, switchId, rifGroup));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setFlexCounterGroup(sai, switchId, portGroup));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, startFlexCounter(sai, switchId, rifGroup, rifKept, RIF_COUNTER_ID_LIST, rifCounters));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, startFlexCounter(sai, switchId, rifGroup, rifRemoved, RIF_COUNTER_ID_LIST, rifCounters));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, startFlexCounter(sai, switchId, portGroup, ports[0], PORT_COUNTER_ID_LIST, portCounters));
+
+    swss::DBConnector countersDb("COUNTERS_DB", 0, true);
+    swss::Table countersTable(&countersDb, COUNTERS_TABLE);
+
+    swss::DBConnector flexCounterDb("FLEX_COUNTER_DB", 0, true);
+    swss::Table flexCounterTable(&flexCounterDb, FLEX_COUNTER_TABLE);
+
+    const auto strRifKept = sai_serialize_object_id(rifKept);
+    const auto strRifRemoved = sai_serialize_object_id(rifRemoved);
+    const auto strPort = sai_serialize_object_id(ports[0]);
+
+    EXPECT_TRUE(waitForKey(countersTable, strRifKept, true));
+    EXPECT_TRUE(waitForKey(countersTable, strRifRemoved, true));
+    EXPECT_TRUE(waitForKey(countersTable, strPort, true));
+
+    EXPECT_TRUE(waitForKey(flexCounterTable, rifGroup + ":" + strRifKept, true));
+    EXPECT_TRUE(waitForKey(flexCounterTable, rifGroup + ":" + strRifRemoved, true));
+    EXPECT_TRUE(waitForKey(flexCounterTable, portGroup + ":" + strPort, true));
+
+    // new view: one router interface is created again and is matched to the
+    // existing one, the other router interface is missing
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, notifySyncd(SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW));
+
+    sai_object_id_t newSwitchId = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createSwitch(newSwitchId));
+
+    EXPECT_EQ(switchId, newSwitchId);
+
+    // read the default objects again, so they are known in the new view
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sai->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, &attr));
+
+    EXPECT_EQ(routerId, attr.value.oid);
+
+    sai_object_id_t newPorts[32];
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = 32;
+    attr.value.objlist.list = newPorts;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sai->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, &attr));
+
+    EXPECT_EQ(ports[0], newPorts[0]);
+
+    sai_object_id_t rifNew = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createRif(switchId, routerId, ports[0], rifNew));
+
+    EXPECT_NE(rifNew, rifKept);
+    EXPECT_NE(rifNew, rifRemoved);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, notifySyncd(SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW));
+
+    // counters registered with the previous VIDs are gone
+
+    EXPECT_TRUE(waitForKey(flexCounterTable, rifGroup + ":" + strRifKept, false));
+    EXPECT_TRUE(waitForKey(flexCounterTable, rifGroup + ":" + strRifRemoved, false));
+    EXPECT_TRUE(waitForKey(countersTable, strRifKept, false));
+    EXPECT_TRUE(waitForKey(countersTable, strRifRemoved, false));
+
+    // the port kept its VID and is still polled
+
+    std::vector<swss::FieldValueTuple> values;
+
+    EXPECT_TRUE(flexCounterTable.get(portGroup + ":" + strPort, values));
+
+    countersTable.del(strPort);
+
+    EXPECT_TRUE(waitForKey(countersTable, strPort, true));
+
+    // previous VIDs are not polled anymore
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    EXPECT_FALSE(countersTable.get(strRifKept, values));
+    EXPECT_FALSE(countersTable.get(strRifRemoved, values));
+
+    // the new VID can be registered and is polled
+
+    const auto strRifNew = sai_serialize_object_id(rifNew);
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, startFlexCounter(sai, switchId, rifGroup, rifNew, RIF_COUNTER_ID_LIST, rifCounters));
+
+    EXPECT_TRUE(waitForKey(countersTable, strRifNew, true));
+    EXPECT_TRUE(waitForKey(flexCounterTable, rifGroup + ":" + strRifNew, true));
+
+    // request shutdown
+
+    auto opt = std::make_shared<RequestShutdownCommandLineOptions>();
+
+    opt->setRestartType(SYNCD_RESTART_TYPE_COLD);
+
+    RequestShutdown rs(opt);
+
+    rs.send();
+
+    thread.join();
+
+    syncd = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->apiUninitialize());
+
+    swss::RedisReply flush(db.get(), "FLUSHALL", REDIS_REPLY_STATUS);
+
+    flush.checkStatusOK();
 }
 
 TEST(Syncd, zmqSyncWithJsonDisabledFallsBackToRedisSync)

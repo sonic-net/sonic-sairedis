@@ -96,6 +96,9 @@ namespace syncd
 
         virtual bool hasObject() const = 0;
 
+        virtual void getObjectVids(
+                _Out_ std::set<sai_object_id_t> &vids) const = 0;
+
     protected:
         std::string m_name;
         std::string m_instanceId;
@@ -145,6 +148,11 @@ namespace syncd
 
             void removeCounter(
                     _In_ sai_object_id_t vid);
+
+            /**
+             * @brief Get VIDs of all objects that are polled by this instance.
+             */
+            std::set<sai_object_id_t> getCounterVids();
 
             bool isEmpty();
 
