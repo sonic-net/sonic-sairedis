@@ -2671,9 +2671,14 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
 
     obj_type = objectTypeQuery(port_id);
 
-    if (obj_type != SAI_OBJECT_TYPE_PORT)
+    /*
+     * A LAG joins a VLAN through a bridge port whose PORT_ID is the LAG, and
+     * VPP holds the MAC addresses learned on it on the bond, so a LAG is
+     * programmed exactly like a port.
+     */
+    if (obj_type != SAI_OBJECT_TYPE_PORT && obj_type != SAI_OBJECT_TYPE_LAG)
     {
-        SWSS_LOG_NOTICE("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+        SWSS_LOG_NOTICE("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                 sai_serialize_object_id(port_id).c_str(),
                 sai_serialize_object_type(obj_type).c_str());
         return SAI_STATUS_FAILURE;
@@ -2681,9 +2686,16 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
 
     /* Need to extract the VLAN ID attached based on the Port_ID */
     sai_attribute_t attr;
-    attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+    if (obj_type == SAI_OBJECT_TYPE_LAG)
+    {
+        attr.id = SAI_LAG_ATTR_PORT_VLAN_ID;
+    }
+    else
+    {
+        attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+    }
 
-    sai_status_t get_status = get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr);
+    sai_status_t get_status = get(obj_type, port_id, 1, &attr);
 
     if (get_status != SAI_STATUS_SUCCESS)
     {
@@ -2788,9 +2800,10 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
 
     obj_type = objectTypeQuery(port_id);
 
-    if (obj_type != SAI_OBJECT_TYPE_PORT)
+    /* a LAG bridge port is removed like a port one, see vpp_fdbentry_add() */
+    if (obj_type != SAI_OBJECT_TYPE_PORT && obj_type != SAI_OBJECT_TYPE_LAG)
     {
-        SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+        SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                 sai_serialize_object_id(port_id).c_str(),
                 sai_serialize_object_type(obj_type).c_str());
         return SAI_STATUS_FAILURE;
@@ -2798,9 +2811,16 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
 
     /* Need the VLAN ID attached based on the Port_ID */
     sai_attribute_t attr;
-    attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+    if (obj_type == SAI_OBJECT_TYPE_LAG)
+    {
+        attr.id = SAI_LAG_ATTR_PORT_VLAN_ID;
+    }
+    else
+    {
+        attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+    }
 
-    sai_status_t get_status = get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr);
+    sai_status_t get_status = get(obj_type, port_id, 1, &attr);
 
     if (get_status != SAI_STATUS_SUCCESS)
     {
@@ -2941,9 +2961,17 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
 
                 sai_object_type_t obj_type = objectTypeQuery(port_id);
 
-                if (obj_type != SAI_OBJECT_TYPE_PORT)
+                /*
+                 * orchagent flushes a LAG by its bridge port, e.g. when the
+                 * LAG goes operationally down or a MAC is learned on it while
+                 * it is down. The vslib layer above has already dropped the
+                 * SAI entries and sent FLUSHED, so failing here would leave
+                 * the MAC addresses in VPP's L2FIB and in m_vpp_fdb_entries:
+                 * VPP never reports them again and SONiC never relearns them.
+                 */
+                if (obj_type != SAI_OBJECT_TYPE_PORT && obj_type != SAI_OBJECT_TYPE_LAG)
                 {
-                    SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+                    SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                             sai_serialize_object_id(port_id).c_str(),
                             sai_serialize_object_type(obj_type).c_str());
                     return SAI_STATUS_FAILURE;
