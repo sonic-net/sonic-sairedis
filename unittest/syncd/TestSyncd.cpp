@@ -729,6 +729,115 @@ TEST_F(SyncdTest, BulkCreateTest)
     m_syncd->processEvent(*channel);
 }
 
+static void switchMacDefaultsTest(
+        std::shared_ptr<MockableSaiInterface> sai,
+        std::shared_ptr<Syncd> syncd,
+        bool switchTypeKnown,
+        sai_switch_type_t switchType,
+        bool routerMacGettable)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switchVid = 0x21000000000000;
+    sai_object_id_t switchRid = 0x11000000000001;
+    sai_object_id_t portVid = 0x10000000000002;
+    sai_object_id_t portRid = 0x11000000000002;
+
+    syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+    syncd->m_translator->insertRidAndVid(portRid, portVid);
+    syncd->m_client->setPortLanes(switchVid, portRid, {52, 53});
+
+    sai->mock_objectTypeQuery = [switchRid, portRid](sai_object_id_t oid) {
+        if (oid == switchRid)
+            return SAI_OBJECT_TYPE_SWITCH;
+        return oid == portRid ? SAI_OBJECT_TYPE_PORT : SAI_OBJECT_TYPE_QUEUE;
+    };
+    sai->mock_switchIdQuery = [switchVid](sai_object_id_t) { return switchVid; };
+    sai->mock_get = [=](sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attrCount,
+                        sai_attribute_t* attrList) -> sai_status_t {
+        if (attrCount != 1)
+            return SAI_STATUS_INVALID_PARAMETER;
+        if (objectType == SAI_OBJECT_TYPE_SWITCH && objectId == switchRid)
+        {
+            switch (attrList[0].id)
+            {
+                case SAI_SWITCH_ATTR_TYPE:
+                    if (!switchTypeKnown)
+                        return SAI_STATUS_NOT_SUPPORTED;
+                    attrList[0].value.s32 = switchType;
+                    return SAI_STATUS_SUCCESS;
+                case SAI_SWITCH_ATTR_PORT_NUMBER:
+                    attrList[0].value.u32 = 1;
+                    return SAI_STATUS_SUCCESS;
+                case SAI_SWITCH_ATTR_PORT_LIST:
+                    attrList[0].value.objlist.count = 1;
+                    attrList[0].value.objlist.list[0] = portRid;
+                    return SAI_STATUS_SUCCESS;
+                case SAI_SWITCH_ATTR_SRC_MAC_ADDRESS:
+                {
+                    sai_mac_t mac = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+                    memcpy(attrList[0].value.mac, mac, sizeof(sai_mac_t));
+                    return SAI_STATUS_SUCCESS;
+                }
+                case SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC:
+                {
+                    if (!routerMacGettable)
+                        return SAI_STATUS_ATTR_NOT_IMPLEMENTED_0;
+                    sai_mac_t mac = {0x00, 0x11, 0x22, 0x33, 0x44, 0x66};
+                    memcpy(attrList[0].value.mac, mac, sizeof(sai_mac_t));
+                    return SAI_STATUS_SUCCESS;
+                }
+                default:
+                    return SAI_STATUS_NOT_SUPPORTED;
+            }
+        }
+        if (objectType == SAI_OBJECT_TYPE_PORT && objectId == portRid)
+        {
+            if (attrList[0].id == SAI_PORT_ATTR_HW_LANE_LIST)
+            {
+                if (attrList[0].value.u32list.list == nullptr || attrList[0].value.u32list.count < 2)
+                {
+                    attrList[0].value.u32list.count = 2;
+                    return SAI_STATUS_BUFFER_OVERFLOW;
+                }
+                attrList[0].value.u32list.count = 2;
+                attrList[0].value.u32list.list[0] = 52;
+                attrList[0].value.u32list.list[1] = 53;
+                return SAI_STATUS_SUCCESS;
+            }
+            if (attrList[0].id == SAI_PORT_ATTR_PORT_SERDES_ID)
+            {
+                attrList[0].value.oid = SAI_NULL_OBJECT_ID;
+                return SAI_STATUS_SUCCESS;
+            }
+        }
+        return SAI_STATUS_NOT_SUPPORTED;
+    };
+
+    auto sw = std::make_shared<SaiSwitch>(switchVid, switchRid, syncd->m_client, syncd->m_translator, sai, false);
+
+    sai_mac_t mac;
+    sw->getDefaultMacAddress(mac);
+    EXPECT_EQ(sai_serialize_mac(mac), "00:11:22:33:44:55");
+    sw->getVxlanDefaultRouterMacAddress(mac);
+    EXPECT_EQ(sai_serialize_mac(mac), routerMacGettable ? "00:11:22:33:44:66" : "00:00:00:00:00:00");
+}
+
+TEST_F(SyncdTest, SwitchMacDefaultsNpu)
+{
+    switchMacDefaultsTest(m_sai, m_syncd, false, SAI_SWITCH_TYPE_NPU, true);
+}
+
+TEST_F(SyncdTest, SwitchMacDefaultsVoq)
+{
+    switchMacDefaultsTest(m_sai, m_syncd, true, SAI_SWITCH_TYPE_VOQ, true);
+}
+
+TEST_F(SyncdTest, SwitchMacDefaultsRouterMacNotGettable)
+{
+    switchMacDefaultsTest(m_sai, m_syncd, true, SAI_SWITCH_TYPE_VOQ, false);
+}
+
 TEST_F(SyncdTest, BulkSetTest)
 {
     m_opt->m_enableSaiBulkSupport = true;
