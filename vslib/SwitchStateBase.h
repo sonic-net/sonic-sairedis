@@ -171,6 +171,14 @@ namespace saivs
                     _In_ const sai_attr_metadata_t *meta,
                     _In_ sai_object_id_t bridge_id);
 
+            /**
+             * @brief Orders bridge ports for SAI_BRIDGE_ATTR_PORT_LIST: bridge
+             * ports of switch ports first, in port list order, then the others
+             * (lag) in object id order. Tunnel bridge ports are left out.
+             */
+            std::vector<sai_object_id_t> sort_bridge_port_list(
+                    _In_ const std::map<sai_object_id_t, SwitchState::AttrHash>& bridge_ports) const;
+
             virtual sai_status_t refresh_vlan_member_list(
                     _In_ const sai_attr_metadata_t *meta,
                     _In_ sai_object_id_t vlan_id);
@@ -400,6 +408,28 @@ namespace saivs
             bool isLagOrPortRifBased(
                     _In_ sai_object_id_t lag_or_port_id);
 
+            /**
+             * @brief Tells whether a learned entry is still in the local DB,
+             * dynamic and on the bridge port it was learned on.
+             */
+            bool isLearnedFdbEntryPresent(
+                    _In_ const FdbInfo &fi);
+
+            /**
+             * @brief Learns a MAC seen on a bridge port: reports it learned,
+             * or moved when it is a dynamic entry (or a static entry that
+             * allows MAC move) on another bridge port.
+             */
+            void learnFdbInfo(
+                    _In_ const FdbInfo &fi);
+
+            /**
+             * @brief Tracks an FDB entry the user changed: a dynamic entry ages
+             * like a learned one, a static entry is not tracked.
+             */
+            void updateFdbInfoOnSet(
+                    _In_ const std::string &serializedObjectId);
+
         protected:
 
             bool getLagFromPort(
@@ -501,6 +531,14 @@ namespace saivs
 
             static int promisc(
                     _In_ const char *dev);
+
+        protected: // custom bridge port
+
+            sai_status_t createBridgePort(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
 
         protected: // custom hostif
 
