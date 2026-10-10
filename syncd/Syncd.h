@@ -18,6 +18,7 @@
 #include "NotificationProducerBase.h"
 #include "TimerWatchdog.h"
 #include "MdioIpcServer.h"
+#include "GearboxMdioAccess.h"
 #include "LinkEventDamping.h"
 
 #include "meta/SaiAttributeList.h"
@@ -591,6 +592,11 @@ namespace syncd
             std::shared_ptr<sairedis::SelectableChannel> m_selectableChannel;
 
             std::shared_ptr<syncd::MdioIpcServer> m_mdioIpcServer;
+
+            /**
+             * @brief Resolves the MDIO access pointers gearbox PHYs are created with.
+             */
+            std::shared_ptr<syncd::GearboxMdioAccess> m_gearboxMdioAccess;
 
             bool m_enableSyncMode;
 
