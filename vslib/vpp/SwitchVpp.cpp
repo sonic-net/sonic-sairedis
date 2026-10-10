@@ -1187,10 +1187,21 @@ void SwitchVpp::processFdbEntriesForAging()
     SWSS_LOG_ENTER();
 
     /*
-     * Drain the MAC event queue populated by the VPP API receive thread.
-     * We hold MUTEX() here (called from Sai::processFdbEntriesForAging which
-     * acquires m_apimutex before calling into vslib), so it is safe to call
-     * the generate* helpers.
+     * Read the MAC events VPP has queued but nobody has read yet. VPP sends
+     * them on the command socket, which is otherwise read only while some
+     * call waits for its reply. Without this, a MAC VPP learns while SONiC
+     * makes no other call (the usual case for a quiet host, or one that comes
+     * back after a flush) is not reported until an unrelated route, neighbor
+     * or port change happens to read the socket, possibly minutes later.
+     * The callback enqueues them below; an idle socket costs one poll().
+     */
+    vpp_l2_macs_events_poll();
+
+    /*
+     * Drain the MAC event queue staticMacEventCb() fills from whichever thread
+     * read the command socket. We hold MUTEX() here (called from
+     * Sai::processFdbEntriesForAging which acquires m_apimutex before calling
+     * into vslib), so it is safe to call the generate* helpers.
      */
     std::queue<VppMacEvent> events;
     {
@@ -1278,13 +1289,14 @@ void SwitchVpp::processFdbEntriesForAging()
 }
 
 /*
- * Static trampoline: called on the VPP API receive thread when VPP pushes a
- * batch of MAC learn/age/move events.  Must NOT acquire m_apimutex — just
- * enqueue for safe dispatch by processFdbEntriesForAging() under the mutex.
+ * Static trampoline: called with VPP_LOCK held, by whichever thread reads the
+ * VPP command socket, when VPP pushes a batch of MAC learn/age/move events.
+ * Must NOT acquire m_apimutex; it just enqueues for safe dispatch by
+ * processFdbEntriesForAging() under the mutex.
  *
- * TODO: MAC events currently arrive on the shared VPP API socket and are
- * dispatched synchronously inside the WR() polling loop. Move to a separate
- * event socket in the future.
+ * MAC events arrive on the shared VPP API socket and are dispatched inside the
+ * WR() loop of any command, or of the poll processFdbEntriesForAging() runs.
+ * TODO: move them to the dedicated event socket.
  */
 void SwitchVpp::staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx)
 {

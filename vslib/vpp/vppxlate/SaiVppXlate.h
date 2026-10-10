@@ -531,14 +531,23 @@ typedef enum {
     } vpp_mac_event_t;
 
     /* Batch callback: invoked once per l2_macs_event message with all entries.
-     * Called on the VPP API receive thread — must NOT acquire m_apimutex. */
+     * Called with VPP_LOCK held by whichever thread is reading the VPP command
+     * socket: any thread waiting for a command reply, or the FDB aging thread
+     * in vpp_l2_macs_events_poll(). It must NOT acquire m_apimutex. */
     typedef void (*vpp_mac_event_cb_fn)(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
 
     /* Register/deregister for push-based MAC learn/age/move events from VPP.
-     * cb is invoked on the VPP API receive thread — implementations MUST NOT
-     * acquire the saivpp main mutex (m_apimutex) directly; enqueue the event
-     * and process it from a thread that safely holds the mutex. */
+     * VPP sends them on the command socket, which is read only while a call
+     * waits for its reply, so a subscriber must also call
+     * vpp_l2_macs_events_poll() periodically. cb MUST NOT acquire the saivpp
+     * main mutex (m_apimutex) directly; enqueue the event and process it from
+     * a thread that safely holds the mutex. */
     extern int vpp_want_l2_macs_events2(bool enable, vpp_mac_event_cb_fn cb, void *ctx);
+
+    /* Read the MAC events VPP has queued on the command socket, dispatching
+     * each batch to the registered callback. No API message when nothing is
+     * pending. Returns 1 if pending messages were read, 0 if none, <0 on error. */
+    extern int vpp_l2_macs_events_poll(void);
 
     /* Set the L2 FIB scan delay (in units of 10ms, default=10 → 100ms).
      * Reduces the interval between VPP scanning for aged/moved MACs. */
