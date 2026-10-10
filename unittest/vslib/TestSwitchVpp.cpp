@@ -406,3 +406,187 @@ TEST_F(SwitchVppLagFdb, LearnedEntryRemovedOnTheLagBridgePortIsLearnedAgain)
 
     EXPECT_NE(nullptr, fdbBridgePort());
 }
+
+/*
+ * VPP's L2FIB flushes are lazy: they bump a sequence number and leave the
+ * entry until the next scan, and a frame from the MAC before that scan
+ * refreshes the entry without a learn event. A MAC with steady traffic, like a
+ * node's, then survives every flush and is never reported again. So a flush has
+ * to delete each MAC we know VPP holds in its scope, on the interface VPP
+ * reported it on, before the lazy flush that catches the rest.
+ */
+class SwitchVppFdbFlushDeletes : public SwitchVppLagFdb
+{
+    protected:
+
+        // a second MAC VPP holds on the bond, in another bridge domain
+        void trackOtherMac()
+        {
+            SWSS_LOG_ENTER();
+
+            VppFdbKeyAlias key;
+
+            memcpy(key.mac, OTHER_MAC, sizeof(key.mac));
+            key.bd_id = OTHER_BD;
+
+            m_sw->m_vpp_fdb_entries[key] = BOND_SW_IF_INDEX;
+        }
+
+        // position of the first call to api in g_vppCalls, or -1
+        static int callIndex(
+                const std::string& api,
+                const std::string& name = "")
+        {
+            SWSS_LOG_ENTER();
+
+            for (size_t i = 0; i < g_vppCalls.size(); i++)
+            {
+                if (g_vppCalls[i].api == api && (name.empty() || g_vppCalls[i].name == name))
+                {
+                    return (int)i;
+                }
+            }
+
+            return -1;
+        }
+
+        sai_status_t flushAttrs(
+                std::vector<sai_attribute_t> attrs)
+        {
+            SWSS_LOG_ENTER();
+
+            return m_sw->vpp_fdbentry_flush(m_switchId, (uint32_t)attrs.size(), attrs.data());
+        }
+
+        static sai_attribute_t dynamicOnly()
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            memset(&attr, 0, sizeof(attr));
+            attr.id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+            attr.value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+
+            return attr;
+        }
+
+        using VppFdbKeyAlias = SwitchVpp::VppFdbKey;
+
+        static constexpr uint32_t OTHER_BD = 906;
+        static constexpr uint8_t OTHER_MAC[6] = { 0x00, 0x50, 0x56, 0xac, 0xb2, 0x03 };
+
+        const std::string MAC_ON_BOND = std::string(BOND_HWIF) + " 00:50:56:ac:b2:02";
+        const std::string OTHER_MAC_ON_BOND = std::string(BOND_HWIF) + " 00:50:56:ac:b2:03";
+};
+
+constexpr uint32_t SwitchVppFdbFlushDeletes::OTHER_BD;
+constexpr uint8_t SwitchVppFdbFlushDeletes::OTHER_MAC[6];
+
+TEST_F(SwitchVppFdbFlushDeletes, FlushOfTheLagBridgePortDeletesItsMacBeforeTheLazyFlush)
+{
+    vppMacEvent(VPP_MAC_ACTION_ADD);
+
+    ASSERT_NE(nullptr, fdbBridgePort());
+
+    // a MAC on an interface that is not this bridge port's stays in VPP
+    VppFdbKeyAlias elsewhere;
+    memcpy(elsewhere.mac, OTHER_MAC, sizeof(elsewhere.mac));
+    elsewhere.bd_id = VLAN_ID;
+    m_sw->m_vpp_fdb_entries[elsewhere] = 999;
+
+    g_vppCalls.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, flushBridgePort());
+
+    auto dels = vppCallsTo("l2fib_add_del");
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_EQ(MAC_ON_BOND, dels[0].name);
+    EXPECT_EQ(VLAN_ID, dels[0].id);
+    EXPECT_FALSE(dels[0].flag);         // is_add
+    EXPECT_EQ(0u, dels[0].sub_id);      // is_static_mac
+
+    int del = callIndex("l2fib_add_del", MAC_ON_BOND);
+    int flush = callIndex("l2fib_flush_int", BOND_HWIF);
+
+    ASSERT_NE(-1, flush);
+    EXPECT_LT(del, flush);
+
+    // forgotten as well, so VPP's next learn of it is reported
+    EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
+    EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.count(elsewhere));
+}
+
+TEST_F(SwitchVppFdbFlushDeletes, FlushOfABridgeDomainDeletesOnlyItsMacs)
+{
+    vppMacEvent(VPP_MAC_ACTION_ADD);
+
+    ASSERT_NE(nullptr, fdbBridgePort());
+
+    trackOtherMac();
+
+    g_vppCalls.clear();
+
+    sai_attribute_t bv;
+
+    memset(&bv, 0, sizeof(bv));
+    bv.id = SAI_FDB_FLUSH_ATTR_BV_ID;
+    bv.value.u16 = VLAN_ID;     // what vpp_fdbentry_flush() reads the BV_ID as
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, flushAttrs({bv, dynamicOnly()}));
+
+    auto dels = vppCallsTo("l2fib_add_del");
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_EQ(MAC_ON_BOND, dels[0].name);
+    EXPECT_EQ(VLAN_ID, dels[0].id);
+    EXPECT_FALSE(dels[0].flag);
+
+    auto flushes = vppCallsTo("l2fib_flush_bd");
+
+    ASSERT_EQ(1u, flushes.size());
+    EXPECT_EQ(VLAN_ID, flushes[0].id);
+    EXPECT_LT(callIndex("l2fib_add_del"), callIndex("l2fib_flush_bd"));
+
+    EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
+}
+
+TEST_F(SwitchVppFdbFlushDeletes, FlushAllDeletesEveryTrackedMac)
+{
+    vppMacEvent(VPP_MAC_ACTION_ADD);
+
+    ASSERT_NE(nullptr, fdbBridgePort());
+
+    trackOtherMac();
+
+    g_vppCalls.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, flushAttrs({dynamicOnly()}));
+
+    auto dels = vppCallsTo("l2fib_add_del");
+
+    ASSERT_EQ(2u, dels.size());
+
+    std::vector<std::pair<std::string, uint32_t>> deleted;
+
+    for (auto& d: dels)
+    {
+        EXPECT_FALSE(d.flag);
+        deleted.push_back({d.name, d.id});
+    }
+
+    std::sort(deleted.begin(), deleted.end());
+
+    EXPECT_EQ(MAC_ON_BOND, deleted[0].first);
+    EXPECT_EQ((uint32_t)VLAN_ID, deleted[0].second);
+    EXPECT_EQ(OTHER_MAC_ON_BOND, deleted[1].first);
+    EXPECT_EQ(OTHER_BD, deleted[1].second);
+
+    int flush = callIndex("l2fib_flush_all");
+
+    ASSERT_NE(-1, flush);
+    EXPECT_LT(callIndex("l2fib_add_del"), flush);
+
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
