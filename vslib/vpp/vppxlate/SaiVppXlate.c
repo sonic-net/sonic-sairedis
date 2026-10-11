@@ -1414,6 +1414,12 @@ vl_api_l2fib_add_del_reply_t_handler (vl_api_l2fib_add_del_reply_t *msg)
     set_reply_status(retval);
 }
 static void
+vl_api_l2_flags_reply_t_handler (vl_api_l2_flags_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+static void
 vl_api_l2fib_flush_all_reply_t_handler (vl_api_l2fib_flush_all_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2097,6 +2103,7 @@ static void vpp_base_vpe_init(void)
     _(BOND_MSG_ID(BOND_ADD_MEMBER_REPLY), bond_add_member_reply) \
     _(BOND_MSG_ID(BOND_DETACH_MEMBER_REPLY), bond_detach_member_reply) \
     _(L2_MSG_ID(L2FIB_ADD_DEL_REPLY), l2fib_add_del_reply) \
+    _(L2_MSG_ID(L2_FLAGS_REPLY), l2_flags_reply) \
     _(L2_MSG_ID(L2FIB_FLUSH_ALL_REPLY), l2fib_flush_all_reply) \
     _(L2_MSG_ID(L2FIB_FLUSH_INT_REPLY), l2fib_flush_int_reply) \
     _(L2_MSG_ID(L2FIB_FLUSH_BD_REPLY), l2fib_flush_bd_reply) \
@@ -5313,11 +5320,10 @@ int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add)
 
     return ret;
 }
-int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_mode, uint32_t port_type)
+int set_sw_interface_l2_bridge_shg_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_mode, uint32_t port_type, uint8_t shg)
 {
     vat_main_t *vam = &vat_main;
     vl_api_sw_interface_set_l2_bridge_t *mp;
-    u32 shg = 0;
     int ret;
 
     VPP_LOCK();
@@ -5343,8 +5349,41 @@ int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id
 
     WR (ret);
 
-    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u bd_id %u l2_mode %d", __func__, ret, sw_if_index, bridge_id, l2_mode); }
-    else { SAIVPP_INFO("%s sw_if_index %u bd_id %u l2_mode %d", __func__, sw_if_index, bridge_id, l2_mode); }
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u bd_id %u l2_mode %d shg %u", __func__, ret, sw_if_index, bridge_id, l2_mode, shg); }
+    else { SAIVPP_INFO("%s sw_if_index %u bd_id %u l2_mode %d shg %u", __func__, sw_if_index, bridge_id, l2_mode, shg); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_mode, uint32_t port_type)
+{
+    return set_sw_interface_l2_bridge_shg_by_index(sw_if_index, bridge_id, l2_mode, port_type, 0);
+}
+
+int set_sw_interface_l2_flags_by_index(uint32_t sw_if_index, uint32_t flags, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2_flags_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M (L2_FLAGS, mp);
+
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->is_set = enable;
+    mp->feature_bitmap = htonl(flags);
+
+    S (mp);
+
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u flags 0x%x enable %d", __func__, ret, sw_if_index, flags, enable); }
+    else { SAIVPP_INFO("%s sw_if_index %u flags 0x%x enable %d", __func__, sw_if_index, flags, enable); }
 
     VPP_UNLOCK();
 
@@ -5720,6 +5759,44 @@ int l2fib_add_del(const char *hwif_name, const uint8_t *mac, uint32_t bd_id, boo
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s bd_id %u is_add %d", __func__, ret, hwif_name, bd_id, is_add); }
     else { SAIVPP_INFO("%s %s bd_id %u is_add %d", __func__, hwif_name, bd_id, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int l2fib_add_del_by_index(uint32_t sw_if_index, const uint8_t *mac, uint32_t bd_id, bool is_add, bool is_static_mac)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2fib_add_del_t* mp;
+    int ret;
+
+    if (bd_id == 0 || bd_id == (uint32_t)~0)
+    {
+        SAIVPP_ERROR("Invalid bridge id for add/del\n");
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M (L2FIB_ADD_DEL, mp);
+
+    mp->sw_if_index = htonl(sw_if_index);
+    memcpy(mp->mac, mac, sizeof(mp->mac));
+    mp->bd_id = htonl(bd_id);
+    mp->is_add = is_add;
+    mp->static_mac = is_static_mac;
+
+    S (mp);
+
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u bd_id %u is_add %d", __func__, ret, sw_if_index, bd_id, is_add); }
+    else { SAIVPP_INFO("%s sw_if_index %u bd_id %u is_add %d", __func__, sw_if_index, bd_id, is_add); }
 
     VPP_UNLOCK();
 
