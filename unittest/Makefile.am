@@ -1,4 +1,4 @@
-SUBDIRS = meta lib vslib syncd proxylib saidump saisdkdump
+SUBDIRS = meta lib vslib syncd proxylib saidump saisdkdump saiconfig
 
 EXTRA_DIST = test_syncd_init_common.py
 

@@ -25,6 +25,28 @@ namespace sairedis
                     _In_ Channel::Callback callback,
                     _In_ long zmqResponseBufferSize = ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
 
+            /**
+             * @brief Request-only channel.
+             *
+             * Sets up the ZMQ_REQ half only: no notification socket, no
+             * notification thread. For a caller that issues requests and reads
+             * their replies but has no interest in asynchronous SAI
+             * notifications (port state change, FDB events, ...) -- a one-shot
+             * CLI, or a test harness.
+             *
+             * The notification socket BINDS its endpoint, so a second process
+             * cannot share the one the primary client already holds; without
+             * this overload such a caller has to bind a throwaway address that
+             * syncd never pushes to, and pay for a socket, a thread, a second
+             * zmq context and the response buffers that go with them.
+             *
+             * Request/response is unaffected: set()/del()/wait() use only the
+             * ZMQ_REQ socket, and wait() is where the SAI status comes from.
+             */
+            ZeroMQChannel(
+                    _In_ const std::string& endpoint,
+                    _In_ long zmqResponseBufferSize = ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
+
             virtual ~ZeroMQChannel();
 
         public:
@@ -52,6 +74,13 @@ namespace sairedis
             virtual void notificationThreadFunction() override;
 
         private:
+
+            /**
+             * @brief Set up the ZMQ_REQ socket on m_endpoint. Common to both
+             * constructors; throws if the endpoint cannot be opened.
+             */
+            void initRequestChannel();
+
 
             std::string m_endpoint;
 
