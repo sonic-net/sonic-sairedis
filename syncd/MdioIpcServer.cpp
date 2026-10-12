@@ -221,6 +221,7 @@ int MdioIpcServer::syncd_ipc_task_main()
         SWSS_LOG_ERROR("Unable to open the directory %s for IPC\n", path);
         return errno;
     }
+    close(fd);
 
     sock_srv = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sock_srv < 0)
