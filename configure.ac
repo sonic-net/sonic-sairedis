@@ -297,6 +297,7 @@ AC_OUTPUT(Makefile
           saisdkdump/Makefile
           saidiscovery/Makefile
           saiasiccmp/Makefile
+          saiconfig/Makefile
           tests/Makefile
           proxylib/Makefile
           unittest/Makefile
@@ -307,6 +308,7 @@ AC_OUTPUT(Makefile
           unittest/proxylib/Makefile
           unittest/saidump/Makefile
           unittest/saisdkdump/Makefile
+          unittest/saiconfig/Makefile
           pyext/Makefile
           pyext/py2/Makefile
           pyext/py3/Makefile)
