@@ -38,6 +38,10 @@
 
 #include <unistd.h>
 #include <inttypes.h>
+#include <dirent.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
 
 #include <iterator>
 #include <algorithm>
@@ -322,6 +326,64 @@ Syncd::~Syncd()
     stopDampingTimerThread();
 }
 
+bool Syncd::hasWarmBootState(
+        _In_ const char* warmBootReadFile)
+{
+    SWSS_LOG_ENTER();
+
+    struct stat st;
+
+    if (stat(warmBootReadFile, &st) == -1)
+    {
+        SWSS_LOG_WARN("failed to stat warmBootReadFile '%s': %s", warmBootReadFile, strerror(errno));
+
+        return false;
+    }
+
+    if (S_ISDIR(st.st_mode))
+    {
+        DIR* dir = opendir(warmBootReadFile);
+
+        if (dir == NULL)
+        {
+            SWSS_LOG_WARN("failed to open warmBootReadFile directory '%s': %s", warmBootReadFile, strerror(errno));
+
+            return false;
+        }
+
+        bool hasEntry = false;
+
+        while (const struct dirent* entry = readdir(dir))
+        {
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            {
+                continue;
+            }
+
+            hasEntry = true;
+            break;
+        }
+
+        closedir(dir);
+
+        if (!hasEntry)
+        {
+            SWSS_LOG_WARN("warmBootReadFile directory '%s' is empty", warmBootReadFile);
+        }
+
+        return hasEntry;
+    }
+
+    if (st.st_size == 0)
+    {
+        SWSS_LOG_WARN("warmBootReadFile '%s' is empty", warmBootReadFile);
+
+        return false;
+    }
+
+    return true;
+}
+
 void Syncd::performStartupLogic()
 {
     SWSS_LOG_ENTER();
@@ -343,9 +405,9 @@ void Syncd::performStartupLogic()
 
         SWSS_LOG_NOTICE("using warmBootReadFile: '%s'", warmBootReadFile);
 
-        if (warmBootReadFile == NULL || access(warmBootReadFile, F_OK) == -1)
+        if (warmBootReadFile == NULL || !hasWarmBootState(warmBootReadFile))
         {
-            SWSS_LOG_WARN("user requested warmStart but warmBootReadFile is not specified or not accessible, forcing cold start");
+            SWSS_LOG_WARN("user requested warmStart but warmBootReadFile is not specified or holds no warm boot state, forcing cold start");
 
             m_commandLineOptions->m_startType = SAI_START_TYPE_COLD_BOOT;
         }
