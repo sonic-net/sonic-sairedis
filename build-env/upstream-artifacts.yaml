@@ -9,8 +9,8 @@
 upstream:
   # Keep this entry before sonic-swss-common. The swss-common bundle cascades to
   # an upstream with the same logical name; the first occurrence wins, so this
-  # superset must provide both sairedis's direct common-lib needs (SONiC libnl
-  # on amd64) and swss-common's transitive libyang3/libyang-dev needs.
+  # superset must provide the complete SONiC libnl family on every architecture
+  # plus swss-common's transitive libyang3/libyang-dev needs.
   - name: common-libs
     project: build
     pipeline: Azure.sonic-buildimage.common_libs
@@ -21,12 +21,16 @@ upstream:
       - { when: { arch: amd64 },          value: 'common-lib' }
       - { when: { arch: { not: amd64 } }, value: 'common-lib.{arch}' }
     debs:
-      # Preserve the current Build template's behavior: SONiC libnl on amd64,
-      # stock apt libnl on arm.
-      - { path: 'target/debs/{debian_version}/libnl-3*.deb',       when: { arch: amd64 } }
-      - { path: 'target/debs/{debian_version}/libnl-genl*.deb',    when: { arch: amd64 } }
-      - { path: 'target/debs/{debian_version}/libnl-route*.deb',   when: { arch: amd64 } }
-      - { path: 'target/debs/{debian_version}/libnl-nf*.deb',      when: { arch: amd64 } }
+      - 'target/debs/{debian_version}/libnl-3-200_*.deb'
+      - 'target/debs/{debian_version}/libnl-3-dev_*.deb'
+      - 'target/debs/{debian_version}/libnl-genl-3-200_*.deb'
+      - 'target/debs/{debian_version}/libnl-genl-3-dev_*.deb'
+      - 'target/debs/{debian_version}/libnl-route-3-200_*.deb'
+      - 'target/debs/{debian_version}/libnl-route-3-dev_*.deb'
+      - 'target/debs/{debian_version}/libnl-nf-3-200_*.deb'
+      - 'target/debs/{debian_version}/libnl-nf-3-dev_*.deb'
+      - 'target/debs/{debian_version}/libnl-cli-3-200_*.deb'
+      - 'target/debs/{debian_version}/libnl-cli-3-dev_*.deb'
       # Superset of the nested swss-common common-libs entry. libpcre3 is not
       # listed: the current download pattern is a no-op because common-lib does
       # not publish that DEB, while buildenv_setup intentionally fails on an
