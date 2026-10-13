@@ -669,14 +669,36 @@ void RedisClient::setVidAndRidMap(
     m_dbAsic->del(VIDTORID);
     m_dbAsic->del(RIDTOVID);
 
+    if (map.empty())
+    {
+        return;
+    }
+
+    // Use a pipeline to avoid a round trip per map entry, same as done in
+    // insertVidsAndRids(). Default pipeline size is used on purpose here, so
+    // that replies are flushed periodically and memory stays bounded.
+
+    swss::RedisPipeline pipe(m_dbAsic.get());
+
     for (auto &kv: map)
     {
         std::string strVid = sai_serialize_object_id(kv.first);
         std::string strRid = sai_serialize_object_id(kv.second);
 
-        m_dbAsic->hset(VIDTORID, strVid, strRid);
-        m_dbAsic->hset(RIDTOVID, strRid, strVid);
+        {
+            swss::RedisCommand hset;
+            hset.format("HSET %s %s %s", VIDTORID, strVid.c_str(), strRid.c_str());
+            pipe.push(hset, REDIS_REPLY_INTEGER);
+        }
+
+        {
+            swss::RedisCommand hset;
+            hset.format("HSET %s %s %s", RIDTOVID, strRid.c_str(), strVid.c_str());
+            pipe.push(hset, REDIS_REPLY_INTEGER);
+        }
     }
+
+    pipe.flush();
 }
 
 std::vector<std::string> RedisClient::getAsicStateKeys() const
@@ -889,10 +911,17 @@ void RedisClient::removeAsicStateTable()
 
     const auto &asicStateKeys = m_dbAsic->keys(ASIC_STATE_TABLE ":*");
 
-    for (const auto &key: asicStateKeys)
+    if (asicStateKeys.empty())
     {
-        m_dbAsic->del(key);
+        return;
     }
+
+    // Keys returned by keys() already contain the table prefix. Removing them
+    // with a single del() call issues chunked pipelined DEL commands, instead
+    // of one round trip per key, which at route scale dominates the time spent
+    // in warm boot APPLY_VIEW.
+
+    m_dbAsic->del(asicStateKeys);
 }
 
 void RedisClient::removeTempAsicStateTable()
@@ -901,10 +930,14 @@ void RedisClient::removeTempAsicStateTable()
 
     const auto &tempAsicStateKeys = m_dbAsic->keys(TEMP_PREFIX ASIC_STATE_TABLE ":*");
 
-    for (const auto &key: tempAsicStateKeys)
+    if (tempAsicStateKeys.empty())
     {
-        m_dbAsic->del(key);
+        return;
     }
+
+    // Same as in removeAsicStateTable(), remove all keys in bulk.
+
+    m_dbAsic->del(tempAsicStateKeys);
 }
 
 std::map<sai_object_id_t, swss::TableDump> RedisClient::getAsicView()
