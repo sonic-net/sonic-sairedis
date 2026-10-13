@@ -463,3 +463,10 @@ rebuildable
 jitter
 jittered
 ARGV
+CLI
+GETRESPONSE
+saiconfig
+HGETALL
+HMGET
+bvid
+LPUSH

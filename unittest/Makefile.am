@@ -1,1 +1,1 @@
-SUBDIRS = meta lib vslib syncd proxylib saidump saisdkdump
+SUBDIRS = meta lib vslib syncd proxylib saidump saisdkdump saiconfig
