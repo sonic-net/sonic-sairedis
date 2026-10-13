@@ -32,6 +32,7 @@
 #include <queue>
 #include <set>
 #include <string>
+#include <tuple>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -1890,5 +1891,141 @@ namespace saivs
             sai_status_t bindMirrorPort(
                     _In_ sai_object_id_t portId,
                     _In_ const sai_attribute_t* attr);
+
+        protected: // VPP NAT (SwitchVppNat.cpp)
+
+            /*
+             * One VPP nat44-ed static mapping. A SAI SOURCE_NAT entry and the
+             * DESTINATION_NAT entry that undoes it describe the same mapping, so
+             * mappings are reference counted by the SAI entries that need them.
+             */
+            struct NatMapping
+            {
+                uint32_t local;         // network order
+                uint32_t external;      // network order
+                uint8_t protocol;       // 0 with addr_only
+                uint16_t local_port;    // host order
+                uint16_t external_port; // host order
+                uint32_t vrf_id;
+                bool addr_only;
+
+                bool operator<(const NatMapping& o) const
+                {
+                    return std::tie(local, external, protocol, local_port, external_port, vrf_id, addr_only) <
+                        std::tie(o.local, o.external, o.protocol, o.local_port, o.external_port, o.vrf_id, o.addr_only);
+                }
+            };
+
+            struct NatSessionKey
+            {
+                uint32_t inside;
+                uint16_t inside_port;
+                uint32_t ext_host;
+                uint16_t ext_host_port;
+                uint16_t protocol;
+
+                bool operator<(const NatSessionKey& o) const
+                {
+                    return std::tie(inside, inside_port, ext_host, ext_host_port, protocol) <
+                        std::tie(o.inside, o.inside_port, o.ext_host, o.ext_host_port, o.protocol);
+                }
+            };
+
+            /*
+             * Monotonic packet/byte counters of a mapping, built from the
+             * sessions VPP reports for its local address: totals of sessions
+             * that are gone stay in base_*, live sessions are added on read.
+             */
+            struct NatMappingCounters
+            {
+                uint64_t base_pkts = 0;
+                uint64_t base_bytes = 0;
+                std::map<NatSessionKey, std::pair<uint64_t, uint64_t>> live; // pkts, bytes
+            };
+
+            struct NatEntryState
+            {
+                bool has_mapping = false;
+                NatMapping mapping;
+                // what SAI last read or cleared, to answer SET to 0 and HIT_BIT
+                uint64_t zero_pkts = 0;
+                uint64_t zero_bytes = 0;
+                uint64_t hit_mark_pkts = 0;
+            };
+
+            sai_status_t createNatEntry(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeNatEntry(
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t setNatEntry(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t getNatEntry(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ uint32_t attr_count,
+                    _Out_ sai_attribute_t *attr_list);
+
+            sai_status_t natSetEnable(
+                    _In_ bool enable);
+
+            void natRouterInterfaceZone(
+                    _In_ sai_object_id_t rif_id,
+                    _In_ uint32_t zone_id);
+
+            void natRouterInterfaceRemoved(
+                    _In_ sai_object_id_t rif_id);
+
+            bool natEntryMapping(
+                    _In_ const sai_nat_entry_t &entry,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _Out_ NatMapping &mapping);
+
+            bool natResolveRifHwif(
+                    _In_ sai_object_id_t rif_id,
+                    _Out_ std::string &hwif_name);
+
+            void natMappingRef(
+                    _In_ const std::string &entry_id,
+                    _In_ const NatMapping &mapping);
+
+            void natMappingUnref(
+                    _In_ const std::string &entry_id);
+
+            int natProgramMapping(
+                    _In_ const NatMapping &mapping,
+                    _In_ bool is_add);
+
+            int natProgramOutside(
+                    _In_ const std::string &hwif_name,
+                    _In_ bool is_add);
+
+            void natReadCounters(
+                    _In_ const NatMapping &mapping,
+                    _Out_ uint64_t &pkts,
+                    _Out_ uint64_t &bytes);
+
+            bool natSupported() const;
+
+            // SAI_SWITCH_ATTR_NAT_ENABLE, and whether VPP's plugin is enabled
+            bool m_nat_enabled = false;
+            bool m_nat_vpp_enabled = false;
+
+            // router interfaces with a non-zero NAT zone: the VPP nat44 outside
+            // (output-feature) interfaces. rif -> {zone, hwif}
+            std::map<sai_object_id_t, std::pair<uint32_t, std::string>> m_nat_zone_rifs;
+
+            // mapping -> SAI entries that need it
+            std::map<NatMapping, std::set<std::string>> m_nat_mappings;
+
+            std::map<std::string, NatEntryState> m_nat_entries;
+
+            std::map<NatMapping, NatMappingCounters> m_nat_counters;
     };
 }
