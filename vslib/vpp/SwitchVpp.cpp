@@ -18,6 +18,7 @@
 #include <string>
 #include <sstream>
 #include <cerrno>
+#include <algorithm>
 
 using namespace saivs;
 
@@ -2930,6 +2931,62 @@ sai_status_t SwitchVpp::set_static_crm_values()
     CHECK_STATUS(set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE, m_maxAclTables));
 
     return set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP, m_maxAclTableGroups);
+}
+
+/*
+ * The vslib base class advertises every action in
+ * SAI_ACL_ENTRY_ATTR_ACTION_START..END. VPP implements only a handful of them
+ * (see acl_rule_field_update()), and an unimplemented action is silently
+ * dropped there rather than rejected, so orchagent has no way to find out the
+ * rule it installed does nothing. Advertise only what is actually wired up.
+ *
+ * Anything added here must have a corresponding case in
+ * acl_rule_field_update() or tunterm_acl_rule_field_update().
+ */
+sai_status_t SwitchVpp::set_acl_capabilities()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("set vpp acl capabilities");
+
+    m_ingress_acl_action_list = {
+        SAI_ACL_ACTION_TYPE_PACKET_ACTION,
+        SAI_ACL_ACTION_TYPE_COUNTER,
+        SAI_ACL_ACTION_TYPE_MIRROR_INGRESS,
+        SAI_ACL_ACTION_TYPE_MIRROR_EGRESS,
+        // Only honored on tunnel-termination entries (FIELD_TUNNEL_TERMINATED);
+        // a plain redirect is accepted and ignored, matching prior behaviour.
+        SAI_ACL_ACTION_TYPE_REDIRECT,
+        SAI_ACL_ACTION_TYPE_SET_ECMP_HASH_ID,
+        SAI_ACL_ACTION_TYPE_SET_LAG_HASH_ID
+    };
+
+    m_egress_acl_action_list = {
+        SAI_ACL_ACTION_TYPE_PACKET_ACTION,
+        SAI_ACL_ACTION_TYPE_COUNTER,
+        SAI_ACL_ACTION_TYPE_MIRROR_EGRESS
+    };
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_MAX_ACL_ACTION_COUNT;
+    attr.value.u32 = static_cast<uint32_t>(std::max(m_ingress_acl_action_list.size(), m_egress_acl_action_list.size()));
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_ACL_STAGE_INGRESS;
+    attr.value.aclcapability.is_action_list_mandatory = false;
+    attr.value.aclcapability.action_list.list = reinterpret_cast<int32_t*>(m_ingress_acl_action_list.data());
+    attr.value.aclcapability.action_list.count = static_cast<uint32_t>(m_ingress_acl_action_list.size());
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_ACL_STAGE_EGRESS;
+    attr.value.aclcapability.is_action_list_mandatory = false;
+    attr.value.aclcapability.action_list.list = reinterpret_cast<int32_t*>(m_egress_acl_action_list.data());
+    attr.value.aclcapability.action_list.count = static_cast<uint32_t>(m_egress_acl_action_list.size());
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
 sai_status_t SwitchVpp::queryNextHopGroupTypeCapability(
