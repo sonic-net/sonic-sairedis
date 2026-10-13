@@ -2,6 +2,11 @@
 
 #include "FlexCounter.h"
 
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace syncd
 {
     class FlexCounterManager
@@ -47,6 +52,15 @@ namespace syncd
             void removeCounter(
                     _In_ sai_object_id_t vid,
                     _In_ const std::string& instanceId);
+
+            /**
+             * @brief Remove from all instances the counters of the objects
+             * selected by the predicate.
+             *
+             * @return Removed counters as (instance id, VID) pairs.
+             */
+            std::vector<std::pair<std::string, sai_object_id_t>> removeCounters(
+                    _In_ const std::function<bool(sai_object_id_t)>& shouldRemove);
 
         private:
 
