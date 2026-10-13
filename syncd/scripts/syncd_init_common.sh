@@ -800,7 +800,20 @@ config_syncd()
     set_start_type
 
     if [ ${ENABLE_SAITHRIFT} == 1 ]; then
-        CMD_ARGS+=" -r -m $HWSKU_DIR/port_config.ini"
+        local port_config="$HWSKU_DIR/port_config.ini"
+        if [ ! -e "$port_config" ]; then
+            # attempt to recreate port_config from CONFIG_DB
+            port_config=/tmp/port_config.ini
+            sonic-db-dump -n CONFIG_DB -k 'PORT|*' |
+                jq -r 'to_entries[] | .value.value as $port |
+                    [.key[5:], $port.lanes, $port.alias, $port.index] |
+                    @tsv' | sort -k1,1V > "$port_config"
+            if [ ! -s "$port_config" ]; then
+                echo "Failed to generate SAI Thrift port map from CONFIG_DB" >&2
+                exit 1
+            fi
+        fi
+        CMD_ARGS+=" -r -m $port_config"
     fi
 
     [ -r $PLATFORM_DIR/syncd.conf ] && . $PLATFORM_DIR/syncd.conf
