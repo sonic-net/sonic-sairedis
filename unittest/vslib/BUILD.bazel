@@ -5,14 +5,17 @@ package(default_visibility = ["//visibility:public"])
 
 filegroup(
     name = "source_files",
-    srcs = glob([
-        "*.cpp",
-        "*.h",
-        "*.am",
-        "*.json",
-        "*.ini",
-        "files/**",
-    ]),
+    srcs = glob(
+        [
+            "*.cpp",
+            "*.h",
+            "*.am",
+            "*.json",
+            "*.ini",
+            "files/**",
+        ],
+        allow_empty = True,
+    ),
 )
 
 cc_binary(
@@ -67,7 +70,10 @@ cc_binary(
         "TestTrafficForwarder.cpp",
         "TestVirtualSwitchSaiInterface.cpp",
         "main.cpp",
-    ] + glob(["*.h"]) + select({
+    ] + glob(
+        ["*.h"],
+        allow_empty = True,
+    ) + select({
         "//:vpp_enabled": ["TestSwitchVpp.cpp"],
         "//conditions:default": [],
     }),
@@ -87,11 +93,14 @@ cc_binary(
 
 working_directory_test(
     name = "tests",
-    data = glob([
-        "*.json",
-        "*.ini",
-        "files/**",
-    ]),
+    data = glob(
+        [
+            "*.json",
+            "*.ini",
+            "files/**",
+        ],
+        allow_empty = True,
+    ),
     program = ":tests_binary",
     tags = [
         "exclusive",

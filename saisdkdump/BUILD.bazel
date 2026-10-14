@@ -10,8 +10,6 @@ filegroup(
         "*.cpp",
         "*.h",
         "*.am",
-        "*.sh",
-        "*.json",
     ]),
 )
 

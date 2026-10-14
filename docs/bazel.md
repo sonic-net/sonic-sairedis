@@ -163,6 +163,37 @@ The three development `.debug_symbols` labels alias their component's runtime
 symbol archive. The 16 public package labels therefore map to 13 unique tar
 files.
 
+### VS with DASH SAI
+
+The same `//syncd:syncd_pkg` and `//syncd:syncd_pkg.debug_symbols` targets also
+support VS with `enable_dashsai=true`. This profile adds `/usr/bin/syncd_dash`
+and its matching detached symbols while retaining ordinary `/usr/bin/syncd`
+and all of the VS helper programs, scripts and service files. It matches the
+two executables selected by `syncd/Makefile.am` and `debian/syncd-vs.install`.
+`//vslib:libsaivs_pkg` continues to supply the ordinary VS SAI library.
+
+The consuming root must supply `dash_sai`, an existing `CcInfo` target with
+DASH `libsai`, PI's `piprotobuf`/`piprotogrpc`, and their compatible Protobuf and
+gRPC dependencies. For a downstream root importing this module as
+`@sonic_sairedis`, the configuration is:
+
+```sh
+bazel build --@sonic_sairedis//:enable_dashsai=true \
+  --@sonic_sairedis//:dash_sai=//path/to/reviewed/sdk:dash_sai \
+  @sonic_sairedis//syncd:syncd_pkg \
+  @sonic_sairedis//syncd:syncd_pkg.debug_symbols \
+  @sonic_sairedis//vslib:libsaivs_pkg \
+  @sonic_sairedis//vslib:libsaivs_pkg.debug_symbols
+```
+
+The SDK owns its architecture and binary provenance. The reviewed Syncd image
+uses cached AMD64 P4/DASH packages; enabling the flag does not provide an ARM64
+SDK or migrate those package producers. Missing SDK inputs fail analysis.
+VPP and RPC packaging remain unsupported by this VS package target.
+The default component CI contract describes the ordinary non-DASH profile;
+the downstream SDK/image checks must additionally validate DASH linkage,
+packaged ELF/symbol identity and installed dependency loading.
+
 Each package uses a shared transition that adds `--copt=-g`,
 `--strip=never`, and a linker build ID to the linked ELF used for packaging.
 The packaging actions derive both a stripped runtime copy and a detached symbol

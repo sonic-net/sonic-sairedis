@@ -278,6 +278,15 @@ multiarch_deploy_tar(
     },
 )
 
+# The DASH profile installs both executables, matching bin_PROGRAMS in
+# Makefile.am and debian/syncd-vs.install. Its SDK remains a caller input.
+multiarch_deploy_tar(
+    name = "syncd_dash_loose_files",
+    binaries = {
+        "usr/bin/syncd_dash uid=0 gid=0 mode=0755 type=file": ":syncd_dash",
+    },
+)
+
 multiarch_deploy_tar(
     name = "syncd_per_platform_files",
     binaries = {
@@ -311,7 +320,6 @@ config_setting(
         "//:sai_backend": "vs",
         "//:enable_vpp": "false",
         "//:enable_rpcserver": "false",
-        "//:enable_dashsai": "false",
     },
 )
 
@@ -328,7 +336,10 @@ flatten(
         ":syncd_per_platform_files",
         ":syncd_scripts",
         ":syncd_init",
-    ],
+    ] + select({
+        "//:dashsai_vs_enabled": [":syncd_dash_loose_files"],
+        "//conditions:default": [],
+    }),
 )
 
 flatten(
@@ -337,5 +348,8 @@ flatten(
     tars = [
         ":syncd_loose_files.debug_symbols",
         ":syncd_per_platform_files.debug_symbols",
-    ],
+    ] + select({
+        "//:dashsai_vs_enabled": [":syncd_dash_loose_files.debug_symbols"],
+        "//conditions:default": [],
+    }),
 )
