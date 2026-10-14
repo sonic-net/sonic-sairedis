@@ -1707,6 +1707,54 @@ sai_status_t SwitchVpp::vpp_update_bvi_interface(
         set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_mtu);
     }
 
+    // Per-AF admin state: drop routed unicast of that AF on BVI ingress via
+    // VPP's ip4/ip6-not-enabled feature, leaving the other AF and the bridge alone.
+    static const struct
+    {
+        sai_router_interface_attr_t attr_id;
+        const char *af;
+        const char *arc_name;
+        const char *feature_name;
+    } admin_states[] = {
+        { SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, "v4", "ip4-unicast", "ip4-not-enabled" },
+        { SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, "v6", "ip6-unicast", "ip6-not-enabled" },
+    };
+
+    for (const auto &admin: admin_states)
+    {
+        auto attr_admin = sai_metadata_get_attr_by_id(admin.attr_id, attr_count, attr_list);
+
+        if (attr_admin == NULL)
+        {
+            continue;
+        }
+
+        // The feature is not reference counted per caller, so only toggle on change.
+        sai_attribute_t cur;
+        cur.id = admin.attr_id;
+        bool was_up = (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_obj_id, 1, &cur) != SAI_STATUS_SUCCESS) ||
+                      cur.value.booldata;
+        bool is_up = attr_admin->value.booldata;
+
+        if (was_up != is_up)
+        {
+            int ret = sw_interface_feature_enable_disable(hwif_name, admin.arc_name,
+                                                          admin.feature_name, !is_up);
+
+            if (ret < 0)
+            {
+                SWSS_LOG_ERROR("failed to set admin %s state %s on BVI %s (ret %d)",
+                               admin.af, is_up ? "up" : "down", hwif_name, ret);
+                return SAI_STATUS_FAILURE;
+            }
+
+            SWSS_LOG_NOTICE("Set admin %s state %s on BVI %s",
+                            admin.af, is_up ? "up" : "down", hwif_name);
+        }
+
+        set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_admin);
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 

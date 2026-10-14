@@ -505,6 +505,30 @@
 #include <vnet/span/span.api.h>
 #undef vl_api_version
 
+/* Feature arc API inclusion */
+#include <vnet/feature/feature.api_enum.h>
+#include <vnet/feature/feature.api_types.h>
+
+#define vl_typedefs
+#include <vnet/feature/feature.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vnet/feature/feature.api.h>
+#undef vl_endianfun
+
+#define vl_printfun
+#include <vnet/feature/feature.api.h>
+#undef vl_printfun
+
+#define vl_calcsizefun
+#include <vnet/feature/feature.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 feature_api_version = v;
+#include <vnet/feature/feature.api.h>
+#undef vl_api_version
+
 /* GRE API inclusion */
 #define vl_typedefs
 #include <vpp_plugins/gre/gre.api.h>
@@ -1870,6 +1894,13 @@ vl_api_sw_interface_span_enable_disable_reply_t_handler(vl_api_sw_interface_span
     else { SAIVPP_INFO("span enable/disable successful"); }
 }
 
+static void
+vl_api_feature_enable_disable_reply_t_handler(vl_api_feature_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
 /* classify API reply handlers */
 
 static void vl_api_classify_add_del_table_reply_t_handler(
@@ -2003,6 +2034,7 @@ static u16 sr_msg_id_base;
 static u16 mpls_msg_id_base;
 static u16 bond_msg_id_base;
 static u16 span_msg_id_base;
+static u16 feature_msg_id_base;
 static u16 gre_msg_id_base;
 static u16 classify_msg_id_base;
 static u16 vlib_msg_id_base;
@@ -2044,6 +2076,9 @@ static void vpp_base_vpe_init(void)
 
 #define SPAN_MSG_ID(id) \
     (VL_API_##id + span_msg_id_base)
+
+#define FEATURE_MSG_ID(id) \
+    (VL_API_##id + feature_msg_id_base)
 
 #define GRE_MSG_ID(id) \
     (VL_API_##id + gre_msg_id_base)
@@ -2148,6 +2183,15 @@ vl_msg_api_set_handlers(GRE_MSG_ID(GRE_TUNNEL_ADD_DEL_V2_REPLY),
                         sizeof(vl_api_gre_tunnel_add_del_v2_reply_t), 1,
                         0, 0,
                         vl_api_gre_tunnel_add_del_v2_reply_t_calc_size);
+
+vl_msg_api_set_handlers(FEATURE_MSG_ID(FEATURE_ENABLE_DISABLE_REPLY),
+                        "feature_enable_disable_reply",
+                        vl_api_feature_enable_disable_reply_t_handler,
+                        vl_noop_handler,
+                        vl_api_feature_enable_disable_reply_t_endian,
+                        sizeof(vl_api_feature_enable_disable_reply_t), 1,
+                        0, 0,
+                        vl_api_feature_enable_disable_reply_t_calc_size);
 }
 
 static void vl_api_lcp_itf_pair_add_del_reply_t_handler(vl_api_lcp_itf_pair_add_del_reply_t *msg)
@@ -2364,6 +2408,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "span_%08x%c", span_api_version, 0);
     span_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(span_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "feature_%08x%c", feature_api_version, 0);
+    feature_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(feature_msg_id_base != (u16) ~0);
 
     msg_base_lookup_name = format (0, "gre_%08x%c", gre_api_version, 0);
     gre_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
@@ -5280,6 +5328,45 @@ int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable); }
     else { SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int sw_interface_feature_enable_disable(const char *hwif_name, const char *arc_name,
+                                        const char *feature_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_feature_enable_disable_t *mp;
+    u32 idx;
+    int ret;
+
+    if (!hwif_name || !arc_name || !feature_name)
+        return -EINVAL;
+
+    VPP_LOCK();
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    __plugin_msg_base = feature_msg_id_base;
+
+    M (FEATURE_ENABLE_DISABLE, mp);
+    mp->sw_if_index = htonl(idx);
+    mp->enable = enable;
+    strncpy((char *) mp->arc_name, arc_name, sizeof(mp->arc_name) - 1);
+    strncpy((char *) mp->feature_name, feature_name, sizeof(mp->feature_name) - 1);
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s %s/%s enable %d", __func__, ret, hwif_name, arc_name, feature_name, enable); }
+    else { SAIVPP_INFO("%s %s %s/%s enable %d", __func__, hwif_name, arc_name, feature_name, enable); }
 
     VPP_UNLOCK();
 
