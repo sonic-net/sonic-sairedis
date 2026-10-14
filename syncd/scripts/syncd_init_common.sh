@@ -802,8 +802,11 @@ config_syncd()
     if [ ${ENABLE_SAITHRIFT} == 1 ]; then
         local port_config="$HWSKU_DIR/port_config.ini"
         if [ ! -e "$port_config" ]; then
-            # attempt to recreate port_config from CONFIG_DB
-            port_config=/tmp/port_config.ini
+            if ! mkdir -p -m 0755 /var/run/syncd; then
+                echo "Failed to create SAI Thrift port map directory /var/run/syncd" >&2
+                exit 1
+            fi
+            port_config=/var/run/syncd/port_config.ini
             if ! (
                 set -o pipefail
                 sonic-db-dump -n CONFIG_DB -k 'PORT|*' |
@@ -811,6 +814,7 @@ config_syncd()
                         [.key[5:], $port.lanes, $port.alias, $port.index] |
                         @tsv' | sort -k1,1V > "$port_config"
             ) || [ ! -s "$port_config" ]; then
+                rm -f "$port_config"
                 echo "Failed to generate SAI Thrift port map from CONFIG_DB" >&2
                 exit 1
             fi
