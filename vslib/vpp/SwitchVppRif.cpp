@@ -586,6 +586,7 @@ void SwitchVpp::vppProcessEvents ()
 
     while(m_run_vpp_events_thread) {
         nanosleep(&req, NULL);
+
         ret = vpp_sync_for_events();
         SWSS_LOG_NOTICE("Checking for any VS events status %d", ret);
         if (ret < 0)
@@ -1209,6 +1210,12 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);
 
+    if (ret == 0 && vpp_ip_prefix.prefix_addr.sa_family == AF_INET)
+    {
+        vpp_sonic_ext_copp_ip2me_addr_add_del(
+                vpp_ip_prefix.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
+    }
+
     if (ret == 0)
     {
         if (is_add)
@@ -1381,6 +1388,12 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
         SWSS_LOG_ERROR("interface_ip_address_add returned error");
     } else if (is_add) {
         m_tunnel_mgr_ipip.retry_pending_unnumbered(ip_route.prefix_addr);
+    }
+
+    if (ret == 0 && route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        vpp_sonic_ext_copp_ip2me_addr_add_del(
+                ip_route.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
     }
 
     return SAI_STATUS_SUCCESS;

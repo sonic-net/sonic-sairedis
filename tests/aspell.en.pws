@@ -7,6 +7,7 @@ AIED
 API
 APIs
 ASAN
+Asan
 ASIC
 ASICs
 ATTR
@@ -60,6 +61,7 @@ LLC
 LLR
 LOGLEVEL
 LOOPBACK
+LSan
 MACsec
 MCAST
 MTU
@@ -90,7 +92,9 @@ SCs
 SDK
 SGs
 SHA
+SIGTERM
 SONiC
+SPDX
 SRC
 STP
 SaiAttr
@@ -126,6 +130,8 @@ asicCreateObject
 asics
 asicSet
 asicview
+AsicView
+asm
 async
 attr
 attrid
@@ -149,6 +155,10 @@ countOnly
 cout
 cpp
 cpu
+CreateObject
+CRM
+csignal
+cstdlib
 currentObj
 currentObject
 currentView
@@ -225,6 +235,7 @@ json
 kco
 lck
 lgtm
+libc
 librediscommon
 libsairedis
 libswsscommon
@@ -234,10 +245,14 @@ logrotate
 lookup
 lua
 macsec
+MACsec
+malloc
+MCAST
 md
 mdio
 MDIO
 memcpy
+memset
 metadata
 mlnx
 mpls
@@ -336,6 +351,7 @@ struct
 structs
 structure
 subport
+suppressions
 sw
 swid
 switchid
@@ -449,3 +465,4 @@ desync
 rebuildable
 jitter
 jittered
+ARGV
