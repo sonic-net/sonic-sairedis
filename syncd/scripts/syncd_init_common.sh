@@ -809,11 +809,16 @@ config_syncd()
             port_config=/var/run/syncd/port_config.ini
             if ! (
                 set -o pipefail
-                sonic-cfggen -d --var-json PORT |
-                    jq -r 'to_entries[] |
-                        [.key, .value.lanes, .value.alias, .value.index] |
-                        @tsv' | sort -k1,1V > "$port_config"
-            ) || [ ! -s "$port_config" ]; then
+                sonic-db-cli CONFIG_DB EVAL '
+                    local rows = {}
+                    for _, key in ipairs(redis.call("KEYS", "PORT|*")) do
+                        local values = redis.call("HMGET", key, "lanes", "alias", "index")
+                        local row = {key:sub(6), values[1], values[2], values[3]}
+                        table.insert(rows, table.concat(row, "\t"))
+                    end
+                    return rows
+                ' 0 | sort -k1,1V > "$port_config"
+            ) || ! grep -q '[^[:space:]]' "$port_config"; then
                 rm -f "$port_config"
                 echo "Failed to generate SAI Thrift port map from CONFIG_DB" >&2
                 exit 1
