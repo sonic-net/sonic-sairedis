@@ -270,6 +270,39 @@ TEST_F(SwitchStateBaseTest, bufferProfilePacketAdmissionFailActionCapabilitiesGe
     ASSERT_EQ(paSet1, paSet2);
 }
 
+TEST_F(SwitchStateBaseTest, mirrorSessionTypeCapabilitiesGet)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_MIRROR_SESSION, SAI_MIRROR_SESSION_ATTR_TYPE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+
+    std::vector<sai_int32_t> mtList(data.count);
+    data.list = mtList.data();
+
+    status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_MIRROR_SESSION, SAI_MIRROR_SESSION_ATTR_TYPE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const std::set<sai_mirror_session_type_t> mtSet1 = {
+        SAI_MIRROR_SESSION_TYPE_LOCAL,
+        SAI_MIRROR_SESSION_TYPE_REMOTE,
+        SAI_MIRROR_SESSION_TYPE_ENHANCED_REMOTE,
+        SAI_MIRROR_SESSION_TYPE_SFLOW
+    };
+
+    std::set<sai_mirror_session_type_t> mtSet2;
+
+    std::transform(
+        mtList.cbegin(), mtList.cend(), std::inserter(mtSet2, mtSet2.begin()),
+        [](sai_int32_t value) { return static_cast<sai_mirror_session_type_t>(value); }
+    );
+    ASSERT_EQ(mtSet1, mtSet2);
+}
+
 TEST_F(SwitchStateBaseTest, tamTransportTypeCapabilitiesGet)
 {
     sai_s32_list_t data = { .count = 0, .list = nullptr };
