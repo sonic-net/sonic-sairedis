@@ -809,9 +809,9 @@ config_syncd()
             port_config=/var/run/syncd/port_config.ini
             if ! (
                 set -o pipefail
-                sonic-db-dump -n CONFIG_DB -k 'PORT|*' |
-                    jq -r 'to_entries[] | .value.value as $port |
-                        [.key[5:], $port.lanes, $port.alias, $port.index] |
+                sonic-cfggen -d --var-json PORT |
+                    jq -r 'to_entries[] |
+                        [.key, .value.lanes, .value.alias, .value.index] |
                         @tsv' | sort -k1,1V > "$port_config"
             ) || [ ! -s "$port_config" ]; then
                 rm -f "$port_config"
