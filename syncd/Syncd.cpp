@@ -167,6 +167,8 @@ Syncd::Syncd(
     m_dampingCounterTable = std::make_shared<swss::Table>(m_dbState.get(), "LINK_EVENT_DAMPING_STATS");
     m_mdioIpcServer = std::make_shared<MdioIpcServer>(m_vendorSai, m_commandLineOptions->m_globalContext);
 
+    m_gearboxMdioAccess = std::make_shared<GearboxMdioAccess>();
+
     if (zmqActive)
     {
         m_notifications = std::make_shared<ZeroMQNotificationProducer>(m_contextConfig->m_zmqNtfEndpoint);
@@ -4478,6 +4480,12 @@ sai_status_t Syncd::processQuadEvent(
          */
 
         m_handler->updateNotificationsPointers(attr_count, attr_list);
+
+        /*
+         * Same correction, for the MDIO register access pointers a gearbox PHY
+         * is created with: what arrives is an address in the sender's process.
+         */
+        m_gearboxMdioAccess->updateMdioPointers(attr_count, attr_list);
     }
 
     if (isInitViewMode())
@@ -6302,6 +6310,8 @@ void Syncd::performWarmRestartSingleSwitch(
 
     // TODO support multiple notification handlers
     m_handler->updateNotificationsPointers((uint32_t)attrs.size(), attrs.data());
+
+    m_gearboxMdioAccess->updateMdioPointers((uint32_t)attrs.size(), attrs.data());
 
     sai_status_t status;
 
