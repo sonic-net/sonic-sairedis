@@ -41,6 +41,8 @@ using namespace syncd;
 
 static size_t markerCount()
 {
+    SWSS_LOG_ENTER();
+
     std::ifstream f(MDIO_TEST_LIB_MARKER);
 
     size_t count = 0;
@@ -88,6 +90,8 @@ class GearboxMdioAccessTest : public ::testing::Test
 
         void clearGearboxTable()
         {
+            SWSS_LOG_ENTER();
+
             std::vector<std::string> keys;
 
             m_table->getKeys(keys);
@@ -103,6 +107,8 @@ class GearboxMdioAccessTest : public ::testing::Test
                 _In_ const std::string& hwinfo,
                 _In_ const std::string& library)
         {
+            SWSS_LOG_ENTER();
+
             std::vector<swss::FieldValueTuple> values;
 
             if (!hwinfo.empty())
@@ -129,6 +135,8 @@ class GearboxMdioAccessTest : public ::testing::Test
 
             void addHardwareInfo(_In_ const std::string& hwinfo)
             {
+                SWSS_LOG_ENTER();
+
                 sai_attribute_t attr = {};
 
                 attr.id = SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO;
@@ -142,6 +150,8 @@ class GearboxMdioAccessTest : public ::testing::Test
 
             void addMdioPointers()
             {
+                SWSS_LOG_ENTER();
+
                 sai_attribute_t read = {};
                 read.id = SAI_SWITCH_ATTR_REGISTER_READ;
                 read.value.ptr = (void*)0xdeadbeef;
@@ -156,6 +166,8 @@ class GearboxMdioAccessTest : public ::testing::Test
 
             sai_attribute_t* find(_In_ sai_attr_id_t id)
             {
+                SWSS_LOG_ENTER();
+
                 for (auto& attr : attrs)
                 {
                     if (attr.id == id)
