@@ -745,6 +745,7 @@ static void vpp_evq_init ()
 static int vpp_acl_counters_enable_disable(bool enable);
 static int vpp_intf_events_enable_disable(bool enable);
 static int vpp_bfd_events_enable_disable(bool enable);
+static int vpp_mac_events_enable_disable(bool enable);
 static int vpp_event_client_setup(void);
 static int vpp_event_connect(void);
 static int vpp_event_reconnect(void);
@@ -1456,10 +1457,10 @@ vl_api_l2fib_set_scan_delay_reply_t_handler (vl_api_l2fib_set_scan_delay_reply_t
 }
 
 /*
- * Handler for unsolicited L2_MACS_EVENT notifications pushed by VPP.
- * Called on VPP's API receive thread — MUST NOT acquire the saivpp main
- * mutex.  Callers register a callback that enqueues the event for safe
- * processing on a thread that holds the mutex.
+ * Handler for unsolicited L2_MACS_EVENT notifications pushed by VPP on the
+ * event connection. Called on the VPP events thread from vpp_sync_for_events()
+ * — MUST NOT acquire the saivpp main mutex.  Callers register a callback that
+ * enqueues the event for safe processing on a thread that holds the mutex.
  */
 static void
 vl_api_l2_macs_event_t_handler (vl_api_l2_macs_event_t *mp)
@@ -2504,6 +2505,10 @@ vpp_event_reconnect (void)
         return -1;
 
     if (vpp_bfd_events_enable_disable(true) != 0)
+        return -1;
+
+    /* MAC events are subscribed only once a switch registered a callback */
+    if (g_mac_event_cb && vpp_mac_events_enable_disable(true) != 0)
         return -1;
 
     SAIVPP_INFO("vpp event socket reconnect successful\n");
@@ -7056,13 +7061,53 @@ int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
  * These must appear after l2_msg_id_base and __plugin_msg_base declarations.
  * ========================================================================= */
 
-int
-vpp_want_l2_macs_events2 (bool enable, vpp_mac_event_cb_fn cb, void *ctx)
+/*
+ * Subscribe on the dedicated event connection, like the interface and BFD
+ * events. VPP pushes l2_macs_event to the connection that subscribed. On the
+ * command connection they were only read while a command waited for its
+ * reply, so a MAC learned while syncd was idle reached SONiC only with the
+ * next unrelated SAI call. On the event connection vppProcessEvents() drains
+ * them with its periodic vpp_sync_for_events().
+ */
+static int vpp_mac_events_enable_disable (bool enable)
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = &vat_event_main;
     vl_api_want_l2_macs_events2_t *mp;
     int ret;
 
+    if (!event_client_connected)
+    {
+        SAIVPP_ERROR("%s: event connection is down, enable %d\n", __func__, enable);
+        return -1;
+    }
+
+    EVENT_LOCK();
+    tl_cur_vam = &vat_event_main;
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M_EV (WANT_L2_MACS_EVENTS2, mp);
+    mp->enable_disable = enable ? 1 : 0;
+    // Set the maximum number of MAC entries in each event to 10
+    // Each entry can contain up to 10 MACs, so 100 MACs per event
+    mp->max_macs_in_event = 10;
+    mp->pid = htonl((uint32_t)getpid());
+
+    S_EV (mp);
+    WR_EV (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) enable %d", __func__, ret, enable); }
+    else { SAIVPP_INFO("%s enable %d", __func__, enable); }
+
+    tl_cur_vam = NULL;
+    EVENT_UNLOCK();
+
+    return ret;
+}
+
+int
+vpp_want_l2_macs_events2 (bool enable, vpp_mac_event_cb_fn cb, void *ctx)
+{
     /*
      * NOTE: Single-switch assumption: VPP has one L2 MAC event stream per process.
      * g_mac_event_cb/ctx are process-globals — the last registration wins and
@@ -7079,20 +7124,7 @@ vpp_want_l2_macs_events2 (bool enable, vpp_mac_event_cb_fn cb, void *ctx)
     g_mac_event_cb = enable ? cb : NULL;
     g_mac_event_ctx = enable ? ctx : NULL;
 
-    VPP_LOCK();
-    __plugin_msg_base = l2_msg_id_base;
-
-    M(WANT_L2_MACS_EVENTS2, mp);
-    mp->enable_disable = enable ? 1 : 0;
-    // Set the maximum number of MAC entries in each event to 10
-    // Each entry can contain up to 10 MACs, so 100 MACs per event
-    mp->max_macs_in_event = 10;
-    mp->pid = htonl((uint32_t)getpid());
-    S(mp);
-    WR(ret);
-
-    VPP_UNLOCK();
-    return ret;
+    return vpp_mac_events_enable_disable(enable);
 }
 
 int
