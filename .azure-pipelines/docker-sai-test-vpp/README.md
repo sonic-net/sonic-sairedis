@@ -334,6 +334,9 @@ In `--debug` the container leaves the dataplane running after the test so you ca
 | `SIMULATE_SONIC` | 1 | set by `run_test.sh`; enables sai_test's SONiC control-plane simulation (PortChannel netdevs + LAG/SVI RIF IPs) |
 | `SIMULATE_SONIC_IPV6_CONTROL_SRC_MAC` | `00:77:66:55:44:00` | discard only simulated-router RS/MLDv2 startup frames from this source MAC; empty disables the filter |
 | `TEST_FILTER` | — | alternative way to pass a single selector via env |
+| `PER_TEST_LOGS` | `failed` | keep gzipped backend logs + VPP API trace per test: `failed`, `all`, or `none` |
+| `PER_TEST_LOG_DIR` | `/var/log/per-test` | where per-test log directories are written |
+| `TEST_TIMEOUT` | 600 | seconds allowed per test target before PTF is killed and the backend restarted; `0` disables |
 
 These are read by `run_test.sh` at container start (defaults shown).
 
@@ -344,6 +347,7 @@ The VPP SAI profile resolves port lane sets through `port_config.ini`. The produ
 - `/var/log/saiserver.log` — saiserver stdout/stderr **plus** `libsaivs` `SWSS_LOG_*` lines. After the SAI change that removed `swss::Logger` setup from `saiserver.cpp`, the harness routes `SWSS_LOG_*` to **stderr** via an `LD_PRELOAD` shim (`swss_log_stdout_preload.cpp` → `/usr/local/lib/libswss_log_stdout.so`; the `.so` name is historical). `run_test.sh` redirects saiserver `2>&1` into this file so backend traces still land here. Routing to stderr (not stdout) keeps `SWSS_LOG_ENTER` lines out of `swss::exec()` captured stdout (e.g. the `find_new_bond_id` shell pipeline used during LAG create).
 - `/var/log/vpp.log`, `/var/log/vpp-startup.log` — VPP CLI history / stdout (crash backtraces).
 - `/var/log/vpp-api-trace.txt` — decoded VPP binary-API trace (dumped at teardown).
+- `/var/log/per-test/group-<G>-test-<N>-<selector>/*.gz` — the logs above, captured right after each failing test (`PER_TEST_LOGS`). The top-level files are overwritten on every backend restart, so these are the ones to read for a specific test; in CI they are in the `log/per-test/` folder of the results artifact.
 - `/test-results/TEST-*.xml` — per-test JUnit results (bind-mount to the local `results/xml/` directory on the host).
 
 ### Gotchas

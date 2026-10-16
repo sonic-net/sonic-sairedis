@@ -39,11 +39,17 @@ SONIC_VPP_IFMAP="${SONIC_VPP_IFMAP:-/usr/share/sonic/hwsku/sonic_vpp_ifmap.ini}"
 THRIFT_PORT="${THRIFT_PORT:-9092}"
 STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-60}"
 VPPCTL_TIMEOUT="${VPPCTL_TIMEOUT:-5}"
+# Seconds allowed per test target (0 disables); the slowest tests take ~130s.
+TEST_TIMEOUT="${TEST_TIMEOUT:-600}"
 VPP_LOG="${VPP_LOG:-/var/log/vpp.log}"
 VPP_STDOUT_LOG="${VPP_STDOUT_LOG:-/var/log/vpp-startup.log}"
 VPP_API_TRACE="${VPP_API_TRACE:-/tmp/vpp-sai-api-trace.api}"
 VPP_API_TRACE_TXT="${VPP_API_TRACE_TXT:-/var/log/vpp-api-trace.txt}"
 SAISERVER_LOG="${SAISERVER_LOG:-/var/log/saiserver.log}"
+# Backend logs are truncated on every restart, so keep a gzipped copy per test:
+# failed (default), all, or none.
+PER_TEST_LOGS="${PER_TEST_LOGS:-failed}"
+PER_TEST_LOG_DIR="${PER_TEST_LOG_DIR:-/var/log/per-test}"
 REDIS_SOCKET="${REDIS_SOCKET:-/var/run/redis/redis.sock}"
 REDIS_LOG="${REDIS_LOG:-/var/log/redis.log}"
 LINKS_UP_MARKER="${LINKS_UP_MARKER:-/tmp/sai-vpp-links-up}"
@@ -475,8 +481,8 @@ start_saiserver()
     # libsaivs logs through SWSS_LOG_* (libswsscommon). saiserver.cpp no longer
     # configures swss::Logger after the SAI standalone cleanup; LD_PRELOAD routes
     # those lines to stdout so the redirect below lands in SAISERVER_LOG.
-    export LD_PRELOAD="/usr/local/lib/libswss_log_stdout.so${LD_PRELOAD:+:${LD_PRELOAD}}"
-    saiserver -p "$SAI_PROFILE" -f "$SAISERVER_PORTMAP" > "$SAISERVER_LOG" 2>&1 &
+    LD_PRELOAD="/usr/local/lib/libswss_log_stdout.so${LD_PRELOAD:+:${LD_PRELOAD}}" \
+        saiserver -p "$SAI_PROFILE" -f "$SAISERVER_PORTMAP" > "$SAISERVER_LOG" 2>&1 &
     SAISERVER_PID="$!"
 
     wait_for_saiserver_ready
@@ -600,10 +606,8 @@ print_debug_state()
         timeout "$VPPCTL_TIMEOUT" vppctl show interface
         log "VPP hardware interfaces"
         timeout "$VPPCTL_TIMEOUT" vppctl show hardware-interfaces
-        log "Saving VPP API trace to $VPP_API_TRACE"
-        timeout "$VPPCTL_TIMEOUT" vppctl api trace save "$(basename "$VPP_API_TRACE")"
         log "Writing decoded VPP API trace to $VPP_API_TRACE_TXT"
-        timeout "$VPPCTL_TIMEOUT" vppctl api trace dump > "$VPP_API_TRACE_TXT" 2>&1
+        dump_vpp_api_trace "$VPP_API_TRACE_TXT"
     fi
 
     log "Last 200 lines of $VPP_STDOUT_LOG"
@@ -614,6 +618,39 @@ print_debug_state()
     tail -n 200 "$SAISERVER_LOG" 2>/dev/null
     log "Last 200 lines of $REDIS_LOG"
     tail -n 200 "$REDIS_LOG" 2>/dev/null
+    set -e
+}
+
+dump_vpp_api_trace()
+{
+    local out="$1"
+
+    timeout "$VPPCTL_TIMEOUT" vppctl api trace save "$(basename "$VPP_API_TRACE")" >/dev/null 2>&1
+    timeout "$VPPCTL_TIMEOUT" vppctl api trace dump > "$out" 2>&1
+}
+
+# Copy the current backend's logs and VPP API trace into PER_TEST_LOG_DIR/<name>/
+# while VPP is still running. In grouped mode the logs cover the whole group so far.
+archive_test_logs()
+{
+    local name="$1"
+    local rc="$2"
+    local dest="${PER_TEST_LOG_DIR}/${name}"
+    local f
+
+    case "$PER_TEST_LOGS" in
+        all) ;;
+        failed) [[ "$rc" -ne 0 ]] || return 0 ;;
+        *) return 0 ;;
+    esac
+
+    set +e
+    mkdir -p "$dest"
+    dump_vpp_api_trace "$dest/vpp-api-trace.txt"
+    for f in "$SAISERVER_LOG" "$VPP_LOG" "$VPP_STDOUT_LOG" "$REDIS_LOG"; do
+        [[ -f "$f" ]] && cp "$f" "$dest/"
+    done
+    gzip -f "$dest"/*
     set -e
 }
 
@@ -786,7 +823,12 @@ run_ptf()
 
         log "=== [${idx}/${total}] ${target} (group ${group}, common_configured=${common_configured}) ==="
         rc=0
-        run_one_ptf "$target" "$common_configured" "group-${group}-test-${idx}" || rc="$?"
+        run_one_ptf "$target" "$common_configured" "group-${group}-test-${idx}" "$TEST_TIMEOUT" || rc="$?"
+        archive_test_logs "group-${group}-test-${idx}-${target}" "$rc"
+        if [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then
+            # A hung backend would stall the rest of its group too.
+            prev_group="timed-out"
+        fi
         if [[ "$rc" -ne 0 ]]; then
             if (( rc > overall_rc )); then
                 overall_rc="$rc"
@@ -1003,8 +1045,14 @@ run_one_ptf()
     local test_target="$1"
     local common_configured="$2"
     local invocation_namespace="$3"
+    local timeout_s="${4:-0}"
     local test_rc
     local xunit_dir
+    local -a ptf_cmd=(ptf)
+
+    if [[ "$timeout_s" -gt 0 ]]; then
+        ptf_cmd=(timeout --kill-after=30 "$timeout_s" ptf)
+    fi
 
     xunit_dir="$(mktemp -d /tmp/ptf-xunit.XXXXXX)"
 
@@ -1012,7 +1060,7 @@ run_one_ptf()
     log "Running PTF${test_target:+ filter: $test_target}"
 
     set +e
-    PYTHONUNBUFFERED=1 ptf "${PTF_ARGS[@]}" 2>&1 | while IFS= read -r ptf_line; do
+    PYTHONUNBUFFERED=1 "${ptf_cmd[@]}" "${PTF_ARGS[@]}" 2>&1 | while IFS= read -r ptf_line; do
         printf '%s\n' "$ptf_line"
 
         case "$ptf_line" in
@@ -1023,6 +1071,10 @@ run_one_ptf()
     done
     test_rc="${PIPESTATUS[0]}"
     set -e
+
+    if [[ "$test_rc" -eq 124 || "$test_rc" -eq 137 ]]; then
+        log "ERROR: PTF${test_target:+ for $test_target} timed out after ${timeout_s}s"
+    fi
 
     collect_xunit_results "$xunit_dir" "$invocation_namespace"
     rm -rf "$xunit_dir"
