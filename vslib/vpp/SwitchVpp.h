@@ -1544,8 +1544,8 @@ namespace saivs
 
             // MAC event queue — thread boundary between VPP and saivpp.
             //
-            // Producer: VPP API receive thread via staticMacEventCb()
-            //   -> vl_api_l2_macs_event_t_handler (holds VPP_LOCK, not m_apimutex)
+            // Producer: VPP event thread (event socket) via staticMacEventCb()
+            //   -> vl_api_l2_macs_event_t_handler (holds EVENT_LOCK, not m_apimutex)
             //   -> onVppMacEvent() pushes to queue and signals m_fdbAgingWakeEvent
             //
             // Consumer: FDB aging thread via processFdbEntriesForAging()
