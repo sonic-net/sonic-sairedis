@@ -39,6 +39,8 @@ SONIC_VPP_IFMAP="${SONIC_VPP_IFMAP:-/usr/share/sonic/hwsku/sonic_vpp_ifmap.ini}"
 THRIFT_PORT="${THRIFT_PORT:-9092}"
 STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-60}"
 VPPCTL_TIMEOUT="${VPPCTL_TIMEOUT:-5}"
+# Seconds allowed per test target (0 disables); the slowest tests take ~130s.
+TEST_TIMEOUT="${TEST_TIMEOUT:-600}"
 VPP_LOG="${VPP_LOG:-/var/log/vpp.log}"
 VPP_STDOUT_LOG="${VPP_STDOUT_LOG:-/var/log/vpp-startup.log}"
 VPP_API_TRACE="${VPP_API_TRACE:-/tmp/vpp-sai-api-trace.api}"
@@ -821,8 +823,12 @@ run_ptf()
 
         log "=== [${idx}/${total}] ${target} (group ${group}, common_configured=${common_configured}) ==="
         rc=0
-        run_one_ptf "$target" "$common_configured" "group-${group}-test-${idx}" || rc="$?"
+        run_one_ptf "$target" "$common_configured" "group-${group}-test-${idx}" "$TEST_TIMEOUT" || rc="$?"
         archive_test_logs "group-${group}-test-${idx}-${target}" "$rc"
+        if [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then
+            # A hung backend would stall the rest of its group too.
+            prev_group="timed-out"
+        fi
         if [[ "$rc" -ne 0 ]]; then
             if (( rc > overall_rc )); then
                 overall_rc="$rc"
@@ -1039,8 +1045,14 @@ run_one_ptf()
     local test_target="$1"
     local common_configured="$2"
     local invocation_namespace="$3"
+    local timeout_s="${4:-0}"
     local test_rc
     local xunit_dir
+    local -a ptf_cmd=(ptf)
+
+    if [[ "$timeout_s" -gt 0 ]]; then
+        ptf_cmd=(timeout --kill-after=30 "$timeout_s" ptf)
+    fi
 
     xunit_dir="$(mktemp -d /tmp/ptf-xunit.XXXXXX)"
 
@@ -1048,7 +1060,7 @@ run_one_ptf()
     log "Running PTF${test_target:+ filter: $test_target}"
 
     set +e
-    PYTHONUNBUFFERED=1 ptf "${PTF_ARGS[@]}" 2>&1 | while IFS= read -r ptf_line; do
+    PYTHONUNBUFFERED=1 "${ptf_cmd[@]}" "${PTF_ARGS[@]}" 2>&1 | while IFS= read -r ptf_line; do
         printf '%s\n' "$ptf_line"
 
         case "$ptf_line" in
@@ -1059,6 +1071,10 @@ run_one_ptf()
     done
     test_rc="${PIPESTATUS[0]}"
     set -e
+
+    if [[ "$test_rc" -eq 124 || "$test_rc" -eq 137 ]]; then
+        log "ERROR: PTF${test_target:+ for $test_target} timed out after ${timeout_s}s"
+    fi
 
     collect_xunit_results "$xunit_dir" "$invocation_namespace"
     rm -rf "$xunit_dir"
