@@ -150,6 +150,21 @@ const char* SwitchVpp::resolveNexthopMemberHwif(
         }
     }
 
+    // A VLAN RIF has no PORT_ID and egresses through the BVI of its VLAN. Without
+    // an interface the path is recursive, and a host route whose nexthop is its own
+    // address (a dual-ToR prefix-route mux neighbor) then resolves through itself,
+    // which VPP installs as a drop.
+    rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS)
+    {
+        member_hwif = m_ifaceRegistry.resolveHwIfName(rif_attr.value.oid, 0);
+
+        if (!member_hwif.empty())
+        {
+            return member_hwif.c_str();
+        }
+    }
+
     return NULL;
 }
 
