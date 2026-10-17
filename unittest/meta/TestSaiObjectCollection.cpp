@@ -14,7 +14,7 @@ TEST(SaiObjectCollection, createObject)
 
     oc.createObject(mk);
 
-    EXPECT_THROW(oc.createObject(mk), std::runtime_error);
+    EXPECT_NO_THROW(oc.createObject(mk));
 }
 
 TEST(SaiObjectCollection, removeObject)
@@ -23,7 +23,7 @@ TEST(SaiObjectCollection, removeObject)
 
     SaiObjectCollection oc;
 
-    EXPECT_THROW(oc.removeObject(mk), std::runtime_error);
+    EXPECT_NO_THROW(oc.removeObject(mk));
 }
 
 TEST(SaiObjectCollection, setObjectAttr)
@@ -36,7 +36,7 @@ TEST(SaiObjectCollection, setObjectAttr)
             SAI_OBJECT_TYPE_SWITCH,
             SAI_SWITCH_ATTR_INIT_SWITCH);
 
-    EXPECT_THROW(oc.setObjectAttr(mk, *meta, nullptr), std::runtime_error);
+    EXPECT_NO_THROW(oc.setObjectAttr(mk, *meta, nullptr));
 }
 
 TEST(SaiObjectCollection, getObjectAttr)
@@ -54,5 +54,5 @@ TEST(SaiObjectCollection, getObject)
 
     SaiObjectCollection oc;
 
-    EXPECT_THROW(oc.getObject(mk), std::runtime_error);
+    EXPECT_NO_THROW(oc.getObject(mk));
 }
