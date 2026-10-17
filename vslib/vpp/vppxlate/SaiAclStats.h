@@ -30,8 +30,19 @@ extern "C" {
 	uint32_t ace_index;
     } vpp_ace_stats_t;
 
-    int vpp_acl_ace_stats_query(uint32_t acl_index, uint32_t ace_index,
-				vpp_ace_stats_t *stats);
+    /*
+     * Selects the stats-segment subtree the rule counters live under.  ACL
+     * and PBH counters are both per-table combined counters indexed by rule,
+     * so only the path prefix differs.
+     */
+    typedef enum vpp_rule_stats_type_ {
+	VPP_RULE_STATS_ACL = 0,		/* /acl/<acl_index>/matches            */
+	VPP_RULE_STATS_PBH,		/* /sonic-ext/pbh/<table_index>/matches */
+	VPP_RULE_STATS_MAX
+    } vpp_rule_stats_type_t;
+
+    int vpp_rule_stats_query(vpp_rule_stats_type_t type, uint32_t table_index,
+			     uint32_t rule_index, vpp_ace_stats_t *stats);
 
 #ifdef __cplusplus
 }
