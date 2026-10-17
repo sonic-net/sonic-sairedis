@@ -2145,6 +2145,13 @@ sai_status_t SwitchVpp::createRouterif(
 
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, switch_id, attr_count, attr_list));
 
+    auto attr_zone = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_NAT_ZONE_ID, attr_count, attr_list);
+
+    if (attr_zone != NULL)
+    {
+        natRouterInterfaceZone(object_id, attr_zone->value.u32);
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -2152,6 +2159,9 @@ sai_status_t SwitchVpp::removeRouterif(
         _In_ sai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
+
+    // the outside feature goes before the interface does
+    natRouterInterfaceRemoved(objectId);
 
     if (m_switchConfig->m_useTapDevice == true)
     {

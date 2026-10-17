@@ -620,6 +620,46 @@ typedef enum {
     } vpp_gre_tunnel_t;
 
     extern int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, uint32_t *sw_if_index);
+
+    /*
+     * NAT44 endpoint-dependent (nat_plugin.so). Addresses are in network
+     * order, ports in host order. A mapping with addr_only set translates the
+     * address for every protocol and port.
+     */
+    typedef struct vpp_nat44_static_mapping_ {
+        struct in_addr local;
+        struct in_addr external;
+        uint8_t protocol;
+        uint16_t local_port;
+        uint16_t external_port;
+        uint32_t vrf_id;
+        bool addr_only;
+    } vpp_nat44_static_mapping_t;
+
+    typedef struct vpp_nat44_session_ {
+        struct in_addr inside_addr;
+        uint16_t inside_port;
+        struct in_addr outside_addr;
+        uint16_t outside_port;
+        struct in_addr ext_host_addr;
+        uint16_t ext_host_port;
+        uint16_t protocol;
+        bool is_static;
+        uint64_t total_bytes;
+        uint32_t total_pkts;
+    } vpp_nat44_session_t;
+
+    typedef void (*vpp_nat44_session_cb_fn)(const vpp_nat44_session_t *session, void *ctx);
+
+    /* true when VPP runs the nat44-ed plugin, i.e. its API was found at connect */
+    extern bool vpp_nat44_ed_supported(void);
+    extern int vpp_nat44_ed_enable_disable(bool enable, uint32_t sessions);
+    extern int vpp_nat44_forwarding_enable_disable(bool enable);
+    extern int vpp_nat44_ed_output_interface_add_del(const char *hwif_name, bool is_add);
+    extern int vpp_nat44_static_mapping_add_del(const vpp_nat44_static_mapping_t *mapping, bool is_add);
+    /* calls cb for every session whose inside address is inside_addr */
+    extern int vpp_nat44_user_sessions_dump(struct in_addr inside_addr, uint32_t vrf_id,
+                                            vpp_nat44_session_cb_fn cb, void *ctx);
 #ifdef __cplusplus
 }
 #endif

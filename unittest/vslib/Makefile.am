@@ -55,6 +55,21 @@ tests_SOURCES = main.cpp \
 
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp
+
+# TestSwitchVpp.cpp replaces these VPP API calls with recording stubs, so the
+# SwitchVpp code paths under test run without a VPP instance.
+tests_LDFLAGS = \
+				-Wl,--wrap=init_vpp_client \
+				-Wl,--wrap=vpp_sync_for_events \
+				-Wl,--wrap=vpp_ev_dequeue \
+				-Wl,--wrap=vpp_want_l2_macs_events2 \
+				-Wl,--wrap=refresh_interfaces_list \
+				-Wl,--wrap=vpp_nat44_ed_supported \
+				-Wl,--wrap=vpp_nat44_ed_enable_disable \
+				-Wl,--wrap=vpp_nat44_forwarding_enable_disable \
+				-Wl,--wrap=vpp_nat44_ed_output_interface_add_del \
+				-Wl,--wrap=vpp_nat44_static_mapping_add_del \
+				-Wl,--wrap=vpp_nat44_user_sessions_dump
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
