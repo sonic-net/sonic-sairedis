@@ -55,6 +55,34 @@ tests_SOURCES = main.cpp \
 
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp
+
+# TestSwitchVpp.cpp replaces these VPP API calls with stubs that model the
+# VPP state they change, so the SwitchVpp code paths under test run without
+# a VPP instance.
+tests_LDFLAGS = \
+				-Wl,--wrap=init_vpp_client \
+				-Wl,--wrap=vpp_sync_for_events \
+				-Wl,--wrap=vpp_ev_dequeue \
+				-Wl,--wrap=vpp_want_l2_macs_events2 \
+				-Wl,--wrap=refresh_interfaces_list \
+				-Wl,--wrap=vpp_get_swif_idx_by_name \
+				-Wl,--wrap=vpp_sonic_ext_feature_get \
+				-Wl,--wrap=set_sw_interface_l2_bridge \
+				-Wl,--wrap=create_sub_interface \
+				-Wl,--wrap=set_l2_interface_vlan_tag_rewrite \
+				-Wl,--wrap=interface_set_state \
+				-Wl,--wrap=set_bridge_domain_flags \
+				-Wl,--wrap=create_bvi_interface \
+				-Wl,--wrap=delete_bvi_interface \
+				-Wl,--wrap=configure_lcp_interface \
+				-Wl,--wrap=vpp_add_node_next \
+				-Wl,--wrap=vpp_classify_table_create \
+				-Wl,--wrap=vpp_classify_table_create_ex \
+				-Wl,--wrap=vpp_classify_table_delete \
+				-Wl,--wrap=vpp_classify_session_add \
+				-Wl,--wrap=vpp_classify_session_del \
+				-Wl,--wrap=vpp_classify_set_interface_l2_tables \
+				-Wl,--wrap=vpp_input_acl_set_interface
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control

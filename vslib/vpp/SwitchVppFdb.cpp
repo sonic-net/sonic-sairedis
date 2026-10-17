@@ -30,7 +30,9 @@ using namespace saivs;
  *     SAI_PACKET_ACTION_TRAP for DHCP on VPP-VS: the L2-flood is
  *     skipped entirely, so no copies are flooded to other VLAN
  *     members (sonic-mgmt DHCPBroadcastNotFloodedTest depends on
- *     this).
+ *     this).  When the DHCP trap's action is SAI_PACKET_ACTION_COPY
+ *     the broadcast is flooded instead and the CPU gets the BVI's copy;
+ *     see s_dhcp_member_sessions.
  *
  * LLDP needs the classifier to work around a VPP behavior: link-local
  * multicast frames (DA in 01:80:c2:00:00:00..0F) are flooded by the BD
@@ -190,6 +192,159 @@ static uint32_t s_tag_ip6mc_only_table = ~0;  /* IPv6 mcast over .1Q -> s_tag_dh
 #define SAIVS_DHCP_BOOTPC 68
 #define SAIVS_DHCP_BOOTPS 67
 
+/*
+ * SAI_HOSTIF_TRAP_TYPE_DHCP packet action.
+ *
+ * The DHCPv4 sessions in s_untag_ip4_table and s_tag_dhcp_table emulate
+ * SAI_PACKET_ACTION_TRAP: the classify hit is terminal, so the broadcast
+ * reaches the CPU and is not flooded.  SAI_PACKET_ACTION_COPY asks for
+ * both, the flood to the other VLAN members and a copy to the CPU, and a
+ * single classify session cannot do both.  COPY is built from two pieces
+ * instead:
+ *
+ *   - The member DHCPv4 sessions are removed.  The tables stay bound and
+ *     their miss-chains stay intact, they just miss, so the broadcast
+ *     reaches l2-flood like any other broadcast, flood copy to the BVI
+ *     included.
+ *
+ *   - That BVI copy would die in ip4-lookup, because VPP installs
+ *     255.255.255.255/32 as a drop route.  So while the action is COPY
+ *     every VLAN BVI carries an ip4 input ACL (ip4-inacl) whose single
+ *     session matches a DHCPv4 client broadcast and hands it to
+ *     linux-cp-punt, which delivers it to the BVI's host tap.  From there
+ *     it takes the same path as ARP: sonic-ext-aggr-tap-redirect moves it
+ *     to the originating member's tap (re-adding the tag for a tagged
+ *     member) and the kernel lifts it to the Vlan netdev, where the DHCP
+ *     relay listens.
+ *
+ * The BVI ACL is bound only while the action is COPY, so routed traffic
+ * entering a BVI pays no extra classify lookup otherwise.  Every other
+ * action, and no DHCP trap at all, keeps the TRAP behavior.
+ */
+static bool     s_dhcp_member_sessions = false; /* DHCPv4 sessions present in the member tables */
+static uint32_t s_bvi_dhcp_table = ~0;          /* DHCPv4 client broadcast at a BVI's ip4 input */
+static uint32_t s_bvi_dhcp_next_index = ~0;     /* ip4-inacl -> linux-cp-punt */
+
+/* Untagged member: DHCPv4 client broadcast, see s_untag_ip4_table. */
+static void dhcp_untag_match(uint8_t m[48])
+{
+    memset(m, 0, 48);
+    m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
+    m[12] = 0x08; m[13] = 0x00;
+    m[23] = 0x11;                                /* IPPROTO_UDP */
+    m[36] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
+    m[37] =  SAIVS_DHCP_BOOTPS       & 0xFF;
+}
+
+/* Tagged member: the same over .1Q, see s_tag_dhcp_table. */
+static void dhcp_tag_match(uint8_t m[48])
+{
+    memset(m, 0, 48);
+    m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
+    m[16] = 0x08; m[17] = 0x00;
+    m[27] = 0x11;
+    m[40] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
+    m[41] =  SAIVS_DHCP_BOOTPS       & 0xFF;
+}
+
+/*
+ * Adds or removes the member DHCPv4 sessions so that they are present
+ * exactly when the DHCP trap action is not COPY.  Does nothing before the
+ * member tables exist: CoPP is usually programmed before the first VLAN
+ * member, so l2_punt_classify_apply() calls it again on every member once
+ * the tables are there.
+ */
+static void l2_punt_dhcp_sessions_set(bool present)
+{
+    SWSS_LOG_ENTER();
+
+    if (!s_l2_punt_classify_inited || present == s_dhcp_member_sessions)
+        return;
+
+    uint8_t m[48];
+
+    if (s_untag_ip4_table != ~0u) {
+        dhcp_untag_match(m);
+        if (present)
+            vpp_classify_session_add(s_untag_ip4_table, s_punt_next_index,
+                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        else
+            vpp_classify_session_del(s_untag_ip4_table, m, 48);
+    }
+
+    if (s_tag_dhcp_table != ~0u) {
+        dhcp_tag_match(m);
+        if (present)
+            vpp_classify_session_add(s_tag_dhcp_table, s_trap_fixup_next_index,
+                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        else
+            vpp_classify_session_del(s_tag_dhcp_table, m, 48);
+    }
+
+    s_dhcp_member_sessions = present;
+
+    SWSS_LOG_NOTICE("l2_punt_dhcp_sessions_set: DHCPv4 member sessions %s",
+                    present ? "installed (trap)" : "removed (copy)");
+}
+
+/*
+ * Creates the BVI DHCPv4 copy table on first use.  It is an ip4-inacl
+ * table matched from the IP header (current data), not from b->data, so
+ * the offsets hold whatever the frame's L2 encapsulation was on ingress:
+ *   byte  9      -> IP protocol = UDP
+ *   bytes 16..19 -> dst IP = 255.255.255.255
+ *   bytes 22..23 -> UDP dport = 67 (IHL=5, as for the member tables)
+ */
+static int bvi_dhcp_table_init()
+{
+    SWSS_LOG_ENTER();
+
+    if (s_bvi_dhcp_table != ~0u)
+        return 0;
+
+    if (vpp_add_node_next("ip4-inacl", "linux-cp-punt", &s_bvi_dhcp_next_index) != 0) {
+        SWSS_LOG_ERROR("bvi_dhcp_table_init: vpp_add_node_next(ip4-inacl, linux-cp-punt) failed");
+        s_bvi_dhcp_next_index = ~0;
+        return -1;
+    }
+
+    uint8_t mask[32] = {0};
+    mask[9] = 0xFF;
+    mask[16] = mask[17] = mask[18] = mask[19] = 0xFF;
+    mask[22] = 0xFF; mask[23] = 0xFF;
+
+    uint32_t table = ~0;
+
+    if (vpp_classify_table_create_ex(
+            8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
+            0 /*skip*/, 2 /*match_n_vectors*/,
+            ~0 /*next_table*/, ~0 /*miss_next=continue*/,
+            true /*match from current data*/, 0 /*current_data_offset*/,
+            mask, 32, &table) != 0) {
+        SWSS_LOG_ERROR("bvi_dhcp_table_init: table create failed");
+        return -1;
+    }
+
+    uint8_t m[32] = {0};
+    m[9] = 0x11;                                 /* IPPROTO_UDP */
+    m[16] = m[17] = m[18] = m[19] = 0xFF;        /* 255.255.255.255 */
+    m[22] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
+    m[23] =  SAIVS_DHCP_BOOTPS       & 0xFF;
+
+    if (vpp_classify_session_add(table, s_bvi_dhcp_next_index,
+                                 m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE) != 0) {
+        SWSS_LOG_ERROR("bvi_dhcp_table_init: session add failed");
+        vpp_classify_table_delete(table);
+        return -1;
+    }
+
+    s_bvi_dhcp_table = table;
+
+    SWSS_LOG_NOTICE("bvi_dhcp_table_init: table %u, ip4-inacl -> linux-cp-punt next %u",
+                    s_bvi_dhcp_table, s_bvi_dhcp_next_index);
+    return 0;
+}
+
 /* Called only from the single SAI processing thread; the s_* globals need no locking. */
 static int l2_punt_classify_init()
 {
@@ -271,6 +426,10 @@ static int l2_punt_classify_init()
      *
      * No chain on miss: non-DHCP IPv4 traffic should fall through to
      * the rest of the L2 feature arc unchanged.
+     *
+     * The session (dhcp_untag_match()) is added by
+     * l2_punt_dhcp_sessions_set() at the end of init, and only while the
+     * DHCP trap action is not COPY.
      */
     {
         uint8_t mask[48] = {0};
@@ -286,15 +445,6 @@ static int l2_punt_classify_init()
                 mask, 48, &s_untag_ip4_table) != 0) {
             SWSS_LOG_ERROR("l2_punt_classify_init: untag_ip4 table create failed");
             s_untag_ip4_table = ~0;
-        } else {
-            uint8_t m[48] = {0};
-            m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
-            m[12] = 0x08; m[13] = 0x00;
-            m[23] = 0x11;                                /* IPPROTO_UDP */
-            m[36] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
-            m[37] =  SAIVS_DHCP_BOOTPS       & 0xFF;
-            vpp_classify_session_add(s_untag_ip4_table, s_punt_next_index,
-                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
 
@@ -455,6 +605,11 @@ static int l2_punt_classify_init()
      * the frame.  The fixup node rewrites VLIB_RX to the parent phys
      * (Ethernet0), which always has an LCP pair.  Skip table install
      * if the fixup node is not registered (untagged DHCP still works).
+     *
+     * As for the untagged table, the session (dhcp_tag_match()) is added
+     * by l2_punt_dhcp_sessions_set() at the end of init.  The table
+     * itself is created either way, because the ARP and IPv6-multicast
+     * tables chain to it.
      */
     if (s_trap_fixup_next_index != ~0u) {
         uint8_t mask[48] = {0};
@@ -470,15 +625,6 @@ static int l2_punt_classify_init()
                 mask, 48, &s_tag_dhcp_table) != 0) {
             SWSS_LOG_ERROR("l2_punt_classify_init: tag_dhcp table create failed");
             s_tag_dhcp_table = ~0;
-        } else {
-            uint8_t m[48] = {0};
-            m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
-            m[16] = 0x08; m[17] = 0x00;
-            m[27] = 0x11;
-            m[40] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
-            m[41] =  SAIVS_DHCP_BOOTPS       & 0xFF;
-            vpp_classify_session_add(s_tag_dhcp_table, s_trap_fixup_next_index,
-                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
 
@@ -607,15 +753,22 @@ static int l2_punt_classify_init()
  * and without touching the bridge domain's shared L2_FLOOD bit.  See the
  * s_untag_arp_table and s_untag_ip6mc_table comments in
  * l2_punt_classify_init().
+ *
+ * punt_dhcp is switch-wide rather than per VLAN: it is false while the
+ * SAI_HOSTIF_TRAP_TYPE_DHCP action is COPY.  It is applied to the shared
+ * DHCP tables, not by picking a table here, so every member's chain stays
+ * as it is.
  */
 static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
-                                  bool punt_arp, bool punt_ip6mc)
+                                  bool punt_arp, bool punt_ip6mc, bool punt_dhcp)
 {
     SWSS_LOG_ENTER();
     if (l2_punt_classify_init() != 0) {
         SWSS_LOG_ERROR("l2_punt_classify_apply: init failed for %s", hwif_name);
         return -1;
     }
+
+    l2_punt_dhcp_sessions_set(punt_dhcp);
 
     /* Tagged frames carry outer ethertype 0x8100, so they all land in the
      * OTHER slot and every tagged punt has to share one miss-chain.
@@ -696,6 +849,97 @@ static int l2_punt_classify_remove(const char *hwif_name)
     /* Detach all tables from the interface */
     return vpp_classify_set_interface_l2_tables(
         hwif_name, ~0, ~0, ~0, true /*is_input*/);
+}
+
+/*
+ * Switches DHCPv4 client broadcasts between TRAP (punt, no flood) and COPY
+ * (flood, plus a copy to the CPU through the BVI).  See the
+ * s_dhcp_member_sessions comment.  The order of the two steps keeps every
+ * broadcast reaching the CPU during the change: the BVI ACLs go on before
+ * the member sessions come off, and the member sessions go back on before
+ * the BVI ACLs come off.
+ */
+void SwitchVpp::vpp_set_dhcp_trap_copy(
+        _In_ bool copy)
+{
+    SWSS_LOG_ENTER();
+
+    if (copy == m_dhcp_trap_copy)
+    {
+        return;
+    }
+
+    m_dhcp_trap_copy = copy;
+
+    SWSS_LOG_NOTICE("DHCP hostif trap action %s: DHCPv4 client broadcasts are %s",
+            copy ? "COPY" : "TRAP",
+            copy ? "flooded in their VLAN and copied to the CPU"
+                 : "trapped to the CPU and not flooded");
+
+    if (copy)
+    {
+        for (auto& bvi: m_vlan_bvis)
+        {
+            vpp_dhcp_copy_bvi_bind(bvi, true);
+        }
+
+        l2_punt_dhcp_sessions_set(false);
+    }
+    else
+    {
+        l2_punt_dhcp_sessions_set(true);
+
+        for (auto& bvi: m_vlan_bvis)
+        {
+            vpp_dhcp_copy_bvi_bind(bvi, false);
+        }
+    }
+}
+
+/*
+ * Binds (or unbinds) the BVI DHCPv4 copy ACL on one VLAN BVI.  Tracks what
+ * is bound, because VPP rejects unbinding a table that is not bound.
+ */
+void SwitchVpp::vpp_dhcp_copy_bvi_bind(
+        _In_ const std::string& bvi,
+        _In_ bool bind)
+{
+    SWSS_LOG_ENTER();
+
+    bool bound = m_dhcp_copy_bvis.find(bvi) != m_dhcp_copy_bvis.end();
+
+    if (bind == bound)
+    {
+        return;
+    }
+
+    if (!bind)
+    {
+        m_dhcp_copy_bvis.erase(bvi);
+
+        if (vpp_input_acl_set_interface(bvi.c_str(), s_bvi_dhcp_table, false) != 0)
+        {
+            SWSS_LOG_WARN("failed to unbind the DHCP copy ACL from %s", bvi.c_str());
+        }
+
+        return;
+    }
+
+    if (bvi_dhcp_table_init() != 0)
+    {
+        SWSS_LOG_ERROR("DHCP copy ACL unavailable, so DHCPv4 broadcasts flooded in %s's VLAN "
+                "will not reach the CPU", bvi.c_str());
+        return;
+    }
+
+    if (vpp_input_acl_set_interface(bvi.c_str(), s_bvi_dhcp_table, true) != 0)
+    {
+        SWSS_LOG_ERROR("failed to bind the DHCP copy ACL to %s, so DHCPv4 broadcasts "
+                "flooded in its VLAN will not reach the CPU", bvi.c_str());
+        return;
+    }
+
+    m_dhcp_copy_bvis.insert(bvi);
 }
 
 /**
@@ -968,7 +1212,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * Treated as best-effort: on failure the member still comes
          * up, but control-plane punt on this member is not enabled.
          */
-        if (l2_punt_classify_apply(hw_ifname, true /*tagged*/, punt_arp, punt_ip6mc) != 0) {
+        if (l2_punt_classify_apply(hw_ifname, true /*tagged*/, punt_arp, punt_ip6mc,
+                                   !m_dhcp_trap_copy) != 0) {
             SWSS_LOG_WARN("l2_punt_classify_apply failed for tagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
         }
@@ -993,7 +1238,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          *
          * Treated as best-effort; see the tagged branch above.
          */
-        if (l2_punt_classify_apply(hw_ifname, false /*untagged*/, punt_arp, punt_ip6mc) != 0) {
+        if (l2_punt_classify_apply(hw_ifname, false /*untagged*/, punt_arp, punt_ip6mc,
+                                   !m_dhcp_trap_copy) != 0) {
             SWSS_LOG_WARN("l2_punt_classify_apply failed for untagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
         }
@@ -1477,7 +1723,8 @@ sai_status_t SwitchVpp::vpp_set_vlan_attribute(
                 }
 
                 if (l2_punt_classify_apply(member_hwif.c_str(), member_tagged,
-                                           punt_arp, punt_ip6mc) != 0)
+                                           punt_arp, punt_ip6mc,
+                                           !m_dhcp_trap_copy) != 0)
                 {
                     SWSS_LOG_WARN("Failed to update punt classify tables on %s (vlan %u)",
                             member_hwif.c_str(), bridge_id);
@@ -1619,6 +1866,15 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
         {
             m_ifaceRegistry.setTapName(bvi_rec->getHwifName(), tap_name);
         }
+    }
+
+    // While the DHCP trap action is COPY, the BVI's copy of a flooded DHCPv4
+    // broadcast has to be punted (see s_dhcp_member_sessions).
+    m_vlan_bvis.insert(hw_ifname);
+
+    if (m_dhcp_trap_copy)
+    {
+        vpp_dhcp_copy_bvi_bind(hw_ifname, true);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1778,6 +2034,10 @@ sai_status_t SwitchVpp::vpp_delete_bvi_interface(
     const char *hw_ifname;
     snprintf(hw_bviifname, sizeof(hw_bviifname), "bvi%u",vlan_id);
     hw_ifname = hw_bviifname;
+
+    // Unbind the DHCP copy ACL while the BVI still exists (no-op if unbound).
+    vpp_dhcp_copy_bvi_bind(hw_ifname, false);
+    m_vlan_bvis.erase(hw_ifname);
 
     //Remove interface from bridge, interface type should be changed to others types like l3.
     set_sw_interface_l2_bridge(hw_ifname, bd_id, false, VPP_API_PORT_TYPE_BVI);

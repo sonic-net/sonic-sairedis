@@ -463,3 +463,8 @@ rebuildable
 jitter
 jittered
 ARGV
+BVI
+DHCP
+DHCPv
+LLDP
+VPP

@@ -590,6 +590,15 @@ typedef enum {
                                          uint32_t next_table_index, uint32_t miss_next_index,
                                          const uint8_t *mask, uint32_t mask_len,
                                          uint32_t *new_table_index);
+    /* As vpp_classify_table_create(), plus the table's current-data match:
+     * with use_current_data the mask and sessions are matched from the
+     * buffer's current data plus current_data_offset instead of b->data. */
+    extern int vpp_classify_table_create_ex(uint32_t nbuckets, uint32_t memory_size,
+                                            uint32_t skip_n_vectors, uint32_t match_n_vectors,
+                                            uint32_t next_table_index, uint32_t miss_next_index,
+                                            bool use_current_data, int16_t current_data_offset,
+                                            const uint8_t *mask, uint32_t mask_len,
+                                            uint32_t *new_table_index);
     extern int vpp_classify_table_delete(uint32_t table_index);
     extern int vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
                                         const uint8_t *match, uint32_t match_len,
@@ -604,6 +613,10 @@ typedef enum {
                                                     bool is_input);
     extern int vpp_add_node_next(const char *node_name, const char *next_name,
                                        uint32_t *next_index);
+    /* Binds (is_add) or unbinds an ip4 input ACL (ip4-inacl) classify table on an interface. */
+    extern int vpp_input_acl_set_interface(const char *hwif_name,
+                                           uint32_t ip4_table_index,
+                                           bool is_add);
     extern int sw_interface_set_mpls_enable(const char *hwif_name, bool enable);
     extern int mpls_table_add_del(uint32_t table_id, bool is_add);
     extern int mpls_route_add_del(vpp_mpls_route_t *route, bool is_add);

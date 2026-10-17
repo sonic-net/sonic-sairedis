@@ -1901,6 +1901,13 @@ static void vl_api_classify_set_interface_l2_tables_reply_t_handler(
     set_reply_status(retval);
 }
 
+static void vl_api_input_acl_set_interface_reply_t_handler(
+    vl_api_input_acl_set_interface_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
 /* vlib API reply handler (get_next_index) */
 
 static void vl_api_get_next_index_reply_t_handler(
@@ -2113,6 +2120,7 @@ static void vpp_base_vpe_init(void)
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_TABLE_REPLY), classify_add_del_table_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_SESSION_REPLY), classify_add_del_session_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_SET_INTERFACE_L2_TABLES_REPLY), classify_set_interface_l2_tables_reply) \
+    _(CLASSIFY_MSG_ID(INPUT_ACL_SET_INTERFACE_REPLY), input_acl_set_interface_reply) \
     _(VLIB_API_MSG_ID(GET_NEXT_INDEX_REPLY), get_next_index_reply) \
     _(VLIB_API_MSG_ID(ADD_NODE_NEXT_REPLY), add_node_next_reply)
 
@@ -6091,6 +6099,19 @@ int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
                               const uint8_t *mask, uint32_t mask_len,
                               uint32_t *new_table_index)
 {
+    return vpp_classify_table_create_ex(nbuckets, memory_size, skip_n_vectors,
+                                        match_n_vectors, next_table_index,
+                                        miss_next_index, false, 0,
+                                        mask, mask_len, new_table_index);
+}
+
+int vpp_classify_table_create_ex(uint32_t nbuckets, uint32_t memory_size,
+                                 uint32_t skip_n_vectors, uint32_t match_n_vectors,
+                                 uint32_t next_table_index, uint32_t miss_next_index,
+                                 bool use_current_data, int16_t current_data_offset,
+                                 const uint8_t *mask, uint32_t mask_len,
+                                 uint32_t *new_table_index)
+{
     vat_main_t *vam = &vat_main;
     vl_api_classify_add_del_table_t *mp;
     int ret;
@@ -6109,8 +6130,8 @@ int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
     mp->match_n_vectors = htonl(match_n_vectors);
     mp->next_table_index = htonl(next_table_index);
     mp->miss_next_index = htonl(miss_next_index);
-    mp->current_data_flag = 0;
-    mp->current_data_offset = 0;
+    mp->current_data_flag = use_current_data ? 1 : 0;
+    mp->current_data_offset = (i16)htons((u16)current_data_offset);
     mp->mask_len = htonl(mask_len);
     clib_memcpy(mp->mask, mask, mask_len);
     mp->context = store_ptr(new_table_index);
@@ -6249,6 +6270,43 @@ int vpp_classify_set_interface_l2_tables(const char *hwif_name,
     if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s", __func__, ret, hwif_name); }
     else { SAIVPP_INFO("%s hwif %s ip4=%u ip6=%u other=%u", __func__,
                        hwif_name, ip4_table_index, ip6_table_index, other_table_index); }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_input_acl_set_interface(const char *hwif_name,
+                                uint32_t ip4_table_index,
+                                bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_input_acl_set_interface_t *mp;
+    int ret;
+    u32 sw_if_index;
+
+    sw_if_index = get_swif_idx(vam, hwif_name);
+    if (sw_if_index == (u32) -1) {
+        SAIVPP_ERROR("%s: hwif %s not found", __func__, hwif_name ? hwif_name : "<null>");
+        return -1;
+    }
+
+    VPP_LOCK();
+
+    __plugin_msg_base = classify_msg_id_base;
+
+    M (INPUT_ACL_SET_INTERFACE, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->ip4_table_index = htonl(ip4_table_index);
+    mp->ip6_table_index = htonl(~0u);
+    mp->l2_table_index = htonl(~0u);
+    mp->is_add = is_add;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s", __func__, ret, hwif_name); }
+    else { SAIVPP_INFO("%s hwif %s ip4=%u %s", __func__, hwif_name, ip4_table_index,
+                       is_add ? "bound" : "unbound"); }
 
     VPP_UNLOCK();
     return ret;
