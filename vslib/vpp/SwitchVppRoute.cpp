@@ -110,6 +110,47 @@ void create_vpp_nexthop_entry (
     }
 }
 
+bool SwitchVpp::resolveVlanRifHwif(
+        _In_ sai_object_id_t rif_oid,
+        _Out_ std::string &hwif_name)
+{
+    SWSS_LOG_ENTER();
+
+    hwif_name.clear();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("no SAI_ROUTER_INTERFACE_ATTR_VLAN_ID on VLAN router interface %s",
+                       sai_serialize_object_id(rif_oid).c_str());
+        return false;
+    }
+
+    sai_object_id_t vlan_oid = attr.value.oid;
+
+    if (objectTypeQuery(vlan_oid) != SAI_OBJECT_TYPE_VLAN)
+    {
+        SWSS_LOG_ERROR("SAI_ROUTER_INTERFACE_ATTR_VLAN_ID=%s is not a VLAN object",
+                       sai_serialize_object_id(vlan_oid).c_str());
+        return false;
+    }
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    if (get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &attr) != SAI_STATUS_SUCCESS ||
+        attr.value.u16 == 0)
+    {
+        SWSS_LOG_ERROR("unable to resolve the VLAN id of router interface %s",
+                       sai_serialize_object_id(rif_oid).c_str());
+        return false;
+    }
+
+    hwif_name = std::string("bvi") + std::to_string(attr.value.u16);
+
+    return true;
+}
+
 const char* SwitchVpp::resolveNexthopMemberHwif(
         _In_ const nexthop_grp_member_t *member,
         _Out_ std::string &member_hwif)
@@ -125,10 +166,28 @@ const char* SwitchVpp::resolveNexthopMemberHwif(
 
     sai_attribute_t rif_attr;
     uint16_t vlan_id = 0;
+    int32_t rif_type = SAI_ROUTER_INTERFACE_TYPE_PORT;
 
     rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
-    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS &&
-        rif_attr.value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS)
+    {
+        rif_type = rif_attr.value.s32;
+    }
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+    {
+        // A VLAN RIF has no port; it is realized in VPP as the BVI
+        // "bvi<vlan_id>". Without it the path would get no interface and VPP
+        // would resolve the next hop recursively in table 0.
+        if (resolveVlanRifHwif(member->rif_oid, member_hwif))
+        {
+            return member_hwif.c_str();
+        }
+
+        return NULL;
+    }
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
         sai_attribute_t vlan_attr;
         vlan_attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
