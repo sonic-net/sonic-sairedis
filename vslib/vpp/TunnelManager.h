@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <vector>
 #include <map>
 #include <string>
@@ -33,6 +34,15 @@ namespace saivs
         u_int32_t encap_vrf_id = 0;
         u_int32_t bd_id = 0;
         vpp_ip_addr_t bvi_addr;
+
+        // The remote VTEP's router MAC (SAI_NEXT_HOP_ATTR_TUNNEL_MAC), when the
+        // next hop carries one: the inner destination MAC to encapsulate with.
+        bool has_remote_router_mac = false;
+        std::array<uint8_t, 6> remote_router_mac = {};
+
+        // Host tap of the linux-cp pair giving the decap BVI a path to the
+        // kernel; empty when the BVI has none.
+        std::string decap_host_if;
 
         // L2 VXLAN fields
         u_int32_t vni = 0;
@@ -219,6 +229,38 @@ namespace saivs
         SwitchVpp* m_switch_db;
         std::array<uint8_t, 6> m_router_mac;
         u_int16_t m_vxlan_port;
+
+        /**
+         * @brief Kernel-side hooks of the decap host path. The constructor
+         * points them at the sysfs lookup and the tc redirect; unit tests
+         * replace them.
+         */
+        std::function<std::string(const std::string&)> m_netdev_master;
+        std::function<sai_status_t(const std::string&, const std::string&)> m_add_tc_redirect;
+
+        static std::string read_netdev_master(
+            _In_ const std::string& netdev);
+
+        /**
+         * @brief MAC the decap BVI of a tunnel answers to.
+         */
+        std::array<uint8_t, 6> get_decap_router_mac(
+            _In_ const TunnelVPPData& tunnel_data);
+
+        /**
+         * @brief Kernel VRF device of a virtual router, found through the
+         * kernel netdev of one of its VLAN router interfaces; empty if none.
+         */
+        std::string get_kernel_vrf(
+            _In_ sai_object_id_t vr_oid);
+
+        sai_status_t create_decap_host_path(
+            _Inout_ TunnelVPPData& tunnel_data,
+            _In_ const char* hw_bvi_ifname);
+
+        void remove_decap_host_path(
+            _Inout_ TunnelVPPData& tunnel_data,
+            _In_ const char* hw_bvi_ifname);
         //nexthop SAI object ID to sw_if_index map
         std::unordered_map<sai_object_id_t, TunnelVPPData> m_tunnel_encap_nexthop_map;
         // Map from VNI to VPP tunnel data (L2 VXLAN / EVPN)
