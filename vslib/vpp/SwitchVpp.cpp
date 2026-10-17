@@ -1278,13 +1278,10 @@ void SwitchVpp::processFdbEntriesForAging()
 }
 
 /*
- * Static trampoline: called on the VPP API receive thread when VPP pushes a
- * batch of MAC learn/age/move events.  Must NOT acquire m_apimutex — just
- * enqueue for safe dispatch by processFdbEntriesForAging() under the mutex.
- *
- * TODO: MAC events currently arrive on the shared VPP API socket and are
- * dispatched synchronously inside the WR() polling loop. Move to a separate
- * event socket in the future.
+ * Static trampoline: called on the thread reading the VPP event socket
+ * (normally the vpp event thread) when VPP pushes a batch of MAC
+ * learn/age/move events.  Must NOT acquire m_apimutex — just enqueue for safe
+ * dispatch by processFdbEntriesForAging() under the mutex.
  */
 void SwitchVpp::staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx)
 {
