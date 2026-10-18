@@ -575,7 +575,10 @@ void SwitchVpp::vppProcessEvents ()
 {
     SWSS_LOG_ENTER();
 
-    const struct timespec req = {2, 0};
+    // The thread wakes as soon as VPP pushes an event (MAC learn/age/move,
+    // link state, BFD); this only bounds the wait between liveness/reconnect
+    // pings when nothing arrives.
+    const int event_sync_interval_ms = 2000;
     vpp_event_info_t *evp;
     int ret;
 
@@ -585,10 +588,12 @@ void SwitchVpp::vppProcessEvents ()
     m_operResyncDue.store(true, std::memory_order_relaxed);
 
     while(m_run_vpp_events_thread) {
-        nanosleep(&req, NULL);
+        vpp_wait_for_events(event_sync_interval_ms);
 
+        // Pings, so it returns even if another reader already drained the socket
         ret = vpp_sync_for_events();
-        SWSS_LOG_NOTICE("Checking for any VS events status %d", ret);
+        // Runs once per event batch now, so keep it at DEBUG; failures log below
+        SWSS_LOG_DEBUG("Checking for any VS events status %d", ret);
         if (ret < 0)
         {
             SWSS_LOG_WARN("vpp_sync_for_events failed (%d); event socket reconnect attempted", ret);

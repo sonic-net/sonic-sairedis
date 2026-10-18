@@ -573,6 +573,7 @@ typedef enum {
     extern int interface_get_state(const char *hwif_name, bool *link_is_up);
     extern int vpp_refresh_interface_speed(const char *hwif_name);
     extern int vpp_get_interface_speed(const char *hwif_name, uint32_t *speed);
+    extern int vpp_wait_for_events(int timeout_ms);
     extern int vpp_sync_for_events();
     extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
     extern int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
@@ -610,14 +611,17 @@ typedef enum {
     } vpp_mac_event_t;
 
     /* Batch callback: invoked once per l2_macs_event message with all entries.
-     * Called on the VPP API receive thread — must NOT acquire m_apimutex. */
+     * Called on the thread reading the VPP event socket (the vpp event thread),
+     * under EVENT_LOCK — must NOT acquire m_apimutex. */
     typedef void (*vpp_mac_event_cb_fn)(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
 
-    /* Register/deregister for push-based MAC learn/age/move events from VPP.
-     * cb is invoked on the VPP API receive thread — implementations MUST NOT
-     * acquire the saivpp main mutex (m_apimutex) directly; enqueue the event
-     * and process it from a thread that safely holds the mutex. */
-    extern int vpp_want_l2_macs_events2(bool enable, vpp_mac_event_cb_fn cb, void *ctx);
+    /* Set (cb != NULL) or clear (cb == NULL) the receiver of push-based MAC
+     * learn/age/move events. The VPP subscription itself is made by
+     * init_vpp_client() along with interface and BFD events; events arriving
+     * while no callback is set are dropped. Implementations MUST NOT acquire
+     * the saivpp main mutex (m_apimutex) directly; enqueue the event and
+     * process it from a thread that safely holds the mutex. */
+    extern void vpp_set_mac_event_cb(vpp_mac_event_cb_fn cb, void *ctx);
 
     /* Set the L2 FIB scan delay (in units of 10ms, default=10 → 100ms).
      * Reduces the interval between VPP scanning for aged/moved MACs. */
