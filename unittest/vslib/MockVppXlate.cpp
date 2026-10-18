@@ -211,9 +211,8 @@ extern "C" int __wrap_refresh_interfaces_list() {
     SWSS_LOG_ENTER();
     return 0;
 }
-extern "C" int __wrap_vpp_want_l2_macs_events2(bool, vpp_mac_event_cb_fn, void *) {
+extern "C" void __wrap_vpp_set_mac_event_cb(vpp_mac_event_cb_fn, void *) {
     SWSS_LOG_ENTER();
-    return 0;
 }
 extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
     SWSS_LOG_ENTER();

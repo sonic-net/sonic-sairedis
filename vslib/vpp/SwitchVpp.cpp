@@ -87,8 +87,8 @@ SwitchVpp::~SwitchVpp()
 {
     SWSS_LOG_ENTER();
 
-    // Deregister VPP MAC events before stopping the thread so no callback
-    // fires against a partially-destroyed object during join().
+    // Clear the VPP MAC event callback before stopping the thread so no
+    // callback fires against a partially-destroyed object during join().
     deinitFdbEventHandling();
 
     // Signal the vpp events thread to stop
@@ -119,27 +119,24 @@ void SwitchVpp::deinitFdbEventHandling()
 {
     SWSS_LOG_ENTER();
 
-    // Deregister MAC event callback before destroying state.
-    // Without this, VPP may deliver a batch after destruction and
-    // staticMacEventCb will dereference a dangling `this`.
-    vpp_want_l2_macs_events2(false, nullptr, nullptr);
+    // Clear the MAC event callback before destroying state. Without this,
+    // VPP may deliver a batch after destruction and staticMacEventCb will
+    // dereference a dangling `this`. The VPP subscription itself stays, like
+    // the interface and BFD ones; events are dropped while no callback is set.
+    vpp_set_mac_event_cb(nullptr, nullptr);
     m_fdbAgingWakeFn = nullptr;
 }
 
 void SwitchVpp::initFdbEventHandling(std::function<void()> fn)
 {
-    // Store the functor first — staticMacEventCb may fire immediately after
-    // vpp_want_l2_macs_events2() returns, so m_fdbAgingWakeFn must be set
-    // before we register with VPP.
+    // Store the functor first — staticMacEventCb may fire as soon as the
+    // callback is set, so m_fdbAgingWakeFn must be set before registering.
     m_fdbAgingWakeFn = std::move(fn);
 
-    vpp_l2fib_set_scan_delay(1);  /* scan interval = 1 unit = 10ms */
-    int ret = vpp_want_l2_macs_events2(true, &SwitchVpp::staticMacEventCb, this);
-    if (ret == 0)
-        SWSS_LOG_NOTICE("FDB: registered for VPP L2 MAC push events");
-    else
-        SWSS_LOG_ERROR("FDB: vpp_want_l2_macs_events2 failed (%d), "
-                       "FDB event generation will be inactive", ret);
+    // init_vpp_client() already subscribed to VPP MAC events, together with
+    // interface and BFD events; this only routes them to this switch.
+    vpp_set_mac_event_cb(&SwitchVpp::staticMacEventCb, this);
+    SWSS_LOG_NOTICE("FDB: registered for VPP L2 MAC push events");
 }
 
 sai_status_t SwitchVpp::create_qos_queues_per_port(
@@ -1412,13 +1409,10 @@ void SwitchVpp::processFdbEntriesForAging()
 }
 
 /*
- * Static trampoline: called on the VPP API receive thread when VPP pushes a
- * batch of MAC learn/age/move events.  Must NOT acquire m_apimutex — just
- * enqueue for safe dispatch by processFdbEntriesForAging() under the mutex.
- *
- * TODO: MAC events currently arrive on the shared VPP API socket and are
- * dispatched synchronously inside the WR() polling loop. Move to a separate
- * event socket in the future.
+ * Static trampoline: called on the thread reading the VPP event socket
+ * (normally the vpp event thread) when VPP pushes a batch of MAC
+ * learn/age/move events.  Must NOT acquire m_apimutex — just enqueue for safe
+ * dispatch by processFdbEntriesForAging() under the mutex.
  */
 void SwitchVpp::staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx)
 {

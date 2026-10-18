@@ -19,6 +19,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <assert.h>
+#include <errno.h>
+#include <poll.h>
+#include <string.h>
 #include "sai.h"
 
 #include <vat/vat.h>
@@ -745,6 +748,7 @@ static void vpp_evq_init ()
 static int vpp_acl_counters_enable_disable(bool enable);
 static int vpp_intf_events_enable_disable(bool enable);
 static int vpp_bfd_events_enable_disable(bool enable);
+static int vpp_l2_macs_events_enable_disable(bool enable);
 static int vpp_event_client_setup(void);
 static int vpp_event_connect(void);
 static int vpp_event_reconnect(void);
@@ -1472,8 +1476,9 @@ vl_api_l2fib_set_scan_delay_reply_t_handler (vl_api_l2fib_set_scan_delay_reply_t
 }
 
 /*
- * Handler for unsolicited L2_MACS_EVENT notifications pushed by VPP.
- * Called on VPP's API receive thread — MUST NOT acquire the saivpp main
+ * Handler for unsolicited L2_MACS_EVENT notifications pushed by VPP on the
+ * event socket. Runs under EVENT_LOCK on the thread reading that socket
+ * (normally the vpp event thread) — MUST NOT acquire the saivpp main
  * mutex.  Callers register a callback that enqueues the event for safe
  * processing on a thread that holds the mutex.
  */
@@ -2541,6 +2546,10 @@ vpp_event_reconnect (void)
     if (vpp_bfd_events_enable_disable(true) != 0)
         return -1;
 
+    /* MAC events are delivered to the subscribing connection: re-subscribe on the new one. */
+    if (vpp_l2_macs_events_enable_disable(true) != 0)
+        return -1;
+
     SAIVPP_INFO("vpp event socket reconnect successful\n");
     return 0;
 }
@@ -2905,6 +2914,9 @@ int init_vpp_client()
         /* Enable ARP pass through in linux-cp */
         vpp_lcp_ethertype_enable(0x0806);
 
+        /* Scan the L2FIB for MAC learn/age/move events every 10ms (VPP default 100ms) */
+        vpp_l2fib_set_scan_delay(1);
+
         /*
          * Bring up the dedicated event connection before subscribing to any
          * VPP event source. The want_*_events registrations below are issued
@@ -2923,6 +2935,14 @@ int init_vpp_client()
 
             /* Register with VPP for BFD notifications */
             vpp_bfd_events_enable_disable(true);
+
+            /*
+             * Register with VPP for L2 MAC learn/age/move notifications. They are
+             * handed to the callback set by vpp_set_mac_event_cb() and dropped
+             * until one is set; none can be lost here, since VPP flushes its
+             * L2FIB on this registration and no bridge domain exists yet.
+             */
+            vpp_l2_macs_events_enable_disable(true);
         }
 
         /* Enable BFD multihop support in VPP */
@@ -5167,6 +5187,33 @@ int vpp_get_interface_speed (const char *hwif_name, uint32_t *speed)
 }
 
 /*
+ * Block until VPP pushes a message on the event socket or timeout_ms elapses,
+ * so the event thread dispatches MAC/interface/BFD events as they arrive
+ * instead of on a fixed tick. Only the event thread reconnects the event
+ * socket, so its fd is stable here without EVENT_LOCK; even a stale fd merely
+ * causes an early or late wakeup, because the caller always follows up with
+ * the ping in vpp_sync_for_events(). A disconnected client (fd 0 after
+ * vl_socket_client_disconnect2) polls no fd, which just sleeps for the timeout.
+ */
+int vpp_wait_for_events (int timeout_ms)
+{
+    struct pollfd pfd;
+    int rv;
+
+    pfd.fd = (event_client_connected && event_socket_client_main.socket_fd > 0) ?
+        event_socket_client_main.socket_fd : -1;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+
+    rv = poll(&pfd, 1, timeout_ms);
+    if (rv < 0 && errno != EINTR) {
+        SAIVPP_WARN("poll on vpp event socket failed: %s", strerror(errno));
+    }
+
+    return rv;
+}
+
+/*
  * Synchronize with VPP via the dedicated event socket. Runs under EVENT_LOCK;
  * must not acquire VPP_LOCK (see EVENT_LOCK comment above).
  */
@@ -7312,13 +7359,48 @@ int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
  * These must appear after l2_msg_id_base and __plugin_msg_base declarations.
  * ========================================================================= */
 
-int
-vpp_want_l2_macs_events2 (bool enable, vpp_mac_event_cb_fn cb, void *ctx)
+/*
+ * Issue WANT_L2_MACS_EVENTS2 on the dedicated event connection, like interface
+ * and BFD events: from init_vpp_client() and again from vpp_event_reconnect().
+ * VPP pushes L2_MACS_EVENT to the client index that subscribed; only the event
+ * socket is read continuously (vpp_sync_for_events), whereas on the command
+ * socket the events sat unread until an unrelated request happened to poll it,
+ * delaying FDB learn/age notifications indefinitely.
+ */
+static int
+vpp_l2_macs_events_enable_disable (bool enable)
 {
-    vat_main_t *vam = &vat_main;
+    vat_main_t *vam = &vat_event_main;
     vl_api_want_l2_macs_events2_t *mp;
     int ret;
 
+    EVENT_LOCK();
+    tl_cur_vam = &vat_event_main;
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M_EV (WANT_L2_MACS_EVENTS2, mp);
+    mp->enable_disable = enable ? 1 : 0;
+    // Set the maximum number of MAC entries in each event to 10
+    // Each entry can contain up to 10 MACs, so 100 MACs per event
+    mp->max_macs_in_event = 10;
+    mp->pid = htonl((uint32_t)getpid());
+
+    S_EV (mp);
+    WR_EV (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) enable %d", __func__, ret, enable); }
+    else { SAIVPP_INFO("%s enable %d", __func__, enable); }
+
+    tl_cur_vam = NULL;
+    EVENT_UNLOCK();
+
+    return ret;
+}
+
+void
+vpp_set_mac_event_cb (vpp_mac_event_cb_fn cb, void *ctx)
+{
     /*
      * NOTE: Single-switch assumption: VPP has one L2 MAC event stream per process.
      * g_mac_event_cb/ctx are process-globals — the last registration wins and
@@ -7328,27 +7410,21 @@ vpp_want_l2_macs_events2 (bool enable, vpp_mac_event_cb_fn cb, void *ctx)
      * Supporting multiple switches would require demultiplexing events by
      * sw_if_index at this layer.
      */
-    if (enable) {
+    if (cb) {
         assert(g_mac_event_cb == NULL && "only one switch may register MAC events at a time");
     }
 
-    g_mac_event_cb = enable ? cb : NULL;
-    g_mac_event_ctx = enable ? ctx : NULL;
+    /*
+     * The callback runs on the thread reading the event socket, always under
+     * EVENT_LOCK, so swap it under that lock: once a clear returns, no handler
+     * can still be calling into the old ctx.
+     */
+    EVENT_LOCK();
 
-    VPP_LOCK();
-    __plugin_msg_base = l2_msg_id_base;
+    g_mac_event_cb = cb;
+    g_mac_event_ctx = cb ? ctx : NULL;
 
-    M(WANT_L2_MACS_EVENTS2, mp);
-    mp->enable_disable = enable ? 1 : 0;
-    // Set the maximum number of MAC entries in each event to 10
-    // Each entry can contain up to 10 MACs, so 100 MACs per event
-    mp->max_macs_in_event = 10;
-    mp->pid = htonl((uint32_t)getpid());
-    S(mp);
-    WR(ret);
-
-    VPP_UNLOCK();
-    return ret;
+    EVENT_UNLOCK();
 }
 
 int
