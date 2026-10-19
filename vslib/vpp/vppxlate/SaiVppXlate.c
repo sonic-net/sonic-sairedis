@@ -2640,7 +2640,6 @@ static int
 vpp_event_reconnect (void)
 {
     vat_main_t *vam = &vat_event_main;
-    int rv;
 
     SAIVPP_INFO("attempting vpp event socket reconnect\n");
 
@@ -2655,10 +2654,9 @@ vpp_event_reconnect (void)
     event_socket_client_main.control_pings_outstanding = 0;
     event_client_connected = 0;
     vam->result_ready = 0;
-    rv = vpp_event_connect();
     EVENT_UNLOCK();
 
-    if (rv != 0)
+    if (vpp_event_connect() != 0)
         return -1;
 
     if (vpp_event_subscribe() != 0)
@@ -7821,10 +7819,7 @@ vpp_l2fib_dump (uint32_t bd_id, vpp_l2fib_entry_cb_fn cb, void *cb_ctx)
             cb(e, cb_ctx);
     }
 
-    /* clib heap: under the VPP mutex */
-    VPP_LOCK();
     vec_free(ctx.entries);
-    VPP_UNLOCK();
 
     return ret;
 }
