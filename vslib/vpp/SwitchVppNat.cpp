@@ -698,6 +698,9 @@ sai_status_t SwitchVppNat::setEnable(
             return SAI_STATUS_SUCCESS;
         }
 
+        // sessions 0 takes nat44-ed's default session table size:
+        // nat44_plugin_enable() sets 63 * 1024 (64512) sessions per worker
+        // thread when the request carries 0
         int rc = vpp_nat44_ed_enable_disable(true, 0);
 
         if (rc != 0)
