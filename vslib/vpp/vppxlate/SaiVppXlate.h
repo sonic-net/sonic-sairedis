@@ -534,6 +534,10 @@ typedef enum {
         VPP_MAC_ACTION_ADD    = 0,  /* newly learned */
         VPP_MAC_ACTION_DELETE = 1,  /* aged out */
         VPP_MAC_ACTION_MOVE   = 2,  /* moved to a different port */
+        /* Not from VPP: the event connection was re-established and MAC events
+         * may have been lost. mac/sw_if_index are unused; the consumer should
+         * reconcile its FDB with vpp_l2fib_dump(). */
+        VPP_MAC_ACTION_RESYNC = 3,
     } vpp_mac_action_t;
 
     /* MAC event callback types for push-based FDB notification via WANT_L2_MACS_EVENTS2 */
@@ -543,7 +547,9 @@ typedef enum {
         uint8_t  action; /* vpp_mac_action_t */
     } vpp_mac_event_t;
 
-    /* Batch callback: invoked once per l2_macs_event message with all entries.
+    /* Batch callback: invoked once per l2_macs_event message with all entries,
+     * and with a single VPP_MAC_ACTION_RESYNC entry after the event connection
+     * is re-established.
      * Called on the thread reading the VPP event socket (the vpp event thread),
      * under EVENT_LOCK — must NOT acquire m_apimutex. */
     typedef void (*vpp_mac_event_cb_fn)(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
@@ -559,6 +565,21 @@ typedef enum {
     /* Set the L2 FIB scan delay (in units of 10ms, default=10 → 100ms).
      * Reduces the interval between VPP scanning for aged/moved MACs. */
     extern int vpp_l2fib_set_scan_delay(uint16_t delay_10ms);
+
+    /* One VPP L2FIB entry, as reported by vpp_l2fib_dump() */
+    typedef struct {
+        uint8_t  mac[6];
+        uint32_t bd_id;
+        uint32_t sw_if_index;
+        bool     is_static; /* static, BVI or filter entry */
+    } vpp_l2fib_entry_t;
+
+    typedef void (*vpp_l2fib_entry_cb_fn)(const vpp_l2fib_entry_t *entry, void *ctx);
+
+    /* Dump VPP's L2FIB (bd_id ~0u: all bridge domains) on the command
+     * connection; cb is called for each entry once the dump has completed,
+     * outside the VPP API lock. Returns 0 on success. */
+    extern int vpp_l2fib_dump(uint32_t bd_id, vpp_l2fib_entry_cb_fn cb, void *ctx);
 
     /* Reverse-lookup: return the VPP sw_if_index for a given hw interface name,
      * or ~0u if not found. */
