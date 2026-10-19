@@ -56,7 +56,8 @@ tests_SOURCES = main.cpp \
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
 				TestSwitchVppPbh.cpp \
-				MockVppXlate.cpp MockVppXlate.h
+				MockVppXlate.cpp MockVppXlate.h \
+				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
 				create_sub_interface delete_sub_interface configure_lcp_interface \
