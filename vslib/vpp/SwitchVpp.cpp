@@ -1565,37 +1565,83 @@ sai_status_t SwitchVpp::create(
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
-        m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry(serializedObjectId, attr_count, attr_list);
-        return SAI_STATUS_SUCCESS;
+        bool is_l2_vni_to_vlan = false;
+        for (uint32_t i = 0; i < attr_count; ++i) {
+            if (attr_list[i].id == SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE &&
+                attr_list[i].value.s32 == SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID) {
+                is_l2_vni_to_vlan = true;
+                break;
+            }
+        }
+
+        sai_status_t status = m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry(
+            serializedObjectId, attr_count, attr_list);
+        if (!is_l2_vni_to_vlan) {
+            return SAI_STATUS_SUCCESS;
+        }
+        if (status != SAI_STATUS_SUCCESS) {
+            sai_status_t rollback_status = remove_internal(object_type, serializedObjectId);
+            if (rollback_status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to roll back tunnel map entry %s after "
+                               "data-plane create failure: status=%d",
+                               serializedObjectId.c_str(), rollback_status);
+            }
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY)
     {
-        // Check if this is an IPINIP tunnel term
+        int32_t tunnel_type = -1;
         for (uint32_t i = 0; i < attr_count; i++) {
-            if (attr_list[i].id == SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE &&
-                attr_list[i].value.s32 == SAI_TUNNEL_TYPE_IPINIP) {
-                CHECK_STATUS(m_tunnel_mgr_ipip.create_ipip_tunnel_term(
-                    serializedObjectId, switch_id, attr_count, attr_list));
+            if (attr_list[i].id == SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE) {
+                tunnel_type = attr_list[i].value.s32;
                 break;
             }
         }
-        return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
+
+        if (tunnel_type == SAI_TUNNEL_TYPE_IPINIP) {
+            CHECK_STATUS(m_tunnel_mgr_ipip.create_ipip_tunnel_term(
+                serializedObjectId, switch_id, attr_count, attr_list));
+            return create_internal(
+                object_type, serializedObjectId, switch_id, attr_count, attr_list);
+        }
+
+        if (tunnel_type == SAI_TUNNEL_TYPE_VXLAN) {
+            // Reject duplicates and resource limits before touching the data
+            // plane, then publish only after programming succeeds.
+            CHECK_STATUS(check_create_internal(object_type, serializedObjectId));
+
+            std::vector<uint32_t> created_vnis;
+            CHECK_STATUS(m_tunnel_mgr.create_l2_vxlan_tunnel_term(
+                serializedObjectId, attr_count, attr_list, created_vnis));
+
+            sai_status_t status = create_internal(
+                object_type, serializedObjectId, switch_id, attr_count, attr_list);
+            if (status != SAI_STATUS_SUCCESS) {
+                sai_status_t rollback_status =
+                    m_tunnel_mgr.rollback_l2_vxlan_tunnels(created_vnis);
+                if (rollback_status != SAI_STATUS_SUCCESS) {
+                    return rollback_status;
+                }
+            }
+            return status;
+        }
+
+        return create_internal(
+            object_type, serializedObjectId, switch_id, attr_count, attr_list);
     }
 
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
 }
 
-sai_status_t SwitchVpp::create_internal(
+sai_status_t SwitchVpp::check_create_internal(
         _In_ sai_object_type_t object_type,
-        _In_ const std::string &serializedObjectId,
-        _In_ sai_object_id_t switch_id,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ const std::string &serializedObjectId) const
 {
     SWSS_LOG_ENTER();
 
-    auto &objectHash = m_objectHash.at(object_type);
+    const auto &objectHash = m_objectHash.at(object_type);
 
     if (m_switchConfig->m_resourceLimiter)
     {
@@ -1631,6 +1677,21 @@ sai_status_t SwitchVpp::create_internal(
         }
     }
 
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::create_internal(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &serializedObjectId,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    CHECK_STATUS(check_create_internal(object_type, serializedObjectId));
+
+    auto &objectHash = m_objectHash.at(object_type);
     if (objectHash.find(serializedObjectId) == objectHash.end())
     {
         /*
@@ -2008,7 +2069,8 @@ sai_status_t SwitchVpp::remove(
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
-        m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry_removal(serializedObjectId);
+        CHECK_STATUS(m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry_removal(
+            serializedObjectId));
         return remove_internal(object_type, serializedObjectId);
     }
 
@@ -2018,6 +2080,21 @@ sai_status_t SwitchVpp::remove(
         if (status != SAI_STATUS_SUCCESS) {
             SWSS_LOG_ERROR("Failed to remove IPinIP tunnel decap term");
             return status;
+        }
+
+        auto term_obj = get_sai_object(object_type, serializedObjectId);
+        if (term_obj) {
+            sai_attribute_t attr;
+            attr.id = SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE;
+            if (term_obj->get_attr(attr) == SAI_STATUS_SUCCESS &&
+                attr.value.s32 == SAI_TUNNEL_TYPE_VXLAN) {
+                status = m_tunnel_mgr.remove_l2_vxlan_tunnel_term(serializedObjectId);
+                if (status != SAI_STATUS_SUCCESS) {
+                    SWSS_LOG_ERROR("Failed to remove L2 VXLAN decap term %s",
+                                   serializedObjectId.c_str());
+                    return status;
+                }
+            }
         }
         return remove_internal(object_type, serializedObjectId);
     }
