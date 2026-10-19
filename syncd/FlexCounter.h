@@ -51,14 +51,12 @@ namespace syncd
 
         struct ObjectRegistration
         {
-            uint64_t generation;
-
-            uint64_t incarnation;
+            uint64_t epoch;
 
             sai_object_id_t rid;
         };
 
-        using ObjectGenerationMap = std::map<std::pair<std::string, sai_object_id_t>, ObjectRegistration>;
+        using ObjectRegistrationMap = std::map<std::pair<std::string, sai_object_id_t>, ObjectRegistration>;
 
         struct ObjectRid
         {
@@ -72,7 +70,7 @@ namespace syncd
         BaseCounterContext(const std::string &name, const std::string &instance);
 
         void setPollingState(
-                _In_ const ObjectGenerationMap& generations,
+                _In_ const ObjectRegistrationMap& registrations,
                 _In_ const bool& yielded);
 
         void clearSamples(
@@ -146,9 +144,6 @@ namespace syncd
         bool isPollRegistrationCurrent(
                 _In_ sai_object_id_t vid) const;
 
-        bool isPollIncarnationCurrent(
-                _In_ sai_object_id_t vid) const;
-
         void markSampled(
                 _In_ sai_object_id_t vid);
 
@@ -161,13 +156,13 @@ namespace syncd
         std::string m_bulkChunkSizePerPrefix;
         std::map<std::pair<sai_object_id_t, sai_object_id_t>, uint32_t> m_failedPolls;
 
-        const ObjectGenerationMap* m_objectGenerations = nullptr;
+        const ObjectRegistrationMap* m_objectRegistrations = nullptr;
 
         const bool* m_pollYielded = nullptr;
 
-        std::map<sai_object_id_t, ObjectRegistration> m_pollGenerations;
+        std::map<sai_object_id_t, uint64_t> m_pollEpochs;
 
-        std::map<sai_object_id_t, uint64_t> m_sampledGenerations;
+        std::map<sai_object_id_t, uint64_t> m_sampledEpochs;
 
         sai_stats_mode_t m_pollStatsMode = SAI_STATS_MODE_READ;
 
@@ -345,9 +340,9 @@ namespace syncd
 
             bool m_isDiscarded;
 
-            BaseCounterContext::ObjectGenerationMap m_objectGenerations;
+            BaseCounterContext::ObjectRegistrationMap m_objectRegistrations;
 
-            uint64_t m_nextObjectGeneration = 0;
+            uint64_t m_nextObjectEpoch = 0;
 
             bool m_pollYielded = false;
 

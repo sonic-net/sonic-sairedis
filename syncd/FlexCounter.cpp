@@ -145,12 +145,12 @@ m_instanceId(instance)
 }
 
 void BaseCounterContext::setPollingState(
-        _In_ const ObjectGenerationMap& generations,
+        _In_ const ObjectRegistrationMap& registrations,
         _In_ const bool& yielded)
 {
     SWSS_LOG_ENTER();
 
-    m_objectGenerations = &generations;
+    m_objectRegistrations = &registrations;
     m_pollYielded = &yielded;
 }
 
@@ -159,21 +159,21 @@ void BaseCounterContext::clearSamples(
 {
     SWSS_LOG_ENTER();
 
-    m_sampledGenerations.clear();
+    m_sampledEpochs.clear();
     m_pollStatsMode = statsMode;
-    m_pollGenerations.clear();
+    m_pollEpochs.clear();
 
-    if (m_objectGenerations != nullptr)
+    if (m_objectRegistrations != nullptr)
     {
-        // Freeze admission revisions and physical identities for the whole
-        // context, including VIDs split across scalar and bulk prefixes. New
-        // registrations are first admitted in the next sweep.
-        auto generation = m_objectGenerations->lower_bound({m_name, SAI_NULL_OBJECT_ID});
+        // Freeze registration epochs for the whole context, including VIDs
+        // split across scalar and bulk prefixes. New registrations are first
+        // admitted in the next sweep.
+        auto registration = m_objectRegistrations->lower_bound({m_name, SAI_NULL_OBJECT_ID});
 
-        while (generation != m_objectGenerations->end() && generation->first.first == m_name)
+        while (registration != m_objectRegistrations->end() && registration->first.first == m_name)
         {
-            m_pollGenerations.emplace(generation->first.second, generation->second);
-            ++generation;
+            m_pollEpochs.emplace(registration->first.second, registration->second.epoch);
+            ++registration;
         }
     }
 }
@@ -183,33 +183,16 @@ bool BaseCounterContext::isPollRegistrationCurrent(
 {
     SWSS_LOG_ENTER();
 
-    if (m_objectGenerations == nullptr)
+    if (m_objectRegistrations == nullptr)
     {
         return true;
     }
 
-    const auto initial = m_pollGenerations.find(vid);
-    const auto current = m_objectGenerations->find({m_name, vid});
+    const auto initial = m_pollEpochs.find(vid);
+    const auto current = m_objectRegistrations->find({m_name, vid});
 
-    return initial != m_pollGenerations.end() && current != m_objectGenerations->end() &&
-        initial->second.generation == current->second.generation;
-}
-
-bool BaseCounterContext::isPollIncarnationCurrent(
-        _In_ sai_object_id_t vid) const
-{
-    SWSS_LOG_ENTER();
-
-    if (m_objectGenerations == nullptr)
-    {
-        return true;
-    }
-
-    const auto initial = m_pollGenerations.find(vid);
-    const auto current = m_objectGenerations->find({m_name, vid});
-
-    return initial != m_pollGenerations.end() && current != m_objectGenerations->end() &&
-        initial->second.incarnation == current->second.incarnation;
+    return initial != m_pollEpochs.end() && current != m_objectRegistrations->end() &&
+        initial->second == current->second.epoch;
 }
 
 void BaseCounterContext::markSampled(
@@ -217,13 +200,13 @@ void BaseCounterContext::markSampled(
 {
     SWSS_LOG_ENTER();
 
-    if (m_objectGenerations != nullptr && isPollIncarnationCurrent(vid))
+    if (m_objectRegistrations != nullptr && isPollRegistrationCurrent(vid))
     {
-        const auto generation = m_objectGenerations->find({m_name, vid});
+        const auto registration = m_objectRegistrations->find({m_name, vid});
 
-        if (generation != m_objectGenerations->end())
+        if (registration != m_objectRegistrations->end())
         {
-            m_sampledGenerations[vid] = generation->second.incarnation;
+            m_sampledEpochs[vid] = registration->second.epoch;
         }
     }
 }
@@ -246,17 +229,17 @@ bool BaseCounterContext::isSampleReady(
         return true;
     }
 
-    const auto sample = m_sampledGenerations.find(vid);
+    const auto sample = m_sampledEpochs.find(vid);
 
-    if (sample == m_sampledGenerations.end() || m_objectGenerations == nullptr)
+    if (sample == m_sampledEpochs.end() || m_objectRegistrations == nullptr)
     {
         return false;
     }
 
-    const auto generation = m_objectGenerations->find({m_name, vid});
+    const auto registration = m_objectRegistrations->find({m_name, vid});
 
-    return generation != m_objectGenerations->end() &&
-        generation->second.incarnation == sample->second;
+    return registration != m_objectRegistrations->end() &&
+        registration->second.epoch == sample->second;
 }
 
 void BaseCounterContext::addPlugins(
@@ -1779,10 +1762,10 @@ public:
     {
         SWSS_LOG_ENTER();
 
-        // Snapshot scalar and every bulk prefix before yielding. A same-RID
-        // configuration update must not leave a READ_AND_CLEAR sample with only
-        // some prefixes refreshed: finish the old admitted plan, then use the
-        // new configuration next sweep. Never copy unused bulk result buffers.
+        // Snapshot scalar and every bulk prefix before yielding. Prefix updates
+        // may rebuild the live bulk contexts, so finish the old admitted plan
+        // before using the new configuration next sweep. Never copy unused bulk
+        // result buffers.
         std::vector<std::pair<sai_object_id_t, CounterIdsType>> scalarPlan;
         scalarPlan.reserve(m_objectIdsMap.size());
 
@@ -1835,7 +1818,7 @@ public:
                 return;
             }
 
-            if (!isPollIncarnationCurrent(vid))
+            if (!isPollRegistrationCurrent(vid))
             {
                 continue;
             }
@@ -2088,7 +2071,7 @@ private:
         SWSS_LOG_ENTER();
 
         // This immutable plan is independent of live prefix-context replacement.
-        // Physical incarnation checks still reject removed or replaced objects.
+        // Registration epoch checks still reject removed or replaced objects.
         const auto& objectVids = ctx.object_vids;
         const auto& objectKeys = ctx.object_keys;
         const auto& counterIds = ctx.counter_ids;
@@ -2120,7 +2103,7 @@ private:
 
             for (uint32_t i = current; i < current + count; ++i)
             {
-                if (isPollIncarnationCurrent(objectVids[i]))
+                if (isPollRegistrationCurrent(objectVids[i]))
                 {
                     vids.push_back(objectVids[i]);
                     keys.push_back(objectKeys[i]);
@@ -4736,9 +4719,9 @@ bool FlexCounter::hasSameRidRegistration(
 
     for (const auto& context : m_counterContext)
     {
-        const auto registration = m_objectGenerations.find({context.first, vid});
+        const auto registration = m_objectRegistrations.find({context.first, vid});
 
-        if (registration != m_objectGenerations.end() && registration->second.rid == rid)
+        if (registration != m_objectRegistrations.end() && registration->second.rid == rid)
         {
             return true;
         }
@@ -4755,16 +4738,15 @@ void FlexCounter::recordRegistration(
     SWSS_LOG_ENTER();
 
     const auto key = std::make_pair(name, vid);
-    const auto existing = m_objectGenerations.find(key);
-    const auto generation = ++m_nextObjectGeneration;
+    const auto existing = m_objectRegistrations.find(key);
 
-    // Configuration revisions fence admission to the current poll plan, but
-    // changing counters on the same object must not discard already-cleared
-    // samples. Removal erases the record, so even same-RID re-enrollment gets
-    // a new incarnation and cannot consume the previous object's sample.
-    const auto incarnation = existing != m_objectGenerations.end() && existing->second.rid == rid ?
-        existing->second.incarnation : generation;
-    m_objectGenerations[key] = {generation, incarnation, rid};
+    // Same-RID refreshes wait for the old sweep and plugins before enrollment,
+    // so one lifecycle epoch is sufficient for admission and sample validity.
+    // Removal erases the record: even same-RID re-enrollment must receive a
+    // new epoch and cannot consume the previous registration's sample.
+    const auto epoch = existing != m_objectRegistrations.end() && existing->second.rid == rid ?
+        existing->second.epoch : ++m_nextObjectEpoch;
+    m_objectRegistrations[key] = {epoch, rid};
 }
 
 void FlexCounter::enrollCounterObjects(
@@ -4807,7 +4789,7 @@ void FlexCounter::enrollCounterObjects(
             SWSS_LOG_ERROR("%s VID %s has conflicting SDK keys; removing all fragments and dropping registration",
                     name.c_str(), sai_serialize_object_id(vids[i]).c_str());
             context->removeObject(vids[i]);
-            m_objectGenerations.erase({name, vids[i]});
+            m_objectRegistrations.erase({name, vids[i]});
             continue;
         }
 
@@ -4850,22 +4832,22 @@ void FlexCounter::enrollCounterObjects(
 
             if (object == actual.end())
             {
-                m_objectGenerations.erase({name, vid});
+                m_objectRegistrations.erase({name, vid});
             }
             else if (!object->second.consistent)
             {
                 SWSS_LOG_ERROR("%s VID %s acquired conflicting SDK keys; removing all fragments",
                         name.c_str(), sai_serialize_object_id(vid).c_str());
                 context->removeObject(vid);
-                m_objectGenerations.erase({name, vid});
+                m_objectRegistrations.erase({name, vid});
             }
             else
             {
-                const auto registration = m_objectGenerations.find({name, vid});
+                const auto registration = m_objectRegistrations.find({name, vid});
 
                 // A rejected replacement can leave the old object enrolled.
-                // Preserve its revision/incarnation and any cleared sample.
-                if (object->second.rid == acceptedRids[i] || registration == m_objectGenerations.end() ||
+                // Preserve its registration epoch and any cleared sample.
+                if (object->second.rid == acceptedRids[i] || registration == m_objectRegistrations.end() ||
                         registration->second.rid != object->second.rid)
                 {
                     recordRegistration(name, vid, object->second.rid);
@@ -4934,7 +4916,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::getCounterContext(
     }
 
     auto counterContext = createCounterContext(name, m_instanceId);
-    counterContext->setPollingState(m_objectGenerations, m_pollYielded);
+    counterContext->setPollingState(m_objectRegistrations, m_pollYielded);
 
     if (m_noDoubleCheckBulkCapability)
     {
@@ -5509,7 +5491,7 @@ void FlexCounter::removeCounter(
 
     for (const auto& context : m_counterContext)
     {
-        m_objectGenerations.erase({context.first, vid});
+        m_objectRegistrations.erase({context.first, vid});
     }
 }
 

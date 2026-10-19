@@ -293,7 +293,9 @@ void testAddRemoveCounter(
     {
         values.emplace_back(SECONDARY_POLL_FACTOR_FIELD, secondaryPollFactor);
     }
-    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    // Chunk-size assertions describe the complete configured population, not
+    // intermediate enrollment snapshots. Enable polling only after setup.
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "disable");
     values.emplace_back(STATS_MODE_FIELD, statsMode);
     std::vector<swss::FieldValueTuple> fcValues = values;
     auto &bulkChunkSizeValues = bulkChunkSizeAfterPort ? fcValues : values;
@@ -345,6 +347,8 @@ void testAddRemoveCounter(
         }
     }
 
+    fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
+
     EXPECT_EQ(fc.isEmpty(), false);
 
     swss::DBConnector db("COUNTERS_DB", 0);
@@ -353,20 +357,26 @@ void testAddRemoveCounter(
 
     waitForCounterKeys(countersTable, object_ids.size());
 
-    // Wait for the first counter to be populated with a real value to ensure
-    // at least one real poll cycle has completed. If expected values are known,
-    // wait for the exact value; otherwise wait for any non-zero value (handles
-    // tests with initialization check phases that write zeros first).
-    std::string firstKey = toOid(object_ids[0]);
-    if (!expectedValues.empty())
+    // Wait for all fields before joining: stopping at the first published row
+    // can cancel the remaining polling plan. Joining also protects mock-owned
+    // maps during verification and excludes partial teardown populations from
+    // assertions about the steady-state chunk size.
+    for (const auto object_id : object_ids)
     {
-        waitForCounterValues(countersTable, firstKey,
-                {counterIdNames[0]}, {expectedValues[0]});
+        const auto key = toOid(object_id);
+        if (!expectedValues.empty())
+        {
+            waitForCounterValues(countersTable, key, counterIdNames, expectedValues);
+        }
+        else
+        {
+            for (const auto& counterId : counterIdNames)
+            {
+                waitForNonZeroCounterValue(countersTable, key, counterId);
+            }
+        }
     }
-    else
-    {
-        waitForNonZeroCounterValue(countersTable, firstKey, counterIdNames[0]);
-    }
+    fc.endFlexCounterThread();
 
     std::vector<std::string> keys;
     countersTable.getKeys(keys);
@@ -1051,24 +1061,33 @@ TEST(FlexCounter, queryCounterCapability)
         return SAI_STATUS_FAILURE;
     };
 
-    auto counterVerifyFunc = [] (swss::Table &countersTable, const std::string& key, const std::vector<std::string>& counterIdNames, const std::vector<std::string>& expectedValues)
-    {
-        std::string value;
-        countersTable.hget(key, "SAI_PORT_STAT_IF_IN_OCTETS", value);
-        EXPECT_EQ(value, "1000");
-        // SAI_PORT_STAT_IF_IN_UCAST_PKTS is not supported, shall not in countersTable
-        bool ret = countersTable.hget(key, "SAI_PORT_STAT_IF_IN_UCAST_PKTS", value);
-        EXPECT_EQ(false, ret);
-    };
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+    const auto oid = generateOids(1, SAI_OBJECT_TYPE_PORT).front();
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+    fc.addCounterPlugin({{POLL_INTERVAL_FIELD, "1000"}, {STATS_MODE_FIELD, STATS_MODE_READ}});
+    fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {oid}, {oid}, {{PORT_COUNTER_ID_LIST,
+            "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_UCAST_PKTS"}});
+    fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
+    EXPECT_FALSE(fc.isEmpty());
 
-    testAddRemoveCounter(
-        1,
-        SAI_OBJECT_TYPE_PORT,
-        PORT_COUNTER_ID_LIST,
-        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS"},
-        {},
-        counterVerifyFunc,
-        false);
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table countersTable(&db, COUNTERS_TABLE);
+    const auto key = toOid(oid);
+    // Only the supported field may appear; waiting for every requested field
+    // would incorrectly require the deliberately unsupported counter.
+    waitForCounterValues(countersTable, key, {"SAI_PORT_STAT_IF_IN_OCTETS"}, {"1000"});
+    fc.endFlexCounterThread();
+    EXPECT_EQ(countNonTimestampKeys(countersTable), 1u);
+    std::string value;
+    EXPECT_TRUE(countersTable.hget(key, "SAI_PORT_STAT_IF_IN_OCTETS", value));
+    EXPECT_EQ(value, "1000");
+    EXPECT_FALSE(countersTable.hget(key, "SAI_PORT_STAT_IF_IN_UCAST_PKTS", value));
+
+    fc.removeCounter(oid);
+    countersTable.del(key);
+    countersTable.del("TIME_STAMP");
+    EXPECT_TRUE(fc.isEmpty());
+    EXPECT_EQ(countNonTimestampKeys(countersTable), 0u);
 }
 
 TEST(FlexCounter, noSupportedCounters)
@@ -1628,7 +1647,7 @@ TEST(FlexCounter, bulkChunksize)
     // non zero unifiedBulkChunkSize indicates all counter IDs share the same bulk chunk size
     uint32_t unifiedBulkChunkSize = 0;
     int32_t initialCheckCount;
-    int32_t partialSupportingBulkObjectFactor;
+    int32_t partialSupportingBulkObjectFactor = 0;
     sai->mock_bulkGetStats = [&](sai_object_id_t,
                                 sai_object_type_t,
                                 uint32_t object_count,
@@ -3911,6 +3930,7 @@ namespace
             }
         }
 
+        const auto initialRegistrations = fc.m_objectRegistrations;
         swss::DBConnector db("COUNTERS_DB", 0);
         swss::Table countersTable(&db, COUNTERS_TABLE);
         for (auto oid : objects)
@@ -4123,6 +4143,44 @@ namespace
         EXPECT_TRUE(updateFinished) << "The updater waited for the rest of the polling sweep";
         EXPECT_FALSE(gate.readWhileUpdatePending())
                 << "A new SDK read started before queued registry updates drained";
+
+        // Registry writers have joined; the gated polling thread only reads
+        // this map. Do not acquire its mutex while a later SDK read is blocked.
+        const auto updatedRegistrations = fc.m_objectRegistrations;
+        for (const auto& initial : initialRegistrations)
+        {
+            const auto current = updatedRegistrations.find(initial.first);
+            const auto vid = initial.first.second;
+            const bool removed =
+                ((update == FlexCounterPendingUpdate::Remove ||
+                  update == FlexCounterPendingUpdate::RemoveMultiple) && vid == objects.back()) ||
+                (update == FlexCounterPendingUpdate::RemoveMultiple && vid == objects[1]) ||
+                (update == FlexCounterPendingUpdate::RemoveCurrent && vid == objects.front());
+            if (removed)
+            {
+                EXPECT_EQ(current, updatedRegistrations.end());
+                continue;
+            }
+            EXPECT_NE(current, updatedRegistrations.end());
+            if (current == updatedRegistrations.end())
+            {
+                continue;
+            }
+            if ((update == FlexCounterPendingUpdate::Reenroll ||
+                 update == FlexCounterPendingUpdate::RemoveAndReadd) && vid == objects.front())
+            {
+                EXPECT_NE(current->second.epoch, initial.second.epoch)
+                    << "Replacement or remove/re-add retained the old polling epoch";
+                EXPECT_EQ(current->second.rid,
+                        update == FlexCounterPendingUpdate::Reenroll ? addedObject : vid);
+            }
+            else
+            {
+                EXPECT_EQ(current->second.epoch, initial.second.epoch)
+                    << "An unchanged or deferred same-RID registration changed its polling epoch";
+                EXPECT_EQ(current->second.rid, initial.second.rid);
+            }
+        }
 
         // The completed sample must be flushed before yielding the lock,
         // including a READ_AND_CLEAR sample whose hardware value is now gone.
@@ -4572,7 +4630,7 @@ namespace
                 fc.addCounter(oid, oid, original);
             }
         }
-        const auto initialRegistrations = fc.m_objectGenerations;
+        const auto initialRegistrations = fc.m_objectRegistrations;
         if (rejectReplacement)
         {
             bool threw = false;
@@ -4602,7 +4660,7 @@ namespace
             }
             bool retained = false;
             bool accepted = !partialReplacement;
-            for (const auto& registration : fc.m_objectGenerations)
+            for (const auto& registration : fc.m_objectRegistrations)
             {
                 if (registration.first.second == target)
                 {
@@ -4613,9 +4671,8 @@ namespace
                     EXPECT_NE(previous, initialRegistrations.end());
                     if (previous != initialRegistrations.end())
                     {
-                        EXPECT_EQ(registration.second.generation, previous->second.generation);
-                        EXPECT_EQ(registration.second.incarnation, previous->second.incarnation)
-                            << "Rejected replacement must preserve the retained object's cleared-sample incarnation";
+                        EXPECT_EQ(registration.second.epoch, previous->second.epoch)
+                            << "Rejected replacement must preserve the retained object's cleared-sample epoch";
                     }
                 }
                 if (partialReplacement && registration.first.second == acceptedRid)
@@ -4629,8 +4686,8 @@ namespace
             EXPECT_TRUE(accepted);
             if (replacement == FlexCounterRejectedReplacement::ThrowingPartialBulk)
             {
-                EXPECT_TRUE(std::none_of(fc.m_objectGenerations.begin(), fc.m_objectGenerations.end(),
-                            [&](const BaseCounterContext::ObjectGenerationMap::value_type& registration)
+                EXPECT_TRUE(std::none_of(fc.m_objectRegistrations.begin(), fc.m_objectRegistrations.end(),
+                            [&](const BaseCounterContext::ObjectRegistrationMap::value_type& registration)
                             { return registration.first.second == rejectedRid; }))
                     << "A throwing fresh enrollment must not create a fictitious registration";
             }
@@ -4767,6 +4824,23 @@ namespace
         }
         EXPECT_EQ(updateThrew.load(), ending == FlexCounterRefreshEnd::UpdateException);
         EXPECT_EQ(pollThrew.load(), ending == FlexCounterRefreshEnd::PollException);
+        const auto updatedRegistrations = fc.m_objectRegistrations;
+        for (const auto& initial : initialRegistrations)
+        {
+            const auto current = updatedRegistrations.find(initial.first);
+            if (removeDuringRefresh && initial.first.second == objects.back())
+            {
+                EXPECT_EQ(current, updatedRegistrations.end());
+                continue;
+            }
+            EXPECT_NE(current, updatedRegistrations.end());
+            if (current != updatedRegistrations.end())
+            {
+                EXPECT_EQ(current->second.rid, initial.second.rid);
+                EXPECT_EQ(current->second.epoch, initial.second.epoch)
+                    << "Deferred refresh changed an existing registration's lifecycle epoch";
+            }
+        }
         if (ending == FlexCounterRefreshEnd::Complete || ending == FlexCounterRefreshEnd::UpdateException ||
                 ending == FlexCounterRefreshEnd::RemovePlugins || ending == FlexCounterRefreshEnd::AddPlugin)
         {
@@ -4965,7 +5039,7 @@ namespace
             {
                 SWSS_LOG_ENTER();
                 std::lock_guard<std::mutex> lock(counter->m_mtx);
-                return counter->m_objectGenerations.at({counter->m_counterContext.begin()->first, vid});
+                return counter->m_objectRegistrations.at({counter->m_counterContext.begin()->first, vid});
             }
 
             void setHardware(sai_object_id_t rid, uint64_t value)
@@ -5024,8 +5098,7 @@ namespace
         ASSERT_EQ(fixture.actual({b}).at(b).rid, b);
         const auto retained = fixture.registration(b);
         EXPECT_EQ(retained.rid, b);
-        EXPECT_EQ(retained.generation, original.generation);
-        EXPECT_EQ(retained.incarnation, original.incarnation);
+        EXPECT_EQ(retained.epoch, original.epoch);
 
         const std::string script = "redis.call('SELECT',ARGV[1]); local result=ARGV[2]..':" + fixture.pluginKey +
             "'; for _,key in ipairs(KEYS) do redis.call('HINCRBY',result,key,"
@@ -5225,15 +5298,14 @@ namespace
         };
         enroll(vid);
         ASSERT_FALSE(fc.isEmpty());
-        ASSERT_EQ(fc.m_objectGenerations.size(), 1u);
-        const auto originalRegistration = fc.m_objectGenerations.begin()->second;
+        ASSERT_EQ(fc.m_objectRegistrations.size(), 1u);
+        const auto originalRegistration = fc.m_objectRegistrations.begin()->second;
         enroll(replacementRid);
         EXPECT_EQ(replacementCalls.load(), 0u)
             << "Unsupported physical replacement must be rejected before probing the new SDK object";
-        ASSERT_EQ(fc.m_objectGenerations.size(), 1u);
-        EXPECT_EQ(fc.m_objectGenerations.begin()->second.rid, vid);
-        EXPECT_EQ(fc.m_objectGenerations.begin()->second.generation, originalRegistration.generation);
-        EXPECT_EQ(fc.m_objectGenerations.begin()->second.incarnation, originalRegistration.incarnation);
+        ASSERT_EQ(fc.m_objectRegistrations.size(), 1u);
+        EXPECT_EQ(fc.m_objectRegistrations.begin()->second.rid, vid);
+        EXPECT_EQ(fc.m_objectRegistrations.begin()->second.epoch, originalRegistration.epoch);
         table.del(toOid(vid));
         if (serdes)
         {
@@ -5251,8 +5323,8 @@ namespace
         EXPECT_EQ(originalReads.front(), vid) << "Rejected replacement changed the live polling RID";
         fc.removeCounter(vid);
         enroll(replacementRid);
-        ASSERT_EQ(fc.m_objectGenerations.size(), 1u);
-        EXPECT_EQ(fc.m_objectGenerations.begin()->second.rid, replacementRid);
+        ASSERT_EQ(fc.m_objectRegistrations.size(), 1u);
+        EXPECT_EQ(fc.m_objectRegistrations.begin()->second.rid, replacementRid);
         fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
         EXPECT_TRUE(gate.waitForReadCount(originalReads.size() + 1));
         fc.endFlexCounterThread();
@@ -5630,8 +5702,8 @@ TEST(FlexCounter, replacementExceptionAfterRemovalErasesObsoleteRegistration)
     throwAfterRemoval = true;
     EXPECT_THROW(fc.addCounter(vid, replacementRid, values), std::runtime_error);
     EXPECT_TRUE(fc.isEmpty());
-    EXPECT_TRUE(std::none_of(fc.m_objectGenerations.begin(), fc.m_objectGenerations.end(),
-                [&](const BaseCounterContext::ObjectGenerationMap::value_type& registration)
+    EXPECT_TRUE(std::none_of(fc.m_objectRegistrations.begin(), fc.m_objectRegistrations.end(),
+                [&](const BaseCounterContext::ObjectRegistrationMap::value_type& registration)
                 { return registration.first.second == vid; }))
         << "Neither the old RID nor the failed replacement is enrolled after the exception";
     EXPECT_EQ(fc.m_pendingUpdates.load(), 0u);
@@ -5639,8 +5711,8 @@ TEST(FlexCounter, replacementExceptionAfterRemovalErasesObsoleteRegistration)
     throwAfterRemoval = false;
     fc.addCounter(vid, replacementRid, values);
     EXPECT_FALSE(fc.isEmpty());
-    ASSERT_EQ(fc.m_objectGenerations.size(), 1u);
-    EXPECT_EQ(fc.m_objectGenerations.begin()->second.rid, replacementRid);
+    ASSERT_EQ(fc.m_objectRegistrations.size(), 1u);
+    EXPECT_EQ(fc.m_objectRegistrations.begin()->second.rid, replacementRid);
     fc.removeCounter(vid);
 }
 
@@ -5688,7 +5760,7 @@ TEST(FlexCounter, invalidBulkEnrollmentDoesNotProbeOrMutateLiveRegistrations)
     {
         fc.addCounter(oid, oid, values);
     }
-    const auto initial = fc.m_objectGenerations;
+    const auto initial = fc.m_objectRegistrations;
     calls = 0;
     bulkCounts.clear();
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {}, {}, values);
@@ -5696,14 +5768,13 @@ TEST(FlexCounter, invalidBulkEnrollmentDoesNotProbeOrMutateLiveRegistrations)
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {objects.front()}, objects, values);
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {objects.front(), objects.front()}, objects, values);
     EXPECT_EQ(calls, 0u);
-    ASSERT_EQ(fc.m_objectGenerations.size(), initial.size());
+    ASSERT_EQ(fc.m_objectRegistrations.size(), initial.size());
     for (const auto& registration : initial)
     {
-        const auto current = fc.m_objectGenerations.find(registration.first);
-        ASSERT_NE(current, fc.m_objectGenerations.end());
+        const auto current = fc.m_objectRegistrations.find(registration.first);
+        ASSERT_NE(current, fc.m_objectRegistrations.end());
         EXPECT_EQ(current->second.rid, registration.second.rid);
-        EXPECT_EQ(current->second.generation, registration.second.generation);
-        EXPECT_EQ(current->second.incarnation, registration.second.incarnation);
+        EXPECT_EQ(current->second.epoch, registration.second.epoch);
     }
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {objects.front(), objects.front()},
             {objects.front(), objects.front()}, values);
@@ -5771,12 +5842,12 @@ TEST(FlexCounter, conflictingPhysicalFragmentsAreQuarantinedTogether)
     EXPECT_EQ(calls, previousCalls) << "Quarantine must run before further support probes";
     EXPECT_TRUE(fc.isEmpty()) << "All scalar and bulk fragments must be removed, not only the first match";
     EXPECT_TRUE(context->getObjectRids({vid}).empty());
-    EXPECT_TRUE(fc.m_objectGenerations.empty());
-    // Once the malformed incarnation is gone, a normal fresh enrollment works.
+    EXPECT_TRUE(fc.m_objectRegistrations.empty());
+    // Once the malformed registration is gone, a normal fresh enrollment works.
     fc.addCounter(vid, vid, original);
     EXPECT_FALSE(fc.isEmpty());
-    ASSERT_EQ(fc.m_objectGenerations.size(), 1u);
-    EXPECT_EQ(fc.m_objectGenerations.begin()->second.rid, vid);
+    ASSERT_EQ(fc.m_objectRegistrations.size(), 1u);
+    EXPECT_EQ(fc.m_objectRegistrations.begin()->second.rid, vid);
     fc.removeCounter(vid);
 }
 
@@ -6166,6 +6237,32 @@ TEST(FlexCounter, perPortDiscoveryRidReplacementRequiresExplicitRemoval)
     testSpecializedReplacementRequiresRemoval(FlexCounterSpecializedContext::PerPortDiscovery);
 }
 
+TEST(FlexCounter, sameRidRefreshRetainsEpochUntilExplicitRemoval)
+{
+    FlexCounterBulkReplacementFixture fixture;
+    const auto vid = fixture.objects.front();
+    fixture.counter->addCounter(vid, vid, fixture.values);
+    const auto initial = fixture.registration(vid);
+    EXPECT_GT(initial.epoch, 0u);
+
+    fixture.counter->addCounter(vid, vid, fixture.values);
+    EXPECT_EQ(fixture.registration(vid).epoch, initial.epoch)
+        << "Scalar same-RID refresh created a new registration lifetime";
+    fixture.enroll({vid}, {vid});
+    EXPECT_EQ(fixture.registration(vid).epoch, initial.epoch)
+        << "Bulk same-RID refresh created a new registration lifetime";
+    EXPECT_EQ(fixture.registration(vid).rid, vid);
+
+    fixture.counter->removeCounter(vid);
+    EXPECT_TRUE(fixture.actual({vid}).empty());
+    EXPECT_TRUE(fixture.counter->m_objectRegistrations.empty());
+    fixture.enroll({vid}, {vid});
+    const auto reenrolled = fixture.registration(vid);
+    EXPECT_EQ(reenrolled.rid, vid);
+    EXPECT_GT(reenrolled.epoch, initial.epoch)
+        << "Same-RID re-enrollment reused the deleted registration's epoch";
+}
+
 TEST(FlexCounter, bulkRidReplacementUsesScalarFallbackEnrollment)
 {
     FlexCounterBulkReplacementFixture fixture;
@@ -6179,7 +6276,7 @@ TEST(FlexCounter, bulkRidReplacementUsesScalarFallbackEnrollment)
     EXPECT_EQ(actual.at(vid).rid, replacement);
     const auto replaced = fixture.registration(vid);
     EXPECT_EQ(replaced.rid, replacement);
-    EXPECT_NE(replaced.incarnation, original.incarnation);
+    EXPECT_NE(replaced.epoch, original.epoch);
     fixture.setHardware(replacement, 333);
     fixture.gate.arm();
     fixture.counter->addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
@@ -6203,7 +6300,7 @@ TEST(FlexCounter, bulkRidReplacementRetiresExistingBulkFragment)
     EXPECT_TRUE(actual.at(vid).consistent) << "Old and new physical RID fragments coexist";
     EXPECT_EQ(actual.at(vid).rid, replacement);
     EXPECT_EQ(fixture.registration(vid).rid, replacement);
-    EXPECT_NE(fixture.registration(vid).incarnation, original.incarnation);
+    EXPECT_NE(fixture.registration(vid).epoch, original.epoch);
     fixture.setHardware(replacement, 444);
     fixture.gate.arm();
     fixture.counter->addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
@@ -6233,7 +6330,7 @@ TEST(FlexCounter, bulkRidReplacementExceptionAfterRemovalErasesObsoleteRegistrat
     fixture.throwAfterRemovalRid = replacement;
     EXPECT_THROW(fixture.enroll({vid}, {replacement}), std::runtime_error);
     EXPECT_TRUE(fixture.actual({vid}).empty());
-    EXPECT_TRUE(fixture.counter->m_objectGenerations.empty());
+    EXPECT_TRUE(fixture.counter->m_objectRegistrations.empty());
     EXPECT_TRUE(fixture.counter->isEmpty());
     EXPECT_EQ(fixture.counter->m_pendingUpdates.load(), 0u);
     EXPECT_EQ(fixture.counter->m_deferredUpdates, 0u);
@@ -6262,8 +6359,8 @@ TEST(FlexCounter, mixedBulkRidReplacementKeepsFreshAndSameRidMembersBatched)
     EXPECT_EQ(actual.at(changed).rid, replacement);
     EXPECT_EQ(actual.at(same).rid, same);
     EXPECT_EQ(actual.at(fresh).rid, fresh);
-    EXPECT_NE(fixture.registration(changed).incarnation, changedBefore.incarnation);
-    EXPECT_EQ(fixture.registration(same).incarnation, sameBefore.incarnation);
+    EXPECT_NE(fixture.registration(changed).epoch, changedBefore.epoch);
+    EXPECT_EQ(fixture.registration(same).epoch, sameBefore.epoch);
     EXPECT_NE(std::find(fixture.bulkCalls.begin(), fixture.bulkCalls.end(),
                 std::vector<sai_object_id_t>{fresh, same}), fixture.bulkCalls.end())
         << "Fresh and same-RID members were unnecessarily converted to per-object enrollment";
@@ -6291,18 +6388,17 @@ TEST(FlexCounter, mixedBulkRidReplacementExceptionReconcilesAttemptedMembersOnly
     EXPECT_EQ(actual.at(fresh).rid, fresh);
     EXPECT_EQ(actual.at(same).rid, same);
     EXPECT_EQ(actual.at(unattempted).rid, unattempted);
-    ASSERT_EQ(fixture.counter->m_objectGenerations.size(), actual.size());
+    ASSERT_EQ(fixture.counter->m_objectRegistrations.size(), actual.size());
     for (const auto& object : actual)
     {
         EXPECT_TRUE(object.second.consistent);
         EXPECT_EQ(fixture.registration(object.first).rid, object.second.rid);
     }
-    EXPECT_NE(fixture.registration(changed).incarnation, changedBefore.incarnation);
-    EXPECT_EQ(fixture.registration(same).incarnation, sameBefore.incarnation);
+    EXPECT_NE(fixture.registration(changed).epoch, changedBefore.epoch);
+    EXPECT_EQ(fixture.registration(same).epoch, sameBefore.epoch);
     const auto untouchedAfter = fixture.registration(unattempted);
     EXPECT_EQ(untouchedAfter.rid, untouchedBefore.rid);
-    EXPECT_EQ(untouchedAfter.generation, untouchedBefore.generation);
-    EXPECT_EQ(untouchedAfter.incarnation, untouchedBefore.incarnation);
+    EXPECT_EQ(untouchedAfter.epoch, untouchedBefore.epoch);
     EXPECT_EQ(fixture.counter->m_pendingUpdates.load(), 0u);
     EXPECT_EQ(fixture.counter->m_deferredUpdates, 0u);
 }
@@ -6322,7 +6418,7 @@ TEST(FlexCounter, bulkRidReplacementRepairsAcceptedNullPhysicalRid)
     EXPECT_TRUE(actual.at(vid).consistent);
     EXPECT_EQ(actual.at(vid).rid, replacement);
     EXPECT_EQ(fixture.registration(vid).rid, replacement);
-    EXPECT_NE(fixture.registration(vid).incarnation, original.incarnation);
+    EXPECT_NE(fixture.registration(vid).epoch, original.epoch);
 }
 
 TEST(FlexCounter, dashMeterRidReplacementRequiresExplicitRemoval)
