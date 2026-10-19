@@ -137,21 +137,20 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, OTN_OA_ATTR_ID_LIST}, ATTR_TYPE_OTN_OA_ATTR},
 };
 
-BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
-m_name(name),
-m_instanceId(instance)
-{
-    SWSS_LOG_ENTER();
-}
-
-void BaseCounterContext::setPollingState(
-        _In_ const ObjectRegistrationMap& registrations,
-        _In_ const bool& yielded)
+BaseCounterContext::BaseCounterContext(
+        _In_ const std::string& name,
+        _In_ const std::string& instance,
+        _In_ std::shared_ptr<const PollingState> pollingState):
+    m_name(name),
+    m_instanceId(instance),
+    m_pollingState(std::move(pollingState))
 {
     SWSS_LOG_ENTER();
 
-    m_objectRegistrations = &registrations;
-    m_pollYielded = &yielded;
+    if (!m_pollingState)
+    {
+        SWSS_LOG_THROW("Counter context requires polling state");
+    }
 }
 
 void BaseCounterContext::clearSamples(
@@ -163,18 +162,16 @@ void BaseCounterContext::clearSamples(
     m_pollStatsMode = statsMode;
     m_pollEpochs.clear();
 
-    if (m_objectRegistrations != nullptr)
-    {
-        // Freeze registration epochs for the whole context, including VIDs
-        // split across scalar and bulk prefixes. New registrations are first
-        // admitted in the next sweep.
-        auto registration = m_objectRegistrations->lower_bound({m_name, SAI_NULL_OBJECT_ID});
+    // Freeze registration epochs for the whole context, including VIDs
+    // split across scalar and bulk prefixes. New registrations are first
+    // admitted in the next sweep.
+    const auto& registrations = m_pollingState->registrations;
+    auto registration = registrations.lower_bound({m_name, SAI_NULL_OBJECT_ID});
 
-        while (registration != m_objectRegistrations->end() && registration->first.first == m_name)
-        {
-            m_pollEpochs.emplace(registration->first.second, registration->second.epoch);
-            ++registration;
-        }
+    while (registration != registrations.end() && registration->first.first == m_name)
+    {
+        m_pollEpochs.emplace(registration->first.second, registration->second.epoch);
+        ++registration;
     }
 }
 
@@ -183,15 +180,11 @@ bool BaseCounterContext::isPollRegistrationCurrent(
 {
     SWSS_LOG_ENTER();
 
-    if (m_objectRegistrations == nullptr)
-    {
-        return true;
-    }
-
     const auto initial = m_pollEpochs.find(vid);
-    const auto current = m_objectRegistrations->find({m_name, vid});
+    const auto& registrations = m_pollingState->registrations;
+    const auto current = registrations.find({m_name, vid});
 
-    return initial != m_pollEpochs.end() && current != m_objectRegistrations->end() &&
+    return initial != m_pollEpochs.end() && current != registrations.end() &&
         initial->second == current->second.epoch;
 }
 
@@ -200,14 +193,9 @@ void BaseCounterContext::markSampled(
 {
     SWSS_LOG_ENTER();
 
-    if (m_objectRegistrations != nullptr && isPollRegistrationCurrent(vid))
+    if (isPollRegistrationCurrent(vid))
     {
-        const auto registration = m_objectRegistrations->find({m_name, vid});
-
-        if (registration != m_objectRegistrations->end())
-        {
-            m_sampledEpochs[vid] = registration->second.epoch;
-        }
+        m_sampledEpochs[vid] = m_pollEpochs.at(vid);
     }
 }
 
@@ -224,21 +212,22 @@ bool BaseCounterContext::isSampleReady(
     // Object removal deliberately excludes registrations from later plugins:
     // their final cleared sample is not guaranteed an aggregate. This prevents
     // post-removal scripts from consuming/recreating stale VID data.
-    if (m_pollYielded == nullptr || !*m_pollYielded)
+    if (!m_pollingState->yielded)
     {
         return true;
     }
 
     const auto sample = m_sampledEpochs.find(vid);
 
-    if (sample == m_sampledEpochs.end() || m_objectRegistrations == nullptr)
+    if (sample == m_sampledEpochs.end())
     {
         return false;
     }
 
-    const auto registration = m_objectRegistrations->find({m_name, vid});
+    const auto& registrations = m_pollingState->registrations;
+    const auto registration = registrations.find({m_name, vid});
 
-    return registration != m_objectRegistrations->end() &&
+    return registration != registrations.end() &&
         registration->second.epoch == sample->second;
 }
 
@@ -724,8 +713,10 @@ public:
             _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
-            _In_ sai_stats_mode_t &stats_mode):
-    BaseCounterContext(name, instance), m_objectType(object_type), m_vendorSai(vendor_sai), m_groupStatsMode(stats_mode)
+            _In_ std::shared_ptr<const BaseCounterContext::PollingState> pollingState):
+    BaseCounterContext(name, instance, std::move(pollingState)),
+    m_objectType(object_type),
+    m_vendorSai(vendor_sai)
     {
         SWSS_LOG_ENTER();
     }
@@ -811,12 +802,12 @@ public:
                 SWSS_LOG_WARN("Stats mode %s not supported for flex counter. Using STATS_MODE_READ_AND_CLEAR", per_object_stats_mode.c_str());
             }
 
-            effective_stats_mode = (m_groupStatsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
+            effective_stats_mode = (m_pollingState->statsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
                                     instance_stats_mode == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
         }
         else
         {
-            effective_stats_mode = m_groupStatsMode;
+            effective_stats_mode = m_pollingState->statsMode;
         }
 
         std::vector<StatType> counter_ids;
@@ -927,12 +918,12 @@ public:
                 SWSS_LOG_WARN("Stats mode %s not supported for flex counter. Using STATS_MODE_READ_AND_CLEAR", per_object_stats_mode.c_str());
             }
 
-            effective_stats_mode = (m_groupStatsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
+            effective_stats_mode = (m_pollingState->statsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
                                     instance_stats_mode == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
         }
         else
         {
-            effective_stats_mode = m_groupStatsMode;
+            effective_stats_mode = m_pollingState->statsMode;
         }
 
         std::vector<StatType> counter_ids;
@@ -1280,7 +1271,7 @@ public:
         }
         else
         {
-            effective_stats_mode = m_groupStatsMode;
+            effective_stats_mode = m_pollingState->statsMode;
         }
 
         std::vector<StatType> allCounterIds;
@@ -1307,7 +1298,7 @@ public:
         }
 
         std::map<std::vector<StatType>, std::tuple<const std::string, uint32_t>> bulkUnsupportedCounters;
-        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+        auto statsMode = m_pollingState->statsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
         auto checkAndUpdateBulkCapability = [&](const std::vector<StatType> &counter_ids, const std::string &prefix, uint32_t bulk_chunk_size)
         {
             BulkContextType ctx;
@@ -1481,7 +1472,7 @@ public:
         }
         else
         {
-            effective_stats_mode = m_groupStatsMode;
+            effective_stats_mode = m_pollingState->statsMode;
         }
 
         std::vector<StatType> allCounterIds, supportedIds;
@@ -1508,7 +1499,7 @@ public:
         }
 
         std::map<std::vector<StatType>, std::tuple<const std::string, uint32_t>> bulkUnsupportedCounters;
-        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+        auto statsMode = m_pollingState->statsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
         auto checkAndUpdateBulkCapability = [&](const std::vector<StatType> &counter_ids, const std::string &prefix, uint32_t bulk_chunk_size)
         {
             BulkContextType ctx;
@@ -2317,7 +2308,7 @@ private:
         BulkContextType ctx;
         ctx.counter_ids = counter_ids;
         addBulkStatsContext(vid, rid, counter_ids, ctx);
-        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+        auto statsMode = m_pollingState->statsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
         sai_status_t status = m_vendorSai->bulkGetStats(
                             SAI_NULL_OBJECT_ID,
                             m_objectType,
@@ -2564,7 +2555,6 @@ private:
 protected:
     sai_object_type_t m_objectType;
     sairedis::SaiInterface *m_vendorSai;
-    sai_stats_mode_t& m_groupStatsMode;
     std::set<StatType> m_supportedCounters;
     std::set<StatType> m_supportedBulkCounters;
 
@@ -2602,8 +2592,8 @@ public:
             _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
-            _In_ sai_stats_mode_t &stats_mode):
-    CounterContext<AttrType>(name, instance, object_type, vendor_sai, stats_mode)
+            _In_ std::shared_ptr<const BaseCounterContext::PollingState> pollingState):
+    CounterContext<AttrType>(name, instance, object_type, vendor_sai, std::move(pollingState))
     {
         SWSS_LOG_ENTER();
     }
@@ -2892,10 +2882,10 @@ public:
             _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
-            _In_ sai_stats_mode_t &stats_mode,
+            _In_ std::shared_ptr<const BaseCounterContext::PollingState> pollingState,
             _In_ const std::string &dbCounters,
             _In_ bool isTcpConn):
-        Base(name, instance, object_type, vendor_sai, stats_mode),
+        Base(name, instance, object_type, vendor_sai, std::move(pollingState)),
         m_dbCounters(dbCounters),
         m_isTcpConn(isTcpConn)
     {
@@ -3345,10 +3335,10 @@ public:
             _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
-            _In_ sai_stats_mode_t &stats_mode,
+            _In_ std::shared_ptr<const BaseCounterContext::PollingState> pollingState,
             _In_ const std::string &dbCounters,
             _In_ bool isTcpConn):
-        Base(name, instance, object_type, vendor_sai, stats_mode),
+        Base(name, instance, object_type, vendor_sai, std::move(pollingState)),
         m_dbCounters(dbCounters),
         m_isTcpConn(isTcpConn)
     {
@@ -3828,9 +3818,13 @@ public:
             _In_ const std::string &name,
             _In_ const std::string &instance,
             _In_ sairedis::SaiInterface *vendor_sai,
+            _In_ std::shared_ptr<const PollingState> pollingState,
             _In_ std::string dbCounters,
             _In_ bool isTcpConn):
-    BaseCounterContext(name, instance), m_dbCounters(dbCounters), m_isTcpConn(isTcpConn), m_vendorSai(vendor_sai)
+    BaseCounterContext(name, instance, std::move(pollingState)),
+    m_dbCounters(dbCounters),
+    m_isTcpConn(isTcpConn),
+    m_vendorSai(vendor_sai)
     {
         SWSS_LOG_ENTER();
     }
@@ -4258,7 +4252,6 @@ FlexCounter::FlexCounter(
     m_pollInterval(0),
     m_secondaryPollFactor(0),
     m_instanceId(instanceId),
-    m_statsMode(SAI_STATS_MODE_READ),
     m_vendorSai(vendorSai),
     m_dbCounters(dbCounters),
     m_noDoubleCheckBulkCapability(noDoubleCheckBulkCapability)
@@ -4341,9 +4334,9 @@ void FlexCounter::setStatsMode(
         return;
     }
 
-    if (m_statsMode != cit->second)
+    if (m_pollingState->statsMode != cit->second)
     {
-        m_statsMode = cit->second;
+        m_pollingState->statsMode = cit->second;
         notifySleep();
 
         SWSS_LOG_INFO("Set STATS MODE %s for FC %s", mode.c_str(), m_instanceId.c_str());
@@ -4552,19 +4545,19 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     SWSS_LOG_ENTER();
     if (context_name == COUNTER_TYPE_PORT)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_WRED_ECN_PORT)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_PORT_DEBUG)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
@@ -4573,32 +4566,32 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_QUEUE)
     {
-        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_WRED_ECN_QUEUE)
     {
-        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_PG)
     {
-        auto context = std::make_shared<CounterContext<sai_ingress_priority_group_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_ingress_priority_group_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_RIF)
     {
-        return std::make_shared<CounterContext<sai_router_interface_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<CounterContext<sai_router_interface_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == COUNTER_TYPE_SWITCH_DEBUG)
     {
-        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
@@ -4607,13 +4600,13 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_MACSEC_FLOW)
     {
-        auto context = std::make_shared<CounterContext<sai_macsec_flow_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_FLOW, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_macsec_flow_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_FLOW, m_vendorSai.get(), m_pollingState);
         context->use_sai_stats_capa_query = false;
         return context;
     }
     else if (context_name == COUNTER_TYPE_MACSEC_SA)
     {
-        auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->dont_clear_support_counter = true;
@@ -4621,7 +4614,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_FLOW)
     {
-        auto context = std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_pollingState);
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
 
@@ -4629,67 +4622,67 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_TUNNEL)
     {
-        auto context = std::make_shared<CounterContext<sai_tunnel_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_TUNNEL, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_tunnel_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_TUNNEL, m_vendorSai.get(), m_pollingState);
         context->use_sai_stats_capa_query = false;
         return context;
     }
     else if (context_name == COUNTER_TYPE_BUFFER_POOL)
     {
-        auto context = std::make_shared<CounterContext<sai_buffer_pool_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_BUFFER_POOL, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_buffer_pool_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_BUFFER_POOL, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_ENI)
     {
-        auto context = std::make_shared<CounterContext<sai_eni_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_ENI, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_eni_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_ENI, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_HA_SET)
     {
-        auto context = std::make_shared<CounterContext<sai_ha_set_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_ha_set_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_METER_BUCKET)
     {
-        return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters, m_isTcpConn);
+        return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_pollingState, m_dbCounters, m_isTcpConn);
     }
     else if (context_name == ATTR_TYPE_PORT_PHY_ATTR)
     {
-        return std::make_shared<PortPhyAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn);
+        return std::make_shared<PortPhyAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_pollingState, m_dbCounters, m_isTcpConn);
     }
     else if (context_name == ATTR_TYPE_PORT_PHY_SERDES_ATTR)
     {
-        return std::make_shared<PortPhySerdesAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT_SERDES, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn);
+        return std::make_shared<PortPhySerdesAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT_SERDES, m_vendorSai.get(), m_pollingState, m_dbCounters, m_isTcpConn);
     }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
-        return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == ATTR_TYPE_PG)
     {
-        return std::make_shared<AttrContext<sai_ingress_priority_group_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_ingress_priority_group_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == ATTR_TYPE_MACSEC_SA)
     {
-        return std::make_shared<AttrContext<sai_macsec_sa_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_macsec_sa_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == ATTR_TYPE_ACL_COUNTER)
     {
-        return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == COUNTER_TYPE_POLICER)
     {
-        return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == COUNTER_TYPE_SRV6)
     {
-        return std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == COUNTER_TYPE_SWITCH)
     {
-        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = true;
         // BROADCOM_LEGACY_SAI_COMPAT: sai_get_stats_ext crashes on some legacy ASICs for switch objects;
@@ -4699,11 +4692,11 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == ATTR_TYPE_OTN_ATTENUATOR_ATTR)
     {
-        return std::make_shared<AttrContext<sai_otn_attenuator_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_otn_attenuator_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == ATTR_TYPE_OTN_OA_ATTR)
     {
-        return std::make_shared<AttrContext<sai_otn_oa_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_otn_oa_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, m_vendorSai.get(), m_pollingState);
     }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
@@ -4719,9 +4712,9 @@ bool FlexCounter::hasSameRidRegistration(
 
     for (const auto& context : m_counterContext)
     {
-        const auto registration = m_objectRegistrations.find({context.first, vid});
+        const auto registration = m_pollingState->registrations.find({context.first, vid});
 
-        if (registration != m_objectRegistrations.end() && registration->second.rid == rid)
+        if (registration != m_pollingState->registrations.end() && registration->second.rid == rid)
         {
             return true;
         }
@@ -4738,15 +4731,15 @@ void FlexCounter::recordRegistration(
     SWSS_LOG_ENTER();
 
     const auto key = std::make_pair(name, vid);
-    const auto existing = m_objectRegistrations.find(key);
+    const auto existing = m_pollingState->registrations.find(key);
 
     // Same-RID refreshes wait for the old sweep and plugins before enrollment,
     // so one lifecycle epoch is sufficient for admission and sample validity.
     // Removal erases the record: even same-RID re-enrollment must receive a
     // new epoch and cannot consume the previous registration's sample.
-    const auto epoch = existing != m_objectRegistrations.end() && existing->second.rid == rid ?
+    const auto epoch = existing != m_pollingState->registrations.end() && existing->second.rid == rid ?
         existing->second.epoch : ++m_nextObjectEpoch;
-    m_objectRegistrations[key] = {epoch, rid};
+    m_pollingState->registrations[key] = {epoch, rid};
 }
 
 void FlexCounter::enrollCounterObjects(
@@ -4789,7 +4782,7 @@ void FlexCounter::enrollCounterObjects(
             SWSS_LOG_ERROR("%s VID %s has conflicting SDK keys; removing all fragments and dropping registration",
                     name.c_str(), sai_serialize_object_id(vids[i]).c_str());
             context->removeObject(vids[i]);
-            m_objectRegistrations.erase({name, vids[i]});
+            m_pollingState->registrations.erase({name, vids[i]});
             continue;
         }
 
@@ -4832,22 +4825,22 @@ void FlexCounter::enrollCounterObjects(
 
             if (object == actual.end())
             {
-                m_objectRegistrations.erase({name, vid});
+                m_pollingState->registrations.erase({name, vid});
             }
             else if (!object->second.consistent)
             {
                 SWSS_LOG_ERROR("%s VID %s acquired conflicting SDK keys; removing all fragments",
                         name.c_str(), sai_serialize_object_id(vid).c_str());
                 context->removeObject(vid);
-                m_objectRegistrations.erase({name, vid});
+                m_pollingState->registrations.erase({name, vid});
             }
             else
             {
-                const auto registration = m_objectRegistrations.find({name, vid});
+                const auto registration = m_pollingState->registrations.find({name, vid});
 
                 // A rejected replacement can leave the old object enrolled.
                 // Preserve its registration epoch and any cleared sample.
-                if (object->second.rid == acceptedRids[i] || registration == m_objectRegistrations.end() ||
+                if (object->second.rid == acceptedRids[i] || registration == m_pollingState->registrations.end() ||
                         registration->second.rid != object->second.rid)
                 {
                     recordRegistration(name, vid, object->second.rid);
@@ -4916,7 +4909,6 @@ std::shared_ptr<BaseCounterContext> FlexCounter::getCounterContext(
     }
 
     auto counterContext = createCounterContext(name, m_instanceId);
-    counterContext->setPollingState(m_objectRegistrations, m_pollYielded);
 
     if (m_noDoubleCheckBulkCapability)
     {
@@ -4957,18 +4949,18 @@ void FlexCounter::collectCounters(
 {
     SWSS_LOG_ENTER();
 
-    m_pollYielded = false;
+    m_pollingState->yielded = false;
 
     for (const auto& context : m_counterContext)
     {
-        context.second->clearSamples(m_statsMode);
+        context.second->clearSamples(m_pollingState->statsMode);
     }
 
     const BaseCounterContext::PollCheckpoint checkpoint = [&](swss::Table& table)
     {
         if (m_pendingUpdates != 0)
         {
-            m_pollYielded = true;
+            m_pollingState->yielded = true;
             // Flush on the polling thread before releasing object protection:
             // buffered writes must not recreate entries after a removal.
             countersTable.flush();
@@ -5491,7 +5483,7 @@ void FlexCounter::removeCounter(
 
     for (const auto& context : m_counterContext)
     {
-        m_objectRegistrations.erase({context.first, vid});
+        m_pollingState->registrations.erase({context.first, vid});
     }
 }
 

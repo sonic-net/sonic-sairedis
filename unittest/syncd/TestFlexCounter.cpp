@@ -1067,12 +1067,13 @@ TEST(FlexCounter, queryCounterCapability)
     fc.addCounterPlugin({{POLL_INTERVAL_FIELD, "1000"}, {STATS_MODE_FIELD, STATS_MODE_READ}});
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {oid}, {oid}, {{PORT_COUNTER_ID_LIST,
             "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_UCAST_PKTS"}});
-    fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
-    EXPECT_FALSE(fc.isEmpty());
 
     swss::DBConnector db("COUNTERS_DB", 0);
     swss::Table countersTable(&db, COUNTERS_TABLE);
     const auto key = toOid(oid);
+    countersTable.del(key);
+    fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
+    EXPECT_FALSE(fc.isEmpty());
     // Only the supported field may appear; waiting for every requested field
     // would incorrectly require the deliberately unsupported counter.
     waitForCounterValues(countersTable, key, {"SAI_PORT_STAT_IF_IN_OCTETS"}, {"1000"});
@@ -3360,7 +3361,7 @@ TEST(FlexCounter, malformedBulkChunkSizePerPrefix)
         return SAI_STATUS_FAILURE;
     };
 
-    fc.m_statsMode = SAI_STATS_MODE_READ;
+    fc.m_pollingState->statsMode = SAI_STATS_MODE_READ;
     fc.addCounter(oid, oid, values);
     EXPECT_EQ(fc.isEmpty(), false);
 
@@ -3930,7 +3931,7 @@ namespace
             }
         }
 
-        const auto initialRegistrations = fc.m_objectRegistrations;
+        const auto initialRegistrations = fc.m_pollingState->registrations;
         swss::DBConnector db("COUNTERS_DB", 0);
         swss::Table countersTable(&db, COUNTERS_TABLE);
         for (auto oid : objects)
@@ -4146,7 +4147,7 @@ namespace
 
         // Registry writers have joined; the gated polling thread only reads
         // this map. Do not acquire its mutex while a later SDK read is blocked.
-        const auto updatedRegistrations = fc.m_objectRegistrations;
+        const auto updatedRegistrations = fc.m_pollingState->registrations;
         for (const auto& initial : initialRegistrations)
         {
             const auto current = updatedRegistrations.find(initial.first);
@@ -4630,7 +4631,7 @@ namespace
                 fc.addCounter(oid, oid, original);
             }
         }
-        const auto initialRegistrations = fc.m_objectRegistrations;
+        const auto initialRegistrations = fc.m_pollingState->registrations;
         if (rejectReplacement)
         {
             bool threw = false;
@@ -4660,7 +4661,7 @@ namespace
             }
             bool retained = false;
             bool accepted = !partialReplacement;
-            for (const auto& registration : fc.m_objectRegistrations)
+            for (const auto& registration : fc.m_pollingState->registrations)
             {
                 if (registration.first.second == target)
                 {
@@ -4686,7 +4687,7 @@ namespace
             EXPECT_TRUE(accepted);
             if (replacement == FlexCounterRejectedReplacement::ThrowingPartialBulk)
             {
-                EXPECT_TRUE(std::none_of(fc.m_objectRegistrations.begin(), fc.m_objectRegistrations.end(),
+                EXPECT_TRUE(std::none_of(fc.m_pollingState->registrations.begin(), fc.m_pollingState->registrations.end(),
                             [&](const BaseCounterContext::ObjectRegistrationMap::value_type& registration)
                             { return registration.first.second == rejectedRid; }))
                     << "A throwing fresh enrollment must not create a fictitious registration";
@@ -4824,7 +4825,7 @@ namespace
         }
         EXPECT_EQ(updateThrew.load(), ending == FlexCounterRefreshEnd::UpdateException);
         EXPECT_EQ(pollThrew.load(), ending == FlexCounterRefreshEnd::PollException);
-        const auto updatedRegistrations = fc.m_objectRegistrations;
+        const auto updatedRegistrations = fc.m_pollingState->registrations;
         for (const auto& initial : initialRegistrations)
         {
             const auto current = updatedRegistrations.find(initial.first);
@@ -5039,7 +5040,7 @@ namespace
             {
                 SWSS_LOG_ENTER();
                 std::lock_guard<std::mutex> lock(counter->m_mtx);
-                return counter->m_objectRegistrations.at({counter->m_counterContext.begin()->first, vid});
+                return counter->m_pollingState->registrations.at({counter->m_counterContext.begin()->first, vid});
             }
 
             void setHardware(sai_object_id_t rid, uint64_t value)
@@ -5298,14 +5299,14 @@ namespace
         };
         enroll(vid);
         ASSERT_FALSE(fc.isEmpty());
-        ASSERT_EQ(fc.m_objectRegistrations.size(), 1u);
-        const auto originalRegistration = fc.m_objectRegistrations.begin()->second;
+        ASSERT_EQ(fc.m_pollingState->registrations.size(), 1u);
+        const auto originalRegistration = fc.m_pollingState->registrations.begin()->second;
         enroll(replacementRid);
         EXPECT_EQ(replacementCalls.load(), 0u)
             << "Unsupported physical replacement must be rejected before probing the new SDK object";
-        ASSERT_EQ(fc.m_objectRegistrations.size(), 1u);
-        EXPECT_EQ(fc.m_objectRegistrations.begin()->second.rid, vid);
-        EXPECT_EQ(fc.m_objectRegistrations.begin()->second.epoch, originalRegistration.epoch);
+        ASSERT_EQ(fc.m_pollingState->registrations.size(), 1u);
+        EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.rid, vid);
+        EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.epoch, originalRegistration.epoch);
         table.del(toOid(vid));
         if (serdes)
         {
@@ -5323,8 +5324,8 @@ namespace
         EXPECT_EQ(originalReads.front(), vid) << "Rejected replacement changed the live polling RID";
         fc.removeCounter(vid);
         enroll(replacementRid);
-        ASSERT_EQ(fc.m_objectRegistrations.size(), 1u);
-        EXPECT_EQ(fc.m_objectRegistrations.begin()->second.rid, replacementRid);
+        ASSERT_EQ(fc.m_pollingState->registrations.size(), 1u);
+        EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.rid, replacementRid);
         fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
         EXPECT_TRUE(gate.waitForReadCount(originalReads.size() + 1));
         fc.endFlexCounterThread();
@@ -5617,6 +5618,93 @@ namespace
     }
 }
 
+TEST(FlexCounter, factoryContextsShareLiveOwnedPollingState)
+{
+    auto vendor = std::make_shared<MockableSaiInterface>();
+    FlexCounter fc("owned_polling_state", vendor, "COUNTERS_DB");
+    fc.endFlexCounterThread();
+    ASSERT_NE(fc.m_pollingState, nullptr);
+
+    std::set<std::string> names;
+    for (const auto& mapping : FlexCounter::m_objectTypeField2CounterType)
+    {
+        names.insert(mapping.second);
+    }
+    for (const auto& mapping : FlexCounter::m_plugIn2CounterType)
+    {
+        names.insert(mapping.second);
+    }
+    ASSERT_FALSE(names.empty());
+
+    std::vector<std::shared_ptr<BaseCounterContext>> contexts;
+    for (const auto& name : names)
+    {
+        SCOPED_TRACE(name);
+        // Direct construction must establish ownership without a later setter.
+        const auto context = fc.createCounterContext(name, "owned_polling_state");
+        ASSERT_NE(context, nullptr);
+        ASSERT_NE(context->m_pollingState, nullptr);
+        EXPECT_EQ(context->m_pollingState.get(), fc.m_pollingState.get());
+        EXPECT_EQ(context->m_pollingState->statsMode, SAI_STATS_MODE_READ);
+        contexts.push_back(context);
+    }
+
+    fc.addCounterPlugin({{STATS_MODE_FIELD, STATS_MODE_READ_AND_CLEAR}});
+    for (const auto& context : contexts)
+    {
+        SCOPED_TRACE(context->m_name);
+        EXPECT_EQ(context->m_pollingState->statsMode, SAI_STATS_MODE_READ_AND_CLEAR);
+        context->clearSamples(context->m_pollingState->statsMode);
+        EXPECT_EQ(context->m_pollStatsMode, SAI_STATS_MODE_READ_AND_CLEAR);
+    }
+    fc.addCounterPlugin({{STATS_MODE_FIELD, STATS_MODE_READ}});
+    for (const auto& context : contexts)
+    {
+        SCOPED_TRACE(context->m_name);
+        EXPECT_EQ(context->m_pollingState->statsMode, SAI_STATS_MODE_READ);
+        EXPECT_EQ(context->m_pollStatsMode, SAI_STATS_MODE_READ_AND_CLEAR)
+            << "Changing live group mode altered an already frozen sweep";
+    }
+}
+
+TEST(FlexCounter, contextOwnsPollingStateBeyondCounterLifetime)
+{
+    auto vendor = std::make_shared<MockableSaiInterface>();
+    const auto vid = generateOids(1, SAI_OBJECT_TYPE_QUEUE).front();
+    std::shared_ptr<BaseCounterContext> context;
+    std::weak_ptr<const BaseCounterContext::PollingState> weakState;
+    {
+        FlexCounter fc("polling_state_lifetime", vendor, "COUNTERS_DB");
+        fc.endFlexCounterThread();
+        context = fc.createCounterContext("Queue Attribute", "polling_state_lifetime");
+        ASSERT_NE(context, nullptr);
+        ASSERT_NE(context->m_pollingState, nullptr);
+        EXPECT_EQ(context->m_pollingState.get(), fc.m_pollingState.get());
+        weakState = context->m_pollingState;
+
+        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        fc.m_pollingState->registrations[{context->m_name, vid}] = {17, vid};
+        fc.m_pollingState->yielded = true;
+        fc.m_pollingState->statsMode = SAI_STATS_MODE_READ_AND_CLEAR;
+        context->clearSamples(fc.m_pollingState->statsMode);
+        context->markSampled(vid);
+        EXPECT_TRUE(context->isPollRegistrationCurrent(vid));
+        EXPECT_TRUE(context->isSampleReady(vid));
+    }
+
+    ASSERT_FALSE(weakState.expired());
+    // Only pure state helpers are used after owner destruction: no SDK access.
+    context->clearSamples(context->m_pollingState->statsMode);
+    EXPECT_EQ(context->m_pollEpochs.at(vid), 17u);
+    EXPECT_EQ(context->m_pollStatsMode, SAI_STATS_MODE_READ_AND_CLEAR);
+    EXPECT_TRUE(context->isPollRegistrationCurrent(vid));
+    EXPECT_FALSE(context->isSampleReady(vid));
+    context->markSampled(vid);
+    EXPECT_TRUE(context->isSampleReady(vid));
+    context.reset();
+    EXPECT_TRUE(weakState.expired()) << "Polling state retained an ownership cycle";
+}
+
 TEST(FlexCounter, attributeOnlyGroupDefaultsToReadStatsMode)
 {
     auto vendor = std::make_shared<MockableSaiInterface>();
@@ -5637,7 +5725,7 @@ TEST(FlexCounter, attributeOnlyGroupDefaultsToReadStatsMode)
 
     test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_QUEUE);
     FlexCounter fc("attribute_default_stats_mode", vendor, "COUNTERS_DB");
-    EXPECT_EQ(fc.m_statsMode, SAI_STATS_MODE_READ);
+    EXPECT_EQ(fc.m_pollingState->statsMode, SAI_STATS_MODE_READ);
     fc.addCounterPlugin({{POLL_INTERVAL_FIELD, "60000"}});
     fc.addCounter(oid, oid, {{QUEUE_ATTR_ID_LIST, "SAI_QUEUE_ATTR_PAUSE_STATUS"}});
 
@@ -5702,7 +5790,7 @@ TEST(FlexCounter, replacementExceptionAfterRemovalErasesObsoleteRegistration)
     throwAfterRemoval = true;
     EXPECT_THROW(fc.addCounter(vid, replacementRid, values), std::runtime_error);
     EXPECT_TRUE(fc.isEmpty());
-    EXPECT_TRUE(std::none_of(fc.m_objectRegistrations.begin(), fc.m_objectRegistrations.end(),
+    EXPECT_TRUE(std::none_of(fc.m_pollingState->registrations.begin(), fc.m_pollingState->registrations.end(),
                 [&](const BaseCounterContext::ObjectRegistrationMap::value_type& registration)
                 { return registration.first.second == vid; }))
         << "Neither the old RID nor the failed replacement is enrolled after the exception";
@@ -5711,8 +5799,8 @@ TEST(FlexCounter, replacementExceptionAfterRemovalErasesObsoleteRegistration)
     throwAfterRemoval = false;
     fc.addCounter(vid, replacementRid, values);
     EXPECT_FALSE(fc.isEmpty());
-    ASSERT_EQ(fc.m_objectRegistrations.size(), 1u);
-    EXPECT_EQ(fc.m_objectRegistrations.begin()->second.rid, replacementRid);
+    ASSERT_EQ(fc.m_pollingState->registrations.size(), 1u);
+    EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.rid, replacementRid);
     fc.removeCounter(vid);
 }
 
@@ -5760,7 +5848,7 @@ TEST(FlexCounter, invalidBulkEnrollmentDoesNotProbeOrMutateLiveRegistrations)
     {
         fc.addCounter(oid, oid, values);
     }
-    const auto initial = fc.m_objectRegistrations;
+    const auto initial = fc.m_pollingState->registrations;
     calls = 0;
     bulkCounts.clear();
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {}, {}, values);
@@ -5768,11 +5856,11 @@ TEST(FlexCounter, invalidBulkEnrollmentDoesNotProbeOrMutateLiveRegistrations)
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {objects.front()}, objects, values);
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {objects.front(), objects.front()}, objects, values);
     EXPECT_EQ(calls, 0u);
-    ASSERT_EQ(fc.m_objectRegistrations.size(), initial.size());
+    ASSERT_EQ(fc.m_pollingState->registrations.size(), initial.size());
     for (const auto& registration : initial)
     {
-        const auto current = fc.m_objectRegistrations.find(registration.first);
-        ASSERT_NE(current, fc.m_objectRegistrations.end());
+        const auto current = fc.m_pollingState->registrations.find(registration.first);
+        ASSERT_NE(current, fc.m_pollingState->registrations.end());
         EXPECT_EQ(current->second.rid, registration.second.rid);
         EXPECT_EQ(current->second.epoch, registration.second.epoch);
     }
@@ -5842,12 +5930,12 @@ TEST(FlexCounter, conflictingPhysicalFragmentsAreQuarantinedTogether)
     EXPECT_EQ(calls, previousCalls) << "Quarantine must run before further support probes";
     EXPECT_TRUE(fc.isEmpty()) << "All scalar and bulk fragments must be removed, not only the first match";
     EXPECT_TRUE(context->getObjectRids({vid}).empty());
-    EXPECT_TRUE(fc.m_objectRegistrations.empty());
+    EXPECT_TRUE(fc.m_pollingState->registrations.empty());
     // Once the malformed registration is gone, a normal fresh enrollment works.
     fc.addCounter(vid, vid, original);
     EXPECT_FALSE(fc.isEmpty());
-    ASSERT_EQ(fc.m_objectRegistrations.size(), 1u);
-    EXPECT_EQ(fc.m_objectRegistrations.begin()->second.rid, vid);
+    ASSERT_EQ(fc.m_pollingState->registrations.size(), 1u);
+    EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.rid, vid);
     fc.removeCounter(vid);
 }
 
@@ -6240,10 +6328,28 @@ TEST(FlexCounter, perPortDiscoveryRidReplacementRequiresExplicitRemoval)
 TEST(FlexCounter, sameRidRefreshRetainsEpochUntilExplicitRemoval)
 {
     FlexCounterBulkReplacementFixture fixture;
+    auto& fc = *fixture.counter;
+    fc.endFlexCounterThread();
     const auto vid = fixture.objects.front();
     fixture.counter->addCounter(vid, vid, fixture.values);
     const auto initial = fixture.registration(vid);
     EXPECT_GT(initial.epoch, 0u);
+    ASSERT_EQ(fc.m_counterContext.size(), 1u);
+    const auto context = fc.m_counterContext.begin()->second;
+    EXPECT_EQ(context->m_pollingState.get(), fc.m_pollingState.get());
+    {
+        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        fc.m_pollingState->yielded = true;
+        context->clearSamples(fc.m_pollingState->statsMode);
+        context->markSampled(vid);
+    }
+    const auto expectSampleState = [&](bool current, bool sampled)
+    {
+        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        EXPECT_EQ(context->isPollRegistrationCurrent(vid), current);
+        EXPECT_EQ(context->isSampleReady(vid), sampled);
+    };
+    expectSampleState(true, true);
 
     fixture.counter->addCounter(vid, vid, fixture.values);
     EXPECT_EQ(fixture.registration(vid).epoch, initial.epoch)
@@ -6252,15 +6358,28 @@ TEST(FlexCounter, sameRidRefreshRetainsEpochUntilExplicitRemoval)
     EXPECT_EQ(fixture.registration(vid).epoch, initial.epoch)
         << "Bulk same-RID refresh created a new registration lifetime";
     EXPECT_EQ(fixture.registration(vid).rid, vid);
+    expectSampleState(true, true);
 
     fixture.counter->removeCounter(vid);
     EXPECT_TRUE(fixture.actual({vid}).empty());
-    EXPECT_TRUE(fixture.counter->m_objectRegistrations.empty());
+    EXPECT_TRUE(fixture.counter->m_pollingState->registrations.empty());
+    expectSampleState(false, false);
     fixture.enroll({vid}, {vid});
     const auto reenrolled = fixture.registration(vid);
     EXPECT_EQ(reenrolled.rid, vid);
     EXPECT_GT(reenrolled.epoch, initial.epoch)
         << "Same-RID re-enrollment reused the deleted registration's epoch";
+    expectSampleState(false, false);
+    {
+        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        context->clearSamples(fc.m_pollingState->statsMode);
+    }
+    expectSampleState(true, false);
+    {
+        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        context->markSampled(vid);
+    }
+    expectSampleState(true, true);
 }
 
 TEST(FlexCounter, bulkRidReplacementUsesScalarFallbackEnrollment)
@@ -6330,7 +6449,7 @@ TEST(FlexCounter, bulkRidReplacementExceptionAfterRemovalErasesObsoleteRegistrat
     fixture.throwAfterRemovalRid = replacement;
     EXPECT_THROW(fixture.enroll({vid}, {replacement}), std::runtime_error);
     EXPECT_TRUE(fixture.actual({vid}).empty());
-    EXPECT_TRUE(fixture.counter->m_objectRegistrations.empty());
+    EXPECT_TRUE(fixture.counter->m_pollingState->registrations.empty());
     EXPECT_TRUE(fixture.counter->isEmpty());
     EXPECT_EQ(fixture.counter->m_pendingUpdates.load(), 0u);
     EXPECT_EQ(fixture.counter->m_deferredUpdates, 0u);
@@ -6388,7 +6507,7 @@ TEST(FlexCounter, mixedBulkRidReplacementExceptionReconcilesAttemptedMembersOnly
     EXPECT_EQ(actual.at(fresh).rid, fresh);
     EXPECT_EQ(actual.at(same).rid, same);
     EXPECT_EQ(actual.at(unattempted).rid, unattempted);
-    ASSERT_EQ(fixture.counter->m_objectRegistrations.size(), actual.size());
+    ASSERT_EQ(fixture.counter->m_pollingState->registrations.size(), actual.size());
     for (const auto& object : actual)
     {
         EXPECT_TRUE(object.second.consistent);

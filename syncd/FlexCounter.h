@@ -13,6 +13,9 @@ extern "C" {
 #include <condition_variable>
 #include <unordered_map>
 #include <memory>
+#include <map>
+#include <string>
+#include <utility>
 #include <type_traits>
 #include <cstdint>
 #include <atomic>
@@ -58,6 +61,17 @@ namespace syncd
 
         using ObjectRegistrationMap = std::map<std::pair<std::string, sai_object_id_t>, ObjectRegistration>;
 
+        // Shared lifetime, not independent synchronization: accesses still
+        // require the owning FlexCounter group's mutex.
+        struct PollingState
+        {
+            ObjectRegistrationMap registrations;
+
+            bool yielded = false;
+
+            sai_stats_mode_t statsMode = SAI_STATS_MODE_READ;
+        };
+
         struct ObjectRid
         {
             sai_object_id_t rid;
@@ -67,11 +81,10 @@ namespace syncd
 
         using ObjectRidMap = std::map<sai_object_id_t, ObjectRid>;
 
-        BaseCounterContext(const std::string &name, const std::string &instance);
-
-        void setPollingState(
-                _In_ const ObjectRegistrationMap& registrations,
-                _In_ const bool& yielded);
+        BaseCounterContext(
+                _In_ const std::string& name,
+                _In_ const std::string& instance,
+                _In_ std::shared_ptr<const PollingState> pollingState);
 
         void clearSamples(
                 _In_ sai_stats_mode_t statsMode);
@@ -156,9 +169,7 @@ namespace syncd
         std::string m_bulkChunkSizePerPrefix;
         std::map<std::pair<sai_object_id_t, sai_object_id_t>, uint32_t> m_failedPolls;
 
-        const ObjectRegistrationMap* m_objectRegistrations = nullptr;
-
-        const bool* m_pollYielded = nullptr;
+        const std::shared_ptr<const PollingState> m_pollingState;
 
         std::map<sai_object_id_t, uint64_t> m_pollEpochs;
 
@@ -328,8 +339,6 @@ namespace syncd
 
             std::string m_instanceId;
 
-            sai_stats_mode_t m_statsMode;
-
             bool m_enable;
 
             std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
@@ -340,11 +349,10 @@ namespace syncd
 
             bool m_isDiscarded;
 
-            BaseCounterContext::ObjectRegistrationMap m_objectRegistrations;
+            const std::shared_ptr<BaseCounterContext::PollingState> m_pollingState =
+                std::make_shared<BaseCounterContext::PollingState>();
 
             uint64_t m_nextObjectEpoch = 0;
-
-            bool m_pollYielded = false;
 
             std::map<std::string, std::shared_ptr<BaseCounterContext>> m_counterContext;
 
