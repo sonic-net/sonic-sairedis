@@ -759,6 +759,22 @@ namespace saivs
                     _In_ bool is_up,
                     _In_ uint32_t attr_count = 0,
                     _In_ const sai_attribute_t *attr_list = nullptr);
+
+            /*
+             * Sets the admin state of a VPP sub-interface (<parent>.<vlan>).
+             * VPP refuses admin up on a sub-interface whose parent is admin
+             * down, and doesn't bring it up when the parent comes up later, so
+             * a refused admin up is kept in m_sub_if_admin_up_pending and
+             * applied by vpp_resync_sub_interface_admin_state() once the
+             * parent goes admin up.
+             */
+            int vpp_set_sub_interface_state(
+                    _In_ const std::string& sub_hwif,
+                    _In_ bool is_up);
+
+            void vpp_resync_sub_interface_admin_state(
+                    _In_ const std::string& parent_hwif);
+
             // set ethernet interface mtu including L2 header
             sai_status_t vpp_set_port_mtu (
                     _In_ sai_object_id_t object_id,
@@ -1526,6 +1542,10 @@ namespace saivs
 	    // create/set/remove path, which the VS layer serializes through a
 	    // single queue, so it requires no additional locking.
 	    std::set<sai_object_id_t> m_egress_disabled_lag_member_ports;
+
+            // Sub-interfaces whose admin up VPP refused while their parent was
+            // admin down. Only accessed from the SAI API thread.
+            std::set<std::string> m_sub_if_admin_up_pending;
 
             static int currentMaxInstance;
 

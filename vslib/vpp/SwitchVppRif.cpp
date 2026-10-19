@@ -762,11 +762,80 @@ sai_status_t SwitchVpp::vpp_set_interface_state (
     {
         const char *hwif_name = ifname.c_str();
 
-        interface_set_state(hwif_name, is_up);
+        if (vlan_id)
+        {
+            vpp_set_sub_interface_state(ifname, is_up);
+        }
+        else if (interface_set_state(hwif_name, is_up) == 0 && is_up)
+        {
+            vpp_resync_sub_interface_admin_state(ifname);
+        }
+
         SWSS_LOG_NOTICE("Updating router interface admin state %s %s", hwif_name,
                         (is_up ? "UP" : "DOWN"));
     }
     return SAI_STATUS_SUCCESS;
+}
+
+int SwitchVpp::vpp_set_sub_interface_state(
+        _In_ const std::string& sub_hwif,
+        _In_ bool is_up)
+{
+    SWSS_LOG_ENTER();
+
+    int ret = interface_set_state(sub_hwif.c_str(), is_up);
+
+    if (is_up && ret != 0)
+    {
+        /*
+         * VPP's sw_interface_set_flags fails with "super-interface ... must be
+         * up" while the parent is admin down, which is what happens to a VLAN
+         * member or sub-port added before orchagent brings its port up. VPP
+         * doesn't propagate a later parent admin up to the sub-interface, so
+         * apply it from vpp_resync_sub_interface_admin_state() then.
+         */
+        m_sub_if_admin_up_pending.insert(sub_hwif);
+
+        SWSS_LOG_NOTICE("admin up of %s refused (%d), applying it when its parent comes up",
+                sub_hwif.c_str(), ret);
+    }
+    else
+    {
+        m_sub_if_admin_up_pending.erase(sub_hwif);
+    }
+
+    return ret;
+}
+
+void SwitchVpp::vpp_resync_sub_interface_admin_state(
+        _In_ const std::string& parent_hwif)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * The set is ordered, so the sub-interfaces of one parent ("<parent>.<vlan>")
+     * are a contiguous range starting at "<parent>.".
+     */
+    const std::string prefix = parent_hwif + ".";
+
+    auto it = m_sub_if_admin_up_pending.lower_bound(prefix);
+
+    while (it != m_sub_if_admin_up_pending.end() && it->compare(0, prefix.size(), prefix) == 0)
+    {
+        int ret = interface_set_state(it->c_str(), true);
+
+        if (ret == 0)
+        {
+            SWSS_LOG_NOTICE("applied deferred admin up to %s", it->c_str());
+        }
+        else
+        {
+            // the parent is up now, so there is nothing left to wait for
+            SWSS_LOG_ERROR("deferred admin up of %s failed (%d)", it->c_str(), ret);
+        }
+
+        it = m_sub_if_admin_up_pending.erase(it);
+    }
 }
 
 sai_status_t SwitchVpp::vpp_set_port_mtu (
@@ -2113,6 +2182,7 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     delete_sub_interface(hwif_name.c_str(), vlan_id);
 
     m_ifaceRegistry.remove(sub_hwif);
+    m_sub_if_admin_up_pending.erase(sub_hwif);
 
     /* Get new list of physical interfaces from VS */
     refresh_interfaces_list();

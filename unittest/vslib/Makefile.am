@@ -55,6 +55,27 @@ tests_SOURCES = main.cpp \
 
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp
+
+# TestSwitchVpp.cpp replaces these VPP API calls with recording stubs, so the
+# SwitchVpp code paths under test run without a VPP instance.
+tests_LDFLAGS = \
+				-Wl,--wrap=init_vpp_client \
+				-Wl,--wrap=vpp_sync_for_events \
+				-Wl,--wrap=vpp_ev_dequeue \
+				-Wl,--wrap=vpp_want_l2_macs_events2 \
+				-Wl,--wrap=refresh_interfaces_list \
+				-Wl,--wrap=interface_set_state \
+				-Wl,--wrap=interface_set_promiscuous \
+				-Wl,--wrap=create_sub_interface \
+				-Wl,--wrap=delete_sub_interface \
+				-Wl,--wrap=set_sw_interface_l2_bridge \
+				-Wl,--wrap=set_l2_interface_vlan_tag_rewrite \
+				-Wl,--wrap=set_bridge_domain_flags \
+				-Wl,--wrap=bridge_domain_get_member_count \
+				-Wl,--wrap=vpp_bridge_domain_add_del \
+				-Wl,--wrap=vpp_get_swif_idx_by_name \
+				-Wl,--wrap=vpp_add_node_next \
+				-Wl,--wrap=vpp_classify_set_interface_l2_tables
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
