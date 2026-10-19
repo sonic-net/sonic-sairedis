@@ -1289,10 +1289,10 @@ sai_status_t SwitchVpp::refreshTrimDataplane()
 
     for (auto port_oid : port_list)
     {
-        std::string hwif;
+        std::string hwif = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
 
         // CPU, fabric and other internal ports have no VPP hwif; skip them.
-        if (!port_to_hwifname(port_oid, hwif))
+        if (hwif.empty())
         {
             SWSS_LOG_DEBUG("refreshTrimDataplane: port 0x%llx has no hwif, skipping",
                            (unsigned long long)port_oid);
