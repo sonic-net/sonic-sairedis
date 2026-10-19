@@ -153,6 +153,13 @@ BaseCounterContext::BaseCounterContext(
     }
 }
 
+bool BaseCounterContext::supportsRidReplacement() const
+{
+    SWSS_LOG_ENTER();
+
+    return false;
+}
+
 void BaseCounterContext::clearSamples(
         _In_ sai_stats_mode_t statsMode)
 {
@@ -774,6 +781,8 @@ public:
 
     bool supportsRidReplacement() const override
     {
+        SWSS_LOG_ENTER();
+
         return true;
     }
 
@@ -2580,6 +2589,8 @@ class AttrContext : public CounterContext<AttrType>
 public:
     bool supportsRidReplacement() const override
     {
+        SWSS_LOG_ENTER();
+
         return false;
     }
 
@@ -4730,7 +4741,7 @@ void FlexCounter::recordRegistration(
     const auto existing = m_pollingState->registrations.find(key);
 
     // Same-RID refreshes wait for the old sweep and plugins before enrollment,
-    // so one lifecycle epoch is sufficient for admission and sample validity.
+    // so one registration epoch is sufficient for admission and sample validity.
     // Removal erases the record: even same-RID re-enrollment must receive a
     // new epoch and cannot consume the previous registration's sample.
     const auto epoch = existing != m_pollingState->registrations.end() && existing->second.rid == rid ?

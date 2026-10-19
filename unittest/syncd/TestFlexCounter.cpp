@@ -359,7 +359,7 @@ void testAddRemoveCounter(
 
     // Wait for all fields before joining: stopping at the first published row
     // can cancel the remaining polling plan. Joining also protects mock-owned
-    // maps during verification and excludes partial teardown populations from
+    // maps during verification and excludes partial removal populations from
     // assertions about the steady-state chunk size.
     for (const auto object_id : object_ids)
     {

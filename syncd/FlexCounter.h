@@ -148,10 +148,7 @@ namespace syncd
                 _In_ const std::vector<sai_object_id_t>& vids) const = 0;
 
         // Only ordinary single-object stats enrollment removes/replaces old keys.
-        virtual bool supportsRidReplacement() const
-        {
-            return false;
-        }
+        virtual bool supportsRidReplacement() const;
 
     protected:
         bool isPollRegistrationCurrent(
