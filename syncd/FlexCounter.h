@@ -48,18 +48,25 @@ namespace syncd
     public:
         // Called with the group mutex held at safe object/chunk boundaries.
         using PollCheckpoint = std::function<bool(swss::Table&)>;
+
         struct ObjectRegistration
         {
             uint64_t generation;
+
             uint64_t incarnation;
+
             sai_object_id_t rid;
         };
+
         using ObjectGenerationMap = std::map<std::pair<std::string, sai_object_id_t>, ObjectRegistration>;
+
         struct ObjectRid
         {
             sai_object_id_t rid;
+
             bool consistent;
         };
+
         using ObjectRidMap = std::map<sai_object_id_t, ObjectRid>;
 
         BaseCounterContext(const std::string &name, const std::string &instance);
@@ -68,7 +75,8 @@ namespace syncd
                 _In_ const ObjectGenerationMap& generations,
                 _In_ const bool& yielded);
 
-        void clearSamples(_In_ sai_stats_mode_t statsMode);
+        void clearSamples(
+                _In_ sai_stats_mode_t statsMode);
 
         void addPlugins(
             _In_ const std::vector<std::string>& shaStrings);
@@ -129,26 +137,38 @@ namespace syncd
                 _In_ const std::vector<sai_object_id_t>& vids) const = 0;
 
         // Only ordinary single-object stats enrollment removes/replaces old keys.
-        virtual bool supportsRidReplacement() const { return false; }
+        virtual bool supportsRidReplacement() const
+        {
+            return false;
+        }
 
     protected:
-        bool isPollRegistrationCurrent(_In_ sai_object_id_t vid) const;
+        bool isPollRegistrationCurrent(
+                _In_ sai_object_id_t vid) const;
 
-        bool isPollIncarnationCurrent(_In_ sai_object_id_t vid) const;
+        bool isPollIncarnationCurrent(
+                _In_ sai_object_id_t vid) const;
 
-        void markSampled(_In_ sai_object_id_t vid);
+        void markSampled(
+                _In_ sai_object_id_t vid);
 
-        bool isSampleReady(_In_ sai_object_id_t vid) const;
+        bool isSampleReady(
+                _In_ sai_object_id_t vid) const;
 
         std::string m_name;
         std::string m_instanceId;
         std::set<std::string> m_plugins;
         std::string m_bulkChunkSizePerPrefix;
         std::map<std::pair<sai_object_id_t, sai_object_id_t>, uint32_t> m_failedPolls;
+
         const ObjectGenerationMap* m_objectGenerations = nullptr;
+
         const bool* m_pollYielded = nullptr;
+
         std::map<sai_object_id_t, ObjectRegistration> m_pollGenerations;
+
         std::map<sai_object_id_t, uint64_t> m_sampledGenerations;
+
         sai_stats_mode_t m_pollStatsMode = SAI_STATS_MODE_READ;
 
     public:

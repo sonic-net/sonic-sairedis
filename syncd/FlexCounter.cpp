@@ -6,6 +6,8 @@
 #include <mutex>
 
 #include "FlexCounter.h"
+#include "PollCycleGuard.h"
+#include "UpdateLock.h"
 #include "VendorSaiOptions.h"
 #include "VidManager.h"
 
@@ -28,124 +30,23 @@ using json = nlohmann::json;
 
 namespace
 {
-// Register before waiting for the group mutex. Retire the registration while
-// still holding it so that the polling thread cannot miss the notification.
-class UpdateLock
-{
-public:
-    UpdateLock(std::mutex& mutex, std::atomic<uint32_t>& pending,
-            std::condition_variable& condition):
-        m_pending(pending), m_condition(condition), m_lock(mutex, std::defer_lock)
+    // Iterators into live maps cannot survive a checkpoint: a waiting update may
+    // erase or replace entries. Snapshot only keys and look up current data later.
+    template <typename Map>
+    std::vector<typename Map::key_type> snapshotKeys(const Map& objects)
     {
         SWSS_LOG_ENTER();
-        ++m_pending;
-        try
-        {
-            m_lock.lock();
-        }
-        catch (...)
-        {
-            --m_pending;
-            m_condition.notify_all();
-            throw;
-        }
-    }
 
-    ~UpdateLock()
-    {
-        SWSS_LOG_ENTER();
-        if (m_lock.owns_lock())
-        {
-            unlock();
-        }
-    }
+        std::vector<typename Map::key_type> keys;
+        keys.reserve(objects.size());
 
-    void unlock()
-    {
-        SWSS_LOG_ENTER();
-        --m_pending;
-        m_condition.notify_all();
-        m_lock.unlock();
-    }
-
-    void waitForPollEnd(
-            const bool& pollInProgress,
-            uint32_t& deferred,
-            const std::atomic<bool>& running)
-    {
-        SWSS_LOG_ENTER();
-        if (!pollInProgress || !running)
+        for (const auto& object : objects)
         {
-            return;
+            keys.push_back(object.first);
         }
 
-        // Support probes can themselves read and clear an existing object's
-        // counters. Let its original sweep and plugins finish before probing.
-        // Withdraw from the checkpoint drain while waiting; the separate count
-        // prevents a new sweep from overtaking these updates.
-        ++deferred;
-        --m_pending;
-        m_condition.notify_all();
-        try
-        {
-            m_condition.wait(m_lock, [&] {
-                return !pollInProgress || !running;
-            });
-        }
-        catch (...)
-        {
-            --deferred;
-            ++m_pending;
-            m_condition.notify_all();
-            throw;
-        }
-        --deferred;
-        ++m_pending;
-        m_condition.notify_all();
+        return keys;
     }
-
-private:
-    std::atomic<uint32_t>& m_pending;
-    std::condition_variable& m_condition;
-    std::unique_lock<std::mutex> m_lock;
-};
-
-class PollCycleGuard
-{
-public:
-    PollCycleGuard(bool& inProgress, std::condition_variable& condition):
-        m_inProgress(inProgress), m_condition(condition)
-    {
-        SWSS_LOG_ENTER();
-        m_inProgress = true;
-    }
-
-    ~PollCycleGuard()
-    {
-        SWSS_LOG_ENTER();
-        m_inProgress = false;
-        m_condition.notify_all();
-    }
-
-private:
-    bool& m_inProgress;
-    std::condition_variable& m_condition;
-};
-
-// Iterators into live maps cannot survive a checkpoint: a waiting update may
-// erase or replace entries. Snapshot only keys and look up current data later.
-template <typename Map>
-std::vector<typename Map::key_type> snapshotKeys(const Map& objects)
-{
-    SWSS_LOG_ENTER();
-    std::vector<typename Map::key_type> keys;
-    keys.reserve(objects.size());
-    for (const auto& object : objects)
-    {
-        keys.push_back(object.first);
-    }
-    return keys;
-}
 }
 
 // Reconnect backoff used when the poll interval is not yet configured.
@@ -248,22 +149,27 @@ void BaseCounterContext::setPollingState(
         _In_ const bool& yielded)
 {
     SWSS_LOG_ENTER();
+
     m_objectGenerations = &generations;
     m_pollYielded = &yielded;
 }
 
-void BaseCounterContext::clearSamples(_In_ sai_stats_mode_t statsMode)
+void BaseCounterContext::clearSamples(
+        _In_ sai_stats_mode_t statsMode)
 {
     SWSS_LOG_ENTER();
+
     m_sampledGenerations.clear();
     m_pollStatsMode = statsMode;
     m_pollGenerations.clear();
+
     if (m_objectGenerations != nullptr)
     {
         // Freeze admission revisions and physical identities for the whole
         // context, including VIDs split across scalar and bulk prefixes. New
         // registrations are first admitted in the next sweep.
         auto generation = m_objectGenerations->lower_bound({m_name, SAI_NULL_OBJECT_ID});
+
         while (generation != m_objectGenerations->end() && generation->first.first == m_name)
         {
             m_pollGenerations.emplace(generation->first.second, generation->second);
@@ -272,38 +178,49 @@ void BaseCounterContext::clearSamples(_In_ sai_stats_mode_t statsMode)
     }
 }
 
-bool BaseCounterContext::isPollRegistrationCurrent(_In_ sai_object_id_t vid) const
+bool BaseCounterContext::isPollRegistrationCurrent(
+        _In_ sai_object_id_t vid) const
 {
     SWSS_LOG_ENTER();
+
     if (m_objectGenerations == nullptr)
     {
         return true;
     }
+
     const auto initial = m_pollGenerations.find(vid);
     const auto current = m_objectGenerations->find({m_name, vid});
+
     return initial != m_pollGenerations.end() && current != m_objectGenerations->end() &&
         initial->second.generation == current->second.generation;
 }
 
-bool BaseCounterContext::isPollIncarnationCurrent(_In_ sai_object_id_t vid) const
+bool BaseCounterContext::isPollIncarnationCurrent(
+        _In_ sai_object_id_t vid) const
 {
     SWSS_LOG_ENTER();
+
     if (m_objectGenerations == nullptr)
     {
         return true;
     }
+
     const auto initial = m_pollGenerations.find(vid);
     const auto current = m_objectGenerations->find({m_name, vid});
+
     return initial != m_pollGenerations.end() && current != m_objectGenerations->end() &&
         initial->second.incarnation == current->second.incarnation;
 }
 
-void BaseCounterContext::markSampled(_In_ sai_object_id_t vid)
+void BaseCounterContext::markSampled(
+        _In_ sai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
+
     if (m_objectGenerations != nullptr && isPollIncarnationCurrent(vid))
     {
         const auto generation = m_objectGenerations->find({m_name, vid});
+
         if (generation != m_objectGenerations->end())
         {
             m_sampledGenerations[vid] = generation->second.incarnation;
@@ -311,9 +228,11 @@ void BaseCounterContext::markSampled(_In_ sai_object_id_t vid)
     }
 }
 
-bool BaseCounterContext::isSampleReady(_In_ sai_object_id_t vid) const
+bool BaseCounterContext::isSampleReady(
+        _In_ sai_object_id_t vid) const
 {
     SWSS_LOG_ENTER();
+
     // Preserve existing plugin membership, including failed polls, when no
     // update interrupted the sweep. A yielded sweep must not expose a newly
     // enrolled or replaced object using a previous physical object's sample.
@@ -326,12 +245,16 @@ bool BaseCounterContext::isSampleReady(_In_ sai_object_id_t vid) const
     {
         return true;
     }
+
     const auto sample = m_sampledGenerations.find(vid);
+
     if (sample == m_sampledGenerations.end() || m_objectGenerations == nullptr)
     {
         return false;
     }
+
     const auto generation = m_objectGenerations->find({m_name, vid});
+
     return generation != m_objectGenerations->end() &&
         generation->second.incarnation == sample->second;
 }
@@ -803,9 +726,13 @@ public:
     struct BulkPollPlan
     {
         std::vector<sai_object_id_t> object_vids;
+
         std::vector<sai_object_key_t> object_keys;
+
         std::vector<StatType> counter_ids;
+
         std::string name;
+
         uint32_t default_bulk_chunk_size;
     };
 
@@ -824,31 +751,41 @@ public:
             _In_ const std::vector<sai_object_id_t>& vids) const override
     {
         SWSS_LOG_ENTER();
+
         ObjectRidMap result;
+
         if (vids.empty())
         {
             return result;
         }
-        auto record = [&](sai_object_id_t vid, sai_object_id_t rid) {
+
+        auto record = [&](sai_object_id_t vid, sai_object_id_t rid)
+        {
             const auto inserted = result.emplace(vid, ObjectRid{rid, true});
+
             if (!inserted.second && inserted.first->second.rid != rid)
             {
                 inserted.first->second.consistent = false;
             }
         };
+
         const std::set<sai_object_id_t> requested(vids.begin(), vids.end());
+
         for (const auto vid : requested)
         {
             const auto object = m_objectIdsMap.find(vid);
+
             if (object != m_objectIdsMap.end())
             {
                 record(vid, object->second->rid);
             }
         }
+
         // Scan each fragment once, not once per VID in a bulk enrollment.
         for (const auto& fragment : m_bulkContexts)
         {
             const auto& ctx = *fragment.second;
+
             for (size_t i = 0; i < ctx.object_vids.size(); ++i)
             {
                 if (requested.count(ctx.object_vids[i]))
@@ -857,10 +794,14 @@ public:
                 }
             }
         }
+
         return result;
     }
 
-    bool supportsRidReplacement() const override { return true; }
+    bool supportsRidReplacement() const override
+    {
+        return true;
+    }
 
     virtual void addObjectWithCounterGroups(
             _In_ sai_object_id_t vid,
@@ -1837,12 +1778,14 @@ public:
             _In_ const PollCheckpoint& checkpoint) override
     {
         SWSS_LOG_ENTER();
+
         // Snapshot scalar and every bulk prefix before yielding. A same-RID
         // configuration update must not leave a READ_AND_CLEAR sample with only
         // some prefixes refreshed: finish the old admitted plan, then use the
         // new configuration next sweep. Never copy unused bulk result buffers.
         std::vector<std::pair<sai_object_id_t, CounterIdsType>> scalarPlan;
         scalarPlan.reserve(m_objectIdsMap.size());
+
         for (const auto& object : m_objectIdsMap)
         {
             if (isPollRegistrationCurrent(object.first))
@@ -1850,22 +1793,27 @@ public:
                 scalarPlan.emplace_back(object.first, *object.second);
             }
         }
+
         std::vector<BulkPollPlan> bulkPlans;
         bulkPlans.reserve(m_bulkContexts.size());
+
         for (const auto& context : m_bulkContexts)
         {
             const auto& ctx = *context.second;
+
             if (ctx.counter_ids.empty())
             {
                 // A zero-stat no-op cannot establish a valid sampled object.
                 continue;
             }
+
             BulkPollPlan plan;
             plan.counter_ids = ctx.counter_ids;
             plan.name = ctx.name;
             plan.default_bulk_chunk_size = ctx.default_bulk_chunk_size;
             plan.object_vids.reserve(ctx.object_vids.size());
             plan.object_keys.reserve(ctx.object_keys.size());
+
             for (size_t i = 0; i < ctx.object_vids.size(); ++i)
             {
                 if (isPollRegistrationCurrent(ctx.object_vids[i]))
@@ -1874,20 +1822,24 @@ public:
                     plan.object_keys.push_back(ctx.object_keys[i]);
                 }
             }
+
             bulkPlans.push_back(std::move(plan));
         }
 
         for (const auto& object : scalarPlan)
         {
             const auto vid = object.first;
+
             if (!checkpoint(countersTable))
             {
                 return;
             }
+
             if (!isPollIncarnationCurrent(vid))
             {
                 continue;
             }
+
             const auto &rid = object.second.rid;
             const auto &statIds = object.second.counter_ids;
             auto effective_stats_mode = m_pollStatsMode;
@@ -1933,6 +1885,7 @@ public:
             {
                 return;
             }
+
             bulkCollectData(countersTable, plan, checkpoint);
         }
     }
@@ -2133,6 +2086,7 @@ private:
         _In_ const PollCheckpoint& checkpoint)
     {
         SWSS_LOG_ENTER();
+
         // This immutable plan is independent of live prefix-context replacement.
         // Physical incarnation checks still reject removed or replaced objects.
         const auto& objectVids = ctx.object_vids;
@@ -2141,10 +2095,12 @@ private:
         const auto& name = ctx.name;
         uint32_t bulk_chunk_size = ctx.default_bulk_chunk_size;
         const auto size = static_cast<uint32_t>(objectVids.size());
+
         if (bulk_chunk_size > size || bulk_chunk_size == 0)
         {
             bulk_chunk_size = size;
         }
+
         uint32_t current = 0;
 
         SWSS_LOG_INFO("Before getting bulk %s %s %s size %u bulk chunk size %u current %u", m_instanceId.c_str(), m_name.c_str(), name.c_str(), size, bulk_chunk_size, current);
@@ -2155,11 +2111,13 @@ private:
             {
                 return;
             }
+
             const auto count = std::min(bulk_chunk_size, size - current);
             std::vector<sai_object_id_t> vids;
             std::vector<sai_object_key_t> keys;
             vids.reserve(count);
             keys.reserve(count);
+
             for (uint32_t i = current; i < current + count; ++i)
             {
                 if (isPollIncarnationCurrent(objectVids[i]))
@@ -2168,11 +2126,14 @@ private:
                     keys.push_back(objectKeys[i]);
                 }
             }
+
             current += count;
+
             if (keys.empty())
             {
                 continue;
             }
+
             std::vector<sai_status_t> statuses(keys.size(), SAI_STATUS_NOT_EXECUTED);
             std::vector<uint64_t> counters(keys.size() * counterIds.size());
             const auto statsMode = m_pollStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
@@ -2186,6 +2147,7 @@ private:
                 statsMode,
                 statuses.data(),
                 counters.data());
+
             if (SAI_STATUS_SUCCESS != status)
             {
                 SWSS_LOG_WARN("Failed to bulk get stats for %s %s %s %s starting object %u bulk chunk size %u: %d",
@@ -2207,13 +2169,17 @@ private:
                     {
                         SWSS_LOG_ERROR("Failed to get stats of %s 0x%" PRIx64 " 0x%" PRIx64 ": %d", m_name.c_str(), vids[i], keys[i].key.object_id, statuses[i]);
                     }
+
                     continue;
                 }
+
                 std::vector<swss::FieldValueTuple> values;
+
                 for (size_t j = 0; j < counterIds.size(); ++j)
                 {
                     values.emplace_back(serializeStat(counterIds[j]), std::to_string(counters[i * counterIds.size() + j]));
                 }
+
                 countersTable.set(sai_serialize_object_id(vids[i]), values, "");
                 markSampled(vids[i]);
             }
@@ -2639,8 +2605,13 @@ template <typename AttrType, typename AttrDataType = NoAttrData>
 class AttrContext : public CounterContext<AttrType>
 {
 public:
-    bool supportsRidReplacement() const override { return false; }
+    bool supportsRidReplacement() const override
+    {
+        return false;
+    }
+
     using PollCheckpoint = BaseCounterContext::PollCheckpoint;
+
     typedef CounterIds<AttrType> AttrIdsType;
     typedef CounterContext<AttrType> Base;
     AttrContext(
@@ -2728,6 +2699,7 @@ public:
             {
                 return;
             }
+
             if (collectDataBulk(countersTable))
             {
                 return;
@@ -2740,11 +2712,14 @@ public:
             {
                 return;
             }
+
             const auto iter = Base::m_objectIdsMap.find(vid);
+
             if (iter == Base::m_objectIdsMap.end() || !Base::isPollRegistrationCurrent(vid))
             {
                 continue;
             }
+
             const auto &rid = iter->second->rid;
             const auto &attrIds = iter->second->counter_ids;
 
@@ -3152,11 +3127,14 @@ public:
             {
                 break;
             }
+
             const auto iter = Base::m_objectIdsMap.find(vid);
+
             if (iter == Base::m_objectIdsMap.end() || !Base::isPollRegistrationCurrent(vid))
             {
                 continue;
             }
+
             const auto &rid = iter->second->rid;
             const auto &attrIds = iter->second->counter_ids;
 
@@ -3706,11 +3684,14 @@ public:
             {
                 break;
             }
+
             const auto iter = Base::m_objectIdsMap.find(vid);
+
             if (iter == Base::m_objectIdsMap.end() || !Base::isPollRegistrationCurrent(vid))
             {
                 continue;
             }
+
             const auto &rid = iter->second->rid;
             const auto &attrIds = iter->second->counter_ids;
 
@@ -3839,21 +3820,27 @@ public:
             _In_ const std::vector<sai_object_id_t>& vids) const override
     {
         SWSS_LOG_ENTER();
+
         ObjectRidMap result;
+
         for (const auto vid : vids)
         {
             const auto object = m_bulkMeterContexts.find(vid);
+
             if (object == m_bulkMeterContexts.end() || object->second.object_keys.empty())
             {
                 continue;
             }
+
             const auto rid = object->second.object_keys.front().key.meter_bucket_entry.eni_id;
             const auto consistent = std::all_of(object->second.object_keys.begin(), object->second.object_keys.end(),
                     [&](const sai_object_key_t& key) { return key.key.meter_bucket_entry.eni_id == rid; });
             result.emplace(vid, ObjectRid{rid, consistent});
         }
+
         return result;
     }
+
     DashMeterCounterContext(
             _In_ const std::string &name,
             _In_ const std::string &instance,
@@ -3961,13 +3948,16 @@ public:
             _In_ const PollCheckpoint& checkpoint) override
     {
         SWSS_LOG_ENTER();
+
         for (const auto vid : snapshotKeys(m_bulkMeterContexts))
         {
             if (!checkpoint(countersTable))
             {
                 break;
             }
+
             const auto iter = m_bulkMeterContexts.find(vid);
+
             if (iter != m_bulkMeterContexts.end() && isPollRegistrationCurrent(vid))
             {
                 if (bulkCollectData(countersTable, iter->second))
@@ -3995,6 +3985,7 @@ public:
             {
                 continue;
             }
+
             auto& ctx = kv.second;
             std::vector<std::string> idStrings;
             idStrings.reserve(m_meterBucketsPerEni);
@@ -4742,14 +4733,17 @@ bool FlexCounter::hasSameRidRegistration(
         _In_ sai_object_id_t rid) const
 {
     SWSS_LOG_ENTER();
+
     for (const auto& context : m_counterContext)
     {
         const auto registration = m_objectGenerations.find({context.first, vid});
+
         if (registration != m_objectGenerations.end() && registration->second.rid == rid)
         {
             return true;
         }
     }
+
     return false;
 }
 
@@ -4759,9 +4753,11 @@ void FlexCounter::recordRegistration(
         _In_ sai_object_id_t rid)
 {
     SWSS_LOG_ENTER();
+
     const auto key = std::make_pair(name, vid);
     const auto existing = m_objectGenerations.find(key);
     const auto generation = ++m_nextObjectGeneration;
+
     // Configuration revisions fence admission to the current poll plan, but
     // changing counters on the same object must not discard already-cleared
     // samples. Removal erases the record, so even same-RID re-enrollment gets
@@ -4781,10 +4777,12 @@ void FlexCounter::enrollCounterObjects(
         _In_ bool perPortDiscovery)
 {
     SWSS_LOG_ENTER();
+
     if (vids.empty())
     {
         return;
     }
+
     auto context = getCounterContext(name);
     const auto previous = context->getObjectRids(vids);
     std::vector<sai_object_id_t> acceptedVids;
@@ -4794,13 +4792,16 @@ void FlexCounter::enrollCounterObjects(
     acceptedRids.reserve(rids.size());
     std::set<sai_object_id_t> seenVids;
     const bool canReplaceRid = !perPortDiscovery && context->supportsRidReplacement();
+
     for (size_t i = 0; i < vids.size(); ++i)
     {
         if (!seenVids.insert(vids[i]).second)
         {
             continue;
         }
+
         const auto old = previous.find(vids[i]);
+
         if (old != previous.end() && !old->second.consistent)
         {
             SWSS_LOG_ERROR("%s VID %s has conflicting SDK keys; removing all fragments and dropping registration",
@@ -4809,6 +4810,7 @@ void FlexCounter::enrollCounterObjects(
             m_objectGenerations.erase({name, vids[i]});
             continue;
         }
+
         if (old != previous.end() && old->second.rid != rids[i] && !canReplaceRid)
         {
             // These paths retain duplicate keys instead of replacing them.
@@ -4818,6 +4820,7 @@ void FlexCounter::enrollCounterObjects(
                     sai_serialize_object_id(old->second.rid).c_str(), sai_serialize_object_id(rids[i]).c_str());
             continue;
         }
+
         if (bulk && old != previous.end() && old->second.rid != rids[i])
         {
             // Orchagent uses bulk enrollment even for one VID. Bulk fragments
@@ -4826,20 +4829,25 @@ void FlexCounter::enrollCounterObjects(
             ridReplacements.emplace_back(vids[i], rids[i]);
             continue;
         }
+
         acceptedVids.push_back(vids[i]);
         acceptedRids.push_back(rids[i]);
     }
+
     if (acceptedVids.empty() && ridReplacements.empty())
     {
         return;
     }
 
-    auto reconcile = [&] {
+    auto reconcile = [&]
+    {
         const auto actual = context->getObjectRids(acceptedVids);
+
         for (size_t i = 0; i < acceptedVids.size(); ++i)
         {
             const auto vid = acceptedVids[i];
             const auto object = actual.find(vid);
+
             if (object == actual.end())
             {
                 m_objectGenerations.erase({name, vid});
@@ -4854,6 +4862,7 @@ void FlexCounter::enrollCounterObjects(
             else
             {
                 const auto registration = m_objectGenerations.find({name, vid});
+
                 // A rejected replacement can leave the old object enrolled.
                 // Preserve its revision/incarnation and any cleared sample.
                 if (object->second.rid == acceptedRids[i] || registration == m_objectGenerations.end() ||
@@ -4864,6 +4873,7 @@ void FlexCounter::enrollCounterObjects(
             }
         }
     };
+
     try
     {
         if (bulk)
@@ -4879,6 +4889,7 @@ void FlexCounter::enrollCounterObjects(
                     context->bulkAddObject(acceptedVids, acceptedRids, idStrings, statsMode);
                 }
             }
+
             for (const auto& replacement : ridReplacements)
             {
                 // Include the member before invoking an enrollment that may
@@ -4904,8 +4915,10 @@ void FlexCounter::enrollCounterObjects(
         // throwing. Neither optimistic registration nor blanket rollback is safe.
         reconcile();
         notifyPoll();
+
         throw;
     }
+
     reconcile();
 }
 
@@ -4963,6 +4976,7 @@ void FlexCounter::collectCounters(
     SWSS_LOG_ENTER();
 
     m_pollYielded = false;
+
     for (const auto& context : m_counterContext)
     {
         context.second->clearSamples(m_statsMode);
@@ -4976,16 +4990,20 @@ void FlexCounter::collectCounters(
             // Flush on the polling thread before releasing object protection:
             // buffered writes must not recreate entries after a removal.
             countersTable.flush();
+
             if (&table != &countersTable)
             {
                 table.flush();
             }
+
             // Deliberately prioritize updates. A continuous update stream can
             // delay polling; this is not a fairness or hard latency guarantee.
-            m_updateCond.wait(lock, [&] {
+            m_updateCond.wait(lock, [&]
+            {
                 return m_pendingUpdates == 0 || !m_runFlexCounterThread;
             });
         }
+
         return m_runFlexCounterThread.load();
     };
 
@@ -4995,7 +5013,9 @@ void FlexCounter::collectCounters(
         {
             break;
         }
+
         const auto iter = m_counterContext.find(name);
+
         if (iter != m_counterContext.end())
         {
             const auto context = iter->second;
@@ -5573,10 +5593,13 @@ void FlexCounter::bulkAddCounter(
         SWSS_LOG_ERROR("Bulk counter VID/RID lists have different lengths");
         return;
     }
+
     std::map<sai_object_id_t, sai_object_id_t> requestedRids;
+
     for (size_t i = 0; i < vids.size(); ++i)
     {
         const auto inserted = requestedRids.emplace(vids[i], rids[i]);
+
         if (!inserted.second && inserted.first->second != rids[i])
         {
             SWSS_LOG_ERROR("Bulk counter VID %s has conflicting RIDs", sai_serialize_object_id(vids[i]).c_str());
@@ -5661,6 +5684,7 @@ void FlexCounter::notifyPoll()
 void FlexCounter::notifySleep()
 {
     SWSS_LOG_ENTER();
+
     std::lock_guard<std::mutex> lock(m_mtxSleep);
     ++m_sleepGeneration;
     m_cvSleep.notify_all();
