@@ -680,8 +680,6 @@ sai_status_t SwitchVpp::natSetEnable(
 {
     SWSS_LOG_ENTER();
 
-    m_nat_enabled = enable;
-
     if (enable == m_nat_vpp_enabled)
     {
         return SAI_STATUS_SUCCESS;

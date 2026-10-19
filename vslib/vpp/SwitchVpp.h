@@ -2013,8 +2013,8 @@ namespace saivs
 
             bool natSupported() const;
 
-            // SAI_SWITCH_ATTR_NAT_ENABLE, and whether VPP's plugin is enabled
-            bool m_nat_enabled = false;
+            // whether VPP's nat44-ed plugin is enabled; SAI_SWITCH_ATTR_NAT_ENABLE
+            // itself is the switch attribute set_internal() stores
             bool m_nat_vpp_enabled = false;
 
             // router interfaces with a non-zero NAT zone: the VPP nat44 outside
