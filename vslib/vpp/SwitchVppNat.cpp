@@ -38,6 +38,7 @@
  * mapping is dropped by nat44-ed).
  */
 
+#include "SwitchVppNat.h"
 #include "SwitchVpp.h"
 #include "SwitchVppUtils.h"
 
@@ -116,14 +117,21 @@ namespace
     }
 }
 
-bool SwitchVpp::natSupported() const
+SwitchVppNat::SwitchVppNat(
+        _In_ SwitchVpp *switch_db):
+    m_switch_db(switch_db)
+{
+    SWSS_LOG_ENTER();
+}
+
+bool SwitchVppNat::isSupported() const
 {
     SWSS_LOG_ENTER();
 
     return vpp_nat44_ed_supported();
 }
 
-bool SwitchVpp::natResolveRifHwif(
+bool SwitchVppNat::resolveRifHwif(
         _In_ sai_object_id_t rif_id,
         _Out_ std::string &hwif_name)
 {
@@ -135,7 +143,7 @@ bool SwitchVpp::natResolveRifHwif(
 
     attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
 
-    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) != SAI_STATUS_SUCCESS)
+    if (m_switch_db->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) != SAI_STATUS_SUCCESS)
     {
         return false;
     }
@@ -147,8 +155,8 @@ bool SwitchVpp::natResolveRifHwif(
         // a VLAN router interface is the BVI "bvi<vlan id>"
         attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
 
-        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) != SAI_STATUS_SUCCESS ||
-            objectTypeQuery(attr.value.oid) != SAI_OBJECT_TYPE_VLAN)
+        if (m_switch_db->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) != SAI_STATUS_SUCCESS ||
+            m_switch_db->objectTypeQuery(attr.value.oid) != SAI_OBJECT_TYPE_VLAN)
         {
             return false;
         }
@@ -157,7 +165,7 @@ bool SwitchVpp::natResolveRifHwif(
 
         attr.id = SAI_VLAN_ATTR_VLAN_ID;
 
-        if (get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &attr) != SAI_STATUS_SUCCESS || attr.value.u16 == 0)
+        if (m_switch_db->get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &attr) != SAI_STATUS_SUCCESS || attr.value.u16 == 0)
         {
             return false;
         }
@@ -178,7 +186,7 @@ bool SwitchVpp::natResolveRifHwif(
     {
         attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
 
-        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) == SAI_STATUS_SUCCESS)
+        if (m_switch_db->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) == SAI_STATUS_SUCCESS)
         {
             vlan_id = attr.value.u16;
         }
@@ -186,17 +194,17 @@ bool SwitchVpp::natResolveRifHwif(
 
     attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
 
-    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) != SAI_STATUS_SUCCESS)
+    if (m_switch_db->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) != SAI_STATUS_SUCCESS)
     {
         return false;
     }
 
-    hwif_name = m_ifaceRegistry.resolveHwIfName(attr.value.oid, vlan_id);
+    hwif_name = m_switch_db->m_ifaceRegistry.resolveHwIfName(attr.value.oid, vlan_id);
 
     return !hwif_name.empty();
 }
 
-int SwitchVpp::natProgramOutside(
+int SwitchVppNat::programOutside(
         _In_ const std::string &hwif_name,
         _In_ bool is_add)
 {
@@ -216,7 +224,7 @@ int SwitchVpp::natProgramOutside(
     return rc;
 }
 
-int SwitchVpp::natProgramMapping(
+int SwitchVppNat::programMapping(
         _In_ const NatMapping &m,
         _In_ bool is_add)
 {
@@ -251,7 +259,7 @@ int SwitchVpp::natProgramMapping(
     return rc;
 }
 
-bool SwitchVpp::natEntryMapping(
+bool SwitchVppNat::entryMapping(
         _In_ const sai_nat_entry_t &entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list,
@@ -261,7 +269,7 @@ bool SwitchVpp::natEntryMapping(
 
     memset(&m, 0, sizeof(m));
 
-    auto vrf = vpp_get_ip_vrf(entry.vr_id);
+    auto vrf = m_switch_db->vpp_get_ip_vrf(entry.vr_id);
 
     m.vrf_id = vrf ? vrf->m_vrf_id : 0;
 
@@ -342,30 +350,30 @@ bool SwitchVpp::natEntryMapping(
     }
 }
 
-void SwitchVpp::natMappingRef(
+void SwitchVppNat::mappingRef(
         _In_ const std::string &entry_id,
         _In_ const NatMapping &m)
 {
     SWSS_LOG_ENTER();
 
-    auto &owners = m_nat_mappings[m];
+    auto &owners = m_mappings[m];
 
     owners.insert(entry_id);
 
-    if (owners.size() == 1 && m_nat_vpp_enabled)
+    if (owners.size() == 1 && m_vpp_enabled)
     {
-        natProgramMapping(m, true);
+        programMapping(m, true);
     }
 }
 
-void SwitchVpp::natMappingUnref(
+void SwitchVppNat::mappingUnref(
         _In_ const std::string &entry_id)
 {
     SWSS_LOG_ENTER();
 
-    auto it = m_nat_entries.find(entry_id);
+    auto it = m_entries.find(entry_id);
 
-    if (it == m_nat_entries.end() || !it->second.has_mapping)
+    if (it == m_entries.end() || !it->second.has_mapping)
     {
         return;
     }
@@ -374,9 +382,9 @@ void SwitchVpp::natMappingUnref(
 
     it->second.has_mapping = false;
 
-    auto mit = m_nat_mappings.find(m);
+    auto mit = m_mappings.find(m);
 
-    if (mit == m_nat_mappings.end())
+    if (mit == m_mappings.end())
     {
         return;
     }
@@ -388,16 +396,16 @@ void SwitchVpp::natMappingUnref(
         return;
     }
 
-    if (m_nat_vpp_enabled)
+    if (m_vpp_enabled)
     {
-        natProgramMapping(m, false);
+        programMapping(m, false);
     }
 
-    m_nat_mappings.erase(mit);
-    m_nat_counters.erase(m);
+    m_mappings.erase(mit);
+    m_counters.erase(m);
 }
 
-sai_status_t SwitchVpp::createNatEntry(
+sai_status_t SwitchVppNat::createNatEntry(
         _In_ const std::string &serializedObjectId,
         _In_ sai_object_id_t switch_id,
         _In_ uint32_t attr_count,
@@ -405,7 +413,7 @@ sai_status_t SwitchVpp::createNatEntry(
 {
     SWSS_LOG_ENTER();
 
-    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId, switch_id, attr_count, attr_list));
+    CHECK_STATUS(m_switch_db->create_internal(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId, switch_id, attr_count, attr_list));
 
     sai_nat_entry_t entry;
 
@@ -413,43 +421,43 @@ sai_status_t SwitchVpp::createNatEntry(
 
     NatEntryState state;
 
-    state.has_mapping = natEntryMapping(entry, attr_count, attr_list, state.mapping);
+    state.has_mapping = entryMapping(entry, attr_count, attr_list, state.mapping);
 
-    m_nat_entries[serializedObjectId] = state;
+    m_entries[serializedObjectId] = state;
 
     if (state.has_mapping)
     {
-        natMappingRef(serializedObjectId, state.mapping);
+        mappingRef(serializedObjectId, state.mapping);
     }
 
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchVpp::removeNatEntry(
+sai_status_t SwitchVppNat::removeNatEntry(
         _In_ const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
 
-    natMappingUnref(serializedObjectId);
+    mappingUnref(serializedObjectId);
 
-    m_nat_entries.erase(serializedObjectId);
+    m_entries.erase(serializedObjectId);
 
-    return remove_internal(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId);
+    return m_switch_db->remove_internal(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId);
 }
 
-void SwitchVpp::natReadCounters(
+void SwitchVppNat::readCounters(
         _In_ const NatMapping &m,
         _Out_ uint64_t &pkts,
         _Out_ uint64_t &bytes)
 {
     SWSS_LOG_ENTER();
 
-    auto &c = m_nat_counters[m];
+    auto &c = m_counters[m];
 
     pkts = c.base_pkts;
     bytes = c.base_bytes;
 
-    if (!m_nat_vpp_enabled)
+    if (!m_vpp_enabled)
     {
         for (auto &l: c.live)
         {
@@ -516,14 +524,14 @@ void SwitchVpp::natReadCounters(
     }
 }
 
-sai_status_t SwitchVpp::getNatEntry(
+sai_status_t SwitchVppNat::getNatEntry(
         _In_ const std::string &serializedObjectId,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    const auto &objectHash = m_objectHash.at(SAI_OBJECT_TYPE_NAT_ENTRY);
+    const auto &objectHash = m_switch_db->m_objectHash.at(SAI_OBJECT_TYPE_NAT_ENTRY);
 
     auto oit = objectHash.find(serializedObjectId);
 
@@ -532,7 +540,7 @@ sai_status_t SwitchVpp::getNatEntry(
         return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
-    auto &state = m_nat_entries[serializedObjectId];
+    auto &state = m_entries[serializedObjectId];
 
     bool read = false;
     bool clear_hit = false;
@@ -541,7 +549,7 @@ sai_status_t SwitchVpp::getNatEntry(
     auto readOnce = [&]() {
         if (!read && state.has_mapping)
         {
-            natReadCounters(state.mapping, pkts, bytes);
+            readCounters(state.mapping, pkts, bytes);
         }
 
         read = true;
@@ -597,15 +605,15 @@ sai_status_t SwitchVpp::getNatEntry(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchVpp::setNatEntry(
+sai_status_t SwitchVppNat::setNatEntry(
         _In_ const std::string &serializedObjectId,
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
-    CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId, attr));
+    CHECK_STATUS(m_switch_db->set_internal(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId, attr));
 
-    auto &state = m_nat_entries[serializedObjectId];
+    auto &state = m_entries[serializedObjectId];
 
     switch (attr->id)
     {
@@ -616,7 +624,7 @@ sai_status_t SwitchVpp::setNatEntry(
 
             if (state.has_mapping)
             {
-                natReadCounters(state.mapping, pkts, bytes);
+                readCounters(state.mapping, pkts, bytes);
             }
 
             // the counter reads attr->value.u64 from now on (orchagent clears with 0)
@@ -643,7 +651,7 @@ sai_status_t SwitchVpp::setNatEntry(
             // the translation changed: rebuild the mapping from what is stored
             std::vector<sai_attribute_t> attrs;
 
-            for (auto &a: m_objectHash.at(SAI_OBJECT_TYPE_NAT_ENTRY).at(serializedObjectId))
+            for (auto &a: m_switch_db->m_objectHash.at(SAI_OBJECT_TYPE_NAT_ENTRY).at(serializedObjectId))
             {
                 attrs.push_back(*a.second->getAttr());
             }
@@ -653,18 +661,18 @@ sai_status_t SwitchVpp::setNatEntry(
             sai_deserialize_nat_entry(serializedObjectId, entry);
 
             NatMapping m;
-            bool has = natEntryMapping(entry, (uint32_t)attrs.size(), attrs.data(), m);
+            bool has = entryMapping(entry, (uint32_t)attrs.size(), attrs.data(), m);
 
-            natMappingUnref(serializedObjectId);
+            mappingUnref(serializedObjectId);
 
-            auto &st = m_nat_entries[serializedObjectId];
+            auto &st = m_entries[serializedObjectId];
 
             st.has_mapping = has;
 
             if (has)
             {
                 st.mapping = m;
-                natMappingRef(serializedObjectId, m);
+                mappingRef(serializedObjectId, m);
             }
 
             return SAI_STATUS_SUCCESS;
@@ -675,19 +683,19 @@ sai_status_t SwitchVpp::setNatEntry(
     }
 }
 
-sai_status_t SwitchVpp::natSetEnable(
+sai_status_t SwitchVppNat::setEnable(
         _In_ bool enable)
 {
     SWSS_LOG_ENTER();
 
-    if (enable == m_nat_vpp_enabled)
+    if (enable == m_vpp_enabled)
     {
         return SAI_STATUS_SUCCESS;
     }
 
     if (enable)
     {
-        if (!natSupported())
+        if (!isSupported())
         {
             SWSS_LOG_ERROR("NAT enabled but VPP does not run nat_plugin.so; NAT entries will not translate");
             return SAI_STATUS_SUCCESS;
@@ -706,33 +714,33 @@ sai_status_t SwitchVpp::natSetEnable(
             SWSS_LOG_ERROR("nat44 forwarding enable failed; unmatched traffic into a NAT zone will be dropped");
         }
 
-        m_nat_vpp_enabled = true;
+        m_vpp_enabled = true;
 
         SWSS_LOG_NOTICE("nat44-ed enabled: %zu outside interfaces, %zu static mappings",
-                m_nat_zone_rifs.size(), m_nat_mappings.size());
+                m_zone_rifs.size(), m_mappings.size());
 
-        for (auto &z: m_nat_zone_rifs)
+        for (auto &z: m_zone_rifs)
         {
-            natProgramOutside(z.second.second, true);
+            programOutside(z.second.second, true);
         }
 
-        for (auto &m: m_nat_mappings)
+        for (auto &m: m_mappings)
         {
-            natProgramMapping(m.first, true);
+            programMapping(m.first, true);
         }
 
         return SAI_STATUS_SUCCESS;
     }
 
     // disabling the plugin drops every mapping, interface and session in VPP
-    for (auto &m: m_nat_mappings)
+    for (auto &m: m_mappings)
     {
-        natProgramMapping(m.first, false);
+        programMapping(m.first, false);
     }
 
-    for (auto &z: m_nat_zone_rifs)
+    for (auto &z: m_zone_rifs)
     {
-        natProgramOutside(z.second.second, false);
+        programOutside(z.second.second, false);
     }
 
     int rc = vpp_nat44_ed_enable_disable(false, 0);
@@ -742,9 +750,9 @@ sai_status_t SwitchVpp::natSetEnable(
         SWSS_LOG_ERROR("nat44-ed plugin disable failed: %d", rc);
     }
 
-    m_nat_vpp_enabled = false;
+    m_vpp_enabled = false;
 
-    for (auto &c: m_nat_counters)
+    for (auto &c: m_counters)
     {
         // sessions are gone: their totals become history
         for (auto &l: c.second.live)
@@ -761,24 +769,24 @@ sai_status_t SwitchVpp::natSetEnable(
     return SAI_STATUS_SUCCESS;
 }
 
-void SwitchVpp::natRouterInterfaceZone(
+void SwitchVppNat::setRouterInterfaceZone(
         _In_ sai_object_id_t rif_id,
         _In_ uint32_t zone_id)
 {
     SWSS_LOG_ENTER();
 
-    auto it = m_nat_zone_rifs.find(rif_id);
+    auto it = m_zone_rifs.find(rif_id);
 
     if (zone_id == 0)
     {
-        if (it != m_nat_zone_rifs.end())
+        if (it != m_zone_rifs.end())
         {
-            if (m_nat_vpp_enabled)
+            if (m_vpp_enabled)
             {
-                natProgramOutside(it->second.second, false);
+                programOutside(it->second.second, false);
             }
 
-            m_nat_zone_rifs.erase(it);
+            m_zone_rifs.erase(it);
         }
 
         return;
@@ -786,14 +794,14 @@ void SwitchVpp::natRouterInterfaceZone(
 
     std::string hwif;
 
-    if (!natResolveRifHwif(rif_id, hwif))
+    if (!resolveRifHwif(rif_id, hwif))
     {
         SWSS_LOG_ERROR("NAT zone %u on router interface %s: no VPP interface, not programmed",
                 zone_id, sai_serialize_object_id(rif_id).c_str());
         return;
     }
 
-    if (it != m_nat_zone_rifs.end())
+    if (it != m_zone_rifs.end())
     {
         it->second.first = zone_id;
 
@@ -802,13 +810,13 @@ void SwitchVpp::natRouterInterfaceZone(
             return;
         }
 
-        if (m_nat_vpp_enabled)
+        if (m_vpp_enabled)
         {
-            natProgramOutside(it->second.second, false);
+            programOutside(it->second.second, false);
         }
     }
 
-    for (auto &z: m_nat_zone_rifs)
+    for (auto &z: m_zone_rifs)
     {
         if (z.first != rif_id && z.second.first != zone_id)
         {
@@ -818,18 +826,18 @@ void SwitchVpp::natRouterInterfaceZone(
         }
     }
 
-    m_nat_zone_rifs[rif_id] = { zone_id, hwif };
+    m_zone_rifs[rif_id] = { zone_id, hwif };
 
-    if (m_nat_vpp_enabled)
+    if (m_vpp_enabled)
     {
-        natProgramOutside(hwif, true);
+        programOutside(hwif, true);
     }
 }
 
-void SwitchVpp::natRouterInterfaceRemoved(
+void SwitchVppNat::removeRouterInterface(
         _In_ sai_object_id_t rif_id)
 {
     SWSS_LOG_ENTER();
 
-    natRouterInterfaceZone(rif_id, 0);
+    setRouterInterfaceZone(rif_id, 0);
 }
