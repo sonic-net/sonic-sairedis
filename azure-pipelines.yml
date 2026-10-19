@@ -67,6 +67,7 @@ stages:
       run_unit_test: true
       archive_gcov: true
       debian_version: ${{ parameters.debian_version }}
+      vpp_run_id: ${{ parameters.vpp_run_id }}
 
 - stage: BuildAsan
   dependsOn: []
@@ -81,6 +82,7 @@ stages:
       run_unit_test: true
       archive_gcov: false
       debian_version: ${{ parameters.debian_version }}
+      vpp_run_id: ${{ parameters.vpp_run_id }}
 
 - stage: BuildArm
   dependsOn: []

@@ -1174,8 +1174,11 @@ sai_status_t SwitchVpp::updateTrimPolicy(
             break;
 
         case SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE:
-            // Only STATIC is advertised (queryAttrEnumValuesCapability), so
-            // orchagent never programs DYNAMIC; nothing to store here.
+            if (attr->value.s32 != SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC)
+            {
+                SWSS_LOG_ERROR("Unsupported trim queue-resolution mode %d", attr->value.s32);
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
             break;
 
         case SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_INDEX:
@@ -1204,6 +1207,52 @@ void SwitchVpp::restoreTrimPolicy()
             SWSS_LOG_THROW("Invalid recovered trim attribute %s", entry.first.c_str());
         }
     }
+}
+
+sai_status_t SwitchVpp::createSwitchTrimPolicy(
+        _In_ const std::string &serializedObjectId,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    const auto previous_policy = m_trim_policy;
+    auto candidate = previous_policy;
+
+    for (uint32_t i = 0; i < attr_count; ++i)
+    {
+        sai_status_t status = updateTrimPolicy(candidate, &attr_list[i]);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return status == SAI_STATUS_INVALID_ATTR_VALUE_0 ?
+                    status - static_cast<sai_status_t>(i) : status;
+        }
+    }
+
+    auto &attrs = m_objectHash.at(SAI_OBJECT_TYPE_SWITCH).at(serializedObjectId);
+    const auto previous_attrs = attrs;
+    for (uint32_t i = 0; i < attr_count; ++i)
+    {
+        auto value = std::make_shared<SaiAttrWrap>(SAI_OBJECT_TYPE_SWITCH, &attr_list[i]);
+        attrs[value->getAttrMetadata()->attridname] = value;
+    }
+    m_trim_policy = candidate;
+
+    sai_status_t status = programTrimGlobal();
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        attrs = previous_attrs;
+        m_trim_policy = previous_policy;
+        m_trim_reconcile_pending = programTrimGlobal() != SAI_STATUS_SUCCESS;
+        if (m_trim_reconcile_pending)
+        {
+            SWSS_LOG_ERROR("Trim switch CREATE failed; rollback programming also failed");
+        }
+        return status;
+    }
+
+    m_trim_reconcile_pending = false;
+    m_object_db.create_or_update(
+            SAI_OBJECT_TYPE_SWITCH, serializedObjectId, attr_count, attr_list, true);
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::programTrimGlobal()
@@ -1298,6 +1347,43 @@ std::vector<sai_object_id_t> SwitchVpp::getTrimPortList() const
     return ports;
 }
 
+sai_status_t SwitchVpp::resolveTrimPort(
+        _In_ sai_object_id_t port_oid,
+        _Out_ std::string &hwif)
+{
+    hwif.clear();
+    sai_attribute_t attr = {};
+    attr.id = SAI_PORT_ATTR_TYPE;
+    sai_status_t status = get(SAI_OBJECT_TYPE_PORT, port_oid, 1, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Cannot read trim port type for %s: %d",
+                sai_serialize_object_id(port_oid).c_str(), status);
+        return status;
+    }
+
+    switch (attr.value.s32)
+    {
+        case SAI_PORT_TYPE_CPU:
+        case SAI_PORT_TYPE_FABRIC:
+        case SAI_PORT_TYPE_RECYCLE:
+            return SAI_STATUS_SUCCESS;
+        case SAI_PORT_TYPE_LOGICAL:
+            break;
+        default:
+            SWSS_LOG_ERROR("Unsupported trim port type %d", attr.value.s32);
+            return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    if (!vppGetHwIfNameForPort(port_oid, 0, hwif))
+    {
+        SWSS_LOG_ERROR("Cannot resolve trim front-panel port %s",
+                sai_serialize_object_id(port_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::refreshTrimDataplane()
 {
     SWSS_LOG_ENTER();
@@ -1320,13 +1406,15 @@ sai_status_t SwitchVpp::refreshTrimDataplane()
 
     for (auto port_oid : port_list)
     {
-        std::string hwif = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
-
-        // CPU, fabric and other internal ports have no VPP hwif; skip them.
+        std::string hwif;
+        sai_status_t port_status = resolveTrimPort(port_oid, hwif);
+        if (port_status != SAI_STATUS_SUCCESS)
+        {
+            status = port_status;
+            continue;
+        }
         if (hwif.empty())
         {
-            SWSS_LOG_DEBUG("refreshTrimDataplane: port 0x%llx has no hwif, skipping",
-                           (unsigned long long)port_oid);
             continue;
         }
 
@@ -1590,7 +1678,13 @@ sai_status_t SwitchVpp::refreshTrimDscpToQueueMap()
     // pair during incremental replay, then a remaining TC-to-queue binding.
     for (auto port_oid : getTrimPortList())
     {
-        if (m_ifaceRegistry.resolveHwIfName(port_oid, 0).empty())
+        std::string hwif;
+        sai_status_t port_status = resolveTrimPort(port_oid, hwif);
+        if (port_status != SAI_STATUS_SUCCESS)
+        {
+            return port_status;
+        }
+        if (hwif.empty())
         {
             continue;
         }
@@ -2319,6 +2413,17 @@ sai_status_t SwitchVpp::create_internal(
         }
     }
 
+    if (object_type == SAI_OBJECT_TYPE_SWITCH)
+    {
+        for (uint32_t i = 0; i < attr_count; ++i)
+        {
+            if (isTrimDataplaneAttr(object_type, attr_list[i].id))
+            {
+                return createSwitchTrimPolicy(serializedObjectId, attr_count, attr_list);
+            }
+        }
+    }
+
     if (objectHash.find(serializedObjectId) == objectHash.end())
     {
         /*
@@ -2401,26 +2506,27 @@ sai_status_t SwitchVpp::createPort(
 
     auto sid = sai_serialize_object_id(object_id);
 
-    const sai_attribute_value_t     *oper_status;
-    uint32_t                        attr_index;
-    sai_status_t status = find_attrib_in_list(attr_count, attr_list,
-                            SAI_PORT_ATTR_OPER_STATUS, &oper_status, &attr_index);
-
-    if (status == SAI_STATUS_ITEM_NOT_FOUND) {
-        // SAI_PORT_ATTR_OPER_STATUS not found, create a copy of attr_list and add it
-        std::vector<sai_attribute_t> modified_attr_list(attr_list, attr_list + attr_count);
-
-        // Add the missing SAI_PORT_ATTR_OPER_STATUS attribute
-        sai_attribute_t oper_status_attr;
-        oper_status_attr.id = SAI_PORT_ATTR_OPER_STATUS;
-        oper_status_attr.value.s32 = SAI_PORT_OPER_STATUS_UNKNOWN;
-        modified_attr_list.push_back(oper_status_attr);
-
-        CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id,
-                                   static_cast<uint32_t>(modified_attr_list.size()), modified_attr_list.data()));
-    } else {
-        CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id, attr_count, attr_list));
+    std::vector<sai_attribute_t> attributes;
+    if (attr_count != 0)
+    {
+        attributes.assign(attr_list, attr_list + attr_count);
     }
+    if (!sai_metadata_get_attr_by_id(SAI_PORT_ATTR_OPER_STATUS, attr_count, attr_list))
+    {
+        sai_attribute_t attr = {};
+        attr.id = SAI_PORT_ATTR_OPER_STATUS;
+        attr.value.s32 = SAI_PORT_OPER_STATUS_UNKNOWN;
+        attributes.push_back(attr);
+    }
+    if (!sai_metadata_get_attr_by_id(SAI_PORT_ATTR_TYPE, attr_count, attr_list))
+    {
+        sai_attribute_t attr = {};
+        attr.id = SAI_PORT_ATTR_TYPE;
+        attr.value.s32 = SAI_PORT_TYPE_LOGICAL;
+        attributes.push_back(attr);
+    }
+    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id,
+            static_cast<uint32_t>(attributes.size()), attributes.data()));
 
     return create_port_dependencies(object_id, attr_count, attr_list);
 }
@@ -3709,6 +3815,11 @@ sai_status_t SwitchVpp::refresh_read_only(
         _In_ sai_object_id_t object_id)
 {
     SWSS_LOG_ENTER();
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_PORT && meta->attrid == SAI_PORT_ATTR_TYPE)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
 
     // Handle VPP-specific refresh read-only logic first
     if (meta->objecttype == SAI_OBJECT_TYPE_BFD_SESSION)

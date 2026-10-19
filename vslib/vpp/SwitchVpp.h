@@ -505,6 +505,11 @@ namespace saivs
             // when trimming is enabled).
             sai_status_t programTrimGlobal();
 
+            sai_status_t createSwitchTrimPolicy(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
             // --- Packet-trim per-queue datapath wiring ------------------------
             // Beyond the global policy, the VPP sonic_ext trim plugin needs a
             // per-(egress port, queue) admission state and a switch-global
@@ -530,6 +535,10 @@ namespace saivs
             // dynamically via createPort() and never land in m_port_list, so
             // trim programming must not rely on that cache.
             std::vector<sai_object_id_t> getTrimPortList() const;
+
+            sai_status_t resolveTrimPort(
+                    _In_ sai_object_id_t port_oid,
+                    _Out_ std::string &hwif);
 
             // Re-resolve every port/queue admission state and the DSCP->queue
             // map from the SAI object graph and push them to the VPP plugin.

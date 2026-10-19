@@ -1807,24 +1807,34 @@ vl_api_sonic_ext_egress_mirror_enable_disable_reply_t_handler(
 }
 
 static void
+complete_trim_set_reply(uint32_t context, int retval)
+{
+    if (!get_index_ptr(context)) {
+        return;
+    }
+    release_index(context);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_sonic_ext_trim_global_set_reply_t_handler(vl_api_sonic_ext_trim_global_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    complete_trim_set_reply(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_trim_dscp_map_set_reply_t_handler(vl_api_sonic_ext_trim_dscp_map_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    complete_trim_set_reply(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_trim_queue_set_reply_t_handler(vl_api_sonic_ext_trim_queue_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    complete_trim_set_reply(msg->context, retval);
 }
 
 static void
@@ -4378,12 +4388,19 @@ int vpp_sonic_ext_trim_global_set(bool is_enable, uint16_t trim_size,
 {
     vat_main_t *vam = &vat_main;
     vl_api_sonic_ext_trim_global_set_t *mp;
+    uint32_t context;
     int ret;
 
     VPP_LOCK();
 
+    context = store_ptr(&ret);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
     __plugin_msg_base = sonic_ext_trim_msg_id_base;
     M (SONIC_EXT_TRIM_GLOBAL_SET, mp);
+    mp->context = context;
 
     mp->is_enable = is_enable;
     mp->trim_size = htons(trim_size);
@@ -4394,6 +4411,9 @@ int vpp_sonic_ext_trim_global_set(bool is_enable, uint16_t trim_size,
 
     S (mp);
     WR (ret);
+    if (get_index_ptr(context)) {
+        release_index(context);
+    }
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) enable %d size %u queue %u", __func__, ret, is_enable, trim_size, trim_queue); }
     else { SAIVPP_INFO("%s enable %d size %u dscp_mode %u dscp %u tc %u queue %u", __func__, is_enable, trim_size, dscp_mode, dscp_value, tc_value, trim_queue); }
@@ -4407,17 +4427,27 @@ int vpp_sonic_ext_trim_dscp_map_set(const uint8_t dscp_to_queue[64])
 {
     vat_main_t *vam = &vat_main;
     vl_api_sonic_ext_trim_dscp_map_set_t *mp;
+    uint32_t context;
     int ret;
 
     VPP_LOCK();
 
+    context = store_ptr(&ret);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
     __plugin_msg_base = sonic_ext_trim_msg_id_base;
     M (SONIC_EXT_TRIM_DSCP_MAP_SET, mp);
+    mp->context = context;
 
     memcpy(mp->dscp_to_queue, dscp_to_queue, 64);
 
     S (mp);
     WR (ret);
+    if (get_index_ptr(context)) {
+        release_index(context);
+    }
 
     if (ret) { SAIVPP_ERROR("%s failed(%d)", __func__, ret); }
     else { SAIVPP_INFO("%s ok", __func__); }
@@ -4433,6 +4463,7 @@ int vpp_sonic_ext_trim_queue_set(const char *hwif_name, uint8_t queue,
 {
     vat_main_t *vam = &vat_main;
     vl_api_sonic_ext_trim_queue_set_t *mp;
+    uint32_t context;
     u32 idx;
     int ret;
 
@@ -4449,8 +4480,14 @@ int vpp_sonic_ext_trim_queue_set(const char *hwif_name, uint8_t queue,
         return -EINVAL;
     }
 
+    context = store_ptr(&ret);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
     __plugin_msg_base = sonic_ext_trim_msg_id_base;
     M (SONIC_EXT_TRIM_QUEUE_SET, mp);
+    mp->context = context;
 
     mp->sw_if_index = htonl(idx);
     mp->queue = queue;
@@ -4460,6 +4497,9 @@ int vpp_sonic_ext_trim_queue_set(const char *hwif_name, uint8_t queue,
 
     S (mp);
     WR (ret);
+    if (get_index_ptr(context)) {
+        release_index(context);
+    }
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s queue %u eligible %d rate %lu cap %lu", __func__, ret, hwif_name, queue, eligible, (unsigned long)rate_bytes_per_sec, (unsigned long)capacity_bytes); }
     else { SAIVPP_INFO("%s hwif %s queue %u eligible %d rate %lu cap %lu", __func__, hwif_name, queue, eligible, (unsigned long)rate_bytes_per_sec, (unsigned long)capacity_bytes); }

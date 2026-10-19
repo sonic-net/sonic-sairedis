@@ -59,6 +59,7 @@ tests_LDFLAGS = -Wl,--wrap=init_vpp_client \
 			   -Wl,--wrap=vpp_sync_for_events \
 			   -Wl,--wrap=vpp_ev_dequeue \
 			   -Wl,--wrap=vpp_want_l2_macs_events2 \
+			   -Wl,--wrap=vpp_get_swif_idx_by_name \
 			   -Wl,--wrap=vpp_sonic_ext_trim_global_set \
 			   -Wl,--wrap=vpp_sonic_ext_trim_queue_set \
 			   -Wl,--wrap=vpp_sonic_ext_trim_dscp_map_set
