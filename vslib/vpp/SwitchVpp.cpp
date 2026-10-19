@@ -1342,6 +1342,12 @@ void SwitchVpp::processFdbEntriesForAging()
     while (!events.empty()) {
         const VppMacEvent &ev = events.front();
 
+        if (ev.action == VPP_MAC_ACTION_RESYNC) {
+            resyncFdbWithVpp();
+            events.pop();
+            continue;
+        }
+
         /*
          * Bridge-domain membership is the drop gate: an event from an interface
          * that is not in a BD is not a bridged MAC and must not reach ASIC_DB.

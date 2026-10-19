@@ -1689,7 +1689,7 @@ namespace saivs
             struct VppMacEvent {
                 uint8_t  mac[6];
                 uint32_t sw_if_index;
-                uint8_t  action; // 0=ADD(learn), 1=DELETE(age), 2=MOVE
+                uint8_t  action; // 0=ADD(learn), 1=DELETE(age), 2=MOVE, 3=RESYNC
             };
             std::mutex              m_mac_event_queue_mutex;
             std::queue<VppMacEvent> m_mac_event_queue;
@@ -1707,6 +1707,10 @@ namespace saivs
 
             bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
             bool generateFdbAgedEvent(const VppFdbKey &key);
+
+            // Reconcile m_vpp_fdb_entries/FDB notifications with VPP's L2FIB
+            // after MAC events were lost (VPP_MAC_ACTION_RESYNC).
+            void resyncFdbWithVpp();
 
             void vpp_fdb_entries_invalidate_all();
             void vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id);
