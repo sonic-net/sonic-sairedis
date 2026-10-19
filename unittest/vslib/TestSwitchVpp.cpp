@@ -465,7 +465,7 @@ TEST_F(SwitchVppSubIfAdminState, SubPortSetDownBeforeThePortComesUpStaysDown)
  * The unit tests are built with access control checking disabled, so the
  * fixture reaches the protected SwitchVpp members directly.
  */
-class SwitchVppNat : public ::testing::Test
+class SwitchVppNatTest : public ::testing::Test
 {
     protected:
 
@@ -761,7 +761,7 @@ class SwitchVppNat : public ::testing::Test
         sai_object_id_t m_defaultVr = SAI_NULL_OBJECT_ID;
 };
 
-TEST_F(SwitchVppNat, StaticNatProgramsOneAddressOnlyMapping)
+TEST_F(SwitchVppNatTest, StaticNatProgramsOneAddressOnlyMapping)
 {
     sai_object_id_t rif;
 
@@ -781,7 +781,7 @@ TEST_F(SwitchVppNat, StaticNatProgramsOneAddressOnlyMapping)
     EXPECT_TRUE(maps[0].flag);
 }
 
-TEST_F(SwitchVppNat, ZoneOneVlanRifIsTheOutsideInterfaceOnceNatIsEnabled)
+TEST_F(SwitchVppNatTest, ZoneOneVlanRifIsTheOutsideInterfaceOnceNatIsEnabled)
 {
     sai_object_id_t rif;
 
@@ -806,7 +806,7 @@ TEST_F(SwitchVppNat, ZoneOneVlanRifIsTheOutsideInterfaceOnceNatIsEnabled)
     EXPECT_LT(en, fwd);
 }
 
-TEST_F(SwitchVppNat, ZoneZeroRouterInterfaceGetsNoNatFeature)
+TEST_F(SwitchVppNatTest, ZoneZeroRouterInterfaceGetsNoNatFeature)
 {
     sai_object_id_t rif;
 
@@ -816,7 +816,7 @@ TEST_F(SwitchVppNat, ZoneZeroRouterInterfaceGetsNoNatFeature)
     EXPECT_TRUE(vppCallsTo("vpp_nat44_ed_output_interface_add_del").empty());
 }
 
-TEST_F(SwitchVppNat, ZoneSetAfterCreateMovesTheInterfaceInAndOut)
+TEST_F(SwitchVppNatTest, ZoneSetAfterCreateMovesTheInterfaceInAndOut)
 {
     sai_object_id_t rif;
 
@@ -848,7 +848,7 @@ TEST_F(SwitchVppNat, ZoneSetAfterCreateMovesTheInterfaceInAndOut)
     EXPECT_FALSE(outs[1].flag);
 }
 
-TEST_F(SwitchVppNat, MappingStaysUntilBothHalvesAreRemoved)
+TEST_F(SwitchVppNatTest, MappingStaysUntilBothHalvesAreRemoved)
 {
     sai_object_id_t rif;
 
@@ -873,7 +873,7 @@ TEST_F(SwitchVppNat, MappingStaysUntilBothHalvesAreRemoved)
     EXPECT_FALSE(maps[0].flag);
 }
 
-TEST_F(SwitchVppNat, EntriesCreatedBeforeNatIsEnabledAreProgrammedWhenItIs)
+TEST_F(SwitchVppNatTest, EntriesCreatedBeforeNatIsEnabledAreProgrammedWhenItIs)
 {
     sai_object_id_t rif;
 
@@ -894,7 +894,7 @@ TEST_F(SwitchVppNat, EntriesCreatedBeforeNatIsEnabledAreProgrammedWhenItIs)
               vppCallIndex("vpp_nat44_static_mapping_add_del", "10.0.1.3>192.168.1.100"));
 }
 
-TEST_F(SwitchVppNat, DisablingNatRemovesEverythingAndTheNextEnableRestoresIt)
+TEST_F(SwitchVppNatTest, DisablingNatRemovesEverythingAndTheNextEnableRestoresIt)
 {
     sai_object_id_t rif;
 
@@ -926,7 +926,7 @@ TEST_F(SwitchVppNat, DisablingNatRemovesEverythingAndTheNextEnableRestoresIt)
     EXPECT_EQ(1u, vppCallsTo("vpp_nat44_ed_output_interface_add_del").size());
 }
 
-TEST_F(SwitchVppNat, StaticNaptEntryProgramsAPortMapping)
+TEST_F(SwitchVppNatTest, StaticNaptEntryProgramsAPortMapping)
 {
     ASSERT_EQ(SAI_STATUS_SUCCESS, enableNat(true));
 
@@ -940,7 +940,7 @@ TEST_F(SwitchVppNat, StaticNaptEntryProgramsAPortMapping)
     EXPECT_EQ("10.0.0.5:2222>192.168.1.100:22/6", maps[0].name);
 }
 
-TEST_F(SwitchVppNat, DoubleNatIsStoredButNotProgrammed)
+TEST_F(SwitchVppNatTest, DoubleNatIsStoredButNotProgrammed)
 {
     ASSERT_EQ(SAI_STATUS_SUCCESS, enableNat(true));
 
@@ -958,7 +958,7 @@ TEST_F(SwitchVppNat, DoubleNatIsStoredButNotProgrammed)
     EXPECT_TRUE(vppCallsTo("vpp_nat44_static_mapping_add_del").empty());
 }
 
-TEST_F(SwitchVppNat, CountersSumTheSessionsOfTheMappingAndStayMonotonic)
+TEST_F(SwitchVppNatTest, CountersSumTheSessionsOfTheMappingAndStayMonotonic)
 {
     sai_object_id_t rif;
 
@@ -1001,7 +1001,7 @@ TEST_F(SwitchVppNat, CountersSumTheSessionsOfTheMappingAndStayMonotonic)
     EXPECT_EQ(2u, counter(snatId(), SAI_NAT_ENTRY_ATTR_PACKET_COUNT));
 }
 
-TEST_F(SwitchVppNat, HitBitIsSetByTrafficAndClearedOnRead)
+TEST_F(SwitchVppNatTest, HitBitIsSetByTrafficAndClearedOnRead)
 {
     ASSERT_EQ(SAI_STATUS_SUCCESS, enableNat(true));
 
@@ -1024,7 +1024,7 @@ TEST_F(SwitchVppNat, HitBitIsSetByTrafficAndClearedOnRead)
     EXPECT_FALSE(attrs[0].value.booldata);
 }
 
-TEST_F(SwitchVppNat, OtherAttributesReadBackAsStored)
+TEST_F(SwitchVppNatTest, OtherAttributesReadBackAsStored)
 {
     createStaticNatEntries();
 
@@ -1036,7 +1036,7 @@ TEST_F(SwitchVppNat, OtherAttributesReadBackAsStored)
     EXPECT_EQ(ip("192.168.1.100"), attr.value.ip4);
 }
 
-TEST_F(SwitchVppNat, RemovingTheRouterInterfaceDropsItsOutsideFeature)
+TEST_F(SwitchVppNatTest, RemovingTheRouterInterfaceDropsItsOutsideFeature)
 {
     sai_object_id_t rif;
 
@@ -1054,7 +1054,7 @@ TEST_F(SwitchVppNat, RemovingTheRouterInterfaceDropsItsOutsideFeature)
     EXPECT_FALSE(outs[0].flag);
 }
 
-TEST_F(SwitchVppNat, WithoutTheNatPluginNatIsReportedUnsupportedAndNothingIsProgrammed)
+TEST_F(SwitchVppNatTest, WithoutTheNatPluginNatIsReportedUnsupportedAndNothingIsProgrammed)
 {
     g_natSupported = false;
 

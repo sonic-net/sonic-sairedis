@@ -57,7 +57,8 @@ SwitchVpp::SwitchVpp(
     m_tunnel_mgr(this),
     m_pbh(this),
     m_tunnel_mgr_srv6(this),
-    m_tunnel_mgr_ipip(this)
+    m_tunnel_mgr_ipip(this),
+    m_nat(this)
 {
     SWSS_LOG_ENTER();
 
@@ -76,7 +77,8 @@ SwitchVpp::SwitchVpp(
     m_tunnel_mgr(this),
     m_pbh(this),
     m_tunnel_mgr_srv6(this),
-    m_tunnel_mgr_ipip(this)
+    m_tunnel_mgr_ipip(this),
+    m_nat(this)
 {
     SWSS_LOG_ENTER();
 
@@ -1707,7 +1709,7 @@ sai_status_t SwitchVpp::create(
 
     if (object_type == SAI_OBJECT_TYPE_NAT_ENTRY)
     {
-        return createNatEntry(serializedObjectId, switch_id, attr_count, attr_list);
+        return m_nat.createNatEntry(serializedObjectId, switch_id, attr_count, attr_list);
     }
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
@@ -2260,7 +2262,7 @@ sai_status_t SwitchVpp::remove(
 
     if (object_type == SAI_OBJECT_TYPE_NAT_ENTRY)
     {
-        return removeNatEntry(serializedObjectId);
+        return m_nat.removeNatEntry(serializedObjectId);
     }
 
     return remove_internal(object_type, serializedObjectId);
@@ -2505,7 +2507,7 @@ sai_status_t SwitchVpp::set(
         if (attr->id == SAI_ROUTER_INTERFACE_ATTR_NAT_ZONE_ID)
         {
             CHECK_STATUS(set_internal(objectType, serializedObjectId, attr));
-            natRouterInterfaceZone(objectId, attr->value.u32);
+            m_nat.setRouterInterfaceZone(objectId, attr->value.u32);
             return SAI_STATUS_SUCCESS;
         }
 
@@ -2514,7 +2516,7 @@ sai_status_t SwitchVpp::set(
 
     if (objectType == SAI_OBJECT_TYPE_NAT_ENTRY)
     {
-        return setNatEntry(serializedObjectId, attr);
+        return m_nat.setNatEntry(serializedObjectId, attr);
     }
 
     if (objectType == SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER)
@@ -2557,7 +2559,7 @@ sai_status_t SwitchVpp::set(
                 }
             case SAI_SWITCH_ATTR_NAT_ENABLE:
                 {
-                    CHECK_STATUS(natSetEnable(attr->value.booldata));
+                    CHECK_STATUS(m_nat.setEnable(attr->value.booldata));
                     break;
                 }
             case SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED:
@@ -2731,7 +2733,7 @@ sai_status_t SwitchVpp::get(
 
     if (objectType == SAI_OBJECT_TYPE_NAT_ENTRY)
     {
-        return getNatEntry(serializedObjectId, attr_count, attr_list);
+        return m_nat.getNatEntry(serializedObjectId, attr_count, attr_list);
     }
 
     const auto &objectHash = m_objectHash.at(objectType);
@@ -3423,7 +3425,7 @@ sai_status_t SwitchVpp::refresh_read_only(
         // orchagent reads a zero AVAILABLE_SNAT_ENTRY as "this platform has no NAT"
         if ((meta->attrid == SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY ||
              meta->attrid == SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY ||
-             meta->attrid == SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY) && !natSupported())
+             meta->attrid == SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY) && !m_nat.isSupported())
         {
             attr.value.u32 = 0;
         }
