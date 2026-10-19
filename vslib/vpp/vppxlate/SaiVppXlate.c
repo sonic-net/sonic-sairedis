@@ -197,6 +197,7 @@
 
 #define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
 #include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_api_version
 /* sonic_ext packet-trim API inclusion */
 
 #define vl_typedefs
@@ -1834,8 +1835,6 @@ vl_api_sonic_ext_trim_counters_get_reply_t_handler(vl_api_sonic_ext_trim_counter
     vpp_sonic_ext_trim_counters_t *out =
         (vpp_sonic_ext_trim_counters_t *) get_index_ptr(msg->context);
 
-    set_reply_status(retval);
-
     if (!out) {
         return;
     }
@@ -1845,6 +1844,7 @@ vl_api_sonic_ext_trim_counters_get_reply_t_handler(vl_api_sonic_ext_trim_counter
     out->trim_admit_fail = be64toh(msg->trim_admit_fail);
 
     release_index(msg->context);
+    set_reply_status(retval);
 }
 
 static void

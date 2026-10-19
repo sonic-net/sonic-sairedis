@@ -55,6 +55,20 @@ tests_SOURCES = main.cpp \
 
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp
+tests_LDFLAGS = -Wl,--wrap=init_vpp_client \
+			   -Wl,--wrap=vpp_sync_for_events \
+			   -Wl,--wrap=vpp_ev_dequeue \
+			   -Wl,--wrap=vpp_want_l2_macs_events2 \
+			   -Wl,--wrap=vpp_sonic_ext_trim_global_set \
+			   -Wl,--wrap=vpp_sonic_ext_trim_queue_set \
+			   -Wl,--wrap=vpp_sonic_ext_trim_dscp_map_set
+
+check_PROGRAMS = sai_vpp_xlate_tests
+sai_vpp_xlate_tests_SOURCES = TestSaiVppXlate.c
+sai_vpp_xlate_tests_CFLAGS = $(SAIINC) -I$(top_srcdir)/lib \
+							-ffunction-sections -fdata-sections
+# Link only the callback/context paths exercised by the standalone test.
+sai_vpp_xlate_tests_LDFLAGS = -Wl,--gc-sections
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
@@ -62,3 +76,6 @@ tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscomm
 			  -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 TESTS = tests
+if USE_VPP
+TESTS += sai_vpp_xlate_tests
+endif

@@ -499,13 +499,6 @@ namespace saivs
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_int32_t *value);
 
-            // Accumulate a switch-level packet-trim attribute into m_trim_policy
-            // and push the resulting global policy to the VPP sonic_ext trim
-            // plugin. Invoked from set() for the SAI_SWITCH_ATTR_PACKET_TRIM_*
-            // attributes.
-            sai_status_t setSwitchTrimAttr(
-                    _In_ const sai_attribute_t *attr);
-
             // Send the current accumulated m_trim_policy to VPP via
             // sonic_ext_trim_global_set (an idempotent full-state set). Returns
             // the VPP programming status (including the per-queue re-resolve
@@ -559,8 +552,8 @@ namespace saivs
                     _In_ const std::unordered_map<sai_object_id_t, sai_object_id_t> &queueToSg);
 
             // Compose PORT DSCP_TO_TC o TC_TO_QUEUE into a switch-global
-            // dscp_to_queue[64] table and push it to the VPP plugin. Returns the
-            // VPP programming status (SUCCESS when no map is bound yet).
+            // dscp_to_queue[64] table, including defaults for unbound maps,
+            // and push it to the VPP plugin.
             sai_status_t refreshTrimDscpToQueueMap();
 
             sai_status_t vpp_create_lag(
@@ -751,6 +744,13 @@ namespace saivs
                 uint8_t  trim_queue = 0;
             };
             TrimGlobalPolicy m_trim_policy;
+            bool m_trim_reconcile_pending = false;
+
+            static sai_status_t updateTrimPolicy(
+                    _Inout_ TrimGlobalPolicy &policy,
+                    _In_ const sai_attribute_t *attr);
+
+            void restoreTrimPolicy();
 
         private: // VPP
 
