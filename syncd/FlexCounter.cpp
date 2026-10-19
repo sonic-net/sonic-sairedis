@@ -2716,7 +2716,7 @@ public:
                 continue;
             }
 
-            publishAttrs(countersTable, vid, attrIds, attrs.data());
+            publishAttrs(countersTable, vid, attrs);
         }
     }
 
@@ -2730,21 +2730,20 @@ private:
     void publishAttrs(
             _In_ swss::Table &countersTable,
             _In_ sai_object_id_t vid,
-            _In_ const std::vector<AttrType> &attrIds,
-            _In_ const sai_attribute_t *attrs)
+            _In_ const std::vector<sai_attribute_t>& attrs)
     {
         SWSS_LOG_ENTER();
 
         std::vector<swss::FieldValueTuple> values;
 
-        for (size_t i = 0; i != attrIds.size(); i++)
+        for (const auto& attr : attrs)
         {
-            auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
+            auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attr.id);
             if (!meta)
             {
                 SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
             }
-            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
+            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attr));
         }
 
         countersTable.set(sai_serialize_object_id(vid), values, "");
@@ -2774,13 +2773,11 @@ private:
         std::vector<sai_object_id_t> vids;
         std::vector<sai_object_id_t> rids;
         std::vector<uint32_t> attrCounts;
-        std::vector<std::vector<AttrType>> attrIdStorage;
         std::vector<std::vector<sai_attribute_t>> attrStorage;
 
         vids.reserve(capacity);
         rids.reserve(capacity);
         attrCounts.reserve(capacity);
-        attrIdStorage.reserve(capacity);
         attrStorage.reserve(capacity);
 
         for (const auto &kv : Base::m_objectIdsMap)
@@ -2802,7 +2799,6 @@ private:
             vids.push_back(kv.first);
             rids.push_back(kv.second->rid);
             attrCounts.push_back(static_cast<uint32_t>(attrIds.size()));
-            attrIdStorage.push_back(attrIds);
             attrStorage.push_back(std::move(attrs));
         }
 
@@ -2860,7 +2856,7 @@ private:
                 continue;
             }
 
-            publishAttrs(countersTable, vids[n], attrIdStorage[n], attrStorage[n].data());
+            publishAttrs(countersTable, vids[n], attrStorage[n]);
         }
 
         return true;

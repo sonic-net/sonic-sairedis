@@ -3440,6 +3440,7 @@ TEST(FlexCounter, queueAttrBulkGet)
     EXPECT_TRUE(countersTable.hget(toOid(counterVid), "SAI_QUEUE_ATTR_PAUSE_STATUS", value));
     EXPECT_EQ(value, "true");
 
+    fc.endFlexCounterThread();
     sai->mock_bulkGet = nullptr;
     fc.removeCounter(counterVid);
     countersTable.del(toOid(counterVid));
@@ -3494,9 +3495,169 @@ TEST(FlexCounter, queueAttrBulkGetFailureFallsBack)
     EXPECT_TRUE(countersTable.hget(toOid(counterVid), "SAI_QUEUE_ATTR_PAUSE_STATUS", value));
     EXPECT_EQ(value, "false");
 
+    fc.endFlexCounterThread();
     sai->mock_bulkGet = nullptr;
     fc.removeCounter(counterVid);
     countersTable.del(toOid(counterVid));
+}
+
+namespace
+{
+    void testQueueAttributeVectors(bool bulkFailure)
+    {
+        SWSS_LOG_ENTER();
+
+        auto vendor = std::make_shared<MockableSaiInterface>();
+        const auto objects = generateOids(6, SAI_OBJECT_TYPE_QUEUE);
+        const std::vector<sai_object_id_t> vids(objects.begin(), objects.begin() + 3);
+        const std::vector<sai_object_id_t> rids(objects.begin() + 3, objects.end());
+        uint32_t bulkCalls = 0;
+        std::atomic<uint32_t> completedScalarReads{0};
+        std::vector<sai_object_id_t> scalarReads;
+        std::vector<sai_object_id_t> observedRids;
+        std::vector<uint32_t> observedCounts;
+        std::vector<std::vector<sai_attr_id_t>> observedAttributes;
+        const auto fillAttributes = [&](sai_object_id_t rid, uint32_t count, sai_attribute_t* attrs)
+        {
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                if (attrs[i].id == SAI_QUEUE_ATTR_PAUSE_STATUS)
+                {
+                    attrs[i].value.booldata = rid == rids[0];
+                }
+                else if (attrs[i].id == SAI_QUEUE_ATTR_INDEX)
+                {
+                    // INDEX metadata specifies sai_uint8_t, not u32.
+                    attrs[i].value.u8 = rid == rids[0] ? 7 : 9;
+                }
+            }
+        };
+        vendor->mock_bulkGet = [&](sai_object_type_t type, uint32_t count,
+                const sai_object_id_t* objectIds, const uint32_t* attrCounts,
+                sai_attribute_t** attrs, sai_bulk_op_error_mode_t mode, sai_status_t* statuses)
+        {
+            EXPECT_EQ(type, SAI_OBJECT_TYPE_QUEUE);
+            EXPECT_EQ(mode, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR);
+            ++bulkCalls;
+            observedRids.assign(objectIds, objectIds + count);
+            observedCounts.assign(attrCounts, attrCounts + count);
+            observedAttributes.clear();
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                std::vector<sai_attr_id_t> ids;
+                for (uint32_t j = 0; j < attrCounts[i]; ++j)
+                {
+                    ids.push_back(attrs[i][j].id);
+                }
+                observedAttributes.push_back(std::move(ids));
+                fillAttributes(objectIds[i], attrCounts[i], attrs[i]);
+                statuses[i] = bulkFailure && objectIds[i] == rids[2] ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
+            }
+            // SAI bulk attributes require overall failure if any member fails.
+            return bulkFailure ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
+        };
+        vendor->mock_get = [&](sai_object_type_t type, sai_object_id_t rid,
+                uint32_t count, sai_attribute_t* attrs)
+        {
+            EXPECT_EQ(type, SAI_OBJECT_TYPE_QUEUE);
+            scalarReads.push_back(rid);
+            fillAttributes(rid, count, attrs);
+            ++completedScalarReads;
+            return bulkFailure && rid == rids[2] ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
+        };
+
+        test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_QUEUE);
+        FlexCounter fc("mixed_queue_attributes", vendor, "COUNTERS_DB");
+        fc.addCounterPlugin({{POLL_INTERVAL_FIELD, "60000"},
+                {FLEX_COUNTER_STATUS_FIELD, "disable"}, {STATS_MODE_FIELD, STATS_MODE_READ}});
+        fc.addCounter(vids[0], rids[0], {{QUEUE_ATTR_ID_LIST,
+                "SAI_QUEUE_ATTR_PAUSE_STATUS,SAI_QUEUE_ATTR_INDEX"}});
+        fc.addCounter(vids[1], rids[1], {{QUEUE_ATTR_ID_LIST, "SAI_QUEUE_ATTR_PAUSE_STATUS"}});
+        fc.addCounter(vids[2], rids[2], {{QUEUE_ATTR_ID_LIST, "SAI_QUEUE_ATTR_INDEX"}});
+        ASSERT_EQ(fc.m_counterContext.size(), 1u);
+        ASSERT_EQ(fc.m_pollingState->registrations.size(), 3u);
+        const auto context = fc.m_counterContext.at("Queue Attribute");
+        swss::DBConnector db("COUNTERS_DB", 0);
+        swss::Table table(&db, COUNTERS_TABLE);
+        for (const auto vid : vids)
+        {
+            table.del(toOid(vid));
+        }
+
+        fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
+        waitForCounterValues(table, toOid(vids[1]), {"SAI_QUEUE_ATTR_PAUSE_STATUS"}, {"false"});
+        if (bulkFailure)
+        {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+            while (completedScalarReads.load() < rids.size() && std::chrono::steady_clock::now() < deadline)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            EXPECT_EQ(completedScalarReads.load(), 3u);
+        }
+        else
+        {
+            waitForCounterValues(table, toOid(vids[2]), {"SAI_QUEUE_ATTR_INDEX"}, {"9"});
+        }
+        fc.endFlexCounterThread();
+        // SDK-owned capture vectors are inspected only after the polling thread joins.
+        EXPECT_EQ(bulkCalls, 1u);
+        EXPECT_EQ(scalarReads, bulkFailure ? rids : std::vector<sai_object_id_t>{});
+        EXPECT_EQ(observedRids, rids);
+        EXPECT_EQ(observedCounts, (std::vector<uint32_t>{2, 1, 1}));
+        const std::vector<std::vector<sai_attr_id_t>> expectedAttributes = {
+            {SAI_QUEUE_ATTR_PAUSE_STATUS, SAI_QUEUE_ATTR_INDEX},
+            {SAI_QUEUE_ATTR_PAUSE_STATUS},
+            {SAI_QUEUE_ATTR_INDEX},
+        };
+        EXPECT_EQ(observedAttributes, expectedAttributes);
+
+        std::vector<std::map<std::string, std::string>> expectedFields = {
+            {{"SAI_QUEUE_ATTR_PAUSE_STATUS", "true"}, {"SAI_QUEUE_ATTR_INDEX", "7"}},
+            {{"SAI_QUEUE_ATTR_PAUSE_STATUS", "false"}},
+        };
+        if (!bulkFailure)
+        {
+            expectedFields.push_back({{"SAI_QUEUE_ATTR_INDEX", "9"}});
+        }
+        for (size_t i = 0; i < expectedFields.size(); ++i)
+        {
+            std::vector<swss::FieldValueTuple> fields;
+            EXPECT_TRUE(table.get(toOid(vids[i]), fields));
+            const std::map<std::string, std::string> actual(fields.begin(), fields.end());
+            EXPECT_EQ(actual, expectedFields[i]);
+            const auto sample = context->m_sampledEpochs.find(vids[i]);
+            EXPECT_NE(sample, context->m_sampledEpochs.end());
+            if (sample != context->m_sampledEpochs.end())
+            {
+                EXPECT_EQ(sample->second,
+                        fc.m_pollingState->registrations.at({context->m_name, vids[i]}).epoch);
+            }
+        }
+        EXPECT_EQ(context->m_sampledEpochs.size(), expectedFields.size());
+        if (bulkFailure)
+        {
+            std::vector<swss::FieldValueTuple> failedFields;
+            EXPECT_FALSE(table.get(toOid(vids[2]), failedFields));
+            EXPECT_EQ(context->m_sampledEpochs.count(vids[2]), 0u);
+        }
+
+        for (const auto vid : vids)
+        {
+            fc.removeCounter(vid);
+            table.del(toOid(vid));
+        }
+    }
+}
+
+TEST(FlexCounter, queueAttrBulkGetPublishesPerObjectAttributeVectors)
+{
+    testQueueAttributeVectors(false);
+}
+
+TEST(FlexCounter, queueAttrBulkFailureFallsBackWithPerObjectAttributeVectors)
+{
+    testQueueAttributeVectors(true);
 }
 
 namespace
