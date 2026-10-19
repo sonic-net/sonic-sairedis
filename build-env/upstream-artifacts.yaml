@@ -49,12 +49,10 @@ upstream:
       - 'libswsscommon_1.0.0_{arch}.deb'
       - 'libswsscommon-dev_1.0.0_{arch}.deb'
 
-  # sonic platform-vpp DEBs (amd64 only). This upstream intentionally tracks
-  # master, matching the existing pipeline.
+  # sonic platform-vpp DEBs (amd64 only), from the same branch as this build.
   - name: vpp
     project: build
     pipeline: sonic-net.sonic-platform-vpp
-    branch: master
     when: { arch: amd64 }
     cascade_optional: true
     result_filter: [succeeded, partiallySucceeded]
