@@ -1709,8 +1709,9 @@ namespace saivs
             bool generateFdbAgedEvent(const VppFdbKey &key);
 
             // Reconcile m_vpp_fdb_entries/FDB notifications with VPP's L2FIB
-            // after MAC events were lost (VPP_MAC_ACTION_RESYNC).
-            void resyncFdbWithVpp();
+            // after MAC events were lost (VPP_MAC_ACTION_RESYNC). Returns
+            // false, changing nothing, if VPP's L2FIB cannot be dumped.
+            bool resyncFdbWithVpp();
 
             void vpp_fdb_entries_invalidate_all();
             void vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id);

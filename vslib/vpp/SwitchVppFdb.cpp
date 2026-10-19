@@ -3248,8 +3248,10 @@ bool SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
  * marker are applied afterwards, in order, so a change VPP makes after the dump
  * still lands. Entries VPP ages out after its re-subscription flush are still
  * in the dump; their DELETE events follow.
+ *
+ * Returns false, changing nothing, if VPP's L2FIB cannot be dumped.
  */
-void SwitchVpp::resyncFdbWithVpp()
+bool SwitchVpp::resyncFdbWithVpp()
 {
     SWSS_LOG_ENTER();
 
@@ -3258,8 +3260,8 @@ void SwitchVpp::resyncFdbWithVpp()
     if (vpp_l2fib_dump(~0u, [](const vpp_l2fib_entry_t *e, void *ctx)
                        { static_cast<std::vector<vpp_l2fib_entry_t> *>(ctx)->push_back(*e); }, &dump) != 0)
     {
-        SWSS_LOG_ERROR("FDB: L2FIB dump failed, FDB not resynced with VPP");
-        return;
+        SWSS_LOG_ERROR("FDB: L2FIB dump failed, FDB resync with VPP will be retried");
+        return false;
     }
 
     // VPP's learned MACs, keyed and gated like MAC events
@@ -3344,6 +3346,7 @@ void SwitchVpp::resyncFdbWithVpp()
 
     SWSS_LOG_NOTICE("FDB: resynced with VPP L2FIB (%zu learned MACs): %zu aged, %zu learned, %zu moved",
                     vpp_macs.size(), aged, learned, moved);
+    return true;
 }
 
 void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)

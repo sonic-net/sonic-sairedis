@@ -1343,7 +1343,11 @@ void SwitchVpp::processFdbEntriesForAging()
         const VppMacEvent &ev = events.front();
 
         if (ev.action == VPP_MAC_ACTION_RESYNC) {
-            resyncFdbWithVpp();
+            // On a failed dump keep the request, so the next aging pass retries it
+            if (!resyncFdbWithVpp()) {
+                std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
+                m_mac_event_queue.push(ev);
+            }
             events.pop();
             continue;
         }
