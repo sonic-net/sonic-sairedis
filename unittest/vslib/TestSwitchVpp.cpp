@@ -949,6 +949,38 @@ TEST_F(SwitchVppNatTest, StaticNaptEntryProgramsAPortMapping)
     EXPECT_EQ("10.0.0.5:2222>192.168.1.100:22/6", maps[0].name);
 }
 
+TEST_F(SwitchVppNatTest, SettingTheTranslatedAddressMovesTheMapping)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, enableNat(true));
+
+    auto id = natEntryId(SAI_NAT_TYPE_SOURCE_NAT, "10.0.0.5", nullptr, 6, 2222);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createSnat(id, "192.168.1.100", 22));
+
+    g_vppCalls.clear();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_NAT_ENTRY_ATTR_SRC_IP;
+    attr.value.ip4 = ip("192.168.1.101");
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_NAT_ENTRY, id, &attr));
+
+    auto maps = vppCallsTo("vpp_nat44_static_mapping_add_del");
+
+    // the stored L4_SRC_PORT still applies to the new address
+    ASSERT_EQ(2u, maps.size());
+    EXPECT_EQ("10.0.0.5:2222>192.168.1.100:22/6", maps[0].name);
+    EXPECT_FALSE(maps[0].flag);
+    EXPECT_EQ("10.0.0.5:2222>192.168.1.101:22/6", maps[1].name);
+    EXPECT_TRUE(maps[1].flag);
+
+    attr.id = SAI_NAT_ENTRY_ATTR_SRC_IP;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(SAI_OBJECT_TYPE_NAT_ENTRY, id, 1, &attr));
+    EXPECT_EQ(ip("192.168.1.101"), attr.value.ip4);
+}
+
 TEST_F(SwitchVppNatTest, DoubleNatIsStoredButNotProgrammed)
 {
     ASSERT_EQ(SAI_STATUS_SUCCESS, enableNat(true));

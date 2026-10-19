@@ -14,6 +14,7 @@ extern "C" {
 namespace saivs
 {
     class SwitchVpp;
+    class SaiObject;
 
     /**
      * @brief SAI NAT on VPP's nat44-ed plugin.
@@ -137,10 +138,12 @@ namespace saivs
                 uint64_t hit_mark_pkts = 0;
             };
 
+            // the mapping a NAT entry asks for, from its key and the
+            // translation attributes obj holds; false if it needs none or
+            // nat44-ed can't do it
             bool entryMapping(
                     _In_ const sai_nat_entry_t &entry,
-                    _In_ uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list,
+                    _In_ const SaiObject &obj,
                     _Out_ NatMapping &mapping);
 
             bool resolveRifHwif(

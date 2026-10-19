@@ -65,22 +65,16 @@ namespace
         return buf;
     }
 
-    const sai_attribute_t* findAttr(
+    bool readAttr(
+            const SaiObject &obj,
             sai_attr_id_t id,
-            uint32_t attr_count,
-            const sai_attribute_t *attr_list)
+            sai_attribute_t &attr)
     {
         SWSS_LOG_ENTER();
 
-        for (uint32_t i = 0; i < attr_count; i++)
-        {
-            if (attr_list[i].id == id)
-            {
-                return &attr_list[i];
-            }
-        }
+        attr.id = id;
 
-        return nullptr;
+        return obj.get_attr(attr) == SAI_STATUS_SUCCESS;
     }
 
     struct SessionDumpCtx
@@ -261,8 +255,7 @@ int SwitchVppNat::programMapping(
 
 bool SwitchVppNat::entryMapping(
         _In_ const sai_nat_entry_t &entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list,
+        _In_ const SaiObject &obj,
         _Out_ NatMapping &m)
 {
     SWSS_LOG_ENTER();
@@ -282,25 +275,27 @@ bool SwitchVppNat::entryMapping(
     {
         case SAI_NAT_TYPE_SOURCE_NAT:
         {
-            auto ip = findAttr(SAI_NAT_ENTRY_ATTR_SRC_IP, attr_count, attr_list);
-            auto ipmask = findAttr(SAI_NAT_ENTRY_ATTR_SRC_IP_MASK, attr_count, attr_list);
-            auto port = findAttr(SAI_NAT_ENTRY_ATTR_L4_SRC_PORT, attr_count, attr_list);
+            sai_attribute_t ip, ipmask, port;
 
-            if (mask.src_ip != 0xffffffff || mask.dst_ip != 0 || mask.l4_dst_port != 0 || !ip ||
-                (ipmask && ipmask->value.ip4 != 0xffffffff))
+            bool has_ip = readAttr(obj, SAI_NAT_ENTRY_ATTR_SRC_IP, ip);
+            bool has_ipmask = readAttr(obj, SAI_NAT_ENTRY_ATTR_SRC_IP_MASK, ipmask);
+            bool has_port = readAttr(obj, SAI_NAT_ENTRY_ATTR_L4_SRC_PORT, port);
+
+            if (mask.src_ip != 0xffffffff || mask.dst_ip != 0 || mask.l4_dst_port != 0 || !has_ip ||
+                (has_ipmask && ipmask.value.ip4 != 0xffffffff))
             {
                 SWSS_LOG_NOTICE("SOURCE_NAT entry not supported on VPP (needs a /32 source key and SRC_IP)");
                 return false;
             }
 
             m.local = key.src_ip;
-            m.external = ip->value.ip4;
+            m.external = ip.value.ip4;
 
             if (has_proto || mask.l4_src_port != 0)
             {
                 m.protocol = key.proto;
                 m.local_port = key.l4_src_port;
-                m.external_port = port ? port->value.u16 : key.l4_src_port;
+                m.external_port = has_port ? port.value.u16 : key.l4_src_port;
             }
             else
             {
@@ -312,25 +307,27 @@ bool SwitchVppNat::entryMapping(
 
         case SAI_NAT_TYPE_DESTINATION_NAT:
         {
-            auto ip = findAttr(SAI_NAT_ENTRY_ATTR_DST_IP, attr_count, attr_list);
-            auto ipmask = findAttr(SAI_NAT_ENTRY_ATTR_DST_IP_MASK, attr_count, attr_list);
-            auto port = findAttr(SAI_NAT_ENTRY_ATTR_L4_DST_PORT, attr_count, attr_list);
+            sai_attribute_t ip, ipmask, port;
 
-            if (mask.dst_ip != 0xffffffff || mask.src_ip != 0 || mask.l4_src_port != 0 || !ip ||
-                (ipmask && ipmask->value.ip4 != 0xffffffff))
+            bool has_ip = readAttr(obj, SAI_NAT_ENTRY_ATTR_DST_IP, ip);
+            bool has_ipmask = readAttr(obj, SAI_NAT_ENTRY_ATTR_DST_IP_MASK, ipmask);
+            bool has_port = readAttr(obj, SAI_NAT_ENTRY_ATTR_L4_DST_PORT, port);
+
+            if (mask.dst_ip != 0xffffffff || mask.src_ip != 0 || mask.l4_src_port != 0 || !has_ip ||
+                (has_ipmask && ipmask.value.ip4 != 0xffffffff))
             {
                 SWSS_LOG_NOTICE("DESTINATION_NAT entry not supported on VPP (needs a /32 destination key and DST_IP)");
                 return false;
             }
 
-            m.local = ip->value.ip4;
+            m.local = ip.value.ip4;
             m.external = key.dst_ip;
 
             if (has_proto || mask.l4_dst_port != 0)
             {
                 m.protocol = key.proto;
                 m.external_port = key.l4_dst_port;
-                m.local_port = port ? port->value.u16 : key.l4_dst_port;
+                m.local_port = has_port ? port.value.u16 : key.l4_dst_port;
             }
             else
             {
@@ -419,9 +416,11 @@ sai_status_t SwitchVppNat::createNatEntry(
 
     sai_deserialize_nat_entry(serializedObjectId, entry);
 
+    SaiCachedObject obj(m_switch_db, SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId, attr_count, attr_list);
+
     NatEntryState state;
 
-    state.has_mapping = entryMapping(entry, attr_count, attr_list, state.mapping);
+    state.has_mapping = entryMapping(entry, obj, state.mapping);
 
     m_entries[serializedObjectId] = state;
 
@@ -611,15 +610,15 @@ sai_status_t SwitchVppNat::setNatEntry(
 {
     SWSS_LOG_ENTER();
 
-    CHECK_STATUS(m_switch_db->set_internal(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId, attr));
-
-    auto &state = m_entries[serializedObjectId];
-
     switch (attr->id)
     {
         case SAI_NAT_ENTRY_ATTR_PACKET_COUNT:
         case SAI_NAT_ENTRY_ATTR_BYTE_COUNT:
         {
+            CHECK_STATUS(m_switch_db->set_internal(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId, attr));
+
+            auto &state = m_entries[serializedObjectId];
+
             uint64_t pkts = 0, bytes = 0;
 
             if (state.has_mapping)
@@ -648,30 +647,28 @@ sai_status_t SwitchVppNat::setNatEntry(
         case SAI_NAT_ENTRY_ATTR_L4_DST_PORT:
         case SAI_NAT_ENTRY_ATTR_VR_ID:
         {
-            // the translation changed: rebuild the mapping from what is stored
-            std::vector<sai_attribute_t> attrs;
-
-            for (auto &a: m_switch_db->m_objectHash.at(SAI_OBJECT_TYPE_NAT_ENTRY).at(serializedObjectId))
-            {
-                attrs.push_back(*a.second->getAttr());
-            }
+            // the translation changes: build the mapping of the stored entry
+            // with this attribute applied
+            SaiModDBObject obj(m_switch_db, SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId, 1, attr);
 
             sai_nat_entry_t entry;
 
             sai_deserialize_nat_entry(serializedObjectId, entry);
 
             NatMapping m;
-            bool has = entryMapping(entry, (uint32_t)attrs.size(), attrs.data(), m);
+            bool has = entryMapping(entry, obj, m);
+
+            CHECK_STATUS(m_switch_db->set_internal(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId, attr));
 
             mappingUnref(serializedObjectId);
 
-            auto &st = m_entries[serializedObjectId];
+            auto &state = m_entries[serializedObjectId];
 
-            st.has_mapping = has;
+            state.has_mapping = has;
 
             if (has)
             {
-                st.mapping = m;
+                state.mapping = m;
                 mappingRef(serializedObjectId, m);
             }
 
@@ -679,7 +676,7 @@ sai_status_t SwitchVppNat::setNatEntry(
         }
 
         default:
-            return SAI_STATUS_SUCCESS;
+            return m_switch_db->set_internal(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectId, attr);
     }
 }
 
