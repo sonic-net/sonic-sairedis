@@ -1161,8 +1161,12 @@ sai_status_t SwitchVpp::updateTrimPolicy(
             break;
 
         case SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE:
-            policy.dscp_mode =
-                (attr->value.s32 == SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_FROM_TC) ? 1 : 0;
+            if (attr->value.s32 != SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE)
+            {
+                SWSS_LOG_ERROR("Unsupported trim DSCP-resolution mode %d", attr->value.s32);
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
+            policy.dscp_mode = 0;
             break;
 
         case SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE:
@@ -2477,13 +2481,7 @@ sai_status_t SwitchVpp::create_internal(
 
     if (object_type == SAI_OBJECT_TYPE_SWITCH)
     {
-        for (uint32_t i = 0; i < attr_count; ++i)
-        {
-            if (isTrimDataplaneAttr(object_type, attr_list[i].id))
-            {
-                return createSwitchTrimPolicy(serializedObjectId, attr_count, attr_list);
-            }
-        }
+        return createSwitchTrimPolicy(serializedObjectId, attr_count, attr_list);
     }
 
     if (objectHash.find(serializedObjectId) == objectHash.end())

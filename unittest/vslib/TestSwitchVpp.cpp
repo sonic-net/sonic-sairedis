@@ -26,6 +26,8 @@ namespace
     {
         uint8_t queue;
         bool eligible;
+        uint64_t rate;
+        uint64_t capacity;
     };
 
     std::vector<GlobalTrimCall> global_calls;
@@ -81,9 +83,9 @@ extern "C" int __wrap_vpp_sonic_ext_trim_global_set(
 }
 
 extern "C" int __wrap_vpp_sonic_ext_trim_queue_set(
-        const char *, uint8_t queue, bool eligible, uint64_t, uint64_t)
+        const char *, uint8_t queue, bool eligible, uint64_t rate, uint64_t capacity)
 {
-    queue_calls.push_back({queue, eligible});
+    queue_calls.push_back({queue, eligible, rate, capacity});
     return 0;
 }
 
@@ -375,6 +377,59 @@ TEST_F(SwitchVppTrimTest, dynamicModeIsRejectedOnCreateAndSet)
     EXPECT_EQ(SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC, attr.value.s32);
 }
 
+TEST_F(SwitchVppTrimTest, freshCreateResetsPolicyAfterDiscardedFailedRollback)
+{
+    sai_attribute_t attr = {};
+    attr.id = SAI_SWITCH_ATTR_PACKET_TRIM_SIZE;
+    attr.value.u32 = 256;
+    global_results = {0, -1};
+    map_results = {-1};
+    ASSERT_EQ(SAI_STATUS_FAILURE, state->create(SAI_OBJECT_TYPE_SWITCH,
+            sai_serialize_object_id(switch_id), switch_id, 1, &attr));
+    ASSERT_TRUE(state->m_trim_reconcile_pending);
+    state.reset();
+    state = std::make_shared<SwitchVpp>(switch_id, manager, config);
+    stopEvents(state);
+    ASSERT_FALSE(state->m_trim_reconcile_pending);
+    size_t calls = global_calls.size();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->create(SAI_OBJECT_TYPE_SWITCH,
+            sai_serialize_object_id(switch_id), switch_id, 0, nullptr));
+    ASSERT_EQ(calls + 1, global_calls.size());
+    EXPECT_FALSE(global_calls.back().enabled);
+}
+
+TEST_F(SwitchVppTrimTest, defaultCreateFailsIfDataplaneResetIsUnavailable)
+{
+    global_results = {-1, -1};
+    EXPECT_EQ(SAI_STATUS_FAILURE, state->create(SAI_OBJECT_TYPE_SWITCH,
+            sai_serialize_object_id(switch_id), switch_id, 0, nullptr));
+    EXPECT_TRUE(state->m_trim_reconcile_pending);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, state->create(SAI_OBJECT_TYPE_SWITCH,
+            sai_serialize_object_id(switch_id), switch_id, 0, nullptr));
+    EXPECT_FALSE(global_calls.back().enabled);
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+}
+
+TEST_F(SwitchVppTrimTest, fromTcModeIsRejectedOnCreateAndSet)
+{
+    sai_attribute_t attr = {};
+    attr.id = SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE;
+    attr.value.s32 = SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_FROM_TC;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, state->create(SAI_OBJECT_TYPE_SWITCH,
+            sai_serialize_object_id(switch_id), switch_id, 1, &attr));
+    EXPECT_TRUE(global_calls.empty());
+    attr.value.s32 = SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->set(SAI_OBJECT_TYPE_SWITCH,
+            sai_serialize_object_id(switch_id), &attr));
+    size_t calls = global_calls.size();
+    attr.value.s32 = SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_FROM_TC;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, state->set(SAI_OBJECT_TYPE_SWITCH,
+            sai_serialize_object_id(switch_id), &attr));
+    EXPECT_EQ(calls, global_calls.size());
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr));
+    EXPECT_EQ(SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE, attr.value.s32);
+}
+
 TEST_F(SwitchVppTrimTest, unresolvedFrontPanelPortIsResolvedAndInternalPortsAreExcluded)
 {
     sai_object_id_t port_id, dscp_map, queue_map;
@@ -499,6 +554,77 @@ TEST_F(SwitchVppTrimTest, failedQueueRebindRestoresAttributeAndPartialDataplane)
     EXPECT_EQ(old_profile, attr.value.oid);
     EXPECT_EQ(SAI_STATUS_SUCCESS,
             setOid(SAI_OBJECT_TYPE_QUEUE, queue, SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, new_profile));
+}
+
+TEST_F(SwitchVppTrimTest, binarySchedulerAdmissionUsesEffectiveBinding)
+{
+    auto queue = object(SAI_OBJECT_TYPE_QUEUE);
+    sai_attribute_t attr = {};
+    attr.id = SAI_QUEUE_ATTR_TYPE;
+    attr.value.s32 = SAI_QUEUE_TYPE_UNICAST;
+    put(SAI_OBJECT_TYPE_QUEUE, queue, attr);
+    attr.id = SAI_QUEUE_ATTR_INDEX;
+    attr.value.u8 = 1;
+    put(SAI_OBJECT_TYPE_QUEUE, queue, attr);
+    auto profile = object(SAI_OBJECT_TYPE_BUFFER_PROFILE);
+    attr.id = SAI_BUFFER_PROFILE_ATTR_PACKET_ADMISSION_FAIL_ACTION;
+    attr.value.s32 = SAI_BUFFER_PROFILE_PACKET_ADMISSION_FAIL_ACTION_DROP_AND_TRIM;
+    put(SAI_OBJECT_TYPE_BUFFER_PROFILE, profile, attr);
+    put(SAI_OBJECT_TYPE_QUEUE, queue, oidAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, profile));
+    port({queue});
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    auto expectBucket = [](uint64_t expected) {
+        ASSERT_FALSE(queue_calls.empty());
+        EXPECT_TRUE(queue_calls.back().eligible);
+        EXPECT_EQ(expected, queue_calls.back().rate);
+        EXPECT_EQ(expected, queue_calls.back().capacity);
+    };
+    expectBucket(UINT64_MAX);
+
+    auto direct = object(SAI_OBJECT_TYPE_SCHEDULER);
+    attr = {};
+    attr.id = SAI_SCHEDULER_ATTR_MAX_BANDWIDTH_RATE;
+    attr.value.u64 = 1;
+    put(SAI_OBJECT_TYPE_SCHEDULER, direct, attr);
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            setOid(SAI_OBJECT_TYPE_QUEUE, queue, SAI_QUEUE_ATTR_SCHEDULER_PROFILE_ID, direct));
+    expectBucket(0);
+    for (uint64_t pir : {uint64_t(0), uint64_t(1000)})
+    {
+        attr.value.u64 = pir;
+        ASSERT_EQ(SAI_STATUS_SUCCESS,
+                state->set_internal(SAI_OBJECT_TYPE_SCHEDULER, sai_serialize_object_id(direct), &attr));
+        expectBucket(pir ? 0 : UINT64_MAX);
+    }
+
+    auto leaf_scheduler = object(SAI_OBJECT_TYPE_SCHEDULER);
+    attr.value.u64 = 0;
+    put(SAI_OBJECT_TYPE_SCHEDULER, leaf_scheduler, attr);
+    auto leaf = object(SAI_OBJECT_TYPE_SCHEDULER_GROUP);
+    attr = {};
+    attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_COUNT;
+    attr.value.u32 = 1;
+    put(SAI_OBJECT_TYPE_SCHEDULER_GROUP, leaf, attr);
+    attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_LIST;
+    attr.value.objlist = {1, &queue};
+    put(SAI_OBJECT_TYPE_SCHEDULER_GROUP, leaf, attr);
+    put(SAI_OBJECT_TYPE_SCHEDULER_GROUP, leaf,
+            oidAttr(SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID, leaf_scheduler));
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            setOid(SAI_OBJECT_TYPE_QUEUE, queue, SAI_QUEUE_ATTR_SCHEDULER_PROFILE_ID, direct));
+    expectBucket(0);
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            setOid(SAI_OBJECT_TYPE_QUEUE, queue, SAI_QUEUE_ATTR_SCHEDULER_PROFILE_ID, SAI_NULL_OBJECT_ID));
+    expectBucket(UINT64_MAX);
+    attr = {};
+    attr.id = SAI_SCHEDULER_ATTR_MAX_BANDWIDTH_RATE;
+    attr.value.u64 = 1;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->set_internal(
+            SAI_OBJECT_TYPE_SCHEDULER, sai_serialize_object_id(leaf_scheduler), &attr));
+    expectBucket(0);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setOid(SAI_OBJECT_TYPE_SCHEDULER_GROUP, leaf,
+            SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID, SAI_NULL_OBJECT_ID));
+    expectBucket(UINT64_MAX);
 }
 
 TEST_F(SwitchVppTrimTest, failedRollbackRequiresReconciliationBeforeNextSet)
