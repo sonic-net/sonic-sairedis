@@ -27,7 +27,11 @@
  *
  * Per-entry packet and byte counters are summed from the sessions nat44-ed
  * keeps for the mapping's local address, kept monotonic across session
- * expiry.
+ * expiry. A session has one packet and one byte total, which in2out and
+ * out2in both add to, and the session dump has no per-direction split. So
+ * an entry counts both directions of its flows, and the SOURCE_NAT and
+ * DESTINATION_NAT entries of one mapping report the same totals: adding the
+ * two entries' counters counts every packet twice.
  *
  * Not supported (accepted and stored, nothing programmed): DOUBLE_NAT,
  * entries that are not /32, more than one distinct non-zero zone (all
@@ -451,6 +455,9 @@ void SwitchVppNat::readCounters(
 {
     SWSS_LOG_ENTER();
 
+    // Totals are per mapping, not per SAI entry: the SOURCE_NAT and
+    // DESTINATION_NAT entries sharing m read the same numbers, each covering
+    // both directions (see the top of this file).
     auto &c = m_counters[m];
 
     pkts = c.base_pkts;
