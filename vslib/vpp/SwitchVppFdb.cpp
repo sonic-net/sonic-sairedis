@@ -3255,9 +3255,8 @@ void SwitchVpp::resyncFdbWithVpp()
 
     std::vector<vpp_l2fib_entry_t> dump;
 
-    if (vpp_l2fib_dump(~0u, [](const vpp_l2fib_entry_t *e, void *ctx) {
-                static_cast<std::vector<vpp_l2fib_entry_t> *>(ctx)->push_back(*e);
-            }, &dump) != 0)
+    if (vpp_l2fib_dump(~0u, [](const vpp_l2fib_entry_t *e, void *ctx)
+                       { static_cast<std::vector<vpp_l2fib_entry_t> *>(ctx)->push_back(*e); }, &dump) != 0)
     {
         SWSS_LOG_ERROR("FDB: L2FIB dump failed, FDB not resynced with VPP");
         return;
@@ -3290,6 +3289,10 @@ void SwitchVpp::resyncFdbWithVpp()
         }
 
         generateFdbAgedEvent(it->first);
+        SWSS_LOG_INFO("FDB: resync aged MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u (not in VPP L2FIB)",
+                      it->first.mac[0], it->first.mac[1], it->first.mac[2],
+                      it->first.mac[3], it->first.mac[4], it->first.mac[5],
+                      it->first.bd_id, it->second);
         it = m_vpp_fdb_entries.erase(it);
         aged++;
     }
@@ -3321,11 +3324,19 @@ void SwitchVpp::resyncFdbWithVpp()
             {
                 m_vpp_fdb_entries[m.first] = m.second;
                 learned++;
+                SWSS_LOG_INFO("FDB: resync learned MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u (not in FDB)",
+                              m.first.mac[0], m.first.mac[1], m.first.mac[2],
+                              m.first.mac[3], m.first.mac[4], m.first.mac[5],
+                              m.first.bd_id, m.second);
             }
         }
         else if (it->second != m.second &&
                  generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_MOVE))
         {
+            SWSS_LOG_INFO("FDB: resync moved MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u -> %u",
+                          m.first.mac[0], m.first.mac[1], m.first.mac[2],
+                          m.first.mac[3], m.first.mac[4], m.first.mac[5],
+                          m.first.bd_id, it->second, m.second);
             it->second = m.second;
             moved++;
         }
