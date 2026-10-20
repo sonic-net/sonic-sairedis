@@ -9,7 +9,7 @@
 
 using namespace saivs;
 
-bool saivs::sonicExtFeatureEnabled(const char *feature)
+sai_status_t saivs::sonicExtFeatureEnabled(const char *feature, bool& enabled)
 {
     SWSS_LOG_ENTER();
 
@@ -19,16 +19,16 @@ bool saivs::sonicExtFeatureEnabled(const char *feature)
 
     if (it != s_cache.end())
     {
-        return it->second;
+        enabled = it->second;
+        return SAI_STATUS_SUCCESS;
     }
 
-    bool enabled = false;
+    enabled = false;
 
     if (vpp_sonic_ext_feature_get(feature, &enabled) != 0)
     {
-        // Not cached, so the next caller queries VPP again.
-        SWSS_LOG_WARN("sonic_ext_feature_get(%s) failed; treating as disabled", feature);
-        return false;
+        SWSS_LOG_ERROR("sonic_ext_feature_get(%s) failed", feature);
+        return SAI_STATUS_FAILURE;
     }
 
     if (!enabled)
@@ -38,6 +38,17 @@ bool saivs::sonicExtFeatureEnabled(const char *feature)
 
     s_cache[feature] = enabled;
 
+    return SAI_STATUS_SUCCESS;
+}
+
+bool saivs::sonicExtFeatureEnabled(const char *feature)
+{
+    bool enabled = false;
+    if (sonicExtFeatureEnabled(feature, enabled) != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_WARN("Treating sonic-ext feature %s as disabled after query failure", feature);
+        return false;
+    }
     return enabled;
 }
 

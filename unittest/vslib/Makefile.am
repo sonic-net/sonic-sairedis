@@ -55,7 +55,16 @@ tests_SOURCES = main.cpp \
 
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp
-tests_LDFLAGS = -Wl,--wrap=vpp_sonic_ext_feature_get -Wl,--wrap=vpp_iface_loopback_set_action
+VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
+				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
+				create_sub_interface delete_sub_interface configure_lcp_interface \
+				set_sw_interface_l2_bridge interface_set_state refresh_interfaces_list \
+				vpp_want_l2_macs_events2 vpp_ip_flow_hash_set set_interface_vrf \
+				interface_ip_address_del_all \
+				_ZN5saivs9SwitchVpp17vpp_dp_initializeEv \
+				_ZN5saivs9SwitchVpp19vs_set_dev_admin_upEPKcb \
+				_ZN4swss4execERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERS5_
+tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control

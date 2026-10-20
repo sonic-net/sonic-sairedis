@@ -788,6 +788,47 @@ void SwitchVpp::setPortStats(
     debugSetStats(oid, stats);
 }
 
+sai_status_t SwitchVpp::queryRifStats(
+        _In_ const std::string& ifname,
+        _Out_ std::map<sai_stat_id_t, uint64_t>& stats)
+{
+    SWSS_LOG_ENTER();
+
+    vpp_interface_stats_t rif_stats;
+    if (vpp_intf_stats_query(ifname.c_str(), &rif_stats) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to query RIF counters for %s", ifname.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    stats = {
+        {SAI_ROUTER_INTERFACE_STAT_IN_OCTETS, rif_stats.rx_bytes},
+        {SAI_ROUTER_INTERFACE_STAT_IN_PACKETS, rif_stats.rx},
+        {SAI_ROUTER_INTERFACE_STAT_OUT_OCTETS, rif_stats.tx_bytes},
+        {SAI_ROUTER_INTERFACE_STAT_OUT_PACKETS, rif_stats.tx},
+        {SAI_ROUTER_INTERFACE_STAT_IN_ERROR_PACKETS, rif_stats.rx_error},
+        {SAI_ROUTER_INTERFACE_STAT_OUT_ERROR_PACKETS, rif_stats.tx_error},
+    };
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::initializeRifStats(
+        _In_ sai_object_id_t oid)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string ifname = m_ifaceRegistry.resolveHwIfByRifOid(oid);
+    if (ifname.empty())
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::map<sai_stat_id_t, uint64_t> stats;
+    CHECK_STATUS(queryRifStats(ifname, stats));
+    m_rifStatsBaseMap[oid] = std::move(stats);
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::getRifStatsExt(
         _In_ sai_object_id_t oid,
         _In_ uint32_t number_of_counters,
@@ -801,30 +842,9 @@ sai_status_t SwitchVpp::getRifStatsExt(
     std::map<sai_stat_id_t, uint64_t> absolute;
 
     std::string if_name = m_ifaceRegistry.resolveHwIfByRifOid(oid);
-    bool have_stats = false;
-
-    if (!if_name.empty())
+    if (if_name.empty())
     {
-        vpp_interface_stats_t rif_stats;
-
-        if (vpp_intf_stats_query(if_name.c_str(), &rif_stats) == 0)
-        {
-            have_stats = true;
-            absolute[SAI_ROUTER_INTERFACE_STAT_IN_OCTETS] = rif_stats.rx_bytes;
-            absolute[SAI_ROUTER_INTERFACE_STAT_IN_PACKETS] = rif_stats.rx;
-            absolute[SAI_ROUTER_INTERFACE_STAT_OUT_OCTETS] = rif_stats.tx_bytes;
-            absolute[SAI_ROUTER_INTERFACE_STAT_OUT_PACKETS] = rif_stats.tx;
-            absolute[SAI_ROUTER_INTERFACE_STAT_IN_ERROR_PACKETS] = rif_stats.rx_error;
-            absolute[SAI_ROUTER_INTERFACE_STAT_OUT_ERROR_PACKETS] = rif_stats.tx_error;
-        }
-    }
-
-    if (!have_stats)
-    {
-        // Could not resolve the RIF to a VPP interface or read its counters.
-        // Return zeros without touching the per-RIF baseline so a transient
-        // failure during a READ_AND_CLEAR cannot corrupt the delta accounting
-        // (and so an unresolvable RIF does not accumulate a stale base entry).
+        // RIF types without a backing VPP interface have no hardware counters.
         SWSS_LOG_WARN("getRifStatsExt: no VPP stats for RIF %s",
                 sai_serialize_object_id(oid).c_str());
 
@@ -835,6 +855,8 @@ sai_status_t SwitchVpp::getRifStatsExt(
 
         return SAI_STATUS_SUCCESS;
     }
+
+    CHECK_STATUS(queryRifStats(if_name, absolute));
 
     bool clear = mode == SAI_STATS_MODE_READ_AND_CLEAR ||
         mode == SAI_STATS_MODE_BULK_READ_AND_CLEAR ||
@@ -865,8 +887,14 @@ sai_status_t SwitchVpp::getRifStatsExt(
             baseline = baseIt->second;
         }
 
-        // Guard against a counter that went backwards (interface/stat reset).
-        counters[i] = (abs >= baseline) ? (abs - baseline) : abs;
+        if (abs < baseline)
+        {
+            SWSS_LOG_WARN("RIF %s counter %d reset; discarding baseline",
+                    sai_serialize_object_id(oid).c_str(), id);
+            base.erase(id);
+            baseline = 0;
+        }
+        counters[i] = abs - baseline;
 
         if (clear)
         {
@@ -1264,6 +1292,12 @@ sai_status_t SwitchVpp::getStatsExt(
 
     if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
     {
+        auto meta = m_meta.lock();
+        if (meta && meta->meta_unittests_enabled())
+        {
+            return SwitchStateBase::getStatsExt(
+                    object_type, object_id, number_of_counters, counter_ids, mode, counters);
+        }
         return getRifStatsExt(object_id, number_of_counters, counter_ids, mode, counters);
     }
 

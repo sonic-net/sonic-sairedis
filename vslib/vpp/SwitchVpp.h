@@ -117,9 +117,14 @@ namespace saivs
                     _In_ sai_stats_mode_t mode,
                     _Out_ uint64_t *counters);
 
-            /* RIF counters sourced from VPP per-interface stats, with a
-             * per-RIF baseline so READ_AND_CLEAR returns deltas since the
-             * last clear instead of VPP's absolute cumulative values. */
+            // RIF counters are relative to creation or the last explicit clear.
+            static sai_status_t queryRifStats(
+                    _In_ const std::string& ifname,
+                    _Out_ std::map<sai_stat_id_t, uint64_t>& stats);
+
+            sai_status_t initializeRifStats(
+                    _In_ sai_object_id_t oid);
+
             sai_status_t getRifStatsExt(
                     _In_ sai_object_id_t oid,
                     _In_ uint32_t number_of_counters,
@@ -130,10 +135,30 @@ namespace saivs
             /* Translate SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION into
              * the sonic_ext plugin call. Returns SAI_STATUS_NOT_SUPPORTED for
              * any action other than FORWARD/DROP, SAI_STATUS_FAILURE if the
-             * plugin call fails. */
+             * feature query or action call fails. */
             static sai_status_t vpp_apply_loopback_action(
                     _In_ const std::string& hwif_name,
                     _In_ int32_t packet_action);
+
+            static sai_status_t validateLoopbackAction(
+                    _In_ int32_t packet_action);
+
+            // Only resources acquired by this CREATE may be unwound on failure.
+            struct RifCreateState
+            {
+                std::string hwif;
+                std::string parent;
+                std::string tap;
+                uint32_t vlan = 0;
+                bool bvi = false;
+                bool interface_created = false;
+                bool lcp_created = false;
+                bool bridge_attached = false;
+                bool loopback_applied = false;
+            };
+
+            sai_status_t rollbackRifCreate(
+                    _In_ const RifCreateState& state);
 
             sai_status_t vpp_register_router_interface(
                     _In_ sai_object_id_t rif_oid,
@@ -465,7 +490,8 @@ namespace saivs
 
             sai_status_t vpp_create_bvi_interface(
                     _In_ uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list);
+                    _In_ const sai_attribute_t *attr_list,
+                    _Inout_ RifCreateState& state);
 
             sai_status_t vpp_delete_bvi_interface(
                     _In_ sai_object_id_t bvi_obj_id);
@@ -733,7 +759,8 @@ namespace saivs
 
             sai_status_t vpp_create_router_interface(
                     _In_ uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list);
+                    _In_ const sai_attribute_t *attr_list,
+                    _Inout_ RifCreateState& state);
 
             sai_status_t vpp_update_router_interface(
                     _In_ sai_object_id_t object_id,
@@ -972,8 +999,7 @@ namespace saivs
             std::map<std::string, uint32_t> m_routeStatsIndexMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsBaseMap;
 
-            /* Per-RIF baseline of absolute VPP counters at the last
-             * READ_AND_CLEAR, so RIF stats read back as deltas (getRifStatsExt). */
+            // Absolute VPP counters at RIF creation or the last READ_AND_CLEAR.
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_rifStatsBaseMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsCarryMap;
 

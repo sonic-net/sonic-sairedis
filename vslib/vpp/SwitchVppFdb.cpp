@@ -1499,7 +1499,8 @@ sai_status_t SwitchVpp::vpp_set_vlan_attribute(
 
 sai_status_t SwitchVpp::vpp_create_bvi_interface(
         _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ const sai_attribute_t *attr_list,
+        _Inout_ RifCreateState& state)
 {
     SWSS_LOG_ENTER();
 
@@ -1604,6 +1605,11 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
         SWSS_LOG_ERROR("Failed to create BVI for VLAN %u", vlan_id);
         return SAI_STATUS_FAILURE;
     }
+    state.hwif = VppVlanInterface::hwifNameFor(static_cast<uint16_t>(vlan_id));
+    state.tap = "tap_Vlan" + std::to_string(vlan_id);
+    state.vlan = vlan_id;
+    state.bvi = true;
+    state.interface_created = true;
 
     // Get new list of physical interfaces from VS
     refresh_interfaces_list();
@@ -1616,13 +1622,16 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     if (vrf_id != 0 && set_interface_vrf(hw_ifname, 0, vrf_id, false) != 0)
     {
         SWSS_LOG_ERROR("Failed to bind %s to IPv4 VRF table %u", hw_ifname, vrf_id);
-        delete_bvi_interface(hw_ifname);
-        refresh_interfaces_list();
         return SAI_STATUS_FAILURE;
     }
 
     //Create bridge and set the l2 port as BVI
-    set_sw_interface_l2_bridge(hw_ifname,vlan_id, true, VPP_API_PORT_TYPE_BVI);
+    if (set_sw_interface_l2_bridge(hw_ifname, vlan_id, true, VPP_API_PORT_TYPE_BVI) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to attach BVI %s to bridge %u", hw_ifname, vlan_id);
+        return SAI_STATUS_FAILURE;
+    }
+    state.bridge_attached = true;
 
     //Set interface state up
     interface_set_state(hw_ifname, true);
@@ -1647,7 +1656,12 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 
         SWSS_LOG_NOTICE("configure_lcp_interface vpp_name:%s tap:%s",
                         vpp_ifname.c_str(), tap_name.c_str());
-        configure_lcp_interface(vpp_ifname.c_str(), tap_name.c_str(), true);
+        if (configure_lcp_interface(vpp_ifname.c_str(), tap_name.c_str(), true) != 0)
+        {
+            SWSS_LOG_ERROR("Failed to create LCP pair for %s", vpp_ifname.c_str());
+            return SAI_STATUS_FAILURE;
+        }
+        state.lcp_created = true;
 
         refresh_interfaces_list();
         interface_set_state(tap_name.c_str(), true);
