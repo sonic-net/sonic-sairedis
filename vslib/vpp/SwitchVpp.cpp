@@ -800,10 +800,10 @@ sai_status_t SwitchVpp::getRifStatsExt(
     // Absolute cumulative counters as VPP reports them, keyed by SAI stat id.
     std::map<sai_stat_id_t, uint64_t> absolute;
 
-    std::string if_name;
+    std::string if_name = m_ifaceRegistry.resolveHwIfByRifOid(oid);
     bool have_stats = false;
 
-    if (vpp_get_rif_hwif_name(oid, if_name) && !if_name.empty())
+    if (!if_name.empty())
     {
         vpp_interface_stats_t rif_stats;
 

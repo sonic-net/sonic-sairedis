@@ -500,8 +500,47 @@ bool VppInterfaceRegistry::setRifOid(
         return false;
     }
 
-    /* not indexed: nothing looks an interface up by its router interface oid yet */
+    if (rifOid == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("cannot set a null rif oid on %s; use clearRifOid()", hwifName.c_str());
+        return false;
+    }
+
+    auto existing = m_byRifOid.find(rifOid);
+
+    if (existing != m_byRifOid.end() && existing->second != rec)
+    {
+        SWSS_LOG_ERROR("rif oid 0x%llx is already bound to %s",
+                static_cast<unsigned long long>(rifOid), existing->second->getHwifName().c_str());
+        return false;
+    }
+
+    if (rec->hasRifOid())
+    {
+        m_byRifOid.erase(rec->getRifOid());
+    }
+
     rec->m_rifOid = rifOid;
+    m_byRifOid[rifOid] = rec;
+
+    return true;
+}
+
+bool VppInterfaceRegistry::clearRifOid(
+        _In_ sai_object_id_t rifOid)
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    auto it = m_byRifOid.find(rifOid);
+
+    if (it == m_byRifOid.end())
+    {
+        return false;
+    }
+
+    it->second->m_rifOid = SAI_NULL_OBJECT_ID;
+    m_byRifOid.erase(it);
 
     return true;
 }
@@ -778,6 +817,17 @@ std::string VppInterfaceRegistry::resolveHwIfName(
     return rec->getHwifName();
 }
 
+std::string VppInterfaceRegistry::resolveHwIfByRifOid(
+        _In_ sai_object_id_t rifOid) const
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    auto it = m_byRifOid.find(rifOid);
+
+    return it == m_byRifOid.end() ? std::string() : it->second->getHwifName();
+}
+
 /*
  * sonic_vpp_ifmap.ini maps the host OS interface name ("osif") to the VPP
  * hardware interface name, e.g. "Ethernet0" -> "TenGigabitEthernet0/0/0". The
@@ -928,6 +978,7 @@ void VppInterfaceRegistry::clear()
 
     m_bySwIfIndex.clear();
     m_byOid.clear();
+    m_byRifOid.clear();
     m_byTap.clear();
     m_byOsIf.clear();
     m_byHwif.clear();
@@ -956,6 +1007,11 @@ void VppInterfaceRegistry::indexRecord(
         m_byOid[rec->getOid()] = rec;
     }
 
+    if (rec->hasRifOid())
+    {
+        m_byRifOid[rec->getRifOid()] = rec;
+    }
+
     if (rec->hasSwIfIndex())
     {
         m_bySwIfIndex[rec->getSwIfIndex()] = rec;
@@ -976,6 +1032,11 @@ void VppInterfaceRegistry::unindexRecord(
     if (rec->hasOid())
     {
         m_byOid.erase(rec->getOid());
+    }
+
+    if (rec->hasRifOid())
+    {
+        m_byRifOid.erase(rec->getRifOid());
     }
 
     if (rec->hasTapName())

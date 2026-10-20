@@ -131,19 +131,14 @@ namespace saivs
              * the sonic_ext plugin call. Returns SAI_STATUS_NOT_SUPPORTED for
              * any action other than FORWARD/DROP, SAI_STATUS_FAILURE if the
              * plugin call fails. */
-            sai_status_t vpp_apply_loopback_action(
+            static sai_status_t vpp_apply_loopback_action(
                     _In_ const std::string& hwif_name,
                     _In_ int32_t packet_action);
 
-            /* Resolve a ROUTER_INTERFACE oid to its backing VPP hardware
-             * interface name: the port/LAG/sub-port hwif, or the bridge BVI
-             * (bvi<vlan-id>) for a VLAN RIF. The interface registry only indexes
-             * PORT/LAG/VLAN_BVI oids (not RIF oids), so RIF stats and cleanup
-             * must resolve through the RIF's SAI attributes here. Returns false
-             * if the RIF is not backed by a VPP interface. */
-            bool vpp_get_rif_hwif_name(
+            sai_status_t vpp_register_router_interface(
                     _In_ sai_object_id_t rif_oid,
-                    _Out_ std::string& ifname);
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
 
             sai_status_t getRouteCounterStats(
                     _In_ sai_object_id_t oid,

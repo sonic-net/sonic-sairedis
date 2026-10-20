@@ -55,6 +55,7 @@ tests_SOURCES = main.cpp \
 
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp
+tests_LDFLAGS = -Wl,--wrap=vpp_sonic_ext_feature_get -Wl,--wrap=vpp_iface_loopback_set_action
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control

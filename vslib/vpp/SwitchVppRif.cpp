@@ -1610,72 +1610,66 @@ int SwitchVpp::vpp_get_vrf_id (const char *linux_ifname, uint32_t *vrf_id)
     return 0;
 }
 
-bool SwitchVpp::vpp_get_rif_hwif_name(
+sai_status_t SwitchVpp::vpp_register_router_interface(
         _In_ sai_object_id_t rif_oid,
-        _Out_ std::string& ifname)
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    sai_attribute_t attr;
+    auto attr_type = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_TYPE, attr_count, attr_list);
 
-    attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
-    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS)
+    if (attr_type == nullptr)
     {
-        return false;
-    }
-    int32_t rif_type = attr.value.s32;
-
-    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN)
-    {
-        // A VLAN RIF is backed by the bridge's BVI interface (bvi<vlan-id>).
-        attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
-        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS)
-        {
-            return false;
-        }
-        sai_object_id_t vlan_oid = attr.value.oid;
-        if (objectTypeQuery(vlan_oid) != SAI_OBJECT_TYPE_VLAN)
-        {
-            return false;
-        }
-        sai_attribute_t vattr;
-        vattr.id = SAI_VLAN_ATTR_VLAN_ID;
-        if (get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &vattr) != SAI_STATUS_SUCCESS)
-        {
-            return false;
-        }
-        ifname = std::string("bvi") + std::to_string(vattr.value.u16);
-        return true;
+        SWSS_LOG_ERROR("RIF type is missing for %s", sai_serialize_object_id(rif_oid).c_str());
+        return SAI_STATUS_FAILURE;
     }
 
-    attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS)
-    {
-        return false;
-    }
-    sai_object_id_t port_oid = attr.value.oid;
+    const int32_t rif_type = attr_type->value.s32;
 
-    sai_object_type_t ot = objectTypeQuery(port_oid);
-    if (ot != SAI_OBJECT_TYPE_PORT && ot != SAI_OBJECT_TYPE_LAG)
+    if (rif_type != SAI_ROUTER_INTERFACE_TYPE_PORT &&
+        rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT &&
+        rif_type != SAI_ROUTER_INTERFACE_TYPE_VLAN)
     {
-        return false;
+        return SAI_STATUS_SUCCESS;
     }
 
+    auto attr_id = rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN ?
+        SAI_ROUTER_INTERFACE_ATTR_VLAN_ID : SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+    auto attr_backing = sai_metadata_get_attr_by_id(attr_id, attr_count, attr_list);
+
+    if (attr_backing == nullptr)
+    {
+        SWSS_LOG_ERROR("Backing interface is missing for RIF %s",
+                sai_serialize_object_id(rif_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
     uint16_t vlan_id = 0;
+
     if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
-        attr.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
-        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_oid, 1, &attr) != SAI_STATUS_SUCCESS)
+        auto attr_vlan = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID, attr_count, attr_list);
+
+        if (attr_vlan == nullptr)
         {
-            return false;
+            SWSS_LOG_ERROR("Outer VLAN is missing for RIF %s",
+                    sai_serialize_object_id(rif_oid).c_str());
+            return SAI_STATUS_FAILURE;
         }
-        vlan_id = attr.value.u16;
+
+        vlan_id = attr_vlan->value.u16;
     }
 
-    // Port/LAG/sub-port RIFs resolve through the registry, which DOES index the
-    // backing PORT/LAG oid (the RIF oid itself is not indexed).
-    ifname = m_ifaceRegistry.resolveHwIfName(port_oid, vlan_id);
-    return !ifname.empty();
+    const std::string ifname = m_ifaceRegistry.resolveHwIfName(attr_backing->value.oid, vlan_id);
+
+    if (ifname.empty() || !m_ifaceRegistry.setRifOid(ifname, rif_oid))
+    {
+        SWSS_LOG_ERROR("Cannot register backing VPP interface for RIF %s",
+                sai_serialize_object_id(rif_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::vpp_apply_loopback_action(
@@ -1693,6 +1687,11 @@ sai_status_t SwitchVpp::vpp_apply_loopback_action(
         SWSS_LOG_ERROR("Unsupported RIF loopback packet action %d on %s",
                        packet_action, hwif_name.c_str());
         return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    if (!sonicExtFeatureEnabled("iface-loopback"))
+    {
+        return SAI_STATUS_SUCCESS;
     }
 
     int action = (packet_action == SAI_PACKET_ACTION_DROP) ? 1 : 0;
@@ -2118,10 +2117,6 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
 {
     SWSS_LOG_ENTER();
 
-    // Drop any per-RIF stats baseline so m_rifStatsBaseMap does not accumulate
-    // stale entries as RIFs are created and removed over the switch lifetime.
-    m_rifStatsBaseMap.erase(rif_id);
-
     sai_attribute_t attr;
     int32_t rif_type;
 
@@ -2290,6 +2285,8 @@ sai_status_t SwitchVpp::createRouterif(
 {
     SWSS_LOG_ENTER();
 
+    bool new_binding = m_ifaceRegistry.resolveHwIfByRifOid(object_id).empty();
+
     if (m_switchConfig->m_useTapDevice == true)
     {
         sai_attribute_t tattr;
@@ -2301,13 +2298,20 @@ sai_status_t SwitchVpp::createRouterif(
         } else {
             CHECK_STATUS(vpp_update_router_interface(object_id, attr_count, attr_list));
         }
+
+        CHECK_STATUS(vpp_register_router_interface(object_id, attr_count, attr_list));
     }
 
     auto sid = sai_serialize_object_id(object_id);
 
-    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, switch_id, attr_count, attr_list));
+    sai_status_t status = create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, switch_id, attr_count, attr_list);
 
-    return SAI_STATUS_SUCCESS;
+    if (status != SAI_STATUS_SUCCESS && new_binding)
+    {
+        m_ifaceRegistry.clearRifOid(object_id);
+    }
+
+    return status;
 }
 
 sai_status_t SwitchVpp::removeRouterif(
@@ -2323,6 +2327,9 @@ sai_status_t SwitchVpp::removeRouterif(
     auto sid = sai_serialize_object_id(objectId);
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid));
+
+    m_ifaceRegistry.clearRifOid(objectId);
+    m_rifStatsBaseMap.erase(objectId);
 
     return SAI_STATUS_SUCCESS;
 }
