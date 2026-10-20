@@ -123,6 +123,13 @@ void SwitchVpp::deinitFdbEventHandling()
     // VPP may deliver a batch after destruction and staticMacEventCb will
     // dereference a dangling `this`. The VPP subscription itself stays, like
     // the interface and BFD ones; events are dropped while no callback is set.
+    //
+    // VPP keeps a single MAC event subscriber, and its pid, until VPP restarts:
+    // it has no reaper for it. So only this process can subscribe again (as the
+    // event socket reconnect does), and a switch created later in this process
+    // only needs its callback set again. A new syncd process can subscribe only
+    // to a VPP restarted with it, which holds in SONiC since VPP runs in the
+    // syncd container and restarts with syncd.
     vpp_set_mac_event_cb(nullptr, nullptr);
     m_fdbAgingWakeFn = nullptr;
 }

@@ -56,6 +56,9 @@ struct VppMock
     std::map<std::string, bool> adminUp;
     std::map<std::string, std::array<uint32_t, 4>> mtus;
     std::map<std::string, unsigned int> mplsReferences;
+    int l2fibDumpResult = 0;
+    unsigned int l2fibDumpCalls = 0;
+    std::vector<vpp_l2fib_entry_t> l2fib;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
