@@ -957,8 +957,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
             set_l2_interface_vlan_tag_rewrite(hw_ifname, tag1, tag2, push_dot1q, vtr_op);
         }
 
-        //Set interface state up
-        interface_set_state(hw_ifname, true);
+        // Set interface state up, or once the parent is up if it isn't yet
+        vpp_set_sub_interface_state(hw_ifname, true);
 
         /* Enable L2 classify-based punt on the sub-interface so control
          * protocols (LLDP, LACP, ARP, DHCP) are punted/copied to the
@@ -1185,6 +1185,7 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         delete_sub_interface(parent_hwif, vlan_id);
 
         m_ifaceRegistry.remove(hw_ifname);
+        m_sub_if_admin_up_pending.erase(hw_ifname);
     }
     else {
 
