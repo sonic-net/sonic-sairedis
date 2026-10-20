@@ -4,6 +4,9 @@
 
 #include <unistd.h>
 
+std::atomic<int> g_vppEventWaits{0};
+std::atomic<vpp_event_info_t *> g_vppEvent{nullptr};
+
 VppMock& vppMock()
 {
     SWSS_LOG_ENTER();
@@ -280,6 +283,7 @@ int __wrap_init_vpp_client() {
 // the event thread waits for VPP to write to the event socket between passes
 int __wrap_vpp_wait_for_events(int) {
     SWSS_LOG_ENTER();
+    g_vppEventWaits++;
     usleep(10 * 1000);
     return 0;
 }
@@ -289,7 +293,7 @@ int __wrap_vpp_sync_for_events() {
 }
 vpp_event_info_t * __wrap_vpp_ev_dequeue() {
     SWSS_LOG_ENTER();
-    return NULL;
+    return g_vppEvent.exchange(nullptr);
 }
 
 /*

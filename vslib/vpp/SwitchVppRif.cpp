@@ -1,5 +1,6 @@
 #include "SwitchVpp.h"
 #include "SwitchVppUtils.h"
+#include "EventPayloadVppEvent.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/NotificationPortStateChange.h"
@@ -606,33 +607,59 @@ void SwitchVpp::vppProcessEvents ()
             m_operResyncDue.store(true, std::memory_order_relaxed);
         }
         while ((evp = vpp_ev_dequeue())) {
-            if (evp->type == VPP_INTF_LINK_STATUS) {
-                if (evp->data.intf_status.link_up) {
-                    /* Refresh cached link speed from VPP on link-up.
-                     * The initial sw_interface_dump may have cached speed=0
-                     * if the link was down at startup. */
-                    vpp_refresh_interface_speed(evp->data.intf_status.hwif_name);
-                }
-                asyncIntfStateUpdate(evp->data.intf_status.hwif_name,
-                                     evp->data.intf_status.link_up);
-                SWSS_LOG_NOTICE("Received port link event for %s state %s",
-                                evp->data.intf_status.hwif_name,
-                                evp->data.intf_status.link_up ? "UP" : "DOWN");
-            } else if (evp->type == VPP_BFD_STATE_CHANGE) {
-                SWSS_LOG_NOTICE("Received bfd state change event, multihop:%d, "
-                                "sw_idx:%d, state %d",
-                                evp->data.bfd_notif.multihop,
-                                evp->data.bfd_notif.sw_if_index,
-                                evp->data.bfd_notif.state);
-                asyncBfdStateUpdate(&evp->data.bfd_notif);
+            if (evp->type == VPP_INTF_LINK_STATUS && evp->data.intf_status.link_up) {
+                /* Refresh cached link speed from VPP on link-up.
+                 * The initial sw_interface_dump may have cached speed=0
+                 * if the link was down at startup. */
+                vpp_refresh_interface_speed(evp->data.intf_status.hwif_name);
             }
+            /* Applying a link or BFD state change updates Meta and the switch
+             * state, which this thread must not touch without m_apimutex: the
+             * vslib event queue thread applies it under that lock
+             * (syncOnPlatformEvent). */
+            auto payload = std::make_shared<EventPayloadVppEvent>(m_switch_id, *evp);
             vpp_ev_free(evp);
+            m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_PLATFORM_EVENT, payload));
         }
         // No periodic resync here. resyncPortOperStatus() issues per-interface
         // SW_INTERFACE_DUMPs; doing that every cycle exhausted VPP's client clib
         // heap (os_panic in clib_mem_heap_realloc_aligned). Resync is instead
         // requested only at startup and after a reconnect (above), and executed
-        // on the command thread via serviceDeferredOperStatusResync().
+        // under m_apimutex via serviceDeferredOperStatusResync().
+    }
+}
+
+void SwitchVpp::syncOnPlatformEvent(
+        _In_ std::shared_ptr<EventPayloadPlatformEvent> payload)
+{
+    SWSS_LOG_ENTER();
+
+    auto vppPayload = std::dynamic_pointer_cast<EventPayloadVppEvent>(payload);
+
+    if (!vppPayload)
+    {
+        SWSS_LOG_ERROR("platform event is not a VPP event, ignored");
+        return;
+    }
+
+    const vpp_event_info_t &ev = vppPayload->getEvent();
+
+    if (ev.type == VPP_INTF_LINK_STATUS)
+    {
+        asyncIntfStateUpdate(ev.data.intf_status.hwif_name, ev.data.intf_status.link_up);
+        SWSS_LOG_NOTICE("Received port link event for %s state %s",
+                        ev.data.intf_status.hwif_name,
+                        ev.data.intf_status.link_up ? "UP" : "DOWN");
+    }
+    else if (ev.type == VPP_BFD_STATE_CHANGE)
+    {
+        SWSS_LOG_NOTICE("Received bfd state change event, multihop:%d, "
+                        "sw_idx:%d, state %d",
+                        ev.data.bfd_notif.multihop,
+                        ev.data.bfd_notif.sw_if_index,
+                        ev.data.bfd_notif.state);
+        vpp_bfd_state_notif_t bfd_notif = ev.data.bfd_notif;
+        asyncBfdStateUpdate(&bfd_notif);
     }
 }
 
@@ -640,7 +667,9 @@ void SwitchVpp::serviceDeferredOperStatusResync()
 {
     SWSS_LOG_ENTER();
 
-    // Runs on the command thread (from the create/set/remove entry points).
+    // Runs under m_apimutex: on the command thread (from the create/set/remove
+    // entry points), or on the vslib event queue thread, which applies link and
+    // BFD state events (their notifications call set()).
     // resyncPortOperStatus() issues VPP binary-API SW_INTERFACE_DUMPs; the event
     // thread only *requests* a resync (m_operResyncDue) on startup and after an
     // event-socket reconnect - never on a periodic timer - so this performs at
@@ -722,11 +751,11 @@ sai_status_t SwitchVpp::asyncIntfStateUpdate(const char *hwif_name, bool link_up
     SWSS_LOG_ENTER();
 
     /*
-     * Runs on the VPP event thread, which holds neither m_apimutex nor any VPP
-     * lock at this point. The registry is internally synchronized, but a record
-     * handed back by findBy*() would be read after that lock is dropped, so ask
-     * for the oid as a value instead: the port type test and the oid read both
-     * happen inside the registry lock.
+     * Runs on the vslib event queue thread with m_apimutex held
+     * (syncOnPlatformEvent()). The registry is internally synchronized, but a
+     * record handed back by findBy*() would be read after that lock is dropped,
+     * so ask for the oid as a value instead: the port type test and the oid
+     * read both happen inside the registry lock.
      *
      * A null oid means the hwif is not a front panel port (BondEthernet, bvi, a
      * sub-interface) or has no oid yet. Only physical ports carry SAI port oper
