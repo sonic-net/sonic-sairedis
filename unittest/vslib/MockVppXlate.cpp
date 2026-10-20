@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include <unistd.h>
+
 VppMock& vppMock()
 {
     SWSS_LOG_ENTER();
@@ -343,6 +345,19 @@ extern "C" int __wrap_refresh_interfaces_list() {
 extern "C" void __wrap_vpp_set_mac_event_cb(vpp_mac_event_cb_fn, void *) {
     SWSS_LOG_ENTER();
 }
+extern "C" int __wrap_vpp_l2fib_dump(uint32_t, vpp_l2fib_entry_cb_fn cb, void *ctx)
+{
+    SWSS_LOG_ENTER();
+    ++vppMock().l2fibDumpCalls;
+    if (vppMock().l2fibDumpResult == 0)
+    {
+        for (const auto& entry : vppMock().l2fib)
+        {
+            cb(&entry, ctx);
+        }
+    }
+    return vppMock().l2fibDumpResult;
+}
 extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
     SWSS_LOG_ENTER();
     return 0;
@@ -389,6 +404,12 @@ extern "C" {
 
 int __wrap_init_vpp_client() {
     SWSS_LOG_ENTER();
+    return 0;
+}
+// the event thread waits for VPP to write to the event socket between passes
+int __wrap_vpp_wait_for_events(int) {
+    SWSS_LOG_ENTER();
+    usleep(10 * 1000);
     return 0;
 }
 int __wrap_vpp_sync_for_events() {
