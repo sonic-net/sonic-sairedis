@@ -33,7 +33,8 @@ namespace
     // Iterators into live maps cannot survive a checkpoint: a waiting update may
     // erase or replace entries. Snapshot only keys and look up current data later.
     template <typename Map>
-    std::vector<typename Map::key_type> snapshotKeys(const Map& objects)
+    std::vector<typename Map::key_type> snapshotKeys(
+            _In_ const Map& objects)
     {
         SWSS_LOG_ENTER();
 
@@ -2750,10 +2751,12 @@ private:
         for (const auto& attr : attrs)
         {
             auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attr.id);
+
             if (!meta)
             {
                 SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
             }
+
             values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attr));
         }
 
@@ -2799,6 +2802,7 @@ private:
             {
                 continue;
             }
+
             const auto &attrIds = kv.second->counter_ids;
 
             std::vector<sai_attribute_t> attrs(attrIds.size());
@@ -2814,6 +2818,7 @@ private:
         }
 
         const size_t count = vids.size();
+
         if (count == 0)
         {
             return true;
@@ -3201,6 +3206,7 @@ public:
                 // with PortSerdesAttrContext writing to the same table
                 portPhyAttrTable.hset(vid_str, it->second, attr_value, "");
             }
+
             Base::markSampled(vid);
         }
 
@@ -3761,6 +3767,7 @@ public:
                 // with PortPhyAttrContext writing to the same table
                 portPhyAttrTable.hset(port_vid_str, it->second, attr_value, "");
             }
+
             Base::markSampled(vid);
         }
 
@@ -5138,7 +5145,8 @@ void FlexCounter::flexCounterThreadRunFunction()
 
                 std::unique_lock<std::mutex> lk(m_mtxSleep);
 
-                m_cvSleep.wait_for(lk, std::chrono::milliseconds(backoff), [&] {
+                m_cvSleep.wait_for(lk, std::chrono::milliseconds(backoff), [&]
+                {
                     return !m_runFlexCounterThread || m_sleepGeneration != sleepGeneration;
                 });
 
@@ -5152,7 +5160,8 @@ void FlexCounter::flexCounterThreadRunFunction()
         // operations, including the manager's post-removal isDiscarded() query.
         // Same-object refreshes withdrawn at checkpoints must run before another
         // sweep, but they do not stop the previous sweep from completing.
-        m_updateCond.wait(_lock, [&] {
+        m_updateCond.wait(_lock, [&]
+        {
             return (m_pendingUpdates == 0 && m_deferredUpdates == 0) || !m_runFlexCounterThread;
         });
 
@@ -5252,7 +5261,8 @@ void FlexCounter::flexCounterThreadRunFunction()
 
             std::unique_lock<std::mutex> lk(m_mtxSleep);
 
-            m_cvSleep.wait_for(lk, std::chrono::milliseconds(correction), [&] {
+            m_cvSleep.wait_for(lk, std::chrono::milliseconds(correction), [&]
+            {
                 return !m_runFlexCounterThread || m_sleepGeneration != sleepGeneration;
             });
 
