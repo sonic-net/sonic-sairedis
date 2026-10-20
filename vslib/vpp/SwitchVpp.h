@@ -291,6 +291,13 @@ namespace saivs
 
             virtual void processFdbEntriesForAging() override;
 
+            // Applies a link or BFD state event that vppProcessEvents() posted
+            // (EventPayloadVppEvent): called from the vslib event queue thread
+            // with m_apimutex held, so it never runs concurrently with an API
+            // call, e.g. the create of the BFD session the event reports on.
+            virtual void syncOnPlatformEvent(
+                    _In_ std::shared_ptr<EventPayloadPlatformEvent> payload) override;
+
         public:
 
             // Key for the m_vpp_fdb_entries snapshot map.

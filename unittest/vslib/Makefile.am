@@ -12,6 +12,7 @@ tests_SOURCES = main.cpp \
 				TestCorePortIndexMapFileParser.cpp \
 				TestEventPayloadNetLinkMsg.cpp \
 				TestEventPayloadPacket.cpp \
+				TestEventPayloadPlatformEvent.cpp \
 				TestEventQueue.cpp \
 				TestFdbInfo.cpp \
 				TestSaiAttrWrap.cpp \

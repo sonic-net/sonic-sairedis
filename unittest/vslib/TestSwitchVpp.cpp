@@ -1,4 +1,6 @@
 #include "MockVppXlate.h"
+#include "vpp/EventPayloadVppEvent.h"
+#include "vpp/SwitchVppUtils.h"
 #include "vpp/vppxlate/SaiIntfStats.h"
 #include "vpp/vppxlate/SaiVppXlate.h"
 #include "ContextConfigContainer.h"
@@ -11,6 +13,9 @@
 
 #include <gtest/gtest.h>
 
+#include <arpa/inet.h>
+
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -420,4 +425,167 @@ TEST(SwitchVpp, fdbResyncRetriesFailedL2fibDump)
     EXPECT_EQ(SAI_SWITCH_NOTIFICATION_TYPE_FDB_EVENT, ntf->getNotificationType());
     EXPECT_NE(std::string::npos, ntf->getSerializedNotification().find("SAI_FDB_EVENT_AGED"));
     EXPECT_NE(std::string::npos, ntf->getSerializedNotification().find("02:11:22:33:44:55"));
+}
+
+TEST(SwitchVpp, bfdStateEventAppliedOnEventQueueThread)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap();
+    sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+    scc->insert(sc);
+
+    auto ridmgr = std::make_shared<RealObjectIdManager>(0, scc);
+    auto swid = ridmgr->allocateNewSwitchObjectId("");
+
+    SwitchVpp sw(swid, ridmgr, sc);
+
+    // BFD notifications go to the switch's BFD session state change callback
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY;
+    attr.value.ptr = reinterpret_cast<void *>(0x1);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw.create_internal(SAI_OBJECT_TYPE_SWITCH,
+                sai_serialize_object_id(swid), swid, 1, &attr));
+
+    // A BFD session that is DOWN
+    auto bfdOid = ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_BFD_SESSION, swid);
+
+    attr.id = SAI_BFD_SESSION_ATTR_STATE;
+    attr.value.s32 = SAI_BFD_SESSION_STATE_DOWN;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw.create_internal(SAI_OBJECT_TYPE_BFD_SESSION,
+                sai_serialize_object_id(bfdOid), swid, 1, &attr));
+
+    auto bfdState = [&sw, bfdOid]()
+    {
+        sai_attribute_t stateAttr;
+        stateAttr.id = SAI_BFD_SESSION_ATTR_STATE;
+
+        EXPECT_EQ(SAI_STATUS_SUCCESS, sw.get(SAI_OBJECT_TYPE_BFD_SESSION, bfdOid, 1, &stateAttr));
+
+        return static_cast<sai_bfd_session_state_t>(stateAttr.value.s32);
+    };
+
+    // VPP reports the session UP
+    auto *ev = static_cast<vpp_event_info_t *>(calloc(1, sizeof(vpp_event_info_t)));
+
+    ASSERT_NE(nullptr, ev);
+
+    auto &notif = ev->data.bfd_notif;
+
+    ev->type = VPP_BFD_STATE_CHANGE;
+    notif.state = VPP_API_BFD_STATE_UP;
+    notif.local_addr.sa_family = AF_INET;
+    notif.peer_addr.sa_family = AF_INET;
+
+    ASSERT_EQ(1, inet_pton(AF_INET, "10.0.0.1", &notif.local_addr.addr.ip4.sin_addr));
+    ASSERT_EQ(1, inet_pton(AF_INET, "10.0.0.2", &notif.peer_addr.addr.ip4.sin_addr));
+
+    SwitchVpp::vpp_bfd_info_t key;
+    memset(&key, 0, sizeof(key));
+    vpp_ip_addr_t_to_sai_ip_address_t(notif.local_addr, key.local_addr);
+    vpp_ip_addr_t_to_sai_ip_address_t(notif.peer_addr, key.peer_addr);
+    sw.m_bfd_info_map[key] = bfdOid;
+
+    // The VPP events thread takes the event (and frees it)...
+    g_vppEvent = ev;
+
+    for (int i = 0; i < 500 && g_vppEvent.load() != nullptr; i++)
+    {
+        usleep(10 * 1000);
+    }
+
+    ASSERT_EQ(nullptr, g_vppEvent.load());
+
+    // ...and is done with it once it waits for the next one
+    int waits = g_vppEventWaits.load();
+
+    for (int i = 0; i < 500 && g_vppEventWaits.load() == waits; i++)
+    {
+        usleep(10 * 1000);
+    }
+
+    ASSERT_NE(waits, g_vppEventWaits.load());
+
+    // It touches neither Meta nor the switch state, which need m_apimutex: it
+    // only posts the event, for the vslib event queue thread to apply
+    EXPECT_EQ(SAI_BFD_SESSION_STATE_DOWN, bfdState());
+
+    ASSERT_EQ(1u, sc->m_eventQueue->size());
+
+    auto event = sc->m_eventQueue->dequeue();
+
+    ASSERT_EQ(EVENT_TYPE_PLATFORM_EVENT, event->getType());
+
+    auto payload = std::dynamic_pointer_cast<EventPayloadVppEvent>(event->getPayload());
+
+    ASSERT_NE(nullptr, payload);
+    EXPECT_EQ(swid, payload->getSwitchId());
+    EXPECT_EQ(VPP_BFD_STATE_CHANGE, payload->getEvent().type);
+    EXPECT_EQ(nullptr, payload->getEvent().next);
+
+    // The event queue thread applies it (with m_apimutex held)
+    sw.syncOnPlatformEvent(payload);
+
+    EXPECT_EQ(SAI_BFD_SESSION_STATE_UP, bfdState());
+
+    ASSERT_EQ(1u, sc->m_eventQueue->size());
+
+    event = sc->m_eventQueue->dequeue();
+
+    ASSERT_EQ(EVENT_TYPE_NOTIFICATION, event->getType());
+
+    auto ntf = std::dynamic_pointer_cast<EventPayloadNotification>(event->getPayload())->getNotification();
+
+    EXPECT_EQ(SAI_SWITCH_NOTIFICATION_TYPE_BFD_SESSION_STATE_CHANGE, ntf->getNotificationType());
+    EXPECT_NE(std::string::npos, ntf->getSerializedNotification().find("SAI_BFD_SESSION_STATE_UP"));
+}
+
+TEST(SwitchVpp, syncOnPlatformEventDropsUnusableEvents)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap();
+    sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+    scc->insert(sc);
+
+    auto ridmgr = std::make_shared<RealObjectIdManager>(0, scc);
+    auto swid = ridmgr->allocateNewSwitchObjectId("");
+
+    SwitchVpp sw(swid, ridmgr, sc);
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
+    attr.value.ptr = reinterpret_cast<void *>(0x1);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw.create_internal(SAI_OBJECT_TYPE_SWITCH,
+                sai_serialize_object_id(swid), swid, 1, &attr));
+
+    // A platform event that is not a VPP event
+    sw.syncOnPlatformEvent(std::make_shared<EventPayloadPlatformEvent>(swid));
+
+    // A link event for an interface that is not a port
+    vpp_event_info_t ev;
+    memset(&ev, 0, sizeof(ev));
+
+    ev.type = VPP_INTF_LINK_STATUS;
+    strncpy(ev.data.intf_status.hwif_name, "bvi1000", sizeof(ev.data.intf_status.hwif_name) - 1);
+    ev.data.intf_status.link_up = true;
+
+    sw.syncOnPlatformEvent(std::make_shared<EventPayloadVppEvent>(swid, ev));
+
+    EXPECT_EQ(0u, sc->m_eventQueue->size());
 }

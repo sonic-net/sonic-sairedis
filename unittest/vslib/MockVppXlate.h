@@ -5,6 +5,7 @@
 #include "vpp/vppxlate/SaiAclStats.h"
 
 #include <array>
+#include <atomic>
 #include <map>
 #include <set>
 #include <string>
@@ -138,6 +139,13 @@ struct VppMock
 };
 
 VppMock& vppMock();
+
+/*
+ * A switch's event thread waits once per pass, and takes the event a test hands
+ * it. Kept out of VppMock, which tests reset, as that thread reads them.
+ */
+extern std::atomic<int> g_vppEventWaits;
+extern std::atomic<vpp_event_info_t *> g_vppEvent;
 
 class TestableSwitchVpp : public saivs::SwitchVpp
 {
