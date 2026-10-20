@@ -444,6 +444,7 @@ typedef enum {
     extern int create_sub_interface(const char *hwif_name, uint32_t sub_id, uint16_t vlan_id);
     extern int delete_sub_interface(const char *hwif_name, uint32_t sub_id);
     extern int set_interface_vrf(const char *hwif_name, uint32_t sub_id, uint32_t vrf_id, bool is_ipv6);
+    extern int get_interface_vrf(const char *hwif_name, bool is_ipv6, uint32_t *vrf_id);
     extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
     extern int interface_ip_address_del_all(const char *hwif_name);
     extern int interface_set_state (const char *hwif_name, bool is_up);

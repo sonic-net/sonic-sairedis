@@ -23,11 +23,19 @@ namespace
     int loopbackAction = -1;
     int loopbackResult = 0;
     int featureResult = 0;
+    unsigned int featureCalls = 0;
     bool mockVpp = false;
     int statsResult = 0;
     int lcpResult = 0;
     unsigned int statsCalls = 0;
     unsigned int interfaceCreates = 0;
+    uint32_t kernelVrfId = 0;
+    int kernelVrfResult = 0;
+    int getVrfResult = 0;
+    int setVrfResult = 0;
+    unsigned int vrfSetCalls = 0;
+    std::map<std::string, uint32_t> interfaceVrfs;
+    std::set<uint32_t> vrfTables;
     std::map<std::string, vpp_interface_stats_t> interfaceStats;
     std::map<std::string, int> actions;
     std::set<std::string> interfaces;
@@ -37,6 +45,7 @@ namespace
 
 extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabled)
 {
+    ++featureCalls;
     queriedFeature = feature;
     *enabled = queriedFeature == "iface-loopback" && loopbackEnabled;
     return featureResult;
@@ -113,7 +122,35 @@ extern "C" int __wrap_interface_set_state(const char *, bool) { return 0; }
 extern "C" int __wrap_refresh_interfaces_list() { return 0; }
 extern "C" int __wrap_vpp_want_l2_macs_events2(bool, vpp_mac_event_cb_fn, void *) { return 0; }
 extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) { return 0; }
-extern "C" int __wrap_set_interface_vrf(const char *, uint32_t, uint32_t, bool) { return 0; }
+extern "C" int __wrap_set_interface_vrf(const char *name, uint32_t subId, uint32_t table, bool)
+{
+    ++vrfSetCalls;
+    if (setVrfResult == 0)
+    {
+        const auto ifname = std::string(name) + (subId ? "." + std::to_string(subId) : "");
+        interfaceVrfs[ifname] = table;
+    }
+    return setVrfResult;
+}
+
+extern "C" int __wrap_get_interface_vrf(const char *name, bool, uint32_t *table)
+{
+    *table = interfaceVrfs[name];
+    return getVrfResult;
+}
+
+extern "C" int __wrap_ip_vrf_add(uint32_t table, const char *, bool)
+{
+    vrfTables.insert(table);
+    return 0;
+}
+
+extern "C" int __wrap_ip_vrf_del(uint32_t table, const char *, bool)
+{
+    vrfTables.erase(table);
+    return 0;
+}
+
 extern "C" int __wrap_interface_ip_address_del_all(const char *) { return 0; }
 
 // Keep constructors and CREATE paths real, but isolate VPP threads and host networking.
@@ -137,7 +174,12 @@ extern "C" int __wrap__ZN4swss4execERKNSt7__cxx1112basic_stringIcSt11char_traits
     {
         return __real__ZN4swss4execERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERS5_(command, output);
     }
-    output = "0\n";
+    if (command.find("link show") != std::string::npos)
+    {
+        output = std::to_string(kernelVrfId) + "\n";
+        return kernelVrfResult;
+    }
+    output.clear();
     return 0;
 }
 
@@ -215,7 +257,11 @@ protected:
         mockVpp = true;
         loopbackEnabled = true;
         featureResult = loopbackResult = statsResult = lcpResult = 0;
-        loopbackCalls = statsCalls = interfaceCreates = 0;
+        loopbackCalls = statsCalls = interfaceCreates = featureCalls = vrfSetCalls = 0;
+        kernelVrfId = 0;
+        kernelVrfResult = getVrfResult = setVrfResult = 0;
+        interfaceVrfs.clear();
+        vrfTables.clear();
         interfaceStats.clear();
         actions.clear();
         interfaces.clear();
@@ -393,6 +439,131 @@ TEST_F(SwitchVppRifTest, persistentInterfaceCountersStartAtEachRifCreation)
         ASSERT_EQ(SAI_STATUS_SUCCESS, sw->getRifStatsExt(rif, 6, ids, SAI_STATS_MODE_READ, values));
         EXPECT_EQ(0u, values[5]);
     }
+}
+
+TEST_F(SwitchVppRifTest, failedNonDefaultVrfCreateRestoresPortAndLagBeforeDefaultRetry)
+{
+    for (auto backing : {port, lag})
+    {
+        const auto name = sw->m_ifaceRegistry.resolveHwIfName(backing, 0);
+        for (bool failSnapshot : {false, true})
+        {
+            SCOPED_TRACE(name + (failSnapshot ? " snapshot" : " action"));
+            const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+            const auto nonDefaultVrf = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+            auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, backing);
+            attrs[2].value.oid = nonDefaultVrf;
+            kernelVrfId = 100;
+            interfaceVrfs[name] = 0;
+            loopbackResult = failSnapshot ? 0 : -1;
+            statsResult = failSnapshot ? -1 : 0;
+            ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
+            EXPECT_EQ(0u, interfaceVrfs.at(name));
+            EXPECT_NE(nullptr, sw->m_ifaceRegistry.findByOid(backing));
+            EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
+            EXPECT_EQ(1u, vrfTables.count(100));
+            EXPECT_EQ(1u, sw->vrf_objMap.count(nonDefaultVrf));
+
+            kernelVrfId = 0;
+            loopbackResult = statsResult = 0;
+            attrs[2].value.oid = vrf;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+            EXPECT_EQ(0u, interfaceVrfs.at(name));
+            ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+        }
+    }
+}
+
+TEST_F(SwitchVppRifTest, rollbackRestoresActualPreviousVrfAndDefaultCreateBindsTableZero)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    attrs[2].value.oid = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+    interfaceVrfs["port0"] = 42;
+    vrfTables.insert(42);
+    kernelVrfId = 100;
+    statsResult = -1;
+    ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
+    EXPECT_EQ(42u, interfaceVrfs.at("port0"));
+    EXPECT_EQ(1u, vrfTables.count(42));
+    EXPECT_EQ(1u, vrfTables.count(100));
+
+    kernelVrfId = 0;
+    statsResult = 0;
+    attrs[2].value.oid = vrf;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_EQ(0u, interfaceVrfs.at("port0"));
+}
+
+TEST_F(SwitchVppRifTest, vrfLookupAndProgrammingErrorsAbortBeforeActionProgramming)
+{
+    for (const std::string failure : {"kernel", "get", "set"})
+    {
+        SCOPED_TRACE(failure);
+        const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+        auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+        attrs[2].value.oid = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+        kernelVrfId = 100;
+        interfaceVrfs["port0"] = 42;
+        kernelVrfResult = failure == "kernel" ? -1 : 0;
+        getVrfResult = failure == "get" ? -1 : 0;
+        setVrfResult = failure == "set" ? -1 : 0;
+        vrfSetCalls = loopbackCalls = 0;
+        ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
+        EXPECT_EQ(42u, interfaceVrfs.at("port0"));
+        EXPECT_EQ(0u, loopbackCalls);
+        EXPECT_EQ(failure == "set" ? 1u : 0u, vrfSetCalls);
+        EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
+    }
+}
+
+TEST_F(SwitchVppRifTest, loopbackCapabilityMatchesEnabledAndDisabledFeature)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    for (bool enabled : {false, true})
+    {
+        ASSERT_EXIT({
+            loopbackEnabled = enabled;
+            sai_attr_capability_t capability{};
+            const auto status = sw->queryAttributeCapability(switchId, SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                    SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, &capability);
+            _exit(status == SAI_STATUS_SUCCESS && capability.create_implemented == enabled &&
+                    capability.set_implemented == enabled && capability.get_implemented == enabled &&
+                    queriedFeature == "iface-loopback" && featureCalls == 1 ? 0 : 1);
+        }, ::testing::ExitedWithCode(0), "");
+    }
+}
+
+TEST_F(SwitchVppRifTest, loopbackCapabilityQueryFailureIsRetryable)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT({
+        sai_attr_capability_t capability{};
+        featureResult = -1;
+        if (sw->queryAttributeCapability(switchId, SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                    SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, &capability) != SAI_STATUS_FAILURE)
+        {
+            _exit(1);
+        }
+        featureResult = 0;
+        const auto status = sw->queryAttributeCapability(switchId, SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, &capability);
+        _exit(status == SAI_STATUS_SUCCESS && capability.create_implemented &&
+                capability.set_implemented && capability.get_implemented && featureCalls == 2 ? 0 : 1);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(SwitchVppRifTest, unrelatedCapabilitiesDoNotQueryLoopbackFeature)
+{
+    featureResult = -1;
+    sai_attr_capability_t capability{};
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->queryAttributeCapability(switchId, SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+            SAI_ROUTER_INTERFACE_ATTR_TYPE, &capability));
+    EXPECT_TRUE(capability.create_implemented && capability.set_implemented && capability.get_implemented);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->queryAttributeCapability(switchId, SAI_OBJECT_TYPE_PORT,
+            SAI_PORT_ATTR_MTU, &capability));
+    EXPECT_TRUE(capability.create_implemented && capability.set_implemented && capability.get_implemented);
+    EXPECT_EQ(0u, featureCalls);
 }
 
 TEST_F(SwitchVppRifTest, queryFailureDoesNotAcknowledgeClearOrChangeBaseline)

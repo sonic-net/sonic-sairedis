@@ -1214,11 +1214,16 @@ sai_status_t SwitchVpp::queryAttributeCapability(
     // TODO: We should generate this metadata for the virtual switch rather
     // than hard-coding it here.
 
-    // in virtual switch by default all apis are implemented for all objects. SUCCESS for all attributes
+    bool implemented = true;
+    if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
+            attr_id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION)
+    {
+        CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", implemented));
+    }
 
-    capability->create_implemented = true;
-    capability->set_implemented    = true;
-    capability->get_implemented    = true;
+    capability->create_implemented = implemented;
+    capability->set_implemented    = implemented;
+    capability->get_implemented    = implemented;
 
     return SAI_STATUS_SUCCESS;
 }

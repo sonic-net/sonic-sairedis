@@ -60,7 +60,7 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				create_sub_interface delete_sub_interface configure_lcp_interface \
 				set_sw_interface_l2_bridge interface_set_state refresh_interfaces_list \
 				vpp_want_l2_macs_events2 vpp_ip_flow_hash_set set_interface_vrf \
-				interface_ip_address_del_all \
+				get_interface_vrf ip_vrf_add ip_vrf_del interface_ip_address_del_all \
 				_ZN5saivs9SwitchVpp17vpp_dp_initializeEv \
 				_ZN5saivs9SwitchVpp19vs_set_dev_admin_upEPKcb \
 				_ZN4swss4execERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERS5_

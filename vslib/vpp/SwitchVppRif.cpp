@@ -1750,10 +1750,18 @@ sai_status_t SwitchVpp::rollbackRifCreate(
         }
         check(refresh_interfaces_list(), "refresh interfaces");
     }
-    else if (state.loopback_applied)
+    else
     {
-        check(vpp_apply_loopback_action(state.hwif, SAI_PACKET_ACTION_FORWARD),
-                "restore loopback action");
+        if (state.loopback_applied)
+        {
+            check(vpp_apply_loopback_action(state.hwif, SAI_PACKET_ACTION_FORWARD),
+                    "restore loopback action");
+        }
+        if (state.vrf_changed)
+        {
+            check(set_interface_vrf(state.hwif.c_str(), 0, state.previous_vrf, false),
+                    "restore IPv4 VRF");
+        }
     }
 
     return status;
@@ -1970,11 +1978,36 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
     uint32_t vrf_id = 0;
     int ret = vpp_get_vrf_id(osif_name.c_str(), &vrf_id);
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("Failed to resolve VRF for %s (%d)", osif_name.c_str(), ret);
+        return SAI_STATUS_FAILURE;
+    }
 
-    vpp_add_ip_vrf(vrf_obj_id, vrf_id);
-    if (ret == 0 && vrf_id != 0) {
-        SWSS_LOG_NOTICE("Setting interface vrf on hwif_name %s", parent_hwif.c_str());
-        set_interface_vrf(parent_hwif.c_str(), vlan_id, vrf_id, false);
+    if (!state.interface_created)
+    {
+        ret = get_interface_vrf(state.hwif.c_str(), false, &state.previous_vrf);
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("Failed to query IPv4 VRF for %s (%d)", state.hwif.c_str(), ret);
+            return SAI_STATUS_FAILURE;
+        }
+    }
+    if (vpp_add_ip_vrf(vrf_obj_id, vrf_id) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to create IPv4 VRF %u for %s", vrf_id, state.hwif.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+    // New sub-interfaces start in table 0; persistent ports/LAGs may not.
+    if (vrf_id != state.previous_vrf)
+    {
+        ret = set_interface_vrf(parent_hwif.c_str(), vlan_id, vrf_id, false);
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("Failed to set IPv4 VRF %u on %s (%d)", vrf_id, state.hwif.c_str(), ret);
+            return SAI_STATUS_FAILURE;
+        }
+        state.vrf_changed = !state.interface_created;
     }
     auto attr_type_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
 

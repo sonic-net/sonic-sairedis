@@ -150,11 +150,13 @@ namespace saivs
                 std::string parent;
                 std::string tap;
                 uint32_t vlan = 0;
+                uint32_t previous_vrf = 0;
                 bool bvi = false;
                 bool interface_created = false;
                 bool lcp_created = false;
                 bool bridge_attached = false;
                 bool loopback_applied = false;
+                bool vrf_changed = false;
             };
 
             sai_status_t rollbackRifCreate(

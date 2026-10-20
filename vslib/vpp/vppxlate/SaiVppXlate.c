@@ -7117,6 +7117,22 @@ static int __sw_interface_get_table(uint32_t sw_if_index, bool is_ipv6, uint32_t
     return ret;
 }
 
+int get_interface_vrf(const char *hwif_name, bool is_ipv6, uint32_t *vrf_id)
+{
+    if (!hwif_name || !vrf_id) {
+        SAIVPP_ERROR("%s requires an interface name and output table", __func__);
+        return -EINVAL;
+    }
+
+    u32 idx = get_swif_idx(&vat_main, hwif_name);
+    if (idx == ~0U) {
+        SAIVPP_ERROR("%s: interface %s not found", __func__, hwif_name);
+        return -ENOENT;
+    }
+
+    return __sw_interface_get_table(idx, is_ipv6, vrf_id);
+}
+
 int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
                                 uint32_t *out_sw_if_index)
 {
