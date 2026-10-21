@@ -617,6 +617,11 @@ sai_status_t SwitchVpp::createHostifTrap(
     SWSS_LOG_NOTICE("created hostif trap %s: trap_type %d, packet_action %d, trap_group 0x%lx",
             sid.c_str(), (int)entry.trap_type, (int)entry.packet_action, (unsigned long)entry.trap_group_oid);
 
+    if (entry.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP)
+    {
+        vpp_update_dhcp_trap_action();
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -629,6 +634,7 @@ sai_status_t SwitchVpp::removeHostifTrap(
     sai_deserialize_object_id(serializedObjectId, object_id);
 
     bool need_uninstall = false;
+    bool is_dhcp = false;
     vpp_trap_entry_t trap_copy;
     memset(&trap_copy, 0, sizeof(trap_copy));
 
@@ -637,10 +643,15 @@ sai_status_t SwitchVpp::removeHostifTrap(
 
         auto it = m_trap_map.find(object_id);
 
-        if (it != m_trap_map.end() && it->second.classify_installed)
+        if (it != m_trap_map.end())
         {
-            need_uninstall = true;
-            trap_copy = it->second;
+            is_dhcp = it->second.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP;
+
+            if (it->second.classify_installed)
+            {
+                need_uninstall = true;
+                trap_copy = it->second;
+            }
         }
     }
 
@@ -652,6 +663,11 @@ sai_status_t SwitchVpp::removeHostifTrap(
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
         m_trap_map.erase(object_id);
+    }
+
+    if (is_dhcp)
+    {
+        vpp_update_dhcp_trap_action();
     }
 
     return remove_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, serializedObjectId);
@@ -742,5 +758,46 @@ sai_status_t SwitchVpp::setHostifTrap(
         }
     }
 
+    if (trap_copy.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP &&
+            attr->id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION)
+    {
+        vpp_update_dhcp_trap_action();
+    }
+
     return SAI_STATUS_SUCCESS;
+}
+
+/*
+ * DHCPv4 client broadcasts are flooded and copied only while every DHCP
+ * trap asks for COPY. orchagent may create a trap's replacement before it
+ * removes the old one, so a lone COPY trap does not win over a TRAP one
+ * still present.
+ */
+void SwitchVpp::vpp_update_dhcp_trap_action()
+{
+    SWSS_LOG_ENTER();
+
+    bool any = false;
+    bool all_copy = true;
+
+    {
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+
+        for (auto &kv : m_trap_map)
+        {
+            if (kv.second.trap_type != SAI_HOSTIF_TRAP_TYPE_DHCP)
+            {
+                continue;
+            }
+
+            any = true;
+
+            if (kv.second.packet_action != SAI_PACKET_ACTION_COPY)
+            {
+                all_copy = false;
+            }
+        }
+    }
+
+    vpp_set_dhcp_trap_copy(any && all_copy);
 }

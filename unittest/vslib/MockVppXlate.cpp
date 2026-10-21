@@ -484,16 +484,18 @@ extern "C" int __wrap_get_interface_vrf(const char *name, bool, uint32_t *table)
     return vppMock().getVrfResult;
 }
 
-extern "C" int __wrap_ip_vrf_add(uint32_t table, const char *, bool)
+extern "C" int __wrap_ip_vrf_add(uint32_t table, const char *vrf_name, bool)
 {
     SWSS_LOG_ENTER();
     vppMock().vrfTables.insert(table);
+    vppMock().calls.push_back({"ip_vrf_add", vrf_name ? vrf_name : "", table, 0, true});
     return 0;
 }
 
-extern "C" int __wrap_ip_vrf_del(uint32_t table, const char *, bool)
+extern "C" int __wrap_ip_vrf_del(uint32_t table, const char *vrf_name, bool)
 {
     SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"ip_vrf_del", vrf_name ? vrf_name : "", table, 0, false});
     vppMock().vrfTables.erase(table);
     return 0;
 }
@@ -617,18 +619,6 @@ uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
     SWSS_LOG_ENTER();
 
     return vppMock().nextSwIfIndex++;
-}
-
-// no classify punt in these tests: its one-time setup fails, which the VLAN member path tolerates
-int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint32_t *next_index) {
-    SWSS_LOG_ENTER();
-    return -1;
-}
-
-int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
-        uint32_t ip6_table_index, uint32_t other_table_index, bool is_input) {
-    SWSS_LOG_ENTER();
-    return 0;
 }
 
 /*

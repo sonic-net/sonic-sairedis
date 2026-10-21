@@ -1733,6 +1733,8 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
     SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
     vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
 
+    vpp_ip4_limited_broadcast_receive(vrf_id, true);
+
     uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
         VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
         VPP_IP_API_FLOW_HASH_PROTO | VPP_IP_API_FLOW_HASH_PEEK_INNER;
@@ -1757,11 +1759,90 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
         auto sw = it->second;
         if (sw != nullptr) {
                  SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
+           // table 0 outlives every VRF object, and other router interfaces may still use it
+           if (sw->m_vrf_id != 0)
+           {
+               vpp_ip4_limited_broadcast_receive(sw->m_vrf_id, false);
+           }
            ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), sw->m_is_ipv6);
            vrf_objMap.erase(it);
         }
     }
     return 0;
+}
+
+/*
+ * Makes the IPv4 limited broadcast address, 255.255.255.255, a local receive
+ * in table vrf_id. VPP installs it in every IPv4 table as a drop, but at the
+ * lowest FIB source priority so that it can be overridden ("drop, but we'll
+ * allow it to be usurped by the likes of DHCP"), and ip4-local accepts a
+ * packet to it from a source it has no route to, such as a DHCP client's
+ * 0.0.0.0. A limited broadcast is link-local (RFC 1812 says a router must
+ * not forward it), so receiving it rather than dropping it is what a router
+ * does with it.
+ *
+ * With the route a limited broadcast that reaches an L3 interface goes to
+ * ip4-local and from there to the kernel, through linux-cp's punt redirect
+ * to the interface's host tap. For a VLAN that is the BVI's copy of a
+ * flooded broadcast, and it is how a DHCPv4 client broadcast reaches the
+ * DHCP relay when the SAI_HOSTIF_TRAP_TYPE_DHCP action is COPY (see
+ * SwitchVppFdb.cpp). Under TRAP the client broadcast is punted at the VLAN
+ * member and never reaches the BVI.
+ *
+ * A limited broadcast is to-me traffic, so the address also goes into
+ * sonic-ext-copp-ip2me's address set with the switch's own addresses, and
+ * the IP2ME trap group's policer meters it on the punt path. The set is
+ * switch-wide and every table gets the route, so the address stays in it
+ * once added.
+ */
+int SwitchVpp::vpp_ip4_limited_broadcast_receive(
+        _In_ uint32_t vrf_id,
+        _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    vpp_ip_route_t *route = (vpp_ip_route_t *)
+        calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
+
+    if (!route)
+    {
+        SWSS_LOG_ERROR("Failed to allocate the limited broadcast route for VRF %u", vrf_id);
+        return -1;
+    }
+
+    route->vrf_id = vrf_id;
+    route->is_multipath = false;
+    route->nexthop_cnt = 1;
+    route->prefix_len = 32;
+    route->prefix_addr.sa_family = AF_INET;
+    route->prefix_addr.addr.ip4.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    route->nexthop[0].addr.sa_family = AF_INET;
+    route->nexthop[0].type = VPP_NEXTHOP_LOCAL;
+    route->nexthop[0].sw_if_index = (uint32_t)~0;
+
+    int ret = ip_route_add_del(route, is_add);
+
+    free(route);
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("Failed to %s the 255.255.255.255/32 local receive in VRF %u (ret %d)",
+                is_add ? "add" : "remove", vrf_id, ret);
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("%s the 255.255.255.255/32 local receive in VRF %u",
+                is_add ? "Added" : "Removed", vrf_id);
+    }
+
+    if (ret == 0 && is_add &&
+            vpp_sonic_ext_copp_ip2me_addr_add_del(htonl(INADDR_BROADCAST), true) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to add 255.255.255.255 to the CoPP IP2ME addresses, "
+                "so limited broadcasts reach the CPU unpoliced");
+    }
+
+    return ret;
 }
 
 std::shared_ptr<IpVrfInfo> SwitchVpp::vpp_get_ip_vrf (_In_ sai_object_id_t objectId)

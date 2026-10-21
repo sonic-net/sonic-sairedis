@@ -472,3 +472,8 @@ subtree
 iface
 loopback
 resync
+BVI
+DHCP
+DHCPv
+LLDP
+VRF
