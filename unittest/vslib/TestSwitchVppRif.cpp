@@ -683,7 +683,7 @@ TEST_F(SwitchVppRifTest, failedPortSnapshotRestoresActionWithoutDeletingPort)
 /*
  * SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE and ADMIN_V6_STATE on a VLAN RIF
  * turn VPP's ip4-not-enabled and ip6-not-enabled drop features on and off on
- * its BVI.
+ * the VLAN's bridge interface.
  */
 namespace
 {
@@ -733,7 +733,7 @@ TEST_F(SwitchVppRifTest, vlanAdminV6DownLeavesV4Alone)
 
 /*
  * The admin states are create-and-set attributes: one passed on create was
- * stored without being applied, so the BVI forwarded, and the later up then
+ * stored without being applied, so the interface forwarded, and the later up then
  * removed a drop it never added.
  */
 TEST_F(SwitchVppRifTest, vlanCreatedAdminDownDropsFromTheStart)
