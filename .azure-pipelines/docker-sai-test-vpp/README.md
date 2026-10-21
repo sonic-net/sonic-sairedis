@@ -336,7 +336,7 @@ In `--debug` the container leaves the dataplane running after the test so you ca
 | `TEST_FILTER` | — | alternative way to pass a single selector via env |
 | `PER_TEST_LOGS` | `failed` | keep gzipped backend logs + VPP API trace per test: `failed`, `all`, or `none` |
 | `PER_TEST_LOG_DIR` | `/var/log/per-test` | where per-test log directories are written |
-| `TEST_TIMEOUT` | 600 | seconds allowed per test target before PTF is killed and the backend restarted; `0` disables |
+| `TEST_TIMEOUT` | 600 | seconds allowed per test target before PTF is killed, the test is reported as an error, and the backend restarted; `0` disables |
 
 These are read by `run_test.sh` at container start (defaults shown).
 
