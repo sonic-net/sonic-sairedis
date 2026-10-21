@@ -62,6 +62,10 @@ extern "C" int __wrap_get_interface_mpls_enabled(const char *name, bool *enabled
 {
     SWSS_LOG_ENTER();
     *enabled = vppMock().mplsReferences[name] != 0;
+    if (++vppMock().mplsQueryCalls == vppMock().mplsQueryFailOnCall)
+    {
+        return -1;
+    }
     return vppMock().mplsQueryResult;
 }
 
@@ -155,6 +159,8 @@ extern "C" int __wrap_delete_bvi_interface(const char *name)
     }
     vppMock().actions.erase(name);
     vppMock().adminUp.erase(name);
+    vppMock().mtus.erase(name);
+    vppMock().mplsReferences.erase(name);
     return vppMock().interfaces.erase(name) == 1 ? 0 : -1;
 }
 

@@ -2147,10 +2147,24 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
                                mpls_hwif_name.c_str(), mpls_ret);
                 return SAI_STATUS_FAILURE;
             }
+            state.mpls_changed = !state.interface_created;
+            bool mpls_enabled = false;
+            if (get_interface_mpls_enabled(mpls_hwif_name.c_str(), &mpls_enabled) != 0)
+            {
+                SWSS_LOG_ERROR("Failed to verify MPLS state on router interface %s",
+                               mpls_hwif_name.c_str());
+                return SAI_STATUS_FAILURE;
+            }
+            if (mpls_enabled != attr_type_mpls->value.booldata)
+            {
+                SWSS_LOG_ERROR("MPLS state on %s remains %s after requesting %s",
+                               mpls_hwif_name.c_str(), mpls_enabled ? "enabled" : "disabled",
+                               attr_type_mpls->value.booldata ? "enable" : "disable");
+                return SAI_STATUS_FAILURE;
+            }
             SWSS_LOG_NOTICE("MPLS %s on router interface %s",
                             attr_type_mpls->value.booldata ? "enabled" : "disabled",
                             mpls_hwif_name.c_str());
-            state.mpls_changed = !state.interface_created;
         }
     }
 

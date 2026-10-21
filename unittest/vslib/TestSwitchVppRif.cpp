@@ -251,6 +251,29 @@ TEST_F(SwitchVppRifTest, matchingMplsStatePreservesReferencesOnFailureAndSuccess
     EXPECT_EQ(0u, vppMock().mplsReferences["port0.10"]);
 }
 
+TEST_F(SwitchVppRifTest, mplsPostconditionFailuresRestoreReferencesAndSettings)
+{
+    const std::array<uint32_t, 4> previousMtu{{1500, 1400, 1300, 1200}};
+    for (auto backing : {port, lag})
+    {
+        const std::string name = backing == port ? "port0" : "BondEthernet2";
+        for (bool queryFailure : {false, true})
+        {
+            const unsigned int references = queryFailure ? 1 : 2;
+            vppMock().mtus[name] = previousMtu;
+            vppMock().mplsReferences[name] = references;
+            vppMock().mplsQueryCalls = 0;
+            vppMock().mplsQueryFailOnCall = queryFailure ? 2 : 0;
+            auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+            ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, settingsAttributes(backing, false)));
+            EXPECT_EQ(references, vppMock().mplsReferences[name]);
+            EXPECT_EQ(previousMtu, vppMock().mtus[name]);
+            EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
+            EXPECT_EQ(0u, sw->m_rifStatsBaseMap.count(rif));
+        }
+    }
+}
+
 TEST_F(SwitchVppRifTest, failedParentCreateDoesNotConsumeDeferredChildAdmin)
 {
     sw->m_sub_if_admin_up_pending.insert("port0.10");

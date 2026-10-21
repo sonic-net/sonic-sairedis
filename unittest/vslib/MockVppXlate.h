@@ -39,6 +39,8 @@ struct VppMock
     uint32_t nextSwIfIndex = 200;
     int settingsResult = 0;
     int mplsQueryResult = 0;
+    unsigned int mplsQueryCalls = 0;
+    unsigned int mplsQueryFailOnCall = 0;
     int mtuResult = 0;
     int mplsResult = 0;
     int adminResult = 0;
