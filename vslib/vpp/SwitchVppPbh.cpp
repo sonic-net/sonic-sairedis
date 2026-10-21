@@ -478,17 +478,6 @@ sai_status_t SwitchVppPbh::tableRemove(
 {
     SWSS_LOG_ENTER();
 
-    auto it = m_switch_db->m_acl_tbl_rules_map.find(tbl_oid);
-
-    if (it != m_switch_db->m_acl_tbl_rules_map.end())
-    {
-        m_switch_db->m_acl_tbl_rules_map.erase(it);
-    }
-
-    forgetTableCounters(tbl_oid);
-
-    m_tables.erase(tbl_oid);
-
     auto idx_it = m_table_index_map.find(tbl_oid);
 
     if (idx_it == m_table_index_map.end())
@@ -500,14 +489,29 @@ sai_status_t SwitchVppPbh::tableRemove(
 
     uint32_t table_index = idx_it->second;
 
-    m_table_index_map.erase(idx_it);
-
+    /*
+     * VPP first, bookkeeping second. A failed delete leaves the table live in
+     * VPP, still matching and still redirecting traffic, so the index and the
+     * rules behind it have to stay reachable for the removal to be retried.
+     */
     if (vpp_pbh_table_del(table_index) != 0)
     {
         SWSS_LOG_ERROR("PBH table %s remove failed, index %u",
                        sai_serialize_object_id(tbl_oid).c_str(), table_index);
         return SAI_STATUS_FAILURE;
     }
+
+    auto it = m_switch_db->m_acl_tbl_rules_map.find(tbl_oid);
+
+    if (it != m_switch_db->m_acl_tbl_rules_map.end())
+    {
+        m_switch_db->m_acl_tbl_rules_map.erase(it);
+    }
+
+    forgetTableCounters(tbl_oid);
+
+    m_tables.erase(tbl_oid);
+    m_table_index_map.erase(idx_it);
 
     SWSS_LOG_NOTICE("PBH table %s removed, index %u",
                     sai_serialize_object_id(tbl_oid).c_str(), table_index);
