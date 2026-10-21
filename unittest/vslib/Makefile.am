@@ -67,7 +67,19 @@ tests_LDFLAGS = \
 				-Wl,--wrap=l2fib_add_del \
 				-Wl,--wrap=l2fib_flush_all \
 				-Wl,--wrap=l2fib_flush_int \
-				-Wl,--wrap=l2fib_flush_bd
+				-Wl,--wrap=l2fib_flush_bd \
+				-Wl,--wrap=interface_set_state \
+				-Wl,--wrap=interface_set_promiscuous \
+				-Wl,--wrap=create_sub_interface \
+				-Wl,--wrap=delete_sub_interface \
+				-Wl,--wrap=set_sw_interface_l2_bridge \
+				-Wl,--wrap=set_l2_interface_vlan_tag_rewrite \
+				-Wl,--wrap=set_bridge_domain_flags \
+				-Wl,--wrap=bridge_domain_get_member_count \
+				-Wl,--wrap=vpp_bridge_domain_add_del \
+				-Wl,--wrap=vpp_get_swif_idx_by_name \
+				-Wl,--wrap=vpp_add_node_next \
+				-Wl,--wrap=vpp_classify_set_interface_l2_tables
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
