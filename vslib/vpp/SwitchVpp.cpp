@@ -1252,9 +1252,15 @@ void SwitchVpp::processFdbEntriesForAging()
 
         case VPP_MAC_ACTION_DELETE:
             if (m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end()) {
-                if (generateFdbAgedEvent(key)) {
-                    m_vpp_fdb_entries.erase(key);
-                }
+                /*
+                 * VPP no longer holds the MAC, so forget it even when there is
+                 * no SAI entry left to age (generateFdbAgedEvent() fails when
+                 * SAI already dropped the MAC, e.g. in a flush). Keeping it
+                 * would make VPP's next learn of the MAC look like a duplicate
+                 * ADD, and it would never be reported again.
+                 */
+                generateFdbAgedEvent(key);
+                m_vpp_fdb_entries.erase(key);
             } else {
                 SWSS_LOG_INFO("FDB: DELETE for unknown MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u, skipping",
                               key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],

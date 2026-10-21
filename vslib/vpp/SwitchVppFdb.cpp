@@ -2731,9 +2731,14 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
 
     obj_type = objectTypeQuery(port_id);
 
-    if (obj_type != SAI_OBJECT_TYPE_PORT)
+    /*
+     * A LAG joins a VLAN through a bridge port whose PORT_ID is the LAG, and
+     * VPP holds the MAC addresses learned on it on the bond, so a LAG is
+     * programmed exactly like a port.
+     */
+    if (obj_type != SAI_OBJECT_TYPE_PORT && obj_type != SAI_OBJECT_TYPE_LAG)
     {
-        SWSS_LOG_NOTICE("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+        SWSS_LOG_NOTICE("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                 sai_serialize_object_id(port_id).c_str(),
                 sai_serialize_object_type(obj_type).c_str());
         return SAI_STATUS_FAILURE;
@@ -2741,9 +2746,16 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
 
     /* Need to extract the VLAN ID attached based on the Port_ID */
     sai_attribute_t attr;
-    attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+    if (obj_type == SAI_OBJECT_TYPE_LAG)
+    {
+        attr.id = SAI_LAG_ATTR_PORT_VLAN_ID;
+    }
+    else
+    {
+        attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+    }
 
-    sai_status_t get_status = get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr);
+    sai_status_t get_status = get(obj_type, port_id, 1, &attr);
 
     if (get_status != SAI_STATUS_SUCCESS)
     {
@@ -2762,6 +2774,19 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
         auto ret = l2fib_add_del(hwif_name, fdb_entry.mac_address, bd_id, is_add, is_static);
         SWSS_LOG_NOTICE("FDB Entry Added on hwif_name %s Successful ret_val: %d", hwif_name, ret);
 
+        if (is_static && ret == 0)
+        {
+            /*
+             * VPP now holds the MAC as a static entry, which it never ages,
+             * moves or reports, so it is no longer a learned MAC that a flush
+             * covers. Forget it, or a flush would delete it from the L2FIB.
+             */
+            VppFdbKey key;
+            memcpy(key.mac, fdb_entry.mac_address, sizeof(key.mac));
+            key.bd_id = bd_id;
+
+            m_vpp_fdb_entries.erase(key);
+        }
     }
     else
     {
@@ -2848,9 +2873,10 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
 
     obj_type = objectTypeQuery(port_id);
 
-    if (obj_type != SAI_OBJECT_TYPE_PORT)
+    /* a LAG bridge port is removed like a port one, see vpp_fdbentry_add() */
+    if (obj_type != SAI_OBJECT_TYPE_PORT && obj_type != SAI_OBJECT_TYPE_LAG)
     {
-        SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+        SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                 sai_serialize_object_id(port_id).c_str(),
                 sai_serialize_object_type(obj_type).c_str());
         return SAI_STATUS_FAILURE;
@@ -2858,9 +2884,16 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
 
     /* Need the VLAN ID attached based on the Port_ID */
     sai_attribute_t attr;
-    attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+    if (obj_type == SAI_OBJECT_TYPE_LAG)
+    {
+        attr.id = SAI_LAG_ATTR_PORT_VLAN_ID;
+    }
+    else
+    {
+        attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+    }
 
-    sai_status_t get_status = get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr);
+    sai_status_t get_status = get(obj_type, port_id, 1, &attr);
 
     if (get_status != SAI_STATUS_SUCCESS)
     {
@@ -2978,6 +3011,27 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
        3. If only Type (DYNAMIC) is set then SONiC FLUSH ALL the dynamic entries.
        */
     SWSS_LOG_NOTICE("VPP_FDB_FLUSH mode is : %d [1,5: Interface, 2,6: Bridge, 3,4,7: Flush ALL, 0: INVALID]", mode);
+
+    /*
+     * VPP's l2fib_flush_int/_bd/_all are lazy: they only bump the interface or
+     * bridge domain sequence number and start one aging pass of the L2FIB
+     * (SONiC's bridge domains don't age, so there is no other). That pass
+     * walks the table in slices while the workers keep forwarding, and a frame
+     * from a stale MAC before the pass reaches it takes l2learn's HIT_UPDATE
+     * path (same sw_if_index, stale sequence number), which refreshes the
+     * entry and raises no learn event. A MAC with steady traffic then survives
+     * the flush and is never reported again, while SAI has already sent
+     * FLUSHED for it. An ASIC removes the entry and the next frame is a fresh
+     * learn, which is what orchagent expects.
+     *
+     * So a flush by bridge port, which orchagent sends when a port or LAG goes
+     * operationally down, first deletes each MAC we know VPP holds on it. That
+     * costs one VPP API call per MAC learned behind that one port or LAG,
+     * under the API mutex. A flush of a VLAN or of the whole switch, and the
+     * tunnel bridge port fallback below, would cost one per learned MAC on
+     * the switch, so those stay lazy only.
+     */
+
     switch (mode)
     {
         case FLUSH_BY_INTERFACE:
@@ -3001,9 +3055,17 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
 
                 sai_object_type_t obj_type = objectTypeQuery(port_id);
 
-                if (obj_type != SAI_OBJECT_TYPE_PORT)
+                /*
+                 * orchagent flushes a LAG by its bridge port, e.g. when the
+                 * LAG goes operationally down or a MAC is learned on it while
+                 * it is down. The vslib layer above has already dropped the
+                 * SAI entries and sent FLUSHED, so failing here would leave
+                 * the MAC addresses in VPP's L2FIB and in m_vpp_fdb_entries:
+                 * VPP never reports them again and SONiC never relearns them.
+                 */
+                if (obj_type != SAI_OBJECT_TYPE_PORT && obj_type != SAI_OBJECT_TYPE_LAG)
                 {
-                    SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+                    SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT or LAG but is: %s",
                             sai_serialize_object_id(port_id).c_str(),
                             sai_serialize_object_type(obj_type).c_str());
                     return SAI_STATUS_FAILURE;
@@ -3013,6 +3075,10 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
                 if (!ifname.empty())
                 {
                     const char *hwif_name = ifname.c_str();
+                    vpp_fdb_entries_delete_from_l2fib("by interface " + ifname,
+                            [this, port_id](const VppFdbKey&, uint32_t sw_if_index) {
+                                return m_ifaceRegistry.resolveIfOid(sw_if_index) == port_id;
+                            });
                     auto ret = l2fib_flush_int(hwif_name);
                     SWSS_LOG_NOTICE(" Flush by interface on hwif_name %s  Successful ret_val: %d", hwif_name, ret);
                     vpp_fdb_entries_invalidate_by_port(port_id);
@@ -3242,6 +3308,108 @@ void SwitchVpp::swif_bdid_untrack(const char *hwif_name)
      * interface.
      */
     m_ifaceRegistry.clearBdId(hwif_name);
+}
+
+size_t SwitchVpp::vpp_fdb_entries_delete_from_l2fib(
+        _In_ const std::string& scope,
+        _In_ const std::function<bool(const VppFdbKey&, uint32_t)>& inScope)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * The flush covers dynamic entries only, so leave a MAC that SAI holds as
+     * static to orchagent, like VPP's own flush leaves a static L2FIB entry.
+     * The vslib layer has already dropped the dynamic SAI entries in scope.
+     */
+    std::set<VppFdbKey> staticKeys;
+
+    for (const auto& kv: m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY))
+    {
+        auto type = kv.second.find("SAI_FDB_ENTRY_ATTR_TYPE");
+
+        if (type == kv.second.end() || type->second->getAttr()->value.s32 != SAI_FDB_ENTRY_TYPE_STATIC)
+        {
+            continue;
+        }
+
+        sai_fdb_entry_t fdb;
+        sai_deserialize_fdb_entry(kv.first, fdb);
+
+        sai_attribute_t attr;
+        attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+        if (objectTypeQuery(fdb.bv_id) != SAI_OBJECT_TYPE_VLAN ||
+                get(SAI_OBJECT_TYPE_VLAN, fdb.bv_id, 1, &attr) != SAI_STATUS_SUCCESS)
+        {
+            continue;
+        }
+
+        VppFdbKey key;
+        memcpy(key.mac, fdb.mac_address, sizeof(key.mac));
+        key.bd_id = attr.value.u16;
+
+        staticKeys.insert(key);
+    }
+
+    size_t selected = 0;
+    size_t deleted = 0;
+
+    for (const auto& kv: m_vpp_fdb_entries)
+    {
+        const VppFdbKey& key = kv.first;
+        uint32_t sw_if_index = kv.second;
+
+        if (!inScope(key, sw_if_index))
+        {
+            continue;
+        }
+
+        if (staticKeys.count(key))
+        {
+            SWSS_LOG_INFO("FDB flush %s: MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u is static in SAI, left in the L2FIB",
+                          scope.c_str(),
+                          key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+            continue;
+        }
+
+        selected++;
+
+        /*
+         * l2fib_add_del() takes the interface by name and VPP deletes the
+         * entry only while it still sits on that interface, so use the
+         * interface VPP reported the MAC on: a sub-interface for a tagged
+         * member, the port or bond itself for an untagged one.
+         */
+        auto intf = m_ifaceRegistry.findBySwIfIndex(sw_if_index);
+
+        if (!intf)
+        {
+            SWSS_LOG_WARN("FDB flush %s: no interface for sw_if_index %u of MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u, left to the lazy flush",
+                          scope.c_str(), sw_if_index,
+                          key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+            continue;
+        }
+
+        int ret = l2fib_add_del(intf->getHwifName().c_str(), key.mac, key.bd_id, false, false);
+
+        if (ret == 0)
+        {
+            deleted++;
+        }
+        else
+        {
+            // e.g. VPP aged the MAC out or moved it since it was reported
+            SWSS_LOG_INFO("FDB flush %s: L2FIB delete of MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u on %s returned %d",
+                          scope.c_str(),
+                          key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id,
+                          intf->getHwifName().c_str(), ret);
+        }
+    }
+
+    SWSS_LOG_NOTICE("FDB flush %s: deleted %zu of %zu tracked MACs from the L2FIB before the lazy flush",
+                    scope.c_str(), deleted, selected);
+
+    return deleted;
 }
 
 void SwitchVpp::vpp_fdb_entries_invalidate_all()

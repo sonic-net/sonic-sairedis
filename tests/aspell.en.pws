@@ -462,5 +462,7 @@ desync
 rebuildable
 jitter
 jittered
+BondEthernet
+PortChannel
 VPP
 ARGV
