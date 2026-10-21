@@ -151,12 +151,18 @@ namespace saivs
                 std::string tap;
                 uint32_t vlan = 0;
                 uint32_t previous_vrf = 0;
+                vpp_interface_state_t previous_state{};
+                bool previous_mpls = false;
                 bool bvi = false;
                 bool interface_created = false;
                 bool lcp_created = false;
                 bool bridge_attached = false;
                 bool loopback_applied = false;
                 bool vrf_changed = false;
+                bool mtu_changed = false;
+                bool mpls_changed = false;
+                bool admin_changed = false;
+                bool resync_children = false;
             };
 
             sai_status_t rollbackRifCreate(
@@ -399,9 +405,11 @@ namespace saivs
                     _In_ const char *dev,
                     _In_ const sai_mac_t& mac);
 
-            static int vs_set_dev_admin_up(
+            virtual int vs_set_dev_admin_up(
                     _In_ const char *dev,
                     _In_ bool up);
+
+            virtual int exec(const std::string& command, std::string& output);
 
             static int promisc(
                     _In_ const char *dev);

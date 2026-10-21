@@ -448,10 +448,18 @@ typedef enum {
     extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
     extern int interface_ip_address_del_all(const char *hwif_name);
     extern int interface_set_state (const char *hwif_name, bool is_up);
+    typedef struct {
+        uint32_t mtu[4];
+        bool admin_up;
+        bool link_up;
+    } vpp_interface_state_t;
+    extern int get_interface_state(const char *hwif_name, vpp_interface_state_t *state);
+    extern int get_interface_mpls_enabled(const char *hwif_name, bool *enabled);
     extern int interface_set_state_by_index (uint32_t sw_if_index, bool is_up);
     extern int interface_set_promiscuous (const char *hwif_name, bool enable);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
+    extern int sw_interface_set_mtu_all(const char *hwif_name, const uint32_t mtu[4]);
     extern int sw_interface_set_link_speed(const char *hwif_name, uint32_t link_speed);
     extern int sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address);
     extern int sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address);

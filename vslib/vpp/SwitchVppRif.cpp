@@ -1641,6 +1641,13 @@ std::shared_ptr<IpVrfInfo> SwitchVpp::vpp_get_ip_vrf (_In_ sai_object_id_t objec
     return nullptr;
 }
 
+int SwitchVpp::exec(const std::string& command, std::string& output)
+{
+    SWSS_LOG_ENTER();
+
+    return swss::exec(command, output);
+}
+
 /*
  * VS uses linux's vrf table id when linux_nl is active
  */
@@ -1652,7 +1659,7 @@ int SwitchVpp::vpp_get_vrf_id (const char *linux_ifname, uint32_t *vrf_id)
     std::string res;
 
     cmd << IP_CMD << " link show dev " << linux_ifname;
-    int ret = swss::exec(cmd.str(), res);
+    int ret = exec(cmd.str(), res);
     if (ret)
     {
         SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
@@ -1662,7 +1669,7 @@ int SwitchVpp::vpp_get_vrf_id (const char *linux_ifname, uint32_t *vrf_id)
     std::stringstream table_cmd;
 
     table_cmd << IP_CMD << " -d link show dev " << linux_ifname << " | grep -o 'vrf_slave table [0-9]\\+' | cut -d' ' -f3";
-    ret = swss::exec(table_cmd.str(), res);
+    ret = exec(table_cmd.str(), res);
     if (ret)
     {
         SWSS_LOG_ERROR("Command '%s' failed with rc %d", table_cmd.str().c_str(), ret);
@@ -1816,15 +1823,34 @@ sai_status_t SwitchVpp::rollbackRifCreate(
         if (ret == 0)
         {
             m_ifaceRegistry.remove(state.hwif);
+            if (!state.bvi)
+            {
+                m_sub_if_admin_up_pending.erase(state.hwif);
+            }
         }
         check(refresh_interfaces_list(), "refresh interfaces");
     }
     else
     {
+        if (state.admin_changed)
+        {
+            check(interface_set_state(state.hwif.c_str(), state.previous_state.admin_up),
+                    "restore admin state");
+        }
         if (state.loopback_applied)
         {
             check(vpp_apply_loopback_action(state.hwif, SAI_PACKET_ACTION_FORWARD),
                     "restore loopback action");
+        }
+        if (state.mpls_changed)
+        {
+            check(sw_interface_set_mpls_enable(state.hwif.c_str(), state.previous_mpls),
+                    "restore MPLS state");
+        }
+        if (state.mtu_changed)
+        {
+            check(sw_interface_set_mtu_all(state.hwif.c_str(), state.previous_state.mtu),
+                    "restore MTU");
         }
         if (state.vrf_changed)
         {
@@ -2079,13 +2105,31 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         state.vrf_changed = !state.interface_created;
     }
     auto attr_type_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
+    auto attr_type_mpls = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_MPLS_STATE, attr_count, attr_list);
+    auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
+    auto attr_type_v6 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
+    const bool program_interface = is_ip_nbr_active();
 
-    if (attr_type_mtu != NULL)
+    if (!state.interface_created &&
+        (attr_type_mpls || (program_interface && (attr_type_mtu || attr_type_v4 || attr_type_v6))))
     {
-        vpp_set_interface_mtu(obj_id, vlan_id, attr_type_mtu->value.u32);
+        if (get_interface_state(state.hwif.c_str(), &state.previous_state) != 0 ||
+            (attr_type_mpls && get_interface_mpls_enabled(state.hwif.c_str(), &state.previous_mpls) != 0))
+        {
+            SWSS_LOG_ERROR("Failed to snapshot interface settings for %s", state.hwif.c_str());
+            return SAI_STATUS_FAILURE;
+        }
     }
 
-    auto attr_type_mpls = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_MPLS_STATE, attr_count, attr_list);
+    if (attr_type_mtu && program_interface)
+    {
+        if (sw_interface_set_mtu(state.hwif.c_str(), attr_type_mtu->value.u32) != 0)
+        {
+            SWSS_LOG_ERROR("Failed to set RIF MTU for %s", state.hwif.c_str());
+            return SAI_STATUS_FAILURE;
+        }
+        state.mtu_changed = !state.interface_created;
+    }
 
     if (attr_type_mpls != NULL)
     {
@@ -2105,6 +2149,7 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
             SWSS_LOG_NOTICE("MPLS %s on router interface %s",
                             attr_type_mpls->value.booldata ? "enabled" : "disabled",
                             mpls_hwif_name.c_str());
+            state.mpls_changed = !state.interface_created;
         }
     }
 
@@ -2125,14 +2170,10 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
     bool v4_is_up = false, v6_is_up = false;
 
-    auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
-
     if (attr_type_v4 != NULL)
     {
         v4_is_up = attr_type_v4->value.booldata;
     }
-    auto attr_type_v6 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
-
     if (attr_type_v6 != NULL)
     {
         v6_is_up = attr_type_v6->value.booldata;
@@ -2140,6 +2181,18 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
     if (attr_type_v4 != NULL || attr_type_v6 != NULL)
     {
+        if (!state.interface_created && program_interface)
+        {
+            if (interface_set_state(state.hwif.c_str(), v4_is_up || v6_is_up) != 0)
+            {
+                SWSS_LOG_ERROR("Failed to set RIF admin state for %s", state.hwif.c_str());
+                return SAI_STATUS_FAILURE;
+            }
+            state.admin_changed = true;
+            // Replay child requests only after this parent CREATE commits.
+            state.resync_children = v4_is_up || v6_is_up;
+            return SAI_STATUS_SUCCESS;
+        }
         return vpp_set_interface_state(obj_id, vlan_id, (v4_is_up || v6_is_up));
     } else {
         return SAI_STATUS_SUCCESS;
@@ -2497,6 +2550,11 @@ sai_status_t SwitchVpp::createRouterif(
     if (status == SAI_STATUS_SUCCESS)
     {
         status = create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, switch_id, attr_count, attr_list);
+    }
+
+    if (status == SAI_STATUS_SUCCESS && state.resync_children)
+    {
+        vpp_resync_sub_interface_admin_state(state.hwif);
     }
 
     if (status != SAI_STATUS_SUCCESS)

@@ -54,7 +54,8 @@ tests_SOURCES = main.cpp \
 				TestTAM.cpp
 
 if USE_VPP
-tests_SOURCES += TestSwitchVpp.cpp
+tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
+				MockVppXlate.cpp MockVppXlate.h
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
 				create_sub_interface delete_sub_interface configure_lcp_interface \
@@ -65,9 +66,8 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				set_l2_interface_vlan_tag_rewrite set_bridge_domain_flags \
 				bridge_domain_get_member_count vpp_bridge_domain_add_del \
 				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
-				_ZN5saivs9SwitchVpp17vpp_dp_initializeEv \
-				_ZN5saivs9SwitchVpp19vs_set_dev_admin_upEPKcb \
-				_ZN4swss4execERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERS5_
+				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state \
+				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del
 tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 endif
 

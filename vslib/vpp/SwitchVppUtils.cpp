@@ -43,6 +43,8 @@ sai_status_t saivs::sonicExtFeatureEnabled(const char *feature, bool& enabled)
 
 bool saivs::sonicExtFeatureEnabled(const char *feature)
 {
+    SWSS_LOG_ENTER();
+
     bool enabled = false;
     if (sonicExtFeatureEnabled(feature, enabled) != SAI_STATUS_SUCCESS)
     {
