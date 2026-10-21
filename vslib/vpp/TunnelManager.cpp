@@ -1,5 +1,12 @@
 #include <algorithm>
+#include <cerrno>
+#include <climits>
+#include <cstring>
 #include <functional>
+
+#include <fcntl.h>
+#include <limits.h>
+#include <unistd.h>
 
 #include "SwitchVppUtils.h"
 #include "SwitchVpp.h"
@@ -168,6 +175,17 @@ TunnelManager::TunnelManager(SwitchVpp* switch_db): m_switch_db(switch_db)
 
     m_router_mac = {0, 0, 0, 0, 0, 1};
     m_vxlan_port = 4789;
+
+    m_netdev_master = TunnelManager::read_netdev_master;
+    m_disable_ipv6 = TunnelManager::disable_netdev_ipv6;
+    m_add_tc_redirect = [this](const std::string& tap, const std::string& vrf) {
+        SWSS_LOG_ENTER();
+        return m_switch_db->add_tc_filter_redirect_to_vrf(tap, vrf);
+    };
+    m_del_tc_redirect = [this](const std::string& tap) {
+        SWSS_LOG_ENTER();
+        m_switch_db->del_tc_filter_redirect(tap);
+    };
 }
 
 const std::array<uint8_t, 6>&
@@ -1019,6 +1037,7 @@ TunnelManager::create_vpp_vxlan_decap(
     }
     bool bridge_created = false;
     auto rollback = [&]() -> sai_status_t {
+        remove_decap_host_path(tunnel_data, hw_bvi_ifname);
         delete_bvi_interface(hw_bvi_ifname);
         if (bridge_created) {
             vpp_bridge_domain_add_del(tunnel_data.bd_id, false);
@@ -1035,6 +1054,15 @@ TunnelManager::create_vpp_vxlan_decap(
     if (vpp_status != 0) {
         SWSS_LOG_ERROR("Failed to bring up bvi interface");
         return rollback();
+    }
+
+    // Before the BVI joins its bridge domain, see create_decap_host_path.
+    // Without a host path the switch's own addresses in the VRF are unreachable
+    // over the tunnel, but transit still works, so a failure is not fatal; a
+    // failed attempt leaves nothing half-built behind.
+    if (create_decap_host_path(tunnel_data, hw_bvi_ifname) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_WARN("%s has no host path: the switch's own addresses in the VRF of VNI %u are unreachable over the tunnel",
+            hw_bvi_ifname, tunnel_data.vni);
     }
 
     //Create bridge and set BVI to the BD
@@ -1099,6 +1127,8 @@ TunnelManager::remove_vpp_vxlan_decap(
 
     snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", tunnel_data.bd_id);
 
+    remove_decap_host_path(tunnel_data, hw_bvi_ifname);
+
     delete_bvi_interface(hw_bvi_ifname);
 
     // Detach the vxlan tunnel interface from the BD before deleting the BD. The
@@ -1138,6 +1168,294 @@ TunnelManager::l2_tunnel_key(
     };
 
     return L2TunnelKey{ip_key(src_ip), ip_key(dst_ip), vni};
+}
+
+std::string
+TunnelManager::read_netdev_master(
+    _In_ const std::string& netdev)
+{
+    SWSS_LOG_ENTER();
+
+    std::string link = "/sys/class/net/" + netdev + "/master";
+    char target[PATH_MAX];
+
+    ssize_t len = readlink(link.c_str(), target, sizeof(target) - 1);
+    if (len <= 0) {
+        return "";
+    }
+    target[len] = '\0';
+
+    // the link reads ../<master>
+    const char *slash = strrchr(target, '/');
+    return slash ? std::string(slash + 1) : std::string(target);
+}
+
+sai_status_t
+TunnelManager::disable_netdev_ipv6(
+    _In_ const std::string& netdev)
+{
+    SWSS_LOG_ENTER();
+
+    std::string path = "/proc/sys/net/ipv6/conf/" + netdev + "/disable_ipv6";
+    int fd = open(path.c_str(), O_WRONLY);
+    if (fd < 0) {
+        if (errno == ENOENT) {
+            return SAI_STATUS_SUCCESS;
+        }
+        SWSS_LOG_WARN("Failed to open %s: %s", path.c_str(), strerror(errno));
+        return SAI_STATUS_FAILURE;
+    }
+
+    ssize_t written = write(fd, "1\n", 2);
+    int write_errno = errno;
+    close(fd);
+    if (written != 2) {
+        SWSS_LOG_WARN("Failed to write %s: %s", path.c_str(),
+                      written < 0 ? strerror(write_errno) : "short write");
+        return SAI_STATUS_FAILURE;
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
+std::string
+TunnelManager::get_kernel_vrf(
+    _In_ sai_object_id_t vr_oid)
+{
+    SWSS_LOG_ENTER();
+
+    auto& objects = m_switch_db->m_objectHash;
+    auto rifs = objects.find(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+
+    if (rifs == objects.end()) {
+        return "";
+    }
+
+    auto vlans = objects.find(SAI_OBJECT_TYPE_VLAN);
+    const auto& registry = m_switch_db->getInterfaceRegistry();
+
+    auto md_type = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_TYPE);
+    auto md_vr = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID);
+    auto md_vlan = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
+    auto md_port = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_PORT_ID);
+    auto md_outer_vlan = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID);
+    auto md_vlan_id = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_VLAN, SAI_VLAN_ATTR_VLAN_ID);
+
+    for (auto& rif: rifs->second) {
+        auto& attrs = rif.second;
+        auto type = attrs.find(md_type->attridname);
+        auto vr = attrs.find(md_vr->attridname);
+
+        if (type == attrs.end() || vr == attrs.end() ||
+            vr->second->getAttr()->value.oid != vr_oid) {
+            continue;
+        }
+
+        int32_t rif_type = type->second->getAttr()->value.s32;
+        if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN) {
+            if (vlans == objects.end()) {
+                continue;
+            }
+            auto vlan = attrs.find(md_vlan->attridname);
+            if (vlan == attrs.end()) {
+                continue;
+            }
+            auto vlan_obj = vlans->second.find(sai_serialize_object_id(vlan->second->getAttr()->value.oid));
+            if (vlan_obj == vlans->second.end()) {
+                continue;
+            }
+            auto vid = vlan_obj->second.find(md_vlan_id->attridname);
+            if (vid == vlan_obj->second.end()) {
+                continue;
+            }
+            // SONiC names a VLAN's SVI Vlan<id>, and enslaves it to the VRF.
+            std::string vrf = m_netdev_master("Vlan" + std::to_string(vid->second->getAttr()->value.u16));
+            if (!vrf.empty()) {
+                return vrf;
+            }
+        } else if (rif_type == SAI_ROUTER_INTERFACE_TYPE_PORT) {
+            auto port = attrs.find(md_port->attridname);
+            if (port == attrs.end()) {
+                continue;
+            }
+            std::string osif = registry.resolveOsIf(port->second->getAttr()->value.oid);
+            if (osif.empty()) {
+                continue;
+            }
+            std::string vrf = m_netdev_master(osif);
+            if (!vrf.empty()) {
+                return vrf;
+            }
+        } else if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT) {
+            auto port = attrs.find(md_port->attridname);
+            auto outer_vlan = attrs.find(md_outer_vlan->attridname);
+            if (port == attrs.end() || outer_vlan == attrs.end()) {
+                continue;
+            }
+            std::string parent_osif = registry.resolveOsIf(port->second->getAttr()->value.oid);
+            if (parent_osif.empty()) {
+                continue;
+            }
+            uint16_t vlan_id = outer_vlan->second->getAttr()->value.u16;
+            const std::string suffix = "." + std::to_string(vlan_id);
+
+            // Check both long (Ethernet0.10, PortChannel1.10) and short
+            // (Po1.10, Eth0.10) SONiC sub-interface netdev spellings.
+            std::string vrf = m_netdev_master(parent_osif + suffix);
+            if (!vrf.empty()) {
+                return vrf;
+            }
+            std::string short_osif = VppSubInterface::osIfFor(parent_osif, vlan_id);
+            if (!short_osif.empty() && short_osif != parent_osif + suffix) {
+                vrf = m_netdev_master(short_osif);
+                if (!vrf.empty()) {
+                    return vrf;
+                }
+            }
+            if (parent_osif.compare(0, 8, "Ethernet") == 0) {
+                vrf = m_netdev_master("Eth" + parent_osif.substr(8) + suffix);
+                if (!vrf.empty()) {
+                    return vrf;
+                }
+            }
+        }
+    }
+    return "";
+}
+
+sai_status_t
+TunnelManager::create_decap_host_path(
+    _Inout_ TunnelVPPData& tunnel_data,
+    _In_ const char* hw_bvi_ifname)
+{
+    SWSS_LOG_ENTER();
+
+    // A packet decapsulated into the VRF for one of the switch's own addresses
+    // (a BGP session to a loopback, say) is punted from the BVI, and without a
+    // linux-cp pair VPP has nowhere to punt it and drops it. Pair the BVI with
+    // a tap and redirect the tap into the VRF's kernel device, the same tc
+    // arrangement vpp_add_lpb uses for a loopback.
+    //
+    // Unlike a VLAN SVI (bvi<vlan>), where aggr-tap-redirect steers punts to
+    // the ingress VLAN member tap whose Vlan<id> netdev is enslaved to the VRF,
+    // this BVI's only bridge member is vxlan_tunnel and orig_rx_sw_if_index is
+    // the underlay port in the default VRF. Pairing before the BVI joins its
+    // bridge domain keeps sonic_ext from enabling aggr-tap-redirect so punts
+    // land on tap_bvi<bd_id>, and tc redirect steers them into the kernel VRF
+    // device without enslaving tap_bvi<bd_id> as a routable egress interface in
+    // that VRF.
+    //
+    // Disable IPv6 on tap_bvi<bd_id> so the kernel never assigns fe80:: or
+    // emits ND/RS/MLD frames onto this internal punt tap, which sonic_ext
+    // host-xc would send straight to bvi<bd_id> and out the VXLAN tunnel.
+    if (!tunnel_data.ip_vrf || tunnel_data.ip_vrf->m_vrf_id == 0) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string vrf = get_kernel_vrf(tunnel_data.ip_vrf->m_obj_id);
+    if (vrf.empty()) {
+        SWSS_LOG_NOTICE("No kernel VRF found for the VR of VNI %u, %s gets no host path",
+            tunnel_data.vni, hw_bvi_ifname);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string tap = std::string("tap_") + hw_bvi_ifname;
+
+    if (configure_lcp_interface(hw_bvi_ifname, tap.c_str(), true) != 0) {
+        SWSS_LOG_ERROR("Failed to pair %s with host tap %s", hw_bvi_ifname, tap.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+    tunnel_data.decap_host_if = tap;
+
+    if (m_disable_ipv6(tap) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_WARN("Failed to disable IPv6 on host tap %s", tap.c_str());
+    }
+
+    if (m_add_tc_redirect(tap, vrf) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to redirect host tap %s into VRF %s", tap.c_str(), vrf.c_str());
+        // Without the redirect the pair punts into the tap outside the VRF,
+        // which is worse than no host path at all. Take it back down.
+        remove_decap_host_path(tunnel_data, hw_bvi_ifname);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("%s punts to host tap %s, redirected into VRF %s",
+        hw_bvi_ifname, tap.c_str(), vrf.c_str());
+    return SAI_STATUS_SUCCESS;
+}
+
+void
+TunnelManager::remove_decap_host_path(
+    _Inout_ TunnelVPPData& tunnel_data,
+    _In_ const char* hw_bvi_ifname)
+{
+    SWSS_LOG_ENTER();
+
+    if (tunnel_data.decap_host_if.empty()) {
+        return;
+    }
+
+    if (m_del_tc_redirect) {
+        m_del_tc_redirect(tunnel_data.decap_host_if);
+    }
+    configure_lcp_interface(hw_bvi_ifname, tunnel_data.decap_host_if.c_str(), false);
+    tunnel_data.decap_host_if.clear();
+}
+
+void
+TunnelManager::install_pending_decap_host_paths(
+    _In_ sai_object_id_t vr_oid)
+{
+    SWSS_LOG_ENTER();
+
+    if (vr_oid == SAI_NULL_OBJECT_ID) {
+        return;
+    }
+
+    std::vector<TunnelVPPData*> pending;
+    for (auto& nh_pair : m_tunnel_encap_nexthop_map) {
+        for (auto& entry : nh_pair.second) {
+            if (entry.has_decap && entry.tunnel_data.decap_host_if.empty() &&
+                entry.tunnel_data.ip_vrf && entry.tunnel_data.ip_vrf->m_vrf_id != 0 &&
+                entry.tunnel_data.ip_vrf->m_obj_id == vr_oid) {
+                pending.push_back(&entry.tunnel_data);
+            }
+        }
+    }
+    for (auto& term_pair : m_vxlan_decap_term_map) {
+        for (auto& td : term_pair.second) {
+            if (td.decap_host_if.empty() &&
+                td.ip_vrf && td.ip_vrf->m_vrf_id != 0 &&
+                td.ip_vrf->m_obj_id == vr_oid) {
+                pending.push_back(&td);
+            }
+        }
+    }
+
+    if (pending.empty() || get_kernel_vrf(vr_oid).empty()) {
+        return;
+    }
+
+    for (auto* td : pending) {
+        char hw_bvi_ifname[32];
+        snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", td->bd_id);
+
+        // Detach the BVI from its bridge domain while creating the linux-cp
+        // pair so sonic_ext sees a plain interface rather than a BVI and does
+        // not enable aggr-tap-redirect onto the underlay port tap.
+        if (set_sw_interface_l2_bridge(hw_bvi_ifname, td->bd_id, false, VPP_API_PORT_TYPE_BVI) != 0) {
+            SWSS_LOG_WARN("Failed to detach %s from bridge domain %u before pairing host tap",
+                hw_bvi_ifname, td->bd_id);
+            continue;
+        }
+        if (create_decap_host_path(*td, hw_bvi_ifname) != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_WARN("%s has no host path: the switch's own addresses in the VRF of VNI %u are unreachable over the tunnel",
+                hw_bvi_ifname, td->vni);
+        }
+        if (set_sw_interface_l2_bridge(hw_bvi_ifname, td->bd_id, true, VPP_API_PORT_TYPE_BVI) != 0) {
+            SWSS_LOG_ERROR("Failed to re-attach %s to bridge domain %u after pairing host tap",
+                hw_bvi_ifname, td->bd_id);
+        }
+    }
 }
 
 sai_status_t
@@ -2533,6 +2851,8 @@ TunnelManager::create_vxlan_decap_term(
     // Rollback the BD/BVI state allocated so far. Used on any setup failure
     // before the decap tunnel is created (mirrors the checked ladder below).
     auto rollback_bd_bvi = [&]() {
+        SWSS_LOG_ENTER();
+        remove_decap_host_path(tunnel_data, hw_bvi_ifname);
         delete_bvi_interface(hw_bvi_ifname);
         m_switch_db->dynamic_bd_id_pool.free(bd_id);
         refresh_interfaces_list();
@@ -2544,6 +2864,10 @@ TunnelManager::create_vxlan_decap_term(
                        hw_bvi_ifname, vni);
         rollback_bd_bvi();
         return SAI_STATUS_FAILURE;
+    }
+    if (create_decap_host_path(tunnel_data, hw_bvi_ifname) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_WARN("%s has no host path: the switch's own addresses in the VRF of VNI %u are unreachable over the tunnel",
+            hw_bvi_ifname, vni);
     }
     if (set_sw_interface_l2_bridge(hw_bvi_ifname, bd_id, true, VPP_API_PORT_TYPE_BVI) != 0) {
         SWSS_LOG_ERROR("VXLAN decap term: failed to bridge BVI %s into bd %u for VNI %u",
@@ -2665,6 +2989,7 @@ TunnelManager::remove_vxlan_decap_term(_In_ TunnelVPPData& tunnel_data)
 
     // Delete the BVI + bridge domain.
     snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", tunnel_data.bd_id);
+    remove_decap_host_path(tunnel_data, hw_bvi_ifname);
     delete_bvi_interface(hw_bvi_ifname);
     m_switch_db->dynamic_bd_id_pool.free(tunnel_data.bd_id);
     refresh_interfaces_list();

@@ -190,6 +190,64 @@ sai_status_t SwitchVpp::add_tc_filter_redirect(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchVpp::add_tc_filter_redirect_to_vrf(
+        _In_ const std::string& tap,
+        _In_ const std::string& vrf)
+{
+    SWSS_LOG_ENTER();
+
+    std::string res;
+    std::string qdisc_cmd = "tc qdisc add dev " + tap + " clsact";
+    int ret = exec(qdisc_cmd, res);
+    if (ret != 0)
+    {
+        SWSS_LOG_INFO("Command '%s' returned rc %d", qdisc_cmd.c_str(), ret);
+    }
+
+    // Decap BVIs and their taps carry m_router_mac, whereas EVPN peers address
+    // inner frames to the switch's source MAC. Rewriting the packet type to
+    // host before redirecting into the VRF device prevents the kernel IP
+    // receive path from dropping the frame as addressed to another host.
+    std::string cmd = "tc filter add dev " + tap +
+        " ingress protocol all prio 10 matchall action skbedit ptype host pipe"
+        " action mirred ingress redirect dev " + vrf;
+    ret = exec(cmd, res);
+    if (ret == 0)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SWSS_LOG_WARN("Command '%s' failed with rc %d, falling back to plain redirect",
+                  cmd.c_str(), ret);
+
+    std::string fallback = "tc filter add dev " + tap +
+        " ingress protocol all prio 10 u32 match u32 0 0"
+        " action mirred ingress redirect dev " + vrf;
+    ret = exec(fallback, res);
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", fallback.c_str(), ret);
+        del_tc_filter_redirect(tap);
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::del_tc_filter_redirect(
+        _In_ const std::string& tap)
+{
+    SWSS_LOG_ENTER();
+
+    std::string res;
+    std::string cmd = "tc qdisc del dev " + tap + " clsact";
+    int ret = exec(cmd, res);
+    if (ret != 0)
+    {
+        SWSS_LOG_DEBUG("Command '%s' returned rc %d", cmd.c_str(), ret);
+    }
+}
+
 bool SwitchVpp::hostif_create_tap_veth_forwarding(
         _In_ const std::string &tapname,
         _In_ int tapfd,

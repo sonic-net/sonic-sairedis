@@ -6,6 +6,7 @@
 
 #include <array>
 #include <chrono>
+#include <functional>
 #include <initializer_list>
 #include <map>
 #include <set>
@@ -95,6 +96,7 @@ struct VppMock
     int kernelLinkResult = 0;
     std::vector<std::string> kernelCommands;
     std::set<std::string> kernelInterfaces;
+    std::function<int(const std::string&, std::string&)> execHook;
     int getVrfResult = 0;
     int setVrfResult = 0;
     unsigned int vrfSetCalls = 0;

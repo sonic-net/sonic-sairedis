@@ -501,6 +501,13 @@ namespace saivs
                     _In_ const std::string& tap,
                     _In_ const std::string& hostIfname);
 
+            sai_status_t add_tc_filter_redirect_to_vrf(
+                    _In_ const std::string& tap,
+                    _In_ const std::string& vrf);
+
+            void del_tc_filter_redirect(
+                    _In_ const std::string& tap);
+
             virtual bool hostif_create_tap_veth_forwarding(
                     _In_ const std::string &tapname,
                     _In_ int tapfd,

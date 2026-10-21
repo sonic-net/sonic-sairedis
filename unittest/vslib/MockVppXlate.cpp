@@ -143,6 +143,10 @@ int TestableSwitchVpp::exec(const std::string& command, std::string& output)
 {
     SWSS_LOG_ENTER();
     vppMock().kernelCommands.push_back(command);
+    if (vppMock().execHook)
+    {
+        return vppMock().execHook(command, output);
+    }
     if (command.find(" -o link show") != std::string::npos)
     {
         output = vppMock().kernelLinkNames;

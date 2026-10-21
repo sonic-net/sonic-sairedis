@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <vector>
 #include <map>
 #include <set>
@@ -36,6 +37,10 @@ namespace saivs
         u_int32_t bd_id = 0;
         vpp_ip_addr_t bvi_addr;
         bool owns_local_receive = false;
+
+        // Host tap of the linux-cp pair giving the decap BVI a path to the
+        // kernel; empty when the BVI has none.
+        std::string decap_host_if;
 
         // L2 VXLAN fields
         u_int32_t vni = 0;
@@ -302,10 +307,49 @@ namespace saivs
         sai_status_t handle_l2_vxlan_tunnel_map_entry_removal(
             _In_ const std::string& serializedObjectId);
 
+        /**
+         * @brief Install decap host paths for any decap BVIs in @p vr_oid that
+         * were created before the virtual router had an enslaved kernel netdev.
+         */
+        void install_pending_decap_host_paths(
+            _In_ sai_object_id_t vr_oid);
+
     private:
         SwitchVpp* m_switch_db;
         std::array<uint8_t, 6> m_router_mac;
         u_int16_t m_vxlan_port;
+
+        /**
+         * @brief Kernel-side hooks of the decap host path. The constructor
+         * points them at the sysfs lookup, IPv6 sysctl, and tc redirect; unit
+         * tests replace them.
+         */
+        std::function<std::string(const std::string&)> m_netdev_master;
+        std::function<sai_status_t(const std::string&)> m_disable_ipv6;
+        std::function<sai_status_t(const std::string&, const std::string&)> m_add_tc_redirect;
+        std::function<void(const std::string&)> m_del_tc_redirect;
+
+        static std::string read_netdev_master(
+            _In_ const std::string& netdev);
+
+        static sai_status_t disable_netdev_ipv6(
+            _In_ const std::string& netdev);
+
+        /**
+         * @brief Kernel VRF device of a virtual router, found through the
+         * kernel netdev of one of its VLAN, port, or sub-port router
+         * interfaces; empty if none.
+         */
+        std::string get_kernel_vrf(
+            _In_ sai_object_id_t vr_oid);
+
+        sai_status_t create_decap_host_path(
+            _Inout_ TunnelVPPData& tunnel_data,
+            _In_ const char* hw_bvi_ifname);
+
+        void remove_decap_host_path(
+            _Inout_ TunnelVPPData& tunnel_data,
+            _In_ const char* hw_bvi_ifname);
         struct VxlanEncapEntry {
             vpp_vxlan_tunnel_t req;
             TunnelVPPData tunnel_data;

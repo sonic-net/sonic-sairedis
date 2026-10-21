@@ -3183,7 +3183,7 @@ class SwitchVppVrf : public ::testing::Test
             scc->insert(sc);
 
             m_mgr = std::make_shared<RealObjectIdManager>(0, scc);
-            m_sw = std::make_shared<SwitchVpp>(m_switchId, m_mgr, sc);
+            m_sw = makeSwitch(sc);
             sc->m_useTapDevice = true;
 
             ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_default_virtual_router());
@@ -3197,6 +3197,14 @@ class SwitchVppVrf : public ::testing::Test
             m_defaultVr = attr.value.oid;
 
             vppMock().calls.clear();
+        }
+
+        virtual std::shared_ptr<SwitchVpp> makeSwitch(
+                const std::shared_ptr<SwitchConfig>& sc)
+        {
+            SWSS_LOG_ENTER();
+
+            return std::make_shared<SwitchVpp>(m_switchId, m_mgr, sc);
         }
 
         void TearDown() override
@@ -4100,4 +4108,523 @@ TEST_F(SwitchVppTunnelNexthop, P2pTunnelKeepsSourceCheckWhenMapEntryArrivesLate)
     EXPECT_EQ(1u, vppCallsTo("create_bvi_interface").size());
     EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
     EXPECT_FALSE(g_vxlanTunnelDecapAny.at(sw_if_index));
+}
+
+/*
+ * The kernel side of the decap host path, replaced: which VRF device each
+ * kernel netdev is enslaved to, IPv6 disables, and the redirects asked for.
+ */
+class SwitchVppDecapHostPath : public SwitchVppTunnelNexthop
+{
+    protected:
+
+        std::shared_ptr<SwitchVpp> makeSwitch(
+                const std::shared_ptr<SwitchConfig>& sc) override
+        {
+            SWSS_LOG_ENTER();
+
+            return std::make_shared<TestableSwitchVpp>(m_switchId, m_mgr, sc);
+        }
+
+        void SetUp() override
+        {
+            SwitchVppTunnelNexthop::SetUp();
+
+            if (HasFatalFailure())
+            {
+                return;
+            }
+
+            m_sw->m_tunnel_mgr.m_netdev_master = [this](const std::string& netdev)
+            {
+                SWSS_LOG_ENTER();
+
+                auto it = m_kernelMasters.find(netdev);
+
+                return it == m_kernelMasters.end() ? std::string() : it->second;
+            };
+
+            m_sw->m_tunnel_mgr.m_disable_ipv6 = [this](const std::string& tap)
+            {
+                SWSS_LOG_ENTER();
+
+                m_ipv6Disabled.push_back(tap);
+
+                return SAI_STATUS_SUCCESS;
+            };
+
+            m_sw->m_tunnel_mgr.m_add_tc_redirect = [this](const std::string& tap, const std::string& dev)
+            {
+                SWSS_LOG_ENTER();
+
+                m_redirects.push_back(tap + " " + dev);
+
+                return m_redirectStatus;
+            };
+
+            m_sw->m_tunnel_mgr.m_del_tc_redirect = [this](const std::string& tap)
+            {
+                SWSS_LOG_ENTER();
+
+                m_deletedRedirects.push_back(tap);
+            };
+        }
+
+        sai_object_id_t registerPhysicalPort(
+                const std::string& hwif,
+                const std::string& osif)
+        {
+            SWSS_LOG_ENTER();
+
+            auto port = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_switchId);
+            EXPECT_NE(nullptr, m_sw->m_ifaceRegistry.addPhysicalPort(hwif, osif, port));
+            EXPECT_TRUE(m_sw->m_ifaceRegistry.setTapName(hwif, osif));
+            return port;
+        }
+
+        sai_object_id_t registerLag(
+                uint32_t bondId)
+        {
+            SWSS_LOG_ENTER();
+
+            auto lag = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_LAG, m_switchId);
+            EXPECT_NE(nullptr, m_sw->m_ifaceRegistry.addLag(bondId, bondId, lag));
+            EXPECT_TRUE(m_sw->m_ifaceRegistry.setTapName(
+                        "BondEthernet" + std::to_string(bondId),
+                        "be" + std::to_string(bondId)));
+            return lag;
+        }
+
+        sai_status_t createPortRif(
+                sai_object_id_t vr,
+                sai_object_id_t portOrLag)
+        {
+            SWSS_LOG_ENTER();
+
+            auto rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
+            sai_attribute_t attrs[4] = {};
+
+            attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+            attrs[0].value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+            attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+            attrs[1].value.oid = vr;
+            attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+            attrs[2].value.oid = portOrLag;
+            attrs[3].id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+            memcpy(attrs[3].value.mac, SWITCH_MAC, sizeof(sai_mac_t));
+
+            return m_sw->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(rif), m_switchId, 4, attrs);
+        }
+
+        sai_status_t createSubPortRif(
+                sai_object_id_t vr,
+                sai_object_id_t portOrLag,
+                uint16_t vlanId)
+        {
+            SWSS_LOG_ENTER();
+
+            auto rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
+            sai_attribute_t attrs[5] = {};
+
+            attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+            attrs[0].value.s32 = SAI_ROUTER_INTERFACE_TYPE_SUB_PORT;
+            attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+            attrs[1].value.oid = vr;
+            attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+            attrs[2].value.oid = portOrLag;
+            attrs[3].id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+            attrs[3].value.u16 = vlanId;
+            attrs[4].id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+            memcpy(attrs[4].value.mac, SWITCH_MAC, sizeof(sai_mac_t));
+
+            return m_sw->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(rif), m_switchId, 5, attrs);
+        }
+
+        // name of the one decap BVI created since the last clear
+        std::string decapBvi()
+        {
+            SWSS_LOG_ENTER();
+
+            auto bvis = vppCallsTo("create_bvi_interface");
+
+            EXPECT_EQ(1u, bvis.size());
+
+            return bvis.empty() ? std::string() : "bvi" + std::to_string(bvis[0].id);
+        }
+
+        std::map<std::string, std::string> m_kernelMasters;
+
+        std::vector<std::string> m_ipv6Disabled;
+
+        std::vector<std::string> m_redirects;
+
+        std::vector<std::string> m_deletedRedirects;
+
+        sai_status_t m_redirectStatus = SAI_STATUS_SUCCESS;
+};
+
+TEST_F(SwitchVppDecapHostPath, DecapBviGetsAHostPathIntoItsKernelVrf)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan3000"] = "Vrft";
+
+    vppMock().calls.clear();
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvi = decapBvi();
+
+    int pair = vppCallIndex("configure_lcp_interface", bvi + " tap_" + bvi);
+    int bridge = vppCallIndex("set_sw_interface_l2_bridge", bvi);
+
+    ASSERT_NE(-1, pair);
+    ASSERT_NE(-1, bridge);
+    EXPECT_TRUE(vppMock().calls[pair].flag);
+
+    // paired before it becomes its bridge domain's BVI, or sonic_ext steers
+    // the punts to the underlay port's tap
+    EXPECT_LT(pair, bridge);
+
+    ASSERT_EQ(1u, m_ipv6Disabled.size());
+    EXPECT_EQ("tap_" + bvi, m_ipv6Disabled[0]);
+
+    ASSERT_EQ(1u, m_redirects.size());
+    EXPECT_EQ("tap_" + bvi + " Vrft", m_redirects[0]);
+}
+
+TEST_F(SwitchVppDecapHostPath, LateTunnelMapEntryGivesDecapBviAHostPath)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan3000"] = "Vrft";
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(4000, nh, REMOTE_ROUTER_MAC));
+
+    vppMock().calls.clear();
+    m_ipv6Disabled.clear();
+    m_redirects.clear();
+
+    sai_object_id_t mapEntry = createEncapMapEntry(m_vrB, 4000);
+
+    auto bvi = decapBvi();
+
+    int pair = vppCallIndex("configure_lcp_interface", bvi + " tap_" + bvi);
+    int bridge = vppCallIndex("set_sw_interface_l2_bridge", bvi);
+
+    ASSERT_NE(-1, pair);
+    ASSERT_NE(-1, bridge);
+    EXPECT_TRUE(vppMock().calls[pair].flag);
+    EXPECT_LT(pair, bridge);
+
+    ASSERT_EQ(1u, m_ipv6Disabled.size());
+    EXPECT_EQ("tap_" + bvi, m_ipv6Disabled[0]);
+
+    ASSERT_EQ(1u, m_redirects.size());
+    EXPECT_EQ("tap_" + bvi + " Vrft", m_redirects[0]);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(mapEntry)));
+
+    int unpair = vppCallIndex("configure_lcp_interface", bvi + " tap_" + bvi);
+    int del = vppCallIndex("delete_bvi_interface", bvi);
+
+    ASSERT_NE(-1, unpair);
+    ASSERT_NE(-1, del);
+    EXPECT_FALSE(vppMock().calls[unpair].flag);
+    EXPECT_LT(unpair, del);
+}
+
+TEST_F(SwitchVppDecapHostPath, NoKernelVrfMeansNoHostPath)
+{
+    // the VR has a VLAN router interface, but its SVI is in no kernel VRF
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    vppMock().calls.clear();
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
+    EXPECT_TRUE(m_redirects.empty());
+}
+
+TEST_F(SwitchVppDecapHostPath, DoesNotBorrowTheKernelVrfOfAnotherVirtualRouter)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrA, 100));
+
+    m_kernelMasters["Vlan100"] = "VrfA";
+
+    vppMock().calls.clear();
+
+    sai_object_id_t nh;
+
+    // VNI 2000 belongs to VR B
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
+    EXPECT_TRUE(m_redirects.empty());
+}
+
+TEST_F(SwitchVppDecapHostPath, AFailedRedirectLeavesNoHalfBuiltHostPath)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan3000"] = "Vrft";
+    m_redirectStatus = SAI_STATUS_FAILURE;
+
+    vppMock().calls.clear();
+
+    sai_object_id_t nh;
+
+    // the host path is best effort: the tunnel still comes up without one
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvi = decapBvi();
+    auto pairs = vppCallsTo("configure_lcp_interface");
+
+    // paired, then unpaired again, so no tap is left punting outside the VRF
+    ASSERT_EQ(2u, pairs.size());
+    EXPECT_EQ(bvi + " tap_" + bvi, pairs[0].name);
+    EXPECT_TRUE(pairs[0].flag);
+    EXPECT_EQ(bvi + " tap_" + bvi, pairs[1].name);
+    EXPECT_FALSE(pairs[1].flag);
+
+    // and removing the next hop has no host path left to tear down
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh)));
+
+    EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
+}
+
+TEST_F(SwitchVppDecapHostPath, RemoveTearsDownTheHostPath)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan3000"] = "Vrft";
+
+    vppMock().calls.clear();
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvi = decapBvi();
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh)));
+
+    int unpair = vppCallIndex("configure_lcp_interface", bvi + " tap_" + bvi);
+    int del = vppCallIndex("delete_bvi_interface", bvi);
+
+    ASSERT_NE(-1, unpair);
+    ASSERT_NE(-1, del);
+    EXPECT_FALSE(vppMock().calls[unpair].flag);
+    EXPECT_LT(unpair, del);
+    EXPECT_EQ((std::vector<std::string>{"tap_" + bvi}), m_deletedRedirects);
+}
+
+TEST_F(SwitchVppDecapHostPath, PortAndSubPortRouterInterfacesResolveKernelVrf)
+{
+    sai_object_id_t port0 = registerPhysicalPort("TenGigabitEthernet0/0/0", "Ethernet0");
+    sai_object_id_t port4 = registerPhysicalPort("TenGigabitEthernet0/0/4", "Ethernet4");
+    sai_object_id_t lag2 = registerLag(2);
+
+    // Physical PORT router interface without any VLAN objects in SAI
+    auto vrPort = createVr();
+    addEncapMapEntry(vrPort, 5001);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createPortRif(vrPort, port0));
+    m_kernelMasters["Ethernet0"] = "VrfPort";
+
+    vppMock().calls.clear();
+    m_redirects.clear();
+
+    sai_object_id_t nhPort;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(5001, nhPort, REMOTE_ROUTER_MAC));
+    auto bviPort = decapBvi();
+    EXPECT_EQ((std::vector<std::string>{"tap_" + bviPort + " VrfPort"}), m_redirects);
+
+    // Physical SUB_PORT router interface with short Eth<N>.<vlan> kernel netdev
+    auto vrEthSub = createVr();
+    addEncapMapEntry(vrEthSub, 5002);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createSubPortRif(vrEthSub, port4, 10));
+    m_kernelMasters["Eth4.10"] = "VrfEthSub";
+
+    vppMock().calls.clear();
+    m_redirects.clear();
+
+    sai_object_id_t nhEthSub;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(5002, nhEthSub, REMOTE_ROUTER_MAC));
+    auto bviEthSub = decapBvi();
+    EXPECT_EQ((std::vector<std::string>{"tap_" + bviEthSub + " VrfEthSub"}), m_redirects);
+
+    // LAG SUB_PORT router interface with short Po<N>.<vlan> kernel netdev
+    auto vrLagSub = createVr();
+    addEncapMapEntry(vrLagSub, 5003);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createSubPortRif(vrLagSub, lag2, 20));
+    m_kernelMasters["Po2.20"] = "VrfLagSub";
+
+    vppMock().calls.clear();
+    m_redirects.clear();
+
+    sai_object_id_t nhLagSub;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(5003, nhLagSub, REMOTE_ROUTER_MAC));
+    auto bviLagSub = decapBvi();
+    EXPECT_EQ((std::vector<std::string>{"tap_" + bviLagSub + " VrfLagSub"}), m_redirects);
+}
+
+TEST_F(SwitchVppDecapHostPath, LateRouterInterfaceInstallsPendingHostPathsWithoutAggregateRedirect)
+{
+    sai_object_id_t port0 = registerPhysicalPort("TenGigabitEthernet0/0/0", "Ethernet0");
+
+    vppMock().calls.clear();
+
+    // Both a next hop and a decap term come up before m_vrB has any RIF
+    sai_object_id_t nh;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    sai_object_id_t decapEntry;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createDecapMapEntry(m_vrB, 4000, &decapEntry));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+    ASSERT_EQ(2u, bvis.size());
+    std::string nhBvi = "bvi" + std::to_string(bvis[0].id);
+    std::string termBvi = "bvi" + std::to_string(bvis[1].id);
+
+    EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
+    EXPECT_TRUE(m_redirects.empty());
+
+    // Now the sub-port RIF arrives in m_vrB enslaved to its kernel VRF device
+    m_kernelMasters["Ethernet0.100"] = "Vrft";
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createSubPortRif(m_vrB, port0, 100));
+
+    for (const auto& bvi : {nhBvi, termBvi})
+    {
+        SCOPED_TRACE(bvi);
+
+        int detach = -1;
+        int pair = -1;
+        int reattach = -1;
+        for (size_t i = 0; i < vppMock().calls.size(); i++)
+        {
+            const auto& c = vppMock().calls[i];
+            if (c.api == "set_sw_interface_l2_bridge" && c.name == bvi)
+            {
+                if (!c.flag && detach == -1)
+                {
+                    detach = static_cast<int>(i);
+                }
+                else if (c.flag && detach != -1)
+                {
+                    reattach = static_cast<int>(i);
+                }
+            }
+            else if (c.api == "configure_lcp_interface" && c.name == bvi + " tap_" + bvi && c.flag)
+            {
+                pair = static_cast<int>(i);
+            }
+        }
+
+        ASSERT_NE(-1, detach);
+        ASSERT_NE(-1, pair);
+        ASSERT_NE(-1, reattach);
+        EXPECT_LT(detach, pair);
+        EXPECT_LT(pair, reattach);
+    }
+
+    ASSERT_EQ(2u, m_redirects.size());
+    EXPECT_EQ("tap_" + nhBvi + " Vrft", m_redirects[0]);
+    EXPECT_EQ("tap_" + termBvi + " Vrft", m_redirects[1]);
+}
+
+TEST_F(SwitchVppDecapHostPath, DecapTermBviGetsAndTearsDownHostPath)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+    m_kernelMasters["Vlan3000"] = "Vrft";
+
+    vppMock().calls.clear();
+    m_ipv6Disabled.clear();
+    m_redirects.clear();
+    m_deletedRedirects.clear();
+
+    sai_object_id_t decapEntry;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createDecapMapEntry(m_vrB, 4000, &decapEntry));
+
+    auto bvi = decapBvi();
+    int pair = vppCallIndex("configure_lcp_interface", bvi + " tap_" + bvi);
+    int bridge = vppCallIndex("set_sw_interface_l2_bridge", bvi);
+
+    ASSERT_NE(-1, pair);
+    ASSERT_NE(-1, bridge);
+    EXPECT_TRUE(vppMock().calls[pair].flag);
+    EXPECT_LT(pair, bridge);
+    EXPECT_EQ((std::vector<std::string>{"tap_" + bvi}), m_ipv6Disabled);
+    EXPECT_EQ((std::vector<std::string>{"tap_" + bvi + " Vrft"}), m_redirects);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(decapEntry)));
+
+    int unpair = vppCallIndex("configure_lcp_interface", bvi + " tap_" + bvi);
+    int del = vppCallIndex("delete_bvi_interface", bvi);
+
+    ASSERT_NE(-1, unpair);
+    ASSERT_NE(-1, del);
+    EXPECT_FALSE(vppMock().calls[unpair].flag);
+    EXPECT_LT(unpair, del);
+    EXPECT_EQ((std::vector<std::string>{"tap_" + bvi}), m_deletedRedirects);
+}
+
+TEST_F(SwitchVppDecapHostPath, TcRedirectToVrfRewritesPacketTypeToHost)
+{
+    vppMock().kernelCommands.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->add_tc_filter_redirect_to_vrf("tap_bvi32768", "Vrft"));
+    m_sw->del_tc_filter_redirect("tap_bvi32768");
+
+    ASSERT_EQ(3u, vppMock().kernelCommands.size());
+    EXPECT_EQ("tc qdisc add dev tap_bvi32768 clsact", vppMock().kernelCommands[0]);
+    EXPECT_EQ("tc filter add dev tap_bvi32768 ingress protocol all prio 10 matchall"
+              " action skbedit ptype host pipe action mirred ingress redirect dev Vrft",
+              vppMock().kernelCommands[1]);
+    EXPECT_EQ("tc qdisc del dev tap_bvi32768 clsact", vppMock().kernelCommands[2]);
+}
+
+TEST_F(SwitchVppDecapHostPath, TcRedirectToVrfFallsBackWhenPacketTypeActionIsUnavailable)
+{
+    vppMock().kernelCommands.clear();
+    vppMock().execHook = [](const std::string& cmd, std::string&) {
+        SWSS_LOG_ENTER();
+        return cmd.find("skbedit") != std::string::npos ? 1 : 0;
+    };
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->add_tc_filter_redirect_to_vrf("tap_bvi32768", "Vrft"));
+
+    ASSERT_EQ(3u, vppMock().kernelCommands.size());
+    EXPECT_EQ("tc qdisc add dev tap_bvi32768 clsact", vppMock().kernelCommands[0]);
+    EXPECT_NE(std::string::npos, vppMock().kernelCommands[1].find("skbedit ptype host"));
+    EXPECT_EQ("tc filter add dev tap_bvi32768 ingress protocol all prio 10 u32 match u32 0 0"
+              " action mirred ingress redirect dev Vrft",
+              vppMock().kernelCommands[2]);
+
+    // When both filter commands fail, the ingress state is cleaned back up
+    vppMock().kernelCommands.clear();
+    vppMock().execHook = [](const std::string& cmd, std::string&) {
+        SWSS_LOG_ENTER();
+        return cmd.find("tc filter add") != std::string::npos ? 1 : 0;
+    };
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->add_tc_filter_redirect_to_vrf("tap_bvi32768", "Vrft"));
+    ASSERT_EQ(4u, vppMock().kernelCommands.size());
+    EXPECT_EQ("tc qdisc del dev tap_bvi32768 clsact", vppMock().kernelCommands[3]);
 }
