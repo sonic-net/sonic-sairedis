@@ -1188,3 +1188,196 @@ TEST_F(SwitchVppTunnelNexthop, RemovingANexthopWithAVniTearsDownItsDecap)
 
     EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface", "bvi" + std::to_string(bvis[0].id)).size());
 }
+
+/*
+ * The kernel side of the decap host path, replaced: which VRF device each
+ * kernel netdev is enslaved to, and the redirects asked for.
+ */
+class SwitchVppDecapHostPath : public SwitchVppTunnelNexthop
+{
+    protected:
+
+        void SetUp() override
+        {
+            SwitchVppTunnelNexthop::SetUp();
+
+            if (HasFatalFailure())
+            {
+                return;
+            }
+
+            m_sw->m_tunnel_mgr.m_netdev_master = [this](const std::string& netdev)
+            {
+                SWSS_LOG_ENTER();
+
+                auto it = m_kernelMasters.find(netdev);
+
+                return it == m_kernelMasters.end() ? std::string() : it->second;
+            };
+
+            m_sw->m_tunnel_mgr.m_add_tc_redirect = [this](const std::string& tap, const std::string& dev)
+            {
+                SWSS_LOG_ENTER();
+
+                m_redirects.push_back(tap + " " + dev);
+
+                return m_redirectStatus;
+            };
+        }
+
+        // name of the one decap BVI created since the last clear
+        std::string decapBvi()
+        {
+            SWSS_LOG_ENTER();
+
+            auto bvis = vppCallsTo("create_bvi_interface");
+
+            EXPECT_EQ(1u, bvis.size());
+
+            return bvis.empty() ? std::string() : "bvi" + std::to_string(bvis[0].id);
+        }
+
+        // position of the first recorded call matching api and name, or -1
+        int vppCallIndex(
+                const std::string& api,
+                const std::string& name)
+        {
+            SWSS_LOG_ENTER();
+
+            for (size_t i = 0; i < g_vppCalls.size(); i++)
+            {
+                if (g_vppCalls[i].api == api && g_vppCalls[i].name == name)
+                {
+                    return (int)i;
+                }
+            }
+
+            return -1;
+        }
+
+        std::map<std::string, std::string> m_kernelMasters;
+
+        std::vector<std::string> m_redirects;
+
+        sai_status_t m_redirectStatus = SAI_STATUS_SUCCESS;
+};
+
+TEST_F(SwitchVppDecapHostPath, DecapBviGetsAHostPathIntoItsKernelVrf)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan3000"] = "Vrft";
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvi = decapBvi();
+
+    int pair = vppCallIndex("configure_lcp_interface", bvi + " tap_" + bvi);
+    int bridge = vppCallIndex("set_sw_interface_l2_bridge", bvi);
+
+    ASSERT_NE(-1, pair);
+    ASSERT_NE(-1, bridge);
+    EXPECT_TRUE(g_vppCalls[pair].flag);
+
+    // paired before it becomes its bridge domain's BVI, or sonic_ext steers
+    // the punts to the underlay port's tap
+    EXPECT_LT(pair, bridge);
+
+    ASSERT_EQ(1u, m_redirects.size());
+    EXPECT_EQ("tap_" + bvi + " Vrft", m_redirects[0]);
+}
+
+TEST_F(SwitchVppDecapHostPath, NoKernelVrfMeansNoHostPath)
+{
+    // the VR has a VLAN router interface, but its SVI is in no kernel VRF
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
+    EXPECT_TRUE(m_redirects.empty());
+}
+
+TEST_F(SwitchVppDecapHostPath, DoesNotBorrowTheKernelVrfOfAnotherVirtualRouter)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrA, 100));
+
+    m_kernelMasters["Vlan100"] = "VrfA";
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    // VNI 2000 belongs to VR B
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
+    EXPECT_TRUE(m_redirects.empty());
+}
+
+TEST_F(SwitchVppDecapHostPath, AFailedRedirectLeavesNoHalfBuiltHostPath)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan3000"] = "Vrft";
+    m_redirectStatus = SAI_STATUS_FAILURE;
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    // the host path is best effort: the tunnel still comes up without one
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvi = decapBvi();
+    auto pairs = vppCallsTo("configure_lcp_interface");
+
+    // paired, then unpaired again, so no tap is left punting outside the VRF
+    ASSERT_EQ(2u, pairs.size());
+    EXPECT_EQ(bvi + " tap_" + bvi, pairs[0].name);
+    EXPECT_TRUE(pairs[0].flag);
+    EXPECT_EQ(bvi + " tap_" + bvi, pairs[1].name);
+    EXPECT_FALSE(pairs[1].flag);
+
+    // and removing the next hop has no host path left to tear down
+    g_vppCalls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh)));
+
+    EXPECT_TRUE(vppCallsTo("configure_lcp_interface").empty());
+}
+
+TEST_F(SwitchVppDecapHostPath, RemoveTearsDownTheHostPath)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000));
+
+    m_kernelMasters["Vlan3000"] = "Vrft";
+
+    g_vppCalls.clear();
+
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvi = decapBvi();
+
+    g_vppCalls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh)));
+
+    int unpair = vppCallIndex("configure_lcp_interface", bvi + " tap_" + bvi);
+    int del = vppCallIndex("delete_bvi_interface", bvi);
+
+    ASSERT_NE(-1, unpair);
+    ASSERT_NE(-1, del);
+    EXPECT_FALSE(g_vppCalls[unpair].flag);
+    EXPECT_LT(unpair, del);
+}
