@@ -11,6 +11,7 @@ static void onSwitchStateChange(
         sai_object_id_t switchId,
         sai_switch_oper_status_t switchOperStatus)
 {
+    SWSS_LOG_ENTER();
 }
 
 static std::string natData =
@@ -111,7 +112,7 @@ TEST(NotificationHandler, updateNotificationsPointersClearsUnmappedPointer)
     nh->setSwitchNotifications(notifications);
 
     sai_attribute_t attrs[2]{};
-    attrs[0].id = SAI_SWITCH_ATTR_EXTENDED_PORT_STATE_CHANGE_NOTIFY;
+    attrs[0].id = SAI_SWITCH_ATTR_REGISTER_READ;
     attrs[0].value.ptr = reinterpret_cast<void *>(0x1234);
     attrs[1].id = SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY;
     attrs[1].value.ptr = reinterpret_cast<void *>(0x5678);

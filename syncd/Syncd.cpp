@@ -59,6 +59,8 @@ namespace
             _In_ uint32_t attrCount,
             _Inout_ sai_attribute_t *attrList)
     {
+        SWSS_LOG_ENTER();
+
         for (uint32_t index = 0; index < attrCount; ++index)
         {
             const auto meta = sai_metadata_get_attr_metadata(objectType, attrList[index].id);
@@ -72,7 +74,7 @@ namespace
 
             if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER && attrList[index].value.ptr != nullptr)
             {
-                SWSS_LOG_WARN("clearing process-local pointer value for %s", meta->attridname);
+                SWSS_LOG_INFO("clearing process-local pointer value for %s", meta->attridname);
                 attrList[index].value.ptr = nullptr;
             }
         }
