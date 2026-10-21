@@ -54,33 +54,22 @@ tests_SOURCES = main.cpp \
 				TestTAM.cpp
 
 if USE_VPP
-tests_SOURCES += TestSwitchVpp.cpp
-
-# TestSwitchVpp.cpp replaces these VPP API calls with recording stubs, so the
-# SwitchVpp code paths under test run without a VPP instance.
-tests_LDFLAGS = \
-				-Wl,--wrap=init_vpp_client \
-				-Wl,--wrap=vpp_sync_for_events \
-				-Wl,--wrap=vpp_ev_dequeue \
-				-Wl,--wrap=vpp_want_l2_macs_events2 \
-				-Wl,--wrap=refresh_interfaces_list \
-				-Wl,--wrap=interface_set_state \
-				-Wl,--wrap=interface_set_promiscuous \
-				-Wl,--wrap=create_sub_interface \
-				-Wl,--wrap=delete_sub_interface \
-				-Wl,--wrap=set_sw_interface_l2_bridge \
-				-Wl,--wrap=set_l2_interface_vlan_tag_rewrite \
-				-Wl,--wrap=set_bridge_domain_flags \
-				-Wl,--wrap=bridge_domain_get_member_count \
-				-Wl,--wrap=vpp_bridge_domain_add_del \
-				-Wl,--wrap=vpp_get_swif_idx_by_name \
-				-Wl,--wrap=vpp_add_node_next \
-				-Wl,--wrap=vpp_classify_set_interface_l2_tables \
-				-Wl,--wrap=vpp_ip_flow_hash_set \
-				-Wl,--wrap=configure_lcp_interface \
-				-Wl,--wrap=create_bvi_interface \
-				-Wl,--wrap=delete_bvi_interface \
-				-Wl,--wrap=sw_interface_feature_enable_disable
+tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
+				MockVppXlate.cpp MockVppXlate.h
+VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
+				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
+				create_sub_interface delete_sub_interface configure_lcp_interface \
+				set_sw_interface_l2_bridge interface_set_state refresh_interfaces_list \
+				vpp_want_l2_macs_events2 vpp_ip_flow_hash_set set_interface_vrf \
+				get_interface_vrf ip_vrf_add ip_vrf_del interface_ip_address_del_all \
+				init_vpp_client vpp_sync_for_events vpp_ev_dequeue interface_set_promiscuous \
+				set_l2_interface_vlan_tag_rewrite set_bridge_domain_flags \
+				bridge_domain_get_member_count vpp_bridge_domain_add_del \
+				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
+				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state \
+				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
+				sw_interface_feature_enable_disable
+tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
