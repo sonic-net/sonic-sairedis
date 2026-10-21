@@ -103,6 +103,63 @@ int set_decap_bvi_table(
     return ret;
 }
 
+std::vector<std::shared_ptr<SaiDBObject>> get_tunnel_mappers(
+    _In_ SwitchVpp* switch_db,
+    _In_ const SaiObject* tunnel_obj,
+    _In_ sai_attr_id_t link_attr_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::shared_ptr<SaiDBObject>> mappers;
+    sai_attribute_t attr;
+    sai_object_id_t obj_list[MAX_OBJLIST_LEN];
+
+    attr.id = link_attr_id;
+    attr.value.objlist.count = MAX_OBJLIST_LEN;
+    attr.value.objlist.list = obj_list;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        return mappers;
+    }
+    for (uint32_t i = 0; i < attr.value.objlist.count; i++) {
+        auto mapper = switch_db->get_sai_object(
+            SAI_OBJECT_TYPE_TUNNEL_MAP,
+            sai_serialize_object_id(attr.value.objlist.list[i]));
+        if (mapper) {
+            mappers.push_back(mapper);
+        }
+    }
+    return mappers;
+}
+
+bool tunnel_uses_mapper(
+    _In_ const SaiObject* tunnel_obj,
+    _In_ sai_object_id_t tunnel_map_oid)
+{
+    SWSS_LOG_ENTER();
+
+    const sai_attr_id_t attrs[] = {
+        SAI_TUNNEL_ATTR_ENCAP_MAPPERS,
+        SAI_TUNNEL_ATTR_DECAP_MAPPERS,
+    };
+    for (sai_attr_id_t attr_id : attrs) {
+        sai_attribute_t attr;
+        sai_object_id_t obj_list[MAX_OBJLIST_LEN];
+
+        attr.id = attr_id;
+        attr.value.objlist.count = MAX_OBJLIST_LEN;
+        attr.value.objlist.list = obj_list;
+        if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+            continue;
+        }
+        for (uint32_t i = 0; i < attr.value.objlist.count; i++) {
+            if (attr.value.objlist.list[i] == tunnel_map_oid) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 }
 
 TunnelManager::TunnelManager(SwitchVpp* switch_db): m_switch_db(switch_db)
@@ -153,7 +210,8 @@ TunnelManager::get_tunnel_if(
         auto find_interface = [&]() {
             const auto& entries = it->second;
             if (entries.size() == 1 &&
-                (!entries.front().tunnel_data.ip_vrf ||
+                (entries.front().any_vrf ||
+                 !entries.front().tunnel_data.ip_vrf ||
                  entries.front().tunnel_data.ip_vrf->m_obj_id == vrf_oid)) {
                 sw_if_index = entries.front().tunnel_data.sw_if_index;
                 return true;
@@ -324,9 +382,15 @@ TunnelManager::tunnel_encap_nexthop_action(
 
     std::map<uint32_t, std::shared_ptr<IpVrfInfo>> vni_to_vrf_map;
     if (override_vni != 0) {
-        // The next-hop VNI replaces the mapper result. It does not create a
-        // corresponding VNI-to-VRF decapsulation mapping.
-        vni_to_vrf_map[override_vni] = nullptr;
+        // The next-hop VNI replaces the mapper result, so any route VRF can
+        // use this tunnel. The tunnel still needs a decap side: VPP matches
+        // the exact (remote, local, VNI) key of this tunnel before the
+        // source-independent decap term of the VNI, and a tunnel with no
+        // bridge domain drops what it receives. Decapsulate into the VRF
+        // that the tunnel's L3 VRF/VNI map entry carrying this VNI names, if
+        // there is one; if that map entry arrives later, handle_l2_vxlan_tunnel_map_entry
+        // attaches decap then.
+        vni_to_vrf_map[override_vni] = find_l3_vxlan_vrf_for_vni(tunnel_obj.get(), override_vni);
     } else {
         auto mappers = tunnel_obj->get_linked_objects(
             SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_ENCAP_MAPPERS);
@@ -401,6 +465,7 @@ TunnelManager::tunnel_encap_nexthop_action(
         entry.tunnel_data.ip_vrf = pair.second;
         entry.tunnel_data.vni = pair.first;
         entry.dst_mac = dst_mac;
+        entry.any_vrf = override_vni != 0;
 
         if (create_vpp_vxlan_encap(entry.req, entry.tunnel_data, false,
                                    entry.dst_mac.data()) != SAI_STATUS_SUCCESS) {
@@ -425,6 +490,339 @@ TunnelManager::tunnel_encap_nexthop_action(
         m_tunnel_encap_nexthop_map.emplace(object_id, std::move(created));
     }
     return SAI_STATUS_SUCCESS;
+}
+
+std::shared_ptr<IpVrfInfo>
+TunnelManager::find_l3_vxlan_vrf_for_vni(
+    _In_ const SaiObject* tunnel_obj,
+    _In_ uint32_t vni,
+    _In_ sai_object_id_t exclude_entry_oid)
+{
+    SWSS_LOG_ENTER();
+
+    if (!tunnel_obj || vni == 0) {
+        return nullptr;
+    }
+
+    sai_attribute_t attr;
+
+    auto encap_mappers = get_tunnel_mappers(
+        m_switch_db, tunnel_obj, SAI_TUNNEL_ATTR_ENCAP_MAPPERS);
+    for (const auto& mapper : encap_mappers) {
+        attr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+        if (mapper->get_attr(attr) != SAI_STATUS_SUCCESS ||
+            attr.value.s32 != SAI_TUNNEL_MAP_TYPE_VIRTUAL_ROUTER_ID_TO_VNI) {
+            continue;
+        }
+        auto entries = mapper->get_child_objs(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY);
+        if (!entries) {
+            continue;
+        }
+        for (const auto& pair : *entries) {
+            if (exclude_entry_oid != SAI_NULL_OBJECT_ID) {
+                sai_object_id_t entry_oid = SAI_NULL_OBJECT_ID;
+                sai_deserialize_object_id(pair.first, entry_oid);
+                if (entry_oid == exclude_entry_oid) {
+                    continue;
+                }
+            }
+            attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_VALUE;
+            if (pair.second->get_attr(attr) != SAI_STATUS_SUCCESS ||
+                attr.value.u32 != vni) {
+                continue;
+            }
+            attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VIRTUAL_ROUTER_ID_KEY;
+            if (pair.second->get_attr(attr) == SAI_STATUS_SUCCESS) {
+                auto ip_vrf = m_switch_db->vpp_get_ip_vrf(attr.value.oid);
+                if (ip_vrf) {
+                    return ip_vrf;
+                }
+            }
+        }
+    }
+
+    auto decap_mappers = get_tunnel_mappers(
+        m_switch_db, tunnel_obj, SAI_TUNNEL_ATTR_DECAP_MAPPERS);
+    for (const auto& mapper : decap_mappers) {
+        attr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+        if (mapper->get_attr(attr) != SAI_STATUS_SUCCESS ||
+            attr.value.s32 != SAI_TUNNEL_MAP_TYPE_VNI_TO_VIRTUAL_ROUTER_ID) {
+            continue;
+        }
+        auto entries = mapper->get_child_objs(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY);
+        if (!entries) {
+            continue;
+        }
+        for (const auto& pair : *entries) {
+            if (exclude_entry_oid != SAI_NULL_OBJECT_ID) {
+                sai_object_id_t entry_oid = SAI_NULL_OBJECT_ID;
+                sai_deserialize_object_id(pair.first, entry_oid);
+                if (entry_oid == exclude_entry_oid) {
+                    continue;
+                }
+            }
+            attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+            if (pair.second->get_attr(attr) != SAI_STATUS_SUCCESS ||
+                attr.value.u32 != vni) {
+                continue;
+            }
+            attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VIRTUAL_ROUTER_ID_VALUE;
+            if (pair.second->get_attr(attr) == SAI_STATUS_SUCCESS) {
+                auto ip_vrf = m_switch_db->vpp_get_ip_vrf(attr.value.oid);
+                if (ip_vrf) {
+                    return ip_vrf;
+                }
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+sai_status_t
+TunnelManager::recreate_vpp_vxlan_encap_with_decap_any(
+    _Inout_ VxlanEncapEntry& entry,
+    _In_ bool decap_any)
+{
+    SWSS_LOG_ENTER();
+
+    if (entry.req.decap_any == decap_any) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    const uint32_t old_sw_if_index = entry.tunnel_data.sw_if_index;
+    const bool old_decap_any = entry.req.decap_any;
+
+    std::vector<sai_object_id_t> affected_nhs;
+    std::vector<VxlanEncapEntry*> shared_entries;
+    for (auto& nh_pair : m_tunnel_encap_nexthop_map) {
+        bool nh_affected = false;
+        for (auto& candidate : nh_pair.second) {
+            if (candidate.tunnel_data.sw_if_index == old_sw_if_index) {
+                shared_entries.push_back(&candidate);
+                nh_affected = true;
+            }
+        }
+        if (nh_affected) {
+            affected_nhs.push_back(nh_pair.first);
+        }
+    }
+
+    SwitchVpp::DetachedNexthopRoutes detached_routes;
+    m_switch_db->detachRoutesForNexthops(affected_nhs, detached_routes);
+
+    if (remove_vpp_vxlan_encap(entry.req, entry.tunnel_data, false,
+                               entry.dst_mac.data()) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to remove VXLAN tunnel sw_if %u for VNI %u before recreate",
+                       old_sw_if_index, entry.req.vni);
+        m_switch_db->reattachRoutesForNexthops(detached_routes);
+        return SAI_STATUS_FAILURE;
+    }
+
+    entry.req.decap_any = decap_any;
+    if (create_vpp_vxlan_encap(entry.req, entry.tunnel_data, false,
+                               entry.dst_mac.data()) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to recreate VXLAN tunnel for VNI %u with decap_any=%d",
+                       entry.req.vni, decap_any);
+        entry.req.decap_any = old_decap_any;
+        if (create_vpp_vxlan_encap(entry.req, entry.tunnel_data, false,
+                                   entry.dst_mac.data()) == SAI_STATUS_SUCCESS) {
+            for (auto* shared : shared_entries) {
+                shared->req.decap_any = old_decap_any;
+                shared->tunnel_data.sw_if_index = entry.tunnel_data.sw_if_index;
+            }
+            m_switch_db->reattachRoutesForNexthops(detached_routes);
+        } else {
+            for (auto* shared : shared_entries) {
+                shared->req.decap_any = old_decap_any;
+                shared->tunnel_data.sw_if_index = UINT32_MAX;
+            }
+            SWSS_LOG_ERROR("Failed to restore VXLAN tunnel for VNI %u with decap_any=%d",
+                           entry.req.vni, old_decap_any);
+        }
+        return SAI_STATUS_FAILURE;
+    }
+
+    for (auto* shared : shared_entries) {
+        shared->req.decap_any = decap_any;
+        shared->tunnel_data.sw_if_index = entry.tunnel_data.sw_if_index;
+    }
+    m_switch_db->reattachRoutesForNexthops(detached_routes);
+    return SAI_STATUS_SUCCESS;
+}
+
+void
+TunnelManager::install_nexthop_vxlan_decap_for_vni(
+    _In_ sai_object_id_t tunnel_map_oid,
+    _In_ uint32_t vni,
+    _In_ sai_object_id_t vr_oid)
+{
+    SWSS_LOG_ENTER();
+
+    if (vni == 0 || tunnel_map_oid == SAI_NULL_OBJECT_ID ||
+        vr_oid == SAI_NULL_OBJECT_ID) {
+        return;
+    }
+
+    auto ip_vrf = m_switch_db->vpp_get_ip_vrf(vr_oid);
+    if (!ip_vrf) {
+        SWSS_LOG_ERROR("No VRF found for late tunnel map entry VNI %u", vni);
+        return;
+    }
+
+    for (auto& nh_pair : m_tunnel_encap_nexthop_map) {
+        std::shared_ptr<SaiDBObject> nh_obj;
+        std::shared_ptr<SaiDBObject> tunnel_obj;
+        bool tunnel_is_p2mp = true;
+
+        for (auto& entry : nh_pair.second) {
+            if (!entry.any_vrf || entry.req.vni != vni || entry.has_decap) {
+                continue;
+            }
+            if (!nh_obj) {
+                nh_obj = m_switch_db->get_sai_object(
+                    SAI_OBJECT_TYPE_NEXT_HOP,
+                    sai_serialize_object_id(nh_pair.first));
+                if (!nh_obj) {
+                    break;
+                }
+                tunnel_obj = nh_obj->get_linked_object(
+                    SAI_OBJECT_TYPE_TUNNEL, SAI_NEXT_HOP_ATTR_TUNNEL_ID);
+                if (!tunnel_obj ||
+                    !tunnel_uses_mapper(tunnel_obj.get(), tunnel_map_oid)) {
+                    break;
+                }
+                sai_attribute_t peer_attr;
+                peer_attr.id = SAI_TUNNEL_ATTR_PEER_MODE;
+                if (tunnel_obj->get_attr(peer_attr) == SAI_STATUS_SUCCESS) {
+                    tunnel_is_p2mp = (peer_attr.value.s32 == SAI_TUNNEL_PEER_MODE_P2MP);
+                }
+            }
+
+            // VPP reads decap_any only when creating the VXLAN tunnel, so a
+            // P2MP tunnel created before its VNI was mapped must be recreated
+            // with decap_any enabled while any routes referencing it are rebound.
+            bool flipped_decap_any = false;
+            if (tunnel_is_p2mp && !entry.req.decap_any) {
+                if (recreate_vpp_vxlan_encap_with_decap_any(entry, true) != SAI_STATUS_SUCCESS) {
+                    SWSS_LOG_ERROR("Failed to enable decap_any for VNI %u on next hop %s",
+                                   vni, nh_obj->get_id().c_str());
+                    continue;
+                }
+                flipped_decap_any = true;
+            }
+
+            entry.tunnel_data.ip_vrf = ip_vrf;
+            if (create_vpp_vxlan_decap(entry.tunnel_data) == SAI_STATUS_SUCCESS) {
+                entry.has_decap = true;
+            } else {
+                entry.tunnel_data.ip_vrf.reset();
+                if (flipped_decap_any &&
+                    recreate_vpp_vxlan_encap_with_decap_any(entry, false) != SAI_STATUS_SUCCESS) {
+                    SWSS_LOG_ERROR("Failed to revert decap_any for VNI %u on next hop %s",
+                                   vni, nh_obj->get_id().c_str());
+                }
+                SWSS_LOG_ERROR("Failed to attach late decap for VNI %u on next hop %s",
+                               vni, nh_obj->get_id().c_str());
+            }
+        }
+    }
+}
+
+void
+TunnelManager::remove_nexthop_vxlan_decap_for_map_entry(
+    _In_ const std::string& serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    auto entry_obj = m_switch_db->get_sai_object(
+        SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, serializedObjectId);
+    if (!entry_obj) {
+        return;
+    }
+
+    sai_attribute_t attr;
+    attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE;
+    if (entry_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        return;
+    }
+
+    uint32_t vni = 0;
+    if (attr.value.s32 == SAI_TUNNEL_MAP_TYPE_VIRTUAL_ROUTER_ID_TO_VNI) {
+        attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_VALUE;
+        if (entry_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+            vni = attr.value.u32;
+        }
+    } else if (attr.value.s32 == SAI_TUNNEL_MAP_TYPE_VNI_TO_VIRTUAL_ROUTER_ID) {
+        attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+        if (entry_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+            vni = attr.value.u32;
+        }
+    } else {
+        return;
+    }
+
+    attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+    if (vni == 0 || entry_obj->get_attr(attr) != SAI_STATUS_SUCCESS ||
+        attr.value.oid == SAI_NULL_OBJECT_ID) {
+        return;
+    }
+    sai_object_id_t tunnel_map_oid = attr.value.oid;
+
+    sai_object_id_t map_entry_oid = SAI_NULL_OBJECT_ID;
+    sai_deserialize_object_id(serializedObjectId, map_entry_oid);
+
+    for (auto& nh_pair : m_tunnel_encap_nexthop_map) {
+        std::shared_ptr<SaiDBObject> nh_obj;
+        std::shared_ptr<SaiDBObject> tunnel_obj;
+
+        for (auto& entry : nh_pair.second) {
+            if (!entry.any_vrf || entry.req.vni != vni || !entry.has_decap) {
+                continue;
+            }
+            if (!nh_obj) {
+                nh_obj = m_switch_db->get_sai_object(
+                    SAI_OBJECT_TYPE_NEXT_HOP,
+                    sai_serialize_object_id(nh_pair.first));
+                if (!nh_obj) {
+                    break;
+                }
+                tunnel_obj = nh_obj->get_linked_object(
+                    SAI_OBJECT_TYPE_TUNNEL, SAI_NEXT_HOP_ATTR_TUNNEL_ID);
+                if (!tunnel_obj ||
+                    !tunnel_uses_mapper(tunnel_obj.get(), tunnel_map_oid)) {
+                    break;
+                }
+            }
+            if (find_l3_vxlan_vrf_for_vni(tunnel_obj.get(), vni, map_entry_oid) != nullptr) {
+                continue;
+            }
+            remove_vpp_vxlan_decap(entry.tunnel_data);
+            entry.has_decap = false;
+            entry.tunnel_data.ip_vrf.reset();
+            entry.tunnel_data.bd_id = 0;
+
+            bool shared_still_has_decap = false;
+            for (const auto& other_nh : m_tunnel_encap_nexthop_map) {
+                for (const auto& other : other_nh.second) {
+                    if (other.tunnel_data.sw_if_index == entry.tunnel_data.sw_if_index &&
+                        other.has_decap) {
+                        shared_still_has_decap = true;
+                        break;
+                    }
+                }
+                if (shared_still_has_decap) {
+                    break;
+                }
+            }
+            if (entry.req.decap_any && !shared_still_has_decap) {
+                if (recreate_vpp_vxlan_encap_with_decap_any(entry, false) != SAI_STATUS_SUCCESS) {
+                    SWSS_LOG_ERROR("Failed to clear decap_any for VNI %u on next hop %s",
+                                   vni, nh_obj->get_id().c_str());
+                }
+            }
+        }
+    }
 }
 
 sai_status_t
@@ -1674,10 +2072,31 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry(
     }
 
     // L3 VNET decap (VNI -> Virtual Router): install decap for each VTEP,
-    // including the primary Loopback0 VTEP when no encapsulation NH exists.
+    // including the primary Loopback0 VTEP when no encapsulation NH exists,
+    // and attach decap to any explicit-VNI next hop waiting on this VNI.
     if (tunnel_map_type == SAI_TUNNEL_MAP_TYPE_VNI_TO_VIRTUAL_ROUTER_ID) {
+        attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VIRTUAL_ROUTER_ID_VALUE;
+        if (map_entry_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
+            install_nexthop_vxlan_decap_for_vni(tunnel_map_oid, vni, attr.value.oid);
+        }
         return install_l3_vxlan_decap_terms(serializedObjectId, vni, tunnel_map_oid,
                                             &map_entry_obj);
+    }
+
+    if (tunnel_map_type == SAI_TUNNEL_MAP_TYPE_VIRTUAL_ROUTER_ID_TO_VNI) {
+        uint32_t mapped_vni = 0;
+        sai_object_id_t vr_oid = SAI_NULL_OBJECT_ID;
+
+        attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_VALUE;
+        if (map_entry_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
+            mapped_vni = attr.value.u32;
+        }
+        attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VIRTUAL_ROUTER_ID_KEY;
+        if (map_entry_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
+            vr_oid = attr.value.oid;
+        }
+        install_nexthop_vxlan_decap_for_vni(tunnel_map_oid, mapped_vni, vr_oid);
+        return SAI_STATUS_SUCCESS;
     }
 
     if (tunnel_map_type != SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID) {
@@ -1838,6 +2257,8 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry_removal(
     _In_ const std::string& serializedObjectId)
 {
     SWSS_LOG_ENTER();
+
+    remove_nexthop_vxlan_decap_for_map_entry(serializedObjectId);
 
     // L3 VNET decap teardown, keyed by map-entry OID so it works
     // even if the SAI object is already gone from the DB.
