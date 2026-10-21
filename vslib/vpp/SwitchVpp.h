@@ -269,6 +269,26 @@ namespace saivs
                     _Inout_ nexthop_grp_member_t& member,
                     _In_ bool isAdd);
 
+            struct DetachedNexthopRoutes
+            {
+                struct SavedCounterStats
+                {
+                    bool has_old_stats = false;
+                    std::map<sai_stat_id_t, uint64_t> old_stats;
+                };
+
+                std::vector<std::shared_ptr<SaiObject>> direct_routes;
+                std::vector<std::pair<std::shared_ptr<SaiObject>, std::shared_ptr<SaiDBObject>>> nhg_members;
+                std::map<std::string, SavedCounterStats> counter_stats;
+            };
+
+            void detachRoutesForNexthops(
+                    _In_ const std::vector<sai_object_id_t>& nh_oids,
+                    _Out_ DetachedNexthopRoutes& state);
+
+            void reattachRoutesForNexthops(
+                    _In_ const DetachedNexthopRoutes& state);
+
             sai_status_t setRouteCounterBinding(
                     _In_ const std::string &serializedObjectId,
                     _In_ sai_object_id_t counter_oid);

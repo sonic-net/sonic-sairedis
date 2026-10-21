@@ -3210,6 +3210,7 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
                     m_sw->create_internal(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(m_tunnel), m_switchId, 4, tattrs));
 
             vppMock().calls.clear();
+            vppMock().fibRoutePaths.clear();
             g_nextSwIfIndex = 100;
             g_vxlanTunnelDecapAny.clear();
         }
@@ -3270,14 +3271,45 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
                     m_sw->create_internal(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(entry), m_switchId, 4, eattrs));
         }
 
-        // what orchagent creates for the VNI of a VRF, after the tunnel
-        sai_status_t createDecapMapEntry(
+        sai_object_id_t createEncapMapEntry(
                 sai_object_id_t vr,
                 uint32_t vni)
         {
             SWSS_LOG_ENTER();
 
             auto entry = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, m_switchId);
+
+            sai_attribute_t eattrs[4];
+
+            eattrs[0].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE;
+            eattrs[0].value.s32 = SAI_TUNNEL_MAP_TYPE_VIRTUAL_ROUTER_ID_TO_VNI;
+            eattrs[1].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+            eattrs[1].value.oid = m_encapMap;
+            eattrs[2].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VIRTUAL_ROUTER_ID_KEY;
+            eattrs[2].value.oid = vr;
+            eattrs[3].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_VALUE;
+            eattrs[3].value.u32 = vni;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(entry), m_switchId, 4, eattrs));
+
+            return entry;
+        }
+
+        // what orchagent creates for the VNI of a VRF, after the tunnel
+        sai_status_t createDecapMapEntry(
+                sai_object_id_t vr,
+                uint32_t vni,
+                sai_object_id_t *entryOut = nullptr)
+        {
+            SWSS_LOG_ENTER();
+
+            auto entry = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, m_switchId);
+
+            if (entryOut)
+            {
+                *entryOut = entry;
+            }
 
             sai_attribute_t eattrs[4];
 
@@ -3328,6 +3360,37 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
             }
 
             return m_sw->create(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh), m_switchId, count, attrs);
+        }
+
+        std::string createIpv4Route(
+                sai_object_id_t vr,
+                const char *ip,
+                const char *mask,
+                sai_object_id_t nextHopOrNhg)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_route_entry_t entry = {};
+
+            entry.switch_id = m_switchId;
+            entry.vr_id = vr;
+            entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            EXPECT_EQ(1, inet_pton(AF_INET, ip, &entry.destination.addr.ip4));
+            EXPECT_EQ(1, inet_pton(AF_INET, mask, &entry.destination.mask.ip4));
+
+            std::string serialized = sai_serialize_route_entry(entry);
+
+            sai_attribute_t attrs[2];
+
+            attrs[0].id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
+            attrs[0].value.s32 = SAI_PACKET_ACTION_FORWARD;
+            attrs[1].id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+            attrs[1].value.oid = nextHopOrNhg;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create(SAI_OBJECT_TYPE_ROUTE_ENTRY, serialized, m_switchId, 2, attrs));
+
+            return serialized;
         }
 
         // the set_interface_vrf calls for one interface
@@ -3402,4 +3465,369 @@ TEST_F(SwitchVppTunnelNexthop, NexthopDecapBvisRouteInBothAddressFamilies)
         EXPECT_FALSE(binds[0].flag);
         EXPECT_TRUE(binds[1].flag);
     }
+}
+
+namespace
+{
+    // what an EVPN type-5 next hop carries: the remote VTEP's router MAC
+    const uint8_t REMOTE_ROUTER_MAC[6] = { 0x22, 0x36, 0x29, 0xc2, 0x14, 0xf1 };
+}
+
+/*
+ * An EVPN next hop names its VNI. VPP matches the exact (remote, local, VNI)
+ * key of its tunnel before the source-independent decap term of that VNI, so
+ * the next hop's own tunnel has to decapsulate, into the VRF of the VNI.
+ */
+TEST_F(SwitchVppTunnelNexthop, NexthopWithAVniDecapsulatesInTheVrfOfItsVni)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, tunnels.size());
+    EXPECT_EQ(2000u, tunnels[0].id);
+    EXPECT_TRUE(g_vxlanTunnelDecapAny.at(tunnels[0].sub_id));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+
+    auto binds = bindsOf("bvi" + std::to_string(bvis[0].id));
+    uint32_t table = tableOf(m_vrB);
+
+    ASSERT_EQ(2u, binds.size());
+    EXPECT_EQ(table, binds[0].id);
+    EXPECT_EQ(table, binds[1].id);
+
+    // a route in any VRF still uses the tunnel, a leaked route included
+    uint32_t inB = 0;
+    uint32_t inA = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrB, inB));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, inA));
+    EXPECT_EQ(inB, inA);
+}
+
+TEST_F(SwitchVppTunnelNexthop, NexthopWithAnUnmappedVniHasNoDecap)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(4000, nh, REMOTE_ROUTER_MAC));
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, tunnels.size());
+    EXPECT_FALSE(g_vxlanTunnelDecapAny.at(tunnels[0].sub_id));
+    EXPECT_TRUE(vppCallsTo("create_bvi_interface").empty());
+
+    uint32_t sw_if_index = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, sw_if_index));
+}
+
+TEST_F(SwitchVppTunnelNexthop, RemovingANexthopWithAVniTearsDownItsDecap)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh)));
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, tunnels.size());
+    EXPECT_EQ(2000u, tunnels[0].id);
+    EXPECT_FALSE(tunnels[0].flag);
+
+    EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface", "bvi" + std::to_string(bvis[0].id)).size());
+}
+
+TEST_F(SwitchVppTunnelNexthop, TunnelMapEntryArrivingAfterNexthopInstallsDecap)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(4000, nh, REMOTE_ROUTER_MAC));
+    EXPECT_TRUE(vppCallsTo("create_bvi_interface").empty());
+
+    uint32_t initial_sw_if = 0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, initial_sw_if));
+    EXPECT_FALSE(g_vxlanTunnelDecapAny.at(initial_sw_if));
+
+    vppMock().calls.clear();
+
+    sai_object_id_t mapEntry = createEncapMapEntry(m_vrB, 4000);
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(2u, tunnels.size());
+    EXPECT_EQ(4000u, tunnels[0].id);
+    EXPECT_FALSE(tunnels[0].flag);
+    EXPECT_EQ(4000u, tunnels[1].id);
+    EXPECT_TRUE(tunnels[1].flag);
+
+    uint32_t recreated_sw_if = tunnels[1].sub_id;
+
+    EXPECT_NE(initial_sw_if, recreated_sw_if);
+    EXPECT_TRUE(g_vxlanTunnelDecapAny.at(recreated_sw_if));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+
+    std::string bvi = "bvi" + std::to_string(bvis[0].id);
+    auto binds = bindsOf(bvi);
+    uint32_t table = tableOf(m_vrB);
+
+    ASSERT_EQ(2u, binds.size());
+    EXPECT_EQ(table, binds[0].id);
+    EXPECT_FALSE(binds[0].flag);
+    EXPECT_EQ(table, binds[1].id);
+    EXPECT_TRUE(binds[1].flag);
+
+    auto bridged = vppCallsTo("set_sw_interface_l2_bridge_shg_by_index", std::to_string(recreated_sw_if));
+
+    ASSERT_EQ(1u, bridged.size());
+    EXPECT_EQ(bvis[0].id, bridged[0].id);
+    EXPECT_TRUE(bridged[0].flag);
+
+    uint32_t afterInB = 0;
+    uint32_t afterInA = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrB, afterInB));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, afterInA));
+    EXPECT_EQ(recreated_sw_if, afterInB);
+    EXPECT_EQ(recreated_sw_if, afterInA);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(mapEntry)));
+    EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface", bvi).size());
+
+    tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(2u, tunnels.size());
+    EXPECT_EQ(4000u, tunnels[0].id);
+    EXPECT_FALSE(tunnels[0].flag);
+    EXPECT_EQ(4000u, tunnels[1].id);
+    EXPECT_TRUE(tunnels[1].flag);
+
+    uint32_t reverted_sw_if = tunnels[1].sub_id;
+
+    EXPECT_NE(recreated_sw_if, reverted_sw_if);
+    EXPECT_FALSE(g_vxlanTunnelDecapAny.at(reverted_sw_if));
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh)));
+
+    tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, tunnels.size());
+    EXPECT_EQ(4000u, tunnels[0].id);
+    EXPECT_FALSE(tunnels[0].flag);
+    EXPECT_TRUE(vppCallsTo("delete_bvi_interface").empty());
+}
+
+TEST_F(SwitchVppTunnelNexthop, DecapMapEntryArrivingAfterNexthopInstallsDecap)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(4000, nh, REMOTE_ROUTER_MAC));
+    EXPECT_TRUE(vppCallsTo("create_bvi_interface").empty());
+
+    uint32_t initial_sw_if = 0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, initial_sw_if));
+    EXPECT_FALSE(g_vxlanTunnelDecapAny.at(initial_sw_if));
+
+    vppMock().calls.clear();
+
+    sai_object_id_t decapEntry = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createDecapMapEntry(m_vrB, 4000, &decapEntry));
+
+    uint32_t recreated_sw_if = 0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, recreated_sw_if));
+    EXPECT_NE(initial_sw_if, recreated_sw_if);
+    EXPECT_TRUE(g_vxlanTunnelDecapAny.at(recreated_sw_if));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(2u, bvis.size());
+
+    std::string nhBvi = "bvi" + std::to_string(bvis[0].id);
+    std::string termBvi = "bvi" + std::to_string(bvis[1].id);
+    uint32_t table = tableOf(m_vrB);
+
+    for (const auto& created : bvis)
+    {
+        auto binds = bindsOf("bvi" + std::to_string(created.id));
+
+        ASSERT_EQ(2u, binds.size());
+        EXPECT_EQ(table, binds[0].id);
+        EXPECT_FALSE(binds[0].flag);
+        EXPECT_EQ(table, binds[1].id);
+        EXPECT_TRUE(binds[1].flag);
+    }
+
+    auto bridged = vppCallsTo("set_sw_interface_l2_bridge_shg_by_index", std::to_string(recreated_sw_if));
+
+    ASSERT_EQ(1u, bridged.size());
+    EXPECT_EQ(bvis[0].id, bridged[0].id);
+    EXPECT_TRUE(bridged[0].flag);
+
+    vppMock().calls.clear();
+
+    sai_object_id_t encapEntry = createEncapMapEntry(m_vrB, 4000);
+
+    EXPECT_TRUE(vppCallsTo("create_bvi_interface").empty());
+    EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(decapEntry)));
+    EXPECT_TRUE(vppCallsTo("delete_bvi_interface", nhBvi).empty());
+    EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface", termBvi).size());
+    EXPECT_TRUE(g_vxlanTunnelDecapAny.at(recreated_sw_if));
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(encapEntry)));
+    EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface", nhBvi).size());
+
+    uint32_t reverted_sw_if = 0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, reverted_sw_if));
+    EXPECT_NE(recreated_sw_if, reverted_sw_if);
+    EXPECT_FALSE(g_vxlanTunnelDecapAny.at(reverted_sw_if));
+}
+
+TEST_F(SwitchVppTunnelNexthop, LateTunnelMapEntryRebindsDirectAndEcmpRoutesToRecreatedTunnel)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(4000, nh, REMOTE_ROUTER_MAC));
+
+    uint32_t initial_sw_if = 0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, initial_sw_if));
+    ASSERT_FALSE(g_vxlanTunnelDecapAny.at(initial_sw_if));
+
+    std::string directRoute = createIpv4Route(m_vrA, "192.0.2.0", "255.255.255.0", nh);
+
+    sai_object_id_t nhg = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_NEXT_HOP_GROUP, m_switchId);
+    sai_attribute_t nhgAttr;
+
+    nhgAttr.id = SAI_NEXT_HOP_GROUP_ATTR_TYPE;
+    nhgAttr.value.s32 = SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_UNORDERED_ECMP;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create(SAI_OBJECT_TYPE_NEXT_HOP_GROUP, sai_serialize_object_id(nhg), m_switchId, 1, &nhgAttr));
+
+    sai_object_id_t nhgMbr = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, m_switchId);
+    sai_attribute_t mbrAttrs[2];
+
+    mbrAttrs[0].id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID;
+    mbrAttrs[0].value.oid = nhg;
+    mbrAttrs[1].id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
+    mbrAttrs[1].value.oid = nh;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, sai_serialize_object_id(nhgMbr), m_switchId, 2, mbrAttrs));
+
+    std::string ecmpRoute = createIpv4Route(m_vrA, "198.51.100.0", "255.255.255.0", nhg);
+
+    uint32_t tableA = tableOf(m_vrA);
+    const auto directKey = std::make_pair(tableA, std::string("192.0.2.0/24"));
+    const auto ecmpKey = std::make_pair(tableA, std::string("198.51.100.0/24"));
+
+    EXPECT_EQ((std::vector<uint32_t>{initial_sw_if}), vppMock().fibRoutePaths.at(directKey));
+    EXPECT_EQ((std::vector<uint32_t>{initial_sw_if}), vppMock().fibRoutePaths.at(ecmpKey));
+
+    sai_object_id_t mapEntry = createEncapMapEntry(m_vrB, 4000);
+
+    uint32_t recreated_sw_if = 0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, recreated_sw_if));
+    EXPECT_NE(initial_sw_if, recreated_sw_if);
+    EXPECT_TRUE(g_vxlanTunnelDecapAny.at(recreated_sw_if));
+    EXPECT_EQ((std::vector<uint32_t>{recreated_sw_if}), vppMock().fibRoutePaths.at(directKey));
+    EXPECT_EQ((std::vector<uint32_t>{recreated_sw_if}), vppMock().fibRoutePaths.at(ecmpKey));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(mapEntry)));
+
+    uint32_t reverted_sw_if = 0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, reverted_sw_if));
+    EXPECT_NE(recreated_sw_if, reverted_sw_if);
+    EXPECT_FALSE(g_vxlanTunnelDecapAny.at(reverted_sw_if));
+    EXPECT_EQ((std::vector<uint32_t>{reverted_sw_if}), vppMock().fibRoutePaths.at(directKey));
+    EXPECT_EQ((std::vector<uint32_t>{reverted_sw_if}), vppMock().fibRoutePaths.at(ecmpKey));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_ROUTE_ENTRY, directRoute));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_ROUTE_ENTRY, ecmpRoute));
+    EXPECT_EQ(0u, vppMock().fibRoutePaths.count(directKey));
+    EXPECT_EQ(0u, vppMock().fibRoutePaths.count(ecmpKey));
+}
+
+TEST_F(SwitchVppTunnelNexthop, P2pTunnelKeepsSourceCheckWhenMapEntryArrivesLate)
+{
+    sai_object_id_t p2pTunnel = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL, m_switchId);
+    sai_attribute_t tattrs[6];
+
+    tattrs[0].id = SAI_TUNNEL_ATTR_TYPE;
+    tattrs[0].value.s32 = SAI_TUNNEL_TYPE_VXLAN;
+    tattrs[1].id = SAI_TUNNEL_ATTR_PEER_MODE;
+    tattrs[1].value.s32 = SAI_TUNNEL_PEER_MODE_P2P;
+    tattrs[2].id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+    tattrs[2].value.ipaddr = ipv4("10.0.0.1");
+    tattrs[3].id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
+    tattrs[3].value.ipaddr = ipv4("10.0.0.3");
+    tattrs[4].id = SAI_TUNNEL_ATTR_ENCAP_MAPPERS;
+    tattrs[4].value.objlist.count = 1;
+    tattrs[4].value.objlist.list = &m_encapMap;
+    tattrs[5].id = SAI_TUNNEL_ATTR_DECAP_MAPPERS;
+    tattrs[5].value.objlist.count = 1;
+    tattrs[5].value.objlist.list = &m_decapMap;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create_internal(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(p2pTunnel), m_switchId, 6, tattrs));
+
+    sai_object_id_t nh = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_NEXT_HOP, m_switchId);
+    sai_attribute_t nhAttrs[5];
+
+    nhAttrs[0].id = SAI_NEXT_HOP_ATTR_TYPE;
+    nhAttrs[0].value.s32 = SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP;
+    nhAttrs[1].id = SAI_NEXT_HOP_ATTR_IP;
+    nhAttrs[1].value.ipaddr = ipv4("10.0.0.3");
+    nhAttrs[2].id = SAI_NEXT_HOP_ATTR_TUNNEL_ID;
+    nhAttrs[2].value.oid = p2pTunnel;
+    nhAttrs[3].id = SAI_NEXT_HOP_ATTR_TUNNEL_VNI;
+    nhAttrs[3].value.u32 = 4000;
+    nhAttrs[4].id = SAI_NEXT_HOP_ATTR_TUNNEL_MAC;
+    memcpy(nhAttrs[4].value.mac, REMOTE_ROUTER_MAC, sizeof(sai_mac_t));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh), m_switchId, 5, nhAttrs));
+
+    uint32_t sw_if_index = 0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, sw_if_index));
+    EXPECT_FALSE(g_vxlanTunnelDecapAny.at(sw_if_index));
+
+    vppMock().calls.clear();
+
+    createEncapMapEntry(m_vrB, 4000);
+
+    EXPECT_EQ(1u, vppCallsTo("create_bvi_interface").size());
+    EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
+    EXPECT_FALSE(g_vxlanTunnelDecapAny.at(sw_if_index));
 }

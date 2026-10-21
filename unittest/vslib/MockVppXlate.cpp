@@ -163,7 +163,54 @@ extern "C" int __wrap_ip_route_add_del_get_stats(
     int result = index < mock.routeResults.size() ? mock.routeResults[index] : 0;
     if (result == 0 && stats_index)
     {
-        *stats_index = mock.routeStatsIndex;
+        *stats_index = is_add ? mock.routeStatsIndex : UINT32_MAX;
+    }
+    if (result == 0 && route->prefix_addr.sa_family == AF_INET && route->nexthop_cnt >= 1)
+    {
+        char addr[INET_ADDRSTRLEN] = {};
+        inet_ntop(AF_INET, &route->prefix_addr.addr.ip4.sin_addr, addr, sizeof(addr));
+        auto key = std::make_pair(route->vrf_id,
+                std::string(addr) + "/" + std::to_string(route->prefix_len));
+        if (is_add)
+        {
+            auto& paths = mock.fibRoutePaths[key];
+            if (!route->is_multipath)
+            {
+                paths.clear();
+            }
+            for (uint32_t i = 0; i < route->nexthop_cnt; i++)
+            {
+                uint32_t sw_if = route->nexthop[i].sw_if_index;
+                if (std::find(paths.begin(), paths.end(), sw_if) == paths.end())
+                {
+                    paths.push_back(sw_if);
+                }
+            }
+        }
+        else if (!route->is_multipath)
+        {
+            mock.fibRoutePaths.erase(key);
+        }
+        else
+        {
+            auto it = mock.fibRoutePaths.find(key);
+            if (it != mock.fibRoutePaths.end())
+            {
+                for (uint32_t i = 0; i < route->nexthop_cnt; i++)
+                {
+                    auto pit = std::find(it->second.begin(), it->second.end(),
+                            route->nexthop[i].sw_if_index);
+                    if (pit != it->second.end())
+                    {
+                        it->second.erase(pit);
+                    }
+                }
+                if (it->second.empty())
+                {
+                    mock.fibRoutePaths.erase(it);
+                }
+            }
+        }
     }
     return result;
 }

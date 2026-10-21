@@ -131,6 +131,8 @@ struct VppMock
     uint32_t routeStatsIndex = 42;
     std::vector<int> routeResults;
     std::vector<VppRouteCall> routeCalls;
+    // Active FIB next hop sw_if_index list per (table, prefix)
+    std::map<std::pair<uint32_t, std::string>, std::vector<uint32_t>> fibRoutePaths;
 
     // sonic-ext features reported as enabled. "iface-loopback" keeps its own
     // flag because the loopback tests predate this set.

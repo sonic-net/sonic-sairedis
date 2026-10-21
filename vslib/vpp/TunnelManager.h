@@ -311,7 +311,13 @@ namespace saivs
             TunnelVPPData tunnel_data;
             std::array<uint8_t, 6> dst_mac;
             bool has_decap = false;
+            // The next hop names its VNI, so a route in any VRF uses this
+            // tunnel; tunnel_data.ip_vrf only says where its decap BVI routes.
+            bool any_vrf = false;
         };
+        sai_status_t recreate_vpp_vxlan_encap_with_decap_any(
+            _Inout_ VxlanEncapEntry& entry,
+            _In_ bool decap_any);
         // One next hop can select a different mapped VNI for each route VRF.
         std::unordered_map<sai_object_id_t, std::vector<VxlanEncapEntry>> m_tunnel_encap_nexthop_map;
         /*
@@ -389,6 +395,19 @@ namespace saivs
                         _In_ const SaiObject* tunnel_nh_obj,
                         _In_ Action action,
                         _In_ sai_object_id_t vrf_oid = SAI_NULL_OBJECT_ID);
+
+        std::shared_ptr<IpVrfInfo> find_l3_vxlan_vrf_for_vni(
+                        _In_ const SaiObject* tunnel_obj,
+                        _In_ uint32_t vni,
+                        _In_ sai_object_id_t exclude_entry_oid = SAI_NULL_OBJECT_ID);
+
+        void install_nexthop_vxlan_decap_for_vni(
+                        _In_ sai_object_id_t tunnel_map_oid,
+                        _In_ uint32_t vni,
+                        _In_ sai_object_id_t vr_oid);
+
+        void remove_nexthop_vxlan_decap_for_map_entry(
+                        _In_ const std::string& serializedObjectId);
 
         sai_status_t remove_vxlan_encap_entries(
                         _Inout_ std::vector<VxlanEncapEntry>& entries);
