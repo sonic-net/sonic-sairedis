@@ -523,11 +523,13 @@ TEST_F(SwitchVppLagFdb, LearnedEntryRemovedOnTheLagBridgePortIsLearnedAgain)
 
 /*
  * VPP's L2FIB flushes are lazy: they bump a sequence number and leave the
- * entry until the next scan, and a frame from the MAC before that scan
+ * entry until the aging pass reaches it, and a frame from the MAC before that
  * refreshes the entry without a learn event. A MAC with steady traffic, like a
- * node's, then survives every flush and is never reported again. So a flush has
- * to delete each MAC we know VPP holds in its scope, on the interface VPP
- * reported it on, before the lazy flush that catches the rest.
+ * node's, then survives the flush and is never reported again. So a flush by
+ * bridge port has to delete each MAC we know VPP holds on that port, on the
+ * interface VPP reported it on, before the lazy flush that catches the rest. A
+ * flush of a VLAN or of the whole switch stays lazy only: deleting one by one
+ * would cost a VPP API call per learned MAC on the switch.
  */
 class SwitchVppFdbFlushDeletes : public SwitchVppLagFdb
 {
@@ -632,7 +634,7 @@ TEST_F(SwitchVppFdbFlushDeletes, FlushOfTheLagBridgePortDeletesItsMacBeforeTheLa
     EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.count(elsewhere));
 }
 
-TEST_F(SwitchVppFdbFlushDeletes, FlushOfABridgeDomainDeletesOnlyItsMacs)
+TEST_F(SwitchVppFdbFlushDeletes, FlushOfABridgeDomainIsLazyOnly)
 {
     vppMacEvent(VPP_MAC_ACTION_ADD);
 
@@ -650,23 +652,18 @@ TEST_F(SwitchVppFdbFlushDeletes, FlushOfABridgeDomainDeletesOnlyItsMacs)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, flushAttrs({bv, dynamicOnly()}));
 
-    auto dels = vppCallsTo("l2fib_add_del");
-
-    ASSERT_EQ(1u, dels.size());
-    EXPECT_EQ(MAC_ON_BOND, dels[0].name);
-    EXPECT_EQ(VLAN_ID, dels[0].id);
-    EXPECT_FALSE(dels[0].flag);
+    EXPECT_TRUE(vppCallsTo("l2fib_add_del").empty());
 
     auto flushes = vppCallsTo("l2fib_flush_bd");
 
     ASSERT_EQ(1u, flushes.size());
     EXPECT_EQ(VLAN_ID, flushes[0].id);
-    EXPECT_LT(callIndex("l2fib_add_del"), callIndex("l2fib_flush_bd"));
 
+    // the bridge domain's MAC is forgotten, the other one is not
     EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
 }
 
-TEST_F(SwitchVppFdbFlushDeletes, FlushAllDeletesEveryTrackedMac)
+TEST_F(SwitchVppFdbFlushDeletes, FlushAllIsLazyOnly)
 {
     vppMacEvent(VPP_MAC_ACTION_ADD);
 
@@ -678,31 +675,76 @@ TEST_F(SwitchVppFdbFlushDeletes, FlushAllDeletesEveryTrackedMac)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, flushAttrs({dynamicOnly()}));
 
-    auto dels = vppCallsTo("l2fib_add_del");
+    EXPECT_TRUE(vppCallsTo("l2fib_add_del").empty());
+    EXPECT_EQ(1u, vppCallsTo("l2fib_flush_all").size());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
 
-    ASSERT_EQ(2u, dels.size());
+/*
+ * A learned MAC that orchagent turns static: SAI keeps a static entry through a
+ * dynamic flush, and so must VPP's L2FIB.
+ */
+TEST_F(SwitchVppFdbFlushDeletes, FlushOfTheLagBridgePortLeavesAMacThatIsStaticInSai)
+{
+    vppMacEvent(VPP_MAC_ACTION_ADD);
 
-    std::vector<std::pair<std::string, uint32_t>> deleted;
+    ASSERT_NE(nullptr, fdbBridgePort());
 
-    for (auto& d: dels)
-    {
-        EXPECT_FALSE(d.flag);
-        deleted.push_back({d.name, d.id});
-    }
+    sai_attribute_t type;
 
-    std::sort(deleted.begin(), deleted.end());
+    type.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    type.value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
 
-    EXPECT_EQ(MAC_ON_BOND, deleted[0].first);
-    EXPECT_EQ((uint32_t)VLAN_ID, deleted[0].second);
-    EXPECT_EQ(OTHER_MAC_ON_BOND, deleted[1].first);
-    EXPECT_EQ(OTHER_BD, deleted[1].second);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, fdbSid(), &type));
 
-    int flush = callIndex("l2fib_flush_all");
+    g_vppCalls.clear();
 
-    ASSERT_NE(-1, flush);
-    EXPECT_LT(callIndex("l2fib_add_del"), flush);
+    // the vslib layer keeps the static entry and hands the flush down
+    sai_attribute_t bp;
+
+    memset(&bp, 0, sizeof(bp));
+    bp.id = SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID;
+    bp.value.oid = m_bridgePort;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, flushAttrs({bp, dynamicOnly()}));
+
+    EXPECT_TRUE(vppCallsTo("l2fib_add_del").empty());
+    EXPECT_EQ(1u, vppCallsTo("l2fib_flush_int").size());
+    EXPECT_NE(nullptr, fdbBridgePort());
+}
+
+/*
+ * A static FDB entry orchagent creates for a MAC VPP learned before, which the
+ * mirror still holds (e.g. SAI dropped the learned entry on a path that never
+ * reached VPP). VPP now holds the MAC static, so a later flush must not delete
+ * it.
+ */
+TEST_F(SwitchVppFdbFlushDeletes, StaticEntryForALearnedMacIsNotDeletedByAFlush)
+{
+    vppMacEvent(VPP_MAC_ACTION_ADD);
+
+    ASSERT_NE(nullptr, fdbBridgePort());
+
+    m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).clear();
+    m_sw->m_fdb_info_set.clear();
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = m_bridgePort;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->FdbEntryadd(fdbSid(), m_switchId, 2, attrs));
 
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+
+    g_vppCalls.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, flushBridgePort());
+
+    EXPECT_TRUE(vppCallsTo("l2fib_add_del").empty());
+    EXPECT_EQ(1u, vppCallsTo("l2fib_flush_int").size());
 }
 
 /*

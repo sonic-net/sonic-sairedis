@@ -2774,6 +2774,19 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
         auto ret = l2fib_add_del(hwif_name, fdb_entry.mac_address, bd_id, is_add, is_static);
         SWSS_LOG_NOTICE("FDB Entry Added on hwif_name %s Successful ret_val: %d", hwif_name, ret);
 
+        if (is_static && ret == 0)
+        {
+            /*
+             * VPP now holds the MAC as a static entry, which it never ages,
+             * moves or reports, so it is no longer a learned MAC that a flush
+             * covers. Forget it, or a flush would delete it from the L2FIB.
+             */
+            VppFdbKey key;
+            memcpy(key.mac, fdb_entry.mac_address, sizeof(key.mac));
+            key.bd_id = bd_id;
+
+            m_vpp_fdb_entries.erase(key);
+        }
     }
     else
     {
@@ -3001,17 +3014,23 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
 
     /*
      * VPP's l2fib_flush_int/_bd/_all are lazy: they only bump the interface or
-     * bridge domain sequence number, and a stale entry goes away only when the
-     * L2FIB scan runs, about once a minute. A frame from that MAC before the
-     * scan takes l2learn's HIT_UPDATE path (same sw_if_index, stale sequence
-     * number), which refreshes the entry and raises no learn event. Any MAC
-     * with traffic inside that window then survives the flush and is never
-     * reported again, while SAI has already sent FLUSHED for it. An ASIC
-     * removes the entry and the next frame is a fresh learn, which is what
-     * orchagent expects. So delete every MAC we know VPP holds in the flushed
-     * scope first; the lazy flush still runs for the entries we never saw.
+     * bridge domain sequence number and start one aging pass of the L2FIB
+     * (SONiC's bridge domains don't age, so there is no other). That pass
+     * walks the table in slices while the workers keep forwarding, and a frame
+     * from a stale MAC before the pass reaches it takes l2learn's HIT_UPDATE
+     * path (same sw_if_index, stale sequence number), which refreshes the
+     * entry and raises no learn event. A MAC with steady traffic then survives
+     * the flush and is never reported again, while SAI has already sent
+     * FLUSHED for it. An ASIC removes the entry and the next frame is a fresh
+     * learn, which is what orchagent expects.
+     *
+     * So a flush by bridge port, which orchagent sends when a port or LAG goes
+     * operationally down, first deletes each MAC we know VPP holds on it. That
+     * costs one VPP API call per MAC learned behind that one port or LAG,
+     * under the API mutex. A flush of a VLAN or of the whole switch, and the
+     * tunnel bridge port fallback below, would cost one per learned MAC on
+     * the switch, so those stay lazy only.
      */
-    auto everything = [](const VppFdbKey&, uint32_t) { return true; };
 
     switch (mode)
     {
@@ -3023,7 +3042,6 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
                 {
                     SWSS_LOG_NOTICE("Tunnel bridge port %s: falling back to flush all",
                             sai_serialize_object_id(br_port_id).c_str());
-                    vpp_fdb_entries_delete_from_l2fib("all (tunnel bridge port fallback)", everything);
                     auto ret = l2fib_flush_all();
                     SWSS_LOG_NOTICE("Flush ALL (tunnel bridge port fallback) ret_val: %d", ret);
                     vpp_fdb_entries_invalidate_all();
@@ -3077,8 +3095,6 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
         case FLUSH_BY_BD_ID:
         case FLUSH_BY_BD_ID | FLUSH_ALL: /*flush by bd_id/vlan id*/
             {
-                vpp_fdb_entries_delete_from_l2fib("on bd_id " + std::to_string(bd_id),
-                        [bd_id](const VppFdbKey& key, uint32_t) { return key.bd_id == bd_id; });
                 auto ret = l2fib_flush_bd(bd_id);
                 SWSS_LOG_NOTICE(" Flush on bd_id %d Successfull ret_val: %d",bd_id, ret);
                 vpp_fdb_entries_invalidate_by_bd(bd_id);
@@ -3089,7 +3105,6 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
         case FLUSH_ALL:
         case FLUSH_BY_INTERFACE| FLUSH_BY_BD_ID| FLUSH_ALL: /*flush all*/
             {
-                vpp_fdb_entries_delete_from_l2fib("all", everything);
                 auto ret = l2fib_flush_all();
                 SWSS_LOG_NOTICE(" Flush ALL fdb entry ret_val: %d", ret);
                 vpp_fdb_entries_invalidate_all();
@@ -3301,6 +3316,41 @@ size_t SwitchVpp::vpp_fdb_entries_delete_from_l2fib(
 {
     SWSS_LOG_ENTER();
 
+    /*
+     * The flush covers dynamic entries only, so leave a MAC that SAI holds as
+     * static to orchagent, like VPP's own flush leaves a static L2FIB entry.
+     * The vslib layer has already dropped the dynamic SAI entries in scope.
+     */
+    std::set<VppFdbKey> staticKeys;
+
+    for (const auto& kv: m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY))
+    {
+        auto type = kv.second.find("SAI_FDB_ENTRY_ATTR_TYPE");
+
+        if (type == kv.second.end() || type->second->getAttr()->value.s32 != SAI_FDB_ENTRY_TYPE_STATIC)
+        {
+            continue;
+        }
+
+        sai_fdb_entry_t fdb;
+        sai_deserialize_fdb_entry(kv.first, fdb);
+
+        sai_attribute_t attr;
+        attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+        if (objectTypeQuery(fdb.bv_id) != SAI_OBJECT_TYPE_VLAN ||
+                get(SAI_OBJECT_TYPE_VLAN, fdb.bv_id, 1, &attr) != SAI_STATUS_SUCCESS)
+        {
+            continue;
+        }
+
+        VppFdbKey key;
+        memcpy(key.mac, fdb.mac_address, sizeof(key.mac));
+        key.bd_id = attr.value.u16;
+
+        staticKeys.insert(key);
+    }
+
     size_t selected = 0;
     size_t deleted = 0;
 
@@ -3311,6 +3361,14 @@ size_t SwitchVpp::vpp_fdb_entries_delete_from_l2fib(
 
         if (!inScope(key, sw_if_index))
         {
+            continue;
+        }
+
+        if (staticKeys.count(key))
+        {
+            SWSS_LOG_INFO("FDB flush %s: MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u is static in SAI, left in the L2FIB",
+                          scope.c_str(),
+                          key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
             continue;
         }
 
