@@ -2588,6 +2588,26 @@ vpp_event_subscribe (void)
     return -1;
 }
 
+/*
+ * Tell the link event consumer that interface events may have been lost (see
+ * VPP_INTF_LINK_RESYNC). Runs on the event thread, the only user of vpp_evq
+ * after init, so it lands behind the events already read.
+ */
+static void
+vpp_intf_events_resync (void)
+{
+    vpp_event_info_t *evinfo = calloc(1, sizeof(*evinfo));
+
+    if (!evinfo)
+    {
+        SAIVPP_ERROR("failed to queue the link state resync\n");
+        return;
+    }
+
+    evinfo->type = VPP_INTF_LINK_RESYNC;
+    vpp_ev_enqueue(evinfo);
+}
+
 static int
 vpp_event_reconnect (void)
 {
@@ -2620,6 +2640,9 @@ vpp_event_reconnect (void)
      * the new subscription.
      */
     vpp_mac_events_resync();
+
+    /* So are link events: re-read the link state after the queued ones */
+    vpp_intf_events_resync();
 
     SAIVPP_INFO("vpp event socket reconnect successful\n");
     return 0;

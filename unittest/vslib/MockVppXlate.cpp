@@ -1,11 +1,51 @@
 #include "MockVppXlate.h"
 
 #include <algorithm>
+#include <atomic>
+#include <deque>
+#include <mutex>
 
 #include <unistd.h>
 
-std::atomic<int> g_vppEventWaits{0};
-std::atomic<vpp_event_info_t *> g_vppEvent{nullptr};
+namespace
+{
+    std::atomic<int> g_vppEventWaits{0};
+    std::mutex g_vppEventsMutex;
+    std::deque<vpp_event_info_t *> g_vppEvents;
+
+    bool vppEventsPending()
+    {
+        SWSS_LOG_ENTER();
+        std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+        return !g_vppEvents.empty();
+    }
+}
+
+void deliverVppEvents(std::initializer_list<vpp_event_info_t *> events)
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+    g_vppEvents.insert(g_vppEvents.end(), events);
+}
+
+bool waitForVppEventsTaken()
+{
+    SWSS_LOG_ENTER();
+    for (int i = 0; i < 500 && vppEventsPending(); i++)
+    {
+        usleep(10 * 1000);
+    }
+    if (vppEventsPending())
+    {
+        return false;
+    }
+    int waits = g_vppEventWaits.load();
+    for (int i = 0; i < 500 && g_vppEventWaits.load() == waits; i++)
+    {
+        usleep(10 * 1000);
+    }
+    return g_vppEventWaits.load() != waits;
+}
 
 VppMock& vppMock()
 {
@@ -293,7 +333,14 @@ int __wrap_vpp_sync_for_events() {
 }
 vpp_event_info_t * __wrap_vpp_ev_dequeue() {
     SWSS_LOG_ENTER();
-    return g_vppEvent.exchange(nullptr);
+    std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+    if (g_vppEvents.empty())
+    {
+        return NULL;
+    }
+    auto *ev = g_vppEvents.front();
+    g_vppEvents.pop_front();
+    return ev;
 }
 
 /*
@@ -323,6 +370,14 @@ int __wrap_interface_set_state(const char *hwif_name, bool is_up)
 
     vppMock().calls.push_back({"interface_set_state", name, 0, (uint32_t)ret, is_up});
     return ret;
+}
+
+int __wrap_interface_get_state(const char *hwif_name, bool *link_is_up)
+{
+    SWSS_LOG_ENTER();
+    auto it = vppMock().linkUp.find(hwif_name ? hwif_name : "");
+    *link_is_up = it != vppMock().linkUp.end() && it->second;
+    return 0;
 }
 
 int __wrap_interface_set_promiscuous(const char *hwif_name, bool enable) {

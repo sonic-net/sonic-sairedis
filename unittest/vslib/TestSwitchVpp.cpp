@@ -5,6 +5,7 @@
 #include "vpp/vppxlate/SaiVppXlate.h"
 #include "ContextConfigContainer.h"
 #include "EventPayloadNotification.h"
+#include "HostInterfaceInfo.h"
 #include "SwitchConfigContainer.h"
 #include "meta/DummySaiInterface.h"
 #include "meta/Meta.h"
@@ -494,25 +495,10 @@ TEST(SwitchVpp, bfdStateEventAppliedOnEventQueueThread)
     vpp_ip_addr_t_to_sai_ip_address_t(notif.peer_addr, key.peer_addr);
     sw.m_bfd_info_map[key] = bfdOid;
 
-    // The VPP events thread takes the event (and frees it)...
-    g_vppEvent = ev;
+    // The VPP events thread takes the event (and frees it)
+    deliverVppEvents({ev});
 
-    for (int i = 0; i < 500 && g_vppEvent.load() != nullptr; i++)
-    {
-        usleep(10 * 1000);
-    }
-
-    ASSERT_EQ(nullptr, g_vppEvent.load());
-
-    // ...and is done with it once it waits for the next one
-    int waits = g_vppEventWaits.load();
-
-    for (int i = 0; i < 500 && g_vppEventWaits.load() == waits; i++)
-    {
-        usleep(10 * 1000);
-    }
-
-    ASSERT_NE(waits, g_vppEventWaits.load());
+    ASSERT_TRUE(waitForVppEventsTaken());
 
     // It touches neither Meta nor the switch state, which need m_apimutex: it
     // only posts the event, for the vslib event queue thread to apply
@@ -588,4 +574,141 @@ TEST(SwitchVpp, syncOnPlatformEventDropsUnusableEvents)
     sw.syncOnPlatformEvent(std::make_shared<EventPayloadVppEvent>(swid, ev));
 
     EXPECT_EQ(0u, sc->m_eventQueue->size());
+}
+
+/*
+ * Link events VPP sent while the event socket was down are lost, so a reconnect
+ * queues a link state resync behind the events read before the failure. A stale
+ * DOWN read before the failure must not win over that resync, which reads the
+ * link back UP. And the resync compares with what SONiC was last told, not with
+ * what an earlier resync read.
+ */
+TEST(SwitchVpp, linkResyncFollowsQueuedLinkEvents)
+{
+    vppMock().reset();
+
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap();
+    sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+    scc->insert(sc);
+
+    auto ridmgr = std::make_shared<RealObjectIdManager>(0, scc);
+    auto swid = ridmgr->allocateNewSwitchObjectId("");
+
+    SwitchVpp sw(swid, ridmgr, sc);
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
+    attr.value.ptr = reinterpret_cast<void *>(0x1);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw.create_internal(SAI_OBJECT_TYPE_SWITCH,
+                sai_serialize_object_id(swid), swid, 1, &attr));
+
+    // Port Ethernet4 is UP, with its host interface and its VPP interface
+    auto port = ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, swid);
+
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+    attr.value.s32 = SAI_PORT_OPER_STATUS_UP;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw.create_internal(SAI_OBJECT_TYPE_PORT,
+                sai_serialize_object_id(port), swid, 1, &attr));
+
+    ASSERT_NE(nullptr, sw.m_ifaceRegistry.addPhysicalPort("bobm1", "Ethernet4", port));
+
+    // what sonic_vpp_ifmap.ini maps the host interface to
+    sw.m_ifaceRegistry.m_osIfToHwIf["Ethernet4"] = "bobm1";
+    sw.m_ifaceRegistry.m_ifMapLoaded = true;
+
+    sw.m_hostif_info_map["Ethernet4"] = std::make_shared<HostInterfaceInfo>(0, -1, -1, "Ethernet4", port, sc->m_eventQueue);
+
+    vppMock().linkUp["bobm1"] = true;
+
+    auto operStatus = [&sw, port]()
+    {
+        sai_attribute_t statusAttr;
+        statusAttr.id = SAI_PORT_ATTR_OPER_STATUS;
+
+        EXPECT_EQ(SAI_STATUS_SUCCESS, sw.get(SAI_OBJECT_TYPE_PORT, port, 1, &statusAttr));
+
+        return static_cast<sai_port_oper_status_t>(statusAttr.value.s32);
+    };
+
+    auto vppEvent = [](vpp_event_type_e type)
+    {
+        auto *ev = static_cast<vpp_event_info_t *>(calloc(1, sizeof(vpp_event_info_t)));
+
+        ev->type = type;
+
+        return ev;
+    };
+
+    auto *linkDown = vppEvent(VPP_INTF_LINK_STATUS);
+
+    snprintf(linkDown->data.intf_status.hwif_name, sizeof(linkDown->data.intf_status.hwif_name), "%s", "bobm1");
+    linkDown->data.intf_status.link_up = false;
+
+    // An earlier reconnect's resync finds nothing to fix. Then the event thread
+    // reads a link DOWN, the event socket fails, the link comes back UP while it
+    // is down, and the reconnect queues a resync behind the DOWN.
+    deliverVppEvents({vppEvent(VPP_INTF_LINK_RESYNC), linkDown, vppEvent(VPP_INTF_LINK_RESYNC)});
+
+    ASSERT_TRUE(waitForVppEventsTaken());
+
+    // The event thread posts them in that order...
+    std::vector<std::shared_ptr<EventPayloadVppEvent>> posted;
+
+    while (auto event = sc->m_eventQueue->dequeue())
+    {
+        ASSERT_EQ(EVENT_TYPE_PLATFORM_EVENT, event->getType());
+
+        posted.push_back(std::dynamic_pointer_cast<EventPayloadVppEvent>(event->getPayload()));
+    }
+
+    ASSERT_EQ(3u, posted.size());
+    EXPECT_EQ(VPP_INTF_LINK_RESYNC, posted[0]->getEvent().type);
+    EXPECT_EQ(VPP_INTF_LINK_STATUS, posted[1]->getEvent().type);
+    EXPECT_EQ(VPP_INTF_LINK_RESYNC, posted[2]->getEvent().type);
+
+    // ...and the event queue thread applies them in that order
+    std::vector<std::string> notified;
+
+    auto apply = [&sw, &sc, &notified](std::shared_ptr<EventPayloadVppEvent> payload)
+    {
+        sw.syncOnPlatformEvent(payload);
+
+        while (auto event = sc->m_eventQueue->dequeue())
+        {
+            EXPECT_EQ(EVENT_TYPE_NOTIFICATION, event->getType());
+
+            auto ntf = std::dynamic_pointer_cast<EventPayloadNotification>(event->getPayload())->getNotification();
+
+            EXPECT_EQ(SAI_SWITCH_NOTIFICATION_TYPE_PORT_STATE_CHANGE, ntf->getNotificationType());
+
+            notified.push_back(ntf->getSerializedNotification());
+        }
+    };
+
+    apply(posted[0]);
+
+    EXPECT_TRUE(notified.empty());
+    EXPECT_EQ(SAI_PORT_OPER_STATUS_UP, operStatus());
+
+    apply(posted[1]);
+
+    EXPECT_EQ(SAI_PORT_OPER_STATUS_DOWN, operStatus());
+
+    apply(posted[2]);
+
+    EXPECT_EQ(SAI_PORT_OPER_STATUS_UP, operStatus());
+
+    ASSERT_EQ(2u, notified.size());
+    EXPECT_NE(std::string::npos, notified[0].find("SAI_PORT_OPER_STATUS_DOWN"));
+    EXPECT_NE(std::string::npos, notified[1].find("SAI_PORT_OPER_STATUS_UP"));
 }

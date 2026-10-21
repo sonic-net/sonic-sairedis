@@ -236,6 +236,12 @@ _Static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
     typedef enum {
 	VPP_INTF_LINK_STATUS = 1,
         VPP_BFD_STATE_CHANGE,
+        /*
+         * No data. Link events VPP sent while the event connection was down
+         * are lost: the consumer re-reads the link state of every interface.
+         * Queued behind the events read before the connection failed.
+         */
+        VPP_INTF_LINK_RESYNC,
     } vpp_event_type_e;
 
     typedef union vpp_event_data_ {

@@ -4,7 +4,7 @@
 #include "vpp/vppxlate/SaiIntfStats.h"
 
 #include <array>
-#include <atomic>
+#include <initializer_list>
 #include <map>
 #include <set>
 #include <string>
@@ -60,6 +60,8 @@ struct VppMock
     int l2fibDumpResult = 0;
     unsigned int l2fibDumpCalls = 0;
     std::vector<vpp_l2fib_entry_t> l2fib;
+    // Link state VPP reports, by interface name. Missing is down.
+    std::map<std::string, bool> linkUp;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
@@ -69,11 +71,15 @@ struct VppMock
 VppMock& vppMock();
 
 /*
- * A switch's event thread waits once per pass, and takes the event a test hands
- * it. Kept out of VppMock, which tests reset, as that thread reads them.
+ * The VPP event stream a switch's event thread reads: it waits once per pass, and
+ * takes the events a test delivers, in order. Kept out of VppMock, which tests
+ * reset, as that thread uses it.
  */
-extern std::atomic<int> g_vppEventWaits;
-extern std::atomic<vpp_event_info_t *> g_vppEvent;
+void deliverVppEvents(std::initializer_list<vpp_event_info_t *> events);
+
+// The event thread has taken the delivered events, and posted them once it
+// waits for the next ones
+bool waitForVppEventsTaken();
 
 class TestableSwitchVpp : public saivs::SwitchVpp
 {
