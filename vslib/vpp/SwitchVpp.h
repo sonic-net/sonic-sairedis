@@ -1626,15 +1626,19 @@ namespace saivs
 
             void vppProcessEvents ();
 
+            // Re-read the link state of every host interface's port from VPP
+            // and report the ports whose cached oper status differs. Runs under
+            // m_apimutex, on request only: at startup and after an event-socket
+            // reconnect (VPP_INTF_LINK_RESYNC).
             void resyncPortOperStatus();
 
-            // Run a deferred oper-status resync on the command thread if the
-            // event thread has requested one. resyncPortOperStatus() issues VPP
+            // Run the startup oper-status resync if the event thread has
+            // requested one (m_operResyncDue). resyncPortOperStatus() issues VPP
             // binary-API calls (interface_get_state) which allocate on VPP's
             // non-thread-safe clib heap; running them on the background event
             // thread races the command thread's clib allocations and crashes
             // (os_panic in clib_mem_heap_realloc_aligned). So the event thread
-            // only flags that a resync is due and the command thread performs it.
+            // only flags that a resync is due, and it runs under m_apimutex.
             void serviceDeferredOperStatusResync();
 
             void startVppEventsThread();
@@ -1732,8 +1736,6 @@ namespace saivs
             void swif_bdid_untrack(const char *hwif_name);
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
-
-            std::map<std::string, bool> m_last_oper_up;
 
             CRMTracker m_crmTracker;
 

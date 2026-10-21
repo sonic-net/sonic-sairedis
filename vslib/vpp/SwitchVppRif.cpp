@@ -552,17 +552,18 @@ void SwitchVpp::resyncPortOperStatus()
             continue;
         }
 
-        auto prev_it = m_last_oper_up.find(tapname);
-        bool have_prev = (prev_it != m_last_oper_up.end());
+        auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
 
-        if (have_prev && prev_it->second == link_up)
+        // Compare with what SONiC was last told, which link events update too:
+        // a stale event may have been applied since an earlier resync
+        sai_attribute_t attr;
+        attr.id = SAI_PORT_ATTR_OPER_STATUS;
+
+        if (get(SAI_OBJECT_TYPE_PORT, info->m_portId, 1, &attr) == SAI_STATUS_SUCCESS &&
+            static_cast<sai_port_oper_status_t>(attr.value.s32) == state)
         {
             continue;
         }
-
-        m_last_oper_up[tapname] = link_up;
-
-        auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
 
         send_port_oper_status_notification(info->m_portId, state, false);
 
@@ -597,14 +598,13 @@ void SwitchVpp::vppProcessEvents ()
         SWSS_LOG_DEBUG("Checking for any VS events status %d", ret);
         if (ret < 0)
         {
-            SWSS_LOG_WARN("vpp_sync_for_events failed (%d); event socket reconnect attempted", ret);
-            // The read failure triggers an event-socket reconnect inside
+            // The failure triggers an event-socket reconnect inside
             // vpp_sync_for_events. VPP only re-delivers *future* edges after
-            // re-subscribe, so schedule a one-shot level resync to recover any
-            // edge missed during the outage (e.g. reboot/config-reload) - the
-            // exact case resyncPortOperStatus was added for. This is event-driven
-            // (not a periodic poll), so it does not exhaust the VPP client clib heap.
-            m_operResyncDue.store(true, std::memory_order_relaxed);
+            // re-subscribe, so a successful reconnect also queues a
+            // VPP_INTF_LINK_RESYNC event, behind the link events read before the
+            // failure: syncOnPlatformEvent applies those first, then re-reads the
+            // link state of every port (resyncPortOperStatus).
+            SWSS_LOG_WARN("vpp_sync_for_events failed (%d); event socket reconnect attempted", ret);
         }
         while ((evp = vpp_ev_dequeue())) {
             if (evp->type == VPP_INTF_LINK_STATUS && evp->data.intf_status.link_up) {
@@ -624,8 +624,8 @@ void SwitchVpp::vppProcessEvents ()
         // No periodic resync here. resyncPortOperStatus() issues per-interface
         // SW_INTERFACE_DUMPs; doing that every cycle exhausted VPP's client clib
         // heap (os_panic in clib_mem_heap_realloc_aligned). Resync is instead
-        // requested only at startup and after a reconnect (above), and executed
-        // under m_apimutex via serviceDeferredOperStatusResync().
+        // requested only at startup (serviceDeferredOperStatusResync()) and after
+        // a reconnect (VPP_INTF_LINK_RESYNC), and runs under m_apimutex.
     }
 }
 
@@ -661,6 +661,14 @@ void SwitchVpp::syncOnPlatformEvent(
         vpp_bfd_state_notif_t bfd_notif = ev.data.bfd_notif;
         asyncBfdStateUpdate(&bfd_notif);
     }
+    else if (ev.type == VPP_INTF_LINK_RESYNC)
+    {
+        // Link events were lost while the event socket was down. The ones read
+        // before that were queued ahead of this request, so they are applied by
+        // now and the resync gets the last word.
+        SWSS_LOG_NOTICE("Received link state resync request after an event socket reconnect");
+        resyncPortOperStatus();
+    }
 }
 
 void SwitchVpp::serviceDeferredOperStatusResync()
@@ -670,10 +678,11 @@ void SwitchVpp::serviceDeferredOperStatusResync()
     // Runs under m_apimutex: on the command thread (from the create/set/remove
     // entry points), or on the vslib event queue thread, which applies link and
     // BFD state events (their notifications call set()).
-    // resyncPortOperStatus() issues VPP binary-API SW_INTERFACE_DUMPs; the event
-    // thread only *requests* a resync (m_operResyncDue) on startup and after an
-    // event-socket reconnect - never on a periodic timer - so this performs at
-    // most a handful of level reads over the switch lifetime, avoiding the VPP
+    // It services the one-shot resync the event thread requests when it starts;
+    // after a reconnect the request travels as a VPP_INTF_LINK_RESYNC event
+    // instead, so that it follows the link events queued before it.
+    // resyncPortOperStatus() issues VPP binary-API SW_INTERFACE_DUMPs, so it only
+    // runs on these requests - never on a periodic timer - avoiding the VPP
     // client clib-heap exhaustion that a continuous poll caused.
     if (m_operResyncDue.exchange(false, std::memory_order_relaxed))
     {
