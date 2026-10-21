@@ -9,6 +9,7 @@ extern "C" {
 typedef struct nexthop_grp_member_ {
     sai_ip_address_t addr;
     sai_object_id_t rif_oid;
+    sai_object_id_t tunnel_nh_oid;
     uint32_t weight;
     uint32_t seq_id;
     uint32_t sw_if_index;

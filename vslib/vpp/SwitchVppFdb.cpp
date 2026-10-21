@@ -957,8 +957,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
             set_l2_interface_vlan_tag_rewrite(hw_ifname, tag1, tag2, push_dot1q, vtr_op);
         }
 
-        //Set interface state up
-        interface_set_state(hw_ifname, true);
+        // Set interface state up, or once the parent is up if it isn't yet
+        vpp_set_sub_interface_state(hw_ifname, true);
 
         /* Enable L2 classify-based punt on the sub-interface so control
          * protocols (LLDP, LACP, ARP, DHCP) are punted/copied to the
@@ -1185,6 +1185,7 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         delete_sub_interface(parent_hwif, vlan_id);
 
         m_ifaceRegistry.remove(hw_ifname);
+        m_sub_if_admin_up_pending.erase(hw_ifname);
     }
     else {
 
@@ -1194,6 +1195,20 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
 
     /* hw_ifname now names the actual BD member (parent for untagged,
      * <parent>.<vid> for tagged). */
+
+    /*
+     * VPP clears the parent hardware interface's promiscuous flag as soon as
+     * its last L2 (sub-)interface leaves a bridge domain.
+     *
+     * Only PORT is restored here. A LAG is not affected: VPP's
+     * bond_set_l2_mode_function() handles the bond members, and
+     * vpp_create_lag_member()/vpp_set_lag_member_egress() already re-apply
+     * promiscuous on each member after enslaving.
+     */
+    if (objectTypeQuery(port_id) == SAI_OBJECT_TYPE_PORT)
+    {
+        interface_set_promiscuous(hwif_str.c_str(), true);
+    }
 
     //Check if the bridge has zero ports left, if so remove the bridge as well
     uint32_t member_count = 0;
@@ -1516,6 +1531,39 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 	    return SAI_STATUS_FAILURE;
     }
 
+    auto attr_vrf = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID,
+                                                attr_count, attr_list);
+    if (attr_vrf == NULL)
+    {
+        SWSS_LOG_ERROR("attr SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID was not passed");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_attribute_t default_vrf_attr;
+    default_vrf_attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+    if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &default_vrf_attr) != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get default virtual router for VLAN %u", vlan_id);
+        return SAI_STATUS_FAILURE;
+    }
+
+    uint32_t vrf_id = 0;
+    if (attr_vrf->value.oid != default_vrf_attr.value.oid)
+    {
+        std::string linux_ifname = "Vlan" + std::to_string(vlan_id);
+        if (vpp_get_vrf_id(linux_ifname.c_str(), &vrf_id) != 0 || vrf_id == 0)
+        {
+            SWSS_LOG_ERROR("Failed to resolve non-default VRF for %s", linux_ifname.c_str());
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    if (vpp_add_ip_vrf(attr_vrf->value.oid, vrf_id) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to create IPv4 VRF table %u for VLAN %u", vrf_id, vlan_id);
+        return SAI_STATUS_FAILURE;
+    }
+
     sai_mac_t mac_addr;
 
     auto attr_mac_addr = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS, attr_count, attr_list);
@@ -1552,7 +1600,11 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     }
 
     //Create BVI interface
-    create_bvi_interface(mac_addr,vlan_id);
+    if (create_bvi_interface(mac_addr, vlan_id) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to create BVI for VLAN %u", vlan_id);
+        return SAI_STATUS_FAILURE;
+    }
 
     // Get new list of physical interfaces from VS
     refresh_interfaces_list();
@@ -1561,6 +1613,14 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     const char *hw_ifname;
     snprintf(hw_bviifname, sizeof(hw_bviifname), "bvi%u",vlan_id);
     hw_ifname = hw_bviifname;
+
+    if (vrf_id != 0 && set_interface_vrf(hw_ifname, 0, vrf_id, false) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to bind %s to IPv4 VRF table %u", hw_ifname, vrf_id);
+        delete_bvi_interface(hw_ifname);
+        refresh_interfaces_list();
+        return SAI_STATUS_FAILURE;
+    }
 
     //Create bridge and set the l2 port as BVI
     set_sw_interface_l2_bridge(hw_ifname,vlan_id, true, VPP_API_PORT_TYPE_BVI);
