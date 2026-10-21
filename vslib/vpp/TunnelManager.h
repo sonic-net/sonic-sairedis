@@ -264,6 +264,9 @@ namespace saivs
             TunnelVPPData tunnel_data;
             std::array<uint8_t, 6> dst_mac;
             bool has_decap = false;
+            // The next hop names its VNI, so a route in any VRF uses this
+            // tunnel; tunnel_data.ip_vrf only says where its decap BVI routes.
+            bool any_vrf = false;
         };
         // One next hop can select a different mapped VNI for each route VRF.
         std::unordered_map<sai_object_id_t, std::vector<VxlanEncapEntry>> m_tunnel_encap_nexthop_map;
