@@ -61,7 +61,7 @@ extern "C" int __wrap_get_interface_state(const char *name, vpp_interface_state_
 extern "C" int __wrap_get_interface_mpls_enabled(const char *name, bool *enabled)
 {
     SWSS_LOG_ENTER();
-    *enabled = vppMock().mplsEnabled[name];
+    *enabled = vppMock().mplsReferences[name] != 0;
     return vppMock().mplsQueryResult;
 }
 
@@ -91,7 +91,15 @@ extern "C" int __wrap_sw_interface_set_mpls_enable(const char *name, bool enable
     vppMock().mplsResult = 0;
     if (ret == 0)
     {
-        vppMock().mplsEnabled[name] = enabled;
+        // VPP counts enable references; this API is not a boolean setter.
+        if (enabled)
+        {
+            ++vppMock().mplsReferences[name];
+        }
+        else
+        {
+            --vppMock().mplsReferences[name];
+        }
     }
     return ret;
 }

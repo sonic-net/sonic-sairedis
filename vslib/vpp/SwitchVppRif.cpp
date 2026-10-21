@@ -2131,7 +2131,8 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         state.mtu_changed = !state.interface_created;
     }
 
-    if (attr_type_mpls != NULL)
+    // VPP counts MPLS enable references; matching state must not change that count.
+    if (attr_type_mpls != NULL && attr_type_mpls->value.booldata != state.previous_mpls)
     {
         std::string mpls_hwif_name = m_ifaceRegistry.resolveHwIfName(obj_id, vlan_id);
 

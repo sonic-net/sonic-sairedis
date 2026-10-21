@@ -53,7 +53,7 @@ struct VppMock
     std::vector<VppCall> calls;
     std::map<std::string, bool> adminUp;
     std::map<std::string, std::array<uint32_t, 4>> mtus;
-    std::map<std::string, bool> mplsEnabled;
+    std::map<std::string, unsigned int> mplsReferences;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;

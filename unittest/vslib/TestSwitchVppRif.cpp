@@ -180,13 +180,13 @@ TEST_F(SwitchVppRifTest, failedPersistentSnapshotRestoresAllSettingsBeforeRetry)
         const std::string name = backing == port ? "port0" : "BondEthernet2";
         const bool previousEnabled = backing == port;
         vppMock().mtus[name] = previousMtu;
-        vppMock().mplsEnabled[name] = previousEnabled;
+        vppMock().mplsReferences[name] = previousEnabled;
         vppMock().adminUp[name] = previousEnabled;
         vppMock().statsResult = -1;
         auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
         EXPECT_EQ(SAI_STATUS_FAILURE, create(rif, settingsAttributes(backing, !previousEnabled)));
         EXPECT_EQ(previousMtu, vppMock().mtus[name]);
-        EXPECT_EQ(previousEnabled, vppMock().mplsEnabled[name]);
+        EXPECT_EQ(previousEnabled, vppMock().mplsReferences[name]);
         EXPECT_EQ(previousEnabled, vppMock().isAdminUp(name));
         EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
         EXPECT_EQ(0u, sw->m_rifStatsBaseMap.count(rif));
@@ -194,7 +194,7 @@ TEST_F(SwitchVppRifTest, failedPersistentSnapshotRestoresAllSettingsBeforeRetry)
         vppMock().statsResult = 0;
         ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, backing)));
         EXPECT_EQ(previousMtu, vppMock().mtus[name]);
-        EXPECT_EQ(previousEnabled, vppMock().mplsEnabled[name]);
+        EXPECT_EQ(previousEnabled, vppMock().mplsReferences[name]);
         EXPECT_EQ(previousEnabled, vppMock().isAdminUp(name));
         ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
     }
@@ -207,17 +207,48 @@ TEST_F(SwitchVppRifTest, settingsQueryAndSetterErrorsFailCreateWithoutChangingPr
                         &vppMock().mtuResult, &vppMock().mplsResult, &vppMock().adminResult})
     {
         vppMock().mtus["port0"] = previousMtu;
-        vppMock().mplsEnabled["port0"] = false;
+        vppMock().mplsReferences["port0"] = 0;
         vppMock().adminUp["port0"] = false;
         *failure = -1;
         auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
         EXPECT_EQ(SAI_STATUS_FAILURE, create(rif, settingsAttributes(port, true)));
         EXPECT_EQ(previousMtu, vppMock().mtus["port0"]);
-        EXPECT_FALSE(vppMock().mplsEnabled["port0"]);
+        EXPECT_EQ(0u, vppMock().mplsReferences["port0"]);
         EXPECT_FALSE(vppMock().isAdminUp("port0"));
         EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
         *failure = 0;
     }
+}
+
+TEST_F(SwitchVppRifTest, matchingMplsStatePreservesReferencesOnFailureAndSuccess)
+{
+    for (auto backing : {port, lag})
+    {
+        const std::string name = backing == port ? "port0" : "BondEthernet2";
+        for (unsigned int references : {0u, 1u, 2u})
+        {
+            vppMock().mplsReferences[name] = references;
+            auto attrs = settingsAttributes(backing, references != 0);
+            auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+            vppMock().statsResult = -1;
+            EXPECT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
+            EXPECT_EQ(references, vppMock().mplsReferences[name]);
+
+            vppMock().statsResult = 0;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+            EXPECT_EQ(references, vppMock().mplsReferences[name]);
+            ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+        }
+    }
+
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, port);
+    sai_attribute_t mpls{};
+    mpls.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_MPLS_STATE;
+    mpls.value.booldata = false;
+    attrs.push_back(mpls);
+    auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_EQ(0u, vppMock().mplsReferences["port0.10"]);
 }
 
 TEST_F(SwitchVppRifTest, failedParentCreateDoesNotConsumeDeferredChildAdmin)
