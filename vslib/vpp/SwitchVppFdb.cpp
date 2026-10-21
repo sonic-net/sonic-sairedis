@@ -1539,31 +1539,6 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
         return SAI_STATUS_FAILURE;
     }
 
-    sai_attribute_t default_vrf_attr;
-    default_vrf_attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
-    if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &default_vrf_attr) != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("Failed to get default virtual router for VLAN %u", vlan_id);
-        return SAI_STATUS_FAILURE;
-    }
-
-    uint32_t vrf_id = 0;
-    if (attr_vrf->value.oid != default_vrf_attr.value.oid)
-    {
-        std::string linux_ifname = "Vlan" + std::to_string(vlan_id);
-        if (vpp_get_vrf_id(linux_ifname.c_str(), &vrf_id) != 0 || vrf_id == 0)
-        {
-            SWSS_LOG_ERROR("Failed to resolve non-default VRF for %s", linux_ifname.c_str());
-            return SAI_STATUS_FAILURE;
-        }
-    }
-
-    if (vpp_add_ip_vrf(attr_vrf->value.oid, vrf_id) != 0)
-    {
-        SWSS_LOG_ERROR("Failed to create IPv4 VRF table %u for VLAN %u", vrf_id, vlan_id);
-        return SAI_STATUS_FAILURE;
-    }
-
     sai_mac_t mac_addr;
 
     auto attr_mac_addr = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS, attr_count, attr_list);
@@ -1614,9 +1589,15 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     snprintf(hw_bviifname, sizeof(hw_bviifname), "bvi%u",vlan_id);
     hw_ifname = hw_bviifname;
 
-    if (vrf_id != 0 && set_interface_vrf(hw_ifname, 0, vrf_id, false) != 0)
+    // Put the BVI in its virtual router's table, in both address families,
+    // while it has no address yet; the SVI addresses arrive later, from the
+    // IP2ME routes.
+    std::string linux_ifname = "Vlan" + std::to_string(vlan_id);
+
+    if (vpp_router_interface_set_vrf(attr_vrf->value.oid, hw_ifname, 0, linux_ifname.c_str()) != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to bind %s to IPv4 VRF table %u", hw_ifname, vrf_id);
+        SWSS_LOG_ERROR("Failed to bind %s to the table of VRF(%s)", hw_ifname,
+                       sai_serialize_object_id(attr_vrf->value.oid).c_str());
         delete_bvi_interface(hw_ifname);
         refresh_interfaces_list();
         return SAI_STATUS_FAILURE;

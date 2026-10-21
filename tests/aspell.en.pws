@@ -464,3 +464,12 @@ jitter
 jittered
 VPP
 ARGV
+BVI
+VNI
+VRF
+saivpp
+EVPN
+SVI
+VTEP
+VNIs
+decapsulate
