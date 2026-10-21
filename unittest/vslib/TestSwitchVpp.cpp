@@ -428,6 +428,97 @@ TEST(SwitchVpp, fdbResyncRetriesFailedL2fibDump)
     EXPECT_NE(std::string::npos, ntf->getSerializedNotification().find("02:11:22:33:44:55"));
 }
 
+TEST(SwitchVpp, fdbResyncSkipsL2fibRowsFromAnEarlierBd)
+{
+    vppMock().reset();
+
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap();
+    sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+    scc->insert(sc);
+
+    auto ridmgr = std::make_shared<RealObjectIdManager>(0, scc);
+    auto swid = ridmgr->allocateNewSwitchObjectId("");
+
+    SwitchVpp sw(swid, ridmgr, sc);
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+    attr.value.ptr = reinterpret_cast<void *>(0x1);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw.create_internal(SAI_OBJECT_TYPE_SWITCH,
+                sai_serialize_object_id(swid), swid, 1, &attr));
+
+    // A port that has just moved from VLAN 100 to VLAN 200
+    auto port = ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, swid);
+
+    ASSERT_NE(nullptr, sw.m_ifaceRegistry.addPhysicalPort("bobm1", "Ethernet4", port));
+    ASSERT_TRUE(sw.m_ifaceRegistry.bindSwIfIndex("bobm1", 5));
+    ASSERT_TRUE(sw.m_ifaceRegistry.setBdId("bobm1", 200));
+
+    // A MAC learned on it in VLAN 200, whose DELETE VPP sent while the event socket was down
+    SwitchVpp::VppFdbKey key = {{0x02, 0x11, 0x22, 0x33, 0x44, 0x55}, 200};
+
+    FdbInfo fi;
+    fi.m_fdbEntry.switch_id = swid;
+    fi.m_fdbEntry.bv_id = ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN, swid);
+    memcpy(fi.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+    fi.setVlanId(static_cast<sai_vlan_id_t>(key.bd_id));
+    fi.setPortId(port);
+    fi.setBridgePortId(ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, swid));
+
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = fi.getBridgePortId();
+
+    auto fdbId = sai_serialize_fdb_entry(fi.getFdbEntry());
+    auto &fdbs = sw.m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw.create_internal(SAI_OBJECT_TYPE_FDB_ENTRY, fdbId, swid, 2, attrs));
+    sw.m_fdb_info_set.insert(fi);
+    sw.m_vpp_fdb_entries[key] = 5;
+
+    // VPP's only row for the MAC is from VLAN 100: flushed when the port left
+    // that VLAN, and not yet deleted by VPP's aging scan
+    vpp_l2fib_entry_t row = {};
+    memcpy(row.mac, key.mac, sizeof(row.mac));
+    row.bd_id = 100;
+    row.sw_if_index = 5;
+
+    vppMock().l2fib = {row};
+
+    // The event socket reconnected: that row does not keep the MAC in VLAN 200
+    sw.m_mac_event_queue.push({{0}, ~0u, VPP_MAC_ACTION_RESYNC});
+    sw.processFdbEntriesForAging();
+
+    EXPECT_EQ(1u, vppMock().l2fibDumpCalls);
+    EXPECT_TRUE(sw.m_mac_event_queue.empty());
+    EXPECT_TRUE(sw.m_vpp_fdb_entries.empty());
+    EXPECT_TRUE(sw.m_fdb_info_set.empty());
+    EXPECT_TRUE(fdbs.empty());
+
+    ASSERT_EQ(1u, sc->m_eventQueue->size());
+
+    auto event = sc->m_eventQueue->dequeue();
+
+    ASSERT_EQ(EVENT_TYPE_NOTIFICATION, event->getType());
+
+    auto ntf = std::dynamic_pointer_cast<EventPayloadNotification>(event->getPayload())->getNotification();
+
+    EXPECT_EQ(SAI_SWITCH_NOTIFICATION_TYPE_FDB_EVENT, ntf->getNotificationType());
+    EXPECT_NE(std::string::npos, ntf->getSerializedNotification().find("SAI_FDB_EVENT_AGED"));
+    EXPECT_NE(std::string::npos, ntf->getSerializedNotification().find("02:11:22:33:44:55"));
+}
+
 TEST(SwitchVpp, bfdStateEventAppliedOnEventQueueThread)
 {
     auto sc = std::make_shared<SwitchConfig>(0, "");

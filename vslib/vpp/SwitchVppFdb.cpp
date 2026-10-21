@@ -3274,9 +3274,14 @@ bool SwitchVpp::resyncFdbWithVpp()
         if (e.is_static || !rec || !rec->hasBdId())
             continue;
 
+        // A row from a BD the interface has left: VPP flushed it then, and
+        // keeps it only until its aging scan deletes it
+        if (e.bd_id != rec->getBdId())
+            continue;
+
         VppFdbKey key;
         memcpy(key.mac, e.mac, sizeof(key.mac));
-        key.bd_id = rec->getBdId();
+        key.bd_id = e.bd_id;
         vpp_macs[key] = e.sw_if_index;
     }
 

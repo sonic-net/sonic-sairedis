@@ -1077,11 +1077,19 @@ static void set_reply_sw_if_index (vl_api_interface_index_t sw_if_index)
     vam->sw_if_index = sw_if_index;
 }
 
+/*
+ * Context of the last control ping reply read. Every read holds vpp_mutex, so
+ * a request that tags its ping can tell the reply to it from one left over
+ * from an earlier request that timed out (see vpp_l2fib_dump()).
+ */
+static uint32_t last_ping_reply_context;
+
 static void
 vl_api_control_ping_reply_t_handler (vl_api_control_ping_reply_t *mp)
 {
   vat_main_t *vam = cur_vam();
 
+  last_ping_reply_context = mp->context;
   set_reply_status((int)ntohl ((uint32_t)mp->retval));
 
   if (vam->socket_client_main)
@@ -7562,9 +7570,21 @@ vpp_l2fib_dump (uint32_t bd_id, vpp_l2fib_entry_cb_fn cb, void *cb_ctx)
     __plugin_msg_base = memclnt_msg_id_base;
 
     PING (NULL, mp_ping);
+    mp_ping->context = context;
     S (mp_ping);
 
     WR (ret);
+
+    /*
+     * A reply left over from an earlier request that timed out, such as the
+     * ping of a previous dump, also ends WR(), possibly before this dump has
+     * arrived. VPP answers in order, so only the reply to this dump's own ping
+     * shows that every entry has been read.
+     */
+    if (ret == 0 && last_ping_reply_context != context) {
+        SAIVPP_ERROR("bd %u: ended by an earlier request's reply, dump incomplete", bd_id);
+        ret = -EAGAIN;
+    }
 
     release_index(context);
 
