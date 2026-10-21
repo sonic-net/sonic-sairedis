@@ -344,63 +344,72 @@ TEST_F(SwitchVppPbhTest, createHashTranslatesEveryFineGrainedField)
 
     EXPECT_EQ(vppMock().nextPbhProfileIndex - 1, sw->m_pbh.m_profile_map.at(hash));
     EXPECT_TRUE(inStore(SAI_OBJECT_TYPE_HASH, hash));
-}
 
-TEST_F(SwitchVppPbhTest, createHashLeavesTheGlobalHashAlone)
-{
-    auto hash = allocate(SAI_OBJECT_TYPE_HASH);
+    // A hash carrying the native field list is the switch-global one, and is
+    // stored without reaching PBH at all.
+    auto global = allocate(SAI_OBJECT_TYPE_HASH);
     int32_t native[1] = { SAI_NATIVE_HASH_FIELD_SRC_IP };
-    sai_attribute_t attr = {};
+    sai_attribute_t global_attr = {};
 
-    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
-    attr.value.s32list.count = 1;
-    attr.value.s32list.list = native;
+    global_attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
+    global_attr.value.s32list.count = 1;
+    global_attr.value.s32list.list = native;
 
-    ASSERT_EQ(SAI_STATUS_SUCCESS, create(SAI_OBJECT_TYPE_HASH, hash, { attr }));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(SAI_OBJECT_TYPE_HASH, global, { global_attr }));
 
-    EXPECT_TRUE(vppMock().pbhProfileCalls.empty());
-    EXPECT_EQ(0u, sw->m_pbh.m_profile_map.count(hash));
-    EXPECT_TRUE(inStore(SAI_OBJECT_TYPE_HASH, hash));
+    EXPECT_EQ(1u, vppMock().pbhProfileCalls.size());
+    EXPECT_EQ(0u, sw->m_pbh.m_profile_map.count(global));
+    EXPECT_TRUE(inStore(SAI_OBJECT_TYPE_HASH, global));
 }
 
-TEST_F(SwitchVppPbhTest, createHashRejectsAnOuterField)
+TEST_F(SwitchVppPbhTest, createHashRejectsWhatItCannotProgram)
 {
-    auto hash = allocate(SAI_OBJECT_TYPE_HASH);
-    auto field = makeField(SAI_NATIVE_HASH_FIELD_SRC_IP, 1);
+    // An outer field has no PBH equivalent.
+    auto outer = allocate(SAI_OBJECT_TYPE_HASH);
 
-    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, createHash(hash, { field }));
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, createHash(outer,
+            { makeField(SAI_NATIVE_HASH_FIELD_SRC_IP, 1) }));
+
+    // A field named but never created would hash on a subset of what was asked.
+    auto incomplete = allocate(SAI_OBJECT_TYPE_HASH);
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, createHash(incomplete,
+            { makeField(SAI_NATIVE_HASH_FIELD_INNER_L4_DST_PORT, 1),
+              allocate(SAI_OBJECT_TYPE_FINE_GRAINED_HASH_FIELD) }));
+
+    // Neither got as far as VPP.
     EXPECT_TRUE(vppMock().pbhProfileCalls.empty());
-    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_HASH, hash));
-}
+    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_HASH, outer));
+    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_HASH, incomplete));
 
-TEST_F(SwitchVppPbhTest, createHashRejectsAFieldThatDoesNotExist)
-{
-    auto hash = allocate(SAI_OBJECT_TYPE_HASH);
-    auto missing = allocate(SAI_OBJECT_TYPE_FINE_GRAINED_HASH_FIELD);
-
-    EXPECT_EQ(SAI_STATUS_FAILURE, createHash(hash,
-            { makeField(SAI_NATIVE_HASH_FIELD_INNER_L4_DST_PORT, 1), missing }));
-    EXPECT_TRUE(vppMock().pbhProfileCalls.empty());
-    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_HASH, hash));
-}
-
-TEST_F(SwitchVppPbhTest, createHashRollsBackWhenVppRefuses)
-{
-    auto hash = allocate(SAI_OBJECT_TYPE_HASH);
+    // A profile VPP refuses leaves no hash behind either.
+    auto refused = allocate(SAI_OBJECT_TYPE_HASH);
 
     vppMock().pbhProfileResult = -1;
 
-    EXPECT_EQ(SAI_STATUS_FAILURE, createHash(hash,
+    EXPECT_EQ(SAI_STATUS_FAILURE, createHash(refused,
             { makeField(SAI_NATIVE_HASH_FIELD_INNER_DST_IPV4, 1) }));
     EXPECT_EQ(1u, vppMock().pbhProfileCalls.size());
-    EXPECT_EQ(0u, sw->m_pbh.m_profile_map.count(hash));
-    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_HASH, hash));
+    EXPECT_EQ(0u, sw->m_pbh.m_profile_map.count(refused));
+    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_HASH, refused));
 }
 
 TEST_F(SwitchVppPbhTest, setHashReplacesTheProfileInPlace)
 {
     auto hash = makeHash({ makeField(SAI_NATIVE_HASH_FIELD_INNER_SRC_IPV4, 1) });
+    auto sid = sai_serialize_object_id(hash);
     uint32_t index = sw->m_pbh.m_profile_map.at(hash);
+
+    // Nothing but the field list changes what VPP hashes on.
+    int32_t native[1] = { SAI_NATIVE_HASH_FIELD_SRC_IP };
+    sai_attribute_t other = {};
+
+    other.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
+    other.value.s32list.count = 1;
+    other.value.s32list.list = native;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_HASH, sid, &other));
+    EXPECT_EQ(1u, vppMock().pbhProfileCalls.size());
 
     sai_object_id_t fields[2] = {
         makeField(SAI_NATIVE_HASH_FIELD_INNER_SRC_IPV6, 1),
@@ -412,8 +421,7 @@ TEST_F(SwitchVppPbhTest, setHashReplacesTheProfileInPlace)
     attr.value.objlist.count = 2;
     attr.value.objlist.list = fields;
 
-    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_HASH,
-            sai_serialize_object_id(hash), &attr));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_HASH, sid, &attr));
 
     ASSERT_EQ(2u, vppMock().pbhProfileCalls.size());
 
@@ -426,71 +434,43 @@ TEST_F(SwitchVppPbhTest, setHashReplacesTheProfileInPlace)
     EXPECT_EQ((uint8_t) VPP_PBH_HF_INNER_SRC_IPV6, call.fields[0].field);
     EXPECT_EQ((uint8_t) VPP_PBH_HF_INNER_DST_IPV6, call.fields[1].field);
     EXPECT_EQ(index, sw->m_pbh.m_profile_map.at(hash));
-}
 
-TEST_F(SwitchVppPbhTest, setHashIgnoresAttributesThatDoNotChangeTheHash)
-{
-    auto hash = makeHash({ makeField(SAI_NATIVE_HASH_FIELD_INNER_SRC_IPV4, 1) });
+    // A refused update leaves the profile where the rules expect it.
+    sai_object_id_t replacement[1] = { makeField(SAI_NATIVE_HASH_FIELD_INNER_DST_IPV4, 1) };
 
-    int32_t native[1] = { SAI_NATIVE_HASH_FIELD_SRC_IP };
-    sai_attribute_t attr = {};
-
-    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
-    attr.value.s32list.count = 1;
-    attr.value.s32list.list = native;
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_HASH,
-            sai_serialize_object_id(hash), &attr));
-
-    EXPECT_EQ(1u, vppMock().pbhProfileCalls.size());
-}
-
-TEST_F(SwitchVppPbhTest, setHashKeepsTheOldProfileWhenVppRefuses)
-{
-    auto hash = makeHash({ makeField(SAI_NATIVE_HASH_FIELD_INNER_SRC_IPV4, 1) });
-    uint32_t index = sw->m_pbh.m_profile_map.at(hash);
-
-    sai_object_id_t fields[1] = { makeField(SAI_NATIVE_HASH_FIELD_INNER_DST_IPV4, 1) };
-    sai_attribute_t attr = {};
-
-    attr.id = SAI_HASH_ATTR_FINE_GRAINED_HASH_FIELD_LIST;
     attr.value.objlist.count = 1;
-    attr.value.objlist.list = fields;
+    attr.value.objlist.list = replacement;
 
     vppMock().pbhProfileResult = -1;
 
-    EXPECT_EQ(SAI_STATUS_FAILURE, sw->set(SAI_OBJECT_TYPE_HASH,
-            sai_serialize_object_id(hash), &attr));
+    EXPECT_EQ(SAI_STATUS_FAILURE, sw->set(SAI_OBJECT_TYPE_HASH, sid, &attr));
     EXPECT_EQ(index, sw->m_pbh.m_profile_map.at(hash));
 }
 
 TEST_F(SwitchVppPbhTest, removeHashDeletesTheProfile)
 {
     auto hash = makeHash({ makeField(SAI_NATIVE_HASH_FIELD_INNER_SRC_IPV4, 1) });
+    auto sid = sai_serialize_object_id(hash);
     uint32_t index = sw->m_pbh.m_profile_map.at(hash);
 
-    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->remove(SAI_OBJECT_TYPE_HASH,
-            sai_serialize_object_id(hash)));
+    // A refused delete leaves the profile live in VPP, so the hash has to stay
+    // reachable for the removal to be retried.
+    vppMock().pbhProfileResult = -1;
 
-    ASSERT_EQ(2u, vppMock().pbhProfileCalls.size());
-    EXPECT_FALSE(vppMock().pbhProfileCalls[1].is_add);
-    EXPECT_EQ(index, vppMock().pbhProfileCalls[1].profile_index);
+    EXPECT_EQ(SAI_STATUS_FAILURE, sw->remove(SAI_OBJECT_TYPE_HASH, sid));
+    EXPECT_EQ(index, sw->m_pbh.m_profile_map.at(hash));
+    EXPECT_TRUE(inStore(SAI_OBJECT_TYPE_HASH, hash));
+
+    vppMock().pbhProfileResult = 0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->remove(SAI_OBJECT_TYPE_HASH, sid));
+
+    ASSERT_EQ(3u, vppMock().pbhProfileCalls.size());
+    EXPECT_FALSE(vppMock().pbhProfileCalls[2].is_add);
+    EXPECT_EQ(index, vppMock().pbhProfileCalls[2].profile_index);
     EXPECT_EQ(0u, vppMock().pbhProfiles.count(index));
     EXPECT_EQ(0u, sw->m_pbh.m_profile_map.count(hash));
     EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_HASH, hash));
-}
-
-TEST_F(SwitchVppPbhTest, removeHashKeepsTheProfileWhenVppRefuses)
-{
-    auto hash = makeHash({ makeField(SAI_NATIVE_HASH_FIELD_INNER_SRC_IPV4, 1) });
-    uint32_t index = sw->m_pbh.m_profile_map.at(hash);
-
-    vppMock().pbhProfileResult = -1;
-
-    EXPECT_EQ(SAI_STATUS_FAILURE, sw->remove(SAI_OBJECT_TYPE_HASH,
-            sai_serialize_object_id(hash)));
-    EXPECT_EQ(index, sw->m_pbh.m_profile_map.at(hash));
-    EXPECT_TRUE(inStore(SAI_OBJECT_TYPE_HASH, hash));
 }
 
 //
@@ -499,6 +479,17 @@ TEST_F(SwitchVppPbhTest, removeHashKeepsTheProfileWhenVppRefuses)
 
 TEST_F(SwitchVppPbhTest, tableCreateProgramsAnEmptyTable)
 {
+    // INNER_ETHER_TYPE alone is a P4Orch table, not a PBH one. Stored rather
+    // than created, because an ordinary ACL table would reach the ACL plugin.
+    auto ordinary = allocate(SAI_OBJECT_TYPE_ACL_TABLE);
+    auto ordinary_attr = boolAttr(SAI_ACL_TABLE_ATTR_FIELD_INNER_ETHER_TYPE, true);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->create_internal(SAI_OBJECT_TYPE_ACL_TABLE,
+            sai_serialize_object_id(ordinary), switchId, 1, &ordinary_attr));
+
+    EXPECT_FALSE(sw->m_pbh.isPbhTable(ordinary));
+    EXPECT_TRUE(vppMock().pbhTableCalls.empty());
+
     auto tbl = makePbhTable();
 
     ASSERT_EQ(1u, vppMock().pbhTableCalls.size());
@@ -512,54 +503,22 @@ TEST_F(SwitchVppPbhTest, tableCreateProgramsAnEmptyTable)
 
     EXPECT_EQ(vppMock().nextPbhTableIndex - 1, sw->m_pbh.m_table_index_map.at(tbl));
     EXPECT_TRUE(sw->m_pbh.isPbhTable(tbl));
-}
 
-TEST_F(SwitchVppPbhTest, anOrdinaryAclTableIsNotPbh)
-{
-    auto tbl = allocate(SAI_OBJECT_TYPE_ACL_TABLE);
-
-    // INNER_ETHER_TYPE alone is a P4Orch table, not a PBH one. Stored rather
-    // than created, because an ordinary ACL table would reach the ACL plugin.
-    auto attr = boolAttr(SAI_ACL_TABLE_ATTR_FIELD_INNER_ETHER_TYPE, true);
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->create_internal(SAI_OBJECT_TYPE_ACL_TABLE,
-            sai_serialize_object_id(tbl), switchId, 1, &attr));
-
-    EXPECT_FALSE(sw->m_pbh.isPbhTable(tbl));
-    EXPECT_TRUE(vppMock().pbhTableCalls.empty());
-}
-
-TEST_F(SwitchVppPbhTest, tableCreateFailureLeavesNothingBehind)
-{
-    auto tbl = allocate(SAI_OBJECT_TYPE_ACL_TABLE);
+    // A refused create leaves neither an index nor a stored object.
+    auto refused = allocate(SAI_OBJECT_TYPE_ACL_TABLE);
 
     vppMock().pbhTableResult = -1;
 
-    EXPECT_EQ(SAI_STATUS_FAILURE, create(SAI_OBJECT_TYPE_ACL_TABLE, tbl, {
+    EXPECT_EQ(SAI_STATUS_FAILURE, create(SAI_OBJECT_TYPE_ACL_TABLE, refused, {
             boolAttr(SAI_ACL_TABLE_ATTR_FIELD_GRE_KEY, true),
             boolAttr(SAI_ACL_TABLE_ATTR_FIELD_INNER_ETHER_TYPE, true) }));
 
-    EXPECT_EQ(1u, vppMock().pbhTableCalls.size());
-    EXPECT_EQ(0u, sw->m_pbh.m_table_index_map.count(tbl));
-    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_ACL_TABLE, tbl));
+    EXPECT_EQ(2u, vppMock().pbhTableCalls.size());
+    EXPECT_EQ(0u, sw->m_pbh.m_table_index_map.count(refused));
+    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_ACL_TABLE, refused));
 }
 
 TEST_F(SwitchVppPbhTest, tableRemoveDeletesTheTable)
-{
-    auto tbl = makePbhTable();
-    uint32_t index = sw->m_pbh.m_table_index_map.at(tbl);
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->remove(SAI_OBJECT_TYPE_ACL_TABLE,
-            sai_serialize_object_id(tbl)));
-
-    ASSERT_EQ(1u, vppMock().pbhTableDels.size());
-    EXPECT_EQ(index, vppMock().pbhTableDels[0]);
-    EXPECT_EQ(0u, vppMock().pbhTables.count(index));
-    EXPECT_EQ(0u, sw->m_pbh.m_table_index_map.count(tbl));
-    EXPECT_EQ(0u, sw->m_pbh.m_tables.count(tbl));
-}
-
-TEST_F(SwitchVppPbhTest, tableRemoveKeepsTheIndexWhenVppRefuses)
 {
     auto tbl = makePbhTable();
     uint32_t index = sw->m_pbh.m_table_index_map.at(tbl);
@@ -572,6 +531,18 @@ TEST_F(SwitchVppPbhTest, tableRemoveKeepsTheIndexWhenVppRefuses)
     // The table is still live in VPP, so the handles needed to retry are kept.
     EXPECT_EQ(index, sw->m_pbh.m_table_index_map.at(tbl));
     EXPECT_EQ(1u, sw->m_pbh.m_tables.count(tbl));
+
+    // The SAI object is already gone by now, so the retry goes straight at
+    // SwitchVppPbh rather than back through remove().
+    vppMock().pbhTableDelResult = 0;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->m_pbh.tableRemove(tbl));
+
+    ASSERT_EQ(2u, vppMock().pbhTableDels.size());
+    EXPECT_EQ(index, vppMock().pbhTableDels[1]);
+    EXPECT_EQ(0u, vppMock().pbhTables.count(index));
+    EXPECT_EQ(0u, sw->m_pbh.m_table_index_map.count(tbl));
+    EXPECT_EQ(0u, sw->m_pbh.m_tables.count(tbl));
 }
 
 //
@@ -662,86 +633,72 @@ TEST_F(SwitchVppPbhTest, rulesAreSortedByPriorityThenRuleId)
     EXPECT_EQ(ruleId(first), rules[0].rule_id);
     EXPECT_EQ(ruleId(second), rules[1].rule_id);
     EXPECT_EQ(ruleId(low), rules[2].rule_id);
-}
 
-TEST_F(SwitchVppPbhTest, removingTheLastEntryLeavesAnEmptyTable)
-{
-    auto tbl = makePbhTable();
-    auto entry = makeEntry(tbl, 10, { fieldU16(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE, 1) });
-
-    ASSERT_EQ(1u, vppMock().lastPbhRules().size());
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->remove(SAI_OBJECT_TYPE_ACL_ENTRY,
-            sai_serialize_object_id(entry)));
+    for (auto entry: { low, first, second })
+    {
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->remove(SAI_OBJECT_TYPE_ACL_ENTRY,
+                sai_serialize_object_id(entry)));
+    }
 
     // An emptied PBH table is reprogrammed empty, not left holding the old set.
-    ASSERT_EQ(3u, vppMock().pbhTableCalls.size());
     EXPECT_TRUE(vppMock().lastPbhRules().empty());
 }
 
-TEST_F(SwitchVppPbhTest, anActionNamingAnUnknownProfileIsRejected)
+TEST_F(SwitchVppPbhTest, entryCreateRollsBackWhenItCannotBeProgrammed)
 {
     auto tbl = makePbhTable();
-    auto entry = allocate(SAI_OBJECT_TYPE_ACL_ENTRY);
-    auto stranger = allocate(SAI_OBJECT_TYPE_HASH);
 
-    EXPECT_NE(SAI_STATUS_SUCCESS, createEntry(entry, tbl, 10, {
+    // A rule naming a profile that does not exist would hash on nothing, which
+    // looks just like PBH working, so it is refused before VPP is asked.
+    auto stranger = allocate(SAI_OBJECT_TYPE_HASH);
+    auto unresolved = allocate(SAI_OBJECT_TYPE_ACL_ENTRY);
+
+    EXPECT_NE(SAI_STATUS_SUCCESS, createEntry(unresolved, tbl, 10, {
             actionOid(SAI_ACL_ENTRY_ATTR_ACTION_SET_ECMP_HASH_ID, stranger) }));
 
-    // Refused before VPP was asked anything, so only the table create happened.
     EXPECT_EQ(1u, vppMock().pbhTableCalls.size());
     EXPECT_TRUE(sw->m_acl_tbl_rules_map[tbl].empty());
-    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_ACL_ENTRY, entry));
-}
+    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_ACL_ENTRY, unresolved));
 
-TEST_F(SwitchVppPbhTest, entryCreateRollsBackWhenVppRefuses)
-{
-    auto tbl = makePbhTable();
-    auto entry = allocate(SAI_OBJECT_TYPE_ACL_ENTRY);
+    // A refused reprogram means VPP never took the entry, so neither does the
+    // state.
+    auto refused = allocate(SAI_OBJECT_TYPE_ACL_ENTRY);
 
     vppMock().pbhTableResult = -1;
 
-    EXPECT_NE(SAI_STATUS_SUCCESS, createEntry(entry, tbl, 10,
+    EXPECT_NE(SAI_STATUS_SUCCESS, createEntry(refused, tbl, 10,
             { fieldU16(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE, 1) }));
 
     EXPECT_EQ(2u, vppMock().pbhTableCalls.size());
     EXPECT_TRUE(sw->m_acl_tbl_rules_map[tbl].empty());
-    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_ACL_ENTRY, entry));
+    EXPECT_FALSE(inStore(SAI_OBJECT_TYPE_ACL_ENTRY, refused));
 }
 
 TEST_F(SwitchVppPbhTest, entrySetReprogramsTheRule)
 {
     auto tbl = makePbhTable();
     auto entry = makeEntry(tbl, 10, { fieldU16(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE, 0x0800) });
+    auto sid = sai_serialize_object_id(entry);
 
     auto attr = fieldU16(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE, 0x86dd);
 
-    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_ACL_ENTRY,
-            sai_serialize_object_id(entry), &attr));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_ACL_ENTRY, sid, &attr));
 
     ASSERT_EQ(1u, vppMock().lastPbhRules().size());
     EXPECT_EQ(0x86dd, vppMock().lastPbhRules()[0].ether_type);
-}
 
-TEST_F(SwitchVppPbhTest, entrySetRollsBackWhenVppRefuses)
-{
-    auto tbl = makePbhTable();
-    auto entry = makeEntry(tbl, 10, { fieldU16(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE, 0x0800) });
-
-    auto attr = fieldU16(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE, 0x86dd);
+    auto rejected = fieldU16(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE, 0x0806);
 
     vppMock().pbhTableResult = -1;
 
-    EXPECT_NE(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_ACL_ENTRY,
-            sai_serialize_object_id(entry), &attr));
+    EXPECT_NE(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_ACL_ENTRY, sid, &rejected));
 
     // VPP is still enforcing the old value, so the state has to keep saying so.
     sai_attribute_t stored = {};
 
     stored.id = SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE;
-    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(SAI_OBJECT_TYPE_ACL_ENTRY,
-            sai_serialize_object_id(entry), 1, &stored));
-    EXPECT_EQ(0x0800, stored.value.aclfield.data.u16);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(SAI_OBJECT_TYPE_ACL_ENTRY, sid, 1, &stored));
+    EXPECT_EQ(0x86dd, stored.value.aclfield.data.u16);
 }
 
 //
@@ -750,6 +707,11 @@ TEST_F(SwitchVppPbhTest, entrySetRollsBackWhenVppRefuses)
 
 TEST_F(SwitchVppPbhTest, bindAndUnbindAttachTheTable)
 {
+    auto unknown = allocate(SAI_OBJECT_TYPE_ACL_TABLE);
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, sw->m_pbh.bindUnbindPort("port0", unknown, true));
+    EXPECT_TRUE(vppMock().pbhAttachCalls.empty());
+
     auto tbl = makePbhTable();
     uint32_t index = sw->m_pbh.m_table_index_map.at(tbl);
 
@@ -761,24 +723,11 @@ TEST_F(SwitchVppPbhTest, bindAndUnbindAttachTheTable)
     EXPECT_EQ(index, vppMock().pbhAttachCalls[0].table_index);
     EXPECT_TRUE(vppMock().pbhAttachCalls[0].attach);
     EXPECT_FALSE(vppMock().pbhAttachCalls[1].attach);
-}
-
-TEST_F(SwitchVppPbhTest, bindRefusesATableThatWasNeverCreated)
-{
-    auto tbl = allocate(SAI_OBJECT_TYPE_ACL_TABLE);
-
-    EXPECT_EQ(SAI_STATUS_FAILURE, sw->m_pbh.bindUnbindPort("port0", tbl, true));
-    EXPECT_TRUE(vppMock().pbhAttachCalls.empty());
-}
-
-TEST_F(SwitchVppPbhTest, bindReportsAnAttachFailure)
-{
-    auto tbl = makePbhTable();
 
     vppMock().pbhAttachResult = -1;
 
     EXPECT_EQ(SAI_STATUS_FAILURE, sw->m_pbh.bindUnbindPort("port0", tbl, true));
-    EXPECT_EQ(1u, vppMock().pbhAttachCalls.size());
+    EXPECT_EQ(3u, vppMock().pbhAttachCalls.size());
 }
 
 //
@@ -823,36 +772,15 @@ TEST_F(SwitchVppPbhTest, countersReadThePbhSubtreeAtTheProgrammedPosition)
     EXPECT_EQ(VPP_RULE_STATS_PBH, vppMock().ruleStatsCalls[0].type);
     EXPECT_EQ(index, vppMock().ruleStatsCalls[0].table_index);
     EXPECT_EQ(1u, vppMock().ruleStatsCalls[0].rule_index);
-}
-
-TEST_F(SwitchVppPbhTest, countersReportAQueryFailure)
-{
-    auto tbl = makePbhTable();
-    auto cntr = allocate(SAI_OBJECT_TYPE_ACL_COUNTER);
-
-    makeEntry(tbl, 10, { actionOid(SAI_ACL_ENTRY_ATTR_ACTION_COUNTER, cntr) });
 
     vppMock().pbhStatsResult = -1;
 
-    sai_attribute_t attr = {};
-
-    attr.id = SAI_ACL_COUNTER_ATTR_PACKETS;
-
     EXPECT_EQ(SAI_STATUS_FAILURE, sw->get(SAI_OBJECT_TYPE_ACL_COUNTER,
-            sai_serialize_object_id(cntr), 1, &attr));
-}
-
-TEST_F(SwitchVppPbhTest, removingTheTableForgetsItsCounters)
-{
-    auto tbl = makePbhTable();
-    auto cntr = allocate(SAI_OBJECT_TYPE_ACL_COUNTER);
-
-    makeEntry(tbl, 10, { actionOid(SAI_ACL_ENTRY_ATTR_ACTION_COUNTER, cntr) });
-
-    ASSERT_TRUE(sw->m_pbh.isPbhCounterOid(cntr));
+            sai_serialize_object_id(low_cntr), 1, attrs.data()));
 
     ASSERT_EQ(SAI_STATUS_SUCCESS, sw->remove(SAI_OBJECT_TYPE_ACL_TABLE,
             sai_serialize_object_id(tbl)));
 
-    EXPECT_FALSE(sw->m_pbh.isPbhCounterOid(cntr));
+    EXPECT_FALSE(sw->m_pbh.isPbhCounterOid(low_cntr));
+    EXPECT_FALSE(sw->m_pbh.isPbhCounterOid(high_cntr));
 }
