@@ -56,8 +56,9 @@ tests_SOURCES = main.cpp \
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp
 
-# TestSwitchVpp.cpp replaces these VPP API calls with recording stubs, so the
-# SwitchVpp code paths under test run without a VPP instance.
+# TestSwitchVpp.cpp replaces these VPP API calls with stubs that record the
+# calls or model the VPP state they change, so the SwitchVpp code paths under
+# test run without a VPP instance.
 tests_LDFLAGS = \
 				-Wl,--wrap=init_vpp_client \
 				-Wl,--wrap=vpp_sync_for_events \
@@ -75,7 +76,21 @@ tests_LDFLAGS = \
 				-Wl,--wrap=vpp_bridge_domain_add_del \
 				-Wl,--wrap=vpp_get_swif_idx_by_name \
 				-Wl,--wrap=vpp_add_node_next \
-				-Wl,--wrap=vpp_classify_set_interface_l2_tables
+				-Wl,--wrap=vpp_sonic_ext_feature_get \
+				-Wl,--wrap=vpp_classify_table_create \
+				-Wl,--wrap=vpp_classify_table_delete \
+				-Wl,--wrap=vpp_classify_session_add \
+				-Wl,--wrap=vpp_classify_session_del \
+				-Wl,--wrap=vpp_classify_set_interface_l2_tables \
+				-Wl,--wrap=create_bvi_interface \
+				-Wl,--wrap=delete_bvi_interface \
+				-Wl,--wrap=configure_lcp_interface \
+				-Wl,--wrap=set_interface_vrf \
+				-Wl,--wrap=vpp_ip_flow_hash_set \
+				-Wl,--wrap=ip_vrf_add \
+				-Wl,--wrap=ip_vrf_del \
+				-Wl,--wrap=ip_route_add_del \
+				-Wl,--wrap=vpp_sonic_ext_copp_ip2me_addr_add_del
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
