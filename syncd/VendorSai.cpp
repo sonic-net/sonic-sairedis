@@ -764,8 +764,16 @@ sai_status_t VendorSai::bulkGet(
             ptr = m_apis.port_api->get_ports_attribute;
             break;
 
+        case SAI_OBJECT_TYPE_QUEUE:
+            ptr = m_apis.queue_api->get_queues_attribute;
+            break;
+
         default:
-            SWSS_LOG_ERROR("not implemented %s, FIXME", sai_serialize_object_type(object_type).c_str());
+            // Same benign condition as the !ptr branch below - no bulk get exists for
+            // this object type - so it is logged at the same level. Callers all handle
+            // NOT_IMPLEMENTED explicitly and log it themselves; an ERR here is a
+            // syslog-visible error for a code path that degrades correctly.
+            SWSS_LOG_INFO("get bulk not implemented in SAI, object_type = %s", sai_serialize_object_type(object_type).c_str());
             return SAI_STATUS_NOT_IMPLEMENTED;
     }
 

@@ -185,6 +185,9 @@ namespace saivs
                     _In_ const std::string& hwifName,
                     _In_ sai_object_id_t rifOid);
 
+            bool clearRifOid(
+                    _In_ sai_object_id_t rifOid);
+
             bool setBdId(
                     _In_ const std::string& hwifName,
                     _In_ uint32_t bdId);
@@ -292,6 +295,10 @@ namespace saivs
                     _In_ sai_object_id_t oid,
                     _In_ uint32_t vlanId) const;
 
+            // RIF identity is separate from the backing PORT/LAG/VLAN oid.
+            std::string resolveHwIfByRifOid(
+                    _In_ sai_object_id_t rifOid) const;
+
             /*
              * A LAG that is fully realised: registered, of LAG type and bound
              * to a VPP sw_if_index. addLag() takes the bond id, the sw_if_index
@@ -390,7 +397,7 @@ namespace saivs
             mutable std::recursive_mutex m_mutex;
 
             /*
-             * All five indexes hold a shared_ptr rather than a raw pointer.
+             * All indexes hold a shared_ptr rather than a raw pointer.
              * Consistency is then structural: a missed erase leaves a stale
              * entry, which is diagnosable, instead of a dangling pointer, which
              * is undefined behaviour on the FDB hot path.
@@ -405,8 +412,11 @@ namespace saivs
             /* only records that CURRENTLY have a host tap */
             std::map<std::string, std::shared_ptr<VppInterface>> m_byTap;
 
-            /* PARTIAL: PORT and LAG oids only, never ROUTER_INTERFACE */
+            /* PARTIAL: PORT, LAG and VLAN oids only, never ROUTER_INTERFACE */
             std::map<sai_object_id_t, std::shared_ptr<VppInterface>> m_byOid;
+
+            /* RIF bindings, added/cleared by successful SAI RIF lifecycle calls */
+            std::map<sai_object_id_t, std::shared_ptr<VppInterface>> m_byRifOid;
 
             /* only records whose sw_if_index has been resolved */
             std::map<uint32_t, std::shared_ptr<VppInterface>> m_bySwIfIndex;

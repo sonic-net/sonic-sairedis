@@ -108,6 +108,7 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
     int32_t rif_type = attr.value.s32;
 
     std::string hwif_name;
+    sai_object_id_t port_oid = SAI_NULL_OBJECT_ID;
 
     // SONiC owns the neighbor lifecycle for a VLAN/BVI RIF, so program a static
     // adjacency that VPP will not age out while the host is quiet. PORT/LAG
@@ -154,7 +155,7 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
         {
             return SAI_STATUS_SUCCESS;
         }
-        auto port_oid = attr.value.oid;
+        port_oid = attr.value.oid;
 
         uint16_t vlan_id = 0;
         if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
@@ -287,6 +288,29 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
         {
             SWSS_LOG_ERROR("No mac address passed for neighbor %s", serializedObjectId.c_str());
             return SAI_STATUS_FAILURE;
+        }
+
+        // Index used to resolve an ERSPAN monitor port's nexthop IP from its DST_MAC.
+        // Only PORT/LAG RIFs carry a port oid, and only those can be a monitor port.
+        if (port_oid != SAI_NULL_OBJECT_ID)
+        {
+            auto nbrIpStr = sai_serialize_ip_address(nbr_entry.ip_address);
+            if (is_add)
+            {
+                m_port_neighbor_mac[port_oid][nbrIpStr] = sai_serialize_mac(nbr_mac);
+            }
+            else
+            {
+                auto pit = m_port_neighbor_mac.find(port_oid);
+                if (pit != m_port_neighbor_mac.end())
+                {
+                    pit->second.erase(nbrIpStr);
+                    if (pit->second.empty())
+                    {
+                        m_port_neighbor_mac.erase(pit);
+                    }
+                }
+            }
         }
 
         const char *vpp_ifname = hwif_name.c_str();
