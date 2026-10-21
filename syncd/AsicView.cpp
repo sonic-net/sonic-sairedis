@@ -116,6 +116,11 @@ void AsicView::fromDump(
                 sai_deserialize_inseg_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.inseg_entry);
                 m_soInsegs[o->m_str_object_id] = o;
                 break;
+            
+            case SAI_OBJECT_TYPE_L2MC_ENTRY:
+                sai_deserialize_l2mc_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.l2mc_entry);
+                m_soL2mcs[o->m_str_object_id] = o;
+                break;
 
             default:
 
@@ -710,6 +715,10 @@ void AsicView::asicCreateObject(
                 m_soInsegs[currentObj->m_str_object_id] = currentObj;
                 break;
 
+            case SAI_OBJECT_TYPE_L2MC_ENTRY:
+                m_soL2mcs[currentObj->m_str_object_id] = currentObj;
+                break;
+
             default:
 
                 SWSS_LOG_THROW("unsupported object type: %s",
@@ -856,6 +865,10 @@ void AsicView::asicRemoveObject(
 
             case SAI_OBJECT_TYPE_INSEG_ENTRY:
                 m_soInsegs.erase(currentObj->m_str_object_id);
+                break;
+            
+            case SAI_OBJECT_TYPE_L2MC_ENTRY:
+                m_soL2mcs.erase(currentObj->m_str_object_id);
                 break;
 
             default:
