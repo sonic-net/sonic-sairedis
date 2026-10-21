@@ -1105,3 +1105,86 @@ TEST_F(SwitchVppTunnelNexthop, NexthopDecapBvisRouteInBothAddressFamilies)
         EXPECT_TRUE(binds[1].flag);
     }
 }
+
+namespace
+{
+    // what an EVPN type-5 next hop carries: the remote VTEP's router MAC
+    const uint8_t REMOTE_ROUTER_MAC[6] = { 0x22, 0x36, 0x29, 0xc2, 0x14, 0xf1 };
+}
+
+/*
+ * An EVPN next hop names its VNI. VPP matches the exact (remote, local, VNI)
+ * key of its tunnel before the source-independent decap term of that VNI, so
+ * the next hop's own tunnel has to decapsulate, into the VRF of the VNI.
+ */
+TEST_F(SwitchVppTunnelNexthop, NexthopWithAVniDecapsulatesInTheVrfOfItsVni)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, tunnels.size());
+    EXPECT_EQ(2000u, tunnels[0].id);
+    EXPECT_EQ(1u, tunnels[0].sub_id);
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+
+    auto binds = bindsOf("bvi" + std::to_string(bvis[0].id));
+    uint32_t table = tableOf(m_vrB);
+
+    ASSERT_EQ(2u, binds.size());
+    EXPECT_EQ(table, binds[0].id);
+    EXPECT_EQ(table, binds[1].id);
+
+    // a route in any VRF still uses the tunnel, a leaked route included
+    uint32_t inB = 0;
+    uint32_t inA = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrB, inB));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, inA));
+    EXPECT_EQ(inB, inA);
+}
+
+TEST_F(SwitchVppTunnelNexthop, NexthopWithAnUnmappedVniHasNoDecap)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(4000, nh, REMOTE_ROUTER_MAC));
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, tunnels.size());
+    EXPECT_EQ(0u, tunnels[0].sub_id);
+    EXPECT_TRUE(vppCallsTo("create_bvi_interface").empty());
+
+    uint32_t sw_if_index = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, sw_if_index));
+}
+
+TEST_F(SwitchVppTunnelNexthop, RemovingANexthopWithAVniTearsDownItsDecap)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+
+    g_vppCalls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh)));
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, tunnels.size());
+    EXPECT_EQ(2000u, tunnels[0].id);
+    EXPECT_FALSE(tunnels[0].flag);
+
+    EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface", "bvi" + std::to_string(bvis[0].id)).size());
+}

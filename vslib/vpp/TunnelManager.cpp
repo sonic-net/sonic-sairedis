@@ -153,7 +153,8 @@ TunnelManager::get_tunnel_if(
         auto find_interface = [&]() {
             const auto& entries = it->second;
             if (entries.size() == 1 &&
-                (!entries.front().tunnel_data.ip_vrf ||
+                (entries.front().any_vrf ||
+                 !entries.front().tunnel_data.ip_vrf ||
                  entries.front().tunnel_data.ip_vrf->m_obj_id == vrf_oid)) {
                 sw_if_index = entries.front().tunnel_data.sw_if_index;
                 return true;
@@ -324,9 +325,37 @@ TunnelManager::tunnel_encap_nexthop_action(
 
     std::map<uint32_t, std::shared_ptr<IpVrfInfo>> vni_to_vrf_map;
     if (override_vni != 0) {
-        // The next-hop VNI replaces the mapper result. It does not create a
-        // corresponding VNI-to-VRF decapsulation mapping.
+        // The next-hop VNI replaces the mapper result, so any route VRF can
+        // use this tunnel. The tunnel still needs a decap side: VPP matches
+        // the exact (remote, local, VNI) key of this tunnel before the
+        // source-independent decap term of the VNI, and a tunnel with no
+        // bridge domain drops what it receives. Decapsulate into the VRF
+        // that the VR->VNI map entry carrying this VNI names, if there is one.
         vni_to_vrf_map[override_vni] = nullptr;
+        auto mappers = tunnel_obj->get_linked_objects(
+            SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_ENCAP_MAPPERS);
+        for (const auto& mapper : mappers) {
+            attr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+            if (mapper->get_attr(attr) != SAI_STATUS_SUCCESS ||
+                attr.value.s32 != SAI_TUNNEL_MAP_TYPE_VIRTUAL_ROUTER_ID_TO_VNI) {
+                continue;
+            }
+            auto entries = mapper->get_child_objs(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY);
+            if (!entries) {
+                continue;
+            }
+            for (const auto& pair : *entries) {
+                attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_VALUE;
+                if (pair.second->get_attr(attr) != SAI_STATUS_SUCCESS ||
+                    attr.value.u32 != override_vni) {
+                    continue;
+                }
+                attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VIRTUAL_ROUTER_ID_KEY;
+                if (pair.second->get_attr(attr) == SAI_STATUS_SUCCESS) {
+                    vni_to_vrf_map[override_vni] = m_switch_db->vpp_get_ip_vrf(attr.value.oid);
+                }
+            }
+        }
     } else {
         auto mappers = tunnel_obj->get_linked_objects(
             SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_ENCAP_MAPPERS);
@@ -401,6 +430,7 @@ TunnelManager::tunnel_encap_nexthop_action(
         entry.tunnel_data.ip_vrf = pair.second;
         entry.tunnel_data.vni = pair.first;
         entry.dst_mac = dst_mac;
+        entry.any_vrf = override_vni != 0;
 
         if (create_vpp_vxlan_encap(entry.req, entry.tunnel_data, false,
                                    entry.dst_mac.data()) != SAI_STATUS_SUCCESS) {

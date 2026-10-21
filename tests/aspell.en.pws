@@ -472,3 +472,4 @@ EVPN
 SVI
 VTEP
 VNIs
+decapsulate
