@@ -1636,6 +1636,8 @@ namespace saivs
             TunnelManagerIpIp m_tunnel_mgr_ipip;
 
         protected: // switch capability related
+            virtual sai_status_t set_acl_capabilities() override;
+
             virtual sai_status_t queryNextHopGroupTypeCapability(
                 _Inout_ sai_s32_list_t *enum_values_capability) override;
 
