@@ -3157,6 +3157,13 @@ sai_status_t SwitchVpp::createRouterif(
         {
             m_nat.setRouterInterfaceZone(object_id, attr_zone->value.u32);
         }
+
+        auto attr_vr = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID, attr_count, attr_list);
+
+        if (attr_vr != NULL)
+        {
+            m_tunnel_mgr.install_pending_decap_host_paths(attr_vr->value.oid);
+        }
     }
 
     if (status != SAI_STATUS_SUCCESS)
