@@ -5,20 +5,18 @@
 using namespace syncd;
 
 PollCycleGuard::PollCycleGuard(
-        _Inout_ bool& inProgress,
-        _Inout_ std::condition_variable& condition):
-    m_inProgress(inProgress),
-    m_condition(condition)
+        _Inout_ FlexCounterSyncState& state):
+    m_state(state)
 {
     SWSS_LOG_ENTER();
 
-    m_inProgress = true;
+    m_state.pollInProgress = true;
 }
 
 PollCycleGuard::~PollCycleGuard()
 {
     SWSS_LOG_ENTER();
 
-    m_inProgress = false;
-    m_condition.notify_all();
+    m_state.pollInProgress = false;
+    m_state.condition.notify_all();
 }

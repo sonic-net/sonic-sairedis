@@ -24,9 +24,9 @@ using namespace std;
 using json = nlohmann::json;
 
 
-#define MUTEX std::unique_lock<std::mutex> _lock(m_mtx);
+#define MUTEX std::unique_lock<std::mutex> _lock(m_syncState.mutex);
 #define MUTEX_UNLOCK _lock.unlock();
-#define UPDATE_LOCK UpdateLock _lock(m_mtx, m_pendingUpdates, m_updateCond);
+#define UPDATE_LOCK UpdateLock _lock(m_syncState);
 
 namespace
 {
@@ -4383,7 +4383,7 @@ void FlexCounter::removeCounterPlugins()
     UPDATE_LOCK;
 
     // Preserve aggregation of already-cleared samples before removing scripts.
-    _lock.waitForPollEnd(m_pollInProgress, m_deferredUpdates, m_runFlexCounterThread);
+    _lock.waitForPollEnd(m_runFlexCounterThread);
 
     for (const auto &kv : m_counterContext)
     {
@@ -4406,7 +4406,7 @@ void FlexCounter::addCounterPlugin(
         {
             // Plugin changes apply after the complete old sweep. Pure polling
             // settings still take effect promptly at object checkpoints.
-            _lock.waitForPollEnd(m_pollInProgress, m_deferredUpdates, m_runFlexCounterThread);
+            _lock.waitForPollEnd(m_runFlexCounterThread);
             break;
         }
     }
@@ -4972,7 +4972,7 @@ void FlexCounter::collectCounters(
 
     const BaseCounterContext::PollCheckpoint checkpoint = [&](swss::Table& table)
     {
-        if (m_pendingUpdates != 0)
+        if (m_syncState.pendingUpdates != 0)
         {
             m_pollingState->yielded = true;
             // Flush on the polling thread before releasing object protection:
@@ -4986,9 +4986,9 @@ void FlexCounter::collectCounters(
 
             // Deliberately prioritize updates. A continuous update stream can
             // delay polling; this is not a fairness or hard latency guarantee.
-            m_updateCond.wait(lock, [&]
+            m_syncState.condition.wait(lock, [&]
             {
-                return m_pendingUpdates == 0 || !m_runFlexCounterThread;
+                return m_syncState.pendingUpdates == 0 || !m_runFlexCounterThread;
             });
         }
 
@@ -5120,10 +5120,10 @@ void FlexCounter::flexCounterThreadRunFunction()
                             m_instanceId.c_str(), consecutiveConnectFailures, failureReason.c_str());
                 }
 
-                // m_pollInterval is written with m_mtx held: setPollInterval() does
+                // m_pollInterval is written with m_syncState.mutex held: setPollInterval() does
                 // not take the lock itself, but its only caller, addCounterPlugin(),
                 // does. Reading it here without the lock would therefore be a data
-                // race. Take a snapshot rather than holding m_mtx across the wait
+                // race. Take a snapshot rather than holding m_syncState.mutex across the wait
                 // below: this path is deliberately outside the counter mutex so that
                 // a slow or refused connect cannot block addCounter()/removeCounter().
                 uint32_t pollInterval;
@@ -5160,9 +5160,9 @@ void FlexCounter::flexCounterThreadRunFunction()
         // operations, including the manager's post-removal isDiscarded() query.
         // Same-object refreshes withdrawn at checkpoints must run before another
         // sweep, but they do not stop the previous sweep from completing.
-        m_updateCond.wait(_lock, [&]
+        m_syncState.condition.wait(_lock, [&]
         {
-            return (m_pendingUpdates == 0 && m_deferredUpdates == 0) || !m_runFlexCounterThread;
+            return (m_syncState.pendingUpdates == 0 && m_syncState.deferredUpdates == 0) || !m_runFlexCounterThread;
         });
 
         if (m_enable && !allIdsEmpty() && (m_pollInterval > 0))
@@ -5189,7 +5189,7 @@ void FlexCounter::flexCounterThreadRunFunction()
             // a peer that accepts the connection but stops answering.
             try
             {
-                PollCycleGuard pollCycle(m_pollInProgress, m_updateCond);
+                PollCycleGuard pollCycle(m_syncState);
                 // start of this cycle; successive values differ by the true period
                 auto cycleStartUs = std::chrono::duration_cast<std::chrono::microseconds>(
                         start.time_since_epoch()).count();
@@ -5515,7 +5515,7 @@ void FlexCounter::addCounter(
 
     if (hasSameRidRegistration(vid, rid))
     {
-        _lock.waitForPollEnd(m_pollInProgress, m_deferredUpdates, m_runFlexCounterThread);
+        _lock.waitForPollEnd(m_runFlexCounterThread);
     }
 
     sai_object_type_t objectType = VidManager::objectTypeQuery(vid); // VID and RID will have the same object type
@@ -5602,7 +5602,7 @@ void FlexCounter::bulkAddCounter(
     {
         if (hasSameRidRegistration(vids[i], rids[i]))
         {
-            _lock.waitForPollEnd(m_pollInProgress, m_deferredUpdates, m_runFlexCounterThread);
+            _lock.waitForPollEnd(m_runFlexCounterThread);
             break;
         }
     }

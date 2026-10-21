@@ -1,10 +1,10 @@
 #pragma once
 
+#include "FlexCounterSyncState.h"
+
 #include "swss/sal.h"
 
 #include <atomic>
-#include <condition_variable>
-#include <cstdint>
 #include <mutex>
 
 namespace syncd
@@ -16,24 +16,18 @@ namespace syncd
         public:
 
             UpdateLock(
-                    _Inout_ std::mutex& mutex,
-                    _Inout_ std::atomic<uint32_t>& pending,
-                    _Inout_ std::condition_variable& condition);
+                    _Inout_ FlexCounterSyncState& state);
 
             ~UpdateLock();
 
             void unlock();
 
             void waitForPollEnd(
-                    _In_ const bool& pollInProgress,
-                    _Inout_ uint32_t& deferred,
                     _In_ const std::atomic<bool>& running);
 
         private:
 
-            std::atomic<uint32_t>& m_pending;
-
-            std::condition_variable& m_condition;
+            FlexCounterSyncState& m_state;
 
             std::unique_lock<std::mutex> m_lock;
     };

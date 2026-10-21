@@ -3986,7 +3986,7 @@ namespace
         vendor->mock_getStats = [&](sai_object_type_t, sai_object_id_t oid,
                 uint32_t count, const sai_stat_id_t*, uint64_t* counters)
         {
-            gate.read(oid, 1, counter && counter->m_pendingUpdates.load() != 0);
+            gate.read(oid, 1, counter && counter->m_syncState.pendingUpdates.load() != 0);
             if (failedScalar && oid == failedObject && gate.isPollingThread())
             {
                 return SAI_STATUS_FAILURE;
@@ -4031,7 +4031,7 @@ namespace
                 return SAI_STATUS_NOT_SUPPORTED;
             }
             gate.read(objects[0].key.object_id, count,
-                    counter && counter->m_pendingUpdates.load() != 0);
+                    counter && counter->m_syncState.pendingUpdates.load() != 0);
             bool anyFailed = false;
             for (uint32_t i = 0; i < count; ++i)
             {
@@ -4188,14 +4188,14 @@ namespace
                     explicit PendingBatch(FlexCounter& instance): m_counter(instance)
                     {
                         SWSS_LOG_ENTER();
-                        ++m_counter.m_pendingUpdates;
+                        ++m_counter.m_syncState.pendingUpdates;
                     }
                     ~PendingBatch()
                     {
                         SWSS_LOG_ENTER();
-                        std::lock_guard<std::mutex> lock(m_counter.m_mtx);
-                        --m_counter.m_pendingUpdates;
-                        m_counter.m_updateCond.notify_all();
+                        std::lock_guard<std::mutex> lock(m_counter.m_syncState.mutex);
+                        --m_counter.m_syncState.pendingUpdates;
+                        m_counter.m_syncState.condition.notify_all();
                     }
                     FlexCounter& m_counter;
                 } batch(fc);
@@ -4251,11 +4251,11 @@ namespace
         uint32_t expectedPending = secondUpdater.valid() ||
             update == FlexCounterPendingUpdate::RemoveAndReadd ? 2 : 1;
         auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        while (fc.m_pendingUpdates.load() < expectedPending && std::chrono::steady_clock::now() < deadline)
+        while (fc.m_syncState.pendingUpdates.load() < expectedPending && std::chrono::steady_clock::now() < deadline)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        bool updateQueued = fc.m_pendingUpdates.load() == expectedPending;
+        bool updateQueued = fc.m_syncState.pendingUpdates.load() == expectedPending;
         EXPECT_TRUE(updateQueued);
         EXPECT_EQ(updater.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout)
                 << "An in-flight SDK read must remain protected from object removal";
@@ -4687,7 +4687,7 @@ namespace
                 }
                 return SAI_STATUS_FAILURE;
             }
-            gate.read(oid, 1, counter && counter->m_pendingUpdates.load() != 0);
+            gate.read(oid, 1, counter && counter->m_syncState.pendingUpdates.load() != 0);
             if (ending == FlexCounterRefreshEnd::UpdateException && armed && !gate.isPollingThread())
             {
                 throw std::runtime_error("Injected registration probe failure");
@@ -4731,7 +4731,7 @@ namespace
                 return SAI_STATUS_SUCCESS;
             }
             gate.read(keys[0].key.object_id, count,
-                    counter && counter->m_pendingUpdates.load() != 0);
+                    counter && counter->m_syncState.pendingUpdates.load() != 0);
             if (mode == SAI_STATS_MODE_BULK_READ_AND_CLEAR)
             {
                 observeProbe();
@@ -4938,11 +4938,11 @@ namespace
         }
         auto pendingDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
         const uint32_t pending = removeDuringRefresh ? 2 : 1;
-        while (fc.m_pendingUpdates.load() < pending && std::chrono::steady_clock::now() < pendingDeadline)
+        while (fc.m_syncState.pendingUpdates.load() < pending && std::chrono::steady_clock::now() < pendingDeadline)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        EXPECT_EQ(fc.m_pendingUpdates.load(), pending);
+        EXPECT_EQ(fc.m_syncState.pendingUpdates.load(), pending);
         gate.releaseFirst();
         EXPECT_TRUE(gate.waitForReadCount(2));
         EXPECT_EQ(updater.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout)
@@ -4963,11 +4963,11 @@ namespace
         {
             stopper = std::async(std::launch::async, [&] { fc.endFlexCounterThread(); });
             auto shutdownDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-            while (fc.m_pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < shutdownDeadline)
+            while (fc.m_syncState.pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < shutdownDeadline)
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
-            EXPECT_NE(fc.m_pendingUpdates.load(), 0u);
+            EXPECT_NE(fc.m_syncState.pendingUpdates.load(), 0u);
         }
         gate.releaseAll();
         bool updateFinished = updater.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
@@ -5056,9 +5056,9 @@ namespace
                     << "A newly enrolled object entered the old sweep's accumulator";
         }
         fc.endFlexCounterThread();
-        EXPECT_EQ(fc.m_pendingUpdates.load(), 0u);
-        EXPECT_EQ(fc.m_deferredUpdates, 0u);
-        EXPECT_FALSE(fc.m_pollInProgress);
+        EXPECT_EQ(fc.m_syncState.pendingUpdates.load(), 0u);
+        EXPECT_EQ(fc.m_syncState.deferredUpdates, 0u);
+        EXPECT_FALSE(fc.m_syncState.pollInProgress);
         armed = false;
         for (auto oid : objects)
         {
@@ -5108,7 +5108,7 @@ namespace
                 vendor->mock_getStats = [this](sai_object_type_t, sai_object_id_t rid,
                         uint32_t count, const sai_stat_id_t*, uint64_t* counterValues)
                 {
-                    gate.read(rid, 1, counter && counter->m_pendingUpdates.load() != 0);
+                    gate.read(rid, 1, counter && counter->m_syncState.pendingUpdates.load() != 0);
                     if (probeFailure.load() != ProbeFailure::None && rid == failingRid.load())
                     {
                         ++failedProbeCalls;
@@ -5152,7 +5152,7 @@ namespace
                     {
                         return SAI_STATUS_NOT_SUPPORTED;
                     }
-                    gate.read(keys[0].key.object_id, count, counter && counter->m_pendingUpdates.load() != 0);
+                    gate.read(keys[0].key.object_id, count, counter && counter->m_syncState.pendingUpdates.load() != 0);
                     std::lock_guard<std::mutex> lock(m_hardwareMutex);
                     for (uint32_t i = 0; i < count; ++i)
                     {
@@ -5193,14 +5193,14 @@ namespace
             BaseCounterContext::ObjectRidMap actual(const std::vector<sai_object_id_t>& vids)
             {
                 SWSS_LOG_ENTER();
-                std::lock_guard<std::mutex> lock(counter->m_mtx);
+                std::lock_guard<std::mutex> lock(counter->m_syncState.mutex);
                 return counter->m_counterContext.begin()->second->getObjectRids(vids);
             }
 
             BaseCounterContext::ObjectRegistration registration(sai_object_id_t vid)
             {
                 SWSS_LOG_ENTER();
-                std::lock_guard<std::mutex> lock(counter->m_mtx);
+                std::lock_guard<std::mutex> lock(counter->m_syncState.mutex);
                 return counter->m_pollingState->registrations.at({counter->m_counterContext.begin()->first, vid});
             }
 
@@ -5279,11 +5279,11 @@ namespace
         }
         auto refresh = std::async(std::launch::async, [&] { fixture.enroll({b}, {b}); });
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        while (fc.m_pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
+        while (fc.m_syncState.pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        EXPECT_NE(fc.m_pendingUpdates.load(), 0u);
+        EXPECT_NE(fc.m_syncState.pendingUpdates.load(), 0u);
         fixture.gate.releaseFirst();
         EXPECT_TRUE(fixture.gate.waitForReadCount(2));
         EXPECT_EQ(refresh.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout)
@@ -5303,8 +5303,8 @@ namespace
         std::string invocations;
         EXPECT_TRUE(fixture.table.hget(fixture.pluginKey, "invocations", invocations));
         EXPECT_FALSE(invocations.empty());
-        EXPECT_EQ(fc.m_pendingUpdates.load(), 0u);
-        EXPECT_EQ(fc.m_deferredUpdates, 0u);
+        EXPECT_EQ(fc.m_syncState.pendingUpdates.load(), 0u);
+        EXPECT_EQ(fc.m_syncState.deferredUpdates, 0u);
     }
 
     enum class FlexCounterSpecializedContext
@@ -5523,7 +5523,7 @@ namespace
                 attrs[0].value.portsnrlist.count = 1;
                 return SAI_STATUS_BUFFER_OVERFLOW;
             }
-            gate.read(oid, 1, counter && counter->m_pendingUpdates.load() != 0);
+            gate.read(oid, 1, counter && counter->m_syncState.pendingUpdates.load() != 0);
             for (uint32_t i = 0; i < count; ++i)
             {
                 if (phy)
@@ -5575,11 +5575,11 @@ namespace
             fc.removeCounter(objects.back());
         });
         auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        while (fc.m_pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
+        while (fc.m_syncState.pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        EXPECT_NE(fc.m_pendingUpdates.load(), 0u);
+        EXPECT_NE(fc.m_syncState.pendingUpdates.load(), 0u);
         gate.releaseFirst();
         bool updateFinished = updater.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
         if (!updateFinished)
@@ -5635,7 +5635,7 @@ namespace
         vendor->mock_getStats = [&](sai_object_type_t, sai_object_id_t rid,
                 uint32_t count, const sai_stat_id_t*, uint64_t* counters)
         {
-            gate.read(rid, 1, counter && counter->m_pendingUpdates.load() != 0);
+            gate.read(rid, 1, counter && counter->m_syncState.pendingUpdates.load() != 0);
             std::fill(counters, counters + count, 11);
             return SAI_STATUS_SUCCESS;
         };
@@ -5656,7 +5656,7 @@ namespace
             {
                 return SAI_STATUS_NOT_SUPPORTED;
             }
-            gate.read(rids[0], count, counter->m_pendingUpdates.load() != 0);
+            gate.read(rids[0], count, counter->m_syncState.pendingUpdates.load() != 0);
             for (uint32_t i = 0; i < count; ++i)
             {
                 EXPECT_EQ(attrCounts[i], 1u);
@@ -5672,7 +5672,7 @@ namespace
             EXPECT_EQ(type, SAI_OBJECT_TYPE_QUEUE);
             EXPECT_EQ(count, 1u);
             scalarReads.push_back(rid);
-            gate.read(rid, 1, counter->m_pendingUpdates.load() != 0);
+            gate.read(rid, 1, counter->m_syncState.pendingUpdates.load() != 0);
             attrs[0].value.booldata = true;
             return SAI_STATUS_SUCCESS;
         };
@@ -5698,7 +5698,7 @@ namespace
         // No public QUEUE_ATTRIBUTE_PLUGIN field exists. Exercise the real
         // inherited plugin path through its context API while polling is off.
         {
-            std::lock_guard<std::mutex> lock(fc.m_mtx);
+            std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
             fc.m_counterContext.at("Queue Attribute")->addPlugins({sha});
         }
         table.del(toOid(port));
@@ -5723,11 +5723,11 @@ namespace
             fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "disable"}});
         });
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        while (fc.m_pendingUpdates.load() < 3 && std::chrono::steady_clock::now() < deadline)
+        while (fc.m_syncState.pendingUpdates.load() < 3 && std::chrono::steady_clock::now() < deadline)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        EXPECT_EQ(fc.m_pendingUpdates.load(), 3u);
+        EXPECT_EQ(fc.m_syncState.pendingUpdates.load(), 3u);
         gate.releaseFirst();
         const bool removedAtCheckpoint = remover.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
         const bool addedAtCheckpoint = adder.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
@@ -5843,7 +5843,7 @@ TEST(FlexCounter, contextOwnsPollingStateBeyondCounterLifetime)
         EXPECT_EQ(context->m_pollingState.get(), fc.m_pollingState.get());
         weakState = context->m_pollingState;
 
-        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
         fc.m_pollingState->registrations[{context->m_name, vid}] = {17, vid};
         fc.m_pollingState->yielded = true;
         fc.m_pollingState->statsMode = SAI_STATS_MODE_READ_AND_CLEAR;
@@ -5955,8 +5955,8 @@ TEST(FlexCounter, replacementExceptionAfterRemovalErasesObsoleteRegistration)
                 [&](const BaseCounterContext::ObjectRegistrationMap::value_type& registration)
                 { return registration.first.second == vid; }))
         << "Neither the old RID nor the failed replacement is enrolled after the exception";
-    EXPECT_EQ(fc.m_pendingUpdates.load(), 0u);
-    EXPECT_EQ(fc.m_deferredUpdates, 0u);
+    EXPECT_EQ(fc.m_syncState.pendingUpdates.load(), 0u);
+    EXPECT_EQ(fc.m_syncState.deferredUpdates, 0u);
     throwAfterRemoval = false;
     fc.addCounter(vid, replacementRid, values);
     EXPECT_FALSE(fc.isEmpty());
@@ -6080,7 +6080,7 @@ TEST(FlexCounter, conflictingPhysicalFragmentsAreQuarantinedTogether)
     // Inject inherited malformed state directly at the context API: ordinary
     // dispatch rejects this replacement, so it cannot create the bad state.
     {
-        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
         context->bulkAddObject({vid}, {objects.back()}, {"SAI_PORT_STAT_IF_IN_UCAST_PKTS"}, "");
     }
     const auto conflict = context->getObjectRids({vid});
@@ -6122,7 +6122,7 @@ TEST(FlexCounter, pendingModeChangeWakesNextSweepWithoutIntervalUpdate)
     vendor->mock_getStats = [&](sai_object_type_t, sai_object_id_t oid,
             uint32_t count, const sai_stat_id_t*, uint64_t* values)
     {
-        gate.read(oid, 1, counter && counter->m_pendingUpdates.load() != 0);
+        gate.read(oid, 1, counter && counter->m_syncState.pendingUpdates.load() != 0);
         std::fill(values, values + count, 1234);
         return SAI_STATUS_SUCCESS;
     };
@@ -6168,11 +6168,11 @@ TEST(FlexCounter, pendingModeChangeWakesNextSweepWithoutIntervalUpdate)
         fc.addCounterPlugin({{STATS_MODE_FIELD, STATS_MODE_READ_AND_CLEAR}});
     });
     auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (fc.m_pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
+    while (fc.m_syncState.pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    EXPECT_NE(fc.m_pendingUpdates.load(), 0u);
+    EXPECT_NE(fc.m_syncState.pendingUpdates.load(), 0u);
     gate.releaseFirst();
     const bool updatedAtCheckpoint = updater.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
     if (!updatedAtCheckpoint)
@@ -6383,7 +6383,7 @@ TEST(FlexCounter, pendingPluginArgumentsKeepSixPositionsAndFrozenCycleConfigurat
     vendor->mock_getStats = [&](sai_object_type_t, sai_object_id_t rid,
             uint32_t count, const sai_stat_id_t*, uint64_t* counters)
     {
-        gate.read(rid, 1, counter && counter->m_pendingUpdates.load() != 0);
+        gate.read(rid, 1, counter && counter->m_syncState.pendingUpdates.load() != 0);
         std::fill(counters, counters + count, 17);
         return SAI_STATUS_SUCCESS;
     };
@@ -6426,11 +6426,11 @@ TEST(FlexCounter, pendingPluginArgumentsKeepSixPositionsAndFrozenCycleConfigurat
         fc.addCounterPlugin({{POLL_INTERVAL_FIELD, "30000"}, {SECONDARY_POLL_FACTOR_FIELD, "7"}});
     });
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (fc.m_pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
+    while (fc.m_syncState.pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    EXPECT_NE(fc.m_pendingUpdates.load(), 0u);
+    EXPECT_NE(fc.m_syncState.pendingUpdates.load(), 0u);
     gate.releaseFirst();
     const bool updated = updater.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
     if (!updated)
@@ -6499,14 +6499,14 @@ TEST(FlexCounter, sameRidRefreshRetainsEpochUntilExplicitRemoval)
     const auto context = fc.m_counterContext.begin()->second;
     EXPECT_EQ(context->m_pollingState.get(), fc.m_pollingState.get());
     {
-        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
         fc.m_pollingState->yielded = true;
         context->clearSamples(fc.m_pollingState->statsMode);
         context->markSampled(vid);
     }
     const auto expectSampleState = [&](bool current, bool sampled)
     {
-        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
         EXPECT_EQ(context->isPollRegistrationCurrent(vid), current);
         EXPECT_EQ(context->isSampleReady(vid), sampled);
     };
@@ -6532,12 +6532,12 @@ TEST(FlexCounter, sameRidRefreshRetainsEpochUntilExplicitRemoval)
         << "Same-RID re-enrollment reused the deleted registration's epoch";
     expectSampleState(false, false);
     {
-        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
         context->clearSamples(fc.m_pollingState->statsMode);
     }
     expectSampleState(true, false);
     {
-        std::lock_guard<std::mutex> lock(fc.m_mtx);
+        std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
         context->markSampled(vid);
     }
     expectSampleState(true, true);
@@ -6612,8 +6612,8 @@ TEST(FlexCounter, bulkRidReplacementExceptionAfterRemovalErasesObsoleteRegistrat
     EXPECT_TRUE(fixture.actual({vid}).empty());
     EXPECT_TRUE(fixture.counter->m_pollingState->registrations.empty());
     EXPECT_TRUE(fixture.counter->isEmpty());
-    EXPECT_EQ(fixture.counter->m_pendingUpdates.load(), 0u);
-    EXPECT_EQ(fixture.counter->m_deferredUpdates, 0u);
+    EXPECT_EQ(fixture.counter->m_syncState.pendingUpdates.load(), 0u);
+    EXPECT_EQ(fixture.counter->m_syncState.deferredUpdates, 0u);
     fixture.throwAfterRemovalRid = SAI_NULL_OBJECT_ID;
     fixture.enroll({vid}, {replacement});
     EXPECT_EQ(fixture.actual({vid}).at(vid).rid, replacement);
@@ -6679,8 +6679,8 @@ TEST(FlexCounter, mixedBulkRidReplacementExceptionReconcilesAttemptedMembersOnly
     const auto untouchedAfter = fixture.registration(unattempted);
     EXPECT_EQ(untouchedAfter.rid, untouchedBefore.rid);
     EXPECT_EQ(untouchedAfter.epoch, untouchedBefore.epoch);
-    EXPECT_EQ(fixture.counter->m_pendingUpdates.load(), 0u);
-    EXPECT_EQ(fixture.counter->m_deferredUpdates, 0u);
+    EXPECT_EQ(fixture.counter->m_syncState.pendingUpdates.load(), 0u);
+    EXPECT_EQ(fixture.counter->m_syncState.deferredUpdates, 0u);
 }
 
 TEST(FlexCounter, bulkRidReplacementRepairsAcceptedNullPhysicalRid)

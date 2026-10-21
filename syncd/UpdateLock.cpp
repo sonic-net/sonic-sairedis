@@ -5,16 +5,13 @@
 using namespace syncd;
 
 UpdateLock::UpdateLock(
-        _Inout_ std::mutex& mutex,
-        _Inout_ std::atomic<uint32_t>& pending,
-        _Inout_ std::condition_variable& condition):
-    m_pending(pending),
-    m_condition(condition),
-    m_lock(mutex, std::defer_lock)
+        _Inout_ FlexCounterSyncState& state):
+    m_state(state),
+    m_lock(state.mutex, std::defer_lock)
 {
     SWSS_LOG_ENTER();
 
-    ++m_pending;
+    ++m_state.pendingUpdates;
 
     try
     {
@@ -22,8 +19,8 @@ UpdateLock::UpdateLock(
     }
     catch (...)
     {
-        --m_pending;
-        m_condition.notify_all();
+        --m_state.pendingUpdates;
+        m_state.condition.notify_all();
 
         throw;
     }
@@ -43,19 +40,17 @@ void UpdateLock::unlock()
 {
     SWSS_LOG_ENTER();
 
-    --m_pending;
-    m_condition.notify_all();
+    --m_state.pendingUpdates;
+    m_state.condition.notify_all();
     m_lock.unlock();
 }
 
 void UpdateLock::waitForPollEnd(
-        _In_ const bool& pollInProgress,
-        _Inout_ uint32_t& deferred,
         _In_ const std::atomic<bool>& running)
 {
     SWSS_LOG_ENTER();
 
-    if (!pollInProgress || !running)
+    if (!m_state.pollInProgress || !running)
     {
         return;
     }
@@ -64,27 +59,27 @@ void UpdateLock::waitForPollEnd(
     // counters. Let its original sweep and plugins finish before probing.
     // Withdraw from the checkpoint drain while waiting; the separate count
     // prevents a new sweep from overtaking these updates.
-    ++deferred;
-    --m_pending;
-    m_condition.notify_all();
+    ++m_state.deferredUpdates;
+    --m_state.pendingUpdates;
+    m_state.condition.notify_all();
 
     try
     {
-        m_condition.wait(m_lock, [&]
+        m_state.condition.wait(m_lock, [&]
         {
-            return !pollInProgress || !running;
+            return !m_state.pollInProgress || !running;
         });
     }
     catch (...)
     {
-        --deferred;
-        ++m_pending;
-        m_condition.notify_all();
+        --m_state.deferredUpdates;
+        ++m_state.pendingUpdates;
+        m_state.condition.notify_all();
 
         throw;
     }
 
-    --deferred;
-    ++m_pending;
-    m_condition.notify_all();
+    --m_state.deferredUpdates;
+    ++m_state.pendingUpdates;
+    m_state.condition.notify_all();
 }

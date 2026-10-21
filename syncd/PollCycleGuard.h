@@ -1,8 +1,8 @@
 #pragma once
 
-#include "swss/sal.h"
+#include "FlexCounterSyncState.h"
 
-#include <condition_variable>
+#include "swss/sal.h"
 
 namespace syncd
 {
@@ -11,15 +11,12 @@ namespace syncd
         public:
 
             PollCycleGuard(
-                    _Inout_ bool& inProgress,
-                    _Inout_ std::condition_variable& condition);
+                    _Inout_ FlexCounterSyncState& state);
 
             ~PollCycleGuard();
 
         private:
 
-            bool& m_inProgress;
-
-            std::condition_variable& m_condition;
+            FlexCounterSyncState& m_state;
     };
 }

@@ -4,6 +4,7 @@ extern "C" {
 #include "sai.h"
 }
 
+#include "FlexCounterSyncState.h"
 #include "meta/SaiInterface.h"
 
 #include "swss/table.h"
@@ -310,18 +311,7 @@ namespace syncd
 
             std::condition_variable m_cvSleep;
 
-            std::mutex m_mtx;
-
-            // Registered before acquiring m_mtx, so the polling thread can yield.
-            std::atomic<uint32_t> m_pendingUpdates{0};
-
-            std::condition_variable m_updateCond;
-
-            // Same-object support probes may clear counters. Keep their ordering
-            // after the current complete sweep, without blocking its checkpoints.
-            uint32_t m_deferredUpdates = 0;
-
-            bool m_pollInProgress = false;
+            FlexCounterSyncState m_syncState;
 
             // Preserve configuration notifications even before wait_for().
             std::atomic<uint64_t> m_sleepGeneration{0};
