@@ -75,7 +75,12 @@ tests_LDFLAGS = \
 				-Wl,--wrap=vpp_bridge_domain_add_del \
 				-Wl,--wrap=vpp_get_swif_idx_by_name \
 				-Wl,--wrap=vpp_add_node_next \
-				-Wl,--wrap=vpp_classify_set_interface_l2_tables
+				-Wl,--wrap=vpp_classify_set_interface_l2_tables \
+				-Wl,--wrap=vpp_ip_flow_hash_set \
+				-Wl,--wrap=configure_lcp_interface \
+				-Wl,--wrap=create_bvi_interface \
+				-Wl,--wrap=delete_bvi_interface \
+				-Wl,--wrap=sw_interface_feature_enable_disable
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control

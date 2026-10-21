@@ -36,6 +36,9 @@ namespace
      */
     std::map<std::string, bool> g_vppAdminUp;
 
+    // what sw_interface_feature_enable_disable returns
+    int g_vppFeatureRet = 0;
+
     bool vppAdminUp(
             const std::string& hwif)
     {
@@ -150,6 +153,35 @@ int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint3
 
 int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
         uint32_t ip6_table_index, uint32_t other_table_index, bool is_input) { return 0; }
+
+int __wrap_vpp_ip_flow_hash_set(uint32_t vrf_id, uint32_t mask, int addr_family) { return 0; }
+int __wrap_configure_lcp_interface(const char *hwif_name, const char *hostif_name, bool is_add) { return 0; }
+
+int __wrap_create_bvi_interface(uint8_t *mac_address, uint32_t instance)
+{
+    SWSS_LOG_ENTER();
+
+    g_vppCalls.push_back({"create_bvi_interface", "bvi" + std::to_string(instance), instance, 0, true});
+    return 0;
+}
+
+int __wrap_delete_bvi_interface(const char *hwif_name)
+{
+    SWSS_LOG_ENTER();
+
+    g_vppCalls.push_back({"delete_bvi_interface", hwif_name ? hwif_name : "", 0, 0, false});
+    return 0;
+}
+
+// recorded with api "<arc>/<feature>" and flag = enable
+int __wrap_sw_interface_feature_enable_disable(const char *hwif_name, const char *arc_name,
+        const char *feature_name, bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    g_vppCalls.push_back({std::string(arc_name) + "/" + feature_name, hwif_name ? hwif_name : "", 0, 0, enable});
+    return g_vppFeatureRet;
+}
 
 }
 
@@ -453,4 +485,215 @@ TEST_F(SwitchVppSubIfAdminState, SubPortSetDownBeforeThePortComesUpStaysDown)
 
     EXPECT_EQ(2u, vppCallsTo("interface_set_state", SUB_PORT_HWIF).size());
     EXPECT_FALSE(vppAdminUp(SUB_PORT_HWIF));
+}
+
+/*
+ * A VLAN router interface on VLAN 100, which VPP realizes as BVI_HWIF in
+ * bridge domain 100. SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE and
+ * ADMIN_V6_STATE turn VPP's ip4-not-enabled and ip6-not-enabled drop features
+ * on and off on the BVI.
+ */
+class SwitchVppBviAdminState : public ::testing::Test
+{
+    protected:
+
+        void SetUp() override
+        {
+            auto sc = std::make_shared<SwitchConfig>(0, "");
+
+            sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+            sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+            sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+            sc->m_useTapDevice = true;
+            sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+            sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+
+            auto scc = std::make_shared<SwitchConfigContainer>();
+
+            scc->insert(sc);
+
+            m_mgr = std::make_shared<RealObjectIdManager>(0, scc);
+            m_sw = std::make_shared<SwitchVpp>(m_switchId, m_mgr, sc);
+
+            m_vr = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+            sai_attribute_t sattr;
+
+            sattr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+            sattr.value.oid = m_vr;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), m_switchId, 1, &sattr));
+
+            m_vlan = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN, m_switchId);
+
+            sai_attribute_t vattr;
+
+            vattr.id = SAI_VLAN_ATTR_VLAN_ID;
+            vattr.value.u16 = VLAN_ID;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(m_vlan), m_switchId, 1, &vattr));
+
+            m_rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
+
+            g_vppCalls.clear();
+            g_vppAdminUp.clear();
+            g_vppFeatureRet = 0;
+        }
+
+        void TearDown() override
+        {
+            m_sw.reset();
+        }
+
+        static sai_attribute_t adminState(
+                sai_attr_id_t id,
+                bool is_up)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = id;
+            attr.value.booldata = is_up;
+
+            return attr;
+        }
+
+        // orchagent creates the VLAN router interface, optionally with admin states
+        sai_status_t createRif(
+                std::vector<sai_attribute_t> admin = {})
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<sai_attribute_t> attrs(4);
+
+            attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+            attrs[0].value.s32 = SAI_ROUTER_INTERFACE_TYPE_VLAN;
+            attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+            attrs[1].value.oid = m_vr;
+            attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+            attrs[2].value.oid = m_vlan;
+            attrs[3].id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+            memcpy(attrs[3].value.mac, MAC, sizeof(sai_mac_t));
+
+            attrs.insert(attrs.end(), admin.begin(), admin.end());
+
+            return m_sw->createRouterif(m_rif, m_switchId, static_cast<uint32_t>(attrs.size()), attrs.data());
+        }
+
+        // what SwitchVpp::set does for a router interface attribute
+        void setAdminState(
+                sai_attr_id_t id,
+                bool is_up)
+        {
+            SWSS_LOG_ENTER();
+
+            auto attr = adminState(id, is_up);
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_update_router_interface(m_rif, 1, &attr));
+        }
+
+        static constexpr uint16_t VLAN_ID = 100;
+        static constexpr const char *BVI_HWIF = "bvi100";
+        static constexpr const char *IP4_DROP = "ip4-unicast/ip4-not-enabled";
+        static constexpr const char *IP6_DROP = "ip6-unicast/ip6-not-enabled";
+        static constexpr sai_mac_t MAC = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+
+        const sai_object_id_t m_switchId = 0x2100000000;
+
+        std::shared_ptr<RealObjectIdManager> m_mgr;
+
+        std::shared_ptr<SwitchVpp> m_sw;
+
+        sai_object_id_t m_vr = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_vlan = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_rif = SAI_NULL_OBJECT_ID;
+};
+
+constexpr uint16_t SwitchVppBviAdminState::VLAN_ID;
+constexpr const char *SwitchVppBviAdminState::BVI_HWIF;
+constexpr const char *SwitchVppBviAdminState::IP4_DROP;
+constexpr const char *SwitchVppBviAdminState::IP6_DROP;
+constexpr sai_mac_t SwitchVppBviAdminState::MAC;
+
+TEST_F(SwitchVppBviAdminState, SetDownAndUpTogglesTheDropOncePerChange)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createRif());
+
+    ASSERT_EQ(1u, vppCallsTo("create_bvi_interface", BVI_HWIF).size());
+    EXPECT_TRUE(vppCallsTo(IP4_DROP, BVI_HWIF).empty());
+
+    setAdminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, false);
+
+    auto calls = vppCallsTo(IP4_DROP, BVI_HWIF);
+
+    ASSERT_EQ(1u, calls.size());
+    EXPECT_TRUE(calls[0].flag);
+
+    // VPP keeps a copy per enable, so a repeated down must not add another
+    setAdminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, false);
+
+    EXPECT_EQ(1u, vppCallsTo(IP4_DROP, BVI_HWIF).size());
+
+    setAdminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, true);
+
+    calls = vppCallsTo(IP4_DROP, BVI_HWIF);
+
+    ASSERT_EQ(2u, calls.size());
+    EXPECT_FALSE(calls[1].flag);
+
+    setAdminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, true);
+
+    EXPECT_EQ(2u, vppCallsTo(IP4_DROP, BVI_HWIF).size());
+    EXPECT_TRUE(vppCallsTo(IP6_DROP, BVI_HWIF).empty());
+}
+
+TEST_F(SwitchVppBviAdminState, V6DownLeavesV4Alone)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createRif());
+
+    setAdminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, false);
+
+    auto calls = vppCallsTo(IP6_DROP, BVI_HWIF);
+
+    ASSERT_EQ(1u, calls.size());
+    EXPECT_TRUE(calls[0].flag);
+    EXPECT_TRUE(vppCallsTo(IP4_DROP, BVI_HWIF).empty());
+}
+
+/*
+ * The admin states are create-and-set attributes: one passed on create was
+ * stored without being applied, so the BVI forwarded, and the later up then
+ * removed a drop it never added.
+ */
+TEST_F(SwitchVppBviAdminState, CreatedAdminDownDropsFromTheStart)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createRif({
+                adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, false),
+                adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, true)}));
+
+    auto calls = vppCallsTo(IP4_DROP, BVI_HWIF);
+
+    ASSERT_EQ(1u, calls.size());
+    EXPECT_TRUE(calls[0].flag);
+    EXPECT_TRUE(vppCallsTo(IP6_DROP, BVI_HWIF).empty());
+
+    setAdminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, true);
+
+    calls = vppCallsTo(IP4_DROP, BVI_HWIF);
+
+    ASSERT_EQ(2u, calls.size());
+    EXPECT_FALSE(calls[1].flag);
+}
+
+TEST_F(SwitchVppBviAdminState, CreateFailsAndRemovesTheBviIfTheDropCannotBeSet)
+{
+    g_vppFeatureRet = -1;
+
+    EXPECT_NE(SAI_STATUS_SUCCESS, createRif({
+                adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, false)}));
+
+    EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface", BVI_HWIF).size());
 }

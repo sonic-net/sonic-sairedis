@@ -1622,6 +1622,19 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
         return SAI_STATUS_FAILURE;
     }
 
+    // A new RIF starts with both admin states up (the SAI default)
+    for (auto attr_id: {SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE})
+    {
+        auto attr_admin = sai_metadata_get_attr_by_id(attr_id, attr_count, attr_list);
+
+        if (attr_admin != NULL && vpp_set_bvi_admin_state(hw_ifname, attr_admin, true) != SAI_STATUS_SUCCESS)
+        {
+            delete_bvi_interface(hw_ifname);
+            refresh_interfaces_list();
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
     //Create bridge and set the l2 port as BVI
     set_sw_interface_l2_bridge(hw_ifname,vlan_id, true, VPP_API_PORT_TYPE_BVI);
 
@@ -1767,53 +1780,61 @@ sai_status_t SwitchVpp::vpp_update_bvi_interface(
         set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_mtu);
     }
 
-    // Per-AF admin state: drop routed unicast of that AF on BVI ingress via
-    // VPP's ip4/ip6-not-enabled feature, leaving the other AF and the bridge alone.
-    static const struct
+    for (auto attr_id: {SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE})
     {
-        sai_router_interface_attr_t attr_id;
-        const char *af;
-        const char *arc_name;
-        const char *feature_name;
-    } admin_states[] = {
-        { SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, "v4", "ip4-unicast", "ip4-not-enabled" },
-        { SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, "v6", "ip6-unicast", "ip6-not-enabled" },
-    };
-
-    for (const auto &admin: admin_states)
-    {
-        auto attr_admin = sai_metadata_get_attr_by_id(admin.attr_id, attr_count, attr_list);
+        auto attr_admin = sai_metadata_get_attr_by_id(attr_id, attr_count, attr_list);
 
         if (attr_admin == NULL)
         {
             continue;
         }
 
-        // The feature is not reference counted per caller, so only toggle on change.
         sai_attribute_t cur;
-        cur.id = admin.attr_id;
+        cur.id = attr_id;
         bool was_up = (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_obj_id, 1, &cur) != SAI_STATUS_SUCCESS) ||
                       cur.value.booldata;
-        bool is_up = attr_admin->value.booldata;
 
-        if (was_up != is_up)
-        {
-            int ret = sw_interface_feature_enable_disable(hwif_name, admin.arc_name,
-                                                          admin.feature_name, !is_up);
-
-            if (ret < 0)
-            {
-                SWSS_LOG_ERROR("failed to set admin %s state %s on BVI %s (ret %d)",
-                               admin.af, is_up ? "up" : "down", hwif_name, ret);
-                return SAI_STATUS_FAILURE;
-            }
-
-            SWSS_LOG_NOTICE("Set admin %s state %s on BVI %s",
-                            admin.af, is_up ? "up" : "down", hwif_name);
-        }
+        CHECK_STATUS(vpp_set_bvi_admin_state(hwif_name, attr_admin, was_up));
 
         set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_admin);
     }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::vpp_set_bvi_admin_state(
+        _In_ const char *hwif_name,
+        _In_ const sai_attribute_t *attr_admin,
+        _In_ bool was_up)
+{
+    SWSS_LOG_ENTER();
+
+    // Per-AF admin state: drop routed unicast of that AF on BVI ingress via
+    // VPP's ip4/ip6-not-enabled feature, leaving the other AF and the bridge alone.
+    bool is_v4 = (attr_admin->id == SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE);
+    bool is_up = attr_admin->value.booldata;
+
+    // VPP's own IP enable/disable toggles the same feature and each enable adds
+    // another instance, so only toggle on change to keep enables and disables paired.
+    if (was_up == is_up)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    int ret = sw_interface_feature_enable_disable(hwif_name,
+                                                  is_v4 ? "ip4-unicast" : "ip6-unicast",
+                                                  is_v4 ? "ip4-not-enabled" : "ip6-not-enabled",
+                                                  !is_up);
+
+    if (ret < 0)
+    {
+        SWSS_LOG_ERROR("failed to set admin %s state %s on BVI %s (ret %d)",
+                       is_v4 ? "v4" : "v6", is_up ? "up" : "down", hwif_name, ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("Set admin %s state %s on BVI %s",
+                    is_v4 ? "v4" : "v6", is_up ? "up" : "down", hwif_name);
 
     return SAI_STATUS_SUCCESS;
 }

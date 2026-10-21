@@ -452,6 +452,11 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+            sai_status_t vpp_set_bvi_admin_state(
+                    _In_ const char *hwif_name,
+                    _In_ const sai_attribute_t *attr_admin,
+                    _In_ bool was_up);
+
             sai_status_t createLag(
                     _In_ sai_object_id_t object_id,
                     _In_ sai_object_id_t switch_id,
