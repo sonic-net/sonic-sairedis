@@ -148,6 +148,11 @@ sai_status_t MockableSaiInterface::bulkGet(
 {
     SWSS_LOG_ENTER();
 
+    if (mock_bulkGet)
+    {
+        return mock_bulkGet(object_type, object_count, object_id, attr_count, attr_list, mode, object_statuses);
+    }
+
     SWSS_LOG_ERROR("not implemented, FIXME");
 
     return SAI_STATUS_NOT_IMPLEMENTED;

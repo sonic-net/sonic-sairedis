@@ -586,6 +586,7 @@ void SwitchVpp::vppProcessEvents ()
 
     while(m_run_vpp_events_thread) {
         nanosleep(&req, NULL);
+
         ret = vpp_sync_for_events();
         SWSS_LOG_NOTICE("Checking for any VS events status %d", ret);
         if (ret < 0)
@@ -761,11 +762,80 @@ sai_status_t SwitchVpp::vpp_set_interface_state (
     {
         const char *hwif_name = ifname.c_str();
 
-        interface_set_state(hwif_name, is_up);
+        if (vlan_id)
+        {
+            vpp_set_sub_interface_state(ifname, is_up);
+        }
+        else if (interface_set_state(hwif_name, is_up) == 0 && is_up)
+        {
+            vpp_resync_sub_interface_admin_state(ifname);
+        }
+
         SWSS_LOG_NOTICE("Updating router interface admin state %s %s", hwif_name,
                         (is_up ? "UP" : "DOWN"));
     }
     return SAI_STATUS_SUCCESS;
+}
+
+int SwitchVpp::vpp_set_sub_interface_state(
+        _In_ const std::string& sub_hwif,
+        _In_ bool is_up)
+{
+    SWSS_LOG_ENTER();
+
+    int ret = interface_set_state(sub_hwif.c_str(), is_up);
+
+    if (is_up && ret != 0)
+    {
+        /*
+         * VPP's sw_interface_set_flags fails with "super-interface ... must be
+         * up" while the parent is admin down, which is what happens to a VLAN
+         * member or sub-port added before orchagent brings its port up. VPP
+         * doesn't propagate a later parent admin up to the sub-interface, so
+         * apply it from vpp_resync_sub_interface_admin_state() then.
+         */
+        m_sub_if_admin_up_pending.insert(sub_hwif);
+
+        SWSS_LOG_NOTICE("admin up of %s refused (%d), applying it when its parent comes up",
+                sub_hwif.c_str(), ret);
+    }
+    else
+    {
+        m_sub_if_admin_up_pending.erase(sub_hwif);
+    }
+
+    return ret;
+}
+
+void SwitchVpp::vpp_resync_sub_interface_admin_state(
+        _In_ const std::string& parent_hwif)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * The set is ordered, so the sub-interfaces of one parent ("<parent>.<vlan>")
+     * are a contiguous range starting at "<parent>.".
+     */
+    const std::string prefix = parent_hwif + ".";
+
+    auto it = m_sub_if_admin_up_pending.lower_bound(prefix);
+
+    while (it != m_sub_if_admin_up_pending.end() && it->compare(0, prefix.size(), prefix) == 0)
+    {
+        int ret = interface_set_state(it->c_str(), true);
+
+        if (ret == 0)
+        {
+            SWSS_LOG_NOTICE("applied deferred admin up to %s", it->c_str());
+        }
+        else
+        {
+            // the parent is up now, so there is nothing left to wait for
+            SWSS_LOG_ERROR("deferred admin up of %s failed (%d)", it->c_str(), ret);
+        }
+
+        it = m_sub_if_admin_up_pending.erase(it);
+    }
 }
 
 sai_status_t SwitchVpp::vpp_set_port_mtu (
@@ -1209,6 +1279,12 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
 
     int ret = interface_ip_address_add_del(hw_ifname, &vpp_ip_prefix, is_add);
 
+    if (ret == 0 && vpp_ip_prefix.prefix_addr.sa_family == AF_INET)
+    {
+        vpp_sonic_ext_copp_ip2me_addr_add_del(
+                vpp_ip_prefix.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
+    }
+
     if (ret == 0)
     {
         if (is_add)
@@ -1383,6 +1459,12 @@ sai_status_t SwitchVpp::vpp_interface_ip_address_update (
         m_tunnel_mgr_ipip.retry_pending_unnumbered(ip_route.prefix_addr);
     }
 
+    if (ret == 0 && route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        vpp_sonic_ext_copp_ip2me_addr_add_del(
+                ip_route.prefix_addr.addr.ip4.sin_addr.s_addr, is_add);
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -1502,23 +1584,26 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
         return 0;
     }
 
-    std::string vrf_name = "vrf_" + vrf_id;
+    std::string vrf_name = "vrf_" + std::to_string(vrf_id);
 
-    if (!vrf_id || ip_vrf_add(vrf_id, vrf_name.c_str(), false) == 0) {
-        SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
-        vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
-
-        uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
-            VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
-            VPP_IP_API_FLOW_HASH_PROTO | VPP_IP_API_FLOW_HASH_PEEK_INNER;
-
-        int ret = vpp_ip_flow_hash_set(vrf_id, hash_mask, AF_INET);
-        SWSS_LOG_NOTICE("ip flow hash set for VRF %s with vrf_id %u in VS, status %d",
-                        sai_serialize_object_id(objectId).c_str(), vrf_id, ret);
-        ret = vpp_ip_flow_hash_set(vrf_id, hash_mask, AF_INET6);
-        SWSS_LOG_NOTICE("ip6 flow hash set for VRF %s with vrf_id %u in VS, status %d",
-                        sai_serialize_object_id(objectId).c_str(), vrf_id, ret);
+    if (vrf_id && ip_vrf_add(vrf_id, vrf_name.c_str(), false) != 0) {
+        SWSS_LOG_ERROR("Failed to create IPv4 VRF table %u for %s",
+                       vrf_id, sai_serialize_object_id(objectId).c_str());
+        return -1;
     }
+    SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
+    vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
+
+    uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
+        VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
+        VPP_IP_API_FLOW_HASH_PROTO | VPP_IP_API_FLOW_HASH_PEEK_INNER;
+
+    int ret = vpp_ip_flow_hash_set(vrf_id, hash_mask, AF_INET);
+    SWSS_LOG_NOTICE("ip flow hash set for VRF %s with vrf_id %u in VS, status %d",
+                    sai_serialize_object_id(objectId).c_str(), vrf_id, ret);
+    ret = vpp_ip_flow_hash_set(vrf_id, hash_mask, AF_INET6);
+    SWSS_LOG_NOTICE("ip6 flow hash set for VRF %s with vrf_id %u in VS, status %d",
+                    sai_serialize_object_id(objectId).c_str(), vrf_id, ret);
 
     return 0;
 }
@@ -2100,6 +2185,7 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     delete_sub_interface(hwif_name.c_str(), vlan_id);
 
     m_ifaceRegistry.remove(sub_hwif);
+    m_sub_if_admin_up_pending.erase(sub_hwif);
 
     /* Get new list of physical interfaces from VS */
     refresh_interfaces_list();
@@ -2122,7 +2208,13 @@ sai_status_t SwitchVpp::createRouterif(
         tattr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
         if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &tattr) == SAI_STATUS_ITEM_NOT_FOUND)
         {
-            vpp_create_router_interface(attr_count, attr_list);
+            sai_status_t status = vpp_create_router_interface(attr_count, attr_list);
+            auto attr_type = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_TYPE,
+                                                         attr_count, attr_list);
+            if (attr_type != NULL && attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+            {
+                CHECK_STATUS(status);
+            }
         } else {
             vpp_update_router_interface(object_id, attr_count, attr_list);
         }

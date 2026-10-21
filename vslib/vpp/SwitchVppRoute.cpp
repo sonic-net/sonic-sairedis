@@ -150,6 +150,21 @@ const char* SwitchVpp::resolveNexthopMemberHwif(
         }
     }
 
+    // A VLAN RIF has no PORT_ID and egresses through the BVI of its VLAN. Without
+    // an interface the path is recursive, and a host route whose nexthop is its own
+    // address (a dual-ToR prefix-route mux neighbor) then resolves through itself,
+    // which VPP installs as a drop.
+    rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS)
+    {
+        member_hwif = m_ifaceRegistry.resolveHwIfName(rif_attr.value.oid, 0);
+
+        if (!member_hwif.empty())
+        {
+            return member_hwif.c_str();
+        }
+    }
+
     return NULL;
 }
 
@@ -283,6 +298,18 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
         size_t i;
         for (i = 0; i < nxthop_group->nmembers; i++) {
+            if (nxt_grp_member->tunnel_nh_oid != SAI_NULL_OBJECT_ID &&
+                m_tunnel_mgr.get_tunnel_if(nxt_grp_member->tunnel_nh_oid,
+                                           route_entry.vr_id,
+                                           nxt_grp_member->sw_if_index,
+                                           is_add) != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("No tunnel interface for route %s next hop %s",
+                               serializedObjectId.c_str(),
+                               sai_serialize_object_id(nxt_grp_member->tunnel_nh_oid).c_str());
+                free(ip_route);
+                free(nxthop_group);
+                return SAI_STATUS_FAILURE;
+            }
             const char *member_hwif = hwif_name;
             std::string resolved_hwif;
 
@@ -471,6 +498,15 @@ sai_status_t SwitchVpp::IpRoutePathAddRemove(
         vrf_id = 0;
     } else {
         vrf_id = vrf->m_vrf_id;
+    }
+
+    if (member->tunnel_nh_oid != SAI_NULL_OBJECT_ID &&
+        m_tunnel_mgr.get_tunnel_if(member->tunnel_nh_oid, route_entry.vr_id,
+                                   member->sw_if_index, is_add) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("No tunnel interface for route %s next hop %s",
+                       serializedObjectId.c_str(),
+                       sai_serialize_object_id(member->tunnel_nh_oid).c_str());
+        return SAI_STATUS_FAILURE;
     }
 
     // Allocate route with single nexthop

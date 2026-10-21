@@ -2756,3 +2756,29 @@ TEST(SaiSerialize, sai_deserialize_port_pam4_eye_values_list)
     EXPECT_EQ(eye_list.count, 0);
     EXPECT_EQ(eye_list.list, nullptr);
 }
+
+TEST(SaiSerialize, sai_serialize_otn_attenuator_attr)
+{
+    EXPECT_EQ(sai_serialize_otn_attenuator_attr(SAI_OTN_ATTENUATOR_ATTR_ATTENUATION),
+            "SAI_OTN_ATTENUATOR_ATTR_ATTENUATION");
+}
+
+TEST(SaiSerialize, sai_serialize_otn_oa_attr)
+{
+    EXPECT_EQ(sai_serialize_otn_oa_attr(SAI_OTN_OA_ATTR_TARGET_GAIN),
+            "SAI_OTN_OA_ATTR_TARGET_GAIN");
+}
+
+TEST(SaiSerialize, sai_deserialize_otn_attenuator_attr)
+{
+    sai_otn_attenuator_attr_t attr;
+    sai_deserialize_otn_attenuator_attr("SAI_OTN_ATTENUATOR_ATTR_ATTENUATION", attr);
+    EXPECT_EQ(attr, SAI_OTN_ATTENUATOR_ATTR_ATTENUATION);
+}
+
+TEST(SaiSerialize, sai_deserialize_otn_oa_attr)
+{
+    sai_otn_oa_attr_t attr;
+    sai_deserialize_otn_oa_attr("SAI_OTN_OA_ATTR_TARGET_GAIN", attr);
+    EXPECT_EQ(attr, SAI_OTN_OA_ATTR_TARGET_GAIN);
+}
