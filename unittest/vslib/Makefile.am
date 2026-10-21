@@ -55,6 +55,7 @@ tests_SOURCES = main.cpp \
 
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
+				TestSwitchVppPbh.cpp \
 				MockVppXlate.cpp MockVppXlate.h
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
@@ -67,7 +68,9 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				bridge_domain_get_member_count vpp_bridge_domain_add_del \
 				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
 				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state \
-				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del
+				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
+				vpp_pbh_profile_add_del vpp_pbh_table_add_replace vpp_pbh_table_del \
+				vpp_pbh_interface_attach_detach vpp_rule_stats_query
 tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 endif
 
