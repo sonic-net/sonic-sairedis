@@ -63,7 +63,7 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				set_sw_interface_l2_bridge interface_set_state refresh_interfaces_list \
 				vpp_set_mac_event_cb vpp_l2fib_dump vpp_ip_flow_hash_set set_interface_vrf \
 				get_interface_vrf ip_vrf_add ip_vrf_del interface_ip_address_del_all \
-				init_vpp_client vpp_wait_for_events vpp_sync_for_events vpp_ev_dequeue \
+				init_vpp_client vpp_wait_for_events vpp_drain_events vpp_sync_for_events vpp_ev_dequeue \
 				interface_set_promiscuous set_l2_interface_vlan_tag_rewrite set_bridge_domain_flags \
 				bridge_domain_get_member_count vpp_bridge_domain_add_del \
 				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \

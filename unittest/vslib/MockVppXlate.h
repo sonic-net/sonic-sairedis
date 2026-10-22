@@ -4,6 +4,7 @@
 #include "vpp/vppxlate/SaiIntfStats.h"
 
 #include <array>
+#include <chrono>
 #include <initializer_list>
 #include <map>
 #include <set>
@@ -80,6 +81,19 @@ void deliverVppEvents(std::initializer_list<vpp_event_info_t *> events);
 // The event thread has taken the delivered events, and posted them once it
 // waits for the next ones
 bool waitForVppEventsTaken();
+
+// A call the event thread made on the event socket
+struct VppEventCall
+{
+    std::string api;
+    int result;
+    std::chrono::steady_clock::time_point time;
+};
+
+// Forgets the calls made so far; the next pingFailures pings fail
+void resetVppEventCalls(int pingFailures = 0);
+
+std::vector<VppEventCall> vppEventCalls();
 
 class TestableSwitchVpp : public saivs::SwitchVpp
 {

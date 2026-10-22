@@ -28,6 +28,7 @@
 #include <fstream>
 #include <algorithm>
 #include <set>
+#include <thread>
 
 using namespace saivs;
 
@@ -582,7 +583,7 @@ void SwitchVpp::vppProcessEvents ()
     // pings when nothing arrives.
     const int event_sync_interval_ms = 2000;
     vpp_event_info_t *evp;
-    int ret;
+    int ret = 0;
 
     // One-shot level oper-status resync at startup: recover the current link
     // state of any interface whose state was set before we subscribed to
@@ -590,21 +591,33 @@ void SwitchVpp::vppProcessEvents ()
     m_operResyncDue.store(true, std::memory_order_relaxed);
 
     while(m_run_vpp_events_thread) {
-        vpp_wait_for_events(event_sync_interval_ms);
+        int ready = 0;
 
-        // Pings, so it returns even if another reader already drained the socket
-        ret = vpp_sync_for_events();
+        if (ret < 0)
+        {
+            // The event socket failed in the last pass, and its reconnect may
+            // have failed too: try again an interval later, not right away
+            std::this_thread::sleep_for(std::chrono::milliseconds(event_sync_interval_ms));
+        }
+        else
+        {
+            ready = vpp_wait_for_events(event_sync_interval_ms);
+        }
+
+        // Read what VPP has sent. Only a quiet interval is checked with a ping,
+        // which also reconnects the event socket if it is down.
+        ret = ready > 0 ? vpp_drain_events() : vpp_sync_for_events();
         // Runs once per event batch now, so keep it at DEBUG; failures log below
         SWSS_LOG_DEBUG("Checking for any VS events status %d", ret);
         if (ret < 0)
         {
             // The failure triggers an event-socket reconnect inside
-            // vpp_sync_for_events. VPP only re-delivers *future* edges after
-            // re-subscribe, so a successful reconnect also queues a
-            // VPP_INTF_LINK_RESYNC event, behind the link events read before the
-            // failure: syncOnPlatformEvent applies those first, then re-reads the
-            // link state of every port (resyncPortOperStatus).
-            SWSS_LOG_WARN("vpp_sync_for_events failed (%d); event socket reconnect attempted", ret);
+            // vpp_drain_events or vpp_sync_for_events. VPP only re-delivers
+            // *future* edges after re-subscribe, so a successful reconnect also
+            // queues a VPP_INTF_LINK_RESYNC event, behind the link events read
+            // before the failure: syncOnPlatformEvent applies those first, then
+            // re-reads the link state of every port (resyncPortOperStatus).
+            SWSS_LOG_WARN("vpp event socket failed (%d); reconnect attempted", ret);
         }
         while ((evp = vpp_ev_dequeue())) {
             if (evp->type == VPP_INTF_LINK_STATUS && evp->data.intf_status.link_up) {

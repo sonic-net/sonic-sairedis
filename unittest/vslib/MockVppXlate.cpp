@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <deque>
 #include <mutex>
 
@@ -12,6 +13,8 @@ namespace
     std::atomic<int> g_vppEventWaits{0};
     std::mutex g_vppEventsMutex;
     std::deque<vpp_event_info_t *> g_vppEvents;
+    std::vector<VppEventCall> g_vppEventCalls;
+    int g_vppPingFailures = 0;
 
     bool vppEventsPending()
     {
@@ -19,6 +22,34 @@ namespace
         std::lock_guard<std::mutex> lock(g_vppEventsMutex);
         return !g_vppEvents.empty();
     }
+
+    int recordVppEventCall(const std::string& api, int result)
+    {
+        SWSS_LOG_ENTER();
+        std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+        g_vppEventCalls.push_back({api, result, std::chrono::steady_clock::now()});
+        return result;
+    }
+}
+
+void resetVppEventCalls(int pingFailures)
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+    for (auto *ev : g_vppEvents)
+    {
+        free(ev);
+    }
+    g_vppEvents.clear();
+    g_vppEventCalls.clear();
+    g_vppPingFailures = pingFailures;
+}
+
+std::vector<VppEventCall> vppEventCalls()
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+    return g_vppEventCalls;
 }
 
 void deliverVppEvents(std::initializer_list<vpp_event_info_t *> events)
@@ -324,12 +355,29 @@ int __wrap_init_vpp_client() {
 int __wrap_vpp_wait_for_events(int) {
     SWSS_LOG_ENTER();
     g_vppEventWaits++;
-    usleep(10 * 1000);
-    return 0;
+    // like poll(): returns once there is something to read, or after the interval
+    if (!vppEventsPending())
+    {
+        usleep(10 * 1000);
+    }
+    return recordVppEventCall("vpp_wait_for_events", vppEventsPending() ? 1 : 0);
+}
+int __wrap_vpp_drain_events() {
+    SWSS_LOG_ENTER();
+    return recordVppEventCall("vpp_drain_events", 0);
 }
 int __wrap_vpp_sync_for_events() {
     SWSS_LOG_ENTER();
-    return 0;
+    int result = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+        if (g_vppPingFailures > 0)
+        {
+            --g_vppPingFailures;
+            result = -1;
+        }
+    }
+    return recordVppEventCall("vpp_sync_for_events", result);
 }
 vpp_event_info_t * __wrap_vpp_ev_dequeue() {
     SWSS_LOG_ENTER();
