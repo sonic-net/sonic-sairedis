@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "module": "sonic-sairedis",
+  "packages": {
+    "libsairedis": {
+      "runtime_target": "//lib:libsairedis_pkg",
+      "control_fields": {
+        "Package": "libsairedis",
+        "Version": "1.0.0",
+        "Depends": "libc6 (>= 2.38), libgcc-s1 (>= 3.0), libstdc++6 (>= 13.1), libswsscommon (>= 1.0.0)",
+        "Multi-Arch": "no"
+      }
+    },
+    "libsaimetadata": {
+      "runtime_target": "//meta:libsaimetadata_pkg",
+      "control_fields": {
+        "Package": "libsaimetadata",
+        "Version": "1.0.0",
+        "Depends": "libc6 (>= 2.38), libgcc-s1 (>= 3.0), libstdc++6 (>= 13.1), libswsscommon (>= 1.0.0)",
+        "Multi-Arch": "no"
+      }
+    },
+    "libsaivs": {
+      "runtime_target": "//vslib:libsaivs_pkg",
+      "control_fields": {
+        "Package": "libsaivs",
+        "Version": "1.0.0",
+        "Depends": "libc6 (>= 2.38), libgcc-s1 (>= 3.0), libsaimetadata (>= 1.0.0), libstdc++6 (>= 13.1)",
+        "Multi-Arch": "no"
+      }
+    },
+    "syncd-vs": {
+      "runtime_target": "//syncd:syncd_pkg",
+      "control_fields": {
+        "Package": "syncd-vs",
+        "Version": "1.0.0",
+        "Depends": "init-system-helpers (>= 1.54~)",
+        "Multi-Arch": "no"
+      }
+    }
+  }
+}
