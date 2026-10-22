@@ -468,3 +468,5 @@ vppxlate
 PBH
 pbh
 subtree
+iface
+loopback
