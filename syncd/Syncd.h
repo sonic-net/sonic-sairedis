@@ -434,6 +434,9 @@ namespace syncd
             void updateRedisDatabase(
                     _In_ const std::vector<std::shared_ptr<AsicView>>& temporaryViews);
 
+            void removeStaleFlexCounters(
+                    _In_ const std::vector<std::shared_ptr<AsicView>>& temporaryViews);
+
             std::map<sai_object_id_t, swss::TableDump> redisGetAsicView(
                     _In_ const std::string &tableName);
 

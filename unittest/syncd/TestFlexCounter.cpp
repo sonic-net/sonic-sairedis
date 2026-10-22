@@ -1,4 +1,5 @@
 #include "FlexCounter.h"
+#include "FlexCounterManager.h"
 #include "VendorSaiOptions.h"
 #include "sai_serialize.h"
 #include "MockableSaiInterface.h"
@@ -6,6 +7,10 @@
 #include "VirtualObjectIdManager.h"
 #include "VidManager.h"
 #include "NumberOidIndexGenerator.h"
+#include <algorithm>
+#include <map>
+#include <mutex>
+#include <unistd.h>
 #include <string>
 #include <chrono>
 #include <fstream>
@@ -1104,6 +1109,225 @@ void testAddRemovePlugin(const std::string& pluginFieldName)
     EXPECT_EQ(fc.isEmpty(), true);
 }
 
+TEST(FlexCounter, managerRemoveCounters)
+{
+    // Counters selected by the predicate must stop being polled in every
+    // group, both when polled one by one (router interfaces here) and in
+    // bulk (ports here), and the other counters must be polled as before.
+
+    std::mutex mtx;
+    std::map<sai_object_id_t, uint32_t> polls; // number of polls per RID
+    bool bulkPolled = false;
+
+    // other tests count on the mocks left by the tests before them
+
+    auto previousQueryStatsCapability = sai->mock_queryStatsCapability;
+    auto previousGetStats = sai->mock_getStats;
+    auto previousGetStatsExt = sai->mock_getStatsExt;
+    auto previousBulkGetStats = sai->mock_bulkGetStats;
+
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t object_type, sai_stat_capability_list_t *stats_capability)
+    {
+        if (stats_capability->count < 4)
+        {
+            stats_capability->count = 4;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        stats_capability->count = 4;
+
+        for (int i = 0; i < 4; i++)
+        {
+            stats_capability->list[i].stat_enum = i;
+            stats_capability->list[i].stat_modes = (object_type == SAI_OBJECT_TYPE_PORT) ?
+                (SAI_STATS_MODE_READ | SAI_STATS_MODE_BULK_READ) : SAI_STATS_MODE_READ;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai->mock_getStats = [&](sai_object_type_t, sai_object_id_t rid, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters)
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        polls[rid]++;
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            counters[i] = (i + 1) * 100;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai->mock_getStatsExt = [&](sai_object_type_t, sai_object_id_t rid, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters)
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        polls[rid]++;
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            counters[i] = (i + 1) * 100;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai->mock_bulkGetStats = [&](sai_object_id_t,
+                                 sai_object_type_t,
+                                 uint32_t object_count,
+                                 const sai_object_key_t *object_keys,
+                                 uint32_t number_of_counters,
+                                 const sai_stat_id_t *,
+                                 sai_stats_mode_t,
+                                 sai_status_t *object_status,
+                                 uint64_t *counters)
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        bulkPolled = true;
+        for (uint32_t i = 0; i < object_count; i++)
+        {
+            polls[object_keys[i].key.object_id]++;
+            object_status[i] = SAI_STATUS_SUCCESS;
+            for (uint32_t j = 0; j < number_of_counters; j++)
+            {
+                counters[i * number_of_counters + j] = (j + 1) * 100;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    auto waitForPolls = [&](const std::vector<sai_object_id_t>& rids, uint32_t count)
+    {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+
+                if (std::all_of(rids.begin(), rids.end(), [&](sai_object_id_t rid) { return polls[rid] >= count; }))
+                {
+                    return true;
+                }
+            }
+
+            usleep(50 * 1000);
+        }
+
+        return false;
+    };
+
+    const std::string rifGroup = "RIF_GROUP";
+    const std::string portGroup = "PORT_GROUP";
+
+    auto rifVids = generateOids(2, SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto portVids = generateOids(2, SAI_OBJECT_TYPE_PORT);
+
+    // RIDs differ from VIDs, the SAI is polled with RIDs
+
+    auto toRid = [](sai_object_id_t vid) { return vid + 0x100000; };
+
+    std::vector<sai_object_id_t> rifRids = { toRid(rifVids[0]), toRid(rifVids[1]) };
+    std::vector<sai_object_id_t> portRids = { toRid(portVids[0]), toRid(portVids[1]) };
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    {
+        FlexCounterManager manager(sai, "COUNTERS_DB", "");
+
+        std::vector<swss::FieldValueTuple> groupValues;
+        groupValues.emplace_back(POLL_INTERVAL_FIELD, "100");
+        groupValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+        groupValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+
+        manager.addCounterPlugin(rifGroup, groupValues);
+        manager.addCounterPlugin(portGroup, groupValues);
+
+        std::vector<swss::FieldValueTuple> rifValues;
+        rifValues.emplace_back(RIF_COUNTER_ID_LIST, "SAI_ROUTER_INTERFACE_STAT_IN_OCTETS,SAI_ROUTER_INTERFACE_STAT_IN_PACKETS");
+
+        manager.addCounter(rifVids[0], rifRids[0], rifGroup, rifValues);
+        manager.addCounter(rifVids[1], rifRids[1], rifGroup, rifValues);
+
+        std::vector<swss::FieldValueTuple> portValues;
+        portValues.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_UCAST_PKTS");
+
+        manager.bulkAddCounter(portVids, portRids, portGroup, portValues);
+
+        EXPECT_EQ(manager.getInstance(rifGroup)->getCounterVids(), std::set<sai_object_id_t>(rifVids.begin(), rifVids.end()));
+        EXPECT_EQ(manager.getInstance(portGroup)->getCounterVids(), std::set<sai_object_id_t>(portVids.begin(), portVids.end()));
+
+        EXPECT_TRUE(waitForPolls({rifRids[0], rifRids[1], portRids[0], portRids[1]}, 1));
+
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            EXPECT_TRUE(bulkPolled);
+        }
+
+        // nothing is removed when the predicate selects nothing
+
+        EXPECT_TRUE(manager.removeCounters([](sai_object_id_t) { return false; }).empty());
+
+        // remove the first router interface and the first port
+
+        auto removed = manager.removeCounters(
+                [&](sai_object_id_t vid) { return vid == rifVids[0] || vid == portVids[0]; });
+
+        std::vector<std::pair<std::string, sai_object_id_t>> expected = {
+            { portGroup, portVids[0] },
+            { rifGroup, rifVids[0] },
+        };
+
+        EXPECT_EQ(removed, expected);
+
+        EXPECT_EQ(manager.getInstance(rifGroup)->getCounterVids(), std::set<sai_object_id_t>({ rifVids[1] }));
+        EXPECT_EQ(manager.getInstance(portGroup)->getCounterVids(), std::set<sai_object_id_t>({ portVids[1] }));
+
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            polls.clear();
+        }
+
+        EXPECT_TRUE(waitForPolls({rifRids[1], portRids[1]}, 3));
+
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            EXPECT_EQ(polls[rifRids[0]], 0u);
+            EXPECT_EQ(polls[portRids[0]], 0u);
+        }
+
+        // a group without plugins and without counters is dropped
+
+        manager.removeCounterPlugins(rifGroup);
+
+        EXPECT_EQ(manager.m_flexCounters.count(rifGroup), 1u);
+
+        removed = manager.removeCounters([](sai_object_id_t) { return true; });
+
+        expected = {
+            { portGroup, portVids[1] },
+            { rifGroup, rifVids[1] },
+        };
+
+        EXPECT_EQ(removed, expected);
+
+        EXPECT_EQ(manager.m_flexCounters.count(rifGroup), 0u);
+        EXPECT_EQ(manager.m_flexCounters.count(portGroup), 1u);
+        EXPECT_TRUE(manager.getInstance(portGroup)->getCounterVids().empty());
+    }
+
+    sai->mock_queryStatsCapability = previousQueryStatsCapability;
+    sai->mock_getStats = previousGetStats;
+    sai->mock_getStatsExt = previousGetStatsExt;
+    sai->mock_bulkGetStats = previousBulkGetStats;
+
+    std::vector<std::string> keys;
+    countersTable.getKeys(keys);
+
+    for (const auto& key: keys)
+    {
+        countersTable.del(key);
+    }
+}
+
 TEST(FlexCounter, addRemoveCounterPlugin)
 {
     std::string fields[] = {QUEUE_PLUGIN_FIELD,
@@ -2134,6 +2358,8 @@ void testDashMeterAddRemoveCounter(
         swss::RedisPipeline pollPipeline(&pollDb);
         swss::Table pollTable(&pollPipeline, COUNTERS_TABLE, false);
         waitForCounterKeys(pollTable, expectedMeterKeys);
+
+        EXPECT_EQ(fc.getCounterVids(), std::set<sai_object_id_t>(object_ids.begin(), object_ids.end()));
     }
     else
     {
