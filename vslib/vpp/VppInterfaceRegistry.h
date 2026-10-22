@@ -299,6 +299,11 @@ namespace saivs
             std::string resolveHwIfByRifOid(
                     _In_ sai_object_id_t rifOid) const;
 
+            // Port/LAG ACLs also cover tagged VLAN members. Routed sub-ports
+            // have their own RIF policy and are deliberately excluded.
+            std::vector<std::string> resolveAclInterfaces(
+                    _In_ sai_object_id_t oid) const;
+
             /*
              * A LAG that is fully realised: registered, of LAG type and bound
              * to a VPP sw_if_index. addLag() takes the bond id, the sw_if_index

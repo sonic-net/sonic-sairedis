@@ -2792,7 +2792,7 @@ static int __delete_loopback (vat_main_t *vam, const char *hwif_name, u32 instan
     return ret;
 }
 
-static int __create_sub_interface (vat_main_t *vam, vl_api_interface_index_t if_idx, u32 sub_id, u16 vlan_id, u32 *new_sw_if_index)
+static int __create_sub_interface (vat_main_t *vam, vl_api_interface_index_t if_idx, u32 sub_id, u16 vlan_id, bool exact_match, u32 *new_sw_if_index)
 {
     vl_api_create_subif_t *mp;
     int ret;
@@ -2807,7 +2807,10 @@ static int __create_sub_interface (vat_main_t *vam, vl_api_interface_index_t if_
     mp->outer_vlan_id = htons(vlan_id);
 
     /* create_sub_interfaces() from vnet/interface_cli.c */
-    mp->sub_if_flags = htonl(SUB_IF_API_FLAG_EXACT_MATCH | SUB_IF_API_FLAG_ONE_TAG);
+    /* A bridged VLAN admits QinQ by its outer tag and preserves the inner
+     * tag. Routed sub-port interfaces still require an exact single tag. */
+    mp->sub_if_flags = htonl(SUB_IF_API_FLAG_ONE_TAG |
+                           (exact_match ? SUB_IF_API_FLAG_EXACT_MATCH : 0));
 
     if (new_sw_if_index) {
         *new_sw_if_index = (u32) ~0;
@@ -2973,7 +2976,7 @@ int delete_loopback (const char *hwif_name, u32 instance)
     return __delete_loopback(vam, hwif_name, instance);
 }
 
-int create_sub_interface (const char *hwif_name, u32 sub_id, u16 vlan_id)
+static int create_sub_interface_mode (const char *hwif_name, u32 sub_id, u16 vlan_id, bool exact_match)
 {
     u32 idx;
     u32 new_sw_if_index = (u32) ~0;
@@ -2983,7 +2986,7 @@ int create_sub_interface (const char *hwif_name, u32 sub_id, u16 vlan_id)
     idx = get_swif_idx(vam, hwif_name);
     SAIVPP_INFO("swif index of interface %s is %u\n", hwif_name, idx);
 
-    rc = __create_sub_interface(vam, idx, sub_id, vlan_id, &new_sw_if_index);
+    rc = __create_sub_interface(vam, idx, sub_id, vlan_id, exact_match, &new_sw_if_index);
 
     /* Insert the new sub-interface into the local sw_if_index cache so
      * that subsequent get_swif_idx() lookups (e.g. configure_lcp_interface)
@@ -2999,6 +3002,16 @@ int create_sub_interface (const char *hwif_name, u32 sub_id, u16 vlan_id)
     }
 
     return rc;
+}
+
+int create_sub_interface (const char *hwif_name, u32 sub_id, u16 vlan_id)
+{
+    return create_sub_interface_mode(hwif_name, sub_id, vlan_id, true);
+}
+
+int create_vlan_sub_interface (const char *hwif_name, u32 sub_id, u16 vlan_id)
+{
+    return create_sub_interface_mode(hwif_name, sub_id, vlan_id, false);
 }
 
 int delete_sub_interface (const char *hwif_name, u32 sub_id)
@@ -3661,6 +3674,8 @@ int vpp_acl_add_replace (vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace
 
         vpp_rule->tcp_flags_mask = in_rule->tcp_flags_mask;
         vpp_rule->tcp_flags_value = in_rule->tcp_flags_value;
+        vpp_rule->outer_vlan_id = htons(in_rule->outer_vlan_id);
+        vpp_rule->outer_vlan_id_mask = htons(in_rule->outer_vlan_id_mask);
         vpp_rule->is_permit = (vl_api_acl_action_t)in_rule->action;
         vpp_rule->mirror_action = htonl(in_rule->mirror_action);
 
