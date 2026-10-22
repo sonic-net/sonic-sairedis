@@ -48,16 +48,16 @@ The table below lists OCP `sai_test` classes that **pass** on the current VPP SA
 
 | Module | Passing test classes (CI required) |
 |---|---|
-| `sai_ecmp_test` | `EcmpHashFieldSportTestV4`, `EcmpIngressDisableTestV6`, `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpLagTwoLayersWithDiffHashOffsetTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `EcmpTwoLayersWithDiffHashOffsetTestV6`, `ReAddLagEcmpTestV4`, `ReAddLagEcmpTestV6`, `RemoveAllNextHopMemeberTestV4`, `RemoveLagEcmpTestV4`, `RemoveLagEcmpTestV6`, `RemoveNexthopGroupTestV4` |
+| `sai_ecmp_test` | `EcmpHashFieldSportTestV4`, `EcmpIngressDisableTestV4`, `EcmpIngressDisableTestV6`, `EcmpLagDisableTestV4`, `EcmpLagDisableTestV6`, `EcmpLagTwoLayersWithDiffHashOffsetTestV6`, `EcmpReuseLagRouteV4`, `EcmpReuseLagRouteV6`, `EcmpTwoLayersWithDiffHashOffsetTestV6`, `ReAddLagEcmpTestV4`, `ReAddLagEcmpTestV6`, `RemoveAllNextHopMemeberTestV4`, `RemoveLagEcmpTestV4`, `RemoveLagEcmpTestV6`, `RemoveNexthopGroupTestV4` |
 | `sai_neighbor_test` | `AddHostRouteTest`, `AddHostRouteTestV6`, `NhopDiffPrefixRemoveLonger`, `NhopDiffPrefixRemoveLongerV6`, `NhopDiffPrefixRemoveShorter`, `NhopDiffPrefixRemoveShorterV6`, `NoHostRouteTestV6` |
 | `sai_rif_test` | `IngressMacUpdateTest`, `IngressMacUpdateTestV6` |
 | `sai_route_test` | `DefaultRouteV4Test`, `DefaultRouteV6Test`, `LagMultipleRouteTest`, `LagMultipleRoutev6Test`, `RemoveRouteV4Test`, `RouteDiffPrefixAddThenDeleteLongerV4Test`, `RouteDiffPrefixAddThenDeleteLongerV6Test`, `RouteDiffPrefixAddThenDeleteShorterV4Test`, `RouteDiffPrefixAddThenDeleteShorterV6Test`, `RouteRifTest`, `RouteRifv6Test`, `RouteSameSipDipv4Test`, `RouteSameSipDipv6Test`, `RouteUpdateTest`, `RouteUpdatev6Test`, `StaicSviMacFloodingTest`, `StaicSviMacFloodingV6Test` |
 
-**40** classes are required to pass the PR check (`ci-pass-tests.txt`). The harness plans **87** test targets across the four modules above; `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries.
+**41** classes are required to pass the PR check (`ci-pass-tests.txt`). The harness plans **87** test targets across the four modules above; `gen_compatibility_matrix.py` may report a higher row count when a test produces both ERROR and FAIL JUnit entries.
 
 ### CI regression baseline
 
-`ci-matrix-tests.txt` is the expected set of 85 runnable selectors from the four-module plan (the 87 planned classes include two non-runnable base classes). `ci-pass-tests.txt` is the **40-selector** stable-pass subset used by the PR check. CI requires the observed JUnit selector set to match the matrix contract, then leaves failures outside the stable baseline visible while failing on a missing, failed, errored, or skipped baseline selector.
+`ci-matrix-tests.txt` is the expected set of 85 runnable selectors from the four-module plan (the 87 planned classes include two non-runnable base classes). `ci-pass-tests.txt` is the **41-selector** stable-pass subset used by the PR check. CI requires the observed JUnit selector set to match the matrix contract, then leaves failures outside the stable baseline visible while failing on a missing, failed, errored, or skipped baseline selector.
 
 `evaluate_ci_baseline.py` compares the JUnit directory with the baseline, reports newly passing selectors as promotion candidates, and treats missing or malformed results and harness exit codes of 2 or greater as infrastructure failures. Baseline changes are reviewed explicitly; CI never updates the file automatically.
 
