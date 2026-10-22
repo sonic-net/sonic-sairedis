@@ -129,6 +129,9 @@ struct VppMock
     std::vector<vpp_l2fib_entry_t> l2fib;
     // Link state VPP reports, by interface name. Missing is down.
     std::map<std::string, bool> linkUp;
+    int bfdDumpResult = 0;
+    unsigned int bfdDumpCalls = 0;
+    std::vector<vpp_bfd_state_notif_t> bfdSessions;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
