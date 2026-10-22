@@ -16,6 +16,8 @@
 
 #include <arpa/inet.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -802,4 +804,138 @@ TEST(SwitchVpp, linkResyncFollowsQueuedLinkEvents)
     ASSERT_EQ(2u, notified.size());
     EXPECT_NE(std::string::npos, notified[0].find("SAI_PORT_OPER_STATUS_DOWN"));
     EXPECT_NE(std::string::npos, notified[1].find("SAI_PORT_OPER_STATUS_UP"));
+}
+
+namespace
+{
+    std::shared_ptr<SwitchConfig> vppSwitchConfig()
+    {
+        SWSS_LOG_ENTER();
+
+        auto sc = std::make_shared<SwitchConfig>(0, "");
+
+        sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+        sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+        sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+        sc->m_useTapDevice = false;
+        sc->m_laneMap = LaneMap::getDefaultLaneMap();
+        sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+
+        return sc;
+    }
+}
+
+/*
+ * The event thread reads what VPP has sent as soon as it wakes up for it, and
+ * pings VPP, to check the event socket, only after an interval with nothing to
+ * read.
+ */
+TEST(SwitchVpp, eventThreadPingsOnlyAfterAQuietInterval)
+{
+    resetVppEventCalls();
+
+    // An event is waiting when the event thread starts
+    auto *ev = static_cast<vpp_event_info_t *>(calloc(1, sizeof(vpp_event_info_t)));
+
+    ASSERT_NE(nullptr, ev);
+
+    ev->type = VPP_INTF_LINK_RESYNC;
+
+    deliverVppEvents({ev});
+
+    {
+        auto sc = vppSwitchConfig();
+        auto scc = std::make_shared<SwitchConfigContainer>();
+        scc->insert(sc);
+
+        auto ridmgr = std::make_shared<RealObjectIdManager>(0, scc);
+
+        SwitchVpp sw(ridmgr->allocateNewSwitchObjectId(""), ridmgr, sc);
+
+        ASSERT_TRUE(waitForVppEventsTaken());
+    }
+
+    // The switch is gone, and its event thread with it
+    auto calls = vppEventCalls();
+
+    unsigned int drains = 0;
+    unsigned int pings = 0;
+
+    for (size_t i = 0; i < calls.size(); i++)
+    {
+        if (calls[i].api != "vpp_wait_for_events")
+        {
+            continue;
+        }
+
+        ASSERT_LT(i + 1, calls.size());
+
+        if (calls[i].result > 0)
+        {
+            EXPECT_EQ("vpp_drain_events", calls[i + 1].api);
+            drains++;
+        }
+        else
+        {
+            EXPECT_EQ("vpp_sync_for_events", calls[i + 1].api);
+            pings++;
+        }
+    }
+
+    EXPECT_EQ(1u, drains);
+    EXPECT_LE(1u, pings);
+}
+
+/*
+ * A failure of the event socket reconnects it. Were the next attempt to follow
+ * at once, a socket that keeps failing would make the event thread spin: it
+ * tries again only an interval later.
+ */
+TEST(SwitchVpp, eventThreadRetriesAFailedSocketAnIntervalLater)
+{
+    // The first ping fails
+    resetVppEventCalls(1);
+
+    auto calls = vppEventCalls();
+
+    auto failed = [&calls]()
+    {
+        return std::find_if(calls.begin(), calls.end(),
+                [](const VppEventCall& call) { return call.result < 0; });
+    };
+
+    {
+        auto sc = vppSwitchConfig();
+        auto scc = std::make_shared<SwitchConfigContainer>();
+        scc->insert(sc);
+
+        auto ridmgr = std::make_shared<RealObjectIdManager>(0, scc);
+
+        SwitchVpp sw(ridmgr->allocateNewSwitchObjectId(""), ridmgr, sc);
+
+        // Until the event thread makes its next call after the failure
+        for (int i = 0; i < 500; i++)
+        {
+            calls = vppEventCalls();
+
+            auto it = failed();
+
+            if (it != calls.end() && it + 1 != calls.end())
+            {
+                break;
+            }
+
+            usleep(10 * 1000);
+        }
+    }
+
+    auto it = failed();
+
+    ASSERT_NE(calls.end(), it);
+    ASSERT_NE(calls.end(), it + 1);
+
+    // It pings again, which reconnects the socket if it is still down, an
+    // interval later and without waiting on the socket in between
+    EXPECT_EQ("vpp_sync_for_events", (it + 1)->api);
+    EXPECT_LE(std::chrono::milliseconds(1900), (it + 1)->time - it->time);
 }

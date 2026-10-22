@@ -5548,11 +5548,12 @@ int vpp_get_interface_speed (const char *hwif_name, uint32_t *speed)
 /*
  * Block until VPP pushes a message on the event socket or timeout_ms elapses,
  * so the event thread dispatches MAC/interface/BFD events as they arrive
- * instead of on a fixed tick. Only the event thread reconnects the event
- * socket, so its fd is stable here without EVENT_LOCK; even a stale fd merely
- * causes an early or late wakeup, because the caller always follows up with
- * the ping in vpp_sync_for_events(). A disconnected client (fd 0 after
- * vl_socket_client_disconnect2) polls no fd, which just sleeps for the timeout.
+ * instead of on a fixed tick. Returns > 0 if the socket has something to read
+ * or has failed, which vpp_drain_events() handles, and 0 after a quiet
+ * interval, which the caller checks with vpp_sync_for_events()'s ping. Only the
+ * event thread reconnects the event socket, so its fd is stable here without
+ * EVENT_LOCK. A disconnected client (fd 0 after vl_socket_client_disconnect2)
+ * polls no fd, which just sleeps for the timeout.
  */
 int vpp_wait_for_events (int timeout_ms)
 {
@@ -5570,6 +5571,61 @@ int vpp_wait_for_events (int timeout_ms)
     }
 
     return rv;
+}
+
+/* Socket reads per vpp_drain_events() call, each of up to the client's 4 KB buffer */
+#define VPP_EVENT_DRAIN_MAX_READS 64
+
+/*
+ * Dispatch the messages VPP has written to the event socket, without a ping:
+ * the event thread calls this when vpp_wait_for_events() reports the socket
+ * readable. vl_socket_client_read2() returns once it has dispatched the
+ * messages one read got, but spins on EAGAIN if nothing has arrived, and on a
+ * closed socket, so it only runs while poll() reports data, and a hung-up
+ * socket counts as failed. The reads are bounded, so that a stream of events
+ * cannot keep vpp_mutex, which every VPP API call takes; what is left wakes the
+ * event thread again at once. A failure reconnects, as in vpp_sync_for_events().
+ */
+int vpp_drain_events (void)
+{
+    socket_client_main_t *scm = &event_socket_client_main;
+    struct pollfd pfd;
+    int reads, ret = 0;
+
+    if (!event_client_connected || scm->socket_fd <= 0)
+        return 0;
+
+    EVENT_LOCK();
+    tl_cur_vam = &vat_event_main;
+
+    pfd.fd = scm->socket_fd;
+    pfd.events = POLLIN;
+
+    for (reads = 0; reads < VPP_EVENT_DRAIN_MAX_READS; reads++)
+    {
+        pfd.revents = 0;
+
+        if (poll(&pfd, 1, 0) <= 0)
+            break;
+
+        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) ||
+            vl_socket_client_read2(scm, 0) < 0)
+        {
+            ret = -1;
+            break;
+        }
+    }
+
+    tl_cur_vam = NULL;
+    EVENT_UNLOCK();
+
+    if (ret < 0)
+    {
+        SAIVPP_ERROR("vpp event socket read failed, reconnecting event socket\n");
+        vpp_event_reconnect();
+    }
+
+    return ret;
 }
 
 /*
