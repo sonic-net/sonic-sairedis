@@ -682,6 +682,12 @@ void SwitchVpp::syncOnPlatformEvent(
         SWSS_LOG_NOTICE("Received link state resync request after an event socket reconnect");
         resyncPortOperStatus();
     }
+    else if (ev.type == VPP_BFD_RESYNC)
+    {
+        // Same for BFD events
+        SWSS_LOG_NOTICE("Received BFD state resync request after an event socket reconnect");
+        resyncBfdSessionState();
+    }
 }
 
 void SwitchVpp::serviceDeferredOperStatusResync()
@@ -703,6 +709,25 @@ void SwitchVpp::serviceDeferredOperStatusResync()
     }
 }
 
+sai_bfd_session_state_t SwitchVpp::saiBfdSessionState(
+        _In_ vpp_api_bfd_state_e state)
+{
+    SWSS_LOG_ENTER();
+
+    switch(state) {
+    case VPP_API_BFD_STATE_ADMIN_DOWN:
+        return SAI_BFD_SESSION_STATE_ADMIN_DOWN;
+    case VPP_API_BFD_STATE_DOWN:
+        return SAI_BFD_SESSION_STATE_DOWN;
+    case VPP_API_BFD_STATE_INIT:
+        return SAI_BFD_SESSION_STATE_INIT;
+    case VPP_API_BFD_STATE_UP:
+        return SAI_BFD_SESSION_STATE_UP;
+    default:
+        return SAI_BFD_SESSION_STATE_DOWN;
+    }
+}
+
 sai_status_t SwitchVpp::asyncBfdStateUpdate(vpp_bfd_state_notif_t *bfd_notif)
 {
     SWSS_LOG_ENTER();
@@ -712,23 +737,7 @@ sai_status_t SwitchVpp::asyncBfdStateUpdate(vpp_bfd_state_notif_t *bfd_notif)
     memset(&bfd_info, 0, sizeof(bfd_info));
 
     // Convert vpp state to sai state
-    switch(bfd_notif->state) {
-    case VPP_API_BFD_STATE_ADMIN_DOWN:
-        sai_state = SAI_BFD_SESSION_STATE_ADMIN_DOWN;
-        break;
-    case VPP_API_BFD_STATE_DOWN:
-        sai_state = SAI_BFD_SESSION_STATE_DOWN;
-        break;
-    case VPP_API_BFD_STATE_INIT:
-        sai_state = SAI_BFD_SESSION_STATE_INIT;
-        break;
-    case VPP_API_BFD_STATE_UP:
-        sai_state = SAI_BFD_SESSION_STATE_UP;
-        break;
-    default:
-        sai_state = SAI_BFD_SESSION_STATE_DOWN;
-        break;
-    }
+    sai_state = saiBfdSessionState(bfd_notif->state);
 
     bfd_info.multihop = bfd_notif->multihop;
     vpp_ip_addr_t_to_sai_ip_address_t(bfd_notif->local_addr, bfd_info.local_addr);
@@ -752,6 +761,75 @@ sai_status_t SwitchVpp::asyncBfdStateUpdate(vpp_bfd_state_notif_t *bfd_notif)
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::resyncBfdSessionState()
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<vpp_bfd_state_notif_t> sessions;
+
+    if (vpp_bfd_session_dump([](const vpp_bfd_state_notif_t *s, void *ctx)
+                             { static_cast<std::vector<vpp_bfd_state_notif_t> *>(ctx)->push_back(*s); }, &sessions) != 0)
+    {
+        SWSS_LOG_ERROR("BFD session dump failed, BFD state not resynced with VPP");
+        return;
+    }
+
+    size_t changed = 0;
+
+    for (auto& session: sessions)
+    {
+        if (bfdSessionStateChanged(session))
+        {
+            asyncBfdStateUpdate(&session);
+            changed++;
+        }
+    }
+
+    SWSS_LOG_NOTICE("resynced the state of %zu BFD sessions with VPP: %zu changed",
+                    sessions.size(), changed);
+}
+
+bool SwitchVpp::bfdSessionStateChanged(
+        _In_ vpp_bfd_state_notif_t& session)
+{
+    SWSS_LOG_ENTER();
+
+    vpp_bfd_info_t bfd_info;
+    memset(&bfd_info, 0, sizeof(bfd_info));
+
+    bfd_info.multihop = session.multihop;
+    vpp_ip_addr_t_to_sai_ip_address_t(session.local_addr, bfd_info.local_addr);
+    vpp_ip_addr_t_to_sai_ip_address_t(session.peer_addr, bfd_info.peer_addr);
+
+    sai_object_id_t bfd_oid;
+
+    {
+        BFD_MUTEX;
+
+        auto it = m_bfd_info_map.find(bfd_info);
+
+        if (it == m_bfd_info_map.end())
+        {
+            return false;
+        }
+
+        bfd_oid = it->second;
+    }
+
+    // A session without a state change yet has no cached state: SONiC takes it to be DOWN
+    sai_attribute_t attr;
+    attr.id = SAI_BFD_SESSION_ATTR_STATE;
+
+    auto known = SAI_BFD_SESSION_STATE_DOWN;
+
+    if (get(SAI_OBJECT_TYPE_BFD_SESSION, bfd_oid, 1, &attr) == SAI_STATUS_SUCCESS)
+    {
+        known = static_cast<sai_bfd_session_state_t>(attr.value.s32);
+    }
+
+    return known != saiBfdSessionState(session.state);
 }
 
 sai_status_t SwitchVpp::vpp_dp_initialize()

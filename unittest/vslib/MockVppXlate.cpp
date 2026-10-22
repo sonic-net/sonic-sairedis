@@ -303,6 +303,19 @@ extern "C" int __wrap_vpp_l2fib_dump(uint32_t, vpp_l2fib_entry_cb_fn cb, void *c
     }
     return vppMock().l2fibDumpResult;
 }
+extern "C" int __wrap_vpp_bfd_session_dump(vpp_bfd_session_cb_fn cb, void *ctx)
+{
+    SWSS_LOG_ENTER();
+    ++vppMock().bfdDumpCalls;
+    if (vppMock().bfdDumpResult == 0)
+    {
+        for (const auto& session : vppMock().bfdSessions)
+        {
+            cb(&session, ctx);
+        }
+    }
+    return vppMock().bfdDumpResult;
+}
 extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
     SWSS_LOG_ENTER();
     return 0;

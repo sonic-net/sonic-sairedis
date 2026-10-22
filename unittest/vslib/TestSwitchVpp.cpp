@@ -939,3 +939,130 @@ TEST(SwitchVpp, eventThreadRetriesAFailedSocketAnIntervalLater)
     EXPECT_EQ("vpp_sync_for_events", (it + 1)->api);
     EXPECT_LE(std::chrono::milliseconds(1900), (it + 1)->time - it->time);
 }
+
+/*
+ * BFD events lost with the event socket, sent while it was down or still
+ * buffered on it when it failed, leave a session's state stale: the reconnect
+ * queues a BFD state resync, which reports the sessions whose state VPP has
+ * changed since.
+ */
+TEST(SwitchVpp, bfdResyncReportsStateChangesLostWithTheEventSocket)
+{
+    vppMock().reset();
+
+    auto sc = vppSwitchConfig();
+    auto scc = std::make_shared<SwitchConfigContainer>();
+    scc->insert(sc);
+
+    auto ridmgr = std::make_shared<RealObjectIdManager>(0, scc);
+    auto swid = ridmgr->allocateNewSwitchObjectId("");
+
+    SwitchVpp sw(swid, ridmgr, sc);
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY;
+    attr.value.ptr = reinterpret_cast<void *>(0x1);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw.create_internal(SAI_OBJECT_TYPE_SWITCH,
+                sai_serialize_object_id(swid), swid, 1, &attr));
+
+    // A BFD session, UP in SONiC or without a state change yet, and how VPP reports it
+    auto addSession = [&](const char *peer, bool up, vpp_api_bfd_state_e vppState)
+    {
+        auto oid = ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_BFD_SESSION, swid);
+
+        sai_attribute_t stateAttr;
+        stateAttr.id = SAI_BFD_SESSION_ATTR_STATE;
+        stateAttr.value.s32 = SAI_BFD_SESSION_STATE_UP;
+
+        EXPECT_EQ(SAI_STATUS_SUCCESS, sw.create_internal(SAI_OBJECT_TYPE_BFD_SESSION,
+                    sai_serialize_object_id(oid), swid, up ? 1 : 0, &stateAttr));
+
+        vpp_bfd_state_notif_t session;
+        memset(&session, 0, sizeof(session));
+
+        session.multihop = true;
+        session.sw_if_index = ~0u;
+        session.state = vppState;
+        session.local_addr.sa_family = AF_INET;
+        session.peer_addr.sa_family = AF_INET;
+
+        EXPECT_EQ(1, inet_pton(AF_INET, "10.0.0.1", &session.local_addr.addr.ip4.sin_addr));
+        EXPECT_EQ(1, inet_pton(AF_INET, peer, &session.peer_addr.addr.ip4.sin_addr));
+
+        SwitchVpp::vpp_bfd_info_t key;
+        memset(&key, 0, sizeof(key));
+        key.multihop = true;
+        vpp_ip_addr_t_to_sai_ip_address_t(session.local_addr, key.local_addr);
+        vpp_ip_addr_t_to_sai_ip_address_t(session.peer_addr, key.peer_addr);
+        sw.m_bfd_info_map[key] = oid;
+
+        vppMock().bfdSessions.push_back(session);
+
+        return oid;
+    };
+
+    // While the event socket was down, VPP took a session DOWN and a new one
+    // UP. It still has another session UP, and a new one DOWN.
+    auto wentDown = addSession("10.0.0.2", true, VPP_API_BFD_STATE_DOWN);
+    auto stayedUp = addSession("10.0.0.3", true, VPP_API_BFD_STATE_UP);
+    auto cameUp = addSession("10.0.0.4", false, VPP_API_BFD_STATE_UP);
+    auto stayedDown = addSession("10.0.0.5", false, VPP_API_BFD_STATE_DOWN);
+
+    auto bfdState = [&sw](sai_object_id_t oid)
+    {
+        sai_attribute_t stateAttr;
+        stateAttr.id = SAI_BFD_SESSION_ATTR_STATE;
+
+        EXPECT_EQ(SAI_STATUS_SUCCESS, sw.get(SAI_OBJECT_TYPE_BFD_SESSION, oid, 1, &stateAttr));
+
+        return static_cast<sai_bfd_session_state_t>(stateAttr.value.s32);
+    };
+
+    vpp_event_info_t resync;
+    memset(&resync, 0, sizeof(resync));
+    resync.type = VPP_BFD_RESYNC;
+
+    // If the session dump fails, nothing changes
+    vppMock().bfdDumpResult = -1;
+
+    sw.syncOnPlatformEvent(std::make_shared<EventPayloadVppEvent>(swid, resync));
+
+    EXPECT_EQ(1u, vppMock().bfdDumpCalls);
+    EXPECT_EQ(SAI_BFD_SESSION_STATE_UP, bfdState(wentDown));
+    EXPECT_EQ(0u, sc->m_eventQueue->size());
+
+    // The resync reports the sessions whose state changed, and only those
+    vppMock().bfdDumpResult = 0;
+
+    sw.syncOnPlatformEvent(std::make_shared<EventPayloadVppEvent>(swid, resync));
+
+    EXPECT_EQ(2u, vppMock().bfdDumpCalls);
+    EXPECT_EQ(SAI_BFD_SESSION_STATE_DOWN, bfdState(wentDown));
+    EXPECT_EQ(SAI_BFD_SESSION_STATE_UP, bfdState(stayedUp));
+    EXPECT_EQ(SAI_BFD_SESSION_STATE_UP, bfdState(cameUp));
+
+    std::vector<std::string> notified;
+
+    while (auto event = sc->m_eventQueue->dequeue())
+    {
+        ASSERT_EQ(EVENT_TYPE_NOTIFICATION, event->getType());
+
+        auto ntf = std::dynamic_pointer_cast<EventPayloadNotification>(event->getPayload())->getNotification();
+
+        EXPECT_EQ(SAI_SWITCH_NOTIFICATION_TYPE_BFD_SESSION_STATE_CHANGE, ntf->getNotificationType());
+
+        notified.push_back(ntf->getSerializedNotification());
+    }
+
+    ASSERT_EQ(2u, notified.size());
+    EXPECT_NE(std::string::npos, notified[0].find(sai_serialize_object_id(wentDown)));
+    EXPECT_NE(std::string::npos, notified[0].find("SAI_BFD_SESSION_STATE_DOWN"));
+    EXPECT_NE(std::string::npos, notified[1].find(sai_serialize_object_id(cameUp)));
+    EXPECT_NE(std::string::npos, notified[1].find("SAI_BFD_SESSION_STATE_UP"));
+
+    for (const auto& ntf: notified)
+    {
+        EXPECT_EQ(std::string::npos, ntf.find(sai_serialize_object_id(stayedDown)));
+    }
+}

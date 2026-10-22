@@ -1587,6 +1587,20 @@ namespace saivs
             // reconnect (VPP_INTF_LINK_RESYNC).
             void resyncPortOperStatus();
 
+            // Re-read the state of every BFD session from VPP and report the
+            // sessions whose state differs from what SONiC was last told. Runs
+            // under m_apimutex, after an event-socket reconnect (VPP_BFD_RESYNC).
+            void resyncBfdSessionState();
+
+            // Whether VPP's state of a BFD session differs from what SONiC was
+            // last told: the session's cached state, or DOWN if it has had no
+            // state change yet. False for a session SONiC doesn't have.
+            bool bfdSessionStateChanged(
+                    _In_ vpp_bfd_state_notif_t& session);
+
+            static sai_bfd_session_state_t saiBfdSessionState(
+                    _In_ vpp_api_bfd_state_e state);
+
             // Run the startup oper-status resync if the event thread has
             // requested one (m_operResyncDue). resyncPortOperStatus() issues VPP
             // binary-API calls (interface_get_state) which allocate on VPP's

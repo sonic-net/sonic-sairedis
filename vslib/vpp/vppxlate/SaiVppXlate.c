@@ -1706,6 +1706,38 @@ vl_api_bfd_udp_session_event_t_handler (vl_api_bfd_udp_session_event_t *msg)
                  multihop, htonl(msg->sw_if_index), htonl(msg->state));
 }
 
+/* bfd_udp_session_dump accumulator, passed to the details handler via context */
+typedef struct {
+    vpp_bfd_state_notif_t *sessions; /* clib vector */
+} bfd_session_dump_ctx_t;
+
+static void
+vl_api_bfd_udp_session_details_t_handler (vl_api_bfd_udp_session_details_t *mp)
+{
+    vpp_bfd_state_notif_t s;
+
+    if (!mp->context)
+        return;
+
+    bfd_session_dump_ctx_t *ctx = (bfd_session_dump_ctx_t *) get_index_ptr(mp->context);
+    if (!ctx)
+        return;
+
+    memset(&s, 0, sizeof(s));
+    s.sw_if_index = ntohl(mp->sw_if_index);
+    s.multihop = (s.sw_if_index == (uint32_t)~0);
+    s.state = ntohl(mp->state);
+
+    if (!vl_api_to_vpp_ip_addr(&mp->local_addr, &s.local_addr) ||
+        !vl_api_to_vpp_ip_addr(&mp->peer_addr, &s.peer_addr))
+    {
+        SAIVPP_ERROR("Invalid IP address in a bfd session dump");
+        return;
+    }
+
+    vec_add1(ctx->sessions, s);
+}
+
 static void
 vl_api_bridge_domain_details_t_handler (vl_api_bridge_domain_details_t *mp)
 {
@@ -2188,6 +2220,7 @@ static void vpp_base_vpe_init(void)
     _(BFD_MSG_ID(BFD_UDP_ADD_REPLY), bfd_udp_add_reply) \
     _(BFD_MSG_ID(BFD_UDP_DEL_REPLY), bfd_udp_del_reply) \
     _(BFD_MSG_ID(BFD_UDP_SESSION_EVENT), bfd_udp_session_event) \
+    _(BFD_MSG_ID(BFD_UDP_SESSION_DETAILS), bfd_udp_session_details) \
     _(BFD_MSG_ID(WANT_BFD_EVENTS_REPLY), want_bfd_events_reply) \
     _(BFD_MSG_ID(BFD_UDP_ENABLE_MULTIHOP_REPLY), bfd_udp_enable_multihop_reply) \
     _(BFD_MSG_ID(BFD_UDP_SET_TOS_REPLY), bfd_udp_set_tos_reply) \
@@ -2597,22 +2630,22 @@ vpp_event_subscribe (void)
 }
 
 /*
- * Tell the link event consumer that interface events may have been lost (see
- * VPP_INTF_LINK_RESYNC). Runs on the event thread, the only user of vpp_evq
- * after init, so it lands behind the events already read.
+ * Tell the event consumer that link or BFD events may have been lost (see
+ * VPP_INTF_LINK_RESYNC and VPP_BFD_RESYNC). Runs on the event thread, the only
+ * user of vpp_evq after init, so it lands behind the events already read.
  */
 static void
-vpp_intf_events_resync (void)
+vpp_events_resync (vpp_event_type_e type)
 {
     vpp_event_info_t *evinfo = calloc(1, sizeof(*evinfo));
 
     if (!evinfo)
     {
-        SAIVPP_ERROR("failed to queue the link state resync\n");
+        SAIVPP_ERROR("failed to queue the state resync %d\n", type);
         return;
     }
 
-    evinfo->type = VPP_INTF_LINK_RESYNC;
+    evinfo->type = type;
     vpp_ev_enqueue(evinfo);
 }
 
@@ -2649,8 +2682,9 @@ vpp_event_reconnect (void)
      */
     vpp_mac_events_resync();
 
-    /* So are link events: re-read the link state after the queued ones */
-    vpp_intf_events_resync();
+    /* So are link and BFD events: re-read their state after the queued ones */
+    vpp_events_resync(VPP_INTF_LINK_RESYNC);
+    vpp_events_resync(VPP_BFD_RESYNC);
 
     SAIVPP_INFO("vpp event socket reconnect successful\n");
     return 0;
@@ -5318,9 +5352,12 @@ int vpp_wait_for_events (int timeout_ms)
  * readable. vl_socket_client_read2() returns once it has dispatched the
  * messages one read got, but spins on EAGAIN if nothing has arrived, and on a
  * closed socket, so it only runs while poll() reports data, and a hung-up
- * socket counts as failed. The reads are bounded, so that a stream of events
- * cannot keep vpp_mutex, which every VPP API call takes; what is left wakes the
- * event thread again at once. A failure reconnects, as in vpp_sync_for_events().
+ * socket counts as failed. Messages still buffered on that socket are lost,
+ * like those VPP sends while the socket is down: the FDB, link state and BFD
+ * state resyncs after the reconnect recover both. The reads are bounded, so
+ * that a stream of events cannot keep vpp_mutex, which every VPP API call
+ * takes; what is left wakes the event thread again at once. A failure
+ * reconnects, as in vpp_sync_for_events().
  */
 int vpp_drain_events (void)
 {
@@ -6441,6 +6478,62 @@ int bfd_udp_set_tos (uint8_t tos)
     else { SAIVPP_INFO("%s tos 0x%02x", __func__, tos); }
 
     VPP_UNLOCK();
+
+    return ret;
+}
+
+int
+vpp_bfd_session_dump (vpp_bfd_session_cb_fn cb, void *cb_ctx)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_bfd_udp_session_dump_t *mp;
+    vl_api_control_ping_t *mp_ping;
+    bfd_session_dump_ctx_t ctx = { .sessions = NULL };
+    vpp_bfd_state_notif_t *s;
+    int ret;
+
+    VPP_LOCK();
+
+    uint32_t context = store_ptr(&ctx);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+
+    __plugin_msg_base = bfd_msg_id_base;
+
+    M (BFD_UDP_SESSION_DUMP, mp);
+    mp->context = context;
+    S (mp);
+
+    /* Use a control ping for synchronization */
+    __plugin_msg_base = memclnt_msg_id_base;
+
+    PING (NULL, mp_ping);
+    mp_ping->context = context;
+    S (mp_ping);
+
+    WR (ret);
+
+    /* As in vpp_l2fib_dump(): only this dump's own ping reply shows it is complete */
+    if (ret == 0 && last_ping_reply_context != context) {
+        SAIVPP_ERROR("ended by an earlier request's reply, dump incomplete");
+        ret = -EAGAIN;
+    }
+
+    release_index(context);
+
+    VPP_UNLOCK();
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d)", __func__, ret);
+    } else {
+        SAIVPP_INFO("%s: %u sessions", __func__, (uint32_t)vec_len(ctx.sessions));
+        vec_foreach (s, ctx.sessions)
+            cb(s, cb_ctx);
+    }
+
+    vec_free(ctx.sessions);
 
     return ret;
 }

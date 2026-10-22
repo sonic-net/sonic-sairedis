@@ -242,6 +242,11 @@ _Static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
          * Queued behind the events read before the connection failed.
          */
         VPP_INTF_LINK_RESYNC,
+        /*
+         * No data. Like VPP_INTF_LINK_RESYNC, for BFD events: the consumer
+         * re-reads the state of every BFD session (vpp_bfd_session_dump()).
+         */
+        VPP_BFD_RESYNC,
     } vpp_event_type_e;
 
     typedef union vpp_event_data_ {
@@ -598,6 +603,13 @@ typedef enum {
     extern int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr);
     extern int bfd_udp_set_tos(uint8_t tos);
+
+    typedef void (*vpp_bfd_session_cb_fn)(const vpp_bfd_state_notif_t *session, void *ctx);
+
+    /* Dump VPP's BFD UDP sessions, with their state, on the command
+     * connection; cb is called for each session once the dump has completed,
+     * outside the VPP API lock. Returns 0 on success. */
+    extern int vpp_bfd_session_dump(vpp_bfd_session_cb_fn cb, void *ctx);
 
     extern int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add,  uint32_t *sw_if_index);
     extern int vpp_ip_addr_t_to_string(vpp_ip_addr_t *ip_addr, char *buffer, size_t maxlen);
