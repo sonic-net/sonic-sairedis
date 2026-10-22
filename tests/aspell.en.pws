@@ -67,6 +67,7 @@ MTU
 Mellanox
 NHG
 NPU
+NUL
 OA
 OIDs
 OTN
@@ -462,4 +463,5 @@ desync
 rebuildable
 jitter
 jittered
+VPP
 ARGV

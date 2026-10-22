@@ -54,19 +54,27 @@ tests_SOURCES = main.cpp \
 				TestTAM.cpp
 
 if USE_VPP
-tests_SOURCES += TestSwitchVpp.cpp
-tests_LDFLAGS = -Wl,--wrap=init_vpp_client \
-			   -Wl,--wrap=vpp_sync_for_events \
-			   -Wl,--wrap=vpp_ev_dequeue \
-			   -Wl,--wrap=vpp_want_l2_macs_events2 \
-			   -Wl,--wrap=vpp_get_swif_idx_by_name \
-			   -Wl,--wrap=vpp_sonic_ext_trim_global_set \
-			   -Wl,--wrap=vpp_sonic_ext_trim_queue_set \
-			   -Wl,--wrap=vpp_sonic_ext_trim_dscp_map_set
+tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
+				MockVppXlate.cpp MockVppXlate.h
+VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
+				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
+				create_sub_interface delete_sub_interface configure_lcp_interface \
+				set_sw_interface_l2_bridge interface_set_state refresh_interfaces_list \
+				vpp_want_l2_macs_events2 vpp_ip_flow_hash_set set_interface_vrf \
+				get_interface_vrf ip_vrf_add ip_vrf_del interface_ip_address_del_all \
+				init_vpp_client vpp_sync_for_events vpp_ev_dequeue interface_set_promiscuous \
+				set_l2_interface_vlan_tag_rewrite set_bridge_domain_flags \
+				bridge_domain_get_member_count vpp_bridge_domain_add_del \
+				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
+				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state \
+				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
+				vpp_sonic_ext_trim_global_set vpp_sonic_ext_trim_queue_set \
+				vpp_sonic_ext_trim_dscp_map_set
+tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 
 check_PROGRAMS = sai_vpp_xlate_tests
 sai_vpp_xlate_tests_SOURCES = TestSaiVppXlate.c
-sai_vpp_xlate_tests_CFLAGS = $(SAIINC) -I$(top_srcdir)/lib \
+sai_vpp_xlate_tests_CFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I/usr/include/vpp_plugins \
 							-ffunction-sections -fdata-sections
 # Link only the callback/context paths exercised by the standalone test.
 sai_vpp_xlate_tests_LDFLAGS = -Wl,--gc-sections

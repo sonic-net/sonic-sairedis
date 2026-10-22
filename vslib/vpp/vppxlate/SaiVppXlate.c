@@ -1163,16 +1163,25 @@ vl_api_sw_interface_event_t_handler (vl_api_sw_interface_event_t *mp)
     }
 }
 
+typedef struct {
+    vpp_interface_state_t state;
+    bool found;
+} interface_state_query_t;
+
 static void
 vl_api_sw_interface_details_t_handler (vl_api_sw_interface_details_t *mp)
 {
   if (mp->context) {
-      bool *link_up = (bool *) get_index_ptr(mp->context);
-      if (!link_up) {
+      interface_state_query_t *query = (interface_state_query_t *) get_index_ptr(mp->context);
+      if (!query) {
           return;
       }
-      *link_up = ntohl(mp->flags) & IF_STATUS_API_FLAG_LINK_UP ? true : false;
-      release_index(mp->context);
+      query->state.link_up = (ntohl(mp->flags) & IF_STATUS_API_FLAG_LINK_UP) != 0;
+      query->state.admin_up = (ntohl(mp->flags) & IF_STATUS_API_FLAG_ADMIN_UP) != 0;
+      for (size_t i = 0; i < 4; ++i) {
+          query->state.mtu[i] = ntohl(mp->mtu[i]);
+      }
+      query->found = true;
       return;
   }
   vat_main_t *vam = &vat_main;
@@ -1573,6 +1582,13 @@ vl_api_sflow_sampling_rate_set_reply_t_handler(vl_api_sflow_sampling_rate_set_re
 
 static void
 vl_api_sonic_ext_ip2me_enable_disable_reply_t_handler(vl_api_sonic_ext_ip2me_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_iface_loopback_set_action_reply_t_handler(vl_api_sonic_ext_iface_loopback_set_action_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
@@ -2284,6 +2300,15 @@ vl_api_sw_interface_set_mpls_enable_reply_t_handler (vl_api_sw_interface_set_mpl
 }
 
 static void
+vl_api_mpls_interface_details_t_handler (vl_api_mpls_interface_details_t *msg)
+{
+    bool *enabled = (bool *) get_index_ptr(msg->context);
+    if (enabled) {
+        *enabled = true;
+    }
+}
+
+static void
 vl_api_mpls_table_add_del_reply_t_handler (vl_api_mpls_table_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2352,10 +2377,12 @@ vl_api_mpls_route_add_del_reply_t_handler (vl_api_mpls_route_add_del_reply_t *ms
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_SAMPLING_RATE_SET_REPLY), sflow_interface_sampling_rate_set_reply) \
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_IFACE_LOOPBACK_SET_ACTION_REPLY), sonic_ext_iface_loopback_set_action_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_FEATURE_GET_REPLY), sonic_ext_feature_get_reply) \
     _(IPIP_MSG_ID(IPIP_ADD_TUNNEL_REPLY), ipip_add_tunnel_reply) \
     _(IPIP_MSG_ID(IPIP_DEL_TUNNEL_REPLY), ipip_del_tunnel_reply) \
     _(MPLS_MSG_ID(SW_INTERFACE_SET_MPLS_ENABLE_REPLY), sw_interface_set_mpls_enable_reply) \
+    _(MPLS_MSG_ID(MPLS_INTERFACE_DETAILS), mpls_interface_details) \
     _(MPLS_MSG_ID(MPLS_TABLE_ADD_DEL_REPLY), mpls_table_add_del_reply) \
     _(MPLS_MSG_ID(MPLS_ROUTE_ADD_DEL_REPLY), mpls_route_add_del_reply) \
     _(POLICER_MSG_ID(POLICER_ADD_REPLY), policer_add_reply) \
@@ -4754,6 +4781,47 @@ int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable)
     return ret;
 }
 
+int vpp_iface_loopback_set_action(const char *hwif_name, int action)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_iface_loopback_set_action_t *mp;
+    u32 idx;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+    M(SONIC_EXT_IFACE_LOOPBACK_SET_ACTION, mp);
+
+    if (!hwif_name) {
+        SAIVPP_ERROR("%s: hwif_name is NULL", __func__);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    mp->sw_if_index = htonl(idx);
+    mp->action = (u8) action;
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s action %d", __func__, ret, hwif_name, action);
+    } else {
+        SAIVPP_INFO("%s %s action %d", __func__, hwif_name, action);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
 int vpp_sonic_ext_feature_get(const char *feature, bool *enabled)
 {
     vat_main_t *vam = &vat_main;
@@ -5149,39 +5217,36 @@ int interface_set_state_by_index (uint32_t sw_if_index, bool is_up)
     return ret;
 }
 
-int interface_get_state (const char *hwif_name, bool *link_is_up)
+int get_interface_state(const char *hwif_name, vpp_interface_state_t *state)
 {
     vat_main_t *vam = &vat_main;
     vl_api_sw_interface_dump_t *mp;
     vl_api_control_ping_t *mp_ping;
+    interface_state_query_t query = {0};
     int ret;
+
+    if (!hwif_name || !state) {
+        SAIVPP_ERROR("%s: missing interface name or output", __func__);
+        return -EINVAL;
+    }
 
     VPP_LOCK();
 
-    __plugin_msg_base = interface_msg_id_base;
-
-    M (SW_INTERFACE_DUMP, mp);
-
-    if (hwif_name) {
-        u32 idx;
-
-        idx = get_swif_idx(vam, hwif_name);
-        if (idx != (u32) -1) {
-            mp->sw_if_index = htonl(idx);
-        } else {
-            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
-            VPP_UNLOCK();
-            return -EINVAL;
-        }
-    } else {
+    u32 idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("%s: unable to get sw_index for %s", __func__, hwif_name);
         VPP_UNLOCK();
         return -EINVAL;
     }
-    uint32_t context = store_ptr(link_is_up);
+    uint32_t context = store_ptr(&query);
     if (context == 0) {
+        SAIVPP_ERROR("%s: cannot allocate query context", __func__);
         VPP_UNLOCK();
         return -ENOMEM;
     }
+    __plugin_msg_base = interface_msg_id_base;
+    M (SW_INTERFACE_DUMP, mp);
+    mp->sw_if_index = htonl(idx);
     mp->context = context;
 
     S (mp);
@@ -5194,12 +5259,81 @@ int interface_get_state (const char *hwif_name, bool *link_is_up)
 
     WR (ret);
 
-    if (get_index_ptr(context) != (uintptr_t) NULL) {
-        release_index(context);
+    release_index(context);
+    if (ret == 0 && !query.found) {
+        ret = -ENOENT;
+    }
+    if (ret == 0) {
+        *state = query.state;
+    } else {
+        SAIVPP_ERROR("%s: interface dump failed for %s (%d)", __func__, hwif_name, ret);
     }
 
     VPP_UNLOCK();
 
+    return ret;
+}
+
+int interface_get_state(const char *hwif_name, bool *link_is_up)
+{
+    vpp_interface_state_t state;
+    if (!link_is_up) {
+        SAIVPP_ERROR("%s: missing link-state output", __func__);
+        return -EINVAL;
+    }
+    int ret = get_interface_state(hwif_name, &state);
+    if (ret == 0) {
+        *link_is_up = state.link_up;
+    }
+    return ret;
+}
+
+int get_interface_mpls_enabled(const char *hwif_name, bool *enabled)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_mpls_interface_dump_t *mp;
+    vl_api_control_ping_t *mp_ping;
+    bool result = false;
+    int ret;
+
+    if (!hwif_name || !enabled) {
+        SAIVPP_ERROR("%s: missing interface name or output", __func__);
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+    u32 idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("%s: unable to get sw_index for %s", __func__, hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    uint32_t context = store_ptr(&result);
+    if (context == 0) {
+        SAIVPP_ERROR("%s: cannot allocate query context", __func__);
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+
+    __plugin_msg_base = mpls_msg_id_base;
+    M (MPLS_INTERFACE_DUMP, mp);
+    mp->context = context;
+    mp->sw_if_index = htonl(idx);
+    S (mp);
+
+    __plugin_msg_base = memclnt_msg_id_base;
+    PING (NULL, mp_ping);
+    S (mp_ping);
+    WR (ret);
+
+    release_index(context);
+    if (ret == 0) {
+        /* The dump returns only interfaces on which MPLS is enabled. */
+        *enabled = result;
+    } else {
+        SAIVPP_ERROR("%s: MPLS dump failed for %s (%d)", __func__, hwif_name, ret);
+    }
+    VPP_UNLOCK();
     return ret;
 }
 
@@ -5322,9 +5456,20 @@ int vpp_sync_for_events ()
 
 int sw_interface_set_mtu (const char *hwif_name, uint32_t mtu)
 {
+    const uint32_t values[4] = {mtu, 0, 0, 0};
+    return sw_interface_set_mtu_all(hwif_name, values);
+}
+
+int sw_interface_set_mtu_all(const char *hwif_name, const uint32_t mtu[4])
+{
     vat_main_t *vam = &vat_main;
     vl_api_sw_interface_set_mtu_t *mp;
     int ret;
+
+    if (!mtu) {
+        SAIVPP_ERROR("%s: missing MTU values", __func__);
+        return -EINVAL;
+    }
 
     VPP_LOCK();
 
@@ -5346,14 +5491,16 @@ int sw_interface_set_mtu (const char *hwif_name, uint32_t mtu)
         VPP_UNLOCK();
         return -EINVAL;
     }
-    mp->mtu[MTU_PROTO_API_L3] = htonl(mtu);
+    for (size_t i = 0; i < 4; ++i) {
+        mp->mtu[i] = htonl(mtu[i]);
+    }
 
     S (mp);
 
     WR (ret);
 
-    if (ret) { SAIVPP_ERROR("%s failed(%d) %s mtu %u", __func__, ret, hwif_name, mtu); }
-    else { SAIVPP_INFO("%s %s mtu %u", __func__, hwif_name, mtu); }
+    if (ret) { SAIVPP_ERROR("%s failed(%d) %s mtu %u", __func__, ret, hwif_name, mtu[0]); }
+    else { SAIVPP_INFO("%s %s mtu %u", __func__, hwif_name, mtu[0]); }
 
     VPP_UNLOCK();
 
@@ -7313,6 +7460,22 @@ static int __sw_interface_get_table(uint32_t sw_if_index, bool is_ipv6, uint32_t
 
     VPP_UNLOCK();
     return ret;
+}
+
+int get_interface_vrf(const char *hwif_name, bool is_ipv6, uint32_t *vrf_id)
+{
+    if (!hwif_name || !vrf_id) {
+        SAIVPP_ERROR("%s requires an interface name and output table", __func__);
+        return -EINVAL;
+    }
+
+    u32 idx = get_swif_idx(&vat_main, hwif_name);
+    if (idx == ~0U) {
+        SAIVPP_ERROR("%s: interface %s not found", __func__, hwif_name);
+        return -ENOENT;
+    }
+
+    return __sw_interface_get_table(idx, is_ipv6, vrf_id);
 }
 
 int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip, uint32_t vrf_id,
