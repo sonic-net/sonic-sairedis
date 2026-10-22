@@ -22,7 +22,11 @@ TEST(SwitchVpp, loopbackActionDisabled)
     // Isolate sonicExtFeatureEnabled's process-wide startup-state cache.
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_EXIT({
-        auto status = SwitchVpp::vpp_apply_loopback_action("Ethernet0", SAI_PACKET_ACTION_DROP);
+        if (SwitchVpp::vpp_apply_loopback_action("Ethernet0", SAI_PACKET_ACTION_DROP) != SAI_STATUS_NOT_SUPPORTED)
+        {
+            _exit(1);
+        }
+        auto status = SwitchVpp::vpp_apply_loopback_action("Ethernet0", SAI_PACKET_ACTION_FORWARD);
         _exit(status == SAI_STATUS_SUCCESS && vppMock().loopbackCalls == 0 &&
                 vppMock().queriedFeature == "iface-loopback" ? 0 : 1);
     }, ::testing::ExitedWithCode(0), "");
@@ -388,6 +392,67 @@ TEST_F(SwitchVppRifTest, featureQueryErrorsDoNotPersistCreateOrSet)
     }, ::testing::ExitedWithCode(0), "");
 }
 
+TEST_F(SwitchVppRifTest, disabledLoopbackDropDoesNotPersistCreateOrSet)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT({
+        vppMock().loopbackEnabled = false;
+        for (auto backing : {port, lag, vlan})
+        {
+            for (auto type : {SAI_ROUTER_INTERFACE_TYPE_PORT, SAI_ROUTER_INTERFACE_TYPE_SUB_PORT,
+                             SAI_ROUTER_INTERFACE_TYPE_VLAN})
+            {
+                if ((backing == vlan) != (type == SAI_ROUTER_INTERFACE_TYPE_VLAN))
+                {
+                    continue;
+                }
+                const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+                const auto sid = sai_serialize_object_id(rif);
+                if (create(rif, attributes(type, backing)) != SAI_STATUS_NOT_SUPPORTED ||
+                        sw->m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE).count(sid) != 0 ||
+                        !sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty() ||
+                        sw->m_rifStatsBaseMap.count(rif) != 0)
+                {
+                    _exit(1);
+                }
+
+                for (bool omitAction : {false, true})
+                {
+                    auto attrs = attributes(type, backing, SAI_PACKET_ACTION_FORWARD);
+                    if (omitAction)
+                    {
+                        attrs.erase(attrs.begin() + 4);
+                    }
+                    if (create(rif, attrs) != SAI_STATUS_SUCCESS)
+                    {
+                        _exit(2);
+                    }
+                    const auto stored = sw->m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE).at(sid);
+                    sai_attribute_t action{};
+                    action.id = SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION;
+                    action.value.s32 = SAI_PACKET_ACTION_DROP;
+                    if (sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &action) != SAI_STATUS_NOT_SUPPORTED ||
+                            sw->m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE).at(sid) != stored)
+                    {
+                        _exit(3);
+                    }
+                    if (sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &action) != SAI_STATUS_SUCCESS ||
+                            action.value.s32 != SAI_PACKET_ACTION_FORWARD)
+                    {
+                        _exit(4);
+                    }
+                    if (sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &action) != SAI_STATUS_SUCCESS ||
+                            sw->removeRouterif(rif) != SAI_STATUS_SUCCESS)
+                    {
+                        _exit(5);
+                    }
+                }
+            }
+        }
+        _exit(vppMock().loopbackCalls == 0 ? 0 : 6);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
 TEST_F(SwitchVppRifTest, persistentInterfaceCountersStartAtEachRifCreation)
 {
     const sai_stat_id_t ids[] = {
@@ -501,6 +566,47 @@ TEST_F(SwitchVppRifTest, vrfLookupAndProgrammingErrorsAbortBeforeActionProgrammi
         EXPECT_EQ(failure == "set" ? 1u : 0u, vppMock().vrfSetCalls);
         EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
     }
+}
+
+TEST_F(SwitchVppRifTest, omittedLoopbackActionGetReturnsDefaultAndContinues)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    sai_attribute_t requested[2]{};
+    requested[0].id = SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION;
+    requested[0].value.s32 = SAI_PACKET_ACTION_TRAP;
+    requested[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    requested[1].value.s32 = -1;
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 2, requested));
+
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    ASSERT_EQ(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attrs.back().id);
+    attrs.pop_back();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 2, requested));
+    EXPECT_EQ(SAI_PACKET_ACTION_FORWARD, requested[0].value.s32);
+    EXPECT_EQ(SAI_ROUTER_INTERFACE_TYPE_PORT, requested[1].value.s32);
+
+    for (auto action : {SAI_PACKET_ACTION_DROP, SAI_PACKET_ACTION_FORWARD})
+    {
+        SCOPED_TRACE(action);
+        sai_attribute_t attr{};
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION;
+        attr.value.s32 = action;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &attr));
+        requested[0].value.s32 = SAI_PACKET_ACTION_TRAP;
+        requested[1].value.s32 = -1;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(
+                SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 2, requested));
+        EXPECT_EQ(action, requested[0].value.s32);
+        EXPECT_EQ(SAI_ROUTER_INTERFACE_TYPE_PORT, requested[1].value.s32);
+    }
+
+    sai_attribute_t mtu{};
+    mtu.id = SAI_ROUTER_INTERFACE_ATTR_MTU;
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &mtu));
 }
 
 TEST_F(SwitchVppRifTest, loopbackCapabilityMatchesEnabledAndDisabledFeature)

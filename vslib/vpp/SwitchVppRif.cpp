@@ -1777,7 +1777,8 @@ sai_status_t SwitchVpp::vpp_apply_loopback_action(
     CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", enabled));
     if (!enabled)
     {
-        return SAI_STATUS_SUCCESS;
+        return packet_action == SAI_PACKET_ACTION_FORWARD ?
+            SAI_STATUS_SUCCESS : SAI_STATUS_NOT_SUPPORTED;
     }
 
     int action = (packet_action == SAI_PACKET_ACTION_DROP) ? 1 : 0;
