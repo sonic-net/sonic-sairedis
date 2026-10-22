@@ -129,11 +129,8 @@ namespace
 }
 
 /*
- * sonicExtFeatureEnabled() memoizes its answer in a process-wide cache, so the
- * first "pbh" query in this process decides what every later one sees. These
- * tests therefore fork, exactly as the iface-loopback tests do, and are
- * declared first so that the parent process still has an unasked cache when
- * they run.
+ * sonicExtFeatureEnabled() memorizes its answer in a process-wide cache, so the
+ * first "pbh" query in this process decides what every later one sees.
  */
 TEST(SwitchVppPbhFeature, disabledRefusesTableAndProfile)
 {
