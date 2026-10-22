@@ -10,6 +10,8 @@ extern "C" {
 
 #include "swss/table.h"
 
+#include <set>
+
 namespace syncd
 {
     /**
@@ -249,7 +251,29 @@ namespace syncd
 
             void dumpVidToAsicOperatioId() const;
 
+            static std::string computeCreateOnlyKey(
+                    _In_ const std::shared_ptr<const SaiObj> &obj,
+                    _In_ const ObjectIdMap &vidToRid,
+                    _In_ const std::set<sai_attr_id_t> *attrFilter);
+
+            static bool isAttrIncludedInIdentityKey(
+                    _In_ const sai_attr_metadata_t *meta);
+
+            std::string computeNhgMemberKey(
+                    _In_ sai_object_id_t nhgVid,
+                    _In_ const ObjectIdMap &vidToRid) const;
+
+            const std::unordered_map<std::string, std::shared_ptr<SaiObj>>* getCreateOnlyIndex(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::set<sai_attr_id_t> &attrFilter) const;
+
+            const std::unordered_map<std::string, std::vector<std::shared_ptr<SaiObj>>>* getNhgMemberIndex() const;
+
         private:
+
+            static std::string attrFilterCacheKey(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::set<sai_attr_id_t> &attrFilter);
 
             void populateAttributes(
                     _In_ std::shared_ptr<SaiObj> &obj,
@@ -355,5 +379,11 @@ namespace syncd
             std::vector<AsicOperation> m_asicRemoveOperationsNonObjectId;
 
             std::map<sai_object_type_t, StrObjectIdToSaiObjectHash> m_sotAll;
+
+            mutable std::map<std::string, std::unordered_map<std::string, std::shared_ptr<SaiObj>>> m_createOnlyIndexCache;
+
+            mutable std::unordered_map<std::string, std::vector<std::shared_ptr<SaiObj>>> m_nhgMemberIndex;
+
+            mutable bool m_nhgMemberIndexBuilt;
     };
 }
