@@ -295,7 +295,7 @@ void Recorder::recordFlushFdbEntries(
     // NOTE ! we actually give switch ID since FLUSH is not real object
     std::string key = serializedObjectType + ":" + sai_serialize_object_id(switchId);
 
-    SWSS_LOG_NOTICE("flush key: %s, fields: %lu", key.c_str(), entry.size());
+    SWSS_LOG_INFO("flush key: %s, fields: %lu", key.c_str(), entry.size());
 
     recordFlushFdbEntries(key, entry);
 }
