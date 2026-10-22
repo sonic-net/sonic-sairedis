@@ -769,12 +769,17 @@ void SwitchVpp::resyncBfdSessionState()
 
     std::vector<vpp_bfd_state_notif_t> sessions;
 
+    // Pending until the dump succeeds
+    m_bfdResyncDue = true;
+
     if (vpp_bfd_session_dump([](const vpp_bfd_state_notif_t *s, void *ctx)
                              { static_cast<std::vector<vpp_bfd_state_notif_t> *>(ctx)->push_back(*s); }, &sessions) != 0)
     {
-        SWSS_LOG_ERROR("BFD session dump failed, BFD state not resynced with VPP");
+        SWSS_LOG_ERROR("BFD session dump failed, BFD state resync with VPP will be retried");
         return;
     }
+
+    m_bfdResyncDue = false;
 
     size_t changed = 0;
 

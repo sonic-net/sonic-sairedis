@@ -1327,6 +1327,15 @@ void SwitchVpp::processFdbEntriesForAging()
     SWSS_LOG_ENTER();
 
     /*
+     * This pass runs at least once a second under MUTEX(), so it also retries
+     * a BFD state resync whose session dump failed, as it does the FDB resync.
+     */
+    if (m_bfdResyncDue)
+    {
+        resyncBfdSessionState();
+    }
+
+    /*
      * Drain the MAC event queue populated by the VPP API receive thread.
      * We hold MUTEX() here (called from Sai::processFdbEntriesForAging which
      * acquires m_apimutex before calling into vslib), so it is safe to call

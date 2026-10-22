@@ -944,7 +944,7 @@ TEST(SwitchVpp, eventThreadRetriesAFailedSocketAnIntervalLater)
  * BFD events lost with the event socket, sent while it was down or still
  * buffered on it when it failed, leave a session's state stale: the reconnect
  * queues a BFD state resync, which reports the sessions whose state VPP has
- * changed since.
+ * changed since. If VPP's sessions can't be dumped, the FDB aging pass retries.
  */
 TEST(SwitchVpp, bfdResyncReportsStateChangesLostWithTheEventSocket)
 {
@@ -1023,7 +1023,8 @@ TEST(SwitchVpp, bfdResyncReportsStateChangesLostWithTheEventSocket)
     memset(&resync, 0, sizeof(resync));
     resync.type = VPP_BFD_RESYNC;
 
-    // If the session dump fails, nothing changes
+    // If the session dump fails, nothing changes, and the next FDB aging pass
+    // tries again
     vppMock().bfdDumpResult = -1;
 
     sw.syncOnPlatformEvent(std::make_shared<EventPayloadVppEvent>(swid, resync));
@@ -1032,12 +1033,19 @@ TEST(SwitchVpp, bfdResyncReportsStateChangesLostWithTheEventSocket)
     EXPECT_EQ(SAI_BFD_SESSION_STATE_UP, bfdState(wentDown));
     EXPECT_EQ(0u, sc->m_eventQueue->size());
 
-    // The resync reports the sessions whose state changed, and only those
-    vppMock().bfdDumpResult = 0;
-
-    sw.syncOnPlatformEvent(std::make_shared<EventPayloadVppEvent>(swid, resync));
+    sw.processFdbEntriesForAging();
 
     EXPECT_EQ(2u, vppMock().bfdDumpCalls);
+    EXPECT_EQ(SAI_BFD_SESSION_STATE_UP, bfdState(wentDown));
+    EXPECT_EQ(0u, sc->m_eventQueue->size());
+
+    // Once the dump succeeds, the resync reports the sessions whose state
+    // changed, and only those
+    vppMock().bfdDumpResult = 0;
+
+    sw.processFdbEntriesForAging();
+
+    EXPECT_EQ(3u, vppMock().bfdDumpCalls);
     EXPECT_EQ(SAI_BFD_SESSION_STATE_DOWN, bfdState(wentDown));
     EXPECT_EQ(SAI_BFD_SESSION_STATE_UP, bfdState(stayedUp));
     EXPECT_EQ(SAI_BFD_SESSION_STATE_UP, bfdState(cameUp));
@@ -1065,4 +1073,10 @@ TEST(SwitchVpp, bfdResyncReportsStateChangesLostWithTheEventSocket)
     {
         EXPECT_EQ(std::string::npos, ntf.find(sai_serialize_object_id(stayedDown)));
     }
+
+    // Done: the aging pass doesn't resync again
+    sw.processFdbEntriesForAging();
+
+    EXPECT_EQ(3u, vppMock().bfdDumpCalls);
+    EXPECT_EQ(0u, sc->m_eventQueue->size());
 }
