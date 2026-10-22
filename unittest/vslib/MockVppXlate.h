@@ -71,6 +71,12 @@ struct VppMock
     int loopbackResult = 0;
     int featureResult = 0;
     unsigned int featureCalls = 0;
+    std::vector<std::string> queriedFeatures;
+    // -1 keeps the l2 classify punt setup from running at all
+    int addNodeNextResult = -1;
+    uint32_t nextNodeIndex = 10;
+    uint32_t nextClassifyTable = 0;
+    int ip2meResult = 0;
     int statsResult = 0;
     int lcpResult = 0;
     unsigned int statsCalls = 0;

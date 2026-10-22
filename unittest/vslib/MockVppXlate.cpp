@@ -126,6 +126,7 @@ extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabl
     SWSS_LOG_ENTER();
     ++vppMock().featureCalls;
     vppMock().queriedFeature = feature;
+    vppMock().queriedFeatures.push_back(feature);
     *enabled = vppMock().queriedFeature == "iface-loopback"
             ? vppMock().loopbackEnabled
             : vppMock().enabledFeatures.count(vppMock().queriedFeature) != 0;
@@ -250,6 +251,13 @@ extern "C" int __wrap_vpp_rule_stats_query(vpp_rule_stats_type_t type, uint32_t 
     stats->ace_index = rule_index;
 
     return 0;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_ip2me_enable_disable(const char *name, bool enable)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_sonic_ext_ip2me_enable_disable", name, 0, 0, enable});
+    return vppMock().ip2meResult;
 }
 
 extern "C" int __wrap_vpp_iface_loopback_set_action(const char *name, int action)
@@ -463,10 +471,35 @@ uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
     return vppMock().nextSwIfIndex++;
 }
 
-// no classify punt in these tests: its one-time setup fails, which the VLAN member path tolerates
+// by default no classify punt: its one-time setup fails, which the VLAN member path tolerates
 int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint32_t *next_index) {
     SWSS_LOG_ENTER();
-    return -1;
+    int ret = vppMock().addNodeNextResult;
+    uint32_t index = ~0u;
+    if (ret == 0)
+    {
+        index = vppMock().nextNodeIndex++;
+        *next_index = index;
+    }
+    vppMock().calls.push_back({"vpp_add_node_next", next_name, index, (uint32_t)ret, true});
+    return ret;
+}
+
+int __wrap_vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
+        uint32_t skip_n_vectors, uint32_t match_n_vectors,
+        uint32_t next_table_index, uint32_t miss_next_index,
+        const uint8_t *mask, uint32_t mask_len, uint32_t *new_table_index) {
+    SWSS_LOG_ENTER();
+    *new_table_index = vppMock().nextClassifyTable++;
+    return 0;
+}
+
+int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+        const uint8_t *match, uint32_t match_len, uint32_t opaque_index,
+        int32_t advance, uint8_t action) {
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_classify_session_add", "", table_index, hit_next_index, true});
+    return 0;
 }
 
 int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,

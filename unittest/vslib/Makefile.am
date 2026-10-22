@@ -54,8 +54,8 @@ tests_SOURCES = main.cpp \
 				TestTAM.cpp
 
 if USE_VPP
-tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
-				TestSwitchVppPbh.cpp \
+tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestSwitchVppSonicExt.cpp \
+				TestVppInterfaceRegistry.cpp TestSwitchVppPbh.cpp \
 				MockVppXlate.cpp MockVppXlate.h
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
@@ -70,7 +70,9 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state \
 				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
 				vpp_pbh_profile_add_del vpp_pbh_table_add_replace vpp_pbh_table_del \
-				vpp_pbh_interface_attach_detach vpp_rule_stats_query
+				vpp_pbh_interface_attach_detach vpp_rule_stats_query \
+				vpp_classify_table_create vpp_classify_session_add \
+				vpp_sonic_ext_ip2me_enable_disable
 tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 endif
 
