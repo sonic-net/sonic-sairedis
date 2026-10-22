@@ -10,6 +10,7 @@
 #include "TunnelManager.h"
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
+#include "VppAclInterfacePolicy.h"
 #include "SwitchVppPolicer.h"
 #include "SwitchVppHostifTrap.h"
 #include "CRMTracker.h"
@@ -31,6 +32,7 @@
 #include <queue>
 #include <set>
 #include <string>
+#include <tuple>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -1001,12 +1003,11 @@ namespace saivs
             // and, via getPortsWithAclTable(), a reverse (table -> ports)
             // lookup for anything that needs to map ports to ACL tables (the
             // ip2me hook today, egress features tomorrow).
-            struct PortAclTables
-            {
-                std::set<sai_object_id_t> ingress;
-                std::set<sai_object_id_t> egress;
-            };
+            using PortAclTables = VppAclInterfacePolicy;
             std::map<std::string, PortAclTables> m_port_acl_tables;
+            // Successful ACL API calls may precede a failed tunterm bind.
+            // Retain that outstanding operation so an identical retry repairs it.
+            std::map<std::tuple<std::string, sai_object_id_t, bool>, bool> m_acl_tunterm_pending;
 
             // ip2me (receive-DPO check before ACL) tracking.
             //
@@ -1424,10 +1425,39 @@ namespace saivs
                     _In_ bool is_input,
                     _In_ bool is_bind);
 
+            sai_status_t aclSetPortTableGroup(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_object_id_t port_oid,
+                    _In_ sai_attr_id_t attr_id,
+                    _In_ sai_object_id_t group_oid,
+                    _In_ bool is_input);
+
             sai_status_t aclBindUnbindPorts(
                     _In_ sai_object_id_t tbl_grp_oid,
                     _In_ sai_object_id_t tbl_oid,
                     _In_ bool is_bind);
+
+            sai_status_t aclBindInterfaceTable(
+                    _In_ const std::string &hwif_name,
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool is_input,
+                    _In_ bool is_bind);
+
+            sai_status_t aclBindInterfaceDefault(
+                    _In_ const std::string &hwif_name,
+                    _In_ bool is_input,
+                    _In_ bool is_bind);
+
+            sai_status_t aclInheritInterfacePolicy(
+                    _In_ const std::string &parent_hwif,
+                    _In_ const std::string &child_hwif);
+
+            sai_status_t aclRemoveInterfacePolicy(
+                    _In_ const std::string &hwif_name);
+
+            // Called only after VPP has successfully deleted the interface.
+            void aclForgetInterfacePolicy(
+                    _In_ const std::string &hwif_name);
 
             /*
              * Generic port <-> ACL-table binding bookkeeping (both

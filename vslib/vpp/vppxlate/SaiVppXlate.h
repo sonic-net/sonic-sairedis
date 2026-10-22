@@ -120,6 +120,9 @@ _Static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
         uint16_t dstport_or_icmpcode_last;
         uint8_t tcp_flags_mask;
         uint8_t tcp_flags_value;
+        /* Masked VLAN membership match; a zero mask matches any VLAN. */
+        uint16_t outer_vlan_id;
+        uint16_t outer_vlan_id_mask;
         uint32_t mirror_action;
         /*
          * Match only packets received on this interface. Empty for any, which
@@ -442,6 +445,7 @@ typedef enum {
     extern int delete_loopback(const char *hwif_name, uint32_t instance);
     extern int get_sw_if_idx(const char *ifname);
     extern int create_sub_interface(const char *hwif_name, uint32_t sub_id, uint16_t vlan_id);
+    extern int create_vlan_sub_interface(const char *hwif_name, uint32_t sub_id, uint16_t vlan_id);
     extern int delete_sub_interface(const char *hwif_name, uint32_t sub_id);
     extern int set_interface_vrf(const char *hwif_name, uint32_t sub_id, uint32_t vrf_id, bool is_ipv6);
     extern int get_interface_vrf(const char *hwif_name, bool is_ipv6, uint32_t *vrf_id);
