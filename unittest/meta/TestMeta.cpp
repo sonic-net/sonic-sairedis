@@ -2342,3 +2342,35 @@ TEST(Meta, meta_sai_on_port_host_tx_ready_change_snoop)
             switchId,
             SAI_PORT_HOST_TX_READY_STATUS_NOT_READY);
 }
+
+TEST(Meta, quad_port_get_pam4_eye_values_list)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t swattr;
+    swattr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    swattr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &swattr));
+
+    sai_object_id_t port = create_port(m, switchId);
+
+    // Exercises meta_generic_validation_get and post_get for the PAM4 eye
+    // values list attribute value type.
+    sai_port_pam4_lane_eye_values_t eyes[4];
+    memset(eyes, 0, sizeof(eyes));
+
+    sai_attribute_t attr;
+    attr.id = SAI_PORT_ATTR_PAM4_EYE_VALUES;
+    attr.value.portpam4eyevalues.count = 4;
+    attr.value.portpam4eyevalues.list = eyes;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(SAI_OBJECT_TYPE_PORT, port, 1, &attr));
+
+    // NULL list with nonzero count is rejected by validation
+    attr.value.portpam4eyevalues.count = 4;
+    attr.value.portpam4eyevalues.list = nullptr;
+    EXPECT_NE(SAI_STATUS_SUCCESS, m.get(SAI_OBJECT_TYPE_PORT, port, 1, &attr));
+}

@@ -2652,6 +2652,111 @@ TEST(SaiDeserialize, sai_deserialize_enum)
     EXPECT_EQ(value, SAI_STATS_MODE_READ);
 }
 
+TEST(SaiSerialize, sai_serialize_port_pam4_eye_values_list)
+{
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+
+    for (size_t idx = 0 ; idx < sai_metadata_attr_sorted_by_id_name_count; ++idx)
+    {
+        auto meta = sai_metadata_attr_sorted_by_id_name[idx];
+        if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_PAM4_EYE_VALUES_LIST)
+        {
+            attr.id = meta->attrid;
+
+            sai_port_pam4_lane_eye_values_t list[2];
+
+            list[0].lane = 0;
+            list[0].upper_ht = 96;
+            list[0].upper_wd = -1;
+            list[0].middle_ht = 100;
+            list[0].middle_wd = -1;
+            list[0].lower_ht = 98;
+            list[0].lower_wd = -1;
+
+            list[1].lane = 1;
+            list[1].upper_ht = 102;
+            list[1].upper_wd = -1;
+            list[1].middle_ht = 104;
+            list[1].middle_wd = -1;
+            list[1].lower_ht = 100;
+            list[1].lower_wd = -1;
+
+            attr.value.portpam4eyevalues.count = 2;
+            attr.value.portpam4eyevalues.list = list;
+
+            auto s = sai_serialize_attr_value(*meta, attr, false);
+
+            EXPECT_NE(s.find("\"upper_ht\":96"), std::string::npos);
+            EXPECT_NE(s.find("\"middle_ht\":104"), std::string::npos);
+            EXPECT_NE(s.find("\"lower_wd\":-1"), std::string::npos);
+
+            // countOnly and NULL list produce an empty object
+            attr.value.portpam4eyevalues.list = NULL;
+            EXPECT_EQ(sai_serialize_port_pam4_eye_values_list(attr.value.portpam4eyevalues, false), "{}");
+            attr.value.portpam4eyevalues.list = list;
+            EXPECT_EQ(sai_serialize_port_pam4_eye_values_list(attr.value.portpam4eyevalues, true), "{}");
+        }
+    }
+}
+
+TEST(SaiSerialize, sai_deserialize_port_pam4_eye_values_list)
+{
+    std::string json_str = R"({"0":{"upper_ht":96,"upper_wd":-1,"middle_ht":100,"middle_wd":-1,"lower_ht":98,"lower_wd":-1},"1":{"upper_ht":102,"upper_wd":-1,"middle_ht":104,"middle_wd":-1,"lower_ht":100,"lower_wd":-1}})";
+
+    sai_port_pam4_eye_values_list_t eye_list;
+    memset(&eye_list, 0, sizeof(eye_list));
+
+    sai_deserialize_port_pam4_eye_values_list(json_str, eye_list, false);
+
+    EXPECT_EQ(eye_list.count, 2);
+    ASSERT_NE(eye_list.list, nullptr);
+
+    EXPECT_EQ(eye_list.list[0].lane, 0);
+    EXPECT_EQ(eye_list.list[0].upper_ht, 96);
+    EXPECT_EQ(eye_list.list[0].middle_ht, 100);
+    EXPECT_EQ(eye_list.list[0].lower_ht, 98);
+    EXPECT_EQ(eye_list.list[0].upper_wd, -1);
+
+    EXPECT_EQ(eye_list.list[1].lane, 1);
+    EXPECT_EQ(eye_list.list[1].middle_ht, 104);
+
+    // free through the generic attribute-value free path
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.value.portpam4eyevalues = eye_list;
+    sai_deserialize_free_attribute_value(SAI_ATTR_VALUE_TYPE_PORT_PAM4_EYE_VALUES_LIST, attr);
+
+    // countOnly fills only the count
+    memset(&eye_list, 0, sizeof(eye_list));
+    sai_deserialize_port_pam4_eye_values_list(json_str, eye_list, true);
+    EXPECT_EQ(eye_list.count, 2);
+    EXPECT_EQ(eye_list.list, nullptr);
+
+    // empty object
+    memset(&eye_list, 0, sizeof(eye_list));
+    sai_deserialize_port_pam4_eye_values_list(R"({})", eye_list, false);
+    EXPECT_EQ(eye_list.count, 0);
+    EXPECT_EQ(eye_list.list, nullptr);
+
+    // a lane whose value is not an object is skipped, others deserialize
+    memset(&eye_list, 0, sizeof(eye_list));
+    sai_deserialize_port_pam4_eye_values_list(
+        R"({"0":"bogus","1":{"upper_ht":90,"middle_ht":92,"lower_ht":94}})", eye_list, false);
+    EXPECT_EQ(eye_list.count, 2);
+    ASSERT_NE(eye_list.list, nullptr);
+    EXPECT_EQ(eye_list.list[1].lane, 1);
+    EXPECT_EQ(eye_list.list[1].upper_ht, 90);
+    EXPECT_EQ(eye_list.list[1].upper_wd, -1);
+    delete[] eye_list.list;
+
+    // malformed json resets the output
+    memset(&eye_list, 0, sizeof(eye_list));
+    sai_deserialize_port_pam4_eye_values_list("not json", eye_list, false);
+    EXPECT_EQ(eye_list.count, 0);
+    EXPECT_EQ(eye_list.list, nullptr);
+}
+
 TEST(SaiSerialize, sai_serialize_otn_attenuator_attr)
 {
     EXPECT_EQ(sai_serialize_otn_attenuator_attr(SAI_OTN_ATTENUATOR_ATTR_ATTENUATION),
