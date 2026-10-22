@@ -1626,6 +1626,9 @@ namespace saivs
 
             bool m_run_vpp_events_thread = true;
             std::atomic<bool> m_operResyncDue { false };
+            // A BFD state resync is pending until its session dump succeeds:
+            // the FDB aging pass retries a failed one. Under m_apimutex only.
+            bool m_bfdResyncDue = false;
             bool VppEventsThreadStarted = false;
             std::shared_ptr<std::thread> m_vpp_thread;
 
