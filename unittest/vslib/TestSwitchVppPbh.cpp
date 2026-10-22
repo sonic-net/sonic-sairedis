@@ -59,6 +59,7 @@ namespace
 
     sai_attribute_t boolAttr(sai_attr_id_t id, bool value)
     {
+        SWSS_LOG_ENTER();
         sai_attribute_t attr = {};
         attr.id = id;
         attr.value.booldata = value;
@@ -67,6 +68,7 @@ namespace
 
     sai_attribute_t u32Attr(sai_attr_id_t id, uint32_t value)
     {
+        SWSS_LOG_ENTER();
         sai_attribute_t attr = {};
         attr.id = id;
         attr.value.u32 = value;
@@ -75,6 +77,7 @@ namespace
 
     sai_attribute_t oidAttr(sai_attr_id_t id, sai_object_id_t value)
     {
+        SWSS_LOG_ENTER();
         sai_attribute_t attr = {};
         attr.id = id;
         attr.value.oid = value;
@@ -83,6 +86,7 @@ namespace
 
     sai_attribute_t fieldU8(sai_attr_id_t id, uint8_t value, bool enable = true)
     {
+        SWSS_LOG_ENTER();
         sai_attribute_t attr = {};
         attr.id = id;
         attr.value.aclfield.enable = enable;
@@ -93,6 +97,7 @@ namespace
 
     sai_attribute_t fieldU16(sai_attr_id_t id, uint16_t value, bool enable = true)
     {
+        SWSS_LOG_ENTER();
         sai_attribute_t attr = {};
         attr.id = id;
         attr.value.aclfield.enable = enable;
@@ -103,6 +108,7 @@ namespace
 
     sai_attribute_t fieldU32(sai_attr_id_t id, uint32_t value, uint32_t mask, bool enable = true)
     {
+        SWSS_LOG_ENTER();
         sai_attribute_t attr = {};
         attr.id = id;
         attr.value.aclfield.enable = enable;
@@ -113,6 +119,7 @@ namespace
 
     sai_attribute_t actionOid(sai_attr_id_t id, sai_object_id_t value, bool enable = true)
     {
+        SWSS_LOG_ENTER();
         sai_attribute_t attr = {};
         attr.id = id;
         attr.value.aclaction.enable = enable;
@@ -289,6 +296,8 @@ protected:
 
     static uint32_t ruleId(sai_object_id_t entry_oid)
     {
+        SWSS_LOG_ENTER();
+
         return (uint32_t) (entry_oid & 0xffffffff);
     }
 
