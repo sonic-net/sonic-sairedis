@@ -70,6 +70,9 @@ void Sai::processQueueEvent(
         case EVENT_TYPE_NOTIFICATION:
             return asyncProcessEventNotification(std::dynamic_pointer_cast<EventPayloadNotification>(event->getPayload()));
 
+        case EVENT_TYPE_PLATFORM_EVENT:
+            return syncProcessEventPlatformEvent(std::dynamic_pointer_cast<EventPayloadPlatformEvent>(event->getPayload()));
+
         default:
 
             SWSS_LOG_THROW("unhandled event type: %d", type);
@@ -95,6 +98,16 @@ void Sai::syncProcessEventNetLinkMsg(
     SWSS_LOG_ENTER();
 
     m_vsSai->syncProcessEventNetLinkMsg(payload);
+}
+
+void Sai::syncProcessEventPlatformEvent(
+        _In_ std::shared_ptr<EventPayloadPlatformEvent> payload)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    m_vsSai->syncProcessEventPlatformEvent(payload);
 }
 
 void Sai::asyncProcessEventNotification(

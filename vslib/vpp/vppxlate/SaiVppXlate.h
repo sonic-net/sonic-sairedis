@@ -236,6 +236,17 @@ _Static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
     typedef enum {
 	VPP_INTF_LINK_STATUS = 1,
         VPP_BFD_STATE_CHANGE,
+        /*
+         * No data. Link events VPP sent while the event connection was down
+         * are lost: the consumer re-reads the link state of every interface.
+         * Queued behind the events read before the connection failed.
+         */
+        VPP_INTF_LINK_RESYNC,
+        /*
+         * No data. Like VPP_INTF_LINK_RESYNC, for BFD events: the consumer
+         * re-reads the state of every BFD session (vpp_bfd_session_dump()).
+         */
+        VPP_BFD_RESYNC,
     } vpp_event_type_e;
 
     typedef union vpp_event_data_ {
@@ -506,6 +517,8 @@ typedef enum {
     extern int interface_get_state(const char *hwif_name, bool *link_is_up);
     extern int vpp_refresh_interface_speed(const char *hwif_name);
     extern int vpp_get_interface_speed(const char *hwif_name, uint32_t *speed);
+    extern int vpp_wait_for_events(int timeout_ms);
+    extern int vpp_drain_events();
     extern int vpp_sync_for_events();
     extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
     extern int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
@@ -533,6 +546,10 @@ typedef enum {
         VPP_MAC_ACTION_ADD    = 0,  /* newly learned */
         VPP_MAC_ACTION_DELETE = 1,  /* aged out */
         VPP_MAC_ACTION_MOVE   = 2,  /* moved to a different port */
+        /* Not from VPP: the event connection was re-established and MAC events
+         * may have been lost. mac/sw_if_index are unused; the consumer should
+         * reconcile its FDB with vpp_l2fib_dump(). */
+        VPP_MAC_ACTION_RESYNC = 3,
     } vpp_mac_action_t;
 
     /* MAC event callback types for push-based FDB notification via WANT_L2_MACS_EVENTS2 */
@@ -542,19 +559,39 @@ typedef enum {
         uint8_t  action; /* vpp_mac_action_t */
     } vpp_mac_event_t;
 
-    /* Batch callback: invoked once per l2_macs_event message with all entries.
-     * Called on the VPP API receive thread — must NOT acquire m_apimutex. */
+    /* Batch callback: invoked once per l2_macs_event message with all entries,
+     * and with a single VPP_MAC_ACTION_RESYNC entry after the event connection
+     * is re-established.
+     * Called on the thread reading the VPP event socket (the vpp event thread),
+     * under EVENT_LOCK — must NOT acquire m_apimutex. */
     typedef void (*vpp_mac_event_cb_fn)(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
 
-    /* Register/deregister for push-based MAC learn/age/move events from VPP.
-     * cb is invoked on the VPP API receive thread — implementations MUST NOT
-     * acquire the saivpp main mutex (m_apimutex) directly; enqueue the event
-     * and process it from a thread that safely holds the mutex. */
-    extern int vpp_want_l2_macs_events2(bool enable, vpp_mac_event_cb_fn cb, void *ctx);
+    /* Set (cb != NULL) or clear (cb == NULL) the receiver of push-based MAC
+     * learn/age/move events. The VPP subscription itself is made by
+     * init_vpp_client() along with interface and BFD events; events arriving
+     * while no callback is set are dropped. Implementations MUST NOT acquire
+     * the saivpp main mutex (m_apimutex) directly; enqueue the event and
+     * process it from a thread that safely holds the mutex. */
+    extern void vpp_set_mac_event_cb(vpp_mac_event_cb_fn cb, void *ctx);
 
     /* Set the L2 FIB scan delay (in units of 10ms, default=10 → 100ms).
      * Reduces the interval between VPP scanning for aged/moved MACs. */
     extern int vpp_l2fib_set_scan_delay(uint16_t delay_10ms);
+
+    /* One VPP L2FIB entry, as reported by vpp_l2fib_dump() */
+    typedef struct {
+        uint8_t  mac[6];
+        uint32_t bd_id;
+        uint32_t sw_if_index;
+        bool     is_static; /* static, BVI or filter entry */
+    } vpp_l2fib_entry_t;
+
+    typedef void (*vpp_l2fib_entry_cb_fn)(const vpp_l2fib_entry_t *entry, void *ctx);
+
+    /* Dump VPP's L2FIB (bd_id ~0u: all bridge domains) on the command
+     * connection; cb is called for each entry once the dump has completed,
+     * outside the VPP API lock. Returns 0 on success. */
+    extern int vpp_l2fib_dump(uint32_t bd_id, vpp_l2fib_entry_cb_fn cb, void *ctx);
 
     /* Reverse-lookup: return the VPP sw_if_index for a given hw interface name,
      * or ~0u if not found. */
@@ -566,6 +603,13 @@ typedef enum {
     extern int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr);
     extern int bfd_udp_set_tos(uint8_t tos);
+
+    typedef void (*vpp_bfd_session_cb_fn)(const vpp_bfd_state_notif_t *session, void *ctx);
+
+    /* Dump VPP's BFD UDP sessions, with their state, on the command
+     * connection; cb is called for each session once the dump has completed,
+     * outside the VPP API lock. Returns 0 on success. */
+    extern int vpp_bfd_session_dump(vpp_bfd_session_cb_fn cb, void *ctx);
 
     extern int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add,  uint32_t *sw_if_index);
     extern int vpp_ip_addr_t_to_string(vpp_ip_addr_t *ip_addr, char *buffer, size_t maxlen);
