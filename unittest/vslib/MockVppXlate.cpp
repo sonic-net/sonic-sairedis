@@ -193,16 +193,18 @@ extern "C" int __wrap_configure_lcp_interface(const char *name, const char *, bo
     return vppMock().lcpPairs.erase(name) == 1 ? 0 : -1;
 }
 
-extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t, bool add, uint32_t)
+extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t bd_id, bool add, uint32_t)
 {
     SWSS_LOG_ENTER();
     if (add)
     {
         vppMock().bridgePorts.insert(name);
+        vppMock().bdMembers[bd_id].insert(name);
     }
     else
     {
         vppMock().bridgePorts.erase(name);
+        vppMock().bdMembers[bd_id].erase(name);
     }
     return 0;
 }
@@ -213,6 +215,19 @@ extern "C" int __wrap_refresh_interfaces_list() {
 }
 extern "C" int __wrap_vpp_want_l2_macs_events2(bool, vpp_mac_event_cb_fn, void *) {
     SWSS_LOG_ENTER();
+    return 0;
+}
+extern "C" int __wrap_vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_age)
+{
+    SWSS_LOG_ENTER();
+    // VPP rejects a bridge domain it doesn't have
+    bool fails = vppMock().macAgeFailures.count(bd_id) != 0 || vppMock().bdMembers.count(bd_id) == 0;
+    vppMock().calls.push_back({"vpp_bridge_domain_set_mac_age", std::to_string(bd_id), bd_id, mac_age, !fails});
+    if (fails)
+    {
+        return -1;
+    }
+    vppMock().bdMacAges[bd_id] = mac_age;
     return 0;
 }
 extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
@@ -319,12 +334,19 @@ int __wrap_bridge_domain_get_member_count(uint32_t bd_id, uint32_t *member_count
 {
     SWSS_LOG_ENTER();
 
-    *member_count = 0;
+    auto bd = vppMock().bdMembers.find(bd_id);
+
+    *member_count = bd == vppMock().bdMembers.end() ? 0 : static_cast<uint32_t>(bd->second.size());
     return 0;
 }
 
 int __wrap_vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add) {
     SWSS_LOG_ENTER();
+    if (!is_add)
+    {
+        vppMock().bdMembers.erase(bridge_id);
+        vppMock().bdMacAges.erase(bridge_id);
+    }
     return 0;
 }
 uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)

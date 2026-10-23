@@ -1674,6 +1674,30 @@ namespace saivs
             void swif_bdid_track(const char *hwif_name, uint32_t bd_id);
             void swif_bdid_untrack(const char *hwif_name);
 
+            // FDB aging. VPP ages the learned MACs of each bridge domain itself
+            // (mac_age, in whole minutes) and reports each aged one as a DELETE
+            // MAC event, which becomes SAI_FDB_EVENT_AGED. SAI has one aging
+            // time for the switch, in seconds.
+
+            // SAI_SWITCH_ATTR_FDB_AGING_TIME as a bridge domain mac_age
+            static uint8_t fdb_aging_time_to_mac_age(uint32_t aging_time);
+
+            // Apply a new aging time to the VLAN bridge domains with a member
+            sai_status_t vpp_set_fdb_aging_time(uint32_t aging_time);
+
+            // Apply the switch's aging time to the bridge domain a VLAN member joins
+            void vpp_apply_fdb_aging_time(uint32_t bd_id);
+
+            // The bridge domains VPP has a VLAN's port or LAG member in
+            std::set<uint32_t> vpp_vlan_bridge_domains();
+
+            uint32_t switch_fdb_aging_time();
+
+            // Whether the VLAN bridge domains with a member all have the MAC age
+            // of the stored aging time. Cleared when VPP fails to set one, until
+            // an aging time is set on all of them.
+            bool m_fdb_mac_age_applied = true;
+
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
             std::map<std::string, bool> m_last_oper_up;

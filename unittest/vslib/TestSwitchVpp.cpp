@@ -130,12 +130,21 @@ class SwitchVppSubIfAdminState : public ::testing::Test
         {
             SWSS_LOG_ENTER();
 
+            return addTaggedMember(bridgePort, m_vlan);
+        }
+
+        sai_object_id_t addTaggedMember(
+                sai_object_id_t bridgePort,
+                sai_object_id_t vlan)
+        {
+            SWSS_LOG_ENTER();
+
             auto member = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN_MEMBER, m_switchId);
 
             sai_attribute_t attrs[3];
 
             attrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
-            attrs[0].value.oid = m_vlan;
+            attrs[0].value.oid = vlan;
             attrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
             attrs[1].value.oid = bridgePort;
             attrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
@@ -323,4 +332,305 @@ TEST_F(SwitchVppSubIfAdminState, SubPortSetDownBeforeThePortComesUpStaysDown)
 
     EXPECT_EQ(2u, vppMock().callsTo("interface_set_state", SUB_PORT_HWIF).size());
     EXPECT_FALSE(vppMock().isAdminUp(SUB_PORT_HWIF));
+}
+
+/*
+ * VPP ages the MAC addresses each bridge domain has learned, in whole minutes
+ * (mac_age, 0: never), and reports each aged one as a DELETE MAC event. SAI's
+ * FDB aging time is in seconds, for the whole switch.
+ */
+TEST(SwitchVpp, fdbAgingTimeRoundsUpToWholeMinutes)
+{
+    EXPECT_EQ(0, SwitchVpp::fdb_aging_time_to_mac_age(0));
+    EXPECT_EQ(1, SwitchVpp::fdb_aging_time_to_mac_age(1));
+    EXPECT_EQ(1, SwitchVpp::fdb_aging_time_to_mac_age(60));
+    EXPECT_EQ(2, SwitchVpp::fdb_aging_time_to_mac_age(61));
+    EXPECT_EQ(10, SwitchVpp::fdb_aging_time_to_mac_age(600));
+    EXPECT_EQ(255, SwitchVpp::fdb_aging_time_to_mac_age(255 * 60));
+    EXPECT_EQ(255, SwitchVpp::fdb_aging_time_to_mac_age(255 * 60 + 1));
+    EXPECT_EQ(255, SwitchVpp::fdb_aging_time_to_mac_age(UINT32_MAX));
+}
+
+/*
+ * The fixture's switch, VLAN 100 and ports, with the switch object orchagent
+ * sets SAI_SWITCH_ATTR_FDB_AGING_TIME on.
+ */
+class SwitchVppFdbAging : public SwitchVppSubIfAdminState
+{
+    protected:
+
+        void SetUp() override
+        {
+            SwitchVppSubIfAdminState::SetUp();
+
+            // vslib's default
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+            attr.value.u32 = 0;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), m_switchId, 1, &attr));
+        }
+
+        // orchagent sets SAI_SWITCH_ATTR_FDB_AGING_TIME
+        sai_status_t setAgingTime(
+                uint32_t aging_time)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+            attr.value.u32 = aging_time;
+
+            return m_sw->set(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), &attr);
+        }
+
+        uint32_t agingTime()
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->get(SAI_OBJECT_TYPE_SWITCH, m_switchId, 1, &attr));
+
+            return attr.value.u32;
+        }
+
+        // the mac_age values set on bridge domain bd_id, in order
+        std::vector<uint32_t> macAges(
+                uint32_t bd_id)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<uint32_t> ages;
+
+            for (auto& call: vppMock().callsTo("vpp_bridge_domain_set_mac_age", std::to_string(bd_id)))
+            {
+                ages.push_back(call.sub_id);
+            }
+
+            return ages;
+        }
+
+        // the mac_age VPP has on bridge domain bd_id
+        uint32_t macAge(
+                uint32_t bd_id)
+        {
+            SWSS_LOG_ENTER();
+
+            auto bd = vppMock().bdMacAges.find(bd_id);
+
+            return bd == vppMock().bdMacAges.end() ? 0 : bd->second;
+        }
+
+        // orchagent creates another VLAN
+        sai_object_id_t addVlan(
+                uint16_t vlan_id)
+        {
+            SWSS_LOG_ENTER();
+
+            auto vlan = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN, m_switchId);
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_VLAN_ATTR_VLAN_ID;
+            attr.value.u16 = vlan_id;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(vlan), m_switchId, 1, &attr));
+
+            return vlan;
+        }
+
+        // VLAN 300, with a member on the other port, and VLAN 100 with one on
+        // the first port: bridge domains 300 and 100
+        void addTwoVlans()
+        {
+            SWSS_LOG_ENTER();
+
+            addTaggedMember(m_bridgePort);
+            addTaggedMember(m_otherBridgePort, addVlan(OTHER_VLAN_ID));
+        }
+
+        static constexpr uint16_t OTHER_VLAN_ID = 300;
+};
+
+constexpr uint16_t SwitchVppFdbAging::OTHER_VLAN_ID;
+
+TEST_F(SwitchVppFdbAging, AgingTimeAppliesToTheBridgeDomainsOfVlansWithMembers)
+{
+    // Members join bridge domain 100 with the switch's aging time, 0: no aging
+    addTaggedMember(m_bridgePort);
+    addTaggedMember(m_otherBridgePort);
+
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+
+    vppMock().calls.clear();
+
+    // Once per bridge domain, however many members it has
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    EXPECT_EQ(std::vector<uint32_t>({10}), macAges(VLAN_ID));
+    EXPECT_EQ(600u, agingTime());
+
+    // An aging time with the same MAC age changes nothing in VPP
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(590));
+
+    EXPECT_EQ(std::vector<uint32_t>({10}), macAges(VLAN_ID));
+    EXPECT_EQ(590u, agingTime());
+
+    // 0 turns aging off
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(0));
+
+    EXPECT_EQ(std::vector<uint32_t>({10, 0}), macAges(VLAN_ID));
+    EXPECT_EQ(0u, agingTime());
+}
+
+TEST_F(SwitchVppFdbAging, BridgeDomainCreatedAfterTheAgingTimeIsSetAges)
+{
+    // No VLAN has a member yet, so VPP has no bridge domain to set
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(90));
+
+    EXPECT_TRUE(vppMock().callsTo("vpp_bridge_domain_set_mac_age", std::to_string(VLAN_ID)).empty());
+
+    // The first member makes VPP create bridge domain 100, which then ages
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(std::vector<uint32_t>({2}), macAges(VLAN_ID));
+}
+
+/*
+ * VPP keeps the bridge domain of a VLAN with a router interface when the
+ * VLAN's last member leaves, as the VLAN's bridge virtual interface is still
+ * in it, and the bridge domain keeps its MAC age. An aging time set while the
+ * VLAN has no member doesn't reach it: the next member sets it, also when it
+ * turns aging off.
+ */
+TEST_F(SwitchVppFdbAging, BridgeDomainKeptForItsBviGetsTheAgingTimeWhenAMemberJoins)
+{
+    // VLAN 100's router interface
+    vppMock().bdMembers[VLAN_ID].insert("bvi100");
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    auto member = addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeVlanMember(member));
+    ASSERT_EQ(std::set<std::string>({"bvi100"}), vppMock().bdMembers[VLAN_ID]);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(0));
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+}
+
+/*
+ * VPP fails to set the MAC age of one of two bridge domains: the set fails,
+ * the aging time is not stored, and setting it again sets both.
+ */
+TEST_F(SwitchVppFdbAging, AgingTimeVppFailsToSetIsNotStored)
+{
+    addTwoVlans();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    vppMock().macAgeFailures.insert(OTHER_VLAN_ID);
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, setAgingTime(0));
+
+    EXPECT_EQ(600u, agingTime());
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+    EXPECT_EQ(10u, macAge(OTHER_VLAN_ID));
+
+    vppMock().macAgeFailures.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setAgingTime(0));
+
+    EXPECT_EQ(0u, agingTime());
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+    EXPECT_EQ(0u, macAge(OTHER_VLAN_ID));
+}
+
+/*
+ * After a failed set, a bridge domain may not have the stored aging time
+ * anymore: setting the stored aging time again sets it on every bridge domain.
+ */
+TEST_F(SwitchVppFdbAging, StoredAgingTimeIsSetAgainAfterAFailure)
+{
+    addTwoVlans();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    vppMock().macAgeFailures.insert(OTHER_VLAN_ID);
+
+    ASSERT_EQ(SAI_STATUS_FAILURE, setAgingTime(0));
+    ASSERT_EQ(0u, macAge(VLAN_ID));
+
+    vppMock().macAgeFailures.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    EXPECT_EQ(600u, agingTime());
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+    EXPECT_EQ(10u, macAge(OTHER_VLAN_ID));
+}
+
+/*
+ * VPP fails to set the MAC age of the bridge domain a member joins: the
+ * member still comes up, and the next aging time set reaches the bridge
+ * domain, even one with the same MAC age.
+ */
+TEST_F(SwitchVppFdbAging, BridgeDomainVppFailsToSetForAMemberGetsTheNextAgingTime)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    vppMock().macAgeFailures.insert(VLAN_ID);
+
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(std::set<std::string>({MEMBER_HWIF}), vppMock().bdMembers[VLAN_ID]);
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+
+    vppMock().macAgeFailures.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+}
+
+/*
+ * Creating the switch, vslib makes the bridge ports members of the default
+ * VLAN, VLAN 1, only as SAI objects: SwitchStateBase::create_vlan_members()
+ * doesn't go through SwitchVpp, so VPP has no bridge domain 1, and rejects a
+ * MAC age for it. orchagent removes these members, but syncd's cold replay
+ * restores the switch attributes before that.
+ */
+TEST_F(SwitchVppFdbAging, AgingTimeIgnoresDefaultVlanMembersVppDoesNotHave)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_default_vlan());
+
+    m_sw->m_bridge_port_list_port_based = {m_bridgePort, m_otherBridgePort};
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_vlan_members());
+    ASSERT_EQ(2u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_VLAN_MEMBER).size());
+    ASSERT_TRUE(vppMock().bdMembers.empty());
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    EXPECT_EQ(600u, agingTime());
+    EXPECT_TRUE(vppMock().callsTo("vpp_bridge_domain_set_mac_age", "1").empty());
+
+    // A member orchagent creates reaches VPP, and its bridge domain ages
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
 }
