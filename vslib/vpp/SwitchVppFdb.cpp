@@ -1926,7 +1926,7 @@ uint32_t SwitchVpp::find_new_bond_id()
     // Get list of PortChannels from ip command
     cmd << IP_CMD << " -o link show | awk -F': ' '{print $2}' | grep " << PORTCHANNEL_PREFIX;
 
-    int ret = swss::exec(cmd.str(), res);
+    int ret = exec(cmd.str(), res);
     if (ret) {
         SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
         return ~0;
@@ -1943,18 +1943,38 @@ uint32_t SwitchVpp::find_new_bond_id()
 
     std::istringstream iss(res);
     std::string line;
+    const std::string prefix = PORTCHANNEL_PREFIX;
     bool found_new_bond_id = false;
     while (std::getline(iss, line)) {
-        std::string portchannel_name = line.substr(0, line.find('\n'));
-        bond_id = std::stoi(portchannel_name.substr(strlen(PORTCHANNEL_PREFIX)));
+        // Match the parent name, not e.g. Po54.54@PortChannel54.
+        if (line.compare(0, prefix.size(), prefix) != 0)
+        {
+            continue;
+        }
+        const std::string id = line.substr(prefix.size());
+        if (id.empty() || id.find_first_not_of("0123456789") != std::string::npos)
+        {
+            continue;
+        }
+
+        std::istringstream number(id);
+        if (!(number >> bond_id) || bond_id == ~0u)
+        {
+            SWSS_LOG_WARN("Ignoring out-of-range PortChannel name: %s", line.c_str());
+            continue;
+        }
 
         if (existing_bond_ids.find(bond_id) == existing_bond_ids.end()) {
-            SWSS_LOG_NOTICE("Found new bond id from PortChannel name: %d", bond_id);
+            SWSS_LOG_NOTICE("Found new bond id from PortChannel name: %u", bond_id);
             found_new_bond_id = true;
             break;
         }
     }
 
+    if (!found_new_bond_id)
+    {
+        SWSS_LOG_ERROR("No unclaimed PortChannel found in output of command '%s'", cmd.str().c_str());
+    }
     return found_new_bond_id ? bond_id : ~0;
 }
 

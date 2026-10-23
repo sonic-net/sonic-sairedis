@@ -2772,6 +2772,13 @@ sai_status_t SwitchVpp::get(
 
         if (ait == attrHash.end())
         {
+            if (objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
+                    id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION)
+            {
+                attr_list[idx].value.s32 = SAI_PACKET_ACTION_FORWARD;
+                continue;
+            }
+
             return SAI_STATUS_ITEM_NOT_FOUND;
 
             SWSS_LOG_WARN("%s not implemented on %s",
