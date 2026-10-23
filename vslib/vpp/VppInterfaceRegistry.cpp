@@ -208,7 +208,8 @@ std::shared_ptr<VppBondInterface> VppInterfaceRegistry::addLag(
 std::shared_ptr<VppSubInterface> VppInterfaceRegistry::addSubInterface(
         _In_ const std::shared_ptr<VppInterface>& parent,
         _In_ uint32_t subId,
-        _In_ uint16_t vlanId)
+        _In_ uint16_t vlanId,
+        _In_ const std::string& osIf)
 {
     SWSS_LOG_ENTER();
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -249,7 +250,7 @@ std::shared_ptr<VppSubInterface> VppInterfaceRegistry::addSubInterface(
         return sub;
     }
 
-    auto rec = std::make_shared<VppSubInterface>(parent, subId, vlanId);
+    auto rec = std::make_shared<VppSubInterface>(parent, subId, vlanId, osIf);
 
     indexRecord(rec);
 

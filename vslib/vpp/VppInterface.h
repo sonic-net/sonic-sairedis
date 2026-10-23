@@ -115,7 +115,7 @@ namespace saivs
 
             /*
              * SONiC side name, e.g. "Ethernet0", "PortChannel1", "Vlan200",
-             * "Po1.100".
+             * "Po1.100" or the uncompressed sub-interface name "PortChannel1.10".
              *
              * A pure naming fact, known as soon as the interface is known. It
              * is what the lane based port lookup resolves against
@@ -453,10 +453,11 @@ namespace saivs
             VppSubInterface(
                     _In_ const std::shared_ptr<VppInterface>& parent,
                     _In_ uint32_t subId,
-                    _In_ uint16_t vlanId):
+                    _In_ uint16_t vlanId,
+                    _In_ const std::string& osIf = std::string()):
                 VppInterface(VppInterfaceType::SUB_INTERFACE,
                         hwifNameFor(parent ? parent->getHwifName() : std::string(), subId),
-                        osIfFor(parent ? parent->getOsIf() : std::string(), subId)),
+                        osIf.empty() ? osIfFor(parent ? parent->getOsIf() : std::string(), subId) : osIf),
                 m_parent(parent),
                 m_subId(subId),
                 m_vlanId(vlanId)
@@ -498,8 +499,8 @@ namespace saivs
             /*
              * The LCP tap a sub-port RIF would create. It hangs off the
              * PARENT'S TAP, not off the parent's SONiC name, so for a bond this
-             * is "be<id>.<vlan>" while getOsIf() is
-             * "Po<id>.<vlan>". Empty while the parent has no tap.
+             * is "be<id>.<vlan>" while getOsIf() uses the SONiC short or long
+             * spelling. Empty while the parent has no tap.
              */
             std::string deriveTapName() const override
             {

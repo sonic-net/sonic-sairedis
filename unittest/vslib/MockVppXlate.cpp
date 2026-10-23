@@ -51,6 +51,14 @@ int TestableSwitchVpp::exec(const std::string& command, std::string& output)
         output = vppMock().kernelLinkNames;
         return vppMock().kernelLinkResult;
     }
+    const std::string linkCommand = "/sbin/ip link show dev ";
+    if (command.compare(0, linkCommand.size(), linkCommand) == 0 &&
+            !vppMock().kernelInterfaces.empty() &&
+            vppMock().kernelInterfaces.count(command.substr(linkCommand.size())) == 0)
+    {
+        output.clear();
+        return 1;
+    }
     output = std::to_string(vppMock().kernelVrfId) + "\n";
     return vppMock().kernelVrfResult;
 }

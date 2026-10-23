@@ -179,11 +179,14 @@ protected:
 
 TEST_F(SwitchVppRifTest, subPortCreateUsesSonicNameForVrfLookup)
 {
-    for (auto backing : {port, lag})
+    for (const std::string osif : {"Ethernet0.10", "Po2.10", "PortChannel2.10"})
     {
+        SCOPED_TRACE(osif);
+        auto backing = osif == "Ethernet0.10" ? port : lag;
         const std::string hwif = backing == port ? "port0.10" : "BondEthernet2.10";
-        const std::string osif = backing == port ? "Ethernet0.10" : "Po2.10";
         const std::string tap = backing == port ? "tap0.10" : "be2.10";
+        vppMock().kernelInterfaces = {osif};
+        vppMock().kernelCommands.clear();
         vppMock().kernelVrfId = 100;
         auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
         ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, backing)));
@@ -193,9 +196,16 @@ TEST_F(SwitchVppRifTest, subPortCreateUsesSonicNameForVrfLookup)
         EXPECT_EQ(hwif, sw->m_ifaceRegistry.resolveHwIfByRifOid(rif));
         EXPECT_EQ(osif, sw->m_ifaceRegistry.resolveOsIfByHwif(hwif));
         ASSERT_NE(nullptr, sw->m_ifaceRegistry.findByHwif(hwif));
+        EXPECT_EQ(sw->m_ifaceRegistry.findByHwif(hwif), sw->m_ifaceRegistry.findByOsIf(osif));
         EXPECT_EQ(tap, sw->m_ifaceRegistry.findByHwif(hwif)->getTapName());
         ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
     }
+
+    vppMock().kernelInterfaces = {"Ethernet0.10"};
+    auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    EXPECT_EQ(SAI_STATUS_FAILURE, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, lag)));
+    EXPECT_EQ(nullptr, sw->m_ifaceRegistry.findSubIf("BondEthernet2", 10));
+    EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
 }
 
 TEST_F(SwitchVppRifTest, lagDiscoveryIgnoresSubinterfaceParentSuffix)

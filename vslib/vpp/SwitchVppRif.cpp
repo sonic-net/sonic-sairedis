@@ -1941,7 +1941,7 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     /*
      * Three names are needed below and each has exactly one source:
      *   osif_name   SONiC netdev, for `ip link` / VRF enslavement lookups;
-     *               becomes Ethernet<n>.<vlan> or Po<id>.<vlan> for a sub-port
+     *               uses the existing short or long spelling for a sub-port
      *   parent_hwif VPP interface, for the VPP API calls
      *   tap_name    linux-cp tap, only for the SUB_PORT LCP pair
      * They differ for a LAG (PortChannel<id> / BondEthernet<id> / be<id>) and
@@ -1968,6 +1968,20 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     if (attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
         const std::string suffix = "." + std::to_string(vlan_id);
+        const std::string short_osif = VppSubInterface::osIfFor(osif_name, vlan_id);
+        osif_name += suffix;
+
+        // Both PortChannel<N>.<vlan> and Po<N>.<vlan> are valid SONiC names.
+        if (ot == SAI_OBJECT_TYPE_LAG)
+        {
+            std::string output;
+            if (exec(std::string(IP_CMD) + " link show dev " + osif_name, output) != 0)
+            {
+                SWSS_LOG_DEBUG("Sub-interface %s not found; checking %s",
+                        osif_name.c_str(), short_osif.c_str());
+                osif_name = short_osif;
+            }
+        }
 
         /*
          * For a port-channel sub-port the LCP host tap must be be<id>.<vlan>
@@ -2024,13 +2038,13 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
             if (parent_rec)
             {
                 auto sub_rec = m_ifaceRegistry.addSubInterface(parent_rec, vlan_id,
-                        static_cast<uint16_t>(vlan_id));
+                        static_cast<uint16_t>(vlan_id), osif_name);
 
                 if (sub_rec)
                 {
                     /*
                      * For a bond parent this is "be<id>.<vlan>", which is NOT
-                     * the SONiC name "Po<id>.<vlan>" -- the tap has to
+                     * the SONiC sub-interface name -- the tap has to
                      * be recorded, it cannot be derived from the SONiC name.
                      */
                     m_ifaceRegistry.setTapName(sub_hwif, subif_tap);
@@ -2056,7 +2070,6 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         /* Get new list of physical interfaces from VS */
         refresh_interfaces_list();
 
-        osif_name = VppSubInterface::osIfFor(osif_name, vlan_id);
     }
 
     sai_object_id_t vrf_obj_id = 0;
