@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
+#include <memory>
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -69,6 +70,26 @@ void sai_free_list(
 
     delete[] element.list;
     element.list = NULL;
+}
+
+static void sai_free_fw_inst(sai_fw_inst_t& fw)
+{
+    SWSS_LOG_ENTER();
+
+    sai_free_list(fw.fw_path_name);
+    sai_free_list(fw.log_path_name);
+    sai_free_list(fw.fw_opaque_id);
+}
+
+static void sai_free_fw_list(sai_fw_list_t& list)
+{
+    SWSS_LOG_ENTER();
+
+    if (list.list)
+        for (uint32_t i = 0; i < list.count; ++i)
+            sai_free_fw_inst(list.list[i]);
+
+    sai_free_list(list);
 }
 
 static void sai_free_taps_list(
@@ -208,6 +229,62 @@ static sai_status_t transfer_taps_list(
         return s;\
 }
 
+static sai_status_t transfer_fw_inst(
+        const sai_fw_inst_t& src,
+        sai_fw_inst_t& dst,
+        bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    dst.core_id = src.core_id;
+    dst.admin_state = src.admin_state;
+
+    auto pathStatus = transfer_list(src.fw_path_name, dst.fw_path_name, countOnly);
+    auto logStatus = transfer_list(src.log_path_name, dst.log_path_name, countOnly);
+    auto idStatus = transfer_list(src.fw_opaque_id, dst.fw_opaque_id, countOnly);
+
+    RETURN_ON_ERROR(pathStatus);
+    RETURN_ON_ERROR(logStatus);
+    return idStatus;
+}
+
+static sai_status_t transfer_fw_list(
+        const sai_fw_list_t& src,
+        sai_fw_list_t& dst,
+        bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    if (countOnly || dst.count == 0)
+    {
+        dst.count = src.count;
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (!dst.list)
+    {
+        SWSS_LOG_ERROR("destination firmware list is null");
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto capacity = dst.count;
+    dst.count = src.count;
+    if (capacity < src.count)
+        return SAI_STATUS_BUFFER_OVERFLOW;
+
+    if (src.count && !src.list)
+        SWSS_LOG_THROW("source firmware list is null with count %u", src.count);
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    for (uint32_t i = 0; i < src.count; ++i)
+    {
+        auto itemStatus = transfer_fw_inst(src.list[i], dst.list[i], false);
+        if (itemStatus != SAI_STATUS_SUCCESS)
+            status = itemStatus;
+    }
+    return status;
+}
+
 sai_status_t transfer_attribute(
         _In_ sai_attr_value_type_t serialization_type,
         _In_ const sai_attribute_t &src_attr,
@@ -218,6 +295,12 @@ sai_status_t transfer_attribute(
 
     switch (serialization_type)
     {
+        case SAI_ATTR_VALUE_TYPE_FW_INST:
+            return transfer_fw_inst(src_attr.value.fwinst, dst_attr.value.fwinst, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_FW_LIST:
+            return transfer_fw_list(src_attr.value.fwlist, dst_attr.value.fwlist, countOnly);
+
         case SAI_ATTR_VALUE_TYPE_BOOL:
             transfer_primitive(src_attr.value.booldata, dst_attr.value.booldata);
             break;
@@ -254,9 +337,9 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.u64, dst_attr.value.u64);
             break;
 
-//        case SAI_ATTR_VALUE_TYPE_INT64:
-//            transfer_primitive(src_attr.value.s64, dst_attr.value.s64);
-//            break;
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            transfer_primitive(src_attr.value.s64, dst_attr.value.s64);
+            break;
 
         case SAI_ATTR_VALUE_TYPE_MAC:
             transfer_primitive(src_attr.value.mac, dst_attr.value.mac);
@@ -1916,6 +1999,36 @@ std::string sai_serialize_port_ilt_lane_training_status_list(
     return j.dump();
 }
 
+static json sai_serialize_fw_inst(const sai_fw_inst_t& fw, bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    return {
+        {"fw_path_name", sai_serialize_number_list(fw.fw_path_name, countOnly)},
+        {"log_path_name", sai_serialize_number_list(fw.log_path_name, countOnly)},
+        {"core_id", sai_serialize_number(fw.core_id)},
+        {"admin_state", sai_serialize_enum(fw.admin_state, &sai_metadata_enum_sai_fw_admin_state_t)},
+        {"fw_opaque_id", sai_serialize_number_list(fw.fw_opaque_id, countOnly)},
+    };
+}
+
+static std::string sai_serialize_fw_list(const sai_fw_list_t& list, bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    if (countOnly)
+        return sai_serialize_number(list.count);
+
+    json j = {{"count", list.count}, {"list", nullptr}};
+    if (list.list)
+    {
+        j["list"] = json::array();
+        for (uint32_t i = 0; i < list.count; ++i)
+            j["list"].push_back(sai_serialize_fw_inst(list.list[i], false));
+    }
+    return j.dump();
+}
+
 std::string sai_serialize_taps_list(
         _In_ const sai_taps_list_t& port_serdes_taps_list,
         _In_ bool countOnly)
@@ -2454,8 +2567,8 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_UINT64:
             return sai_serialize_number(attr.value.u64);
 
-//        case SAI_ATTR_VALUE_TYPE_INT64:
-//            return sai_serialize_number(attr.value.s64);
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            return sai_serialize_number(attr.value.s64);
 
         case SAI_ATTR_VALUE_TYPE_MAC:
             return sai_serialize_mac(attr.value.mac);
@@ -2501,6 +2614,12 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
             return sai_serialize_taps_list(attr.value.portserdestaps, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_FW_INST:
+            return sai_serialize_fw_inst(attr.value.fwinst, countOnly).dump();
+
+        case SAI_ATTR_VALUE_TYPE_FW_LIST:
+            return sai_serialize_fw_list(attr.value.fwlist, countOnly);
 
         case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
             return sai_serialize_number_list(attr.value.u16list, countOnly);
@@ -4009,6 +4128,52 @@ void sai_deserialize_number_list(
     sai_deserialize_list(s, list, countOnly, [&](const std::string sitem, decltype(*list.list)& item) { sai_deserialize_number(sitem, item, hex);} );
 }
 
+static void sai_deserialize_fw_inst(const json& j, sai_fw_inst_t& fw, bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    auto deleter = [](sai_fw_inst_t* p) { sai_free_fw_inst(*p); delete p; };
+    std::unique_ptr<sai_fw_inst_t, decltype(deleter)> value(new sai_fw_inst_t{}, deleter);
+    sai_deserialize_number(j.at("core_id").get<std::string>(), value->core_id);
+    int32_t state;
+    sai_deserialize_enum(j.at("admin_state").get<std::string>(), &sai_metadata_enum_sai_fw_admin_state_t, state);
+    value->admin_state = static_cast<sai_fw_admin_state_t>(state);
+    sai_deserialize_number_list(j.at("fw_path_name").get<std::string>(), value->fw_path_name, countOnly);
+    sai_deserialize_number_list(j.at("log_path_name").get<std::string>(), value->log_path_name, countOnly);
+    sai_deserialize_number_list(j.at("fw_opaque_id").get<std::string>(), value->fw_opaque_id, countOnly);
+    fw = *value;
+    *value = {};
+}
+
+static void sai_deserialize_fw_list(const std::string& s, sai_fw_list_t& list, bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    if (countOnly)
+    {
+        list.list = nullptr;
+        sai_deserialize_number(s, list.count);
+        return;
+    }
+
+    const auto j = json::parse(s);
+    auto deleter = [](sai_fw_list_t* p) { sai_free_fw_list(*p); delete p; };
+    std::unique_ptr<sai_fw_list_t, decltype(deleter)> value(new sai_fw_list_t{}, deleter);
+    value->count = j.at("count").get<uint32_t>();
+    const auto& entries = j.at("list");
+    if (!entries.is_null())
+    {
+        if (!entries.is_array() || entries.size() != value->count)
+            SWSS_LOG_THROW("firmware list count does not match its entries");
+
+        value->list = new sai_fw_inst_t[value->count]();
+        for (uint32_t i = 0; i < value->count; ++i)
+            sai_deserialize_fw_inst(entries.at(i), value->list[i], false);
+    }
+    list = *value;
+    *value = {};
+}
+
 void sai_deserialize_packet_color(
         _In_ const std::string& s,
         _Out_ sai_packet_color_t& color)
@@ -5194,8 +5359,8 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_UINT64:
             return sai_deserialize_number(s, attr.value.u64);
 
-//        case SAI_ATTR_VALUE_TYPE_INT64:
-//            return sai_deserialize_number(s, attr.value.s64);
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            return sai_deserialize_number(s, attr.value.s64);
 
         case SAI_ATTR_VALUE_TYPE_MAC:
             return sai_deserialize_mac(s, attr.value.mac);
@@ -5241,6 +5406,12 @@ void sai_deserialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
             return sai_deserialize_taps_list(s, attr.value.portserdestaps, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_FW_INST:
+            return sai_deserialize_fw_inst(json::parse(s), attr.value.fwinst, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_FW_LIST:
+            return sai_deserialize_fw_list(s, attr.value.fwlist, countOnly);
 
         case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
             return sai_deserialize_number_list(s, attr.value.u16list, countOnly);
@@ -6711,6 +6882,14 @@ void sai_deserialize_free_attribute_value(
 
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
             sai_free_taps_list(attr.value.portserdestaps);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_FW_INST:
+            sai_free_fw_inst(attr.value.fwinst);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_FW_LIST:
+            sai_free_fw_list(attr.value.fwlist);
             break;
 
             /* ACL FIELD DATA */

@@ -561,6 +561,67 @@ TEST(Meta, initialize)
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.apiInitialize(0, 0));
 }
 
+TEST(Meta, firmwareListValidation)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+    sai_object_id_t switchId = SAI_NULL_OBJECT_ID;
+    sai_attribute_t attrs[2]{};
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+    attrs[1].id = SAI_SWITCH_ATTR_FW_LIST;
+    sai_fw_inst_t fw{};
+    attrs[1].value.fwlist = {1, &fw};
+
+    fw.fw_path_name = {1, nullptr};
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 2, attrs));
+    fw.fw_path_name = {};
+    fw.log_path_name = {1, nullptr};
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 2, attrs));
+    fw.log_path_name = {};
+    fw.fw_opaque_id = {1, nullptr};
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 2, attrs));
+    fw.fw_opaque_id = {};
+    fw.admin_state = static_cast<sai_fw_admin_state_t>(7);
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 2, attrs));
+    fw.admin_state = SAI_FW_ADMIN_STATE_AUTO;
+    attrs[1].value.fwlist.list = nullptr;
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 2, attrs));
+
+    int8_t path[] = {'f', 'w', 0};
+    fw.fw_path_name = {3, path};
+    attrs[1].value.fwlist.list = &fw;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 2, attrs));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(SAI_OBJECT_TYPE_SWITCH, switchId));
+}
+
+TEST(Meta, sai119ObjectTypes)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+    sai_object_id_t switchId = SAI_NULL_OBJECT_ID;
+    sai_attribute_t attr{};
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    for (auto type : {SAI_OBJECT_TYPE_FW, SAI_OBJECT_TYPE_PTP_PDELAY,
+            SAI_OBJECT_TYPE_TAM_EVENT_LEARN_ENTRY})
+    {
+        sai_object_id_t oid = SAI_NULL_OBJECT_ID;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, m.create(type, &oid, switchId, 0, nullptr));
+        EXPECT_EQ(type, m.objectTypeQuery(oid));
+        EXPECT_EQ(switchId, m.switchIdQuery(oid));
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(type, oid));
+    }
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(SAI_OBJECT_TYPE_SWITCH, switchId));
+}
+
 TEST(Meta, uninitialize)
 {
     Meta m(std::make_shared<DummySaiInterface>());

@@ -329,6 +329,11 @@ namespace saimeta
                     _In_ uint32_t count,
                     _In_ const void* list);
 
+            sai_status_t meta_validate_firmware(
+                    _In_ const sai_attr_metadata_t& md,
+                    _In_ const sai_attribute_value_t& value,
+                    _In_ bool validateState);
+
             sai_status_t meta_generic_validate_non_object_on_create(
                     _In_ const sai_object_meta_key_t& meta_key,
                     _In_ sai_object_id_t switch_id);

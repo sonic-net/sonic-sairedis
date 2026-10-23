@@ -13,10 +13,139 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <limits>
 
 using namespace saimeta;
 
 using json = nlohmann::json;
+
+TEST(SaiSerialize, signed64RoundTrip)
+{
+    auto type = static_cast<sai_object_type_t>(SAI_OBJECT_TYPE_PON_OLT_INTF_STATISTICS_BINNED);
+    auto md = sai_metadata_get_attr_metadata(type,
+            SAI_PON_OLT_INTF_STATISTICS_BINNED_ATTR_RX_OPTICAL_LEVEL_IDLE);
+    ASSERT_NE(nullptr, md);
+    ASSERT_EQ(SAI_ATTR_VALUE_TYPE_INT64, md->attrvaluetype);
+    for (int64_t value : {std::numeric_limits<int64_t>::min(), int64_t(-1),
+            int64_t(0), std::numeric_limits<int64_t>::max()})
+    {
+        sai_attribute_t src{};
+        sai_attribute_t dst{};
+        src.id = dst.id = md->attrid;
+        src.value.s64 = value;
+        auto serialized = sai_serialize_attr_value(*md, src);
+        EXPECT_EQ(std::to_string(value), serialized);
+        sai_deserialize_attr_value(serialized, *md, dst);
+        EXPECT_EQ(value, dst.value.s64);
+        sai_deserialize_free_attribute_value(md->attrvaluetype, dst);
+        dst.value.s64 = 0;
+        EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes(type, 1, &src, &dst));
+        EXPECT_EQ(value, dst.value.s64);
+    }
+}
+
+TEST(SaiSerialize, firmwareRoundTrip)
+{
+    sai_attr_metadata_t md{};
+    md.attrvaluetype = SAI_ATTR_VALUE_TYPE_FW_INST;
+    int8_t path[] = {'f', 'w', 0};
+    int8_t log[] = {'l', 'o', 'g', 0};
+    int8_t opaque[] = {-128, 0, 127};
+    sai_fw_inst_t fw = {{3, path}, {4, log}, 7, SAI_FW_ADMIN_STATE_LOAD_FW, {3, opaque}};
+    sai_attribute_t src{};
+    src.value.fwinst = fw;
+    sai_attribute_t dst{};
+    auto serialized = sai_serialize_attr_value(md, src);
+    sai_deserialize_attr_value(serialized, md, dst);
+    EXPECT_EQ(serialized, sai_serialize_attr_value(md, dst));
+    EXPECT_NE(path, dst.value.fwinst.fw_path_name.list);
+    EXPECT_EQ(-128, dst.value.fwinst.fw_opaque_id.list[0]);
+    sai_deserialize_free_attribute_value(md.attrvaluetype, dst);
+    EXPECT_EQ(nullptr, dst.value.fwinst.fw_path_name.list);
+
+    auto counts = sai_serialize_attr_value(md, src, true);
+    sai_deserialize_attr_value(counts, md, dst, true);
+    EXPECT_EQ(3u, dst.value.fwinst.fw_path_name.count);
+    EXPECT_EQ(nullptr, dst.value.fwinst.fw_path_name.list);
+    sai_deserialize_free_attribute_value(md.attrvaluetype, dst);
+
+    md.attrvaluetype = SAI_ATTR_VALUE_TYPE_FW_LIST;
+    sai_fw_inst_t instances[] = {fw, {}};
+    src.value.fwlist = {2, instances};
+    serialized = sai_serialize_attr_value(md, src);
+    dst = {};
+    sai_deserialize_attr_value(serialized, md, dst);
+    EXPECT_EQ(serialized, sai_serialize_attr_value(md, dst));
+    EXPECT_NE(instances, dst.value.fwlist.list);
+    EXPECT_NE(path, dst.value.fwlist.list[0].fw_path_name.list);
+    sai_deserialize_free_attribute_value(md.attrvaluetype, dst);
+    EXPECT_EQ(nullptr, dst.value.fwlist.list);
+
+    EXPECT_EQ("2", sai_serialize_attr_value(md, src, true));
+    sai_deserialize_attr_value("2", md, dst, true);
+    EXPECT_EQ(2u, dst.value.fwlist.count);
+    EXPECT_EQ(nullptr, dst.value.fwlist.list);
+    sai_deserialize_free_attribute_value(md.attrvaluetype, dst);
+
+    src.value.fwlist = {2, nullptr};
+    serialized = sai_serialize_attr_value(md, src);
+    sai_deserialize_attr_value(serialized, md, dst);
+    EXPECT_EQ(serialized, sai_serialize_attr_value(md, dst));
+    sai_deserialize_free_attribute_value(md.attrvaluetype, dst);
+
+    src.value.fwlist = {};
+    serialized = sai_serialize_attr_value(md, src);
+    sai_deserialize_attr_value(serialized, md, dst);
+    EXPECT_EQ(serialized, sai_serialize_attr_value(md, dst));
+    sai_deserialize_free_attribute_value(md.attrvaluetype, dst);
+
+    EXPECT_THROW(sai_deserialize_attr_value(
+                R"({"count":2,"list":[]})", md, dst), std::runtime_error);
+    auto invalid = json::parse(sai_serialize_attr_value(
+                *sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_FW_LIST), src));
+    invalid["count"] = 1;
+    invalid["list"] = json::array({{{"core_id", "0"}, {"admin_state", "SAI_FW_ADMIN_STATE_AUTO"},
+        {"fw_path_name", "1:42"}, {"log_path_name", "invalid"}, {"fw_opaque_id", "0:null"}}});
+    EXPECT_THROW(sai_deserialize_attr_value(invalid.dump(), md, dst), std::runtime_error);
+}
+
+TEST(SaiSerialize, firmwareTransfer)
+{
+    int8_t path[] = {1, 2, 3};
+    int8_t opaque[] = {4, 5};
+    sai_fw_inst_t instances[] = {{{3, path}, {}, 9, SAI_FW_ADMIN_STATE_START_FW, {2, opaque}}, {}};
+    sai_attribute_t src{};
+    src.id = SAI_SWITCH_ATTR_FW_LIST;
+    src.value.fwlist = {2, instances};
+    sai_attribute_t dst{};
+    dst.id = src.id;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes(SAI_OBJECT_TYPE_SWITCH, 1, &src, &dst, true));
+    EXPECT_EQ(2u, dst.value.fwlist.count);
+    EXPECT_EQ(nullptr, dst.value.fwlist.list);
+
+    sai_fw_inst_t output[2]{};
+    dst.value.fwlist = {1, output};
+    EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW, transfer_attributes(SAI_OBJECT_TYPE_SWITCH, 1, &src, &dst));
+    EXPECT_EQ(2u, dst.value.fwlist.count);
+
+    dst.value.fwlist = {2, nullptr};
+    EXPECT_EQ(SAI_STATUS_FAILURE, transfer_attributes(SAI_OBJECT_TYPE_SWITCH, 1, &src, &dst));
+
+    int8_t outPath[3]{};
+    int8_t outOpaque[2]{};
+    output[0].fw_path_name = {1, outPath};
+    output[0].fw_opaque_id = {1, outOpaque};
+    dst.value.fwlist = {2, output};
+    EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW, transfer_attributes(SAI_OBJECT_TYPE_SWITCH, 1, &src, &dst));
+    EXPECT_EQ(3u, output[0].fw_path_name.count);
+    EXPECT_EQ(2u, output[0].fw_opaque_id.count);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes(SAI_OBJECT_TYPE_SWITCH, 1, &src, &dst));
+    EXPECT_EQ(3, outPath[2]);
+    EXPECT_EQ(5, outOpaque[1]);
+    EXPECT_EQ(9, output[0].core_id);
+    EXPECT_EQ(SAI_FW_ADMIN_STATE_START_FW, output[0].admin_state);
+    EXPECT_EQ(outPath, output[0].fw_path_name.list);
+}
 
 TEST(SaiSerialize, transfer_attributes)
 {
