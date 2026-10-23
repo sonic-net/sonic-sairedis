@@ -169,7 +169,9 @@ void SaiDiscovery::discover(
             if (md->objecttype == SAI_OBJECT_TYPE_BRIDGE_PORT)
             {
                 if (md->attrid == SAI_BRIDGE_PORT_ATTR_TUNNEL_ID ||
-                        md->attrid == SAI_BRIDGE_PORT_ATTR_RIF_ID)
+                        md->attrid == SAI_BRIDGE_PORT_ATTR_RIF_ID ||
+                        md->attrid == SAI_BRIDGE_PORT_ATTR_PORT_ID ||
+                         md->attrid == SAI_BRIDGE_PORT_ATTR_BRIDGE_ID)
                 {
                     /*
                      * We know that bridge port is bound on PORT, no need
