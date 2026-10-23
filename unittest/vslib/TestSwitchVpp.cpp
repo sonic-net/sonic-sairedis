@@ -1362,3 +1362,31 @@ TEST_F(SwitchVppFdbAging, BridgeDomainVppFailsToSetForAMemberGetsTheNextAgingTim
 
     EXPECT_EQ(10u, macAge(VLAN_ID));
 }
+
+/*
+ * Creating the switch, vslib makes the bridge ports members of the default
+ * VLAN, VLAN 1, only as SAI objects: SwitchStateBase::create_vlan_members()
+ * doesn't go through SwitchVpp, so VPP has no bridge domain 1, and rejects a
+ * MAC age for it. orchagent removes these members, but syncd's cold replay
+ * restores the switch attributes before that.
+ */
+TEST_F(SwitchVppFdbAging, AgingTimeIgnoresDefaultVlanMembersVppDoesNotHave)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_default_vlan());
+
+    m_sw->m_bridge_port_list_port_based = {m_bridgePort, m_otherBridgePort};
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_vlan_members());
+    ASSERT_EQ(2u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_VLAN_MEMBER).size());
+    ASSERT_TRUE(vppMock().bdMembers.empty());
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    EXPECT_EQ(600u, agingTime());
+    EXPECT_TRUE(vppMock().callsTo("vpp_bridge_domain_set_mac_age", "1").empty());
+
+    // A member orchagent creates reaches VPP, and its bridge domain ages
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+}

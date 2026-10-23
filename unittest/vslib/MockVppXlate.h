@@ -125,7 +125,8 @@ struct VppMock
     std::set<std::string> lcpPairs;
     std::set<std::string> bridgePorts;
     // VPP's bridge domains: the interfaces in each, a VLAN's bridge virtual
-    // interface included, and the MAC age set on each (none: 0, VPP's default)
+    // interface included, and the MAC age set on each (none: 0, VPP's default).
+    // A bridge domain exists from its first interface until it is deleted.
     std::map<uint32_t, std::set<std::string>> bdMembers;
     std::map<uint32_t, uint8_t> bdMacAges;
     // the bridge domains VPP fails to set the MAC age of

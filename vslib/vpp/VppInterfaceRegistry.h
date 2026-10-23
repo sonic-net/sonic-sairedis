@@ -3,6 +3,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -328,6 +329,12 @@ namespace saivs
              * id.
              */
             std::unordered_set<uint32_t> collectBondIds() const;
+
+            /*
+             * The bridge domains of the interfaces that have one (setBdId()),
+             * that is the VPP bridge domains with a VLAN's port or LAG member.
+             */
+            std::set<uint32_t> collectBdIds() const;
 
             /*
              * VPP interface name of a host OS interface name ("Ethernet0",
