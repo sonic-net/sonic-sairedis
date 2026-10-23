@@ -2551,9 +2551,28 @@ sai_status_t SwitchVpp::createRouterif(
     bool new_binding = m_ifaceRegistry.resolveHwIfByRifOid(object_id).empty();
     RifCreateState state;
     sai_status_t status = SAI_STATUS_SUCCESS;
+    std::vector<sai_attribute_t> effective_attrs;
 
     if (m_switchConfig->m_useTapDevice == true)
     {
+        auto attr_loopback = sai_metadata_get_attr_by_id(
+                SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+        if (attr_loopback != nullptr && attr_loopback->value.s32 == SAI_PACKET_ACTION_DROP)
+        {
+            bool enabled = false;
+            CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", enabled));
+            if (!enabled)
+            {
+                // Use the same effective CREATE attributes for programming and persistence.
+                effective_attrs.assign(attr_list, attr_list + attr_count);
+                effective_attrs.erase(effective_attrs.begin() + (attr_loopback - attr_list));
+                attr_count = static_cast<uint32_t>(effective_attrs.size());
+                attr_list = effective_attrs.data();
+                SWSS_LOG_WARN("RIF %s: iface-loopback disabled; CREATE DROP omitted, using FORWARD",
+                        sai_serialize_object_id(object_id).c_str());
+            }
+        }
+
         sai_attribute_t tattr;
 
         tattr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
