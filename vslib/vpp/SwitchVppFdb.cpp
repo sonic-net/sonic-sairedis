@@ -1020,7 +1020,9 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         SWSS_LOG_WARN("Failed to disable UU flood on bridge domain %u", bridge_id);
     }
 
-    /* The bridge domain VPP created for the first member does not age its MACs */
+    /* VPP creates the bridge domain for the first member with MAC aging off,
+     * and keeps the one of a VLAN with a router interface, with its MAC age,
+     * when the last member leaves */
     vpp_apply_fdb_aging_time(bridge_id);
 
     return SAI_STATUS_SUCCESS;
@@ -3357,18 +3359,19 @@ std::set<uint32_t> SwitchVpp::vpp_vlan_bridge_domains()
     return bd_ids;
 }
 
-void SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
+sai_status_t SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
 {
     SWSS_LOG_ENTER();
 
     uint8_t mac_age = fdb_aging_time_to_mac_age(aging_time);
 
     // set() runs before the attribute is stored: this compares with the
-    // previous aging time, which the bridge domains already have
-    if (mac_age == fdb_aging_time_to_mac_age(switch_fdb_aging_time()))
+    // previous aging time, which the bridge domains have unless VPP failed to
+    // set one since
+    if (m_fdb_mac_age_applied && mac_age == fdb_aging_time_to_mac_age(switch_fdb_aging_time()))
     {
         SWSS_LOG_INFO("FDB: aging time %u s keeps MAC age %u min", aging_time, mac_age);
-        return;
+        return SAI_STATUS_SUCCESS;
     }
 
     if (aging_time > UINT8_MAX * 60u)
@@ -3378,17 +3381,32 @@ void SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
     }
 
     auto bd_ids = vpp_vlan_bridge_domains();
+    size_t failed = 0;
 
     for (auto bd_id: bd_ids)
     {
         if (vpp_bridge_domain_set_mac_age(bd_id, mac_age) != 0)
         {
-            SWSS_LOG_WARN("FDB: failed to set MAC age %u min on bridge domain %u", mac_age, bd_id);
+            SWSS_LOG_ERROR("FDB: failed to set MAC age %u min on bridge domain %u", mac_age, bd_id);
+            failed++;
         }
+    }
+
+    // After a failure, the bridge domains don't all have the stored aging
+    // time anymore, so the next one is set on all of them
+    m_fdb_mac_age_applied = (failed == 0);
+
+    if (failed != 0)
+    {
+        SWSS_LOG_ERROR("FDB: aging time %u s not set: MAC age %u min failed on %zu of %zu VLAN bridge domains",
+                       aging_time, mac_age, failed, bd_ids.size());
+        return SAI_STATUS_FAILURE;
     }
 
     SWSS_LOG_NOTICE("FDB: aging time %u s: MAC age %u min on %zu VLAN bridge domains",
                     aging_time, mac_age, bd_ids.size());
+
+    return SAI_STATUS_SUCCESS;
 }
 
 void SwitchVpp::vpp_apply_fdb_aging_time(uint32_t bd_id)
@@ -3397,15 +3415,18 @@ void SwitchVpp::vpp_apply_fdb_aging_time(uint32_t bd_id)
 
     uint8_t mac_age = fdb_aging_time_to_mac_age(switch_fdb_aging_time());
 
-    // A bridge domain VPP creates does not age
-    if (mac_age == 0)
-    {
-        return;
-    }
-
+    /*
+     * Also 0, which the bridge domain VPP creates for a VLAN's first member
+     * already has: VPP keeps the bridge domain of a VLAN with a router
+     * interface when its last member leaves, as the BVI is still in it, and
+     * the bridge domain keeps its MAC age. An aging time set while the VLAN
+     * had no member skipped it.
+     */
     if (vpp_bridge_domain_set_mac_age(bd_id, mac_age) != 0)
     {
-        SWSS_LOG_WARN("FDB: failed to set MAC age %u min on bridge domain %u", mac_age, bd_id);
+        // The member still comes up; the next aging time set reaches this bridge domain
+        SWSS_LOG_ERROR("FDB: failed to set MAC age %u min on bridge domain %u", mac_age, bd_id);
+        m_fdb_mac_age_applied = false;
     }
 }
 

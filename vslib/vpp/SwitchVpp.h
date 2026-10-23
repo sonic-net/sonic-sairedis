@@ -1683,15 +1683,20 @@ namespace saivs
             static uint8_t fdb_aging_time_to_mac_age(uint32_t aging_time);
 
             // Apply a new aging time to every VLAN bridge domain VPP has
-            void vpp_set_fdb_aging_time(uint32_t aging_time);
+            sai_status_t vpp_set_fdb_aging_time(uint32_t aging_time);
 
-            // Apply the switch's aging time to a bridge domain VPP has just created
+            // Apply the switch's aging time to the bridge domain a VLAN member joins
             void vpp_apply_fdb_aging_time(uint32_t bd_id);
 
             // The bridge domains of the VLANs that have a port or LAG member
             std::set<uint32_t> vpp_vlan_bridge_domains();
 
             uint32_t switch_fdb_aging_time();
+
+            // Whether the VLAN bridge domains with a member all have the MAC age
+            // of the stored aging time. Cleared when VPP fails to set one, until
+            // an aging time is set on all of them.
+            bool m_fdb_mac_age_applied = true;
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 

@@ -2419,9 +2419,15 @@ sai_status_t SwitchVpp::set(
                 }
             case SAI_SWITCH_ATTR_FDB_AGING_TIME:
                 {
-                    // VPP ages the MACs itself; set_internal() below caches the
-                    // attribute for the bridge domains created later
-                    vpp_set_fdb_aging_time(attr->value.u32);
+                    // VPP ages the MACs itself. set_internal() below caches
+                    // the attribute for the bridge domains created later, only
+                    // once VPP has set it on all of them.
+                    sai_status_t status = vpp_set_fdb_aging_time(attr->value.u32);
+
+                    if (status != SAI_STATUS_SUCCESS)
+                    {
+                        return status;
+                    }
                     break;
                 }
             case SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED:
