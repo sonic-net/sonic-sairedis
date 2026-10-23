@@ -1761,7 +1761,7 @@ namespace saivs
             // SAI_SWITCH_ATTR_FDB_AGING_TIME as a bridge domain mac_age
             static uint8_t fdb_aging_time_to_mac_age(uint32_t aging_time);
 
-            // Apply a new aging time to every VLAN bridge domain VPP has
+            // Apply a new aging time to the VLAN bridge domains with a member
             sai_status_t vpp_set_fdb_aging_time(uint32_t aging_time);
 
             // Apply the switch's aging time to the bridge domain a VLAN member joins
