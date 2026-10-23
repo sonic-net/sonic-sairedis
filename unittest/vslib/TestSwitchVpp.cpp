@@ -489,6 +489,58 @@ TEST_F(SwitchVppTrimTest, sizeValidationPreservesCommittedPolicy)
     }
 }
 
+TEST_F(SwitchVppTrimTest, invalidDscpCreatePreservesAttributesWithoutProgramming)
+{
+    const auto before = state->m_objectHash.at(SAI_OBJECT_TYPE_SWITCH).at(
+            sai_serialize_object_id(switch_id));
+    sai_attribute_t attrs[2] = {};
+    attrs[0].id = SAI_SWITCH_ATTR_PACKET_TRIM_SIZE;
+    attrs[0].value.u32 = 256;
+    attrs[1].id = SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE;
+    for (uint8_t dscp : std::array<uint8_t, 2>{{64, 255}})
+    {
+        attrs[1].value.u8 = dscp;
+        EXPECT_EQ(SAI_STATUS_INVALID_ATTR_VALUE_0 - 1, state->create(SAI_OBJECT_TYPE_SWITCH,
+                sai_serialize_object_id(switch_id), switch_id, 2, attrs));
+        EXPECT_TRUE(global_calls.empty());
+        EXPECT_TRUE(map_calls.empty());
+        EXPECT_FALSE(state->m_trim_policy.enabled);
+        EXPECT_EQ(before, state->m_objectHash.at(SAI_OBJECT_TYPE_SWITCH).at(
+                sai_serialize_object_id(switch_id)));
+    }
+    attrs[1].value.u8 = 63;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->create(SAI_OBJECT_TYPE_SWITCH,
+            sai_serialize_object_id(switch_id), switch_id, 2, attrs));
+    EXPECT_EQ(63u, global_calls.back().dscp);
+}
+
+TEST_F(SwitchVppTrimTest, dscpValidationPreservesEnabledAndDisabledPolicy)
+{
+    for (uint32_t size : {0u, 256u})
+    {
+        ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(size));
+        for (uint8_t dscp : std::array<uint8_t, 2>{{0, 63}})
+        {
+            ASSERT_EQ(SAI_STATUS_SUCCESS, setSwitchByte(SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE, dscp));
+        }
+        const size_t global_count = global_calls.size();
+        const size_t map_count = map_calls.size();
+        for (uint8_t dscp : std::array<uint8_t, 2>{{64, 255}})
+        {
+            EXPECT_EQ(SAI_STATUS_INVALID_ATTR_VALUE_0,
+                    setSwitchByte(SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE, dscp));
+            EXPECT_EQ(global_count, global_calls.size());
+            EXPECT_EQ(map_count, map_calls.size());
+            EXPECT_EQ(63u, state->m_trim_policy.dscp_value);
+            EXPECT_EQ(size != 0, state->m_trim_policy.enabled);
+            sai_attribute_t attr = {};
+            attr.id = SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, state->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr));
+            EXPECT_EQ(63u, attr.value.u8);
+        }
+    }
+}
+
 TEST_F(SwitchVppTrimTest, failedDisableAndPartialGlobalUpdateRestorePolicy)
 {
     ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));

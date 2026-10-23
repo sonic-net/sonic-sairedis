@@ -36,6 +36,13 @@ std::vector<VppCall> VppMock::callsTo(const std::string& api, const std::string&
     return matching;
 }
 
+const std::vector<vpp_pbh_rule_t>& VppMock::lastPbhRules() const
+{
+    SWSS_LOG_ENTER();
+    static const std::vector<vpp_pbh_rule_t> none;
+    return pbhTableCalls.empty() ? none : pbhTableCalls.back().rules;
+}
+
 int TestableSwitchVpp::vs_set_dev_admin_up(const char *, bool)
 {
     SWSS_LOG_ENTER();
@@ -119,8 +126,130 @@ extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabl
     SWSS_LOG_ENTER();
     ++vppMock().featureCalls;
     vppMock().queriedFeature = feature;
-    *enabled = vppMock().queriedFeature == "iface-loopback" && vppMock().loopbackEnabled;
+    *enabled = vppMock().queriedFeature == "iface-loopback"
+            ? vppMock().loopbackEnabled
+            : vppMock().enabledFeatures.count(vppMock().queriedFeature) != 0;
     return vppMock().featureResult;
+}
+
+/*
+ * PBH. The indices are handed out by VPP, so the mock allocates them the same
+ * way: an in-index of ~0 asks for a new one, anything else names an existing
+ * object to replace or drop.
+ */
+extern "C" int __wrap_vpp_pbh_profile_add_del(bool is_add, const vpp_pbh_hash_field_t *fields,
+        uint32_t n_fields, uint32_t *profile_index)
+{
+    SWSS_LOG_ENTER();
+
+    VppPbhProfileCall call;
+
+    call.is_add = is_add;
+    call.profile_index = *profile_index;
+
+    if (fields != nullptr && n_fields != 0)
+    {
+        call.fields.assign(fields, fields + n_fields);
+    }
+
+    vppMock().pbhProfileCalls.push_back(call);
+
+    if (vppMock().pbhProfileResult != 0)
+    {
+        return vppMock().pbhProfileResult;
+    }
+
+    if (is_add)
+    {
+        if (*profile_index == ~0u)
+        {
+            *profile_index = vppMock().nextPbhProfileIndex++;
+        }
+        vppMock().pbhProfiles.insert(*profile_index);
+    }
+    else
+    {
+        vppMock().pbhProfiles.erase(*profile_index);
+    }
+
+    return 0;
+}
+
+extern "C" int __wrap_vpp_pbh_table_add_replace(const char *name, const vpp_pbh_rule_t *rules,
+        uint32_t n_rules, uint32_t *table_index)
+{
+    SWSS_LOG_ENTER();
+
+    VppPbhTableCall call;
+
+    call.named = name != nullptr;
+    call.name = name ? name : "";
+    call.table_index = *table_index;
+
+    if (rules != nullptr && n_rules != 0)
+    {
+        call.rules.assign(rules, rules + n_rules);
+    }
+
+    vppMock().pbhTableCalls.push_back(call);
+
+    if (vppMock().pbhTableResult != 0)
+    {
+        return vppMock().pbhTableResult;
+    }
+
+    if (*table_index == ~0u)
+    {
+        *table_index = vppMock().nextPbhTableIndex++;
+    }
+
+    vppMock().pbhTables.insert(*table_index);
+
+    return 0;
+}
+
+extern "C" int __wrap_vpp_pbh_table_del(uint32_t table_index)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().pbhTableDels.push_back(table_index);
+
+    if (vppMock().pbhTableDelResult != 0)
+    {
+        return vppMock().pbhTableDelResult;
+    }
+
+    vppMock().pbhTables.erase(table_index);
+
+    return 0;
+}
+
+extern "C" int __wrap_vpp_pbh_interface_attach_detach(const char *hwif_name,
+        uint32_t table_index, bool attach)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().pbhAttachCalls.push_back({hwif_name ? hwif_name : "", table_index, attach});
+
+    return vppMock().pbhAttachResult;
+}
+
+extern "C" int __wrap_vpp_rule_stats_query(vpp_rule_stats_type_t type, uint32_t table_index,
+        uint32_t rule_index, vpp_ace_stats_t *stats)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().ruleStatsCalls.push_back({type, table_index, rule_index});
+
+    if (vppMock().pbhStatsResult != 0)
+    {
+        return vppMock().pbhStatsResult;
+    }
+
+    *stats = vppMock().pbhStats;
+    stats->ace_index = rule_index;
+
+    return 0;
 }
 
 extern "C" int __wrap_vpp_iface_loopback_set_action(const char *name, int action)
