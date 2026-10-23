@@ -327,7 +327,7 @@ namespace saivs
 
             /*
              * VPP interface name of a host OS interface name ("Ethernet0",
-             * "PortChannel1", "PortChannel1.100", "Vlan200"). The input is the
+             * "PortChannel1", "Po1.100", "Vlan200"). The input is the
              * SONiC-side netdev name as produced by resolveOsIf(); a bond LCP
              * tap name ("be1") is deliberately not accepted. Empty on miss.
              *

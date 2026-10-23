@@ -115,7 +115,7 @@ namespace saivs
 
             /*
              * SONiC side name, e.g. "Ethernet0", "PortChannel1", "Vlan200",
-             * "PortChannel1.100".
+             * "Po1.100".
              *
              * A pure naming fact, known as soon as the interface is known. It
              * is what the lane based port lookup resolves against
@@ -148,7 +148,7 @@ namespace saivs
              *
              * Usually equal to getOsIf() but not always - a sub-port RIF on
              * a bond deliberately uses "be<id>.<vlan>" rather than
-             * "PortChannel<id>.<vlan>", which would collide with the kernel
+             * "Po<id>.<vlan>", which would collide with the kernel
              * 8021q netdev owned by the Linux bond stack.
              */
             const std::string& getTapName() const
@@ -499,7 +499,7 @@ namespace saivs
              * The LCP tap a sub-port RIF would create. It hangs off the
              * PARENT'S TAP, not off the parent's SONiC name, so for a bond this
              * is "be<id>.<vlan>" while getOsIf() is
-             * "PortChannel<id>.<vlan>". Empty while the parent has no tap.
+             * "Po<id>.<vlan>". Empty while the parent has no tap.
              */
             std::string deriveTapName() const override
             {
@@ -534,7 +534,10 @@ namespace saivs
                     return std::string();
                 }
 
-                return parentOsIf + "." + std::to_string(subId);
+                // SONiC shortens the bond prefix for kernel VLAN netdevs.
+                const std::string base = parentOsIf.compare(0, 11, "PortChannel") == 0 ?
+                    "Po" + parentOsIf.substr(11) : parentOsIf;
+                return base + "." + std::to_string(subId);
             }
 
         private:

@@ -59,6 +59,7 @@ static bool split_subif_suffix(
  *   PortChannel<N> -> BondEthernet<N>   vpp_create_lag(); find_new_bond_id()
  *                                       takes the bond id straight from the
  *                                       PortChannel kernel netdev name
+ *   Po<N>.<vlan>  -> BondEthernet<N>.<vlan> (SONiC LAG sub-interface)
  *   Vlan<N>        -> bvi<N>            vpp_create_bvi_interface()
  *
  * Only SONiC-side names are accepted. The bond's linux-cp tap name be<N> is
@@ -75,6 +76,7 @@ static bool split_subif_suffix(
  */
 static bool derive_logical_hwif(
         _In_ const std::string& base,
+        _In_ bool subInterface,
         _Out_ std::string& hwif)
 {
     SWSS_LOG_ENTER();
@@ -87,6 +89,11 @@ static bool derive_logical_hwif(
     if (base.compare(0, 11, "PortChannel") == 0)
     {
         prefix = "PortChannel";
+        hwif_prefix = "BondEthernet";
+    }
+    else if (subInterface && base.compare(0, 2, "Po") == 0)
+    {
+        prefix = "Po";
         hwif_prefix = "BondEthernet";
     }
     else if (base.compare(0, 4, "Vlan") == 0)
@@ -892,7 +899,7 @@ std::string VppInterfaceRegistry::resolveHwIfByOsIf(
         /*
          * A sub-interface carries the ".<vlan>" suffix over unchanged, so
          * "Ethernet0.100" -> "TenGigabitEthernet0/0/0.100" and
-         * "PortChannel1.100" -> "BondEthernet1.100".
+         * "Po1.100" -> "BondEthernet1.100".
          */
         auto baseIt = m_osIfToHwIf.find(base);
 
@@ -903,7 +910,7 @@ std::string VppInterfaceRegistry::resolveHwIfByOsIf(
 
         std::string derived;
 
-        if (derive_logical_hwif(base, derived))
+        if (derive_logical_hwif(base, !suffix.empty(), derived))
         {
             return derived + suffix;
         }

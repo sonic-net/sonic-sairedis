@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -175,6 +176,58 @@ protected:
     std::shared_ptr<SwitchVpp> sw;
     sai_object_id_t switchId, port, lag, vlan, vrf;
 };
+
+TEST_F(SwitchVppRifTest, subPortCreateUsesSonicNameForVrfLookup)
+{
+    for (auto backing : {port, lag})
+    {
+        const std::string hwif = backing == port ? "port0.10" : "BondEthernet2.10";
+        const std::string osif = backing == port ? "Ethernet0.10" : "Po2.10";
+        const std::string tap = backing == port ? "tap0.10" : "be2.10";
+        vppMock().kernelVrfId = 100;
+        auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+        ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, backing)));
+        EXPECT_NE(vppMock().kernelCommands.end(), std::find(vppMock().kernelCommands.begin(),
+                vppMock().kernelCommands.end(), "/sbin/ip link show dev " + osif));
+        EXPECT_EQ(100u, vppMock().interfaceVrfs[hwif]);
+        EXPECT_EQ(hwif, sw->m_ifaceRegistry.resolveHwIfByRifOid(rif));
+        EXPECT_EQ(osif, sw->m_ifaceRegistry.resolveOsIfByHwif(hwif));
+        ASSERT_NE(nullptr, sw->m_ifaceRegistry.findByHwif(hwif));
+        EXPECT_EQ(tap, sw->m_ifaceRegistry.findByHwif(hwif)->getTapName());
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    }
+}
+
+TEST_F(SwitchVppRifTest, lagDiscoveryIgnoresSubinterfaceParentSuffix)
+{
+    ASSERT_NE(nullptr, sw->m_ifaceRegistry.addLag(54, 54, allocate(SAI_OBJECT_TYPE_LAG)));
+    vppMock().kernelLinkNames = "PortChannel2\nPortChannel54\nPo54.54@PortChannel54\nPortChannel57\n";
+    EXPECT_EQ(57u, sw->find_new_bond_id());
+}
+
+TEST_F(SwitchVppRifTest, lagDiscoveryRejectsMalformedAndOutOfRangeIds)
+{
+    for (const std::string name : {"PortChannel", "PortChannel-1", "PortChannel+1",
+            "PortChannel 1", "PortChannel54.54", "PortChannel57@Ethernet0",
+            "PortChannel2147483648x", "PortChannel4294967295", "PortChannel4294967296",
+            "PortChannel999999999999999999999999999999999"})
+    {
+        SCOPED_TRACE(name);
+        vppMock().kernelLinkNames = name + "\nPortChannel2\nPortChannel57\n";
+        EXPECT_EQ(57u, sw->find_new_bond_id());
+    }
+}
+
+TEST_F(SwitchVppRifTest, lagDiscoveryReportsMissingCandidateAndCommandFailure)
+{
+    vppMock().kernelLinkNames = "PortChannel2\n";
+    EXPECT_EQ(~0u, sw->find_new_bond_id());
+    vppMock().kernelLinkNames.clear();
+    EXPECT_EQ(~0u, sw->find_new_bond_id());
+    vppMock().kernelLinkNames = "PortChannel57\n";
+    vppMock().kernelLinkResult = 1;
+    EXPECT_EQ(~0u, sw->find_new_bond_id());
+}
 
 TEST_F(SwitchVppRifTest, failedPersistentSnapshotRestoresAllSettingsBeforeRetry)
 {

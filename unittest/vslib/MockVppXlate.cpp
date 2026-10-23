@@ -42,9 +42,15 @@ int TestableSwitchVpp::vs_set_dev_admin_up(const char *, bool)
     return 0;
 }
 
-int TestableSwitchVpp::exec(const std::string&, std::string& output)
+int TestableSwitchVpp::exec(const std::string& command, std::string& output)
 {
     SWSS_LOG_ENTER();
+    vppMock().kernelCommands.push_back(command);
+    if (command.find(" -o link show") != std::string::npos)
+    {
+        output = vppMock().kernelLinkNames;
+        return vppMock().kernelLinkResult;
+    }
     output = std::to_string(vppMock().kernelVrfId) + "\n";
     return vppMock().kernelVrfResult;
 }
