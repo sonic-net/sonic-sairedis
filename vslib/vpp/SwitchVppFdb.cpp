@@ -10,6 +10,8 @@
 
 #include "SwitchVppUtils.h"
 
+#include <algorithm>
+
 using namespace saivs;
 
 /* ======================================================================
@@ -1017,6 +1019,9 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
     if (set_bridge_domain_flags(bridge_id, VPP_BD_FLAG_UU_FLOOD, false) != 0) {
         SWSS_LOG_WARN("Failed to disable UU flood on bridge domain %u", bridge_id);
     }
+
+    /* The bridge domain VPP created for the first member does not age its MACs */
+    vpp_apply_fdb_aging_time(bridge_id);
 
     return SAI_STATUS_SUCCESS;
 }
@@ -3279,6 +3284,129 @@ void SwitchVpp::swif_bdid_untrack(const char *hwif_name)
      * interface.
      */
     m_ifaceRegistry.clearBdId(hwif_name);
+}
+
+/*
+ * VPP ages in whole minutes, so round up, which also keeps a short aging time
+ * from turning aging off. VPP keeps an entry's last-seen time to the minute
+ * and scans every 60 s, so an entry ages between mac_age - 1 and mac_age + 1
+ * minutes after the last frame from its MAC. mac_age is a u8: longer aging
+ * times age after 255 minutes.
+ */
+uint8_t SwitchVpp::fdb_aging_time_to_mac_age(uint32_t aging_time)
+{
+    SWSS_LOG_ENTER();
+
+    if (aging_time == 0)
+    {
+        return 0;
+    }
+
+    uint64_t minutes = ((uint64_t)aging_time + 59) / 60;
+
+    return (uint8_t)std::min<uint64_t>(minutes, UINT8_MAX);
+}
+
+uint32_t SwitchVpp::switch_fdb_aging_time()
+{
+    SWSS_LOG_ENTER();
+
+    // Read the stored attribute directly: get() logs every switch attribute read
+    auto &switches = m_objectHash.at(SAI_OBJECT_TYPE_SWITCH);
+    auto sw = switches.find(sai_serialize_object_id(m_switch_id));
+
+    if (sw == switches.end())
+    {
+        return 0;
+    }
+
+    auto md = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_FDB_AGING_TIME);
+    auto attr = sw->second.find(md->attridname);
+
+    return attr == sw->second.end() ? 0 : attr->second->getAttr()->value.u32;
+}
+
+std::set<uint32_t> SwitchVpp::vpp_vlan_bridge_domains()
+{
+    SWSS_LOG_ENTER();
+
+    std::set<uint32_t> bd_ids;
+
+    for (auto &member: m_objectHash.at(SAI_OBJECT_TYPE_VLAN_MEMBER))
+    {
+        sai_attribute_t attrs[2];
+
+        attrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+        attrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
+
+        if (get(SAI_OBJECT_TYPE_VLAN_MEMBER, member.first, 2, attrs) != SAI_STATUS_SUCCESS ||
+            is_tunnel_bridge_port(attrs[1].value.oid))
+        {
+            continue;
+        }
+
+        sai_attribute_t vid;
+        vid.id = SAI_VLAN_ATTR_VLAN_ID;
+
+        if (get(SAI_OBJECT_TYPE_VLAN, attrs[0].value.oid, 1, &vid) == SAI_STATUS_SUCCESS)
+        {
+            bd_ids.insert(vid.value.u16);
+        }
+    }
+
+    return bd_ids;
+}
+
+void SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
+{
+    SWSS_LOG_ENTER();
+
+    uint8_t mac_age = fdb_aging_time_to_mac_age(aging_time);
+
+    // set() runs before the attribute is stored: this compares with the
+    // previous aging time, which the bridge domains already have
+    if (mac_age == fdb_aging_time_to_mac_age(switch_fdb_aging_time()))
+    {
+        SWSS_LOG_INFO("FDB: aging time %u s keeps MAC age %u min", aging_time, mac_age);
+        return;
+    }
+
+    if (aging_time > UINT8_MAX * 60u)
+    {
+        SWSS_LOG_WARN("FDB: aging time %u s is longer than VPP supports, aging after %u minutes",
+                      aging_time, mac_age);
+    }
+
+    auto bd_ids = vpp_vlan_bridge_domains();
+
+    for (auto bd_id: bd_ids)
+    {
+        if (vpp_bridge_domain_set_mac_age(bd_id, mac_age) != 0)
+        {
+            SWSS_LOG_WARN("FDB: failed to set MAC age %u min on bridge domain %u", mac_age, bd_id);
+        }
+    }
+
+    SWSS_LOG_NOTICE("FDB: aging time %u s: MAC age %u min on %zu VLAN bridge domains",
+                    aging_time, mac_age, bd_ids.size());
+}
+
+void SwitchVpp::vpp_apply_fdb_aging_time(uint32_t bd_id)
+{
+    SWSS_LOG_ENTER();
+
+    uint8_t mac_age = fdb_aging_time_to_mac_age(switch_fdb_aging_time());
+
+    // A bridge domain VPP creates does not age
+    if (mac_age == 0)
+    {
+        return;
+    }
+
+    if (vpp_bridge_domain_set_mac_age(bd_id, mac_age) != 0)
+    {
+        SWSS_LOG_WARN("FDB: failed to set MAC age %u min on bridge domain %u", mac_age, bd_id);
+    }
 }
 
 void SwitchVpp::vpp_fdb_entries_invalidate_all()

@@ -215,6 +215,12 @@ extern "C" int __wrap_vpp_want_l2_macs_events2(bool, vpp_mac_event_cb_fn, void *
     SWSS_LOG_ENTER();
     return 0;
 }
+extern "C" int __wrap_vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_age)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_bridge_domain_set_mac_age", std::to_string(bd_id), bd_id, mac_age, true});
+    return 0;
+}
 extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
     SWSS_LOG_ENTER();
     return 0;

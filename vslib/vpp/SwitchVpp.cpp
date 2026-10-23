@@ -2417,6 +2417,13 @@ sai_status_t SwitchVpp::set(
                     m_tunnel_mgr.set_vxlan_port(attr);
                     break;
                 }
+            case SAI_SWITCH_ATTR_FDB_AGING_TIME:
+                {
+                    // VPP ages the MACs itself; set_internal() below caches the
+                    // attribute for the bridge domains created later
+                    vpp_set_fdb_aging_time(attr->value.u32);
+                    break;
+                }
             case SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED:
                 {
                     // VPP mixes a global "router id" into the IPv4/IPv6 ECMP
