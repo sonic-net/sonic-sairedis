@@ -220,7 +220,8 @@ extern "C" int __wrap_vpp_want_l2_macs_events2(bool, vpp_mac_event_cb_fn, void *
 extern "C" int __wrap_vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_age)
 {
     SWSS_LOG_ENTER();
-    bool fails = vppMock().macAgeFailures.count(bd_id) != 0;
+    // VPP rejects a bridge domain it doesn't have
+    bool fails = vppMock().macAgeFailures.count(bd_id) != 0 || vppMock().bdMembers.count(bd_id) == 0;
     vppMock().calls.push_back({"vpp_bridge_domain_set_mac_age", std::to_string(bd_id), bd_id, mac_age, !fails});
     if (fails)
     {

@@ -971,6 +971,24 @@ std::unordered_set<uint32_t> VppInterfaceRegistry::collectBondIds() const
     return ids;
 }
 
+std::set<uint32_t> VppInterfaceRegistry::collectBdIds() const
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    std::set<uint32_t> ids;
+
+    for (const auto& kvp: m_byHwif)
+    {
+        if (kvp.second->hasBdId())
+        {
+            ids.insert(kvp.second->getBdId());
+        }
+    }
+
+    return ids;
+}
+
 void VppInterfaceRegistry::clear()
 {
     SWSS_LOG_ENTER();

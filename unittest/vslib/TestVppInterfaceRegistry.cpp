@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <set>
+
 using namespace saivs;
 
 TEST(VppInterfaceRegistry, rifLookupUsesSeparateIndexForEveryInterfaceType)
@@ -84,5 +86,28 @@ TEST(VppInterfaceRegistry, clearingRegistryDoesNotRetainRecycledRifOid)
     ASSERT_NE(nullptr, registry.addBvi(200, 2));
     ASSERT_TRUE(registry.setRifOid("bvi200", 100));
     EXPECT_EQ("bvi200", registry.resolveHwIfByRifOid(100));
+}
+
+TEST(VppInterfaceRegistry, collectBdIdsReturnsTheBridgeDomainsOfInterfacesInOne)
+{
+    VppInterfaceRegistry registry;
+    auto port = registry.addPhysicalPort("port0", "Ethernet0", 1);
+    ASSERT_NE(nullptr, port);
+    ASSERT_NE(nullptr, registry.addPhysicalPort("port1", "Ethernet4", 2));
+    ASSERT_NE(nullptr, registry.addLag(2, 20, 3));
+    ASSERT_NE(nullptr, registry.addSubInterface(port, 100, 100));
+    EXPECT_TRUE(registry.collectBdIds().empty());
+
+    ASSERT_TRUE(registry.setBdId("port0.100", 100));
+    ASSERT_TRUE(registry.setBdId("port1", 1000));
+    ASSERT_TRUE(registry.setBdId("BondEthernet2", 1000));
+    EXPECT_EQ(std::set<uint32_t>({100, 1000}), registry.collectBdIds());
+
+    ASSERT_TRUE(registry.clearBdId("port1"));
+    EXPECT_EQ(std::set<uint32_t>({100, 1000}), registry.collectBdIds());
+    ASSERT_TRUE(registry.clearBdId("BondEthernet2"));
+    EXPECT_EQ(std::set<uint32_t>({100}), registry.collectBdIds());
+    EXPECT_EQ(1u, registry.remove("port0.100"));
+    EXPECT_TRUE(registry.collectBdIds().empty());
 }
 

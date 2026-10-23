@@ -3332,31 +3332,10 @@ std::set<uint32_t> SwitchVpp::vpp_vlan_bridge_domains()
 {
     SWSS_LOG_ENTER();
 
-    std::set<uint32_t> bd_ids;
-
-    for (auto &member: m_objectHash.at(SAI_OBJECT_TYPE_VLAN_MEMBER))
-    {
-        sai_attribute_t attrs[2];
-
-        attrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
-        attrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
-
-        if (get(SAI_OBJECT_TYPE_VLAN_MEMBER, member.first, 2, attrs) != SAI_STATUS_SUCCESS ||
-            is_tunnel_bridge_port(attrs[1].value.oid))
-        {
-            continue;
-        }
-
-        sai_attribute_t vid;
-        vid.id = SAI_VLAN_ATTR_VLAN_ID;
-
-        if (get(SAI_OBJECT_TYPE_VLAN, attrs[0].value.oid, 1, &vid) == SAI_STATUS_SUCCESS)
-        {
-            bd_ids.insert(vid.value.u16);
-        }
-    }
-
-    return bd_ids;
+    // Not from the VLAN_MEMBER objects: the default VLAN's members, which
+    // SwitchStateBase creates with the switch, never reach VPP, so VPP has no
+    // bridge domain for them
+    return m_ifaceRegistry.collectBdIds();
 }
 
 sai_status_t SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
