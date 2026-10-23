@@ -13,6 +13,7 @@
 #include "SwitchVppPbh.h"
 #include "SwitchVppPolicer.h"
 #include "SwitchVppHostifTrap.h"
+#include "SwitchVppNat.h"
 #include "CRMTracker.h"
 #include "PortConfigMap.h"
 #include "VppInterfaceRegistry.h"
@@ -1859,5 +1860,11 @@ namespace saivs
             sai_status_t bindMirrorPort(
                     _In_ sai_object_id_t portId,
                     _In_ const sai_attribute_t* attr);
+
+        private: // VPP NAT
+
+            friend class SwitchVppNat;
+
+            SwitchVppNat m_nat;
     };
 }

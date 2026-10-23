@@ -57,7 +57,8 @@ SwitchVpp::SwitchVpp(
     m_tunnel_mgr(this),
     m_pbh(this),
     m_tunnel_mgr_srv6(this),
-    m_tunnel_mgr_ipip(this)
+    m_tunnel_mgr_ipip(this),
+    m_nat(this)
 {
     SWSS_LOG_ENTER();
 
@@ -76,7 +77,8 @@ SwitchVpp::SwitchVpp(
     m_tunnel_mgr(this),
     m_pbh(this),
     m_tunnel_mgr_srv6(this),
-    m_tunnel_mgr_ipip(this)
+    m_tunnel_mgr_ipip(this),
+    m_nat(this)
 {
     SWSS_LOG_ENTER();
 
@@ -1705,6 +1707,11 @@ sai_status_t SwitchVpp::create(
         return createMirrorSession(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_NAT_ENTRY)
+    {
+        return m_nat.createNatEntry(serializedObjectId, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
@@ -2253,6 +2260,11 @@ sai_status_t SwitchVpp::remove(
         return removeMirrorSession(object_id);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_NAT_ENTRY)
+    {
+        return m_nat.removeNatEntry(serializedObjectId);
+    }
+
     return remove_internal(object_type, serializedObjectId);
 }
 
@@ -2491,7 +2503,20 @@ sai_status_t SwitchVpp::set(
     {
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
+
+        if (attr->id == SAI_ROUTER_INTERFACE_ATTR_NAT_ZONE_ID)
+        {
+            CHECK_STATUS(set_internal(objectType, serializedObjectId, attr));
+            m_nat.setRouterInterfaceZone(objectId, attr->value.u32);
+            return SAI_STATUS_SUCCESS;
+        }
+
         return vpp_update_router_interface(objectId, 1, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_NAT_ENTRY)
+    {
+        return m_nat.setNatEntry(serializedObjectId, attr);
     }
 
     if (objectType == SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER)
@@ -2530,6 +2555,11 @@ sai_status_t SwitchVpp::set(
             case SAI_SWITCH_ATTR_VXLAN_DEFAULT_PORT:
                 {
                     m_tunnel_mgr.set_vxlan_port(attr);
+                    break;
+                }
+            case SAI_SWITCH_ATTR_NAT_ENABLE:
+                {
+                    CHECK_STATUS(m_nat.setEnable(attr->value.booldata));
                     break;
                 }
             case SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED:
@@ -2699,6 +2729,11 @@ sai_status_t SwitchVpp::get(
         }
 
         return getAclEntryStats(object_id, attr_count, attr_list);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_NAT_ENTRY)
+    {
+        return m_nat.getNatEntry(serializedObjectId, attr_count, attr_list);
     }
 
     const auto &objectHash = m_objectHash.at(objectType);
@@ -3386,6 +3421,15 @@ sai_status_t SwitchVpp::refresh_read_only(
         sai_attribute_t attr;
         attr.id = meta->attrid;
         attr.value.u32 = m_crmTracker.getAvailable((sai_switch_attr_t)meta->attrid);
+
+        // orchagent reads a zero AVAILABLE_SNAT_ENTRY as "this platform has no NAT"
+        if ((meta->attrid == SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY ||
+             meta->attrid == SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY ||
+             meta->attrid == SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY) && !m_nat.isSupported())
+        {
+            attr.value.u32 = 0;
+        }
+
         return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
     }
 

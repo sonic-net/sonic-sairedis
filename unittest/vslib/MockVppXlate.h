@@ -122,6 +122,9 @@ struct VppMock
     std::map<std::string, bool> adminUp;
     std::map<std::string, std::array<uint32_t, 4>> mtus;
     std::map<std::string, unsigned int> mplsReferences;
+    bool natSupported = true;
+    // NAT sessions VPP reports, by inside address (network order)
+    std::map<uint32_t, std::vector<vpp_nat44_session_t>> natSessions;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
