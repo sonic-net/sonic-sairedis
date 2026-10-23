@@ -1450,6 +1450,13 @@ vl_api_bridge_flags_reply_t_handler (vl_api_bridge_flags_reply_t *msg)
 }
 
 static void
+vl_api_bridge_domain_set_mac_age_reply_t_handler (vl_api_bridge_domain_set_mac_age_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_l2_flags_reply_t_handler (vl_api_l2_flags_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2295,6 +2302,7 @@ static void vpp_base_vpe_init(void)
     _(L2_MSG_ID(BVI_CREATE_REPLY), bvi_create_reply) \
     _(L2_MSG_ID(BVI_DELETE_REPLY), bvi_delete_reply) \
     _(L2_MSG_ID(BRIDGE_FLAGS_REPLY), bridge_flags_reply) \
+    _(L2_MSG_ID(BRIDGE_DOMAIN_SET_MAC_AGE_REPLY), bridge_domain_set_mac_age_reply) \
     _(L2_MSG_ID(L2_FLAGS_REPLY), l2_flags_reply) \
     _(BOND_MSG_ID(BOND_CREATE_REPLY), bond_create_reply) \
     _(BOND_MSG_ID(BOND_DELETE_REPLY), bond_delete_reply) \
@@ -6370,6 +6378,32 @@ int set_bridge_domain_flags(uint32_t bd_id, vpp_bd_flags_t flag, bool enable)
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) bd_id %u flag %d enable %d", __func__, ret, bd_id, flag, enable); }
     else { SAIVPP_INFO("%s bd_id %u flag %d enable %d", __func__, bd_id, flag, enable); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_age)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_bridge_domain_set_mac_age_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M (BRIDGE_DOMAIN_SET_MAC_AGE, mp);
+
+    mp->bd_id = htonl(bd_id);
+    mp->mac_age = mac_age;
+    S (mp);
+
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) bd_id %u mac_age %u", __func__, ret, bd_id, mac_age); }
+    else { SAIVPP_INFO("%s bd_id %u mac_age %u", __func__, bd_id, mac_age); }
 
     VPP_UNLOCK();
 

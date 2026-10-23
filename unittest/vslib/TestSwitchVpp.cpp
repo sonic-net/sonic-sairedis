@@ -1080,3 +1080,126 @@ TEST(SwitchVpp, bfdResyncReportsStateChangesLostWithTheEventSocket)
     EXPECT_EQ(3u, vppMock().bfdDumpCalls);
     EXPECT_EQ(0u, sc->m_eventQueue->size());
 }
+
+/*
+ * VPP ages the MAC addresses each bridge domain has learned, in whole minutes
+ * (mac_age, 0: never), and reports each aged one as a DELETE MAC event. SAI's
+ * FDB aging time is in seconds, for the whole switch.
+ */
+TEST(SwitchVpp, fdbAgingTimeRoundsUpToWholeMinutes)
+{
+    EXPECT_EQ(0, SwitchVpp::fdb_aging_time_to_mac_age(0));
+    EXPECT_EQ(1, SwitchVpp::fdb_aging_time_to_mac_age(1));
+    EXPECT_EQ(1, SwitchVpp::fdb_aging_time_to_mac_age(60));
+    EXPECT_EQ(2, SwitchVpp::fdb_aging_time_to_mac_age(61));
+    EXPECT_EQ(10, SwitchVpp::fdb_aging_time_to_mac_age(600));
+    EXPECT_EQ(255, SwitchVpp::fdb_aging_time_to_mac_age(255 * 60));
+    EXPECT_EQ(255, SwitchVpp::fdb_aging_time_to_mac_age(255 * 60 + 1));
+    EXPECT_EQ(255, SwitchVpp::fdb_aging_time_to_mac_age(UINT32_MAX));
+}
+
+/*
+ * The fixture's switch, VLAN 100 and ports, with the switch object orchagent
+ * sets SAI_SWITCH_ATTR_FDB_AGING_TIME on.
+ */
+class SwitchVppFdbAging : public SwitchVppSubIfAdminState
+{
+    protected:
+
+        void SetUp() override
+        {
+            SwitchVppSubIfAdminState::SetUp();
+
+            // vslib's default
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+            attr.value.u32 = 0;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), m_switchId, 1, &attr));
+        }
+
+        // orchagent sets SAI_SWITCH_ATTR_FDB_AGING_TIME
+        void setAgingTime(
+                uint32_t aging_time)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+            attr.value.u32 = aging_time;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), &attr));
+        }
+
+        uint32_t agingTime()
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->get(SAI_OBJECT_TYPE_SWITCH, m_switchId, 1, &attr));
+
+            return attr.value.u32;
+        }
+
+        // the mac_age values set on bridge domain bd_id, in order
+        std::vector<uint32_t> macAges(
+                uint32_t bd_id)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<uint32_t> ages;
+
+            for (auto& call: vppMock().callsTo("vpp_bridge_domain_set_mac_age", std::to_string(bd_id)))
+            {
+                ages.push_back(call.sub_id);
+            }
+
+            return ages;
+        }
+};
+
+TEST_F(SwitchVppFdbAging, AgingTimeAppliesToTheBridgeDomainsOfVlansWithMembers)
+{
+    // VPP creates bridge domain 100 for the first member, without aging
+    addTaggedMember(m_bridgePort);
+    addTaggedMember(m_otherBridgePort);
+
+    EXPECT_TRUE(macAges(VLAN_ID).empty());
+
+    // Once per bridge domain, however many members it has
+    setAgingTime(600);
+
+    EXPECT_EQ(std::vector<uint32_t>({10}), macAges(VLAN_ID));
+    EXPECT_EQ(600u, agingTime());
+
+    // An aging time with the same MAC age changes nothing in VPP
+    setAgingTime(590);
+
+    EXPECT_EQ(std::vector<uint32_t>({10}), macAges(VLAN_ID));
+    EXPECT_EQ(590u, agingTime());
+
+    // 0 turns aging off
+    setAgingTime(0);
+
+    EXPECT_EQ(std::vector<uint32_t>({10, 0}), macAges(VLAN_ID));
+    EXPECT_EQ(0u, agingTime());
+}
+
+TEST_F(SwitchVppFdbAging, BridgeDomainCreatedAfterTheAgingTimeIsSetAges)
+{
+    // No VLAN has a member yet, so VPP has no bridge domain to set
+    setAgingTime(90);
+
+    EXPECT_TRUE(vppMock().callsTo("vpp_bridge_domain_set_mac_age", std::to_string(VLAN_ID)).empty());
+
+    // The first member makes VPP create bridge domain 100, which then ages
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(std::vector<uint32_t>({2}), macAges(VLAN_ID));
+}
