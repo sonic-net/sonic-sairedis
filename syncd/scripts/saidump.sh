@@ -23,7 +23,7 @@ with open('$filepath') as json_file:
   logger "saidump.sh: hostname:$hostname, port:$port, redis_dir:$redis_dir"
 
   logger "saidump.sh: [1] Get the remote backups of RDB file."
-  python3 - "$hostname" "$port" "${redis_config[2]}" "$redis_dir/dump.rdb" <<'PY' || return 1
+  python3 - "$hostname" "$port" "${redis_config[2]}" "$redis_dir/dump.rdb" <<'PY'
 import subprocess
 import sys
 
@@ -44,6 +44,7 @@ command += ['--rdb', destination]
 subprocess.run(command, input=password_input, stdout=subprocess.DEVNULL,
                stderr=subprocess.DEVNULL, check=True)
 PY
+  [ $? -eq 0 ] || return 1
 
   logger "saidump.sh: [2] Run rdb-cli command to convert the dump files into JSON files."
   rdb-cli "$redis_dir/dump.rdb" json | tee "$redis_dir/dump.json" > /dev/null
