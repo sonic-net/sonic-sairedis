@@ -298,6 +298,42 @@ function merge_config_yml_files()
     echo "Merged $from_file to $to_file"
 }
 
+# Generic, vendor-agnostic helper: append the SAI_PROFILE CONFIG_DB table
+# (see sonic-buildimage's src/sonic-yang-models/yang-models/sonic-sai-profile.yang)
+# to the given sai.profile-style file, one KEY=VALUE line per entry, using the
+# shared "sai_profile_dynamic.j2" template installed by sonic-config-engine
+# under $TEMPLATES_DIR. This is a no-op (appends nothing) when the SAI_PROFILE
+# table is absent/empty or the shared template isn't installed, so it is
+# always safe for any config_syncd_* function to call unconditionally.
+#
+# Since Syncd::loadProfileMap() (syncd/Syncd.cpp) parses the final profile
+# file into a std::map keyed by name, later lines always win over earlier
+# ones regardless of any vendor-specific de-duplication done in this script.
+# Calling this function as the very last step before a vendor's profile file
+# is handed to syncd (via "-p <file>") therefore guarantees SAI_PROFILE
+# CONFIG_DB entries take precedence over that vendor's static defaults.
+apply_sai_profile_configdb()
+{
+    local profile_file="$1"
+    local dynamic_template="$TEMPLATES_DIR/sai_profile_dynamic.j2"
+    local rendered
+
+    if [[ -f "$dynamic_template" ]]; then
+        rendered="$(sonic-cfggen -d -t "$dynamic_template")"
+        if [[ -n "$rendered" ]]; then
+            # ">>" creates profile_file if it does not already exist, so
+            # SAI_PROFILE CONFIG_DB entries are still applied even when a
+            # vendor has no pre-existing static sai.profile at all.
+            echo "$rendered" >> "$profile_file"
+            # Surface exactly which CONFIG_DB-sourced key/value pairs were
+            # applied (and to which file) in syslog, since these override
+            # any static default with the same key and are otherwise not
+            # visible without enabling syncd's own debug-level logging.
+            logger -t syncd_init_common "SAI_PROFILE CONFIG_DB entries applied to $profile_file: $(echo "$rendered" | tr '\n' ' ' | sed 's/ *$//')"
+        fi
+    fi
+}
+
 config_syncd_bcm()
 {
     PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
@@ -366,12 +402,26 @@ config_syncd_bcm()
     fi
 
     if [ -f "/tmp/sai.profile" ]; then
-        CMD_ARGS+=" -p /tmp/sai.profile"
+        BCM_SAI_PROFILE_FILE="/tmp/sai.profile"
 	elif [ -f "/etc/sai.d/sai.profile" ]; then
-        CMD_ARGS+=" -p /etc/sai.d/sai.profile"
+        BCM_SAI_PROFILE_FILE="/etc/sai.d/sai.profile"
     else
-        CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+        # $HWSKU_DIR is typically a read-only mount; copy the static profile
+        # (if any) to a writable location first so apply_sai_profile_configdb
+        # below can append to it. Tolerate the source being absent (no
+        # pre-existing static sai.profile at all): apply_sai_profile_configdb
+        # will still create /tmp/sai.profile from CONFIG_DB entries alone.
+        cp -f "$HWSKU_DIR/sai.profile" /tmp/sai.profile 2>/dev/null || true
+        BCM_SAI_PROFILE_FILE="/tmp/sai.profile"
     fi
+
+    # Apply the generic SAI_PROFILE CONFIG_DB table last, so a hwsku's
+    # sai.profile[.j2] does not need its own
+    # '{% include "sai_profile_dynamic.j2" %}' to pick up CONFIG_DB-driven
+    # overrides - this alone is enough to support SAI_PROFILE on Broadcom.
+    apply_sai_profile_configdb "$BCM_SAI_PROFILE_FILE"
+
+    CMD_ARGS+=" -p $BCM_SAI_PROFILE_FILE"
 
     if [ "$SONIC_ASIC_SUBTYPE" = "broadcom" ]; then
         CMD_ARGS+=" -l"
@@ -481,6 +531,10 @@ config_syncd_mlnx()
     if [[ -f /tmp/sai_extra.profile ]]; then
         cat /tmp/sai_extra.profile >> /tmp/sai.profile
     fi
+
+    # Apply the generic SAI_PROFILE CONFIG_DB table last, so its entries
+    # take precedence over all of the static/derived settings above.
+    apply_sai_profile_configdb /tmp/sai.profile
 
     # Ensure no redundant newlines
     sed -i '/^$/d' /tmp/sai.profile
