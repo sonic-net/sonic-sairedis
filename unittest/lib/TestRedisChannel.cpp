@@ -54,3 +54,18 @@ TEST(RedisChannel, flush)
 
     rc.flush();
 }
+
+TEST(RedisChannel, wait)
+{
+    RedisChannel rc("ASIC_DB", callback);
+
+    rc.setResponseTimeout(60);
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    EXPECT_EQ(rc.wait("notify", kco), SAI_STATUS_FAILURE);
+
+    EXPECT_EQ(rc.m_event_params.size(), 2);
+    EXPECT_NE(rc.m_event_params["operation_result"], "");
+    EXPECT_NE(rc.m_event_params["command"], "");
+}
