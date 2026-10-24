@@ -26,7 +26,8 @@ namespace sairedis
 
             RedisChannel(
                     _In_ const std::string& dbAsic,
-                    _In_ Channel::Callback callback);
+                    _In_ Channel::Callback callback,
+                    _In_ Channel::Callback debugCallback = nullptr);
 
             virtual ~RedisChannel();
 
@@ -89,5 +90,29 @@ namespace sairedis
              * @brief Notification consumer.
              */
             std::shared_ptr<swss::NotificationConsumer> m_notificationConsumer;
+
+        private: // operator meta FDB debug channel
+
+            /**
+             * @brief Callback invoked for operator meta FDB debug commands.
+             *
+             * Optional. When null the debug consumer below is not created and
+             * this feature is entirely inert.
+             */
+            Channel::Callback m_debugCallback;
+
+            /**
+             * @brief Database connector for the operator debug channel.
+             */
+            std::shared_ptr<swss::DBConnector> m_dbNtfDebug;
+
+            /**
+             * @brief Consumer subscribed to SAIREDIS_META_FDB_DEBUG_CHANNEL.
+             *
+             * Operators PUBLISH a "dump" command to this pub/sub channel to
+             * trigger a meta-layer FDB diagnostic dump. Received on the same
+             * notification thread as m_notificationConsumer.
+             */
+            std::shared_ptr<swss::NotificationConsumer> m_debugConsumer;
     };
 }
