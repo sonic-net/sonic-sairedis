@@ -85,9 +85,17 @@ TEST_F(TestPortPhySerdesAttr, SerializePortSerdesAttr)
     result = sai_serialize_port_serdes_attr(attr);
     EXPECT_EQ(result, "SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST");
 
+    attr = SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST;
+    result = sai_serialize_port_serdes_attr(attr);
+    EXPECT_EQ(result, "SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST");
+
     attr = SAI_PORT_SERDES_ATTR_TX_FIR_COUNT;
     result = sai_serialize_port_serdes_attr(attr);
     EXPECT_EQ(result, "SAI_PORT_SERDES_ATTR_TX_FIR_COUNT");
+
+    attr = SAI_PORT_SERDES_ATTR_RX_FFE_COUNT;
+    result = sai_serialize_port_serdes_attr(attr);
+    EXPECT_EQ(result, "SAI_PORT_SERDES_ATTR_RX_FFE_COUNT");
 }
 
 TEST_F(TestPortPhySerdesAttr, DeserializePortSerdesAttr)
@@ -102,9 +110,17 @@ TEST_F(TestPortPhySerdesAttr, DeserializePortSerdesAttr)
     sai_deserialize_port_serdes_attr(input, attr_out);
     EXPECT_EQ(attr_out, SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST);
 
+    input = "SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST";
+    sai_deserialize_port_serdes_attr(input, attr_out);
+    EXPECT_EQ(attr_out, SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST);
+
     input = "SAI_PORT_SERDES_ATTR_TX_FIR_COUNT";
     sai_deserialize_port_serdes_attr(input, attr_out);
     EXPECT_EQ(attr_out, SAI_PORT_SERDES_ATTR_TX_FIR_COUNT);
+
+    input = "SAI_PORT_SERDES_ATTR_RX_FFE_COUNT";
+    sai_deserialize_port_serdes_attr(input, attr_out);
+    EXPECT_EQ(attr_out, SAI_PORT_SERDES_ATTR_RX_FFE_COUNT);
 }
 
 /**
@@ -138,6 +154,10 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
                         attr_list[i].value.u32 = TEST_TAP_COUNT;
                         break;
 
+                    case SAI_PORT_SERDES_ATTR_RX_FFE_COUNT:
+                        attr_list[i].value.u32 = TEST_TAP_COUNT;
+                        break;
+
                     case SAI_PORT_SERDES_ATTR_RX_VGA:
                         if (attr_list[i].value.u32list.list == nullptr) {
                             // First call: return count needed
@@ -154,6 +174,7 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
                         break;
 
                     case SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST:
+                    case SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST:
                         if (attr_list[i].value.portserdestaps.list == nullptr) {
                             // First call: return tap count needed
                             attr_list[i].value.portserdestaps.count = TEST_TAP_COUNT;
@@ -170,7 +191,12 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
                                     uint32_t lane_count = attr_list[i].value.portserdestaps.list[tap_idx].count;
                                     for (uint32_t lane = 0; lane < lane_count && lane < TEST_LANE_COUNT; lane++) {
                                         // Generate tap values: tap0: -23,-22,-21,-20, tap1: -13,-12,-11,-10, etc.
+                                        // Offset RX_FFE by +100 so it is distinguishable in assertions.
                                         int32_t base_value = -23 + (tap_idx * 10);
+                                        if (attr_list[i].id == SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST)
+                                        {
+                                            base_value += 100;
+                                        }
                                         attr_list[i].value.portserdestaps.list[tap_idx].list[lane] = base_value + lane;
                                     }
                                     attr_list[i].value.portserdestaps.list[tap_idx].count = std::min(lane_count, TEST_LANE_COUNT);
@@ -214,7 +240,7 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
 
     vector<swss::FieldValueTuple> portSerdesAttrValues;
 
-    std::string attrIds = "SAI_PORT_SERDES_ATTR_RX_VGA,SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST";
+    std::string attrIds = "SAI_PORT_SERDES_ATTR_RX_VGA,SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST,SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST";
 
     portSerdesAttrValues.emplace_back(PORT_PHY_SERDES_ATTR_ID_LIST, attrIds);
 
@@ -350,6 +376,42 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
             EXPECT_EQ(actual_value, expected_value)
                 << "Lane " << lane << " " << tap_key << " should be " << expected_value
                 << " but got " << actual_value;
+        }
+    }
+
+    // Validate RX_FFE_TAPS_LIST with friendly alias "rx_ffe_taps_list"
+    std::string rxFfeTapsValue;
+    found = portPhyAttrTable.hget(expectedKey, "rx_ffe_taps_list", rxFfeTapsValue);
+    EXPECT_TRUE(found) << "rx_ffe_taps_list not found in COUNTERS_DB PORT_PHY_ATTR_TABLE";
+
+    json rxFfeTapsJson;
+    try {
+        rxFfeTapsJson = json::parse(rxFfeTapsValue);
+    } catch (const json::parse_error& e) {
+        FAIL() << "Failed to parse rx_ffe_taps_list as JSON: " << e.what()
+               << "\nValue: " << rxFfeTapsValue;
+    }
+
+    EXPECT_TRUE(rxFfeTapsJson.is_object())
+        << "rx_ffe_taps_list should be a JSON object\nActual: " << rxFfeTapsValue;
+    EXPECT_EQ(rxFfeTapsJson.size(), TEST_LANE_COUNT)
+        << "rx_ffe_taps_list should have " << TEST_LANE_COUNT << " lanes";
+
+    for (uint32_t lane = 0; lane < TEST_LANE_COUNT; lane++) {
+        std::string lane_key = std::to_string(lane);
+        ASSERT_TRUE(rxFfeTapsJson.contains(lane_key))
+            << "Missing lane " << lane << " in rx_ffe_taps_list";
+        ASSERT_TRUE(rxFfeTapsJson[lane_key].is_array());
+        const json& lane_taps = rxFfeTapsJson[lane_key];
+        EXPECT_EQ(lane_taps.size(), TEST_TAP_COUNT);
+
+        for (uint32_t tap_idx = 0; tap_idx < TEST_TAP_COUNT; tap_idx++) {
+            const json& tap_obj = lane_taps[tap_idx];
+            std::string tap_key = "tap" + std::to_string(tap_idx);
+            ASSERT_TRUE(tap_obj.contains(tap_key));
+            int32_t expected_value = (-23 + static_cast<int32_t>(tap_idx * 10)) + 100 + static_cast<int32_t>(lane);
+            EXPECT_EQ(tap_obj[tap_key].get<int32_t>(), expected_value)
+                << "Lane " << lane << " " << tap_key << " RX FFE mismatch";
         }
     }
 
@@ -511,3 +573,331 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
     flexCounter->removeCounter(partialSerdesOid);
 }
 
+
+/**
+ * A platform whose SAI cannot answer RX_FFE_COUNT must have RX_FFE_TAPS_LIST
+ * excluded from polling at registration: no repeated count queries, no
+ * RX_FFE_TAPS_LIST GET attempts, while TX_FIR and RX_VGA keep working.
+ * (Unconditional count queries previously logged one ERR per port-serdes at
+ * every registration on such platforms.)
+ */
+TEST_F(TestPortPhySerdesAttr, UnsupportedRxFfeCountExcludesTapsFromPolling)
+{
+    sai_object_id_t serdesOid = 0x57000000000003;
+    sai_object_id_t serdesRid = 0x57000000000003;
+    sai_object_id_t portOid   = 0x1000000000003;
+
+    static int ffeCountQueries = 0;
+    static int ffeTapsQueries = 0;
+    ffeCountQueries = 0;
+    ffeTapsQueries = 0;
+
+    sai->mock_get = [](sai_object_type_t object_type,
+                      sai_object_id_t /*object_id*/,
+                      uint32_t attr_count,
+                      sai_attribute_t *attr_list) -> sai_status_t
+    {
+        if (object_type == SAI_OBJECT_TYPE_PORT_SERDES)
+        {
+            for (uint32_t i = 0; i < attr_count; i++)
+            {
+                switch (attr_list[i].id)
+                {
+                    case SAI_PORT_SERDES_ATTR_PORT_ID:
+                        attr_list[i].value.oid = 0x1000000000003;
+                        break;
+
+                    case SAI_PORT_SERDES_ATTR_TX_FIR_COUNT:
+                        attr_list[i].value.u32 = TEST_TAP_COUNT;
+                        break;
+
+                    case SAI_PORT_SERDES_ATTR_RX_FFE_COUNT:
+                        // NPU SAI without RX FFE support (e.g. generic failure
+                        // as seen on TH6, or NOT_SUPPORTED on other platforms).
+                        ffeCountQueries++;
+                        return SAI_STATUS_FAILURE;
+
+                    case SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST:
+                        ffeTapsQueries++;
+                        return SAI_STATUS_FAILURE;
+
+                    case SAI_PORT_SERDES_ATTR_RX_VGA:
+                        if (attr_list[i].value.u32list.list == nullptr)
+                        {
+                            attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                            return SAI_STATUS_BUFFER_OVERFLOW;
+                        }
+                        for (uint32_t lane = 0;
+                             lane < attr_list[i].value.u32list.count
+                             && lane < TEST_LANE_COUNT; lane++)
+                        {
+                            attr_list[i].value.u32list.list[lane] = 300 + lane;
+                        }
+                        attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                        break;
+
+                    case SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST:
+                        if (attr_list[i].value.portserdestaps.list == nullptr)
+                        {
+                            attr_list[i].value.portserdestaps.count = TEST_TAP_COUNT;
+                            return SAI_STATUS_BUFFER_OVERFLOW;
+                        }
+                        for (uint32_t tap_idx = 0;
+                             tap_idx < attr_list[i].value.portserdestaps.count
+                             && tap_idx < TEST_TAP_COUNT; tap_idx++)
+                        {
+                            for (uint32_t lane = 0;
+                                 lane < attr_list[i].value.portserdestaps.list[tap_idx].count
+                                 && lane < TEST_LANE_COUNT; lane++)
+                            {
+                                attr_list[i].value.portserdestaps.list[tap_idx].list[lane] =
+                                    (int32_t)(tap_idx * 10 + lane);
+                            }
+                        }
+                        break;
+
+                    default:
+                        return SAI_STATUS_NOT_SUPPORTED;
+                }
+            }
+            return SAI_STATUS_SUCCESS;
+        }
+        else if (object_type == SAI_OBJECT_TYPE_PORT)
+        {
+            for (uint32_t i = 0; i < attr_count; i++)
+            {
+                if (attr_list[i].id == SAI_PORT_ATTR_HW_LANE_LIST)
+                {
+                    if (attr_list[i].value.u32list.list == nullptr)
+                    {
+                        attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    }
+                    for (uint32_t lane = 0;
+                         lane < attr_list[i].value.u32list.count
+                         && lane < TEST_LANE_COUNT; lane++)
+                    {
+                        attr_list[i].value.u32list.list[lane] = lane;
+                    }
+                    attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                    return SAI_STATUS_SUCCESS;
+                }
+            }
+        }
+        return SAI_STATUS_INVALID_PARAMETER;
+    };
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table portSerdesIdToPortIdTable(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
+    portSerdesIdToPortIdTable.hset("", toOid(serdesOid), toOid(portOid));
+
+    vector<swss::FieldValueTuple> portSerdesAttrValues;
+    portSerdesAttrValues.emplace_back(PORT_PHY_SERDES_ATTR_ID_LIST,
+        "SAI_PORT_SERDES_ATTR_RX_VGA,SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST,SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST");
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT_SERDES);
+
+    flexCounter->addCounter(serdesOid, serdesRid, portSerdesAttrValues);
+
+    // Exactly one count probe at registration, regardless of poll cycles.
+    EXPECT_EQ(ffeCountQueries, 1);
+
+    vector<swss::FieldValueTuple> pluginValues;
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "500");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    flexCounter->addCounterPlugin(pluginValues);
+
+    usleep(1000 * 1200); // allow at least two poll cycles
+
+    // The unsupported taps list was dropped at registration: never polled,
+    // never re-probed.
+    EXPECT_EQ(ffeTapsQueries, 0);
+    EXPECT_EQ(ffeCountQueries, 1);
+
+    // Supported attributes still collected.
+    swss::RedisPipeline pipeline(&db);
+    swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, false);
+    std::string expectedKey = toOid(portOid);
+
+    std::string value;
+    EXPECT_TRUE(portPhyAttrTable.hget(expectedKey, "rx_vga", value))
+        << "rx_vga should still be collected";
+    EXPECT_TRUE(portPhyAttrTable.hget(expectedKey, "tx_fir_taps_list", value))
+        << "tx_fir_taps_list should still be collected";
+    EXPECT_FALSE(portPhyAttrTable.hget(expectedKey, "rx_ffe_taps_list", value))
+        << "rx_ffe_taps_list must not be collected when RX_FFE_COUNT is unsupported";
+
+    flexCounter->removeCounter(serdesOid);
+}
+
+/**
+ * Each serdes attribute individually unsupported: for every registered
+ * port-serdes attribute, make the vendor SAI reject exactly that one (for the
+ * taps lists, reject the corresponding count attribute) and verify it is the
+ * only one missing from COUNTERS_DB — collection of the other attributes must
+ * be unaffected.
+ */
+TEST_F(TestPortPhySerdesAttr, EachAttrIndividuallyUnsupported)
+{
+    static sai_attr_id_t s_unsupportedAttr;
+
+    // attr, DB alias, attr-to-reject to make it unsupported
+    static const std::vector<std::tuple<sai_attr_id_t, std::string, sai_attr_id_t>> attrs = {
+        { SAI_PORT_SERDES_ATTR_RX_VGA,           "rx_vga",           SAI_PORT_SERDES_ATTR_RX_VGA },
+        { SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST, "tx_fir_taps_list", SAI_PORT_SERDES_ATTR_TX_FIR_COUNT },
+        { SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST, "rx_ffe_taps_list", SAI_PORT_SERDES_ATTR_RX_FFE_COUNT },
+    };
+
+    sai->mock_get = [](sai_object_type_t object_type,
+                      sai_object_id_t /*object_id*/,
+                      uint32_t attr_count,
+                      sai_attribute_t *attr_list) -> sai_status_t
+    {
+        if (object_type == SAI_OBJECT_TYPE_PORT)
+        {
+            for (uint32_t i = 0; i < attr_count; i++)
+            {
+                if (attr_list[i].id == SAI_PORT_ATTR_HW_LANE_LIST)
+                {
+                    if (attr_list[i].value.u32list.list == nullptr)
+                    {
+                        attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    }
+                    for (uint32_t lane = 0;
+                         lane < attr_list[i].value.u32list.count
+                         && lane < TEST_LANE_COUNT; lane++)
+                    {
+                        attr_list[i].value.u32list.list[lane] = lane;
+                    }
+                    attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                    return SAI_STATUS_SUCCESS;
+                }
+            }
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        if (object_type != SAI_OBJECT_TYPE_PORT_SERDES)
+        {
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            if (attr_list[i].id == s_unsupportedAttr)
+            {
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
+
+            switch (attr_list[i].id)
+            {
+                case SAI_PORT_SERDES_ATTR_PORT_ID:
+                    attr_list[i].value.oid = 0x1000000000001;
+                    break;
+
+                case SAI_PORT_SERDES_ATTR_TX_FIR_COUNT:
+                case SAI_PORT_SERDES_ATTR_RX_FFE_COUNT:
+                    attr_list[i].value.u32 = TEST_TAP_COUNT;
+                    break;
+
+                case SAI_PORT_SERDES_ATTR_RX_VGA:
+                    if (attr_list[i].value.u32list.list == nullptr)
+                    {
+                        attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    }
+                    for (uint32_t lane = 0;
+                         lane < attr_list[i].value.u32list.count
+                         && lane < TEST_LANE_COUNT; lane++)
+                    {
+                        attr_list[i].value.u32list.list[lane] = 100 + lane;
+                    }
+                    attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                    break;
+
+                case SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST:
+                case SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST:
+                    if (attr_list[i].value.portserdestaps.list == nullptr)
+                    {
+                        attr_list[i].value.portserdestaps.count = TEST_TAP_COUNT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    }
+                    for (uint32_t tap_idx = 0;
+                         tap_idx < attr_list[i].value.portserdestaps.count
+                         && tap_idx < TEST_TAP_COUNT; tap_idx++)
+                    {
+                        for (uint32_t lane = 0;
+                             lane < attr_list[i].value.portserdestaps.list[tap_idx].count
+                             && lane < TEST_LANE_COUNT; lane++)
+                        {
+                            attr_list[i].value.portserdestaps.list[tap_idx].list[lane] =
+                                (int32_t)(tap_idx * 10 + lane);
+                        }
+                    }
+                    break;
+
+                default:
+                    return SAI_STATUS_NOT_SUPPORTED;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT_SERDES);
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table portSerdesIdToPortIdTable(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
+    swss::RedisPipeline pipeline(&db);
+    swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, false);
+
+    std::string attrIds =
+        "SAI_PORT_SERDES_ATTR_RX_VGA,SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST,"
+        "SAI_PORT_SERDES_ATTR_RX_FFE_TAPS_LIST";
+
+    sai_object_id_t serdesOid = 0x57000000000100;
+    sai_object_id_t portOid   = 0x1000000000200;
+
+    for (const auto& unsupported : attrs)
+    {
+        s_unsupportedAttr = std::get<2>(unsupported);
+        serdesOid++;
+        portOid++;
+
+        portSerdesIdToPortIdTable.hset("", toOid(serdesOid), toOid(portOid));
+
+        auto fc = std::make_shared<FlexCounter>("TEST_PORT_SERDES_ATTR_EACH", sai, "COUNTERS_DB");
+
+        vector<swss::FieldValueTuple> values;
+        values.emplace_back(PORT_PHY_SERDES_ATTR_ID_LIST, attrIds);
+        fc->addCounter(serdesOid, serdesOid, values);
+
+        vector<swss::FieldValueTuple> pluginValues;
+        pluginValues.emplace_back(POLL_INTERVAL_FIELD, "500");
+        pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+        pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+        fc->addCounterPlugin(pluginValues);
+
+        usleep(1000 * 700);
+
+        std::string key = toOid(portOid);
+        std::string value;
+        for (const auto& other : attrs)
+        {
+            bool found = portPhyAttrTable.hget(key, std::get<1>(other), value);
+            if (std::get<0>(other) == std::get<0>(unsupported))
+            {
+                EXPECT_FALSE(found) << std::get<1>(other)
+                    << " must not be collected when unsupported";
+            }
+            else
+            {
+                EXPECT_TRUE(found) << std::get<1>(other)
+                    << " must still be collected when only "
+                    << std::get<1>(unsupported) << " is unsupported";
+            }
+        }
+
+        fc->removeCounter(serdesOid);
+    }
+}
