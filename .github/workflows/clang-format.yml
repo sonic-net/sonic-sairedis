@@ -1,0 +1,79 @@
+name: C++ clang-format check
+
+on:
+  pull_request:
+    branches:
+      - master
+      - "202???*"
+      - "201???*"
+    paths:
+      - "**.cpp"
+      - "**.h"
+      - ".clang-format"
+      - ".github/workflows/clang-format.yml"
+
+jobs:
+  clang-format:
+    name: clang-format (changed files only)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang-format-14
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-14 100
+          clang-format --version
+
+      - name: Check formatting on changed C/C++ files
+        run: |
+          # Get list of C/C++ files changed in this PR vs base branch
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD" \
+            | grep -E '\.(cpp|h)$' \
+            | grep -vE '^SAI/' \
+            | grep -vE '^debian/' \
+            || true)
+
+          if [ -z "$CHANGED" ]; then
+            echo "No C/C++ files changed — skipping format check."
+            exit 0
+          fi
+
+          echo "Checking format for:"
+          echo "$CHANGED"
+          echo ""
+
+          FORMAT_ERRORS=0
+          while IFS= read -r file; do
+            if [ ! -f "$file" ]; then
+              continue
+            fi
+            DIFF=$(clang-format --style=file "$file" | diff "$file" - || true)
+            if [ -n "$DIFF" ]; then
+              echo "::error file=$file::Format violation detected"
+              echo "--- $file"
+              echo "$DIFF"
+              FORMAT_ERRORS=$((FORMAT_ERRORS + 1))
+            fi
+          done <<< "$CHANGED"
+
+          if [ "$FORMAT_ERRORS" -gt 0 ]; then
+            echo ""
+            echo "❌ $FORMAT_ERRORS file(s) have formatting issues."
+            echo ""
+            echo "Fix with:"
+            echo "  clang-format -i <file>"
+            echo "Or fix all changed files:"
+            echo "  git diff --name-only HEAD~1 | grep -E '\\.(cpp|h)$' | xargs clang-format -i"
+            exit 1
+          fi
+
+          echo "✅ All changed files pass clang-format check."
