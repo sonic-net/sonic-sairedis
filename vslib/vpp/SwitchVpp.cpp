@@ -135,7 +135,13 @@ void SwitchVpp::initFdbEventHandling(std::function<void()> fn)
     // before we register with VPP.
     m_fdbAgingWakeFn = std::move(fn);
 
-    vpp_l2fib_set_scan_delay(1);  /* scan interval = 1 unit = 10ms */
+    // MAC events are produced by VPP's l2fib scanner, which walks every
+    // bucket of the L2FIB hash table (256K by default) per scan, so a scan
+    // costs the same with 4 MACs as with 4000. At 10ms it kept vpp_main
+    // ~80% busy on an idle switch. Use VPP's own default of 100ms
+    // (L2FIB_EVENT_SCAN_DELAY_DEFAULT); this only delays when learned MACs
+    // are reported, not forwarding, which VPP learns in the data path.
+    vpp_l2fib_set_scan_delay(10);  /* scan interval = 10 units of 10ms = 100ms */
     int ret = vpp_want_l2_macs_events2(true, &SwitchVpp::staticMacEventCb, this);
     if (ret == 0)
         SWSS_LOG_NOTICE("FDB: registered for VPP L2 MAC push events");
@@ -1414,13 +1420,10 @@ void SwitchVpp::processFdbEntriesForAging()
 }
 
 /*
- * Static trampoline: called on the VPP API receive thread when VPP pushes a
- * batch of MAC learn/age/move events.  Must NOT acquire m_apimutex — just
- * enqueue for safe dispatch by processFdbEntriesForAging() under the mutex.
- *
- * TODO: MAC events currently arrive on the shared VPP API socket and are
- * dispatched synchronously inside the WR() polling loop. Move to a separate
- * event socket in the future.
+ * Static trampoline: called on the VPP events thread (vppProcessEvents ->
+ * vpp_sync_for_events) when VPP pushes a batch of MAC learn/age/move events
+ * on the dedicated event socket.  Must NOT acquire m_apimutex — just enqueue
+ * for safe dispatch by processFdbEntriesForAging() under the mutex.
  */
 void SwitchVpp::staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx)
 {
