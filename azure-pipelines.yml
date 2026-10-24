@@ -47,10 +47,16 @@ parameters:
   - name: vpp_run_id
     type: string
     default: ''
+  # Select containers/dependencies for manual PR-merge validation, not checkout.
+  - name: manual_target_branch
+    type: string
+    default: ''
 variables:
   - name: BUILD_BRANCH
     ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
       value: $(System.PullRequest.TargetBranch)
+    ${{ elseif ne(parameters.manual_target_branch, '') }}:
+      value: ${{ parameters.manual_target_branch }}
     ${{ else }}:
       value: $(Build.SourceBranchName)
 
