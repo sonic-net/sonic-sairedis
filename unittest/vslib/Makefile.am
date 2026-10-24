@@ -69,9 +69,18 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
 				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state \
 				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
+				vpp_sonic_ext_trim_global_set vpp_sonic_ext_trim_queue_set \
+				vpp_sonic_ext_trim_dscp_map_set \
 				vpp_pbh_profile_add_del vpp_pbh_table_add_replace vpp_pbh_table_del \
 				vpp_pbh_interface_attach_detach vpp_rule_stats_query
 tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
+
+check_PROGRAMS = sai_vpp_xlate_tests
+sai_vpp_xlate_tests_SOURCES = TestSaiVppXlate.c
+sai_vpp_xlate_tests_CFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I/usr/include/vpp_plugins \
+							-ffunction-sections -fdata-sections
+# Link only the callback/context paths exercised by the standalone test.
+sai_vpp_xlate_tests_LDFLAGS = -Wl,--gc-sections
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
@@ -79,3 +88,6 @@ tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscomm
 			  -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 TESTS = tests
+if USE_VPP
+TESTS += sai_vpp_xlate_tests
+endif

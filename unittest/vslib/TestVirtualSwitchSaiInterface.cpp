@@ -12,6 +12,7 @@ extern "C" {
 #include <gtest/gtest.h>
 
 #include "ContextConfigContainer.h"
+#include "ResourceLimiter.h"
 #include "VirtualSwitchSaiInterface.h"
 
 using namespace saivs;
@@ -106,6 +107,23 @@ TEST_F(VirtualSwitchSaiInterfaceTest, nativePacketSamplingSkipsKernelSampler)
             SAI_STATUS_SUCCESS);
 
     m_vssai->m_switchStateMap.at(m_swid) = original_state;
+}
+
+TEST_F(VirtualSwitchSaiInterfaceTest, failedSwitchCreateReleasesStateAndId)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_vssai->remove(SAI_OBJECT_TYPE_SWITCH, m_swid));
+    m_sc->m_resourceLimiter = std::make_shared<ResourceLimiter>(m_scid);
+    m_sc->m_resourceLimiter->setObjectTypeLimit(SAI_OBJECT_TYPE_SWITCH, 0);
+    sai_attribute_t attr = {};
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+    EXPECT_EQ(SAI_STATUS_INSUFFICIENT_RESOURCES,
+            m_vssai->create(SAI_OBJECT_TYPE_SWITCH, &m_swid, SAI_NULL_OBJECT_ID, 1, &attr));
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, m_swid);
+    EXPECT_TRUE(m_vssai->m_switchStateMap.empty());
+    m_sc->m_resourceLimiter->clearLimits();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_vssai->create(SAI_OBJECT_TYPE_SWITCH, &m_swid, SAI_NULL_OBJECT_ID, 1, &attr));
 }
 
 TEST_F(VirtualSwitchSaiInterfaceTest, portBulkAddRemove)
