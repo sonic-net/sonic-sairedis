@@ -77,6 +77,33 @@ jobs:
           git check-ignore --quiet MODULE.bazel.lock
           git diff --exit-code HEAD --
 
+      - name: Record the maintained registry inputs
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          import re
+          import subprocess
+          main = "https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main"
+          revision = subprocess.check_output([
+              "git", "ls-remote", "https://github.com/securely1g/sonic-bazel-registry.git",
+              "refs/heads/main",
+          ], text=True).split()[0]
+          assert re.fullmatch(r"[0-9a-f]{40}", revision)
+          configuration = Path(".bazelrc").read_text()
+          assert configuration.count(main) == 1
+          artifacts = Path("artifacts/validation").resolve()
+          (artifacts / "declared.bazelrc").write_text(configuration)
+          (artifacts / "effective.bazelrc").write_text(configuration)
+          (artifacts / "registry-inputs.json").write_text(json.dumps({
+              "declared_registry": main, "registry": main,
+              "observed_revision": revision, "draft_validation": False,
+          }, indent=2) + "\n")
+          PYTHON
+
+      - name: Test registry provenance verification
+        run: python3 -B -m unittest discover -s bazel/ci -p test_verify_packages.py
+
       - name: Check Bazel formatting
         run: >-
           bazel run ${{ matrix.bazel_args }}
@@ -119,6 +146,7 @@ jobs:
         run: >-
           bazel build ${{ matrix.bazel_args }}
           --jobs=4 --lockfile_mode=update
+          //:runtime_packages.json
           //lib:libsairedis_pkg
           //lib:libsairedis_pkg.debug_symbols
           //lib:libsairedis_dev_pkg
@@ -136,6 +164,9 @@ jobs:
           //pyext:pysairedis_pkg
           //pyext:pysairedis_pkg.debug_symbols
 
+      - name: Retain generated package metadata
+        run: cp bazel-bin/runtime_packages.json artifacts/validation/runtime_packages.json
+
       - name: Verify package and debug artifacts
         run: |
           python3 bazel/ci/verify_packages.py \
@@ -144,6 +175,7 @@ jobs:
             --image '${{ matrix.image }}' \
             --targets bazel/ci/required-targets.json \
             --contract bazel/ci/package-contract.json \
+            --registry-config .bazelrc \
             --output-dir artifacts
 
       - name: Retain available dependency resolution on failure

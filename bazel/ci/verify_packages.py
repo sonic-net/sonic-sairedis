@@ -575,7 +575,8 @@ def resolved_dependency_provenance(args, repo, validation, execution_root, decla
         "sonic-swss-common": "@sonic_swss_common//:libswsscommon_shared",
         "sonic-build-infra": "@sonic_build_infra//platforms:x86_64_trixie",
     }
-    registries = re.findall(r"--registry=(\S+)", (repo / ".bazelrc").read_text())
+    registries = re.findall(r"--registry=(\S+)", args.registry_config.read_text())
+    require(registries, "effective Bazel registry configuration contains no registries")
     result = {}
     for name, target in targets.items():
         # The same headers can exist in both execution and target configurations.
@@ -868,11 +869,14 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--repo-root", type=Path, default=Path("."))
     parser.add_argument("--bazel", default="bazel", help="Bazel executable path, including a local startup wrapper when needed")
+    parser.add_argument("--registry-config", type=Path,
+                        help="Effective Bazel rc used by the build; defaults to the repository .bazelrc")
     parser.add_argument("--gdb", default="gdb")
     parser.add_argument("--host-packages", type=Path)
     parser.add_argument("--event-revision", default=os.environ.get("GITHUB_SHA"))
     args = parser.parse_args()
     repo = args.repo_root.resolve()
+    args.registry_config = (args.registry_config or repo / ".bazelrc").resolve()
     output_dir = args.output_dir.resolve()
     validation = output_dir / "validation"
     validation.mkdir(parents=True, exist_ok=True)
@@ -898,6 +902,7 @@ def main():
             "contract": {"path": str(contract_path), **stable_file(contract_path)},
             "required_targets": {"path": str(targets_path), **stable_file(targets_path)},
             "verifier": {"path": str(Path(__file__).resolve()), **stable_file(Path(__file__).resolve())},
+            "registry_config": {"path": str(args.registry_config), **stable_file(args.registry_config)},
         }
         source_before = source_snapshot(repo, output_dir)
         provenance["source_before"] = source_before
