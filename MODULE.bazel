@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-sairedis",
-    version = "0.0.1",
+    version = "0.0.2",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -13,17 +13,20 @@ bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = Tr
 bazel_dep(name = "bazel_lib", version = "3.1.1")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "googletest", version = "1.16.0", repo_name = "com_google_googletest")
-bazel_dep(name = "libnl3", version = "3.7.0.sonic-buildimage")
+bazel_dep(name = "libnl3", version = "3.7.0.sonic.5")
 bazel_dep(name = "platforms", version = "1.1.0")
-bazel_dep(name = "rules_cc", version = "0.2.16")
-bazel_dep(name = "rules_distroless", version = "0.9.4")
+bazel_dep(name = "rules_cc", version = "0.2.20")
+bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.13")
 bazel_dep(name = "rules_perl", version = "1.1.2")
 bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
+
+bazel_dep(name = "rules_rs", version = "0.1.0", dev_dependency = True)
+
 bazel_dep(name = "swig", version = "4.3.0.bcr.2")
-bazel_dep(name = "tar.bzl", version = "0.10.5")
-bazel_dep(name = "sonic-build-infra", version = "0.0.13-ff408bafc35ce0e3d7a0bd27803debdc2a921de6", repo_name = "sonic_build_infra")
-bazel_dep(name = "sonic-swss-common", version = "0.0.0-5ee19a9375e667c0d507239927745de8fa29be07", repo_name = "sonic_swss_common")
+bazel_dep(name = "tar.bzl", version = "0.10.5-sonic.1")
+bazel_dep(name = "sonic-build-infra", version = "0.0.22-a12bc826d6f811a157db5c7c02a2fe033896cc14", repo_name = "sonic_build_infra")
+bazel_dep(name = "sonic-swss-common", version = "0.0.5-326ca764197ac788dfd55aa935ff728180745bde", repo_name = "sonic_swss_common")
 bazel_dep(name = "sai", version = "1.18.0-sonic.1", repo_name = "sai_source")
 
 gcc = use_extension("@sonic_build_infra//toolchains/gcc:extensions.bzl", "gcc")
@@ -35,7 +38,10 @@ register_toolchains("@gcc_toolchains//:all")
 apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
 apt.install(
     dependency_set = "trixie",
-    packages = ["zlib1g-dev"],
+    packages = [
+        "zlib1g",
+        "zlib1g-dev",
+    ],
     suites = [
         "trixie",
         "trixie-updates",
@@ -43,3 +49,22 @@ apt.install(
     ],
 )
 use_repo(apt, "trixie")
+
+# Common also exports Rust bindings. This standalone C/C++ consumer does not
+# build them, but the rules_rs facade needs an explicit root toolchain policy.
+rust = use_extension("@rules_rs//rs:rules_rust_reexported_extensions.bzl", "rust", dev_dependency = True)
+rust.toolchain(versions = [])
+
+# Keep SONiC's reproducible TAR timestamps selected over upstream's stable
+# version, which sorts after the historical patched prerelease name.
+single_version_override(
+    module_name = "tar.bzl",
+    version = "0.10.5-sonic.1",
+)
+
+# Distroless uses rules_cc's private cc_import implementation; 0.2.21+ needs
+# a C++ runtime toolchain type introduced after this workspace's Bazel 8.5.1.
+single_version_override(
+    module_name = "rules_cc",
+    version = "0.2.20",
+)

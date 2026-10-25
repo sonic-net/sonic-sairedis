@@ -20,3 +20,6 @@ build --linkopt=-Wl,--enable-new-dtags
 build:stamp --stamp
 build:stamp --workspace_status_command=bazel/stamp_vars.sh
 build --config=stamp
+
+# Materialize cached kernel tool files through their original directory aliases.
+build --remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$

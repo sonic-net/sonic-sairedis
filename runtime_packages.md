@@ -1,24 +1,26 @@
-# Runtime package metadata
+# Generated runtime package metadata
 
-`//:runtime_packages.json` describes the Debian package identities represented by
-this module's source-built runtime TARs in SONiC Trixie images. An image consumes
-the metadata with the corresponding TAR and the selected `MODULE.bazel`. For
-example, it can record the library's version and dependencies without copying
-those facts into its own package inventory.
+`//:runtime_packages.json` is generated from this repository's existing
+`debian/control` and `debian/changelog`, the package-to-TAR mapping in
+`BUILD.bazel`, and the exact source-built runtime payloads. Change package names,
+descriptions and explicit dependency policy in the Debian files; there is no
+second checked-in copy of those fields.
 
-The schema is `1`; `module` names the Bazel source module, and `packages` maps
-Debian package names to `runtime_target` (a label relative to this repository)
-and `control_fields`. Keep these fields aligned with the source package's
-version, runtime dependencies and selected features when changing the producer.
-The image supplies its required paths/modes separately.
+The shared `runtime_packages` rule computes shared-library dependencies from the
+selected payloads and their declared source/APT dependency metadata. Its output
+also carries the package owner's public runtime target. The consuming OCI rule
+checks that target, hashes the actual TAR and reads the selected module version
+for source provenance. Architecture and feature selection follow the Bazel
+configuration. Unresolved dependency substitutions fail the build.
 
-There is deliberately no frozen source commit, machine architecture, installed
-size, conffile checksum or installed status in this file. The consuming rule
-checks the actual TAR target and payload hash and reads the selected module
-version to record source provenance. It determines the target architecture and
-installation state from the build and image. A module version with a commit
-suffix identifies that source commit; a plain version is not an exact Git SHA.
+The rule generates metadata and library dependency information only. It does
+not build Debian packages, run package installation scripts, or change the
+legacy Make package recipes.
 
-This metadata does not create a DEB, run maintainer scripts or install a package.
-The image owner must still preserve and validate required installation behavior.
-The supported consumer configuration is SONiC Trixie on AMD64 and ARM64.
+Build the metadata with `bazel build //:runtime_packages.json`. Native CI builds
+this target alongside the corresponding runtime TARs.
+
+For VS with `--//:enable_dashsai=True`, supply both the existing `--//:dash_sai`
+SDK flag and `--//:dash_runtime_metadata=@sonic_dash//:runtime_packages.json`.
+The metadata input describes the same source-built DASH library selected for
+linking. The default VS build does not require the optional DASH module.

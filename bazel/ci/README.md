@@ -29,6 +29,14 @@ mutable inputs will resolve identically later. Confirm that the root
 `MODULE.bazel.lock` is ignored and untracked, and that generation leaves tracked
 files unchanged when validating changes to this workflow.
 
+CI uses the tracked `.bazelrc`, just like local builds, and records the observed
+registry `main` revision in `registry-inputs.json`. The retained
+`declared.bazelrc` and `effective.bazelrc` copies both match that tracked file;
+CI does not substitute a draft snapshot or wrap Bazel. The package verifier
+hashes and rechecks the selected configuration and requires each fetched module
+version and registry source hash to match the declarations and selected registry.
+Stale lock entries from other registries cannot satisfy that check.
+
 ## Required targets
 
 `required-targets.json` lists the canonical aggregate, seven tests that do not
