@@ -596,43 +596,6 @@ config_syncd_marvell_prestera()
     [ -e /dev/net/tun ] || ( mkdir -p /dev/net && mknod /dev/net/tun c 10 200 )
 }
 
-config_syncd_barefoot()
-{
-    PROFILE_FILE="$HWSKU_DIR/sai.profile"
-    if [ ! -f $PROFILE_FILE ]; then
-        # default profile file
-        PROFILE_FILE="/tmp/sai.profile"
-        echo "SAI_KEY_WARM_BOOT_WRITE_FILE=/var/warmboot/sai-warmboot.bin" > $PROFILE_FILE
-        echo "SAI_KEY_WARM_BOOT_READ_FILE=/var/warmboot/sai-warmboot.bin" >> $PROFILE_FILE
-    fi
-    CMD_ARGS+=" -l -p $PROFILE_FILE"
-    # Check if SDE profile is configured
-    P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
-    if [[ -n "$P4_PROFILE" ]]; then
-        if [[ ( -d /opt/bfn/install_${P4_PROFILE} ) && ( -L /opt/bfn/install || ! -e /opt/bfn/install ) ]]; then
-            ln -srfn /opt/bfn/install_${P4_PROFILE} /opt/bfn/install
-        fi
-    else
-        CHIP_FAMILY_INFO="$(cat $HWSKU_DIR/switch-tna-sai.conf | grep chip_family | awk -F : '{print $2}' | cut -d '"'  -f 2)"
-        CHIP_FAMILY=${CHIP_FAMILY_INFO,,}
-        [[ "$CHIP_FAMILY" == "tofino" ]] && P4_PTYPE="x" || P4_PTYPE="y"
-        # Check if the current profile fits the ASIC family
-        PROFILE_DEFAULT=$(readlink /opt/bfn/install)
-        if [[ "$PROFILE_DEFAULT" != "install_$P4_PTYPE"*"_profile" && "$PROFILE_DEFAULT" != *"_$CHIP_FAMILY"  ]]; then
-            # Find suitable profile
-            PROFILE=$(ls -d /opt/bfn/install_$P4_PTYPE*_profile -d  /opt/bfn/install_*_$CHIP_FAMILY 2> /dev/null | head -1)
-            if [[ ! -z $PROFILE  ]]; then
-                ln -srfn $PROFILE /opt/bfn/install
-            fi
-        fi
-    fi
-    export PYTHONHOME=/opt/bfn/install/
-    export PYTHONPATH=/opt/bfn/install/
-    export ONIE_PLATFORM=`grep onie_platform /etc/machine.conf | awk 'BEGIN { FS = "=" } ; { print $2 }'`
-    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/bfn/install/lib/platform/$ONIE_PLATFORM:/opt/bfn/install/lib:/opt/bfn/install/lib/tofinopd/switch
-    ./opt/bfn/install/bin/dma_setup.sh
-}
-
 config_syncd_nephos()
 {
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
@@ -836,8 +799,6 @@ config_syncd()
         config_syncd_centec
     elif [ "$SONIC_ASIC_TYPE" == "marvell-prestera" ]; then
         config_syncd_marvell_prestera
-     elif [ "$SONIC_ASIC_TYPE" == "barefoot" ]; then
-         config_syncd_barefoot
     elif [ "$SONIC_ASIC_TYPE" == "nephos" ]; then
         config_syncd_nephos
     elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
