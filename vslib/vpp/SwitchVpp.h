@@ -26,6 +26,7 @@
 #include <map>
 #include <unordered_map>
 #include <mutex>
+#include <condition_variable>
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -1644,7 +1645,17 @@ namespace saivs
              */
             VppInterfaceRegistry m_ifaceRegistry;
 
+            /*
+             * The events thread spends nearly all of its life waiting out its
+             * poll interval, so clearing the flag alone would leave the whole
+             * of that interval in every destructor: nanosleep() does not
+             * observe it.  Waiting on a condition variable instead lets join()
+             * return as soon as the flag is cleared, which is why the flag is
+             * written under m_vpp_events_mutex rather than left plain.
+             */
             bool m_run_vpp_events_thread = true;
+            std::mutex m_vpp_events_mutex;
+            std::condition_variable m_vpp_events_cv;
             std::atomic<bool> m_operResyncDue { false };
             bool VppEventsThreadStarted = false;
             std::shared_ptr<std::thread> m_vpp_thread;

@@ -93,8 +93,16 @@ SwitchVpp::~SwitchVpp()
     // fires against a partially-destroyed object during join().
     deinitFdbEventHandling();
 
-    // Signal the vpp events thread to stop
-    m_run_vpp_events_thread = false;
+    // Signal the vpp events thread to stop.  Under the lock and with a
+    // notify, so a thread parked on its poll interval wakes now rather than
+    // being joined only once the interval happens to expire.
+    {
+        std::lock_guard<std::mutex> lock(m_vpp_events_mutex);
+
+        m_run_vpp_events_thread = false;
+    }
+
+    m_vpp_events_cv.notify_all();
 
     // Wait for the thread to finish gracefully
     if (m_vpp_thread && m_vpp_thread->joinable()) {
