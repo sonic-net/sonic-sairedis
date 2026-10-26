@@ -3702,6 +3702,72 @@
           "source_reference": "debian/syncd-vs.init"
         },
         {
+          "path": "etc/rc0.d/K01syncd",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "../init.d/syncd",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "etc/rc6.d/K01syncd",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "../init.d/syncd",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
+          "path": "etc/rcS.d/S01syncd",
+          "type": "symlink",
+          "role": "symlink",
+          "linkname": "../init.d/syncd",
+          "required_metadata": {
+            "mode": "0777",
+            "uid": 0,
+            "gid": 0
+          },
+          "metadata_evidence": {
+            "classification": "literal_explicit_component_mtree",
+            "source": "syncd/BUILD.bazel"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0777",
+              "uid": 0,
+              "gid": 0
+            }
+          }
+        },
+        {
           "path": "usr/bin/brcm_common_config_ut.sh",
           "type": "file",
           "role": "script",

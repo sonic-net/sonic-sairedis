@@ -24,3 +24,10 @@ For VS with `--//:enable_dashsai=True`, supply both the existing `--//:dash_sai`
 SDK flag and `--//:dash_runtime_metadata=@sonic_dash//:runtime_packages.json`.
 The metadata input describes the same source-built DASH library selected for
 linking. The default VS build does not require the optional DASH module.
+
+`//syncd:syncd_pkg` includes the init script and its service links:
+`etc/rc0.d/K01syncd`, `etc/rc6.d/K01syncd`, and `etc/rcS.d/S01syncd` point to
+`../init.d/syncd`. These root-owned links match the script's start runlevel `S`
+and stop runlevels `0` and `6`. They are also included when DASH is enabled,
+so OCI consumers can install the TAR without recreating the links. Building
+the TAR does not run package installation scripts or start a service.
