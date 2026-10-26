@@ -311,6 +311,9 @@ tar(
     srcs = ["//:debian/syncd-vs.init"],
     mtree = [
         "etc/init.d/syncd uid=0 gid=0 mode=0755 type=file content=$(location //:debian/syncd-vs.init)",
+        "etc/rc0.d/K01syncd uid=0 gid=0 mode=0777 time=0 type=link link=../init.d/syncd",
+        "etc/rc6.d/K01syncd uid=0 gid=0 mode=0777 time=0 type=link link=../init.d/syncd",
+        "etc/rcS.d/S01syncd uid=0 gid=0 mode=0777 time=0 type=link link=../init.d/syncd",
     ],
 )
 
