@@ -182,6 +182,7 @@ namespace saivs
                 bool mtu_changed = false;
                 bool mpls_changed = false;
                 bool admin_changed = false;
+                bool ip6_enabled = false;
                 bool resync_children = false;
             };
 
@@ -824,6 +825,10 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list,
                     _Inout_ RifCreateState& state);
+
+            sai_status_t vpp_rif_ip6_enable_disable(
+                    _In_ const std::string& hwif_name,
+                    _In_ bool enable);
 
             sai_status_t vpp_update_router_interface(
                     _In_ sai_object_id_t object_id,

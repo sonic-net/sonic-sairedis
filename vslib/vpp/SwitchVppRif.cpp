@@ -1982,6 +1982,11 @@ sai_status_t SwitchVpp::rollbackRifCreate(
             check(vpp_apply_loopback_action(state.hwif, SAI_PACKET_ACTION_FORWARD),
                     "restore loopback action");
         }
+        if (state.ip6_enabled)
+        {
+            check(sw_interface_ip6_enable_disable(state.hwif.c_str(), false),
+                    "release IPv6 reference");
+        }
         if (state.mpls_changed)
         {
             check(sw_interface_set_mpls_enable(state.hwif.c_str(), state.previous_mpls),
@@ -2000,6 +2005,60 @@ sai_status_t SwitchVpp::rollbackRifCreate(
     }
 
     return status;
+}
+
+/*
+ * VPP only materialises an interface's IPv6 link-local address inside
+ * ip6_link_enable() (src/vnet/ip/ip6_link.c), and the only thing that used to
+ * reach it on a BVI, a bond or a sub-interface was the *implicit*
+ * ip6_link_enable() that ip6_add_del_interface_address() performs when the
+ * first global IPv6 address lands (src/vnet/ip/ip6_forward.c). Leaning on that
+ * side effect is not reliable: a RIF that is IPv6 admin-up but carries no
+ * global IPv6 address.
+ *
+ * ip6_link_enable()/ip6_link_disable() are reference counted (ip6_link_t.
+ * il_locks), so the reference taken here composes with the address-driven
+ * enables and with the hostif-driven one in createHostif(); it is released on
+ * RIF remove. VPP reports an already-enabled interface as VALUE_EXIST and a
+ * not-enabled one as IP6_NOT_ENABLED, yet still adjusts the lock count in the
+ * first case, so both are the no-op they look like and neither is an error.
+ */
+sai_status_t SwitchVpp::vpp_rif_ip6_enable_disable(
+        _In_ const std::string& hwif_name,
+        _In_ bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    const int VPP_API_ERROR_IP6_NOT_ENABLED = -62;
+    const int VPP_API_ERROR_VALUE_EXIST = -81;
+
+    if (hwif_name.empty())
+    {
+        SWSS_LOG_ERROR("Cannot %s IPv6: no VPP interface resolved",
+                enable ? "enable" : "disable");
+        return SAI_STATUS_FAILURE;
+    }
+
+    int ret = sw_interface_ip6_enable_disable(hwif_name.c_str(), enable);
+
+    if (ret == VPP_API_ERROR_VALUE_EXIST || ret == VPP_API_ERROR_IP6_NOT_ENABLED)
+    {
+        SWSS_LOG_NOTICE("IPv6 already %s on router interface %s",
+                enable ? "enabled" : "disabled", hwif_name.c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("Failed to %s IPv6 on router interface %s (%d)",
+                enable ? "enable" : "disable", hwif_name.c_str(), ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("IPv6 %s on router interface %s",
+            enable ? "enabled" : "disabled", hwif_name.c_str());
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::vpp_create_router_interface(
@@ -2023,10 +2082,30 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
         return SAI_STATUS_FAILURE;
     }
+
+    /*
+     * SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE defaults to true, so an absent
+     * attribute means the RIF is IPv6 admin-up and VPP has to hold a link-local
+     * for it.
+     */
+    auto attr_v6_state = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
+    const bool want_ip6 = (attr_v6_state == NULL) || attr_v6_state->value.booldata;
+
     if (attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_VLAN)
     {
         SWSS_LOG_NOTICE("Invoking BVI interface create for attr type %d", attr_type->value.s32);
-        return vpp_create_bvi_interface(attr_count, attr_list, state);
+
+        CHECK_STATUS(vpp_create_bvi_interface(attr_count, attr_list, state));
+
+        // The BVI MAC is programmed by create_bvi_interface() above, so the
+        // link-local VPP derives here already matches the kernel's Vlan<N>.
+        if (want_ip6 && !state.hwif.empty())
+        {
+            CHECK_STATUS(vpp_rif_ip6_enable_disable(state.hwif, true));
+            state.ip6_enabled = true;
+        }
+
+        return SAI_STATUS_SUCCESS;
     }
     if (attr_type->value.s32 != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT &&
         attr_type->value.s32 != SAI_ROUTER_INTERFACE_TYPE_PORT)
@@ -2336,6 +2415,54 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         state.loopback_applied = true;
     }
 
+    /*
+     * Enable IPv6 explicitly, and make sure the MAC is right before doing so:
+     * ip6_link_enable() derives the EUI-64 link-local once, on the first lock,
+     * and never recomputes it. For a bond that is a real ordering hazard -
+     * create_bond_interface() asks VPP for use_custom_mac=0, so
+     * BondEthernet<N> only inherits a MAC once its first member is enslaved,
+     * which can happen after this RIF is created. Program the RIF source MAC
+     * (the switch MAC, as orchagent sends it) onto the bond first so the
+     * link-local matches the kernel's PortChannel<N>. A sub-interface has no
+     * MAC of its own - vnet_get_sup_sw_interface() resolves it to the parent -
+     * so this covers both RIF types on a LAG. A physical port already had its
+     * MAC set by createHostif() before that enabled IPv6 on it.
+     */
+    if (want_ip6 && ot == SAI_OBJECT_TYPE_LAG)
+    {
+        sai_mac_t rif_mac;
+
+        auto attr_mac = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS,
+                attr_count, attr_list);
+
+        if (attr_mac != NULL)
+        {
+            memcpy(rif_mac, attr_mac->value.mac, sizeof(sai_mac_t));
+        }
+        else
+        {
+            sai_attribute_t sw_attr;
+            memset(&sw_attr, 0, sizeof(sw_attr));
+            sw_attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+
+            CHECK_STATUS(get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &sw_attr));
+            memcpy(rif_mac, sw_attr.value.mac, sizeof(sai_mac_t));
+        }
+
+        if (sw_interface_set_mac(parent_hwif.c_str(), rif_mac) != 0)
+        {
+            SWSS_LOG_ERROR("Failed to set MAC %s on %s",
+                    sai_serialize_mac(rif_mac).c_str(), parent_hwif.c_str());
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    if (want_ip6)
+    {
+        CHECK_STATUS(vpp_rif_ip6_enable_disable(state.hwif, true));
+        state.ip6_enabled = true;
+    }
+
     bool v4_is_up = false, v6_is_up = false;
 
     if (attr_type_v4 != NULL)
@@ -2620,6 +2747,24 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
          * VPP requires no addresses on the interface when rebinding to a new VRF table
          * (returns VNET_API_ERROR_ADDRESS_FOUND_FOR_INTERFACE / -114 otherwise). */
         interface_ip_address_del_all(hwif_name.c_str());
+
+        /*
+         * Release the IPv6 reference taken by vpp_create_router_interface().
+         * Only the port/LAG RIF needs this: a sub-port and a BVI are torn down
+         * by deleting the VPP interface itself, which drops every lock with
+         * it. The addresses are already gone above, so the only outstanding
+         * references left here are this one and - on a physical port - the one
+         * createHostif() holds, which must survive the RIF remove. Mirror the
+         * create-side default so the count stays balanced for a RIF that was
+         * created IPv6 admin-down.
+         */
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) != SAI_STATUS_SUCCESS ||
+            attr.value.booldata)
+        {
+            CHECK_STATUS(vpp_rif_ip6_enable_disable(hwif_name, false));
+        }
 
         uint32_t vrf_id = 0;
         /* For now support is only for ipv4 tables */
