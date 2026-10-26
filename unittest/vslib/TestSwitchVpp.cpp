@@ -37,16 +37,22 @@ namespace
         bool eligible;
         uint64_t rate;
         uint64_t capacity;
+        std::string hwif;
     };
 
     std::vector<GlobalTrimCall> global_calls;
     std::vector<QueueTrimCall> queue_calls;
     std::vector<std::array<uint8_t, 64>> map_calls;
+    std::map<std::pair<std::string, uint8_t>, QueueTrimCall> queue_state;
+    std::vector<std::string> trim_calls;
     std::deque<int> global_results;
+    std::deque<int> queue_results;
     std::deque<int> map_results;
 
     int nextResult(std::deque<int> &results)
     {
+        SWSS_LOG_ENTER();
+
         if (results.empty())
         {
             return 0;
@@ -60,22 +66,33 @@ namespace
 extern "C" int __wrap_vpp_sonic_ext_trim_global_set(
         bool enabled, uint16_t size, uint8_t, uint8_t dscp, uint8_t tc, uint8_t queue)
 {
+    SWSS_LOG_ENTER();
+
     global_calls.push_back({enabled, size, dscp, tc, queue});
+    trim_calls.push_back("global");
     return nextResult(global_results);
 }
 
 extern "C" int __wrap_vpp_sonic_ext_trim_queue_set(
-        const char *, uint8_t queue, bool eligible, uint64_t rate, uint64_t capacity)
+        const char *hwif, uint8_t queue, bool eligible, uint64_t rate, uint64_t capacity)
 {
-    queue_calls.push_back({queue, eligible, rate, capacity});
-    return 0;
+    SWSS_LOG_ENTER();
+
+    queue_calls.push_back({queue, eligible, rate, capacity, hwif});
+    // Model a lost reply after the update reached VPP.
+    queue_state[{hwif, queue}] = queue_calls.back();
+    trim_calls.push_back("queue");
+    return nextResult(queue_results);
 }
 
 extern "C" int __wrap_vpp_sonic_ext_trim_dscp_map_set(const uint8_t map[64])
 {
+    SWSS_LOG_ENTER();
+
     std::array<uint8_t, 64> copy;
     std::copy(map, map + copy.size(), copy.begin());
     map_calls.push_back(copy);
+    trim_calls.push_back("map");
     return nextResult(map_results);
 }
 
@@ -134,7 +151,7 @@ TEST(SwitchVpp, isTrimDataplaneAttr)
     EXPECT_TRUE(SwitchVpp::isTrimDataplaneAttr(
         SAI_OBJECT_TYPE_SCHEDULER, SAI_SCHEDULER_ATTR_MAX_BANDWIDTH_RATE));
 
-    // Port QoS-map (re)bindings and in-place QoS-map edits re-resolve the
+    // Port map (re)bindings and in-place map edits re-resolve the
     // switch-global DSCP->queue trim table.
     EXPECT_TRUE(SwitchVpp::isTrimDataplaneAttr(
         SAI_OBJECT_TYPE_PORT, SAI_PORT_ATTR_QOS_DSCP_TO_TC_MAP));
@@ -157,6 +174,8 @@ class SwitchVppTrimTest : public ::testing::Test
 protected:
     void SetUp() override
     {
+        SWSS_LOG_ENTER();
+
         vppMock().reset();
         auto context = ContextConfigContainer::getDefault()->get(0);
         config = context->m_scc->getConfig(0);
@@ -169,13 +188,18 @@ protected:
         global_calls.clear();
         queue_calls.clear();
         map_calls.clear();
+        queue_state.clear();
+        trim_calls.clear();
         global_results.clear();
+        queue_results.clear();
         map_results.clear();
         vppMock().interfaceLookups = 0;
     }
 
     static void stopEvents(const std::shared_ptr<SwitchVpp> &sw)
     {
+        SWSS_LOG_ENTER();
+
         sw->m_run_vpp_events_thread = false;
         sw->m_vpp_thread->join();
         sw->m_operResyncDue.store(false);
@@ -183,6 +207,8 @@ protected:
 
     sai_object_id_t object(sai_object_type_t type)
     {
+        SWSS_LOG_ENTER();
+
         auto oid = manager->allocateNewObjectId(type, switch_id);
         state->m_objectHash[type][sai_serialize_object_id(oid)] = {};
         return oid;
@@ -190,6 +216,8 @@ protected:
 
     void put(sai_object_type_t type, sai_object_id_t oid, sai_attribute_t attr)
     {
+        SWSS_LOG_ENTER();
+
         auto wrap = std::make_shared<SaiAttrWrap>(type, &attr);
         state->m_objectHash[type][sai_serialize_object_id(oid)][
                 wrap->getAttrMetadata()->attridname] = wrap;
@@ -197,6 +225,8 @@ protected:
 
     static sai_attribute_t oidAttr(sai_attr_id_t id, sai_object_id_t value)
     {
+        SWSS_LOG_ENTER();
+
         sai_attribute_t attr = {};
         attr.id = id;
         attr.value.oid = value;
@@ -205,6 +235,8 @@ protected:
 
     sai_status_t setSize(uint32_t value)
     {
+        SWSS_LOG_ENTER();
+
         sai_attribute_t attr = {};
         attr.id = SAI_SWITCH_ATTR_PACKET_TRIM_SIZE;
         attr.value.u32 = value;
@@ -213,6 +245,8 @@ protected:
 
     sai_status_t setSwitchByte(sai_attr_id_t id, uint8_t value)
     {
+        SWSS_LOG_ENTER();
+
         sai_attribute_t attr = {};
         attr.id = id;
         attr.value.u8 = value;
@@ -222,14 +256,39 @@ protected:
     sai_status_t setOid(sai_object_type_t type, sai_object_id_t oid,
             sai_attr_id_t id, sai_object_id_t value)
     {
+        SWSS_LOG_ENTER();
+
         auto attr = oidAttr(id, value);
         return state->set_internal(type, sai_serialize_object_id(oid), &attr);
     }
 
-    sai_object_id_t port(const std::vector<sai_object_id_t> &queues = {})
+    sai_object_id_t trimQueue(uint8_t index)
     {
+        SWSS_LOG_ENTER();
+
+        auto profile = object(SAI_OBJECT_TYPE_BUFFER_PROFILE);
+        sai_attribute_t attr = {};
+        attr.id = SAI_BUFFER_PROFILE_ATTR_PACKET_ADMISSION_FAIL_ACTION;
+        attr.value.s32 = SAI_BUFFER_PROFILE_PACKET_ADMISSION_FAIL_ACTION_DROP_AND_TRIM;
+        put(SAI_OBJECT_TYPE_BUFFER_PROFILE, profile, attr);
+        auto queue = object(SAI_OBJECT_TYPE_QUEUE);
+        put(SAI_OBJECT_TYPE_QUEUE, queue, oidAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, profile));
+        attr.id = SAI_QUEUE_ATTR_TYPE;
+        attr.value.s32 = SAI_QUEUE_TYPE_UNICAST;
+        put(SAI_OBJECT_TYPE_QUEUE, queue, attr);
+        attr.id = SAI_QUEUE_ATTR_INDEX;
+        attr.value.u8 = index;
+        put(SAI_OBJECT_TYPE_QUEUE, queue, attr);
+        return queue;
+    }
+
+    sai_object_id_t port(const std::vector<sai_object_id_t> &queues = {},
+            const std::string &hwif = "pg0", const std::string &name = "Ethernet0")
+    {
+        SWSS_LOG_ENTER();
+
         auto oid = object(SAI_OBJECT_TYPE_PORT);
-        state->m_ifaceRegistry.addPhysicalPort("pg0", "Ethernet0", oid);
+        state->m_ifaceRegistry.addPhysicalPort(hwif, name, oid);
         sai_attribute_t attr = {};
         attr.id = SAI_PORT_ATTR_TYPE;
         attr.value.s32 = SAI_PORT_TYPE_LOGICAL;
@@ -245,6 +304,8 @@ protected:
     void qosMaps(sai_object_id_t &port_id, sai_object_id_t &dscp_map,
             sai_object_id_t &queue_map)
     {
+        SWSS_LOG_ENTER();
+
         port_id = port();
         dscp_map = object(SAI_OBJECT_TYPE_QOS_MAP);
         queue_map = object(SAI_OBJECT_TYPE_QOS_MAP);
@@ -675,6 +736,287 @@ TEST_F(SwitchVppTrimTest, failedRollbackRequiresReconciliationBeforeNextSet)
     EXPECT_EQ(SAI_STATUS_SUCCESS, setSwitchByte(SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE, 48));
     EXPECT_FALSE(state->m_trim_reconcile_pending);
     EXPECT_EQ(48u, state->m_trim_policy.dscp_value);
+}
+
+TEST_F(SwitchVppTrimTest, queueFailureStopsBeforeRemainingQueuesAndClassifier)
+{
+    port({trimQueue(1), trimQueue(2)});
+    port({trimQueue(1)}, "pg1", "Ethernet4");
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    queue_calls.clear();
+    map_calls.clear();
+    trim_calls.clear();
+    queue_results = {-99, -99};
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, setSwitchByte(SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE, 48));
+    EXPECT_EQ((std::vector<std::string>{"global", "queue", "global", "queue"}), trim_calls);
+    EXPECT_EQ(2u, queue_calls.size());
+    EXPECT_TRUE(map_calls.empty());
+    EXPECT_TRUE(state->m_trim_reconcile_pending);
+    EXPECT_EQ(0u, state->m_trim_policy.dscp_value);
+
+    global_results = {-99};
+    EXPECT_EQ(SAI_STATUS_FAILURE, setSwitchByte(SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE, 49));
+    EXPECT_EQ(2u, queue_calls.size());
+    EXPECT_EQ(0u, state->m_trim_policy.dscp_value);
+    EXPECT_TRUE(state->m_trim_reconcile_pending);
+
+    queue_calls.clear();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setSwitchByte(SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE, 49));
+    EXPECT_EQ(6u, queue_calls.size());
+    EXPECT_EQ(2u, map_calls.size());
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+    EXPECT_EQ(49u, state->m_trim_policy.dscp_value);
+}
+
+TEST_F(SwitchVppTrimTest, queueFailureRestoresCommittedBinding)
+{
+    auto queue = trimQueue(1);
+    auto attr = oidAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, SAI_NULL_OBJECT_ID);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->get(SAI_OBJECT_TYPE_QUEUE, queue, 1, &attr));
+    auto profile = attr.value.oid;
+    port({queue, trimQueue(2)});
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    queue_calls.clear();
+    map_calls.clear();
+    queue_results = {-99};
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, setOid(
+            SAI_OBJECT_TYPE_QUEUE, queue, SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, SAI_NULL_OBJECT_ID));
+    ASSERT_EQ(3u, queue_calls.size());
+    EXPECT_FALSE(queue_calls[0].eligible);
+    EXPECT_TRUE(queue_calls[1].eligible);
+    EXPECT_TRUE(queue_calls[2].eligible);
+    EXPECT_EQ(1u, map_calls.size());
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->get(SAI_OBJECT_TYPE_QUEUE, queue, 1, &attr));
+    EXPECT_EQ(profile, attr.value.oid);
+    EXPECT_TRUE(queue_state.at({"pg0", 1}).eligible);
+    EXPECT_TRUE(queue_state.at({"pg0", 2}).eligible);
+}
+
+TEST_F(SwitchVppTrimTest, bestEffortCreateRecordsFailedRefreshForReconciliation)
+{
+    port({trimQueue(1), trimQueue(2)});
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    queue_calls.clear();
+    map_calls.clear();
+    queue_results = {-99};
+    auto profile = manager->allocateNewObjectId(SAI_OBJECT_TYPE_BUFFER_PROFILE, switch_id);
+    sai_attribute_t attr = {};
+    attr.id = SAI_BUFFER_PROFILE_ATTR_PACKET_ADMISSION_FAIL_ACTION;
+    attr.value.s32 = SAI_BUFFER_PROFILE_PACKET_ADMISSION_FAIL_ACTION_DROP_AND_TRIM;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, state->create_internal(SAI_OBJECT_TYPE_BUFFER_PROFILE,
+            sai_serialize_object_id(profile), switch_id, 1, &attr));
+    EXPECT_TRUE(state->m_trim_reconcile_pending);
+    EXPECT_EQ(1u, queue_calls.size());
+    EXPECT_TRUE(map_calls.empty());
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->get(SAI_OBJECT_TYPE_BUFFER_PROFILE, profile, 1, &attr));
+    EXPECT_EQ(SAI_BUFFER_PROFILE_PACKET_ADMISSION_FAIL_ACTION_DROP_AND_TRIM, attr.value.s32);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setSwitchByte(SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE, 48));
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+}
+
+TEST_F(SwitchVppTrimTest, defaultOffDoesNotProgramQueues)
+{
+    auto queue = trimQueue(1);
+    port({queue});
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->create_internal(
+            SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(switch_id), switch_id, 0, nullptr));
+    EXPECT_TRUE(queue_calls.empty());
+    EXPECT_TRUE(map_calls.empty());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setOid(
+            SAI_OBJECT_TYPE_QUEUE, queue, SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, SAI_NULL_OBJECT_ID));
+    EXPECT_TRUE(queue_calls.empty());
+    EXPECT_TRUE(map_calls.empty());
+}
+
+TEST_F(SwitchVppTrimTest, disableClearsAllSlotsWithoutQueueMetadataBeforeUnbinding)
+{
+    auto first = trimQueue(1);
+    auto second = trimQueue(2);
+    auto third = trimQueue(1);
+    auto first_port = port({first, second});
+    auto second_port = port({third}, "pg1", "Ethernet4");
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    state->m_objectHash[SAI_OBJECT_TYPE_PORT][sai_serialize_object_id(first_port)]
+        .erase("SAI_PORT_ATTR_QOS_QUEUE_LIST");
+    state->m_objectHash[SAI_OBJECT_TYPE_PORT][sai_serialize_object_id(second_port)]
+        .erase("SAI_PORT_ATTR_QOS_QUEUE_LIST");
+    queue_calls.clear();
+    map_calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(0));
+    ASSERT_EQ(16u, queue_calls.size());
+    EXPECT_EQ(16u, queue_state.size());
+    for (const auto &entry : queue_state)
+    {
+        EXPECT_FALSE(entry.second.eligible);
+        EXPECT_EQ(UINT64_MAX, entry.second.rate);
+        EXPECT_EQ(UINT64_MAX, entry.second.capacity);
+    }
+    EXPECT_TRUE(map_calls.empty());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setOid(
+            SAI_OBJECT_TYPE_QUEUE, first, SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, SAI_NULL_OBJECT_ID));
+    EXPECT_EQ(16u, queue_calls.size());
+
+    sai_attribute_t attr = {};
+    attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+    sai_object_id_t queues[] = {first, second};
+    attr.value.objlist = {2, queues};
+    put(SAI_OBJECT_TYPE_PORT, first_port, attr);
+    attr.value.objlist = {1, &third};
+    put(SAI_OBJECT_TYPE_PORT, second_port, attr);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    EXPECT_FALSE(queue_state.at({"pg0", 1}).eligible);
+    EXPECT_TRUE(queue_state.at({"pg0", 2}).eligible);
+    EXPECT_TRUE(queue_state.at({"pg1", 1}).eligible);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setOid(
+            SAI_OBJECT_TYPE_QUEUE, second, SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, SAI_NULL_OBJECT_ID));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setOid(
+            SAI_OBJECT_TYPE_QUEUE, third, SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, SAI_NULL_OBJECT_ID));
+    for (const auto &entry : queue_state)
+    {
+        EXPECT_FALSE(entry.second.eligible);
+    }
+    queue_calls.clear();
+    map_calls.clear();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setSize(0));
+    EXPECT_EQ(16u, queue_calls.size());
+    EXPECT_TRUE(map_calls.empty());
+}
+
+TEST_F(SwitchVppTrimTest, failedDisableCleanupRestoresEnabledBindings)
+{
+    port({trimQueue(1), trimQueue(2)});
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    queue_calls.clear();
+    map_calls.clear();
+    queue_results = {-99};
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, setSize(0));
+    ASSERT_EQ(3u, queue_calls.size());
+    EXPECT_FALSE(queue_calls.front().eligible);
+    EXPECT_TRUE(queue_state.at({"pg0", 1}).eligible);
+    EXPECT_TRUE(queue_state.at({"pg0", 2}).eligible);
+    EXPECT_TRUE(state->m_trim_policy.enabled);
+    EXPECT_EQ(256u, state->m_trim_policy.trim_size);
+    EXPECT_TRUE(global_calls.back().enabled);
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+
+    queue_calls.clear();
+    map_calls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(0));
+    EXPECT_EQ(8u, queue_calls.size());
+    EXPECT_TRUE(map_calls.empty());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setSize(0));
+    EXPECT_EQ(8u, queue_calls.size());
+}
+
+TEST_F(SwitchVppTrimTest, failedEnableCleansPartialEligibility)
+{
+    port({trimQueue(1), trimQueue(2)});
+    queue_results = {0, -99};
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, setSize(256));
+    EXPECT_FALSE(state->m_trim_policy.enabled);
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+    ASSERT_EQ(10u, queue_calls.size());
+    EXPECT_TRUE(queue_calls[0].eligible);
+    EXPECT_TRUE(queue_calls[1].eligible);
+    for (const auto &entry : queue_state)
+    {
+        EXPECT_FALSE(entry.second.eligible);
+    }
+    EXPECT_TRUE(map_calls.empty());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    EXPECT_TRUE(queue_state.at({"pg0", 1}).eligible);
+    EXPECT_TRUE(queue_state.at({"pg0", 2}).eligible);
+}
+
+TEST_F(SwitchVppTrimTest, failedEnableCleanupIsRetriedBeforeLaterSet)
+{
+    port({trimQueue(1), trimQueue(2)});
+    queue_results = {0, -99, -99};
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, setSize(256));
+    EXPECT_FALSE(state->m_trim_policy.enabled);
+    EXPECT_TRUE(state->m_trim_reconcile_pending);
+    EXPECT_EQ(3u, queue_calls.size());
+
+    queue_calls.clear();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setSwitchByte(SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE, 48));
+    EXPECT_EQ(8u, queue_calls.size());
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+    EXPECT_FALSE(state->m_trim_policy.enabled);
+    EXPECT_EQ(48u, state->m_trim_policy.dscp_value);
+    EXPECT_TRUE(map_calls.empty());
+    for (const auto &entry : queue_state)
+    {
+        EXPECT_FALSE(entry.second.eligible);
+    }
+}
+
+TEST_F(SwitchVppTrimTest, statsCapabilityOmitsUnsourcedTrimCountersWithFilteredSizing)
+{
+    const std::map<sai_object_type_t, std::set<sai_stat_id_t>> unsupported = {
+        {SAI_OBJECT_TYPE_SWITCH, {
+            SAI_SWITCH_STAT_DROPPED_TRIM_PACKETS, SAI_SWITCH_STAT_TX_TRIM_PACKETS}},
+        {SAI_OBJECT_TYPE_PORT, {
+            SAI_PORT_STAT_TRIM_PACKETS, SAI_PORT_STAT_DROPPED_TRIM_PACKETS,
+            SAI_PORT_STAT_TX_TRIM_PACKETS}},
+        {SAI_OBJECT_TYPE_QUEUE, {
+            SAI_QUEUE_STAT_TRIM_PACKETS, SAI_QUEUE_STAT_DROPPED_TRIM_PACKETS,
+            SAI_QUEUE_STAT_TX_TRIM_PACKETS}}
+    };
+    for (const auto &object : unsupported)
+    {
+        SCOPED_TRACE(object.first);
+        sai_stat_capability_list_t base = {};
+        ASSERT_EQ(SAI_STATUS_BUFFER_OVERFLOW, state->SwitchStateBase::queryStatsCapability(
+                switch_id, object.first, &base));
+        std::vector<sai_stat_capability_t> entries(base.count);
+        base.list = entries.data();
+        ASSERT_EQ(SAI_STATUS_SUCCESS, state->SwitchStateBase::queryStatsCapability(
+                switch_id, object.first, &base));
+        std::vector<sai_stat_capability_t> expected;
+        for (const auto &entry : entries)
+        {
+            if (object.second.count(entry.stat_enum) == 0)
+            {
+                expected.push_back(entry);
+            }
+        }
+        ASSERT_EQ(object.second.size(), entries.size() - expected.size());
+        auto count = static_cast<uint32_t>(expected.size());
+        sai_stat_capability_t sentinel = {};
+        sentinel.stat_enum = -1;
+        for (uint32_t capacity : {0u, count - 1, count, count + 1})
+        {
+            SCOPED_TRACE(capacity);
+            std::vector<sai_stat_capability_t> output(entries.size() + 1, sentinel);
+            sai_stat_capability_list_t result = {capacity, capacity ? output.data() : nullptr};
+            EXPECT_EQ(capacity < count ? SAI_STATUS_BUFFER_OVERFLOW : SAI_STATUS_SUCCESS,
+                    state->queryStatsCapability(switch_id, object.first, &result));
+            EXPECT_EQ(count, result.count);
+            if (capacity < count)
+            {
+                for (const auto &entry : output)
+                {
+                    EXPECT_EQ(sentinel.stat_enum, entry.stat_enum);
+                }
+                continue;
+            }
+            for (size_t i = 0; i < expected.size(); ++i)
+            {
+                EXPECT_EQ(expected[i].stat_enum, output[i].stat_enum);
+                EXPECT_EQ(expected[i].stat_modes, output[i].stat_modes);
+            }
+            EXPECT_EQ(sentinel.stat_enum, output[expected.size()].stat_enum);
+        }
+    }
 }
 
 TEST_F(SwitchVppTrimTest, unbindingMapsProgramsRemainingBindingsAndDefaults)

@@ -279,6 +279,11 @@ namespace saivs
                     _In_ sai_attr_id_t attr_id,
                     _Inout_ sai_s32_list_t *enum_values_capability) override;
 
+            virtual sai_status_t queryStatsCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_capability_list_t *stats_capability) override;
+
             virtual sai_status_t queryStatsStCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
@@ -607,8 +612,8 @@ namespace saivs
 
             // Send the current accumulated m_trim_policy to VPP via
             // sonic_ext_trim_global_set (an idempotent full-state set). Returns
-            // the VPP programming status (including the per-queue re-resolve
-            // when trimming is enabled).
+            // the VPP programming status, including queue programming while
+            // enabled or cleanup of previously armed queues while disabled.
             sai_status_t programTrimGlobal();
 
             sai_status_t createSwitchTrimPolicy(
@@ -646,9 +651,10 @@ namespace saivs
                     _In_ sai_object_id_t port_oid,
                     _Out_ std::string &hwif);
 
-            // Re-resolve every port/queue admission state and the DSCP->queue
-            // map from the SAI object graph and push them to the VPP plugin.
-            // Returns the aggregate VPP programming status.
+            // Re-resolve admission and the DSCP->queue map while enabled.
+            // While disabled, clear all supported queue slots without relying
+            // on retained queue or policy objects. Stop on the first failed
+            // queue API call so a silent peer does not multiply the timeout.
             sai_status_t refreshTrimDataplane();
 
             // Build a queue OID -> parent (leaf) scheduler group OID map by
@@ -861,6 +867,9 @@ namespace saivs
                 uint8_t  trim_queue = 0;
             };
             TrimGlobalPolicy m_trim_policy;
+            // A failed refresh may have installed only part of the queue state.
+            // Keep cleanup armed until a disabled sweep succeeds.
+            bool m_trim_dataplane_armed = false;
             bool m_trim_reconcile_pending = false;
 
             static sai_status_t updateTrimPolicy(
