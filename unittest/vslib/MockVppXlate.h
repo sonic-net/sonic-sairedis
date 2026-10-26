@@ -64,6 +64,12 @@ struct VppRuleStatsCall
     uint32_t rule_index;
 };
 
+struct VppCoppNeighborMissBindCall
+{
+    std::string policerName;
+    bool isBind;
+};
+
 struct VppMock
 {
     bool loopbackEnabled = false;
@@ -116,6 +122,10 @@ struct VppMock
     std::vector<uint32_t> pbhTableDels;
     std::vector<VppPbhAttachCall> pbhAttachCalls;
     std::vector<VppRuleStatsCall> ruleStatsCalls;
+
+    // CoPP semantic NEIGHBOR_MISS binding.
+    int coppNeighborMissBindResult = 0;
+    std::vector<VppCoppNeighborMissBindCall> coppNeighborMissBindCalls;
 
     std::map<std::string, uint32_t> interfaceVrfs;
     std::set<uint32_t> vrfTables;

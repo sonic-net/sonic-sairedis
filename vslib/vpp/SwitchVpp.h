@@ -1175,6 +1175,12 @@ namespace saivs
                     _In_ const vpp_trap_entry_t &trap,
                     _In_ uint32_t vpp_policer_index);
 
+            sai_status_t installTrapClassifyNow(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap,
+                    _In_ uint32_t vpp_policer_index,
+                    _In_ sai_object_id_t policer_oid);
+
             sai_status_t uninstallTrapClassify(
                     _In_ sai_object_id_t trap_oid,
                     _In_ const vpp_trap_entry_t &trap);

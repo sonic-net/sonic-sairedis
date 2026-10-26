@@ -222,6 +222,20 @@ extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabl
     return vppMock().featureResult;
 }
 
+extern "C" int __wrap_vpp_sonic_ext_copp_neighbor_miss_bind(
+        const char *policer_name,
+        bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppNeighborMissBindCalls.push_back({
+        policer_name ? policer_name : "",
+        is_bind,
+    });
+
+    return vppMock().coppNeighborMissBindResult;
+}
+
 /*
  * PBH. The indices are handed out by VPP, so the mock allocates them the same
  * way: an in-index of ~0 asks for a new one, anything else names an existing
