@@ -70,4 +70,10 @@ namespace saivs
     void vpp_ip_addr_t_to_sai_ip_address_t(vpp_ip_addr_t& src, sai_ip_address_t& dst);
 
     bool sai_ip_address_equal(const sai_ip_address_t &a, const sai_ip_address_t &b);
+
+    // Cache successful startup-state queries only; errors remain retryable.
+    sai_status_t sonicExtFeatureEnabled(const char *feature, bool& enabled);
+
+    // Legacy optional-feature callers treat query failures as disabled.
+    bool sonicExtFeatureEnabled(const char *feature);
 }

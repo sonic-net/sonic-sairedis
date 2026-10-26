@@ -68,7 +68,7 @@ libSyncd_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVER
 
 syncd_SOURCES = main.cpp
 if ASAN_ENABLED
-syncd_SOURCES += Asan.cpp
+syncd_SOURCES += Asan.cpp AsanCtor.cpp
 libSyncd_a_CXXFLAGS += -DASAN_ENABLED
 endif
 syncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)

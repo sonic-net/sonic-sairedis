@@ -18,6 +18,7 @@
 #include <string>
 #include <sstream>
 #include <cerrno>
+#include <algorithm>
 
 using namespace saivs;
 
@@ -54,6 +55,7 @@ SwitchVpp::SwitchVpp(
     SwitchStateBase(switch_id, manager, config),
     m_object_db(this),
     m_tunnel_mgr(this),
+    m_pbh(this),
     m_tunnel_mgr_srv6(this),
     m_tunnel_mgr_ipip(this)
 {
@@ -72,6 +74,7 @@ SwitchVpp::SwitchVpp(
     SwitchStateBase(switch_id, manager, config, warmBootState),
     m_object_db(this),
     m_tunnel_mgr(this),
+    m_pbh(this),
     m_tunnel_mgr_srv6(this),
     m_tunnel_mgr_ipip(this)
 {
@@ -788,6 +791,123 @@ void SwitchVpp::setPortStats(
     debugSetStats(oid, stats);
 }
 
+sai_status_t SwitchVpp::queryRifStats(
+        _In_ const std::string& ifname,
+        _Out_ std::map<sai_stat_id_t, uint64_t>& stats)
+{
+    SWSS_LOG_ENTER();
+
+    vpp_interface_stats_t rif_stats;
+    if (vpp_intf_stats_query(ifname.c_str(), &rif_stats) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to query RIF counters for %s", ifname.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    stats = {
+        {SAI_ROUTER_INTERFACE_STAT_IN_OCTETS, rif_stats.rx_bytes},
+        {SAI_ROUTER_INTERFACE_STAT_IN_PACKETS, rif_stats.rx},
+        {SAI_ROUTER_INTERFACE_STAT_OUT_OCTETS, rif_stats.tx_bytes},
+        {SAI_ROUTER_INTERFACE_STAT_OUT_PACKETS, rif_stats.tx},
+        {SAI_ROUTER_INTERFACE_STAT_IN_ERROR_PACKETS, rif_stats.rx_error},
+        {SAI_ROUTER_INTERFACE_STAT_OUT_ERROR_PACKETS, rif_stats.tx_error},
+    };
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::initializeRifStats(
+        _In_ sai_object_id_t oid)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string ifname = m_ifaceRegistry.resolveHwIfByRifOid(oid);
+    if (ifname.empty())
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::map<sai_stat_id_t, uint64_t> stats;
+    CHECK_STATUS(queryRifStats(ifname, stats));
+    m_rifStatsBaseMap[oid] = std::move(stats);
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::getRifStatsExt(
+        _In_ sai_object_id_t oid,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters)
+{
+    SWSS_LOG_ENTER();
+
+    // Absolute cumulative counters as VPP reports them, keyed by SAI stat id.
+    std::map<sai_stat_id_t, uint64_t> absolute;
+
+    std::string if_name = m_ifaceRegistry.resolveHwIfByRifOid(oid);
+    if (if_name.empty())
+    {
+        // RIF types without a backing VPP interface have no hardware counters.
+        SWSS_LOG_WARN("getRifStatsExt: no VPP stats for RIF %s",
+                sai_serialize_object_id(oid).c_str());
+
+        for (uint32_t i = 0; i < number_of_counters; ++i)
+        {
+            counters[i] = 0;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    CHECK_STATUS(queryRifStats(if_name, absolute));
+
+    bool clear = mode == SAI_STATS_MODE_READ_AND_CLEAR ||
+        mode == SAI_STATS_MODE_BULK_READ_AND_CLEAR ||
+        mode == SAI_STATS_MODE_BULK_CLEAR;
+
+    // VPP exposes only ever-increasing absolute counters, so a SAI
+    // READ_AND_CLEAR is emulated by remembering the absolute value at the last
+    // clear and returning (absolute - baseline). Without this the base
+    // VirtualSwitch clear zeroes its own map but the next read reloads VPP's
+    // absolute value, restoring all pre-clear traffic.
+    auto& base = m_rifStatsBaseMap[oid];
+
+    for (uint32_t i = 0; i < number_of_counters; ++i)
+    {
+        sai_stat_id_t id = counter_ids[i];
+
+        uint64_t abs = 0;
+        auto it = absolute.find(id);
+        if (it != absolute.end())
+        {
+            abs = it->second;
+        }
+
+        uint64_t baseline = 0;
+        auto baseIt = base.find(id);
+        if (baseIt != base.end())
+        {
+            baseline = baseIt->second;
+        }
+
+        if (abs < baseline)
+        {
+            SWSS_LOG_WARN("RIF %s counter %d reset; discarding baseline",
+                    sai_serialize_object_id(oid).c_str(), id);
+            base.erase(id);
+            baseline = 0;
+        }
+        counters[i] = abs - baseline;
+
+        if (clear)
+        {
+            base[id] = abs;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::getRouteCounterStats(
         _In_ sai_object_id_t oid,
         _Out_ std::map<sai_stat_id_t, uint64_t>& stats,
@@ -1097,11 +1217,16 @@ sai_status_t SwitchVpp::queryAttributeCapability(
     // TODO: We should generate this metadata for the virtual switch rather
     // than hard-coding it here.
 
-    // in virtual switch by default all apis are implemented for all objects. SUCCESS for all attributes
+    bool implemented = true;
+    if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
+            attr_id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION)
+    {
+        CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", implemented));
+    }
 
-    capability->create_implemented = true;
-    capability->set_implemented    = true;
-    capability->get_implemented    = true;
+    capability->create_implemented = implemented;
+    capability->set_implemented    = implemented;
+    capability->get_implemented    = implemented;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1166,6 +1291,22 @@ sai_status_t SwitchVpp::getStatsExt(
                     mode,
                     counters);
         }
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_POLICER)
+    {
+        return getPolicerStats(object_id, number_of_counters, counter_ids, counters);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
+    {
+        auto meta = m_meta.lock();
+        if (meta && meta->meta_unittests_enabled())
+        {
+            return SwitchStateBase::getStatsExt(
+                    object_type, object_id, number_of_counters, counter_ids, mode, counters);
+        }
+        return getRifStatsExt(object_id, number_of_counters, counter_ids, mode, counters);
     }
 
     return SwitchStateBase::getStatsExt(
@@ -1333,6 +1474,27 @@ sai_status_t SwitchVpp::create(
         return createHostif(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_POLICER)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createPolicer(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createHostifTrapGroup(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createHostifTrap(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
     {
         sai_object_id_t object_id;
@@ -1431,18 +1593,18 @@ sai_status_t SwitchVpp::create(
         return createAclGrpMbr(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_HASH)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return m_pbh.createHash(object_id, switch_id, attr_count, attr_list);
+    }
+
     if(object_type == SAI_OBJECT_TYPE_SAMPLEPACKET)
     {
         sai_object_id_t object_id;
         sai_deserialize_object_id(serializedObjectId, object_id);
         return samplePacketCreate(object_id, switch_id, attr_count, attr_list);
-    }
-
-    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
-    {
-        sai_object_id_t object_id;
-        sai_deserialize_object_id(serializedObjectId, object_id);
-        return sflowHostifTrapSamplePacketCreate(object_id, switch_id, attr_count, attr_list);
     }
 
     if(object_type == SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY)
@@ -1546,37 +1708,83 @@ sai_status_t SwitchVpp::create(
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
-        m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry(serializedObjectId, attr_count, attr_list);
-        return SAI_STATUS_SUCCESS;
+        bool is_l2_vni_to_vlan = false;
+        for (uint32_t i = 0; i < attr_count; ++i) {
+            if (attr_list[i].id == SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE &&
+                attr_list[i].value.s32 == SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID) {
+                is_l2_vni_to_vlan = true;
+                break;
+            }
+        }
+
+        sai_status_t status = m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry(
+            serializedObjectId, attr_count, attr_list);
+        if (!is_l2_vni_to_vlan) {
+            return SAI_STATUS_SUCCESS;
+        }
+        if (status != SAI_STATUS_SUCCESS) {
+            sai_status_t rollback_status = remove_internal(object_type, serializedObjectId);
+            if (rollback_status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to roll back tunnel map entry %s after "
+                               "data-plane create failure: status=%d",
+                               serializedObjectId.c_str(), rollback_status);
+            }
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY)
     {
-        // Check if this is an IPINIP tunnel term
+        int32_t tunnel_type = -1;
         for (uint32_t i = 0; i < attr_count; i++) {
-            if (attr_list[i].id == SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE &&
-                attr_list[i].value.s32 == SAI_TUNNEL_TYPE_IPINIP) {
-                CHECK_STATUS(m_tunnel_mgr_ipip.create_ipip_tunnel_term(
-                    serializedObjectId, switch_id, attr_count, attr_list));
+            if (attr_list[i].id == SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE) {
+                tunnel_type = attr_list[i].value.s32;
                 break;
             }
         }
-        return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
+
+        if (tunnel_type == SAI_TUNNEL_TYPE_IPINIP) {
+            CHECK_STATUS(m_tunnel_mgr_ipip.create_ipip_tunnel_term(
+                serializedObjectId, switch_id, attr_count, attr_list));
+            return create_internal(
+                object_type, serializedObjectId, switch_id, attr_count, attr_list);
+        }
+
+        if (tunnel_type == SAI_TUNNEL_TYPE_VXLAN) {
+            // Reject duplicates and resource limits before touching the data
+            // plane, then publish only after programming succeeds.
+            CHECK_STATUS(check_create_internal(object_type, serializedObjectId));
+
+            std::vector<uint32_t> created_vnis;
+            CHECK_STATUS(m_tunnel_mgr.create_l2_vxlan_tunnel_term(
+                serializedObjectId, attr_count, attr_list, created_vnis));
+
+            sai_status_t status = create_internal(
+                object_type, serializedObjectId, switch_id, attr_count, attr_list);
+            if (status != SAI_STATUS_SUCCESS) {
+                sai_status_t rollback_status =
+                    m_tunnel_mgr.rollback_l2_vxlan_tunnels(created_vnis);
+                if (rollback_status != SAI_STATUS_SUCCESS) {
+                    return rollback_status;
+                }
+            }
+            return status;
+        }
+
+        return create_internal(
+            object_type, serializedObjectId, switch_id, attr_count, attr_list);
     }
 
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
 }
 
-sai_status_t SwitchVpp::create_internal(
+sai_status_t SwitchVpp::check_create_internal(
         _In_ sai_object_type_t object_type,
-        _In_ const std::string &serializedObjectId,
-        _In_ sai_object_id_t switch_id,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ const std::string &serializedObjectId) const
 {
     SWSS_LOG_ENTER();
 
-    auto &objectHash = m_objectHash.at(object_type);
+    const auto &objectHash = m_objectHash.at(object_type);
 
     if (m_switchConfig->m_resourceLimiter)
     {
@@ -1612,6 +1820,21 @@ sai_status_t SwitchVpp::create_internal(
         }
     }
 
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::create_internal(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &serializedObjectId,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    CHECK_STATUS(check_create_internal(object_type, serializedObjectId));
+
+    auto &objectHash = m_objectHash.at(object_type);
     if (objectHash.find(serializedObjectId) == objectHash.end())
     {
         /*
@@ -1769,6 +1992,21 @@ sai_status_t SwitchVpp::remove(
         return removeHostif(objectId);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_POLICER)
+    {
+        return removePolicer(serializedObjectId);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
+    {
+        return removeHostifTrapGroup(serializedObjectId);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        return removeHostifTrap(serializedObjectId);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
     {
         sai_object_id_t objectId;
@@ -1879,11 +2117,6 @@ sai_status_t SwitchVpp::remove(
         return samplePacketRemove(serializedObjectId);
     }
 
-    if(object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP)
-    {
-        return sflowHostifTrapSamplePacketRemove(serializedObjectId);
-    }
-
     if(object_type == SAI_OBJECT_TYPE_HOSTIF_TABLE_ENTRY)
     {
         return sflowHostifTableEntryRemove(serializedObjectId);
@@ -1907,6 +2140,11 @@ sai_status_t SwitchVpp::remove(
     if (object_type == SAI_OBJECT_TYPE_ACL_TABLE_GROUP)
     {
         return removeAclGrp(serializedObjectId);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HASH)
+    {
+        return m_pbh.removeHash(serializedObjectId);
     }
 
     if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
@@ -1979,7 +2217,8 @@ sai_status_t SwitchVpp::remove(
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
-        m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry_removal(serializedObjectId);
+        CHECK_STATUS(m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry_removal(
+            serializedObjectId));
         return remove_internal(object_type, serializedObjectId);
     }
 
@@ -1989,6 +2228,21 @@ sai_status_t SwitchVpp::remove(
         if (status != SAI_STATUS_SUCCESS) {
             SWSS_LOG_ERROR("Failed to remove IPinIP tunnel decap term");
             return status;
+        }
+
+        auto term_obj = get_sai_object(object_type, serializedObjectId);
+        if (term_obj) {
+            sai_attribute_t attr;
+            attr.id = SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE;
+            if (term_obj->get_attr(attr) == SAI_STATUS_SUCCESS &&
+                attr.value.s32 == SAI_TUNNEL_TYPE_VXLAN) {
+                status = m_tunnel_mgr.remove_l2_vxlan_tunnel_term(serializedObjectId);
+                if (status != SAI_STATUS_SUCCESS) {
+                    SWSS_LOG_ERROR("Failed to remove L2 VXLAN decap term %s",
+                                   serializedObjectId.c_str());
+                    return status;
+                }
+            }
         }
         return remove_internal(object_type, serializedObjectId);
     }
@@ -2091,6 +2345,86 @@ sai_status_t SwitchVpp::setLag(
     return set_internal(SAI_OBJECT_TYPE_LAG, sid, lagAttr);
 }
 
+sai_status_t SwitchVpp::backupAttr(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::string &serializedObjectId,
+        _In_ sai_attr_id_t attrId,
+        _Out_ SaiAttrBackup &backup)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
+
+    if (meta == nullptr)
+    {
+        SWSS_LOG_ERROR("attribute %u unknown on %s",
+                attrId,
+                sai_serialize_object_type(objectType).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto type_it = m_objectHash.find(objectType);
+
+    if (type_it == m_objectHash.end() ||
+        type_it->second.find(serializedObjectId) == type_it->second.end())
+    {
+        SWSS_LOG_ERROR("not found %s:%s",
+                sai_serialize_object_type(objectType).c_str(),
+                serializedObjectId.c_str());
+
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    auto& attrHash = type_it->second.at(serializedObjectId);
+    auto attr_it = attrHash.find(meta->attridname);
+
+    backup.m_objectType = objectType;
+    backup.m_serializedObjectId = serializedObjectId;
+    backup.m_meta = meta;
+    backup.m_value = (attr_it == attrHash.end()) ? nullptr : attr_it->second;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::restoreAttr(
+        _In_ const SaiAttrBackup &backup)
+{
+    SWSS_LOG_ENTER();
+
+    if (backup.m_meta == nullptr)
+    {
+        SWSS_LOG_ERROR("attribute backup is empty, nothing to restore");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto type_it = m_objectHash.find(backup.m_objectType);
+
+    if (type_it == m_objectHash.end() ||
+        type_it->second.find(backup.m_serializedObjectId) == type_it->second.end())
+    {
+        SWSS_LOG_ERROR("not found %s:%s",
+                sai_serialize_object_type(backup.m_objectType).c_str(),
+                backup.m_serializedObjectId.c_str());
+
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    auto& attrHash = type_it->second.at(backup.m_serializedObjectId);
+
+    if (backup.m_value)
+    {
+        attrHash[backup.m_meta->attridname] = backup.m_value;
+    }
+    else
+    {
+        attrHash.erase(backup.m_meta->attridname);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::setAclEntry(
         _In_ sai_object_id_t entry_id,
         _In_ const sai_attribute_t* attr)
@@ -2104,8 +2438,6 @@ sai_status_t SwitchVpp::setAclEntry(
 
     auto sid = sai_serialize_object_id(entry_id);
 
-    set_internal(SAI_OBJECT_TYPE_ACL_ENTRY, sid, attr);
-
     sai_object_id_t tbl_oid;
 
     if (getAclTableId(entry_id, &tbl_oid) != SAI_STATUS_SUCCESS)
@@ -2113,7 +2445,23 @@ sai_status_t SwitchVpp::setAclEntry(
         return SAI_STATUS_FAILURE;
     }
 
+    // The rule set handed to VPP is rebuilt from the state, so the new value
+    // has to be committed before the table can be reprogrammed. Hold on to what
+    // it replaces: acl_add_replace() swaps a table's whole rule set atomically,
+    // so a rejected reprogram leaves VPP enforcing the old value and the state
+    // has to keep describing it.
+    SaiAttrBackup backup;
+
+    CHECK_STATUS(backupAttr(SAI_OBJECT_TYPE_ACL_ENTRY, sid, attr->id, backup));
+
+    CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_ACL_ENTRY, sid, attr));
+
     auto status = AclAddRemoveCheck(tbl_oid);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        restoreAttr(backup);
+    }
 
     SWSS_LOG_NOTICE("ACL entry %s set in table %s set status %d",
             sid.c_str(),
@@ -2153,9 +2501,21 @@ sai_status_t SwitchVpp::set(
         return setAclGrpMbr(objectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_HASH)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return m_pbh.setHash(objectId, attr);
+    }
+
     if (objectType == SAI_OBJECT_TYPE_ROUTE_ENTRY)
     {
         return updateIpRoute(serializedObjectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_NEIGHBOR_ENTRY)
+    {
+        return setIpNbr(serializedObjectId, attr);
     }
 
     if (objectType == SAI_OBJECT_TYPE_SWITCH)
@@ -2220,6 +2580,25 @@ sai_status_t SwitchVpp::set(
         return setLag(objectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_MIRROR_SESSION)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setMirrorSession(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_NEIGHBOR_ENTRY
+            && attr != nullptr
+            && attr->id == SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS
+            && is_ip_nbr_active())
+    {
+        // Re-program the adjacency and refresh m_port_neighbor_mac; without this
+        // the ERSPAN monitor pin would keep resolving against the stale MAC.
+        CHECK_STATUS(addRemoveIpNbr(serializedObjectId, 1, attr, true));
+
+        // Fall through to set_internal() below so the attribute is also cached
+    }
+
     if (objectType == SAI_OBJECT_TYPE_LAG_MEMBER)
     {
         sai_object_id_t objectId;
@@ -2240,6 +2619,21 @@ sai_status_t SwitchVpp::set(
         }
 
         // Fall through to set_internal() below so the attribute is also cached
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_POLICER)
+    {
+        return setPolicer(serializedObjectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
+    {
+        return setHostifTrapGroup(serializedObjectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP)
+    {
+        return setHostifTrap(serializedObjectId, attr);
     }
 
     return set_internal(objectType, serializedObjectId, attr);
@@ -2293,6 +2687,17 @@ sai_status_t SwitchVpp::get(
         sai_object_id_t object_id;
 
         sai_deserialize_object_id(serializedObjectId, object_id);
+
+        /*
+         * PBH and ACL counters are the same SAI object type but live in
+         * different VPP stat trees, so the counter is routed by which table
+         * claimed it rather than by anything on the counter itself.
+         */
+        if (m_pbh.isPbhCounterOid(object_id))
+        {
+            return m_pbh.getEntryStats(object_id, attr_count, attr_list);
+        }
+
         return getAclEntryStats(object_id, attr_count, attr_list);
     }
 
@@ -2862,6 +3267,62 @@ sai_status_t SwitchVpp::set_static_crm_values()
     CHECK_STATUS(set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE, m_maxAclTables));
 
     return set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP, m_maxAclTableGroups);
+}
+
+/*
+ * The vslib base class advertises every action in
+ * SAI_ACL_ENTRY_ATTR_ACTION_START..END. VPP implements only a handful of them
+ * (see acl_rule_field_update()), and an unimplemented action is silently
+ * dropped there rather than rejected, so orchagent has no way to find out the
+ * rule it installed does nothing. Advertise only what is actually wired up.
+ *
+ * Anything added here must have a corresponding case in
+ * acl_rule_field_update() or tunterm_acl_rule_field_update().
+ */
+sai_status_t SwitchVpp::set_acl_capabilities()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("set vpp acl capabilities");
+
+    m_ingress_acl_action_list = {
+        SAI_ACL_ACTION_TYPE_PACKET_ACTION,
+        SAI_ACL_ACTION_TYPE_COUNTER,
+        SAI_ACL_ACTION_TYPE_MIRROR_INGRESS,
+        SAI_ACL_ACTION_TYPE_MIRROR_EGRESS,
+        // Only honored on tunnel-termination entries (FIELD_TUNNEL_TERMINATED);
+        // a plain redirect is accepted and ignored, matching prior behaviour.
+        SAI_ACL_ACTION_TYPE_REDIRECT,
+        SAI_ACL_ACTION_TYPE_SET_ECMP_HASH_ID,
+        SAI_ACL_ACTION_TYPE_SET_LAG_HASH_ID
+    };
+
+    m_egress_acl_action_list = {
+        SAI_ACL_ACTION_TYPE_PACKET_ACTION,
+        SAI_ACL_ACTION_TYPE_COUNTER,
+        SAI_ACL_ACTION_TYPE_MIRROR_EGRESS
+    };
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_MAX_ACL_ACTION_COUNT;
+    attr.value.u32 = static_cast<uint32_t>(std::max(m_ingress_acl_action_list.size(), m_egress_acl_action_list.size()));
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_ACL_STAGE_INGRESS;
+    attr.value.aclcapability.is_action_list_mandatory = false;
+    attr.value.aclcapability.action_list.list = reinterpret_cast<int32_t*>(m_ingress_acl_action_list.data());
+    attr.value.aclcapability.action_list.count = static_cast<uint32_t>(m_ingress_acl_action_list.size());
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_ACL_STAGE_EGRESS;
+    attr.value.aclcapability.is_action_list_mandatory = false;
+    attr.value.aclcapability.action_list.list = reinterpret_cast<int32_t*>(m_egress_acl_action_list.data());
+    attr.value.aclcapability.action_list.count = static_cast<uint32_t>(m_egress_acl_action_list.size());
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
 sai_status_t SwitchVpp::queryNextHopGroupTypeCapability(

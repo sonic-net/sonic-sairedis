@@ -57,6 +57,8 @@ static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
 static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
 static const std::string COUNTER_TYPE_WRED_ECN_QUEUE = "WRED Queue Counter";
 static const std::string COUNTER_TYPE_WRED_ECN_PORT = "WRED Port Counter";
+static const std::string ATTR_TYPE_OTN_ATTENUATOR_ATTR = "OTN Attenuator Attributes";
+static const std::string ATTR_TYPE_OTN_OA_ATTR = "OTN OA Attributes";
 
 static const std::unordered_map<std::string, bool> statusMap =
 {
@@ -79,7 +81,10 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
     {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW},
     {WRED_QUEUE_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_QUEUE},
-    {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT}};
+    {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT},
+    {OTN_ATTENUATOR_PLUGIN_FIELD, ATTR_TYPE_OTN_ATTENUATOR_ATTR},
+    {OTN_OA_PLUGIN_FIELD, ATTR_TYPE_OTN_OA_ATTR},
+};
 
 const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
     {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
@@ -104,6 +109,8 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
     {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
     {{SAI_OBJECT_TYPE_SWITCH, SWITCH_COUNTER_ID_LIST}, COUNTER_TYPE_SWITCH},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, OTN_ATTENUATOR_ATTR_ID_LIST}, ATTR_TYPE_OTN_ATTENUATOR_ATTR},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, OTN_OA_ATTR_ID_LIST}, ATTR_TYPE_OTN_OA_ATTR},
 };
 
 BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
@@ -539,6 +546,24 @@ void deserializeAttr(
     sai_deserialize_port_attr(name, attr);
 }
 
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_otn_attenuator_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_otn_attenuator_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_otn_oa_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_otn_oa_attr(name, attr);
+}
+
 template <typename StatType>
 class CounterContext : public BaseCounterContext
 {
@@ -820,8 +845,11 @@ public:
                 for (auto &token: tokens)
                 {
                     auto counter_name_bulk_size = swss::tokenize(token, ':');
-                    SWSS_LOG_INFO("New partition %s bulk chunk size %s", counter_name_bulk_size[0].c_str(), counter_name_bulk_size[1].c_str());
-                    m_counterChunkSizeMapFromPrefix[counter_name_bulk_size[0]] = stoi(counter_name_bulk_size[1]);
+
+                    SWSS_LOG_INFO("New partition %s bulk chunk size %s",
+                            counter_name_bulk_size.at(0).c_str(),
+                            counter_name_bulk_size.at(1).c_str());
+                    m_counterChunkSizeMapFromPrefix[counter_name_bulk_size.at(0)] = stoi(counter_name_bulk_size.at(1));
                 }
             }
             catch (...)
@@ -2336,6 +2364,11 @@ public:
     {
         SWSS_LOG_ENTER();
 
+        if (m_bulkGetSupported && collectDataBulk(countersTable))
+        {
+            return;
+        }
+
         for (const auto &kv : Base::m_objectIdsMap)
         {
             const auto &vid = kv.first;
@@ -2362,18 +2395,139 @@ public:
                 continue;
             }
 
-            std::vector<swss::FieldValueTuple> values;
-            for (size_t i = 0; i != attrIds.size(); i++)
-            {
-                auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
-                if (!meta)
-                {
-                    SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
-                }
-                values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
-            }
-            countersTable.set(sai_serialize_object_id(vid), values, "");
+            publishAttrs(countersTable, vid, attrIds, attrs.data());
         }
+    }
+
+private:
+
+    // Whether the vendor SAI implements a bulk get for this object type.  Latched
+    // off on the first NOT_IMPLEMENTED / NOT_SUPPORTED so a vendor without it is
+    // not asked again on every poll.
+    bool m_bulkGetSupported = true;
+
+    void publishAttrs(
+            _In_ swss::Table &countersTable,
+            _In_ sai_object_id_t vid,
+            _In_ const std::vector<AttrType> &attrIds,
+            _In_ const sai_attribute_t *attrs)
+    {
+        SWSS_LOG_ENTER();
+
+        std::vector<swss::FieldValueTuple> values;
+
+        for (size_t i = 0; i != attrIds.size(); i++)
+        {
+            auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
+            if (!meta)
+            {
+                SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
+            }
+            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
+        }
+
+        countersTable.set(sai_serialize_object_id(vid), values, "");
+    }
+
+    // Read every object's attributes in one SAI call.
+    //
+    // The per-object loop above calls VendorSai::get() once per object, and that
+    // takes the process-wide m_apimutex each time.  One bulk call takes the lock
+    // once, which bounds the wait at a single in-flight get rather than a whole
+    // foreign sweep.
+    //
+    // Returns false if the caller should fall back to the per-object loop.
+    bool collectDataBulk(
+            _In_ swss::Table &countersTable)
+    {
+        SWSS_LOG_ENTER();
+
+        const size_t count = Base::m_objectIdsMap.size();
+
+        if (count == 0)
+        {
+            return true;
+        }
+
+        std::vector<sai_object_id_t> vids;
+        std::vector<sai_object_id_t> rids;
+        std::vector<uint32_t> attrCounts;
+        std::vector<std::vector<sai_attribute_t>> attrStorage;
+
+        vids.reserve(count);
+        rids.reserve(count);
+        attrCounts.reserve(count);
+        attrStorage.reserve(count);
+
+        for (const auto &kv : Base::m_objectIdsMap)
+        {
+            const auto &attrIds = kv.second->counter_ids;
+
+            std::vector<sai_attribute_t> attrs(attrIds.size());
+            for (size_t i = 0; i < attrIds.size(); i++)
+            {
+                attrs[i].id = attrIds[i];
+            }
+
+            vids.push_back(kv.first);
+            rids.push_back(kv.second->rid);
+            attrCounts.push_back(static_cast<uint32_t>(attrIds.size()));
+            attrStorage.push_back(std::move(attrs));
+        }
+
+        std::vector<sai_attribute_t*> attrList;
+        attrList.reserve(count);
+        for (auto &attrs : attrStorage)
+        {
+            attrList.push_back(attrs.data());
+        }
+
+        std::vector<sai_status_t> statuses(count, SAI_STATUS_SUCCESS);
+
+        sai_status_t status = Base::m_vendorSai->bulkGet(
+                Base::m_objectType,
+                static_cast<uint32_t>(count),
+                rids.data(),
+                attrCounts.data(),
+                attrList.data(),
+                SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+                statuses.data());
+
+        if (status == SAI_STATUS_NOT_IMPLEMENTED || status == SAI_STATUS_NOT_SUPPORTED)
+        {
+            m_bulkGetSupported = false;
+
+            SWSS_LOG_NOTICE("Bulk get not available for %s, using per object get",
+                    sai_serialize_object_type(Base::m_objectType).c_str());
+
+            return false;
+        }
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_WARN("Failed to bulk get attr of %s: %d",
+                    sai_serialize_object_type(Base::m_objectType).c_str(), status);
+
+            return false;
+        }
+
+        size_t n = 0;
+        for (const auto &kv : Base::m_objectIdsMap)
+        {
+            if (statuses[n] != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to get attr of %s 0x%" PRIx64 ": %d",
+                        sai_serialize_object_type(Base::m_objectType).c_str(),
+                        kv.first, statuses[n]);
+                n++;
+                continue;
+            }
+
+            publishAttrs(countersTable, vids[n], kv.second->counter_ids, attrStorage[n].data());
+            n++;
+        }
+
+        return true;
     }
 };
 
@@ -4106,6 +4260,14 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->use_sai_stats_ext = m_vendorSai->isSwitchStatsExtSupported();
         return context;
     }
+    else if (context_name == ATTR_TYPE_OTN_ATTENUATOR_ATTR)
+    {
+        return std::make_shared<AttrContext<sai_otn_attenuator_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, m_vendorSai.get(), m_statsMode);
+    }
+    else if (context_name == ATTR_TYPE_OTN_OA_ATTR)
+    {
+        return std::make_shared<AttrContext<sai_otn_oa_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, m_vendorSai.get(), m_statsMode);
+    }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
     // GCC 8.3 requires a return value here
@@ -4172,21 +4334,25 @@ void FlexCounter::collectCounters(
 }
 
 void FlexCounter::runPlugins(
-        _In_ swss::DBConnector& counters_db)
+        _In_ swss::DBConnector& counters_db,
+        _In_ int64_t cycleStartUs,
+        _In_ int64_t collectUs)
 {
     SWSS_LOG_ENTER();
 
-    std::vector<std::string> argv =
+    // Fixed positions so a plugin can index them:
+    //   ARGV[4] secondary poll factor, 0 when unset
+    //   ARGV[5] monotonic start of this cycle, us
+    //   ARGV[6] time spent collecting this cycle, us
+    const std::vector<std::string> argv =
     {
         std::to_string(counters_db.getDbId()),
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval)
+        std::to_string(m_pollInterval),
+        std::to_string(m_secondaryPollFactor),
+        std::to_string(cycleStartUs),
+        std::to_string(collectUs)
     };
-
-    if (m_secondaryPollFactor > 0)
-    {
-        argv.push_back(std::to_string(m_secondaryPollFactor));
-    }
 
     for (const auto &it : m_counterContext)
     {
@@ -4325,9 +4491,17 @@ void FlexCounter::flexCounterThreadRunFunction()
             // abort.
             try
             {
+                // start of this cycle; successive values differ by the true period
+                auto cycleStartUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                        start.time_since_epoch()).count();
+
                 collectCounters(*countersTable);
 
-                runPlugins(*db);
+                // time spent collecting; the term that scales with object count
+                auto collectUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - start).count();
+
+                runPlugins(*db, cycleStartUs, collectUs);
             }
             catch (const std::exception& e)
             {
@@ -4596,6 +4770,20 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR))
         {
             getCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR)->removeObject(vid);
+        }
+    }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR)
+    {
+        if (hasCounterContext(ATTR_TYPE_OTN_ATTENUATOR_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_OTN_ATTENUATOR_ATTR)->removeObject(vid);
+        }
+    }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA)
+    {
+        if (hasCounterContext(ATTR_TYPE_OTN_OA_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_OTN_OA_ATTR)->removeObject(vid);
         }
     }
     else

@@ -1,4 +1,5 @@
 #include "Syncd.h"
+#include "DisabledRedisClient.h"
 #include "RedisClient.h"
 #include "ZmqRedisClient.h"
 #include "sai_serialize.h"
@@ -405,6 +406,12 @@ public:
     MOCK_METHOD(void, eraseRidAndVid, (sai_object_id_t rid, sai_object_id_t vid));
 };
 
+class MockDisabledRedisClient : public DisabledRedisClient
+{
+public:
+    MOCK_METHOD(sai_object_id_t, getRidForVid, (sai_object_id_t vid), (override));
+};
+
 class SyncdTest : public ::testing::Test
 {
 protected:
@@ -427,6 +434,250 @@ protected:
     std::shared_ptr<CommandLineOptions> m_opt;
     std::shared_ptr<Syncd> m_syncd;
 };
+
+TEST_F(SyncdTest, GetResponseClearsPointerValue)
+{
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_get = [switchRid](sai_object_type_t objectType, sai_object_id_t objectId,
+            uint32_t attrCount, sai_attribute_t *attrList) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(switchRid, objectId);
+        EXPECT_EQ(1u, attrCount);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrList[0].id);
+        attrList[0].value.ptr = reinterpret_cast<void *>(0x1234);
+        return SAI_STATUS_SUCCESS;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_SUCCESS), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:oid:0x21000000000000",
+        REDIS_ASIC_STATE_COMMAND_GET,
+        {{"SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", "0x0"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(1u, responseValues.size());
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", fvField(responseValues[0]));
+    EXPECT_EQ("0x0", fvValue(responseValues[0]));
+}
+
+TEST_F(SyncdTest, BulkGetResponseClearsPointerValue)
+{
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_get = [switchRid](sai_object_type_t objectType, sai_object_id_t objectId,
+            uint32_t attrCount, sai_attribute_t *attrList) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(switchRid, objectId);
+        EXPECT_EQ(1u, attrCount);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrList[0].id);
+        attrList[0].value.ptr = reinterpret_cast<void *>(0x1234);
+        return SAI_STATUS_SUCCESS;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_SUCCESS), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:1",
+        REDIS_ASIC_STATE_COMMAND_BULK_GET,
+        {{"oid:0x21000000000000", "SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(1u, responseValues.size());
+    EXPECT_EQ(sai_serialize_status(SAI_STATUS_SUCCESS), fvField(responseValues[0]));
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0", fvValue(responseValues[0]));
+}
+
+TEST_F(SyncdTest, GetOverflowResponseClearsPointerValue)
+{
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_get = [switchRid](sai_object_type_t objectType, sai_object_id_t objectId,
+            uint32_t attrCount, sai_attribute_t *attrList) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(switchRid, objectId);
+        EXPECT_EQ(2u, attrCount);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrList[0].id);
+        EXPECT_EQ(SAI_SWITCH_ATTR_PORT_LIST, attrList[1].id);
+        EXPECT_EQ(nullptr, attrList[1].value.objlist.list);
+        attrList[0].value.ptr = reinterpret_cast<void *>(0x1234);
+        attrList[1].value.objlist.count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_BUFFER_OVERFLOW), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:oid:0x21000000000000",
+        REDIS_ASIC_STATE_COMMAND_GET,
+        {{"SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", "0x0"},
+         {"SAI_SWITCH_ATTR_PORT_LIST", "0:null"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(2u, responseValues.size());
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", fvField(responseValues[0]));
+    EXPECT_EQ("0x0", fvValue(responseValues[0]));
+    EXPECT_EQ("SAI_SWITCH_ATTR_PORT_LIST", fvField(responseValues[1]));
+    EXPECT_EQ("2", fvValue(responseValues[1]));
+}
+
+TEST_F(SyncdTest, BulkGetOverflowResponseClearsPointerValue)
+{
+    m_opt->m_enableSaiBulkSupport = true;
+
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_bulkGet = [switchRid](sai_object_type_t objectType, uint32_t objectCount,
+            const sai_object_id_t *objectIds, const uint32_t *attrCounts,
+            sai_attribute_t **attrLists, sai_bulk_op_error_mode_t mode, sai_status_t *statuses) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(1u, objectCount);
+        EXPECT_EQ(switchRid, objectIds[0]);
+        EXPECT_EQ(2u, attrCounts[0]);
+        EXPECT_EQ(SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, mode);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrLists[0][0].id);
+        EXPECT_EQ(SAI_SWITCH_ATTR_PORT_LIST, attrLists[0][1].id);
+        EXPECT_EQ(nullptr, attrLists[0][1].value.objlist.list);
+        attrLists[0][0].value.ptr = reinterpret_cast<void *>(0x1234);
+        attrLists[0][1].value.objlist.count = 2;
+        statuses[0] = SAI_STATUS_BUFFER_OVERFLOW;
+        return SAI_STATUS_FAILURE;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_FAILURE), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:1",
+        REDIS_ASIC_STATE_COMMAND_BULK_GET,
+        {{"oid:0x21000000000000", "SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0|SAI_SWITCH_ATTR_PORT_LIST=0:null"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(1u, responseValues.size());
+    EXPECT_EQ(sai_serialize_status(SAI_STATUS_BUFFER_OVERFLOW), fvField(responseValues[0]));
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0|SAI_SWITCH_ATTR_PORT_LIST=2", fvValue(responseValues[0]));
+}
+
+TEST_F(SyncdTest, FlexCounterRemoveDoesNotRequireVidToRidTranslation)
+{
+    auto client = std::make_shared<MockDisabledRedisClient>();
+    EXPECT_CALL(*client, getRidForVid(testing::_)).Times(0);
+
+    m_syncd->m_translator = std::make_shared<VirtualOidTranslator>(
+            client,
+            m_syncd->m_virtualObjectIdManager,
+            m_sai);
+
+    EXPECT_EQ(m_syncd->processFlexCounterEvent(
+                "PORT_PHY_SERDES_ATTR:oid:0x57000000000001",
+                DEL_COMMAND,
+                {},
+                false),
+            SAI_STATUS_SUCCESS);
+}
+
+TEST_F(SyncdTest, FlexCounterRemoveFromAsicChannelDoesNotRequireVidToRidTranslation)
+{
+    auto client = std::make_shared<MockDisabledRedisClient>();
+    EXPECT_CALL(*client, getRidForVid(testing::_)).Times(0);
+
+    m_syncd->m_translator = std::make_shared<VirtualOidTranslator>(
+            client,
+            m_syncd->m_virtualObjectIdManager,
+            m_sai);
+
+    auto channel = std::make_shared<MockSelectableChannel>();
+    m_syncd->m_selectableChannel = channel;
+    m_syncd->m_enableSyncMode = true;
+
+    EXPECT_CALL(*channel, set(
+                sai_serialize_status(SAI_STATUS_SUCCESS),
+                testing::IsEmpty(),
+                REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .Times(1);
+
+    const std::string key =
+        "PORT_PHY_SERDES_ATTR:oid:0x57000000000001";
+    const std::vector<swss::FieldValueTuple> values = {
+        {"TEST_FIELD", "TEST_VALUE"}
+    };
+
+    m_syncd->m_flexCounterTable->set(key, values);
+
+    std::string value;
+    ASSERT_TRUE(m_syncd->m_flexCounterTable->hget(
+                key,
+                "TEST_FIELD",
+                value));
+
+    EXPECT_EQ(m_syncd->processFlexCounterEvent(
+                key,
+                DEL_COMMAND,
+                {},
+                true),
+            SAI_STATUS_SUCCESS);
+
+    EXPECT_FALSE(m_syncd->m_flexCounterTable->hget(
+                key,
+                "TEST_FIELD",
+                value));
+}
 
 TEST_F(SyncdTest, processNotifySyncd)
 {
