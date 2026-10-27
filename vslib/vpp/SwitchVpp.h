@@ -1142,6 +1142,9 @@ namespace saivs
             // Shared SAI traps can overwrite one physical row, so rollback
             // must restore this effective state rather than one trap's config.
             std::map<uint32_t, sai_object_id_t> m_trap_binding_map;
+            // Keys whose last multi-step RPC result is not authoritative.
+            // Rollback must retry these even when the OID journal is unchanged.
+            std::set<uint32_t> m_trap_binding_uncertain;
 
             sai_status_t createHostifTrapGroup(
                     _In_ sai_object_id_t object_id,

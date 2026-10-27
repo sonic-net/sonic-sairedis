@@ -193,7 +193,7 @@ TEST_F(SwitchVppNeighborMissTrap, RejectsUnsupportedNeighborMissDropAction)
             m_sw->m_trap_map.at(trapOid).packet_action);
 }
 
-TEST_F(SwitchVppNeighborMissTrap, NullTrapGroupPolicerUnbindsActiveNeighborMiss)
+TEST_F(SwitchVppNeighborMissTrap, NullTrapGroupPolicerKeepsActiveNeighborMissUnpoliced)
 {
     const sai_object_id_t trapGroupOid = 0x1200000001;
     const sai_object_id_t policerOid = 0x1200000002;
@@ -227,8 +227,10 @@ TEST_F(SwitchVppNeighborMissTrap, NullTrapGroupPolicerUnbindsActiveNeighborMiss)
             sai_serialize_object_id(trapGroupOid), &groupAttr));
 
     ASSERT_EQ(2u, vppMock().coppNeighborMissBindCalls.size());
-    EXPECT_FALSE(vppMock().coppNeighborMissBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].isBind);
     EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].policerName.empty());
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, m_sw->m_trap_binding_map.begin()->second);
     EXPECT_EQ(SAI_NULL_OBJECT_ID,
             m_sw->m_trap_group_map.at(trapGroupOid).policer_oid);
 
@@ -363,7 +365,8 @@ TEST_F(SwitchVppNeighborMissTrap, TrapGroupNullUnbindFailureKeepsOldCachedState)
             sai_serialize_object_id(trapGroupOid), &groupAttr));
 
     ASSERT_EQ(2u, vppMock().coppNeighborMissBindCalls.size());
-    EXPECT_FALSE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].policerName.empty());
     EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].isBind);
     EXPECT_EQ("copp-policer-0x1200000002",
             vppMock().coppNeighborMissBindCalls[1].policerName);
@@ -427,7 +430,8 @@ TEST_F(SwitchVppNeighborMissTrap, MixedTrapGroupFailureRestoresAbsentLldpBinding
 
     ASSERT_EQ(2u, vppMock().coppNeighborMissBindCalls.size());
     EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
-    EXPECT_FALSE(vppMock().coppNeighborMissBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].policerName.empty());
     EXPECT_EQ(SAI_NULL_OBJECT_ID,
             m_sw->m_trap_group_map.at(trapGroupOid).policer_oid);
 }
@@ -613,7 +617,8 @@ TEST_F(SwitchVppNeighborMissTrap, MixedBgpFailureRemovesNewNameBinding)
     EXPECT_FALSE(vppMock().coppIp2meBindCalls[1].isBind);
     EXPECT_EQ("copp-policer-0x1200000002",
             vppMock().coppIp2meBindCalls[1].policerName);
-    EXPECT_TRUE(m_sw->m_trap_binding_map.empty());
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, m_sw->m_trap_binding_map.begin()->second);
     EXPECT_EQ(SAI_NULL_OBJECT_ID,
             m_sw->m_trap_group_map.at(groupOid).policer_oid);
 }
@@ -663,7 +668,8 @@ TEST_F(SwitchVppNeighborMissTrap, MixedIp2meFailureRemovesNewNameBinding)
     EXPECT_FALSE(vppMock().coppIp2meBindCalls[1].isBind);
     EXPECT_EQ("copp-policer-0x1200000002",
             vppMock().coppIp2meBindCalls[1].policerName);
-    EXPECT_TRUE(m_sw->m_trap_binding_map.empty());
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, m_sw->m_trap_binding_map.begin()->second);
     EXPECT_EQ(SAI_NULL_OBJECT_ID,
             m_sw->m_trap_group_map.at(groupOid).policer_oid);
 }
@@ -787,6 +793,35 @@ TEST_F(SwitchVppNeighborMissTrap, CleanupFailureRetriesOriginallyAbsentBgpOwner)
     EXPECT_EQ(0u, m_sw->m_trap_map.count(trapOid));
 }
 
+TEST_F(SwitchVppNeighborMissTrap, OmittedDefaultNullGroupInstallsUnpolicedRow)
+{
+    const sai_object_id_t groupOid = 0x1200000001;
+    const sai_object_id_t trapOid = 0x1200000002;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 0, nullptr));
+    sai_attribute_t defaultGroup{};
+    defaultGroup.id = SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP;
+    defaultGroup.value.oid = groupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(
+            SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId),
+            &defaultGroup));
+
+    sai_attribute_t attrs[2]{};
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_COPY;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 2, attrs));
+
+    ASSERT_EQ(1u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].policerName.empty());
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, m_sw->m_trap_binding_map.begin()->second);
+}
+
 TEST_F(SwitchVppNeighborMissTrap, UsesDefaultGroupWhenTrapGroupIsOmitted)
 {
     const sai_object_id_t groupOid = 0x1200000001;
@@ -874,6 +909,55 @@ TEST_F(SwitchVppNeighborMissTrap, TtlInstallFailureRestoresOldPolicer)
     ASSERT_EQ(2u, vppMock().coppTtlPuntBindCalls.size());
     EXPECT_TRUE(vppMock().coppTtlPuntBindCalls[0]);
     EXPECT_TRUE(vppMock().coppTtlPuntBindCalls[1]);
+    EXPECT_EQ(oldPolicerOid,
+            m_sw->m_trap_group_map.at(trapGroupOid).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, TtlFailedRestoreIsRetriedByGroupRollback)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t oldPolicerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+    const sai_object_id_t newPolicerOid = 0x1200000004;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = oldPolicerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 1, &groupAttr));
+    vpp_policer_entry_t oldPolicer{};
+    oldPolicer.vpp_policer_index = 7;
+    m_sw->m_policer_map[oldPolicerOid] = oldPolicer;
+    vpp_policer_entry_t newPolicer{};
+    newPolicer.vpp_policer_index = 8;
+    m_sw->m_policer_map[newPolicerOid] = newPolicer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_TTL_ERROR;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = trapGroupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+
+    vppMock().coppIfoutBindCalls.clear();
+    vppMock().coppTtlPuntBindCalls.clear();
+    vppMock().coppTtlPuntBindFailOnCall = 1;
+    vppMock().coppIfoutBindFailOnCall = 2;
+    groupAttr.value.oid = newPolicerOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(trapGroupOid), &groupAttr));
+
+    ASSERT_EQ(3u, vppMock().coppIfoutBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000004",
+            vppMock().coppIfoutBindCalls[0].policerName);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIfoutBindCalls[1].policerName);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIfoutBindCalls[2].policerName);
+    EXPECT_EQ(0u, m_sw->m_trap_binding_uncertain.size());
     EXPECT_EQ(oldPolicerOid,
             m_sw->m_trap_group_map.at(trapGroupOid).policer_oid);
 }
