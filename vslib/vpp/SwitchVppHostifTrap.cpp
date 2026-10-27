@@ -331,6 +331,18 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
         {
             m_trap_binding_map[binding_key] = programmed_policer_oid;
         }
+        m_trap_binding_uncertain.erase(binding_key);
+    };
+
+    auto mark_binding_uncertain = [&]()
+    {
+        if (!have_binding_key)
+        {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+        m_trap_binding_uncertain.insert(binding_key);
     };
 
     // A VPP row can be shared by multiple SAI traps. If this trap has no
@@ -373,23 +385,37 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
     if (isNeighborMissTrap(trap.trap_type))
     {
-        // NEIGHBOR_MISS is a singleton semantic row. A trap-group update to
-        // SAI_NULL_OBJECT_ID (or to an unresolved policer) must remove the old
-        // row instead of taking the generic "nothing to install" exit below.
+        // Keep an active TRAP/COPY row even without a policer: the empty name
+        // explicitly means unpoliced, while is_bind=false means no trap.
         if (!have_policer)
         {
-            int pret = vpp_sonic_ext_copp_neighbor_miss_bind("", false);
+            bool active = trap.packet_action == SAI_PACKET_ACTION_TRAP ||
+                trap.packet_action == SAI_PACKET_ACTION_COPY;
+            int pret = vpp_sonic_ext_copp_neighbor_miss_bind("", active);
 
             if (pret != 0)
             {
-                SWSS_LOG_ERROR("failed to unbind unresolved NEIGHBOR_MISS policer for "
+                mark_binding_uncertain();
+                SWSS_LOG_ERROR("failed to program unpoliced NEIGHBOR_MISS state for "
                         "trap 0x%lx: ret %d", (unsigned long)trap_oid, pret);
                 return SAI_STATUS_FAILURE;
             }
 
-            SWSS_LOG_NOTICE("unbound unresolved NEIGHBOR_MISS policer for trap 0x%lx",
+            SWSS_LOG_NOTICE("%s NEIGHBOR_MISS row for trap 0x%lx",
+                    active ? "installed unpoliced" : "removed",
                     (unsigned long)trap_oid);
-            record_binding(SAI_NULL_OBJECT_ID);
+            if (active)
+            {
+                std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+                // Present+NULL is distinct from an absent key: it records an
+                // active semantic row that intentionally has no policer.
+                m_trap_binding_map[binding_key] = SAI_NULL_OBJECT_ID;
+                m_trap_binding_uncertain.erase(binding_key);
+            }
+            else
+            {
+                record_binding(SAI_NULL_OBJECT_ID);
+            }
             return SAI_STATUS_SUCCESS;
         }
 
@@ -405,6 +431,7 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
         if (pret != 0)
         {
+            mark_binding_uncertain();
             SWSS_LOG_ERROR("failed to bind NEIGHBOR_MISS policer %s for trap 0x%lx: ret %d",
                     policer_name, (unsigned long)trap_oid, pret);
             return SAI_STATUS_FAILURE;
@@ -433,6 +460,7 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
                     policer_name, 179, false);
             if (pret != 0)
             {
+                mark_binding_uncertain();
                 return SAI_STATUS_FAILURE;
             }
             record_binding(SAI_NULL_OBJECT_ID);
@@ -447,6 +475,7 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
         if (pret != 0)
         {
+            mark_binding_uncertain();
             SWSS_LOG_ERROR("failed to bind BGP policer for trap 0x%lx: ret %d",
                     (unsigned long)trap_oid, pret);
             return SAI_STATUS_FAILURE;
@@ -473,6 +502,7 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
                     policer_name, false);
             if (pret != 0)
             {
+                mark_binding_uncertain();
                 return SAI_STATUS_FAILURE;
             }
             record_binding(SAI_NULL_OBJECT_ID);
@@ -486,6 +516,7 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
         if (pret != 0)
         {
+            mark_binding_uncertain();
             SWSS_LOG_ERROR("failed to bind IP2ME policer for trap 0x%lx: ret %d",
                     (unsigned long)trap_oid, pret);
             return SAI_STATUS_FAILURE;
@@ -524,6 +555,7 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
         if (pret != 0)
         {
+            mark_binding_uncertain();
             SWSS_LOG_ERROR("failed to %s copp-ifout policer for trap 0x%lx "
                     "(trap_type %d, ethertype 0x%04x): ret %d",
                     have_policer ? "bind" : "unbind",
@@ -541,6 +573,7 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
             if (tret != 0)
             {
+                mark_binding_uncertain();
                 SWSS_LOG_ERROR("failed to %s TTL_ERROR punt-to-host for trap 0x%lx: ret %d",
                         have_policer ? "enable" : "disable",
                         (unsigned long)trap_oid, tret);
@@ -573,7 +606,9 @@ sai_status_t SwitchVpp::uninstallTrapClassifyNow(
     // Reconcile this shared VPP row to another installed owner, or remove it
     // when no owner remains. installTrapClassifyNow() snapshots and restores
     // the old state if a compound uninstall fails part-way through.
-    return installTrapClassifyNow(trap_oid, trap, (uint32_t)~0,
+    vpp_trap_entry_t inactive_trap = trap;
+    inactive_trap.packet_action = SAI_PACKET_ACTION_DROP;
+    return installTrapClassifyNow(trap_oid, inactive_trap, (uint32_t)~0,
             SAI_NULL_OBJECT_ID, SAI_NULL_OBJECT_ID);
 }
 
@@ -742,7 +777,8 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
                 auto current = m_trap_binding_map.find(binding.first);
                 sai_object_id_t current_oid = current == m_trap_binding_map.end() ?
                     SAI_NULL_OBJECT_ID : current->second;
-                if (current_oid == binding.second.first)
+                if (current_oid == binding.second.first &&
+                        m_trap_binding_uncertain.count(binding.first) == 0)
                 {
                     continue;
                 }
