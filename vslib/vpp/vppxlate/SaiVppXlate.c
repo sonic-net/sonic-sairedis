@@ -68,6 +68,8 @@
 
 #include <vpp_plugins/sonic_ext/sonic_ext.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api_enum.h>
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api_types.h>
 
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api_types.h>
@@ -220,6 +222,24 @@
 
 #define vl_api_version(n, v) static u32 sonic_ext_trim_api_version = v;
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api.h>
+#undef vl_api_version
+
+/* compatibility-isolated sonic_ext CoPP API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_copp_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
 #undef vl_api_version
 
 /* interface API inclusion */
@@ -2413,6 +2433,7 @@ static u16 sflow_msg_id_base;
  */
 static u16 nat44_ed_msg_id_base = (u16) ~0;
 static u16 sonic_ext_msg_id_base;
+static u16 sonic_ext_copp_msg_id_base;
 static u16 policer_msg_id_base;
 
 static void vpp_ext_vpe_init(void)
@@ -2589,6 +2610,9 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
 #define SONIC_EXT_MSG_ID(id) \
     (VL_API_##id + sonic_ext_msg_id_base)
 
+#define SONIC_EXT_COPP_MSG_ID(id) \
+    (VL_API_##id + sonic_ext_copp_msg_id_base)
+
 #define foreach_vpe_plugin_api_reply_msg                                \
     _(LCP_MSG_ID(LCP_ITF_PAIR_ADD_DEL_REPLY), lcp_itf_pair_add_del_reply) \
     _(LCP_MSG_ID(LCP_ETHERTYPE_ENABLE_REPLY), lcp_ethertype_enable_reply) \
@@ -2603,7 +2627,7 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(SONIC_EXT_MSG_ID(SONIC_EXT_EGRESS_MIRROR_ENABLE_DISABLE_REPLY), sonic_ext_egress_mirror_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_MIRROR_ENCAP_FIXUP_ENABLE_DISABLE_REPLY), sonic_ext_mirror_encap_fixup_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IFOUT_BIND_REPLY), sonic_ext_copp_ifout_bind_reply) \
-    _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_NEIGHBOR_MISS_BIND_REPLY), sonic_ext_copp_neighbor_miss_bind_reply) \
+    _(SONIC_EXT_COPP_MSG_ID(SONIC_EXT_COPP_NEIGHBOR_MISS_BIND_REPLY), sonic_ext_copp_neighbor_miss_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_ADDR_ADD_DEL_REPLY), sonic_ext_copp_ip2me_addr_add_del_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_REPLY), sonic_ext_copp_ip2me_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_CONDITION_REPLY), sonic_ext_copp_ip2me_bind_condition_reply) \
@@ -2772,6 +2796,10 @@ static void get_base_msg_id()
     if (nat44_ed_msg_id_base == (u16) ~0) {
         SAIVPP_WARN("VPP has no nat44_ed API (nat_plugin.so not loaded): NAT is not supported");
     }
+
+    msg_base_lookup_name = format (0, "sonic_ext_copp_%08x%c", sonic_ext_copp_api_version, 0);
+    sonic_ext_copp_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(sonic_ext_copp_msg_id_base != (u16) ~0);
 }
 
 #define API_SOCKET_FILE "/run/vpp/api.sock"
@@ -4475,7 +4503,7 @@ int vpp_sonic_ext_copp_neighbor_miss_bind(
 
     VPP_LOCK();
 
-    __plugin_msg_base = sonic_ext_msg_id_base;
+    __plugin_msg_base = sonic_ext_copp_msg_id_base;
 
     M (SONIC_EXT_COPP_NEIGHBOR_MISS_BIND, mp);
 
