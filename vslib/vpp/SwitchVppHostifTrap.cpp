@@ -258,8 +258,17 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
             vpp_sonic_ext_copp_ip2me_bind(attempted_name, false);
         if (cleanup_ret != 0)
         {
-            // The cleanup may have taken effect despite a missing reply.
-            // Continue with the authoritative restoration attempt below.
+            // The cleanup may or may not have taken effect. Publish the
+            // attempted owner as uncertain so the authoritative restoration
+            // below cannot mistake an originally-empty journal for proof
+            // that there is nothing left to remove. A second owner-qualified
+            // unbind is safe when cleanup actually succeeded, and necessary
+            // when both the bind and cleanup took effect without replies.
+            if (trapBindingKey(trap.trap_type, binding_key))
+            {
+                std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+                m_trap_binding_map[binding_key] = policer_oid;
+            }
             SWSS_LOG_ERROR("failed to confirm cleanup of attempted trap 0x%lx "
                     "bind: ret %d; restoring previous binding",
                     (unsigned long)trap_oid, cleanup_ret);

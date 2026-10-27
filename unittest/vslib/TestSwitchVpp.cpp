@@ -747,6 +747,46 @@ TEST_F(SwitchVppNeighborMissTrap, CleanupFailureStillRestoresPreviousBgpOwner)
             m_sw->m_trap_group_map.at(groupOid).policer_oid);
 }
 
+TEST_F(SwitchVppNeighborMissTrap, CleanupFailureRetriesOriginallyAbsentBgpOwner)
+{
+    const sai_object_id_t groupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 1, &groupAttr));
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t attrs[3]{};
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_BGP;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    attrs[2].value.oid = groupOid;
+
+    // The bind and first cleanup both time out. The originally empty
+    // effective-state journal must not suppress a final owner-qualified
+    // unbind during restoration.
+    vppMock().coppIp2meBindFailOnCalls = {1, 2};
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, attrs));
+
+    ASSERT_EQ(3u, vppMock().coppIp2meBindCalls.size());
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[1].isBind);
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[2].isBind);
+    EXPECT_EQ(vppMock().coppIp2meBindCalls[0].policerName,
+            vppMock().coppIp2meBindCalls[2].policerName);
+    EXPECT_TRUE(m_sw->m_trap_binding_map.empty());
+    EXPECT_EQ(0u, m_sw->m_trap_map.count(trapOid));
+}
+
 TEST_F(SwitchVppNeighborMissTrap, UsesDefaultGroupWhenTrapGroupIsOmitted)
 {
     const sai_object_id_t groupOid = 0x1200000001;
