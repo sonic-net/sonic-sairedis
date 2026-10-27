@@ -1212,6 +1212,36 @@ class SwitchVppFdbAging : public SwitchVppSubIfAdminState
             addTaggedMember(m_otherBridgePort, addVlan(OTHER_VLAN_ID));
         }
 
+        // orchagent creates VLAN 100's router interface: its bridge virtual
+        // interface joins bridge domain 100, which VPP creates if no member did
+        void addVlanRouterInterface()
+        {
+            SWSS_LOG_ENTER();
+
+            auto vrf = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+            sai_attribute_t attr{};
+
+            attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+            attr.value.oid = vrf;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->set_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), &attr));
+
+            sai_attribute_t attrs[3]{};
+
+            attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+            attrs[0].value.oid = m_vlan;
+            attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+            attrs[1].value.oid = vrf;
+            attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+
+            SwitchVpp::RifCreateState state;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_create_bvi_interface(3, attrs, state));
+            ASSERT_EQ(std::set<std::string>({"bvi100"}), vppMock().bdMembers[VLAN_ID]);
+        }
+
         static constexpr uint16_t OTHER_VLAN_ID = 300;
 };
 
@@ -1268,8 +1298,7 @@ TEST_F(SwitchVppFdbAging, BridgeDomainCreatedAfterTheAgingTimeIsSetAges)
  */
 TEST_F(SwitchVppFdbAging, BridgeDomainKeptForItsBviGetsTheAgingTimeWhenAMemberJoins)
 {
-    // VLAN 100's router interface
-    vppMock().bdMembers[VLAN_ID].insert("bvi100");
+    addVlanRouterInterface();
 
     ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
 
@@ -1287,6 +1316,25 @@ TEST_F(SwitchVppFdbAging, BridgeDomainKeptForItsBviGetsTheAgingTimeWhenAMemberJo
     addTaggedMember(m_bridgePort);
 
     EXPECT_EQ(0u, macAge(VLAN_ID));
+}
+
+/*
+ * VPP creates the bridge domain of a VLAN for its router interface's bridge
+ * virtual interface if no member did. That interface is no member: the first
+ * member sets the switch's aging time, set before the router interface was
+ * created.
+ */
+TEST_F(SwitchVppFdbAging, FirstMemberOfAVlanWithARouterInterfaceSetsTheAgingTime)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    addVlanRouterInterface();
+
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
 }
 
 /*
@@ -1359,6 +1407,43 @@ TEST_F(SwitchVppFdbAging, BridgeDomainVppFailsToSetForAMemberGetsTheNextAgingTim
     vppMock().macAgeFailures.clear();
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+}
+
+/*
+ * The bridge domain of a VLAN with a member has the switch's MAC age: a
+ * config reload adds every server port to the VLAN, and only the first one
+ * sets it.
+ */
+TEST_F(SwitchVppFdbAging, MemberJoiningABridgeDomainWithAMemberSetsNothing)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    addTaggedMember(m_bridgePort);
+    addTaggedMember(m_otherBridgePort);
+
+    EXPECT_EQ(std::vector<uint32_t>({10}), macAges(VLAN_ID));
+}
+
+/*
+ * After VPP failed to set a MAC age, a bridge domain with a member may not
+ * have the stored aging time: a member joining it sets it.
+ */
+TEST_F(SwitchVppFdbAging, MemberJoiningAfterAFailureSetsTheStoredAgingTime)
+{
+    addTwoVlans();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    // Turning aging off fails on bridge domain 300 only: 600 s stays stored
+    vppMock().macAgeFailures.insert(OTHER_VLAN_ID);
+
+    ASSERT_EQ(SAI_STATUS_FAILURE, setAgingTime(0));
+    ASSERT_EQ(0u, macAge(VLAN_ID));
+
+    // The other port joins VLAN 100 too
+    addTaggedMember(m_otherBridgePort);
 
     EXPECT_EQ(10u, macAge(VLAN_ID));
 }

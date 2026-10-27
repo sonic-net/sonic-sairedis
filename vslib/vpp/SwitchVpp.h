@@ -1764,8 +1764,9 @@ namespace saivs
             // Apply a new aging time to the VLAN bridge domains with a member
             sai_status_t vpp_set_fdb_aging_time(uint32_t aging_time);
 
-            // Apply the switch's aging time to the bridge domain a VLAN member joins
-            void vpp_apply_fdb_aging_time(uint32_t bd_id);
+            // Apply the switch's aging time to the bridge domain a VLAN member
+            // joins, unless it has another member already (bd_has_member)
+            void vpp_apply_fdb_aging_time(uint32_t bd_id, bool bd_has_member);
 
             // The bridge domains VPP has a VLAN's port or LAG member in
             std::set<uint32_t> vpp_vlan_bridge_domains();

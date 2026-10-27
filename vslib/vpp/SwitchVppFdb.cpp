@@ -902,6 +902,9 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
     const char *hw_ifname;
     char host_subifname[32];
 
+    /* Whether VPP has another member of the VLAN in its bridge domain already */
+    bool bd_has_member = m_ifaceRegistry.collectMemberBdIds().count(bridge_id) != 0;
+
     /* If this VLAN already has flood suppression configured, the new member
      * must join with the matching punting classify tables so its broadcast
      * ARP / IPv6 multicast is punted rather than flooded to the other
@@ -1020,10 +1023,11 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         SWSS_LOG_WARN("Failed to disable UU flood on bridge domain %u", bridge_id);
     }
 
-    /* VPP creates the bridge domain for the first member with MAC aging off,
-     * and keeps the one of a VLAN with a router interface, with its MAC age,
-     * when the last member leaves */
-    vpp_apply_fdb_aging_time(bridge_id);
+    /* The bridge domain can have any MAC age when the first member joins:
+     * VPP keeps the one of a VLAN with a router interface, with its MAC age,
+     * when the last member leaves, and creates one in the slot of a deleted
+     * bridge domain without resetting its MAC age */
+    vpp_apply_fdb_aging_time(bridge_id, bd_has_member);
 
     return SAI_STATUS_SUCCESS;
 }
@@ -3471,8 +3475,9 @@ std::set<uint32_t> SwitchVpp::vpp_vlan_bridge_domains()
 
     // Not from the VLAN_MEMBER objects: the default VLAN's members, which
     // SwitchStateBase creates with the switch, never reach VPP, so VPP has no
-    // bridge domain for them
-    return m_ifaceRegistry.collectBdIds();
+    // bridge domain for them. Not a bridge domain with only a BVI either: VPP
+    // doesn't learn on a BVI, and the first member to join sets it.
+    return m_ifaceRegistry.collectMemberBdIds();
 }
 
 sai_status_t SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
@@ -3525,18 +3530,25 @@ sai_status_t SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
     return SAI_STATUS_SUCCESS;
 }
 
-void SwitchVpp::vpp_apply_fdb_aging_time(uint32_t bd_id)
+void SwitchVpp::vpp_apply_fdb_aging_time(uint32_t bd_id, bool bd_has_member)
 {
     SWSS_LOG_ENTER();
+
+    // A bridge domain with a member has the MAC age of the stored aging time,
+    // unless VPP failed to set one since
+    if (bd_has_member && m_fdb_mac_age_applied)
+    {
+        return;
+    }
 
     uint8_t mac_age = fdb_aging_time_to_mac_age(switch_fdb_aging_time());
 
     /*
-     * Also 0, which the bridge domain VPP creates for a VLAN's first member
-     * already has: VPP keeps the bridge domain of a VLAN with a router
-     * interface when its last member leaves, as the BVI is still in it, and
-     * the bridge domain keeps its MAC age. An aging time set while the VLAN
-     * had no member skipped it.
+     * Also 0: a bridge domain without a member can have any MAC age. VPP
+     * keeps the bridge domain of a VLAN with a router interface when its last
+     * member leaves, as the BVI is still in it, with its MAC age, which an
+     * aging time set since skipped. And VPP creates a bridge domain in the
+     * slot of a deleted one without resetting its MAC age.
      */
     if (vpp_bridge_domain_set_mac_age(bd_id, mac_age) != 0)
     {
