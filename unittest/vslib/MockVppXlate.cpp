@@ -296,9 +296,11 @@ extern "C" int __wrap_vpp_sonic_ext_copp_ip2me_bind(
         policer_name ? policer_name : "", 0, false, is_bind,
     });
 
-    if (vppMock().coppIp2meBindFailOnCall != 0 &&
-            vppMock().coppIp2meBindCalls.size() ==
-            vppMock().coppIp2meBindFailOnCall)
+    if ((vppMock().coppIp2meBindFailOnCall != 0 &&
+         vppMock().coppIp2meBindCalls.size() ==
+         vppMock().coppIp2meBindFailOnCall) ||
+            vppMock().coppIp2meBindFailOnCalls.count(
+                    (unsigned int)vppMock().coppIp2meBindCalls.size()) != 0)
     {
         return -1;
     }
@@ -317,9 +319,11 @@ extern "C" int __wrap_vpp_sonic_ext_copp_ip2me_bind_condition(
         policer_name ? policer_name : "", tcp_port, true, is_bind,
     });
 
-    if (vppMock().coppIp2meBindFailOnCall != 0 &&
-            vppMock().coppIp2meBindCalls.size() ==
-            vppMock().coppIp2meBindFailOnCall)
+    if ((vppMock().coppIp2meBindFailOnCall != 0 &&
+         vppMock().coppIp2meBindCalls.size() ==
+         vppMock().coppIp2meBindFailOnCall) ||
+            vppMock().coppIp2meBindFailOnCalls.count(
+                    (unsigned int)vppMock().coppIp2meBindCalls.size()) != 0)
     {
         return -1;
     }

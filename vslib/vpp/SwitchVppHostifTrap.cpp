@@ -258,9 +258,11 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
             vpp_sonic_ext_copp_ip2me_bind(attempted_name, false);
         if (cleanup_ret != 0)
         {
-            SWSS_LOG_ERROR("failed to reconcile attempted trap 0x%lx bind: "
-                    "ret %d", (unsigned long)trap_oid, cleanup_ret);
-            return SAI_STATUS_FAILURE;
+            // The cleanup may have taken effect despite a missing reply.
+            // Continue with the authoritative restoration attempt below.
+            SWSS_LOG_ERROR("failed to confirm cleanup of attempted trap 0x%lx "
+                    "bind: ret %d; restoring previous binding",
+                    (unsigned long)trap_oid, cleanup_ret);
         }
     }
 
