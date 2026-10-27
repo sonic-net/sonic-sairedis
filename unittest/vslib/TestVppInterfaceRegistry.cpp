@@ -112,7 +112,7 @@ TEST(VppInterfaceRegistry, clearingRegistryDoesNotRetainRecycledRifOid)
     EXPECT_EQ("bvi200", registry.resolveHwIfByRifOid(100));
 }
 
-TEST(VppInterfaceRegistry, collectBdIdsReturnsTheBridgeDomainsOfInterfacesInOne)
+TEST(VppInterfaceRegistry, collectMemberBdIdsReturnsTheBridgeDomainsOfVlanMembers)
 {
     VppInterfaceRegistry registry;
     auto port = registry.addPhysicalPort("port0", "Ethernet0", 1);
@@ -120,17 +120,21 @@ TEST(VppInterfaceRegistry, collectBdIdsReturnsTheBridgeDomainsOfInterfacesInOne)
     ASSERT_NE(nullptr, registry.addPhysicalPort("port1", "Ethernet4", 2));
     ASSERT_NE(nullptr, registry.addLag(2, 20, 3));
     ASSERT_NE(nullptr, registry.addSubInterface(port, 100, 100));
-    EXPECT_TRUE(registry.collectBdIds().empty());
+    // a VLAN's bridge virtual interface is in its bridge domain, but no member
+    auto bvi = registry.addBvi(200, 4);
+    ASSERT_NE(nullptr, bvi);
+    ASSERT_TRUE(bvi->hasBdId());
+    EXPECT_TRUE(registry.collectMemberBdIds().empty());
 
     ASSERT_TRUE(registry.setBdId("port0.100", 100));
     ASSERT_TRUE(registry.setBdId("port1", 1000));
     ASSERT_TRUE(registry.setBdId("BondEthernet2", 1000));
-    EXPECT_EQ(std::set<uint32_t>({100, 1000}), registry.collectBdIds());
+    EXPECT_EQ(std::set<uint32_t>({100, 1000}), registry.collectMemberBdIds());
 
     ASSERT_TRUE(registry.clearBdId("port1"));
-    EXPECT_EQ(std::set<uint32_t>({100, 1000}), registry.collectBdIds());
+    EXPECT_EQ(std::set<uint32_t>({100, 1000}), registry.collectMemberBdIds());
     ASSERT_TRUE(registry.clearBdId("BondEthernet2"));
-    EXPECT_EQ(std::set<uint32_t>({100}), registry.collectBdIds());
+    EXPECT_EQ(std::set<uint32_t>({100}), registry.collectMemberBdIds());
     EXPECT_EQ(1u, registry.remove("port0.100"));
-    EXPECT_TRUE(registry.collectBdIds().empty());
+    EXPECT_TRUE(registry.collectMemberBdIds().empty());
 }
