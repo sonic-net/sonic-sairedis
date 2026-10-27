@@ -1107,9 +1107,14 @@ static uint32_t begin_copp_request(void)
     return copp_expected_context;
 }
 
+static void end_copp_request(void)
+{
+    copp_expected_context = 0;
+}
+
 static void set_copp_reply_status(uint32_t context, int retval)
 {
-    if (context == copp_expected_context)
+    if (copp_expected_context != 0 && context == copp_expected_context)
     {
         set_reply_status(retval);
     }
@@ -4296,6 +4301,7 @@ int vpp_sonic_ext_copp_ifout_bind(
 
     S (mp);
     WR (ret);
+    end_copp_request();
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) ethertype 0x%04x policer_name %s is_bind %d", __func__, ret, ethertype, policer_name ? policer_name : "", is_bind); }
     else { SAIVPP_INFO("%s ethertype 0x%04x policer_name %s is_bind %d", __func__, ethertype, policer_name ? policer_name : "", is_bind); }
@@ -4333,6 +4339,7 @@ int vpp_sonic_ext_copp_neighbor_miss_bind(
 
     S (mp);
     WR (ret);
+    end_copp_request();
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) policer_name %s is_bind %d", __func__, ret, policer_name ? policer_name : "", is_bind); }
     else { SAIVPP_INFO("%s policer_name %s is_bind %d", __func__, policer_name ? policer_name : "", is_bind); }
@@ -4368,6 +4375,7 @@ int vpp_sonic_ext_copp_ip2me_addr_add_del(
 
     S (mp);
     WR (ret);
+    end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
 
@@ -4400,6 +4408,7 @@ int vpp_sonic_ext_copp_ip2me_bind(
 
     S (mp);
     WR (ret);
+    end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
 
@@ -4434,6 +4443,7 @@ int vpp_sonic_ext_copp_ip2me_bind_condition(
 
     S (mp);
     WR (ret);
+    end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
 
@@ -4464,6 +4474,7 @@ int vpp_sonic_ext_copp_ttl_punt_bind(
 
     S (mp);
     WR (ret);
+    end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
 

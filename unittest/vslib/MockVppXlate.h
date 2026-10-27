@@ -155,6 +155,7 @@ struct VppMock
     // CoPP name-keyed IP2ME and BGP bindings.
     int coppIp2meBindResult = 0;
     unsigned int coppIp2meBindFailOnCall = 0;
+    std::set<unsigned int> coppIp2meBindFailOnCalls;
     std::vector<VppCoppIp2meBindCall> coppIp2meBindCalls;
 
     std::map<std::string, uint32_t> interfaceVrfs;
