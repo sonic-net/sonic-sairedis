@@ -862,6 +862,19 @@ sai_status_t SwitchVpp::createHostifTrap(
                 status : rollback_status;
         }
         entry.trap_group_oid = default_group.value.oid;
+
+        sai_attribute_t resolved_group{};
+        resolved_group.id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+        resolved_group.value.oid = default_group.value.oid;
+        status = set_internal(
+                SAI_OBJECT_TYPE_HOSTIF_TRAP, sid, &resolved_group);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            sai_status_t rollback_status = remove_internal(
+                    SAI_OBJECT_TYPE_HOSTIF_TRAP, sid);
+            return rollback_status == SAI_STATUS_SUCCESS ?
+                status : rollback_status;
+        }
     }
 
     uint32_t vpp_policer_index = (uint32_t)~0;

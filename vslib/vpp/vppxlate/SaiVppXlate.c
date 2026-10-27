@@ -1091,6 +1091,30 @@ static void set_reply_status (int retval)
     }
 }
 
+/* CoPP rollback can issue a second synchronous RPC after the first timed out.
+ * Tag every CoPP request so a late reply from the timed-out operation cannot
+ * satisfy the rollback wait. VPP_LOCK serializes this command path. */
+static uint32_t copp_next_context = 1;
+static uint32_t copp_expected_context;
+
+static uint32_t begin_copp_request(void)
+{
+    if (++copp_next_context == 0)
+    {
+        ++copp_next_context;
+    }
+    copp_expected_context = copp_next_context;
+    return copp_expected_context;
+}
+
+static void set_copp_reply_status(uint32_t context, int retval)
+{
+    if (context == copp_expected_context)
+    {
+        set_reply_status(retval);
+    }
+}
+
 static void set_reply_sw_if_index (vl_api_interface_index_t sw_if_index)
 {
     vat_main_t *vam = cur_vam();
@@ -1876,7 +1900,7 @@ static void
 vl_api_sonic_ext_copp_ifout_bind_reply_t_handler(vl_api_sonic_ext_copp_ifout_bind_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
@@ -1884,35 +1908,35 @@ vl_api_sonic_ext_copp_neighbor_miss_bind_reply_t_handler(
         vl_api_sonic_ext_copp_neighbor_miss_bind_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_copp_ip2me_addr_add_del_reply_t_handler(vl_api_sonic_ext_copp_ip2me_addr_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_copp_ip2me_bind_reply_t_handler(vl_api_sonic_ext_copp_ip2me_bind_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_copp_ip2me_bind_condition_reply_t_handler(vl_api_sonic_ext_copp_ip2me_bind_condition_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_copp_ttl_punt_bind_reply_t_handler(vl_api_sonic_ext_copp_ttl_punt_bind_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
@@ -4263,6 +4287,7 @@ int vpp_sonic_ext_copp_ifout_bind(
     __plugin_msg_base = sonic_ext_msg_id_base;
 
     M (SONIC_EXT_COPP_IFOUT_BIND, mp);
+    mp->context = begin_copp_request();
 
     mp->ethertype = htons(ethertype);
     snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
@@ -4300,6 +4325,7 @@ int vpp_sonic_ext_copp_neighbor_miss_bind(
     __plugin_msg_base = sonic_ext_copp_msg_id_base;
 
     M (SONIC_EXT_COPP_NEIGHBOR_MISS_BIND, mp);
+    mp->context = begin_copp_request();
 
     snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s",
             policer_name ? policer_name : "");
@@ -4335,6 +4361,7 @@ int vpp_sonic_ext_copp_ip2me_addr_add_del(
     __plugin_msg_base = sonic_ext_msg_id_base;
 
     M (SONIC_EXT_COPP_IP2ME_ADDR_ADD_DEL, mp);
+    mp->context = begin_copp_request();
 
     mp->addr = addr;
     mp->is_add = is_add;
@@ -4366,6 +4393,7 @@ int vpp_sonic_ext_copp_ip2me_bind(
     __plugin_msg_base = sonic_ext_msg_id_base;
 
     M (SONIC_EXT_COPP_IP2ME_BIND, mp);
+    mp->context = begin_copp_request();
 
     snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
     mp->is_bind = is_bind;
@@ -4398,6 +4426,7 @@ int vpp_sonic_ext_copp_ip2me_bind_condition(
     __plugin_msg_base = sonic_ext_msg_id_base;
 
     M (SONIC_EXT_COPP_IP2ME_BIND_CONDITION, mp);
+    mp->context = begin_copp_request();
 
     snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
     mp->tcp_port = htons(tcp_port);
@@ -4429,6 +4458,7 @@ int vpp_sonic_ext_copp_ttl_punt_bind(
     __plugin_msg_base = sonic_ext_msg_id_base;
 
     M (SONIC_EXT_COPP_TTL_PUNT_BIND, mp);
+    mp->context = begin_copp_request();
 
     mp->is_bind = is_bind;
 

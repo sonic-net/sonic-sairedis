@@ -736,6 +736,12 @@ TEST_F(SwitchVppNeighborMissTrap, UsesDefaultGroupWhenTrapGroupIsOmitted)
     ASSERT_EQ(1u, vppMock().coppNeighborMissBindCalls.size());
     EXPECT_EQ("copp-policer-0x1200000002",
             vppMock().coppNeighborMissBindCalls[0].policerName);
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP,
+            sai_serialize_object_id(trapOid), 1, &readAttr));
+    EXPECT_EQ(groupOid, readAttr.value.oid);
 }
 
 TEST_F(SwitchVppNeighborMissTrap, TtlInstallFailureRestoresOldPolicer)
