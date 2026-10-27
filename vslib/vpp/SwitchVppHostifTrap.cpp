@@ -240,6 +240,30 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
         return status;
     }
 
+    // A request timeout is ambiguous: VPP may have applied a name-keyed bind
+    // even though no successful reply arrived and the effective-state journal
+    // was therefore not advanced. Reconcile the attempted owner explicitly
+    // before restoring the previous semantic slot. An already-rejected bind
+    // makes this unbind an idempotent no-op.
+    if ((isBgpTrap(trap.trap_type) ||
+         trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME) &&
+            policer_oid != SAI_NULL_OBJECT_ID)
+    {
+        char attempted_name[64];
+        snprintf(attempted_name, sizeof(attempted_name),
+                "copp-policer-0x%lx", (unsigned long)policer_oid);
+        int cleanup_ret = isBgpTrap(trap.trap_type) ?
+            vpp_sonic_ext_copp_ip2me_bind_condition(
+                    attempted_name, 179, false) :
+            vpp_sonic_ext_copp_ip2me_bind(attempted_name, false);
+        if (cleanup_ret != 0)
+        {
+            SWSS_LOG_ERROR("failed to reconcile attempted trap 0x%lx bind: "
+                    "ret %d", (unsigned long)trap_oid, cleanup_ret);
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
     // TTL_ERROR and future compound bindings can fail after changing an
     // earlier VPP component. Restore this row before returning the failure.
     sai_status_t rollback_status = programTrapClassifyNow(
@@ -821,6 +845,23 @@ sai_status_t SwitchVpp::createHostifTrap(
             default:
                 break;
         }
+    }
+
+    if (entry.trap_group_oid == SAI_NULL_OBJECT_ID)
+    {
+        sai_attribute_t default_group{};
+        default_group.id = SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP;
+        sai_status_t status = get(
+                SAI_OBJECT_TYPE_SWITCH,
+                sai_serialize_object_id(switch_id), 1, &default_group);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            sai_status_t rollback_status = remove_internal(
+                    SAI_OBJECT_TYPE_HOSTIF_TRAP, sid);
+            return rollback_status == SAI_STATUS_SUCCESS ?
+                status : rollback_status;
+        }
+        entry.trap_group_oid = default_group.value.oid;
     }
 
     uint32_t vpp_policer_index = (uint32_t)~0;
