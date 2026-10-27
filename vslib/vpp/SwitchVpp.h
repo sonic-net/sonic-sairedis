@@ -925,6 +925,14 @@ namespace saivs
                     _In_ bool program_adjacency = true,
                     _In_ bool program_host_route = false);
 
+            // hwif name -> number of subnet broadcast neighbors on it, refcounts the
+            // per-interface ip4 directed-broadcast flag.
+            std::map<std::string, uint32_t> m_directed_bcast_hwif;
+
+            sai_status_t updateDirectedBroadcast(
+                    _In_ const std::string &hwif_name,
+                    _In_ bool is_add);
+
             sai_status_t addIpNbr(
                     _In_ const std::string &serializedObjectId,
                     _In_ sai_object_id_t switch_id,
