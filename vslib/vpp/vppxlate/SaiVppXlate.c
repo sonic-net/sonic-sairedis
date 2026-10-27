@@ -637,6 +637,36 @@ do {                                                            \
     }                                                            \
 } while(0);
 
+/* CoPP requests use their own completion state so a late reply from any
+ * unrelated synchronous API cannot satisfy a CoPP wait. */
+#define WR_COPP(ret)                                            \
+do {                                                            \
+    f64 start_time = vat_time_now (vam);                        \
+    f64 hard_deadline = start_time + 10.0;                      \
+    f64 idle_deadline = start_time + 1.0;                       \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    int _wr_rv;                                                 \
+    ret = -99;                                                  \
+    while (1) {                                                 \
+        f64 now = vat_time_now (vam);                           \
+        if (now >= hard_deadline || now >= idle_deadline)       \
+            break;                                              \
+        if (scm && scm->socket_enable) {                        \
+            _wr_rv = vl_socket_client_read (1);                 \
+            if (_wr_rv == 0) {                                  \
+                idle_deadline = vat_time_now (vam) + 1.0;       \
+                if (idle_deadline > hard_deadline)              \
+                    idle_deadline = hard_deadline;              \
+            }                                                   \
+        }                                                       \
+        if (copp_result_ready == 1) {                           \
+            ret = copp_retval;                                  \
+            break;                                              \
+        }                                                       \
+        vat_suspend (vam->vlib_main, 1e-5);                     \
+    }                                                           \
+} while(0);
+
 /*
  * Event-connection variants of M / S / PING / WR.
  *
@@ -1096,6 +1126,8 @@ static void set_reply_status (int retval)
  * satisfy the rollback wait. VPP_LOCK serializes this command path. */
 static uint32_t copp_next_context = 1;
 static uint32_t copp_expected_context;
+static int copp_result_ready;
+static int copp_retval;
 
 static uint32_t begin_copp_request(void)
 {
@@ -1104,6 +1136,8 @@ static uint32_t begin_copp_request(void)
         ++copp_next_context;
     }
     copp_expected_context = copp_next_context;
+    copp_result_ready = 0;
+    copp_retval = -99;
     return copp_expected_context;
 }
 
@@ -1116,7 +1150,8 @@ static void set_copp_reply_status(uint32_t context, int retval)
 {
     if (copp_expected_context != 0 && context == copp_expected_context)
     {
-        set_reply_status(retval);
+        copp_retval = retval;
+        copp_result_ready = 1;
     }
 }
 
@@ -4300,7 +4335,7 @@ int vpp_sonic_ext_copp_ifout_bind(
     mp->match_ip4_ttl_expiring = match_ip4_ttl_expiring;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
     end_copp_request();
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) ethertype 0x%04x policer_name %s is_bind %d", __func__, ret, ethertype, policer_name ? policer_name : "", is_bind); }
@@ -4338,7 +4373,7 @@ int vpp_sonic_ext_copp_neighbor_miss_bind(
     mp->is_bind = is_bind;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
     end_copp_request();
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) policer_name %s is_bind %d", __func__, ret, policer_name ? policer_name : "", is_bind); }
@@ -4374,7 +4409,7 @@ int vpp_sonic_ext_copp_ip2me_addr_add_del(
     mp->is_add = is_add;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
     end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
@@ -4407,7 +4442,7 @@ int vpp_sonic_ext_copp_ip2me_bind(
     mp->is_bind = is_bind;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
     end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
@@ -4442,7 +4477,7 @@ int vpp_sonic_ext_copp_ip2me_bind_condition(
     mp->is_bind = is_bind;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
     end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
@@ -4473,7 +4508,7 @@ int vpp_sonic_ext_copp_ttl_punt_bind(
     mp->is_bind = is_bind;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
     end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
