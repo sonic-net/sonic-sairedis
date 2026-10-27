@@ -233,7 +233,55 @@ extern "C" int __wrap_vpp_sonic_ext_copp_neighbor_miss_bind(
         is_bind,
     });
 
+    if (vppMock().coppNeighborMissBindFailOnCall != 0 &&
+            vppMock().coppNeighborMissBindCalls.size() ==
+            vppMock().coppNeighborMissBindFailOnCall)
+    {
+        return -1;
+    }
+
     return vppMock().coppNeighborMissBindResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_ifout_bind(
+        uint16_t ethertype,
+        const char *policer_name,
+        bool is_bind,
+        bool is_ip4_ttl_expiring)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppIfoutBindCalls.push_back({
+        ethertype,
+        policer_name ? policer_name : "",
+        is_bind,
+        is_ip4_ttl_expiring,
+    });
+
+    if (vppMock().coppIfoutBindFailOnCall != 0 &&
+            vppMock().coppIfoutBindCalls.size() ==
+            vppMock().coppIfoutBindFailOnCall)
+    {
+        return -1;
+    }
+
+    return vppMock().coppIfoutBindResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_ttl_punt_bind(bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppTtlPuntBindCalls.push_back(is_bind);
+
+    if (vppMock().coppTtlPuntBindFailOnCall != 0 &&
+            vppMock().coppTtlPuntBindCalls.size() ==
+            vppMock().coppTtlPuntBindFailOnCall)
+    {
+        return -1;
+    }
+
+    return vppMock().coppTtlPuntBindResult;
 }
 
 /*

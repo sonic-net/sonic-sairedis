@@ -96,6 +96,38 @@ namespace
         return trap_type == SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
     }
 
+    bool trapsShareBinding(
+            _In_ sai_hostif_trap_type_t lhs,
+            _In_ sai_hostif_trap_type_t rhs)
+    {
+        SWSS_LOG_ENTER();
+
+        if (isNeighborMissTrap(lhs) || isNeighborMissTrap(rhs))
+        {
+            return isNeighborMissTrap(lhs) && isNeighborMissTrap(rhs);
+        }
+
+        if (isBgpTrap(lhs) || isBgpTrap(rhs))
+        {
+            return isBgpTrap(lhs) && isBgpTrap(rhs);
+        }
+
+        if (lhs == SAI_HOSTIF_TRAP_TYPE_IP2ME ||
+                rhs == SAI_HOSTIF_TRAP_TYPE_IP2ME)
+        {
+            return lhs == SAI_HOSTIF_TRAP_TYPE_IP2ME &&
+                rhs == SAI_HOSTIF_TRAP_TYPE_IP2ME;
+        }
+
+        std::array<uint8_t, 16> lhs_match{};
+        std::array<uint8_t, 16> rhs_match{};
+
+        return buildClassifyMatchForTrapType(lhs, lhs_match) &&
+            buildClassifyMatchForTrapType(rhs, rhs_match) &&
+            lhs_match[12] == rhs_match[12] &&
+            lhs_match[13] == rhs_match[13];
+    }
+
 }
 
 
@@ -135,17 +167,119 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
         _In_ sai_object_id_t trap_oid,
         _In_ const vpp_trap_entry_t &trap,
         _In_ uint32_t vpp_policer_index,
-        _In_ sai_object_id_t policer_oid)
+        _In_ sai_object_id_t policer_oid,
+        _In_ sai_object_id_t excluded_trap_group_oid)
 {
     SWSS_LOG_ENTER();
+
+    bool old_installed = false;
+    vpp_trap_entry_t old_trap{};
+    uint32_t old_vpp_policer_index = (uint32_t)~0;
+    sai_object_id_t old_policer_oid = SAI_NULL_OBJECT_ID;
+
+    {
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+        auto tit = m_trap_map.find(trap_oid);
+
+        if (tit != m_trap_map.end() && tit->second.classify_installed)
+        {
+            old_installed = true;
+            old_trap = tit->second;
+
+            auto git = m_trap_group_map.find(old_trap.trap_group_oid);
+            if (git != m_trap_group_map.end())
+            {
+                old_policer_oid = git->second.policer_oid;
+                auto pit = m_policer_map.find(old_policer_oid);
+                if (pit != m_policer_map.end())
+                {
+                    old_vpp_policer_index = pit->second.vpp_policer_index;
+                }
+            }
+        }
+    }
+
+    sai_status_t status = programTrapClassifyNow(
+            trap_oid, trap, vpp_policer_index, policer_oid,
+            excluded_trap_group_oid);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    // TTL_ERROR and future compound bindings can fail after changing an
+    // earlier VPP component. Restore this row before returning the failure.
+    sai_status_t rollback_status = old_installed ?
+        programTrapClassifyNow(trap_oid, old_trap,
+                old_vpp_policer_index, old_policer_oid,
+                SAI_NULL_OBJECT_ID) :
+        programTrapClassifyNow(trap_oid, trap, (uint32_t)~0,
+                SAI_NULL_OBJECT_ID, SAI_NULL_OBJECT_ID);
+
+    if (rollback_status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to restore trap 0x%lx after classify install "
+                "failure: status %d", (unsigned long)trap_oid,
+                rollback_status);
+        return rollback_status;
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::programTrapClassifyNow(
+        _In_ sai_object_id_t trap_oid,
+        _In_ const vpp_trap_entry_t &trap,
+        _In_ uint32_t vpp_policer_index,
+        _In_ sai_object_id_t policer_oid,
+        _In_ sai_object_id_t excluded_trap_group_oid)
+{
+    SWSS_LOG_ENTER();
+
+    // A VPP row can be shared by multiple SAI traps. If this trap has no
+    // desired policer, select another installed owner before deleting the row.
+    if (vpp_policer_index == (uint32_t)~0 ||
+            policer_oid == SAI_NULL_OBJECT_ID)
+    {
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+
+        for (const auto &kv : m_trap_map)
+        {
+            if (kv.first == trap_oid || !kv.second.classify_installed ||
+                    (excluded_trap_group_oid != SAI_NULL_OBJECT_ID &&
+                     kv.second.trap_group_oid == excluded_trap_group_oid) ||
+                    !trapsShareBinding(trap.trap_type, kv.second.trap_type))
+            {
+                continue;
+            }
+
+            auto git = m_trap_group_map.find(kv.second.trap_group_oid);
+            if (git == m_trap_group_map.end() ||
+                    git->second.policer_oid == SAI_NULL_OBJECT_ID)
+            {
+                continue;
+            }
+
+            auto pit = m_policer_map.find(git->second.policer_oid);
+            if (pit != m_policer_map.end())
+            {
+                policer_oid = git->second.policer_oid;
+                vpp_policer_index = pit->second.vpp_policer_index;
+                break;
+            }
+        }
+    }
+
+    bool have_policer = vpp_policer_index != (uint32_t)~0 &&
+        policer_oid != SAI_NULL_OBJECT_ID;
 
     if (isNeighborMissTrap(trap.trap_type))
     {
         // NEIGHBOR_MISS is a singleton semantic row. A trap-group update to
         // SAI_NULL_OBJECT_ID (or to an unresolved policer) must remove the old
         // row instead of taking the generic "nothing to install" exit below.
-        if (vpp_policer_index == (uint32_t)~0 ||
-                policer_oid == SAI_NULL_OBJECT_ID)
+        if (!have_policer)
         {
             int pret = vpp_sonic_ext_copp_neighbor_miss_bind("", false);
 
@@ -183,33 +317,26 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
         return SAI_STATUS_SUCCESS;
     }
 
-    if (vpp_policer_index == (uint32_t)~0)
-    {
-        SWSS_LOG_NOTICE("no VPP policer resolved for trap 0x%lx (trap_type %d); skipping classify install",
-                (unsigned long)trap_oid, (int)trap.trap_type);
-
-        return SAI_STATUS_SUCCESS;
-    }
-
     if (isBgpTrap(trap.trap_type))
     {
-        // BGP/BGPV6: independent policer slot, matched by TCP dst port 179
-        if (policer_oid != SAI_NULL_OBJECT_ID)
+        // Preserve the legacy name-keyed BGP/BGPV6 slot behavior. A missing
+        // desired policer is a no-op here because unbind requires the old name.
+        if (!have_policer)
         {
-            char policer_name[64];
-            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
+            return SAI_STATUS_SUCCESS;
+        }
 
-            int pret = vpp_sonic_ext_copp_ip2me_bind_condition(policer_name, 179, true);
+        char policer_name[64];
+        snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx",
+                (unsigned long)policer_oid);
+        int pret = vpp_sonic_ext_copp_ip2me_bind_condition(
+                policer_name, 179, true);
 
-            if (pret != 0)
-            {
-                SWSS_LOG_ERROR("failed to bind BGP policer %s: ret %d", policer_name, pret);
-                return SAI_STATUS_FAILURE;
-            }
-            else
-            {
-                SWSS_LOG_NOTICE("bound BGP policer %s for trap 0x%lx", policer_name, (unsigned long)trap_oid);
-            }
+        if (pret != 0)
+        {
+            SWSS_LOG_ERROR("failed to bind BGP policer for trap 0x%lx: ret %d",
+                    (unsigned long)trap_oid, pret);
+            return SAI_STATUS_FAILURE;
         }
 
         return SAI_STATUS_SUCCESS;
@@ -217,23 +344,22 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
 
     if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
     {
-        // IP2ME identifies traffic by destination IP after routing, not by L2 ethertype before it.
-        if (policer_oid != SAI_NULL_OBJECT_ID)
+        // Preserve the legacy name-keyed IP2ME slot behavior.
+        if (!have_policer)
         {
-            char policer_name[64];
-            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
+            return SAI_STATUS_SUCCESS;
+        }
 
-            int pret = vpp_sonic_ext_copp_ip2me_bind(policer_name, true);
+        char policer_name[64];
+        snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx",
+                (unsigned long)policer_oid);
+        int pret = vpp_sonic_ext_copp_ip2me_bind(policer_name, true);
 
-            if (pret != 0)
-            {
-                SWSS_LOG_ERROR("failed to bind IP2ME policer %s: ret %d", policer_name, pret);
-                return SAI_STATUS_FAILURE;
-            }
-            else
-            {
-                SWSS_LOG_NOTICE("bound IP2ME policer %s for trap 0x%lx", policer_name, (unsigned long)trap_oid);
-            }
+        if (pret != 0)
+        {
+            SWSS_LOG_ERROR("failed to bind IP2ME policer for trap 0x%lx: ret %d",
+                    (unsigned long)trap_oid, pret);
+            return SAI_STATUS_FAILURE;
         }
 
         return SAI_STATUS_SUCCESS;
@@ -255,45 +381,40 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
     {
         uint16_t ethertype = (uint16_t)((match[12] << 8) | match[13]);
 
-        if (policer_oid != SAI_NULL_OBJECT_ID)
+        char policer_name[64] = {};
+        if (have_policer)
         {
-            char policer_name[64];
-            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
+            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx",
+                    (unsigned long)policer_oid);
+        }
 
-            int pret = vpp_sonic_ext_copp_ifout_bind(ethertype, policer_name, true,
-                    isIp4TtlExpiringTrap(trap.trap_type));
+        int pret = vpp_sonic_ext_copp_ifout_bind(
+                ethertype, policer_name, have_policer,
+                isIp4TtlExpiringTrap(trap.trap_type));
 
-            if (pret != 0)
+        if (pret != 0)
+        {
+            SWSS_LOG_ERROR("failed to %s copp-ifout policer for trap 0x%lx "
+                    "(trap_type %d, ethertype 0x%04x): ret %d",
+                    have_policer ? "bind" : "unbind",
+                    (unsigned long)trap_oid, (int)trap.trap_type,
+                    ethertype, pret);
+            return SAI_STATUS_FAILURE;
+        }
+
+        // TTL_ERROR additionally needs the punt-to-host path toggled: without
+        // this, genuinely-transiting TTL-expired packets never reach
+        // copp-ifout at all.
+        if (isIp4TtlExpiringTrap(trap.trap_type))
+        {
+            int tret = vpp_sonic_ext_copp_ttl_punt_bind(have_policer);
+
+            if (tret != 0)
             {
-                SWSS_LOG_ERROR("failed to bind copp-ifout policer for trap 0x%lx (trap_type %d, "
-                        "ethertype 0x%04x, policer %s): ret %d",
-                        (unsigned long)trap_oid, (int)trap.trap_type, ethertype, policer_name, pret);
+                SWSS_LOG_ERROR("failed to %s TTL_ERROR punt-to-host for trap 0x%lx: ret %d",
+                        have_policer ? "enable" : "disable",
+                        (unsigned long)trap_oid, tret);
                 return SAI_STATUS_FAILURE;
-            }
-            else
-            {
-                SWSS_LOG_NOTICE("bound copp-ifout policer for trap 0x%lx: trap_type %d, ethertype 0x%04x, "
-                        "policer %s", (unsigned long)trap_oid, (int)trap.trap_type, ethertype, policer_name);
-            }
-
-            // TTL_ERROR additionally needs the punt-to-host path enabled: without
-            // this, genuinely-transiting TTL-expired packets never reach
-            // copp-ifout at all (they dead-end in VPP's stock ip4-icmp-error path,
-            // which never punts anywhere).
-            if (isIp4TtlExpiringTrap(trap.trap_type))
-            {
-                int tret = vpp_sonic_ext_copp_ttl_punt_bind(true);
-
-                if (tret != 0)
-                {
-                    SWSS_LOG_ERROR("failed to enable TTL_ERROR punt-to-host for trap 0x%lx: ret %d",
-                            (unsigned long)trap_oid, tret);
-                    return SAI_STATUS_FAILURE;
-                }
-                else
-                {
-                    SWSS_LOG_NOTICE("enabled TTL_ERROR punt-to-host for trap 0x%lx", (unsigned long)trap_oid);
-                }
             }
         }
     }
@@ -317,149 +438,45 @@ sai_status_t SwitchVpp::uninstallTrapClassifyNow(
 {
     SWSS_LOG_ENTER();
 
-    if (isBgpTrap(trap.trap_type))
+    if (isBgpTrap(trap.trap_type) ||
+            trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
     {
-        // BGP/BGPV6: unbind ONLY this trap's own TCP-dst-port-179 slot
         sai_object_id_t policer_oid = SAI_NULL_OBJECT_ID;
         {
             std::lock_guard<std::mutex> lock(m_copp_state_mutex);
             auto git = m_trap_group_map.find(trap.trap_group_oid);
-            policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
+            policer_oid = (git != m_trap_group_map.end()) ?
+                git->second.policer_oid : SAI_NULL_OBJECT_ID;
         }
 
-        if (policer_oid != SAI_NULL_OBJECT_ID)
+        if (policer_oid == SAI_NULL_OBJECT_ID)
         {
-            char policer_name[64];
-            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
-
-            int pret = vpp_sonic_ext_copp_ip2me_bind_condition(policer_name, 179, false);
-
-            if (pret != 0)
-            {
-                SWSS_LOG_ERROR("failed to unbind BGP policer %s for trap 0x%lx: ret %d",
-                        policer_name, (unsigned long)trap_oid, pret);
-                return SAI_STATUS_FAILURE;
-            }
+            return SAI_STATUS_SUCCESS;
         }
 
-        return SAI_STATUS_SUCCESS;
-    }
+        char policer_name[64];
+        snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx",
+                (unsigned long)policer_oid);
+        int ret = isBgpTrap(trap.trap_type) ?
+            vpp_sonic_ext_copp_ip2me_bind_condition(
+                    policer_name, 179, false) :
+            vpp_sonic_ext_copp_ip2me_bind(policer_name, false);
 
-    if (isNeighborMissTrap(trap.trap_type))
-    {
-        int pret = vpp_sonic_ext_copp_neighbor_miss_bind("", false);
-
-        if (pret != 0)
+        if (ret != 0)
         {
-            SWSS_LOG_ERROR("failed to unbind NEIGHBOR_MISS policer for trap 0x%lx: ret %d",
-                    (unsigned long)trap_oid, pret);
+            SWSS_LOG_ERROR("failed to unbind trap 0x%lx (trap_type %d): ret %d",
+                    (unsigned long)trap_oid, (int)trap.trap_type, ret);
             return SAI_STATUS_FAILURE;
         }
 
         return SAI_STATUS_SUCCESS;
     }
 
-    if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
-    {
-        sai_object_id_t policer_oid = SAI_NULL_OBJECT_ID;
-        {
-            std::lock_guard<std::mutex> lock(m_copp_state_mutex);
-            auto git = m_trap_group_map.find(trap.trap_group_oid);
-            policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
-        }
-
-        int pret = SAI_STATUS_SUCCESS;
-
-        if (policer_oid != SAI_NULL_OBJECT_ID)
-        {
-            char policer_name[64];
-            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
-
-            pret = vpp_sonic_ext_copp_ip2me_bind(policer_name, false);
-        }
-
-        if (pret != 0)
-        {
-            SWSS_LOG_ERROR("failed to unbind IP2ME policer for trap 0x%lx: ret %d",
-                    (unsigned long)trap_oid, pret);
-            return SAI_STATUS_FAILURE;
-        }
-
-        return SAI_STATUS_SUCCESS;
-    }
-
-    std::array<uint8_t, 16> match{};
-    bool have_match_key = buildClassifyMatchForTrapType(trap.trap_type, match);
-
-    if (have_match_key)
-    {
-        uint16_t ethertype = (uint16_t)((match[12] << 8) | match[13]);
-
-        // Multiple trap_types can share an ethertype, but sonic-ext-copp-ifout's
-        // bind table is keyed by ethertype with a single slot -- unbinding
-        // unconditionally here would also silently unpolice any other still-installed
-        // trap on the same ethertype. Unbind once no other trap still needs this ethertype.
-        bool still_needed = false;
-        {
-            std::lock_guard<std::mutex> lock(m_copp_state_mutex);
-            for (auto &kv : m_trap_map)
-            {
-                if (kv.first == trap_oid || !kv.second.classify_installed)
-                {
-                    continue;
-                }
-
-                std::array<uint8_t, 16> other_match{};
-
-                if (buildClassifyMatchForTrapType(kv.second.trap_type, other_match) &&
-                        other_match[12] == match[12] && other_match[13] == match[13])
-                {
-                    still_needed = true;
-                    break;
-                }
-            }
-        }
-
-        if (!still_needed)
-        {
-            int pret = vpp_sonic_ext_copp_ifout_bind(ethertype, "", false,
-                    isIp4TtlExpiringTrap(trap.trap_type));
-
-            if (pret != 0)
-            {
-                SWSS_LOG_ERROR("failed to unbind copp-ifout policer for trap 0x%lx "
-                        "(ethertype 0x%04x): ret %d",
-                        (unsigned long)trap_oid, ethertype, pret);
-                return SAI_STATUS_FAILURE;
-            }
-
-            // Disable the punt-to-host toggle alongside the copp-ifout unbind
-            // above. A stale enable here would leave ip4-rewrite redirecting
-	    // transit TTL-expired traffic to a policer that's just been unbound.
-            if (isIp4TtlExpiringTrap(trap.trap_type))
-            {
-                int tret = vpp_sonic_ext_copp_ttl_punt_bind(false);
-
-                if (tret != 0)
-                {
-                    SWSS_LOG_ERROR("failed to disable TTL_ERROR punt-to-host for trap 0x%lx: ret %d",
-                            (unsigned long)trap_oid, tret);
-                    return SAI_STATUS_FAILURE;
-                }
-            }
-        }
-        else
-        {
-            SWSS_LOG_NOTICE("ethertype 0x%04x still needed by another installed trap; "
-                        "leaving copp-ifout binding in place for SAI trap 0x%lx",
-                        ethertype, (unsigned long)trap_oid);
-        }
-    }
-
-    SWSS_LOG_NOTICE("unbound policer for SAI trap 0x%lx: trap_type %d",
-            (unsigned long)trap_oid, (int)trap.trap_type);
-
-    return SAI_STATUS_SUCCESS;
+    // Reconcile this shared VPP row to another installed owner, or remove it
+    // when no owner remains. installTrapClassifyNow() snapshots and restores
+    // the old state if a compound uninstall fails part-way through.
+    return installTrapClassifyNow(trap_oid, trap, (uint32_t)~0,
+            SAI_NULL_OBJECT_ID, SAI_NULL_OBJECT_ID);
 }
 
 
@@ -626,7 +643,7 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
     {
         sai_status_t status = installTrapClassifyNow(
                 t.first, t.second, new_vpp_policer_index,
-                new_entry.policer_oid);
+                new_entry.policer_oid, object_id);
 
         if (status != SAI_STATUS_SUCCESS)
         {

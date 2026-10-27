@@ -59,6 +59,7 @@ tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry
 				TestSwitchVppPbh.cpp \
 				MockVppXlate.cpp MockVppXlate.h
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_sonic_ext_copp_neighbor_miss_bind \
+				vpp_sonic_ext_copp_ifout_bind vpp_sonic_ext_copp_ttl_punt_bind \
 				vpp_iface_loopback_set_action \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
 				create_sub_interface delete_sub_interface configure_lcp_interface \

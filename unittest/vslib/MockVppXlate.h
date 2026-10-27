@@ -70,6 +70,14 @@ struct VppCoppNeighborMissBindCall
     bool isBind;
 };
 
+struct VppCoppIfoutBindCall
+{
+    uint16_t ethertype;
+    std::string policerName;
+    bool isBind;
+    bool isIp4TtlExpiring;
+};
+
 struct VppMock
 {
     bool loopbackEnabled = false;
@@ -125,7 +133,16 @@ struct VppMock
 
     // CoPP semantic NEIGHBOR_MISS binding.
     int coppNeighborMissBindResult = 0;
+    unsigned int coppNeighborMissBindFailOnCall = 0;
     std::vector<VppCoppNeighborMissBindCall> coppNeighborMissBindCalls;
+
+    // CoPP interface-output and TTL punt bindings.
+    int coppIfoutBindResult = 0;
+    unsigned int coppIfoutBindFailOnCall = 0;
+    int coppTtlPuntBindResult = 0;
+    unsigned int coppTtlPuntBindFailOnCall = 0;
+    std::vector<VppCoppIfoutBindCall> coppIfoutBindCalls;
+    std::vector<bool> coppTtlPuntBindCalls;
 
     std::map<std::string, uint32_t> interfaceVrfs;
     std::set<uint32_t> vrfTables;
