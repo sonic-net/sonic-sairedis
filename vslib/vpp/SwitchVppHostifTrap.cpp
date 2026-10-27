@@ -128,6 +128,44 @@ namespace
             lhs_match[13] == rhs_match[13];
     }
 
+    bool trapBindingKey(
+            _In_ sai_hostif_trap_type_t trap_type,
+            _Out_ uint32_t &key)
+    {
+        SWSS_LOG_ENTER();
+
+        if (isNeighborMissTrap(trap_type))
+        {
+            key = 0x10000;
+            return true;
+        }
+
+        if (isBgpTrap(trap_type))
+        {
+            key = 0x10001;
+            return true;
+        }
+
+        if (trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
+        {
+            key = 0x10002;
+            return true;
+        }
+
+        std::array<uint8_t, 16> match{};
+        if (!buildClassifyMatchForTrapType(trap_type, match))
+        {
+            return false;
+        }
+
+        key = 0x20000 | ((uint32_t)match[12] << 8) | (uint32_t)match[13];
+        if (isIp4TtlExpiringTrap(trap_type))
+        {
+            key |= 0x100000;
+        }
+        return true;
+    }
+
 }
 
 
@@ -172,24 +210,18 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
 {
     SWSS_LOG_ENTER();
 
-    bool old_installed = false;
-    vpp_trap_entry_t old_trap{};
     uint32_t old_vpp_policer_index = (uint32_t)~0;
     sai_object_id_t old_policer_oid = SAI_NULL_OBJECT_ID;
+    uint32_t binding_key = 0;
 
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
-        auto tit = m_trap_map.find(trap_oid);
-
-        if (tit != m_trap_map.end() && tit->second.classify_installed)
+        if (trapBindingKey(trap.trap_type, binding_key))
         {
-            old_installed = true;
-            old_trap = tit->second;
-
-            auto git = m_trap_group_map.find(old_trap.trap_group_oid);
-            if (git != m_trap_group_map.end())
+            auto bit = m_trap_binding_map.find(binding_key);
+            if (bit != m_trap_binding_map.end())
             {
-                old_policer_oid = git->second.policer_oid;
+                old_policer_oid = bit->second;
                 auto pit = m_policer_map.find(old_policer_oid);
                 if (pit != m_policer_map.end())
                 {
@@ -210,12 +242,9 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
 
     // TTL_ERROR and future compound bindings can fail after changing an
     // earlier VPP component. Restore this row before returning the failure.
-    sai_status_t rollback_status = old_installed ?
-        programTrapClassifyNow(trap_oid, old_trap,
-                old_vpp_policer_index, old_policer_oid,
-                SAI_NULL_OBJECT_ID) :
-        programTrapClassifyNow(trap_oid, trap, (uint32_t)~0,
-                SAI_NULL_OBJECT_ID, SAI_NULL_OBJECT_ID);
+    sai_status_t rollback_status = programTrapClassifyNow(
+            trap_oid, trap, old_vpp_policer_index, old_policer_oid,
+            SAI_NULL_OBJECT_ID, false);
 
     if (rollback_status != SAI_STATUS_SUCCESS)
     {
@@ -233,14 +262,47 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
         _In_ const vpp_trap_entry_t &trap,
         _In_ uint32_t vpp_policer_index,
         _In_ sai_object_id_t policer_oid,
-        _In_ sai_object_id_t excluded_trap_group_oid)
+        _In_ sai_object_id_t excluded_trap_group_oid,
+        _In_ bool reconcile_shared_owners)
 {
     SWSS_LOG_ENTER();
 
+    uint32_t binding_key = 0;
+    bool have_binding_key = trapBindingKey(trap.trap_type, binding_key);
+    sai_object_id_t current_policer_oid = SAI_NULL_OBJECT_ID;
+    {
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+        auto bit = have_binding_key ? m_trap_binding_map.find(binding_key) :
+            m_trap_binding_map.end();
+        if (bit != m_trap_binding_map.end())
+        {
+            current_policer_oid = bit->second;
+        }
+    }
+
+    auto record_binding = [&](sai_object_id_t programmed_policer_oid)
+    {
+        if (!have_binding_key)
+        {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+        if (programmed_policer_oid == SAI_NULL_OBJECT_ID)
+        {
+            m_trap_binding_map.erase(binding_key);
+        }
+        else
+        {
+            m_trap_binding_map[binding_key] = programmed_policer_oid;
+        }
+    };
+
     // A VPP row can be shared by multiple SAI traps. If this trap has no
     // desired policer, select another installed owner before deleting the row.
-    if (vpp_policer_index == (uint32_t)~0 ||
-            policer_oid == SAI_NULL_OBJECT_ID)
+    if (reconcile_shared_owners &&
+            (vpp_policer_index == (uint32_t)~0 ||
+             policer_oid == SAI_NULL_OBJECT_ID))
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
 
@@ -292,6 +354,7 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
             SWSS_LOG_NOTICE("unbound unresolved NEIGHBOR_MISS policer for trap 0x%lx",
                     (unsigned long)trap_oid);
+            record_binding(SAI_NULL_OBJECT_ID);
             return SAI_STATUS_SUCCESS;
         }
 
@@ -314,15 +377,30 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
         SWSS_LOG_NOTICE("bound NEIGHBOR_MISS policer %s for trap 0x%lx",
                 policer_name, (unsigned long)trap_oid);
+        record_binding(policer_oid);
         return SAI_STATUS_SUCCESS;
     }
 
     if (isBgpTrap(trap.trap_type))
     {
-        // Preserve the legacy name-keyed BGP/BGPV6 slot behavior. A missing
-        // desired policer is a no-op here because unbind requires the old name.
         if (!have_policer)
         {
+            if (current_policer_oid == SAI_NULL_OBJECT_ID)
+            {
+                return SAI_STATUS_SUCCESS;
+            }
+
+            char policer_name[64];
+            snprintf(policer_name, sizeof(policer_name),
+                    "copp-policer-0x%lx",
+                    (unsigned long)current_policer_oid);
+            int pret = vpp_sonic_ext_copp_ip2me_bind_condition(
+                    policer_name, 179, false);
+            if (pret != 0)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+            record_binding(SAI_NULL_OBJECT_ID);
             return SAI_STATUS_SUCCESS;
         }
 
@@ -339,14 +417,30 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
             return SAI_STATUS_FAILURE;
         }
 
+        record_binding(policer_oid);
         return SAI_STATUS_SUCCESS;
     }
 
     if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
     {
-        // Preserve the legacy name-keyed IP2ME slot behavior.
         if (!have_policer)
         {
+            if (current_policer_oid == SAI_NULL_OBJECT_ID)
+            {
+                return SAI_STATUS_SUCCESS;
+            }
+
+            char policer_name[64];
+            snprintf(policer_name, sizeof(policer_name),
+                    "copp-policer-0x%lx",
+                    (unsigned long)current_policer_oid);
+            int pret = vpp_sonic_ext_copp_ip2me_bind(
+                    policer_name, false);
+            if (pret != 0)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+            record_binding(SAI_NULL_OBJECT_ID);
             return SAI_STATUS_SUCCESS;
         }
 
@@ -362,6 +456,7 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
             return SAI_STATUS_FAILURE;
         }
 
+        record_binding(policer_oid);
         return SAI_STATUS_SUCCESS;
     }
 
@@ -417,6 +512,8 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
                 return SAI_STATUS_FAILURE;
             }
         }
+
+        record_binding(have_policer ? policer_oid : SAI_NULL_OBJECT_ID);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -437,40 +534,6 @@ sai_status_t SwitchVpp::uninstallTrapClassifyNow(
         _In_ const vpp_trap_entry_t &trap)
 {
     SWSS_LOG_ENTER();
-
-    if (isBgpTrap(trap.trap_type) ||
-            trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME)
-    {
-        sai_object_id_t policer_oid = SAI_NULL_OBJECT_ID;
-        {
-            std::lock_guard<std::mutex> lock(m_copp_state_mutex);
-            auto git = m_trap_group_map.find(trap.trap_group_oid);
-            policer_oid = (git != m_trap_group_map.end()) ?
-                git->second.policer_oid : SAI_NULL_OBJECT_ID;
-        }
-
-        if (policer_oid == SAI_NULL_OBJECT_ID)
-        {
-            return SAI_STATUS_SUCCESS;
-        }
-
-        char policer_name[64];
-        snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx",
-                (unsigned long)policer_oid);
-        int ret = isBgpTrap(trap.trap_type) ?
-            vpp_sonic_ext_copp_ip2me_bind_condition(
-                    policer_name, 179, false) :
-            vpp_sonic_ext_copp_ip2me_bind(policer_name, false);
-
-        if (ret != 0)
-        {
-            SWSS_LOG_ERROR("failed to unbind trap 0x%lx (trap_type %d): ret %d",
-                    (unsigned long)trap_oid, (int)trap.trap_type, ret);
-            return SAI_STATUS_FAILURE;
-        }
-
-        return SAI_STATUS_SUCCESS;
-    }
 
     // Reconcile this shared VPP row to another installed owner, or remove it
     // when no owner remains. installTrapClassifyNow() snapshots and restores
@@ -561,7 +624,9 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
     old_entry.admin_state = true; // SAI default
     vpp_trap_group_entry_t new_entry{};
     std::vector<std::pair<sai_object_id_t, vpp_trap_entry_t>> to_reinstall;
-    uint32_t old_vpp_policer_index = (uint32_t)~0;
+    std::map<uint32_t, std::pair<sai_object_id_t, uint32_t>> old_bindings;
+    std::map<uint32_t, std::pair<sai_object_id_t, vpp_trap_entry_t>>
+        binding_representatives;
     uint32_t new_vpp_policer_index = (uint32_t)~0;
 
     {
@@ -594,12 +659,6 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
                 break;
         }
 
-        auto old_pit = m_policer_map.find(old_entry.policer_oid);
-        if (old_pit != m_policer_map.end())
-        {
-            old_vpp_policer_index = old_pit->second.vpp_policer_index;
-        }
-
         auto new_pit = m_policer_map.find(new_entry.policer_oid);
         if (new_pit != m_policer_map.end())
         {
@@ -614,31 +673,61 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
             if (kv.second.trap_group_oid == object_id && kv.second.classify_installed)
             {
                 to_reinstall.emplace_back(kv.first, kv.second);
+
+                uint32_t key = 0;
+                if (trapBindingKey(kv.second.trap_type, key))
+                {
+                    binding_representatives.emplace(key,
+                            std::make_pair(kv.first, kv.second));
+                    sai_object_id_t effective_oid = SAI_NULL_OBJECT_ID;
+                    uint32_t effective_index = (uint32_t)~0;
+                    auto bit = m_trap_binding_map.find(key);
+                    if (bit != m_trap_binding_map.end())
+                    {
+                        effective_oid = bit->second;
+                        auto pit = m_policer_map.find(effective_oid);
+                        if (pit != m_policer_map.end())
+                        {
+                            effective_index = pit->second.vpp_policer_index;
+                        }
+                    }
+                    old_bindings[key] = std::make_pair(
+                            effective_oid, effective_index);
+                }
             }
         }
     }
 
-    auto rollback_programmed = [&](size_t count)
+    auto rollback_programmed = [&]()
     {
-        while (count > 0)
+        for (const auto &binding : old_bindings)
         {
-            --count;
-            const auto &t = to_reinstall[count];
-            sai_status_t rollback_status = installTrapClassifyNow(
-                    t.first, t.second, old_vpp_policer_index,
-                    old_entry.policer_oid);
+            {
+                std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+                auto current = m_trap_binding_map.find(binding.first);
+                sai_object_id_t current_oid = current == m_trap_binding_map.end() ?
+                    SAI_NULL_OBJECT_ID : current->second;
+                if (current_oid == binding.second.first)
+                {
+                    continue;
+                }
+            }
+
+            const auto &t = binding_representatives.at(binding.first);
+            sai_status_t rollback_status = programTrapClassifyNow(
+                    t.first, t.second, binding.second.second,
+                    binding.second.first, SAI_NULL_OBJECT_ID, false);
 
             if (rollback_status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("failed to restore trap 0x%lx while rolling back "
-                        "trap-group 0x%lx update: status %d",
-                        (unsigned long)t.first, (unsigned long)object_id,
+                SWSS_LOG_ERROR("failed to restore binding 0x%x while rolling "
+                        "back trap-group 0x%lx update: status %d",
+                        binding.first, (unsigned long)object_id,
                         rollback_status);
             }
         }
     };
 
-    size_t programmed = 0;
     for (const auto &t : to_reinstall)
     {
         sai_status_t status = installTrapClassifyNow(
@@ -647,11 +736,9 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            rollback_programmed(programmed);
+            rollback_programmed();
             return status;
         }
-
-        ++programmed;
     }
 
     sai_status_t status = set_internal(
@@ -659,7 +746,7 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        rollback_programmed(programmed);
+        rollback_programmed();
         return status;
     }
 
@@ -817,6 +904,9 @@ sai_status_t SwitchVpp::setHostifTrap(
     uint32_t new_vpp_policer_index = (uint32_t)~0;
     sai_object_id_t old_policer_oid = SAI_NULL_OBJECT_ID;
     sai_object_id_t new_policer_oid = SAI_NULL_OBJECT_ID;
+    sai_object_id_t old_effective_policer_oid = SAI_NULL_OBJECT_ID;
+    uint32_t old_effective_vpp_policer_index = (uint32_t)~0;
+    bool old_binding_known = false;
     vpp_trap_entry_t old_entry{};
     vpp_trap_entry_t new_entry{};
 
@@ -875,6 +965,23 @@ sai_status_t SwitchVpp::setHostifTrap(
                     old_vpp_policer_index);
             resolve_policer(new_entry, new_policer_oid,
                     new_vpp_policer_index);
+
+            uint32_t key = 0;
+            if (trapBindingKey(old_entry.trap_type, key))
+            {
+                old_binding_known = true;
+                auto bit = m_trap_binding_map.find(key);
+                if (bit != m_trap_binding_map.end())
+                {
+                    old_effective_policer_oid = bit->second;
+                    auto pit = m_policer_map.find(old_effective_policer_oid);
+                    if (pit != m_policer_map.end())
+                    {
+                        old_effective_vpp_policer_index =
+                            pit->second.vpp_policer_index;
+                    }
+                }
+            }
         }
     }
 
@@ -908,7 +1015,15 @@ sai_status_t SwitchVpp::setHostifTrap(
     {
         sai_status_t rollback_status = SAI_STATUS_SUCCESS;
 
-        if (need_install)
+        if ((need_install || need_uninstall) && old_binding_known)
+        {
+            rollback_status = programTrapClassifyNow(
+                    object_id, old_entry,
+                    old_effective_vpp_policer_index,
+                    old_effective_policer_oid,
+                    SAI_NULL_OBJECT_ID, false);
+        }
+        else if (need_install)
         {
             rollback_status = old_entry.classify_installed ?
                 installTrapClassifyNow(object_id, old_entry,

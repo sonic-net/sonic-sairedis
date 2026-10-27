@@ -284,6 +284,47 @@ extern "C" int __wrap_vpp_sonic_ext_copp_ttl_punt_bind(bool is_bind)
     return vppMock().coppTtlPuntBindResult;
 }
 
+extern "C" int __wrap_vpp_sonic_ext_copp_ip2me_bind(
+        const char *policer_name,
+        bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppIp2meBindCalls.push_back({
+        policer_name ? policer_name : "", 0, false, is_bind,
+    });
+
+    if (vppMock().coppIp2meBindFailOnCall != 0 &&
+            vppMock().coppIp2meBindCalls.size() ==
+            vppMock().coppIp2meBindFailOnCall)
+    {
+        return -1;
+    }
+
+    return vppMock().coppIp2meBindResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_ip2me_bind_condition(
+        const char *policer_name,
+        uint16_t tcp_port,
+        bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppIp2meBindCalls.push_back({
+        policer_name ? policer_name : "", tcp_port, true, is_bind,
+    });
+
+    if (vppMock().coppIp2meBindFailOnCall != 0 &&
+            vppMock().coppIp2meBindCalls.size() ==
+            vppMock().coppIp2meBindFailOnCall)
+    {
+        return -1;
+    }
+
+    return vppMock().coppIp2meBindResult;
+}
+
 /*
  * PBH. The indices are handed out by VPP, so the mock allocates them the same
  * way: an in-index of ~0 asks for a new one, anything else names an existing

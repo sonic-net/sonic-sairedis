@@ -78,6 +78,14 @@ struct VppCoppIfoutBindCall
     bool isIp4TtlExpiring;
 };
 
+struct VppCoppIp2meBindCall
+{
+    std::string policerName;
+    uint16_t tcpPort;
+    bool conditional;
+    bool isBind;
+};
+
 struct VppMock
 {
     bool loopbackEnabled = false;
@@ -143,6 +151,11 @@ struct VppMock
     unsigned int coppTtlPuntBindFailOnCall = 0;
     std::vector<VppCoppIfoutBindCall> coppIfoutBindCalls;
     std::vector<bool> coppTtlPuntBindCalls;
+
+    // CoPP name-keyed IP2ME and BGP bindings.
+    int coppIp2meBindResult = 0;
+    unsigned int coppIp2meBindFailOnCall = 0;
+    std::vector<VppCoppIp2meBindCall> coppIp2meBindCalls;
 
     std::map<std::string, uint32_t> interfaceVrfs;
     std::set<uint32_t> vrfTables;

@@ -1138,6 +1138,10 @@ namespace saivs
 
             std::map<sai_object_id_t, vpp_trap_group_entry_t> m_trap_group_map;
             std::map<sai_object_id_t, vpp_trap_entry_t> m_trap_map;
+            // Physical VPP binding key -> currently programmed policer OID.
+            // Shared SAI traps can overwrite one physical row, so rollback
+            // must restore this effective state rather than one trap's config.
+            std::map<uint32_t, sai_object_id_t> m_trap_binding_map;
 
             sai_status_t createHostifTrapGroup(
                     _In_ sai_object_id_t object_id,
@@ -1187,7 +1191,8 @@ namespace saivs
                     _In_ const vpp_trap_entry_t &trap,
                     _In_ uint32_t vpp_policer_index,
                     _In_ sai_object_id_t policer_oid,
-                    _In_ sai_object_id_t excluded_trap_group_oid);
+                    _In_ sai_object_id_t excluded_trap_group_oid,
+                    _In_ bool reconcile_shared_owners = true);
 
             sai_status_t uninstallTrapClassify(
                     _In_ sai_object_id_t trap_oid,
