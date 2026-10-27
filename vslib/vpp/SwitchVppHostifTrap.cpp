@@ -768,6 +768,32 @@ sai_status_t SwitchVpp::createHostifTrap(
 
     auto sid = sai_serialize_object_id(object_id);
 
+    sai_hostif_trap_type_t requested_trap_type =
+        SAI_HOSTIF_TRAP_TYPE_STP;
+    sai_packet_action_t requested_packet_action = SAI_PACKET_ACTION_DROP;
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE)
+        {
+            requested_trap_type =
+                (sai_hostif_trap_type_t)attr_list[i].value.s32;
+        }
+        else if (attr_list[i].id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION)
+        {
+            requested_packet_action =
+                (sai_packet_action_t)attr_list[i].value.s32;
+        }
+    }
+
+    if (isNeighborMissTrap(requested_trap_type) &&
+            requested_packet_action != SAI_PACKET_ACTION_TRAP &&
+            requested_packet_action != SAI_PACKET_ACTION_COPY)
+    {
+        SWSS_LOG_ERROR("NEIGHBOR_MISS packet action %d is unsupported",
+                (int)requested_packet_action);
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, sid, switch_id, attr_count, attr_list));
 
     vpp_trap_entry_t entry;
@@ -933,6 +959,15 @@ sai_status_t SwitchVpp::setHostifTrap(
 
                 default:
                     break;
+            }
+
+            if (isNeighborMissTrap(new_entry.trap_type) &&
+                    new_entry.packet_action != SAI_PACKET_ACTION_TRAP &&
+                    new_entry.packet_action != SAI_PACKET_ACTION_COPY)
+            {
+                SWSS_LOG_ERROR("NEIGHBOR_MISS packet action %d is unsupported",
+                        (int)new_entry.packet_action);
+                return SAI_STATUS_NOT_SUPPORTED;
             }
 
             should_be_installed =
