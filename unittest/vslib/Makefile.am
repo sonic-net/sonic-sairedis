@@ -61,7 +61,8 @@ tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry
 				MockVppXlate.cpp MockVppXlate.h \
 				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_sonic_ext_copp_neighbor_miss_bind \
- vpp_sonic_ext_copp_ip2me_bind vpp_sonic_ext_copp_ip2me_bind_condition \
+ vpp_sonic_ext_copp_dhcp_bind vpp_sonic_ext_copp_ip2me_bind \
+ vpp_sonic_ext_copp_ip2me_bind_condition \
 				vpp_sonic_ext_copp_ifout_bind vpp_sonic_ext_copp_ttl_punt_bind \
 				vpp_iface_loopback_set_action \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
