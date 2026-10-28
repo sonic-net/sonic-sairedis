@@ -51,9 +51,8 @@ extern "C" sai_status_t __wrap__ZN5saivs9SwitchVpp17vpp_dp_initializeEv(SwitchVp
     return SAI_STATUS_SUCCESS;
 }
 
-extern "C" int __wrap_vpp_want_l2_macs_events2(bool, vpp_mac_event_cb_fn, void *)
+extern "C" void __wrap_vpp_set_mac_event_cb(vpp_mac_event_cb_fn, void *)
 {
-    return 0;
 }
 
 extern "C" int __wrap_vpp_acl_add_replace(vpp_acl_t *, uint32_t *index, bool)

@@ -55,6 +55,7 @@ SwitchVpp::SwitchVpp(
     SwitchStateBase(switch_id, manager, config),
     m_object_db(this),
     m_tunnel_mgr(this),
+    m_pbh(this),
     m_tunnel_mgr_srv6(this),
     m_tunnel_mgr_ipip(this)
 {
@@ -73,6 +74,7 @@ SwitchVpp::SwitchVpp(
     SwitchStateBase(switch_id, manager, config, warmBootState),
     m_object_db(this),
     m_tunnel_mgr(this),
+    m_pbh(this),
     m_tunnel_mgr_srv6(this),
     m_tunnel_mgr_ipip(this)
 {
@@ -87,8 +89,8 @@ SwitchVpp::~SwitchVpp()
 {
     SWSS_LOG_ENTER();
 
-    // Deregister VPP MAC events before stopping the thread so no callback
-    // fires against a partially-destroyed object during join().
+    // Clear the VPP MAC event callback before stopping the thread so no
+    // callback fires against a partially-destroyed object during join().
     deinitFdbEventHandling();
 
     // Signal the vpp events thread to stop
@@ -119,27 +121,31 @@ void SwitchVpp::deinitFdbEventHandling()
 {
     SWSS_LOG_ENTER();
 
-    // Deregister MAC event callback before destroying state.
-    // Without this, VPP may deliver a batch after destruction and
-    // staticMacEventCb will dereference a dangling `this`.
-    vpp_want_l2_macs_events2(false, nullptr, nullptr);
+    // Clear the MAC event callback before destroying state. Without this,
+    // VPP may deliver a batch after destruction and staticMacEventCb will
+    // dereference a dangling `this`. The VPP subscription itself stays, like
+    // the interface and BFD ones; events are dropped while no callback is set.
+    //
+    // VPP keeps a single MAC event subscriber, and its pid, until VPP restarts:
+    // it has no reaper for it. So only this process can subscribe again (as the
+    // event socket reconnect does), and a switch created later in this process
+    // only needs its callback set again. A new syncd process can subscribe only
+    // to a VPP restarted with it, which holds in SONiC since VPP runs in the
+    // syncd container and restarts with syncd.
+    vpp_set_mac_event_cb(nullptr, nullptr);
     m_fdbAgingWakeFn = nullptr;
 }
 
 void SwitchVpp::initFdbEventHandling(std::function<void()> fn)
 {
-    // Store the functor first — staticMacEventCb may fire immediately after
-    // vpp_want_l2_macs_events2() returns, so m_fdbAgingWakeFn must be set
-    // before we register with VPP.
+    // Store the functor first — staticMacEventCb may fire as soon as the
+    // callback is set, so m_fdbAgingWakeFn must be set before registering.
     m_fdbAgingWakeFn = std::move(fn);
 
-    vpp_l2fib_set_scan_delay(1);  /* scan interval = 1 unit = 10ms */
-    int ret = vpp_want_l2_macs_events2(true, &SwitchVpp::staticMacEventCb, this);
-    if (ret == 0)
-        SWSS_LOG_NOTICE("FDB: registered for VPP L2 MAC push events");
-    else
-        SWSS_LOG_ERROR("FDB: vpp_want_l2_macs_events2 failed (%d), "
-                       "FDB event generation will be inactive", ret);
+    // init_vpp_client() already subscribed to VPP MAC events, together with
+    // interface and BFD events; this only routes them to this switch.
+    vpp_set_mac_event_cb(&SwitchVpp::staticMacEventCb, this);
+    SWSS_LOG_NOTICE("FDB: registered for VPP L2 MAC push events");
 }
 
 sai_status_t SwitchVpp::create_qos_queues_per_port(
@@ -1321,6 +1327,15 @@ void SwitchVpp::processFdbEntriesForAging()
     SWSS_LOG_ENTER();
 
     /*
+     * This pass runs at least once a second under MUTEX(), so it also retries
+     * a BFD state resync whose session dump failed, as it does the FDB resync.
+     */
+    if (m_bfdResyncDue)
+    {
+        resyncBfdSessionState();
+    }
+
+    /*
      * Drain the MAC event queue populated by the VPP API receive thread.
      * We hold MUTEX() here (called from Sai::processFdbEntriesForAging which
      * acquires m_apimutex before calling into vslib), so it is safe to call
@@ -1342,6 +1357,16 @@ void SwitchVpp::processFdbEntriesForAging()
 
     while (!events.empty()) {
         const VppMacEvent &ev = events.front();
+
+        if (ev.action == VPP_MAC_ACTION_RESYNC) {
+            // On a failed dump keep the request, so the next aging pass retries it
+            if (!resyncFdbWithVpp()) {
+                std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
+                m_mac_event_queue.push(ev);
+            }
+            events.pop();
+            continue;
+        }
 
         /*
          * Bridge-domain membership is the drop gate: an event from an interface
@@ -1412,13 +1437,10 @@ void SwitchVpp::processFdbEntriesForAging()
 }
 
 /*
- * Static trampoline: called on the VPP API receive thread when VPP pushes a
- * batch of MAC learn/age/move events.  Must NOT acquire m_apimutex — just
- * enqueue for safe dispatch by processFdbEntriesForAging() under the mutex.
- *
- * TODO: MAC events currently arrive on the shared VPP API socket and are
- * dispatched synchronously inside the WR() polling loop. Move to a separate
- * event socket in the future.
+ * Static trampoline: called on the thread reading the VPP event socket
+ * (normally the vpp event thread) when VPP pushes a batch of MAC
+ * learn/age/move events.  Must NOT acquire m_apimutex — just enqueue for safe
+ * dispatch by processFdbEntriesForAging() under the mutex.
  */
 void SwitchVpp::staticMacEventCb(const vpp_mac_event_t *evs, uint32_t n, void *ctx)
 {
@@ -1589,6 +1611,13 @@ sai_status_t SwitchVpp::create(
         sai_object_id_t object_id;
         sai_deserialize_object_id(serializedObjectId, object_id);
         return createAclGrpMbr(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HASH)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return m_pbh.createHash(object_id, switch_id, attr_count, attr_list);
     }
 
     if(object_type == SAI_OBJECT_TYPE_SAMPLEPACKET)
@@ -2133,6 +2162,11 @@ sai_status_t SwitchVpp::remove(
         return removeAclGrp(serializedObjectId);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_HASH)
+    {
+        return m_pbh.removeHash(serializedObjectId);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
     {
         sai_object_id_t objectId;
@@ -2315,6 +2349,86 @@ sai_status_t SwitchVpp::setLag(
     return set_internal(SAI_OBJECT_TYPE_LAG, sid, lagAttr);
 }
 
+sai_status_t SwitchVpp::backupAttr(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::string &serializedObjectId,
+        _In_ sai_attr_id_t attrId,
+        _Out_ SaiAttrBackup &backup)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
+
+    if (meta == nullptr)
+    {
+        SWSS_LOG_ERROR("attribute %u unknown on %s",
+                attrId,
+                sai_serialize_object_type(objectType).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto type_it = m_objectHash.find(objectType);
+
+    if (type_it == m_objectHash.end() ||
+        type_it->second.find(serializedObjectId) == type_it->second.end())
+    {
+        SWSS_LOG_ERROR("not found %s:%s",
+                sai_serialize_object_type(objectType).c_str(),
+                serializedObjectId.c_str());
+
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    auto& attrHash = type_it->second.at(serializedObjectId);
+    auto attr_it = attrHash.find(meta->attridname);
+
+    backup.m_objectType = objectType;
+    backup.m_serializedObjectId = serializedObjectId;
+    backup.m_meta = meta;
+    backup.m_value = (attr_it == attrHash.end()) ? nullptr : attr_it->second;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::restoreAttr(
+        _In_ const SaiAttrBackup &backup)
+{
+    SWSS_LOG_ENTER();
+
+    if (backup.m_meta == nullptr)
+    {
+        SWSS_LOG_ERROR("attribute backup is empty, nothing to restore");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto type_it = m_objectHash.find(backup.m_objectType);
+
+    if (type_it == m_objectHash.end() ||
+        type_it->second.find(backup.m_serializedObjectId) == type_it->second.end())
+    {
+        SWSS_LOG_ERROR("not found %s:%s",
+                sai_serialize_object_type(backup.m_objectType).c_str(),
+                backup.m_serializedObjectId.c_str());
+
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    auto& attrHash = type_it->second.at(backup.m_serializedObjectId);
+
+    if (backup.m_value)
+    {
+        attrHash[backup.m_meta->attridname] = backup.m_value;
+    }
+    else
+    {
+        attrHash.erase(backup.m_meta->attridname);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::setAclEntry(
         _In_ sai_object_id_t entry_id,
         _In_ const sai_attribute_t* attr)
@@ -2328,8 +2442,6 @@ sai_status_t SwitchVpp::setAclEntry(
 
     auto sid = sai_serialize_object_id(entry_id);
 
-    set_internal(SAI_OBJECT_TYPE_ACL_ENTRY, sid, attr);
-
     sai_object_id_t tbl_oid;
 
     if (getAclTableId(entry_id, &tbl_oid) != SAI_STATUS_SUCCESS)
@@ -2337,7 +2449,23 @@ sai_status_t SwitchVpp::setAclEntry(
         return SAI_STATUS_FAILURE;
     }
 
+    // The rule set handed to VPP is rebuilt from the state, so the new value
+    // has to be committed before the table can be reprogrammed. Hold on to what
+    // it replaces: acl_add_replace() swaps a table's whole rule set atomically,
+    // so a rejected reprogram leaves VPP enforcing the old value and the state
+    // has to keep describing it.
+    SaiAttrBackup backup;
+
+    CHECK_STATUS(backupAttr(SAI_OBJECT_TYPE_ACL_ENTRY, sid, attr->id, backup));
+
+    CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_ACL_ENTRY, sid, attr));
+
     auto status = AclAddRemoveCheck(tbl_oid);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        restoreAttr(backup);
+    }
 
     SWSS_LOG_NOTICE("ACL entry %s set in table %s set status %d",
             sid.c_str(),
@@ -2375,6 +2503,13 @@ sai_status_t SwitchVpp::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setAclGrpMbr(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_HASH)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return m_pbh.setHash(objectId, attr);
     }
 
     if (objectType == SAI_OBJECT_TYPE_ROUTE_ENTRY)
@@ -2556,6 +2691,17 @@ sai_status_t SwitchVpp::get(
         sai_object_id_t object_id;
 
         sai_deserialize_object_id(serializedObjectId, object_id);
+
+        /*
+         * PBH and ACL counters are the same SAI object type but live in
+         * different VPP stat trees, so the counter is routed by which table
+         * claimed it rather than by anything on the counter itself.
+         */
+        if (m_pbh.isPbhCounterOid(object_id))
+        {
+            return m_pbh.getEntryStats(object_id, attr_count, attr_list);
+        }
+
         return getAclEntryStats(object_id, attr_count, attr_list);
     }
 
@@ -2630,6 +2776,13 @@ sai_status_t SwitchVpp::get(
 
         if (ait == attrHash.end())
         {
+            if (objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
+                    id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION)
+            {
+                attr_list[idx].value.s32 = SAI_PACKET_ACTION_FORWARD;
+                continue;
+            }
+
             return SAI_STATUS_ITEM_NOT_FOUND;
 
             SWSS_LOG_WARN("%s not implemented on %s",

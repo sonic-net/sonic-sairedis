@@ -7,6 +7,7 @@
 #include "EventQueue.h"
 #include "EventPayloadPacket.h"
 #include "EventPayloadNetLinkMsg.h"
+#include "EventPayloadPlatformEvent.h"
 #include "ContextConfig.h"
 
 #include "meta/SaiInterface.h"
@@ -339,6 +340,9 @@ namespace saivs
 
             void syncProcessEventNetLinkMsg(
                     _In_ std::shared_ptr<EventPayloadNetLinkMsg> payload);
+
+            void syncProcessEventPlatformEvent(
+                    _In_ std::shared_ptr<EventPayloadPlatformEvent> payload);
 
         private:
 

@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -22,7 +23,11 @@ TEST(SwitchVpp, loopbackActionDisabled)
     // Isolate sonicExtFeatureEnabled's process-wide startup-state cache.
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_EXIT({
-        auto status = SwitchVpp::vpp_apply_loopback_action("Ethernet0", SAI_PACKET_ACTION_DROP);
+        if (SwitchVpp::vpp_apply_loopback_action("Ethernet0", SAI_PACKET_ACTION_DROP) != SAI_STATUS_NOT_SUPPORTED)
+        {
+            _exit(1);
+        }
+        auto status = SwitchVpp::vpp_apply_loopback_action("Ethernet0", SAI_PACKET_ACTION_FORWARD);
         _exit(status == SAI_STATUS_SUCCESS && vppMock().loopbackCalls == 0 &&
                 vppMock().queriedFeature == "iface-loopback" ? 0 : 1);
     }, ::testing::ExitedWithCode(0), "");
@@ -171,6 +176,68 @@ protected:
     std::shared_ptr<SwitchVpp> sw;
     sai_object_id_t switchId, port, lag, vlan, vrf;
 };
+
+TEST_F(SwitchVppRifTest, subPortCreateUsesSonicNameForVrfLookup)
+{
+    for (const std::string osif : {"Ethernet0.10", "Po2.10", "PortChannel2.10"})
+    {
+        SCOPED_TRACE(osif);
+        auto backing = osif == "Ethernet0.10" ? port : lag;
+        const std::string hwif = backing == port ? "port0.10" : "BondEthernet2.10";
+        const std::string tap = backing == port ? "tap0.10" : "be2.10";
+        vppMock().kernelInterfaces = {osif};
+        vppMock().kernelCommands.clear();
+        vppMock().kernelVrfId = 100;
+        auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+        ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, backing)));
+        EXPECT_NE(vppMock().kernelCommands.end(), std::find(vppMock().kernelCommands.begin(),
+                vppMock().kernelCommands.end(), "/sbin/ip link show dev " + osif));
+        EXPECT_EQ(100u, vppMock().interfaceVrfs[hwif]);
+        EXPECT_EQ(hwif, sw->m_ifaceRegistry.resolveHwIfByRifOid(rif));
+        EXPECT_EQ(osif, sw->m_ifaceRegistry.resolveOsIfByHwif(hwif));
+        ASSERT_NE(nullptr, sw->m_ifaceRegistry.findByHwif(hwif));
+        EXPECT_EQ(sw->m_ifaceRegistry.findByHwif(hwif), sw->m_ifaceRegistry.findByOsIf(osif));
+        EXPECT_EQ(tap, sw->m_ifaceRegistry.findByHwif(hwif)->getTapName());
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    }
+
+    vppMock().kernelInterfaces = {"Ethernet0.10"};
+    auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    EXPECT_EQ(SAI_STATUS_FAILURE, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, lag)));
+    EXPECT_EQ(nullptr, sw->m_ifaceRegistry.findSubIf("BondEthernet2", 10));
+    EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
+}
+
+TEST_F(SwitchVppRifTest, lagDiscoveryIgnoresSubinterfaceParentSuffix)
+{
+    ASSERT_NE(nullptr, sw->m_ifaceRegistry.addLag(54, 54, allocate(SAI_OBJECT_TYPE_LAG)));
+    vppMock().kernelLinkNames = "PortChannel2\nPortChannel54\nPo54.54@PortChannel54\nPortChannel57\n";
+    EXPECT_EQ(57u, sw->find_new_bond_id());
+}
+
+TEST_F(SwitchVppRifTest, lagDiscoveryRejectsMalformedAndOutOfRangeIds)
+{
+    for (const std::string name : {"PortChannel", "PortChannel-1", "PortChannel+1",
+            "PortChannel 1", "PortChannel54.54", "PortChannel57@Ethernet0",
+            "PortChannel2147483648x", "PortChannel4294967295", "PortChannel4294967296",
+            "PortChannel999999999999999999999999999999999"})
+    {
+        SCOPED_TRACE(name);
+        vppMock().kernelLinkNames = name + "\nPortChannel2\nPortChannel57\n";
+        EXPECT_EQ(57u, sw->find_new_bond_id());
+    }
+}
+
+TEST_F(SwitchVppRifTest, lagDiscoveryReportsMissingCandidateAndCommandFailure)
+{
+    vppMock().kernelLinkNames = "PortChannel2\n";
+    EXPECT_EQ(~0u, sw->find_new_bond_id());
+    vppMock().kernelLinkNames.clear();
+    EXPECT_EQ(~0u, sw->find_new_bond_id());
+    vppMock().kernelLinkNames = "PortChannel57\n";
+    vppMock().kernelLinkResult = 1;
+    EXPECT_EQ(~0u, sw->find_new_bond_id());
+}
 
 TEST_F(SwitchVppRifTest, failedPersistentSnapshotRestoresAllSettingsBeforeRetry)
 {
@@ -388,6 +455,93 @@ TEST_F(SwitchVppRifTest, featureQueryErrorsDoNotPersistCreateOrSet)
     }, ::testing::ExitedWithCode(0), "");
 }
 
+TEST_F(SwitchVppRifTest, disabledLoopbackCreateFallsBackAndSetDoesNotPersist)
+{
+    struct CreateCase
+    {
+        sai_packet_action_t action;
+        bool omitAction;
+    };
+    const CreateCase cases[] = {
+        {SAI_PACKET_ACTION_DROP, false},
+        {SAI_PACKET_ACTION_FORWARD, false},
+        {SAI_PACKET_ACTION_FORWARD, true},
+    };
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT({
+        vppMock().loopbackEnabled = false;
+        for (auto backing : {port, lag, vlan})
+        {
+            for (auto type : {SAI_ROUTER_INTERFACE_TYPE_PORT, SAI_ROUTER_INTERFACE_TYPE_SUB_PORT,
+                             SAI_ROUTER_INTERFACE_TYPE_VLAN})
+            {
+                if ((backing == vlan) != (type == SAI_ROUTER_INTERFACE_TYPE_VLAN))
+                {
+                    continue;
+                }
+                const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+                const auto sid = sai_serialize_object_id(rif);
+                if (create(rif, attributes(type, backing, SAI_PACKET_ACTION_TRAP)) != SAI_STATUS_NOT_SUPPORTED ||
+                        sw->m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE).count(sid) != 0 ||
+                        !sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty() ||
+                        sw->m_rifStatsBaseMap.count(rif) != 0)
+                {
+                    _exit(1);
+                }
+
+                for (const auto& createCase : cases)
+                {
+                    auto attrs = attributes(type, backing, createCase.action);
+                    if (createCase.omitAction)
+                    {
+                        attrs.erase(attrs.begin() + 4);
+                    }
+                    if (create(rif, attrs) != SAI_STATUS_SUCCESS ||
+                            sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty() ||
+                            sw->m_rifStatsBaseMap.count(rif) != 1)
+                    {
+                        _exit(2);
+                    }
+                    const auto stored = sw->m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE).at(sid);
+                    const bool explicitForward = !createCase.omitAction &&
+                        createCase.action == SAI_PACKET_ACTION_FORWARD;
+                    if (stored.count("SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION") !=
+                            static_cast<size_t>(explicitForward))
+                    {
+                        _exit(3);
+                    }
+                    sai_attribute_t action{};
+                    action.id = SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION;
+                    action.value.s32 = SAI_PACKET_ACTION_DROP;
+                    if (sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &action) != SAI_STATUS_NOT_SUPPORTED ||
+                            sw->m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE).at(sid) != stored)
+                    {
+                        _exit(4);
+                    }
+                    sai_attribute_t requested[2]{};
+                    requested[0].id = SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION;
+                    requested[0].value.s32 = SAI_PACKET_ACTION_TRAP;
+                    requested[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+                    requested[1].value.s32 = -1;
+                    if (sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 2, requested) != SAI_STATUS_SUCCESS ||
+                            requested[0].value.s32 != SAI_PACKET_ACTION_FORWARD ||
+                            requested[1].value.s32 != type)
+                    {
+                        _exit(5);
+                    }
+                    action.value.s32 = SAI_PACKET_ACTION_FORWARD;
+                    if (sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &action) != SAI_STATUS_SUCCESS ||
+                            sw->removeRouterif(rif) != SAI_STATUS_SUCCESS)
+                    {
+                        _exit(6);
+                    }
+                }
+            }
+        }
+        _exit(vppMock().loopbackCalls == 0 ? 0 : 7);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
 TEST_F(SwitchVppRifTest, persistentInterfaceCountersStartAtEachRifCreation)
 {
     const sai_stat_id_t ids[] = {
@@ -501,6 +655,47 @@ TEST_F(SwitchVppRifTest, vrfLookupAndProgrammingErrorsAbortBeforeActionProgrammi
         EXPECT_EQ(failure == "set" ? 1u : 0u, vppMock().vrfSetCalls);
         EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
     }
+}
+
+TEST_F(SwitchVppRifTest, omittedLoopbackActionGetReturnsDefaultAndContinues)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    sai_attribute_t requested[2]{};
+    requested[0].id = SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION;
+    requested[0].value.s32 = SAI_PACKET_ACTION_TRAP;
+    requested[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    requested[1].value.s32 = -1;
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 2, requested));
+
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    ASSERT_EQ(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attrs.back().id);
+    attrs.pop_back();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 2, requested));
+    EXPECT_EQ(SAI_PACKET_ACTION_FORWARD, requested[0].value.s32);
+    EXPECT_EQ(SAI_ROUTER_INTERFACE_TYPE_PORT, requested[1].value.s32);
+
+    for (auto action : {SAI_PACKET_ACTION_DROP, SAI_PACKET_ACTION_FORWARD})
+    {
+        SCOPED_TRACE(action);
+        sai_attribute_t attr{};
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION;
+        attr.value.s32 = action;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &attr));
+        requested[0].value.s32 = SAI_PACKET_ACTION_TRAP;
+        requested[1].value.s32 = -1;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(
+                SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 2, requested));
+        EXPECT_EQ(action, requested[0].value.s32);
+        EXPECT_EQ(SAI_ROUTER_INTERFACE_TYPE_PORT, requested[1].value.s32);
+    }
+
+    sai_attribute_t mtu{};
+    mtu.id = SAI_ROUTER_INTERFACE_ATTR_MTU;
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &mtu));
 }
 
 TEST_F(SwitchVppRifTest, loopbackCapabilityMatchesEnabledAndDisabledFeature)

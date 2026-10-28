@@ -1770,6 +1770,23 @@ sai_status_t SwitchVpp::aclTableCreate(
 
     SWSS_LOG_NOTICE("ACL table %s created", sid.c_str());
 
+    /*
+     * A PBH table is an ACL table only as far as SAI is concerned. It goes to
+     * the sonic_ext PBH feature instead of the ACL plugin, so no placeholder
+     * ACL is created for it and it never enters m_acl_swindex_map.
+     */
+    if (m_pbh.isPbhTable(object_id))
+    {
+        sai_status_t status = m_pbh.tableCreate(object_id);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            remove_internal(SAI_OBJECT_TYPE_ACL_TABLE, sid);
+        }
+
+        return status;
+    }
+
     return emptyAclCreate(object_id);
 }
 
@@ -1782,7 +1799,14 @@ sai_status_t SwitchVpp::aclTableRemove(
 
     sai_deserialize_object_id(serializedObjectId, tbl_oid);
 
+    bool is_pbh = m_pbh.isPbhTable(tbl_oid);
+
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_ACL_TABLE, serializedObjectId));
+
+    if (is_pbh)
+    {
+        return m_pbh.tableRemove(tbl_oid);
+    }
 
     return AclTblRemove(tbl_oid);
 }
@@ -1983,6 +2007,17 @@ sai_status_t SwitchVpp::AclAddRemoveCheck(
     SWSS_LOG_ENTER();
 
     sai_status_t status = SAI_STATUS_SUCCESS;
+
+    /*
+     * A PBH table is reprogrammed even when its entry list is empty: unlike
+     * the ACL path, which leaves a placeholder rule behind, removing the last
+     * PBH rule has to leave an empty table rather than the previous rule set.
+     */
+    if (m_pbh.isPbhTable(tbl_oid))
+    {
+        return m_pbh.tableConfig(tbl_oid);
+    }
+
     auto it = m_acl_tbl_rules_map.find(tbl_oid);
 
     if (it == m_acl_tbl_rules_map.end()) {
@@ -2807,11 +2842,10 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
 
     // Build a vector of (priority, acl_swindex, tbl_oid) for sorting
     std::vector<std::tuple<uint32_t, uint32_t, sai_object_id_t>> sorted_members;
+    std::vector<sai_object_id_t> pbh_tables;
+    bool has_acl_members = false;
 
     for (auto member_oid: member_list) {
-        if (!is_bind) {
-            break;
-        }
         sai_attribute_t attr;
 
         // Get ACL table OID
@@ -2822,6 +2856,22 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
             return SAI_STATUS_FAILURE;
         }
         auto tbl_oid = attr.value.oid;
+
+        /*
+         * A PBH table attaches to the interface through the sonic_ext PBH
+         * feature instead of the ACL plugin, so it is handled here and kept
+         * out of the priority-sorted ACL list below: PBH runs on the IP
+         * feature arc after the ACL hook, not as another ACL in the chain.
+         */
+        if (m_pbh.isPbhTable(tbl_oid)) {
+            pbh_tables.push_back(tbl_oid);
+            continue;
+        }
+
+        has_acl_members = true;
+        if (!is_bind) {
+            continue;
+        }
 
         // Get VPP swindex for the ACL table
         auto vpp_idx_it = m_acl_swindex_map.find(tbl_oid);
@@ -2840,6 +2890,29 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
         }
 
         sorted_members.push_back({priority, acl_swindex, tbl_oid});
+    }
+
+    if (!pbh_tables.empty()) {
+        // PBH runs on the base interface's IP feature arc. Only regular ACLs
+        // are replayed on the bridged VLAN children below.
+        const auto hwif_name = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
+        if (hwif_name.empty()) {
+            SWSS_LOG_WARN("VS hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
+            return SAI_STATUS_FAILURE;
+        }
+        for (auto tbl_oid : pbh_tables) {
+            CHECK_STATUS(m_pbh.bindUnbindPort(hwif_name, tbl_oid, is_bind));
+        }
+
+        // A PBH-only group must leave another group's regular ACL chain and
+        // shared default untouched. Empty/null groups still reconcile below
+        // so they can clean up attachments left by a failed rollback.
+        if (!has_acl_members) {
+            if (!is_bind) {
+                addRemovePortTblGrp(port_oid, tbl_grp_oid, false);
+            }
+            return SAI_STATUS_SUCCESS;
+        }
     }
 
     // Sort by priority in descending order (higher priority first)
@@ -3001,7 +3074,7 @@ sai_status_t SwitchVpp::getAclEntryStats(
             vpp_ace_stats_t ace_stats;
             uint32_t rule_index = vpp_rule_base_index + rule_offset;
 
-            if (vpp_acl_ace_stats_query(acl_index, rule_index, &ace_stats) == 0) {
+            if (vpp_rule_stats_query(VPP_RULE_STATS_ACL, acl_index, rule_index, &ace_stats) == 0) {
                 total_packets += ace_stats.packets;
                 total_bytes += ace_stats.bytes;
                 SWSS_LOG_DEBUG("Rule offset %u (index %u): packets=%lu, bytes=%lu",
