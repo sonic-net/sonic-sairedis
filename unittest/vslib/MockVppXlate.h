@@ -79,6 +79,7 @@ struct VppMock
     uint32_t nextNodeIndex = 10;
     uint32_t nextClassifyTable = 0;
     int ip2meResult = 0;
+    uint32_t nextAclIndex = 100;
     int statsResult = 0;
     int lcpResult = 0;
     unsigned int statsCalls = 0;

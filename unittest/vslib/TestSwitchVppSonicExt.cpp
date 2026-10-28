@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <arpa/inet.h>
 #include <cstdio>
 #include <memory>
 #include <set>
@@ -153,14 +154,122 @@ class SwitchVppSonicExtFeature : public ::testing::Test
             return m_sw->createVlanMember(member, m_switchId, 3, attrs);
         }
 
-        // ip2me wants its feature on a port that has an ingress table with a deny rule bound
-        void bindDropTable(
+        sai_object_id_t createObject(
+                sai_object_type_t type,
+                std::vector<sai_attribute_t> attrs)
+        {
+            SWSS_LOG_ENTER();
+
+            auto oid = m_mgr->allocateNewObjectId(type, m_switchId);
+
+            check(m_sw->create(type, sai_serialize_object_id(oid), m_switchId,
+                        (uint32_t)attrs.size(), attrs.data()) == SAI_STATUS_SUCCESS,
+                    sai_serialize_object_type(type).c_str());
+
+            return oid;
+        }
+
+        void removeObject(
+                sai_object_type_t type,
+                sai_object_id_t oid)
+        {
+            SWSS_LOG_ENTER();
+
+            check(m_sw->remove(type, sai_serialize_object_id(oid)) == SAI_STATUS_SUCCESS,
+                    sai_serialize_object_type(type).c_str());
+        }
+
+        /*
+         * The SAI calls orchagent makes for an ingress ACL on a port: the
+         * port's ACL table group is bound when the port is created, a table
+         * is bound to the port by adding it to that group, and rules come and
+         * go in the table. ip2me wants its feature on a port while a table
+         * bound there has a deny rule.
+         */
+        void bindIngressAclGroup()
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr = {};
+
+            attr.id = SAI_ACL_TABLE_GROUP_ATTR_ACL_STAGE;
+            attr.value.s32 = SAI_ACL_STAGE_INGRESS;
+
+            m_aclGroup = createObject(SAI_OBJECT_TYPE_ACL_TABLE_GROUP, { attr });
+
+            attr.id = SAI_PORT_ATTR_INGRESS_ACL;
+            attr.value.oid = m_aclGroup;
+
+            check(m_sw->set(SAI_OBJECT_TYPE_PORT, sai_serialize_object_id(m_port), &attr) == SAI_STATUS_SUCCESS,
+                    "port bound to its ingress ACL group");
+        }
+
+        sai_object_id_t createAclTable()
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<sai_attribute_t> attrs(2);
+
+            attrs[0].id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
+            attrs[0].value.s32 = SAI_ACL_STAGE_INGRESS;
+            attrs[1].id = SAI_ACL_TABLE_ATTR_FIELD_SRC_IP;
+            attrs[1].value.booldata = true;
+
+            return createObject(SAI_OBJECT_TYPE_ACL_TABLE, attrs);
+        }
+
+        sai_object_id_t bindAclTable(
                 sai_object_id_t table)
         {
             SWSS_LOG_ENTER();
 
-            m_sw->m_port_acl_tables[PORT_HWIF].ingress.insert(table);
-            m_sw->ip2meUpdateDropTable(table, true);
+            std::vector<sai_attribute_t> attrs(3);
+
+            attrs[0].id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID;
+            attrs[0].value.oid = m_aclGroup;
+            attrs[1].id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID;
+            attrs[1].value.oid = table;
+            attrs[2].id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_PRIORITY;
+            attrs[2].value.u32 = 100;
+
+            return createObject(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, attrs);
+        }
+
+        sai_object_id_t addDenyRule(
+                sai_object_id_t table)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<sai_attribute_t> attrs(4);
+
+            attrs[0].id = SAI_ACL_ENTRY_ATTR_TABLE_ID;
+            attrs[0].value.oid = table;
+            attrs[1].id = SAI_ACL_ENTRY_ATTR_PRIORITY;
+            attrs[1].value.u32 = 10;
+            attrs[2].id = SAI_ACL_ENTRY_ATTR_FIELD_SRC_IP;
+            attrs[2].value.aclfield.enable = true;
+            attrs[2].value.aclfield.data.ip4 = htonl(0x0a000001);
+            attrs[2].value.aclfield.mask.ip4 = 0xffffffff;
+            attrs[3].id = SAI_ACL_ENTRY_ATTR_ACTION_PACKET_ACTION;
+            attrs[3].value.aclaction.enable = true;
+            attrs[3].value.aclaction.parameter.s32 = SAI_PACKET_ACTION_DROP;
+
+            return createObject(SAI_OBJECT_TYPE_ACL_ENTRY, attrs);
+        }
+
+        // enable flag of each ip2me call made for the port, in order
+        std::vector<bool> ip2meCalls()
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<bool> enables;
+
+            for (auto& call : vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF))
+            {
+                enables.push_back(call.flag);
+            }
+
+            return enables;
         }
 
         static constexpr uint16_t VLAN_ID = 100;
@@ -178,30 +287,41 @@ class SwitchVppSonicExtFeature : public ::testing::Test
         sai_object_id_t m_bridgePort = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_otherPort = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_otherBridgePort = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_aclGroup = SAI_NULL_OBJECT_ID;
 };
 
 constexpr uint16_t SwitchVppSonicExtFeature::VLAN_ID;
 constexpr const char *SwitchVppSonicExtFeature::PORT_HWIF;
 constexpr const char *SwitchVppSonicExtFeature::OTHER_PORT_HWIF;
 
-TEST_F(SwitchVppSonicExtFeature, ip2meFollowsDropTableWhenEnabled)
+TEST_F(SwitchVppSonicExtFeature, ip2meFollowsAclLifecycleWhenEnabled)
 {
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_EXIT({
         vppMock().enabledFeatures.insert("ip2me");
 
-        auto table = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId);
+        bindIngressAclGroup();
+        auto table = createAclTable();
+        auto member = bindAclTable(table);
 
-        bindDropTable(table);
+        check(ip2meCalls().empty(), "ip2me not programmed without a deny rule");
 
-        auto calls = vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF);
-        check(calls.size() == 1 && calls[0].flag, "ip2me enabled on the port");
+        auto rule = addDenyRule(table);
+        check(ip2meCalls() == std::vector<bool>({true}), "adding a deny rule enables ip2me");
 
-        m_sw->ip2meUpdateDropTable(table, false);
+        removeObject(SAI_OBJECT_TYPE_ACL_ENTRY, rule);
+        check(ip2meCalls() == std::vector<bool>({true, false}), "removing the deny rule disables ip2me");
 
-        calls = vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF);
-        check(calls.size() == 2 && !calls[1].flag, "ip2me disabled once the deny rule is gone");
-        check(queried("ip2me"), "ip2me queried");
+        addDenyRule(table);
+        check(ip2meCalls() == std::vector<bool>({true, false, true}), "adding it again enables ip2me again");
+
+        removeObject(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member);
+        check(ip2meCalls() == std::vector<bool>({true, false, true, false}), "unbinding the table disables ip2me");
+
+        bindAclTable(table);
+        check(ip2meCalls() == std::vector<bool>({true, false, true, false, true}),
+                "binding it again enables ip2me again");
+        check(m_sw->m_ip2me_enabled_ports.count(PORT_HWIF) == 1, "port tracked as ip2me enabled");
         _exit(0);
     }, ::testing::ExitedWithCode(0), "");
 }
@@ -210,14 +330,16 @@ TEST_F(SwitchVppSonicExtFeature, ip2meDisabledAtStartupIsNeverEnabled)
 {
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_EXIT({
-        auto table = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId);
+        bindIngressAclGroup();
+        auto table = createAclTable();
+        auto member = bindAclTable(table);
+        auto rule = addDenyRule(table);
+        removeObject(SAI_OBJECT_TYPE_ACL_ENTRY, rule);
+        addDenyRule(table);
+        removeObject(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member);
+        bindAclTable(table);
 
-        bindDropTable(table);
-        m_sw->ip2meUpdateDropTable(table, false);
-        bindDropTable(table);
-
-        check(vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF).empty(),
-                "ip2me never programmed");
+        check(ip2meCalls().empty(), "ip2me never programmed");
         check(m_sw->m_ip2me_enabled_ports.empty(), "no port tracked as ip2me enabled");
         check(queried("ip2me"), "ip2me queried");
         _exit(0);
@@ -231,19 +353,19 @@ TEST_F(SwitchVppSonicExtFeature, ip2meFailedFeatureQueryIsNotEnabled)
         vppMock().enabledFeatures.insert("ip2me");
         vppMock().featureResult = -1;
 
-        auto table = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId);
+        bindIngressAclGroup();
+        auto table = createAclTable();
+        auto member = bindAclTable(table);
+        addDenyRule(table);
 
-        bindDropTable(table);
+        check(ip2meCalls().empty(), "ip2me not programmed while its feature query fails");
 
-        check(vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF).empty(),
-                "ip2me not programmed while its feature query fails");
-
-        // a failed answer is not kept, so the next refresh asks again
+        // a failed answer is not kept, so the next ACL change on the port asks again
         vppMock().featureResult = 0;
-        m_sw->ip2meRefreshPort(PORT_HWIF);
+        removeObject(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member);
+        bindAclTable(table);
 
-        auto calls = vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF);
-        check(calls.size() == 1 && calls[0].flag, "ip2me enabled once the query succeeds");
+        check(ip2meCalls() == std::vector<bool>({true}), "ip2me enabled once the query succeeds");
         _exit(0);
     }, ::testing::ExitedWithCode(0), "");
 }
@@ -255,19 +377,19 @@ TEST_F(SwitchVppSonicExtFeature, ip2meFailedProgrammingIsRetried)
         vppMock().enabledFeatures.insert("ip2me");
         vppMock().ip2meResult = -1;
 
-        auto table = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId);
+        bindIngressAclGroup();
+        auto table = createAclTable();
+        auto member = bindAclTable(table);
+        addDenyRule(table);
 
-        bindDropTable(table);
-
-        check(vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF).size() == 1,
-                "ip2me enable attempted");
+        check(ip2meCalls() == std::vector<bool>({true}), "ip2me enable attempted");
         check(m_sw->m_ip2me_enabled_ports.empty(), "a failed enable is not tracked as enabled");
 
         vppMock().ip2meResult = 0;
-        m_sw->ip2meRefreshPort(PORT_HWIF);
+        removeObject(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member);
+        bindAclTable(table);
 
-        auto calls = vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF);
-        check(calls.size() == 2 && calls[1].flag, "the next refresh retries the enable");
+        check(ip2meCalls() == std::vector<bool>({true, true}), "binding the table again retries the enable");
         check(m_sw->m_ip2me_enabled_ports.count(PORT_HWIF) == 1, "port tracked once enabled");
         _exit(0);
     }, ::testing::ExitedWithCode(0), "");

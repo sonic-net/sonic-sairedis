@@ -350,6 +350,31 @@ extern "C" int __wrap_vpp_sonic_ext_ip2me_enable_disable(const char *name, bool 
     return vppMock().ip2meResult;
 }
 
+extern "C" int __wrap_vpp_acl_add_replace(vpp_acl_t *acl, uint32_t *acl_index, bool is_replace)
+{
+    SWSS_LOG_ENTER();
+    if (!is_replace)
+    {
+        *acl_index = vppMock().nextAclIndex++;
+    }
+    vppMock().calls.push_back({"vpp_acl_add_replace", acl->acl_name, *acl_index, acl->count, is_replace});
+    return 0;
+}
+
+extern "C" int __wrap_vpp_acl_interface_bind(const char *name, uint32_t acl_index, bool is_input)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_acl_interface_bind", name, acl_index, 0, is_input});
+    return 0;
+}
+
+extern "C" int __wrap_vpp_acl_interface_unbind(const char *name, uint32_t acl_index, bool is_input)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_acl_interface_unbind", name, acl_index, 0, is_input});
+    return 0;
+}
+
 extern "C" int __wrap_vpp_iface_loopback_set_action(const char *name, int action)
 {
     SWSS_LOG_ENTER();

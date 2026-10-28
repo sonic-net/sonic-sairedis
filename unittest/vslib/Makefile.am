@@ -73,7 +73,8 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_pbh_profile_add_del vpp_pbh_table_add_replace vpp_pbh_table_del \
 				vpp_pbh_interface_attach_detach vpp_rule_stats_query \
 				vpp_classify_table_create vpp_classify_session_add \
-				vpp_sonic_ext_ip2me_enable_disable
+				vpp_sonic_ext_ip2me_enable_disable vpp_acl_add_replace \
+				vpp_acl_interface_bind vpp_acl_interface_unbind
 tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 endif
 
