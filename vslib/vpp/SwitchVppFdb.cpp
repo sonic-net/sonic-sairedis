@@ -3237,6 +3237,123 @@ bool SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
     return true;
 }
 
+/*
+ * The VPP event connection was re-established, so MAC events VPP generated
+ * meanwhile are lost: a lost DELETE leaves a stale entry, a lost MOVE a wrong
+ * port, a lost ADD a missing one, and VPP re-learning the MAC does not repair
+ * the first two (ADD for a known key is skipped). Bring m_vpp_fdb_entries and
+ * the FDB notifications in line with VPP's L2FIB.
+ *
+ * Runs on the aging thread under MUTEX(). Events queued behind the RESYNC
+ * marker are applied afterwards, in order, so a change VPP makes after the dump
+ * still lands. Entries VPP ages out after its re-subscription flush are still
+ * in the dump; their DELETE events follow.
+ *
+ * Returns false, changing nothing, if VPP's L2FIB cannot be dumped.
+ */
+bool SwitchVpp::resyncFdbWithVpp()
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<vpp_l2fib_entry_t> dump;
+
+    if (vpp_l2fib_dump(~0u, [](const vpp_l2fib_entry_t *e, void *ctx)
+                       { static_cast<std::vector<vpp_l2fib_entry_t> *>(ctx)->push_back(*e); }, &dump) != 0)
+    {
+        SWSS_LOG_ERROR("FDB: L2FIB dump failed, FDB resync with VPP will be retried");
+        return false;
+    }
+
+    // VPP's learned MACs, keyed and gated like MAC events
+    std::map<VppFdbKey, uint32_t> vpp_macs;
+
+    for (const auto &e : dump)
+    {
+        auto rec = m_ifaceRegistry.findBySwIfIndex(e.sw_if_index);
+
+        if (e.is_static || !rec || !rec->hasBdId())
+            continue;
+
+        // A row from a BD the interface has left: VPP flushed it then, and
+        // keeps it only until its aging scan deletes it
+        if (e.bd_id != rec->getBdId())
+            continue;
+
+        VppFdbKey key;
+        memcpy(key.mac, e.mac, sizeof(key.mac));
+        key.bd_id = e.bd_id;
+        vpp_macs[key] = e.sw_if_index;
+    }
+
+    size_t aged = 0, learned = 0, moved = 0;
+
+    for (auto it = m_vpp_fdb_entries.begin(); it != m_vpp_fdb_entries.end(); )
+    {
+        if (vpp_macs.find(it->first) != vpp_macs.end())
+        {
+            ++it;
+            continue;
+        }
+
+        generateFdbAgedEvent(it->first);
+        SWSS_LOG_INFO("FDB: resync aged MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u (not in VPP L2FIB)",
+                      it->first.mac[0], it->first.mac[1], it->first.mac[2],
+                      it->first.mac[3], it->first.mac[4], it->first.mac[5],
+                      it->first.bd_id, it->second);
+        it = m_vpp_fdb_entries.erase(it);
+        aged++;
+    }
+
+    auto &fdb_objects = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+    for (const auto &m : vpp_macs)
+    {
+        auto it = m_vpp_fdb_entries.find(m.first);
+
+        if (it == m_vpp_fdb_entries.end())
+        {
+            // VPP also holds the FDB entries orchagent programs; leave those alone.
+            sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
+            sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
+
+            findBridgeVlanForPortVlan(m_ifaceRegistry.resolveIfOid(m.second),
+                                      (sai_vlan_id_t)m.first.bd_id, bv_id, bridge_port_id);
+
+            sai_fdb_entry_t fdb_entry = {};
+            fdb_entry.switch_id = m_switch_id;
+            fdb_entry.bv_id = bv_id;
+            memcpy(fdb_entry.mac_address, m.first.mac, sizeof(sai_mac_t));
+
+            if (fdb_objects.find(sai_serialize_fdb_entry(fdb_entry)) != fdb_objects.end())
+                continue;
+
+            if (generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_LEARNED))
+            {
+                m_vpp_fdb_entries[m.first] = m.second;
+                learned++;
+                SWSS_LOG_INFO("FDB: resync learned MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u (not in FDB)",
+                              m.first.mac[0], m.first.mac[1], m.first.mac[2],
+                              m.first.mac[3], m.first.mac[4], m.first.mac[5],
+                              m.first.bd_id, m.second);
+            }
+        }
+        else if (it->second != m.second &&
+                 generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_MOVE))
+        {
+            SWSS_LOG_INFO("FDB: resync moved MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u -> %u",
+                          m.first.mac[0], m.first.mac[1], m.first.mac[2],
+                          m.first.mac[3], m.first.mac[4], m.first.mac[5],
+                          m.first.bd_id, it->second, m.second);
+            it->second = m.second;
+            moved++;
+        }
+    }
+
+    SWSS_LOG_NOTICE("FDB: resynced with VPP L2FIB (%zu learned MACs): %zu aged, %zu learned, %zu moved",
+                    vpp_macs.size(), aged, learned, moved);
+    return true;
+}
+
 void SwitchVpp::swif_bdid_track(const char *hwif_name, uint32_t bd_id)
 {
     SWSS_LOG_ENTER();

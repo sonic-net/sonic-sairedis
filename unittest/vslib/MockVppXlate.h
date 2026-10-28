@@ -5,6 +5,8 @@
 #include "vpp/vppxlate/SaiAclStats.h"
 
 #include <array>
+#include <chrono>
+#include <initializer_list>
 #include <map>
 #include <set>
 #include <string>
@@ -123,6 +125,14 @@ struct VppMock
     std::map<std::string, bool> adminUp;
     std::map<std::string, std::array<uint32_t, 4>> mtus;
     std::map<std::string, unsigned int> mplsReferences;
+    int l2fibDumpResult = 0;
+    unsigned int l2fibDumpCalls = 0;
+    std::vector<vpp_l2fib_entry_t> l2fib;
+    // Link state VPP reports, by interface name. Missing is down.
+    std::map<std::string, bool> linkUp;
+    int bfdDumpResult = 0;
+    unsigned int bfdDumpCalls = 0;
+    std::vector<vpp_bfd_state_notif_t> bfdSessions;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
@@ -136,6 +146,30 @@ struct VppMock
 };
 
 VppMock& vppMock();
+
+/*
+ * The VPP event stream a switch's event thread reads: it waits once per pass, and
+ * takes the events a test delivers, in order. Kept out of VppMock, which tests
+ * reset, as that thread uses it.
+ */
+void deliverVppEvents(std::initializer_list<vpp_event_info_t *> events);
+
+// The event thread has taken the delivered events, and posted them once it
+// waits for the next ones
+bool waitForVppEventsTaken();
+
+// A call the event thread made on the event socket
+struct VppEventCall
+{
+    std::string api;
+    int result;
+    std::chrono::steady_clock::time_point time;
+};
+
+// Forgets the calls made so far; the next pingFailures pings fail
+void resetVppEventCalls(int pingFailures = 0);
+
+std::vector<VppEventCall> vppEventCalls();
 
 class TestableSwitchVpp : public saivs::SwitchVpp
 {

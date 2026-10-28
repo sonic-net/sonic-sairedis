@@ -1667,3 +1667,24 @@ void VirtualSwitchSaiInterface::syncProcessEventNetLinkMsg(
 
     it->second->syncOnLinkMsg(payload);
 }
+
+void VirtualSwitchSaiInterface::syncProcessEventPlatformEvent(
+        _In_ std::shared_ptr<EventPayloadPlatformEvent> payload)
+{
+    SWSS_LOG_ENTER();
+
+    auto switchId = payload->getSwitchId();
+
+    auto it = m_switchStateMap.find(switchId);
+
+    if (it == m_switchStateMap.end())
+    {
+        // the switch was removed after its platform posted the event
+        SWSS_LOG_NOTICE("switch %s doesn't exist in switch state map",
+                sai_serialize_object_id(switchId).c_str());
+
+        return;
+    }
+
+    it->second->syncOnPlatformEvent(payload);
+}

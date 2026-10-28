@@ -261,6 +261,9 @@ namespace saivs
             void syncProcessEventNetLinkMsg(
                     _In_ std::shared_ptr<EventPayloadNetLinkMsg> payload);
 
+            void syncProcessEventPlatformEvent(
+                    _In_ std::shared_ptr<EventPayloadPlatformEvent> payload);
+
             void asyncProcessEventNotification(
                     _In_ std::shared_ptr<EventPayloadNotification> payload);
 
