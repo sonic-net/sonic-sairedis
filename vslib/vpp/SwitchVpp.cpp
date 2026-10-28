@@ -1593,11 +1593,19 @@ sai_status_t SwitchVpp::refreshTrimDataplane()
         attr.value.objlist.count = MAX_OBJLIST_LEN;
         attr.value.objlist.list  = queues.data();
 
-        if (get(SAI_OBJECT_TYPE_PORT, port_oid, 1, &attr) != SAI_STATUS_SUCCESS)
+        sai_status_t queue_list_status = get(SAI_OBJECT_TYPE_PORT, port_oid, 1, &attr);
+        if (queue_list_status == SAI_STATUS_ITEM_NOT_FOUND)
         {
+            // Replay can expose a port before its queue list is populated.
             SWSS_LOG_WARN("refreshTrimDataplane: port 0x%llx (%s) queue list get failed",
                           (unsigned long long)port_oid, hwif.c_str());
             continue;
+        }
+        if (queue_list_status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("refreshTrimDataplane: port 0x%llx (%s) queue list get failed: %d",
+                          (unsigned long long)port_oid, hwif.c_str(), queue_list_status);
+            return queue_list_status;
         }
 
         uint32_t n = attr.value.objlist.count;

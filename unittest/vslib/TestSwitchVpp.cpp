@@ -806,6 +806,71 @@ TEST_F(SwitchVppTrimTest, queueFailureRestoresCommittedBinding)
     EXPECT_TRUE(queue_state.at({"pg0", 2}).eligible);
 }
 
+TEST_F(SwitchVppTrimTest, queueListFailureRequiresReconciliationBeforeCommittingBinding)
+{
+    auto queue = trimQueue(1);
+    auto attr = oidAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, SAI_NULL_OBJECT_ID);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->get(SAI_OBJECT_TYPE_QUEUE, queue, 1, &attr));
+    auto profile = attr.value.oid;
+    auto port_id = port({queue});
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    queue_calls.clear();
+    map_calls.clear();
+
+    std::vector<sai_object_id_t> oversized(MAX_OBJLIST_LEN + 1, queue);
+    attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+    attr.value.objlist.count = static_cast<uint32_t>(oversized.size());
+    attr.value.objlist.list = oversized.data();
+    put(SAI_OBJECT_TYPE_PORT, port_id, attr);
+
+    EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW, setOid(
+            SAI_OBJECT_TYPE_QUEUE, queue, SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, SAI_NULL_OBJECT_ID));
+    EXPECT_TRUE(queue_calls.empty());
+    EXPECT_TRUE(map_calls.empty());
+    EXPECT_TRUE(state->m_trim_reconcile_pending);
+    attr.id = SAI_QUEUE_ATTR_BUFFER_PROFILE_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->get(SAI_OBJECT_TYPE_QUEUE, queue, 1, &attr));
+    EXPECT_EQ(profile, attr.value.oid);
+    EXPECT_TRUE(queue_state.at({"pg0", 1}).eligible);
+
+    EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW, setOid(
+            SAI_OBJECT_TYPE_QUEUE, queue, SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, SAI_NULL_OBJECT_ID));
+    EXPECT_TRUE(queue_calls.empty());
+    EXPECT_TRUE(map_calls.empty());
+
+    attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+    attr.value.objlist = {1, &queue};
+    put(SAI_OBJECT_TYPE_PORT, port_id, attr);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setOid(
+            SAI_OBJECT_TYPE_QUEUE, queue, SAI_QUEUE_ATTR_BUFFER_PROFILE_ID, SAI_NULL_OBJECT_ID));
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+    ASSERT_EQ(2u, queue_calls.size());
+    EXPECT_TRUE(queue_calls.front().eligible);
+    EXPECT_FALSE(queue_calls.back().eligible);
+    EXPECT_FALSE(queue_state.at({"pg0", 1}).eligible);
+}
+
+TEST_F(SwitchVppTrimTest, missingPortQueueListIsDeferredUntilReplayCompletes)
+{
+    auto queue = trimQueue(1);
+    auto port_id = port({queue});
+    state->m_objectHash[SAI_OBJECT_TYPE_PORT][sai_serialize_object_id(port_id)]
+        .erase("SAI_PORT_ATTR_QOS_QUEUE_LIST");
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    EXPECT_TRUE(queue_calls.empty());
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+
+    sai_attribute_t attr = {};
+    attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+    attr.value.objlist = {1, &queue};
+    put(SAI_OBJECT_TYPE_PORT, port_id, attr);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSwitchByte(SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE, 48));
+    ASSERT_EQ(1u, queue_calls.size());
+    EXPECT_TRUE(queue_calls.back().eligible);
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+}
+
 TEST_F(SwitchVppTrimTest, bestEffortCreateRecordsFailedRefreshForReconciliation)
 {
     port({trimQueue(1), trimQueue(2)});
