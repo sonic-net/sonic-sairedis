@@ -1,6 +1,82 @@
 #include "MockVppXlate.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstdlib>
+#include <deque>
+#include <mutex>
+
+#include <unistd.h>
+
+namespace
+{
+    std::atomic<int> g_vppEventWaits{0};
+    std::mutex g_vppEventsMutex;
+    std::deque<vpp_event_info_t *> g_vppEvents;
+    std::vector<VppEventCall> g_vppEventCalls;
+    int g_vppPingFailures = 0;
+
+    bool vppEventsPending()
+    {
+        SWSS_LOG_ENTER();
+        std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+        return !g_vppEvents.empty();
+    }
+
+    int recordVppEventCall(const std::string& api, int result)
+    {
+        SWSS_LOG_ENTER();
+        std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+        g_vppEventCalls.push_back({api, result, std::chrono::steady_clock::now()});
+        return result;
+    }
+}
+
+void resetVppEventCalls(int pingFailures)
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+    for (auto *ev : g_vppEvents)
+    {
+        free(ev);
+    }
+    g_vppEvents.clear();
+    g_vppEventCalls.clear();
+    g_vppPingFailures = pingFailures;
+}
+
+std::vector<VppEventCall> vppEventCalls()
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+    return g_vppEventCalls;
+}
+
+void deliverVppEvents(std::initializer_list<vpp_event_info_t *> events)
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+    g_vppEvents.insert(g_vppEvents.end(), events);
+}
+
+bool waitForVppEventsTaken()
+{
+    SWSS_LOG_ENTER();
+    for (int i = 0; i < 500 && vppEventsPending(); i++)
+    {
+        usleep(10 * 1000);
+    }
+    if (vppEventsPending())
+    {
+        return false;
+    }
+    int waits = g_vppEventWaits.load();
+    for (int i = 0; i < 500 && g_vppEventWaits.load() == waits; i++)
+    {
+        usleep(10 * 1000);
+    }
+    return g_vppEventWaits.load() != waits;
+}
 
 VppMock& vppMock()
 {
@@ -49,9 +125,23 @@ int TestableSwitchVpp::vs_set_dev_admin_up(const char *, bool)
     return 0;
 }
 
-int TestableSwitchVpp::exec(const std::string&, std::string& output)
+int TestableSwitchVpp::exec(const std::string& command, std::string& output)
 {
     SWSS_LOG_ENTER();
+    vppMock().kernelCommands.push_back(command);
+    if (command.find(" -o link show") != std::string::npos)
+    {
+        output = vppMock().kernelLinkNames;
+        return vppMock().kernelLinkResult;
+    }
+    const std::string linkCommand = "/sbin/ip link show dev ";
+    if (command.compare(0, linkCommand.size(), linkCommand) == 0 &&
+            !vppMock().kernelInterfaces.empty() &&
+            vppMock().kernelInterfaces.count(command.substr(linkCommand.size())) == 0)
+    {
+        output.clear();
+        return 1;
+    }
     output = std::to_string(vppMock().kernelVrfId) + "\n";
     return vppMock().kernelVrfResult;
 }
@@ -348,9 +438,34 @@ extern "C" int __wrap_refresh_interfaces_list() {
     SWSS_LOG_ENTER();
     return 0;
 }
-extern "C" int __wrap_vpp_want_l2_macs_events2(bool, vpp_mac_event_cb_fn, void *) {
+extern "C" void __wrap_vpp_set_mac_event_cb(vpp_mac_event_cb_fn, void *) {
     SWSS_LOG_ENTER();
-    return 0;
+}
+extern "C" int __wrap_vpp_l2fib_dump(uint32_t, vpp_l2fib_entry_cb_fn cb, void *ctx)
+{
+    SWSS_LOG_ENTER();
+    ++vppMock().l2fibDumpCalls;
+    if (vppMock().l2fibDumpResult == 0)
+    {
+        for (const auto& entry : vppMock().l2fib)
+        {
+            cb(&entry, ctx);
+        }
+    }
+    return vppMock().l2fibDumpResult;
+}
+extern "C" int __wrap_vpp_bfd_session_dump(vpp_bfd_session_cb_fn cb, void *ctx)
+{
+    SWSS_LOG_ENTER();
+    ++vppMock().bfdDumpCalls;
+    if (vppMock().bfdDumpResult == 0)
+    {
+        for (const auto& session : vppMock().bfdSessions)
+        {
+            cb(&session, ctx);
+        }
+    }
+    return vppMock().bfdDumpResult;
 }
 extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
     SWSS_LOG_ENTER();
@@ -400,13 +515,44 @@ int __wrap_init_vpp_client() {
     SWSS_LOG_ENTER();
     return 0;
 }
+// the event thread waits for VPP to write to the event socket between passes
+int __wrap_vpp_wait_for_events(int) {
+    SWSS_LOG_ENTER();
+    g_vppEventWaits++;
+    // like poll(): returns once there is something to read, or after the interval
+    if (!vppEventsPending())
+    {
+        usleep(10 * 1000);
+    }
+    return recordVppEventCall("vpp_wait_for_events", vppEventsPending() ? 1 : 0);
+}
+int __wrap_vpp_drain_events() {
+    SWSS_LOG_ENTER();
+    return recordVppEventCall("vpp_drain_events", 0);
+}
 int __wrap_vpp_sync_for_events() {
     SWSS_LOG_ENTER();
-    return 0;
+    int result = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+        if (g_vppPingFailures > 0)
+        {
+            --g_vppPingFailures;
+            result = -1;
+        }
+    }
+    return recordVppEventCall("vpp_sync_for_events", result);
 }
 vpp_event_info_t * __wrap_vpp_ev_dequeue() {
     SWSS_LOG_ENTER();
-    return NULL;
+    std::lock_guard<std::mutex> lock(g_vppEventsMutex);
+    if (g_vppEvents.empty())
+    {
+        return NULL;
+    }
+    auto *ev = g_vppEvents.front();
+    g_vppEvents.pop_front();
+    return ev;
 }
 
 /*
@@ -436,6 +582,14 @@ int __wrap_interface_set_state(const char *hwif_name, bool is_up)
 
     vppMock().calls.push_back({"interface_set_state", name, 0, (uint32_t)ret, is_up});
     return ret;
+}
+
+int __wrap_interface_get_state(const char *hwif_name, bool *link_is_up)
+{
+    SWSS_LOG_ENTER();
+    auto it = vppMock().linkUp.find(hwif_name ? hwif_name : "");
+    *link_is_up = it != vppMock().linkUp.end() && it->second;
+    return 0;
 }
 
 int __wrap_interface_set_promiscuous(const char *hwif_name, bool enable) {
