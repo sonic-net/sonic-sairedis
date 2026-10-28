@@ -553,6 +553,11 @@ typedef enum {
     /* interface-output-arc ethertype -> policer binding */
     extern int vpp_sonic_ext_copp_ifout_bind(uint16_t ethertype,
             const char *policer_name, bool is_bind, bool match_ip4_ttl_expiring);
+    extern int vpp_sonic_ext_copp_neighbor_miss_bind(
+            const char *policer_name, bool is_bind);
+    extern int vpp_sonic_ext_copp_dhcp_bind(
+            const char *policer_name, bool is_ipv6, bool is_copy,
+            bool is_bind);
     extern int vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add);
     extern int vpp_sonic_ext_copp_ip2me_bind(const char *policer_name, bool is_bind);
     extern int vpp_sonic_ext_copp_ip2me_bind_condition(const char *policer_name, uint16_t tcp_port, bool is_bind);

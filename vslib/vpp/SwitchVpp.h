@@ -1138,6 +1138,14 @@ namespace saivs
 
             std::map<sai_object_id_t, vpp_trap_group_entry_t> m_trap_group_map;
             std::map<sai_object_id_t, vpp_trap_entry_t> m_trap_map;
+            // Physical VPP binding key -> exact currently programmed row.
+            // Shared SAI traps can overwrite one physical row, so rollback
+            // must restore its presence, policer, and effective packet action
+            // rather than one arbitrary trap owner's configuration.
+            std::map<uint32_t, vpp_trap_binding_entry_t> m_trap_binding_map;
+            // Keys whose last multi-step RPC result is not authoritative.
+            // Rollback must retry these even when the OID journal is unchanged.
+            std::set<uint32_t> m_trap_binding_uncertain;
 
             sai_status_t createHostifTrapGroup(
                     _In_ sai_object_id_t object_id,
@@ -1174,6 +1182,23 @@ namespace saivs
                     _In_ sai_object_id_t trap_oid,
                     _In_ const vpp_trap_entry_t &trap,
                     _In_ uint32_t vpp_policer_index);
+
+            sai_status_t installTrapClassifyNow(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap,
+                    _In_ uint32_t vpp_policer_index,
+                    _In_ sai_object_id_t policer_oid,
+                    _In_ sai_object_id_t excluded_trap_group_oid = SAI_NULL_OBJECT_ID,
+                    _In_ bool select_alternate_owner = true);
+
+            sai_status_t programTrapClassifyNow(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap,
+                    _In_ uint32_t vpp_policer_index,
+                    _In_ sai_object_id_t policer_oid,
+                    _In_ sai_object_id_t excluded_trap_group_oid,
+                    _In_ bool reconcile_shared_owners = true,
+                    _In_ bool select_alternate_owner = true);
 
             sai_status_t uninstallTrapClassify(
                     _In_ sai_object_id_t trap_oid,

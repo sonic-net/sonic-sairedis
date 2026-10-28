@@ -10,6 +10,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct VppCall
@@ -62,6 +63,45 @@ struct VppRuleStatsCall
     vpp_rule_stats_type_t type;
     uint32_t table_index;
     uint32_t rule_index;
+};
+
+struct VppCoppNeighborMissBindCall
+{
+    std::string policerName;
+    bool isBind;
+};
+
+struct VppCoppDhcpBindCall
+{
+    std::string policerName;
+    bool isIpv6;
+    bool isCopy;
+    bool isBind;
+};
+
+struct VppCoppIfoutBindCall
+{
+    uint16_t ethertype;
+    std::string policerName;
+    bool isBind;
+    bool isIp4TtlExpiring;
+};
+
+struct VppCoppIp2meBindCall
+{
+    std::string policerName;
+    uint16_t tcpPort;
+    bool conditional;
+    bool isBind;
+};
+
+struct VppClassifyTable
+{
+    uint32_t skip = 0;
+    uint32_t match = 0;
+    uint32_t nextTable = ~0u;
+    std::vector<uint8_t> mask;
+    std::map<std::vector<uint8_t>, uint32_t> sessions;
 };
 
 struct VppMock
@@ -117,6 +157,39 @@ struct VppMock
     std::vector<VppPbhAttachCall> pbhAttachCalls;
     std::vector<VppRuleStatsCall> ruleStatsCalls;
 
+    // CoPP semantic NEIGHBOR_MISS binding.
+    int coppNeighborMissBindResult = 0;
+    unsigned int coppNeighborMissBindFailOnCall = 0;
+    std::vector<VppCoppNeighborMissBindCall> coppNeighborMissBindCalls;
+
+    // CoPP semantic DHCPv4/DHCPv6 bindings.
+    int coppDhcpBindResult = 0;
+    unsigned int coppDhcpBindFailOnCall = 0;
+    std::set<unsigned int> coppDhcpBindFailOnCalls;
+    std::vector<VppCoppDhcpBindCall> coppDhcpBindCalls;
+
+    // CoPP interface-output and TTL punt bindings.
+    int coppIfoutBindResult = 0;
+    unsigned int coppIfoutBindFailOnCall = 0;
+    int coppTtlPuntBindResult = 0;
+    unsigned int coppTtlPuntBindFailOnCall = 0;
+    std::vector<VppCoppIfoutBindCall> coppIfoutBindCalls;
+    std::vector<bool> coppTtlPuntBindCalls;
+
+    // CoPP name-keyed IP2ME and BGP bindings.
+    int coppIp2meBindResult = 0;
+    unsigned int coppIp2meBindFailOnCall = 0;
+    std::set<unsigned int> coppIp2meBindFailOnCalls;
+    std::vector<VppCoppIp2meBindCall> coppIp2meBindCalls;
+
+    // Minimal VPP classify model for VLAN-member punt tests.
+    bool classifyAvailable = false;
+    uint32_t nextClassifyTable = 0;
+    std::map<uint32_t, VppClassifyTable> classifyTables;
+    std::map<std::pair<std::string, std::string>, uint32_t> nodeNexts;
+    std::map<std::string, uint32_t> nodeNextCounts;
+    std::map<std::string, std::array<uint32_t, 3>> l2ClassifyTables;
+
     std::map<std::string, uint32_t> interfaceVrfs;
     std::set<uint32_t> vrfTables;
     std::map<std::string, vpp_interface_stats_t> interfaceStats;
@@ -146,6 +219,13 @@ struct VppMock
      * what VPP holds for the table the caller last programmed.
      */
     const std::vector<vpp_pbh_rule_t>& lastPbhRules() const;
+    uint32_t classifyFrame(
+            const std::string& hwif,
+            size_t slot,
+            const std::vector<uint8_t>& frame) const;
+    uint32_t nodeNext(
+            const std::string& node,
+            const std::string& next) const;
 };
 
 VppMock& vppMock();
@@ -178,8 +258,17 @@ class TestableSwitchVpp : public saivs::SwitchVpp
 {
 public:
     using SwitchVpp::SwitchVpp;
+    sai_status_t removeInternalResult = SAI_STATUS_SUCCESS;
+    sai_status_t setInternalResult = SAI_STATUS_SUCCESS;
 
 protected:
+    sai_status_t remove_internal(
+            sai_object_type_t object_type,
+            const std::string& serializedObjectId) override;
+    sai_status_t set_internal(
+            sai_object_type_t object_type,
+            const std::string& serializedObjectId,
+            const sai_attribute_t* attr) override;
     int vs_set_dev_admin_up(const char *dev, bool up) override;
     int exec(const std::string& command, std::string& output) override;
 };

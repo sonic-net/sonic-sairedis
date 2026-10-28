@@ -1,5 +1,7 @@
 #include "MockVppXlate.h"
 
+extern "C" void saivpp_reset_l2_punt_classify_for_test();
+
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
@@ -89,6 +91,7 @@ void VppMock::reset()
 {
     SWSS_LOG_ENTER();
     *this = VppMock{};
+    saivpp_reset_l2_punt_classify_for_test();
 }
 
 bool VppMock::isAdminUp(const std::string& hwif) const
@@ -117,6 +120,93 @@ const std::vector<vpp_pbh_rule_t>& VppMock::lastPbhRules() const
     SWSS_LOG_ENTER();
     static const std::vector<vpp_pbh_rule_t> none;
     return pbhTableCalls.empty() ? none : pbhTableCalls.back().rules;
+}
+
+namespace
+{
+    std::vector<uint8_t> maskedClassifyKey(
+            const VppClassifyTable& table,
+            const uint8_t *data,
+            size_t len)
+    {
+        std::vector<uint8_t> key(table.match * 16, 0);
+        for (size_t i = 0; i < key.size(); i++)
+        {
+            size_t off = table.skip * 16 + i;
+            key[i] = (uint8_t)((off < len ? data[off] : 0) & table.mask[i]);
+        }
+        return key;
+    }
+}
+
+uint32_t VppMock::classifyFrame(
+        const std::string& hwif,
+        size_t slot,
+        const std::vector<uint8_t>& frame) const
+{
+    SWSS_LOG_ENTER();
+
+    auto binding = l2ClassifyTables.find(hwif);
+    if (binding == l2ClassifyTables.end() || slot >= binding->second.size())
+    {
+        return ~0u;
+    }
+
+    uint32_t tableIndex = binding->second[slot];
+    while (tableIndex != ~0u)
+    {
+        auto table = classifyTables.find(tableIndex);
+        if (table == classifyTables.end())
+        {
+            return ~0u;
+        }
+        auto session = table->second.sessions.find(maskedClassifyKey(
+                table->second, frame.data(), frame.size()));
+        if (session != table->second.sessions.end())
+        {
+            return session->second;
+        }
+        tableIndex = table->second.nextTable;
+    }
+    return ~0u;
+}
+
+uint32_t VppMock::nodeNext(
+        const std::string& node,
+        const std::string& next) const
+{
+    SWSS_LOG_ENTER();
+    auto it = nodeNexts.find({node, next});
+    return it == nodeNexts.end() ? ~0u : it->second;
+}
+
+sai_status_t TestableSwitchVpp::remove_internal(
+        sai_object_type_t object_type,
+        const std::string& serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    if (removeInternalResult != SAI_STATUS_SUCCESS)
+    {
+        return removeInternalResult;
+    }
+
+    return SwitchVpp::remove_internal(object_type, serializedObjectId);
+}
+
+sai_status_t TestableSwitchVpp::set_internal(
+        sai_object_type_t object_type,
+        const std::string& serializedObjectId,
+        const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (setInternalResult != SAI_STATUS_SUCCESS)
+    {
+        return setInternalResult;
+    }
+
+    return SwitchVpp::set_internal(object_type, serializedObjectId, attr);
 }
 
 int TestableSwitchVpp::vs_set_dev_admin_up(const char *, bool)
@@ -220,6 +310,140 @@ extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabl
             ? vppMock().loopbackEnabled
             : vppMock().enabledFeatures.count(vppMock().queriedFeature) != 0;
     return vppMock().featureResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_neighbor_miss_bind(
+        const char *policer_name,
+        bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppNeighborMissBindCalls.push_back({
+        policer_name ? policer_name : "",
+        is_bind,
+    });
+
+    if (vppMock().coppNeighborMissBindFailOnCall != 0 &&
+            vppMock().coppNeighborMissBindCalls.size() ==
+            vppMock().coppNeighborMissBindFailOnCall)
+    {
+        return -1;
+    }
+
+    return vppMock().coppNeighborMissBindResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_dhcp_bind(
+        const char *policer_name,
+        bool is_ipv6,
+        bool is_copy,
+        bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppDhcpBindCalls.push_back({
+        policer_name ? policer_name : "",
+        is_ipv6,
+        is_copy,
+        is_bind,
+    });
+
+    if ((vppMock().coppDhcpBindFailOnCall != 0 &&
+         vppMock().coppDhcpBindCalls.size() ==
+         vppMock().coppDhcpBindFailOnCall) ||
+            vppMock().coppDhcpBindFailOnCalls.count(
+                    (unsigned int)vppMock().coppDhcpBindCalls.size()) != 0)
+    {
+        return -1;
+    }
+
+    return vppMock().coppDhcpBindResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_ifout_bind(
+        uint16_t ethertype,
+        const char *policer_name,
+        bool is_bind,
+        bool is_ip4_ttl_expiring)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppIfoutBindCalls.push_back({
+        ethertype,
+        policer_name ? policer_name : "",
+        is_bind,
+        is_ip4_ttl_expiring,
+    });
+
+    if (vppMock().coppIfoutBindFailOnCall != 0 &&
+            vppMock().coppIfoutBindCalls.size() ==
+            vppMock().coppIfoutBindFailOnCall)
+    {
+        return -1;
+    }
+
+    return vppMock().coppIfoutBindResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_ttl_punt_bind(bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppTtlPuntBindCalls.push_back(is_bind);
+
+    if (vppMock().coppTtlPuntBindFailOnCall != 0 &&
+            vppMock().coppTtlPuntBindCalls.size() ==
+            vppMock().coppTtlPuntBindFailOnCall)
+    {
+        return -1;
+    }
+
+    return vppMock().coppTtlPuntBindResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_ip2me_bind(
+        const char *policer_name,
+        bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppIp2meBindCalls.push_back({
+        policer_name ? policer_name : "", 0, false, is_bind,
+    });
+
+    if ((vppMock().coppIp2meBindFailOnCall != 0 &&
+         vppMock().coppIp2meBindCalls.size() ==
+         vppMock().coppIp2meBindFailOnCall) ||
+            vppMock().coppIp2meBindFailOnCalls.count(
+                    (unsigned int)vppMock().coppIp2meBindCalls.size()) != 0)
+    {
+        return -1;
+    }
+
+    return vppMock().coppIp2meBindResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_ip2me_bind_condition(
+        const char *policer_name,
+        uint16_t tcp_port,
+        bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppIp2meBindCalls.push_back({
+        policer_name ? policer_name : "", tcp_port, true, is_bind,
+    });
+
+    if ((vppMock().coppIp2meBindFailOnCall != 0 &&
+         vppMock().coppIp2meBindCalls.size() ==
+         vppMock().coppIp2meBindFailOnCall) ||
+            vppMock().coppIp2meBindFailOnCalls.count(
+                    (unsigned int)vppMock().coppIp2meBindCalls.size()) != 0)
+    {
+        return -1;
+    }
+
+    return vppMock().coppIp2meBindResult;
 }
 
 /*
@@ -617,15 +841,97 @@ uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
     return vppMock().nextSwIfIndex++;
 }
 
-// no classify punt in these tests: its one-time setup fails, which the VLAN member path tolerates
-int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint32_t *next_index) {
+int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint32_t *next_index)
+{
     SWSS_LOG_ENTER();
-    return -1;
+    if (!vppMock().classifyAvailable)
+    {
+        return -1;
+    }
+
+    auto key = std::make_pair(std::string(node_name), std::string(next_name));
+    auto it = vppMock().nodeNexts.find(key);
+    if (it == vppMock().nodeNexts.end())
+    {
+        it = vppMock().nodeNexts.emplace(
+                key, 10 + vppMock().nodeNextCounts[node_name]++).first;
+    }
+    *next_index = it->second;
+    return 0;
+}
+
+int __wrap_vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
+        uint32_t skip_n_vectors, uint32_t match_n_vectors,
+        uint32_t next_table_index, uint32_t miss_next_index,
+        const uint8_t *mask, uint32_t mask_len, uint32_t *new_table_index)
+{
+    SWSS_LOG_ENTER();
+    (void)nbuckets;
+    (void)memory_size;
+    (void)miss_next_index;
+
+    if (!vppMock().classifyAvailable || mask_len != match_n_vectors * 16)
+    {
+        return -1;
+    }
+
+    VppClassifyTable table;
+    table.skip = skip_n_vectors;
+    table.match = match_n_vectors;
+    table.nextTable = next_table_index;
+    table.mask.assign(mask, mask + mask_len);
+    *new_table_index = vppMock().nextClassifyTable++;
+    vppMock().classifyTables[*new_table_index] = table;
+    return 0;
+}
+
+int __wrap_vpp_classify_table_delete(uint32_t table_index)
+{
+    SWSS_LOG_ENTER();
+    vppMock().classifyTables.erase(table_index);
+    return 0;
+}
+
+int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+        const uint8_t *match, uint32_t match_len, uint32_t opaque_index,
+        int32_t advance, uint8_t action)
+{
+    SWSS_LOG_ENTER();
+    (void)opaque_index;
+    (void)advance;
+    (void)action;
+
+    auto it = vppMock().classifyTables.find(table_index);
+    if (it == vppMock().classifyTables.end())
+    {
+        return -1;
+    }
+    it->second.sessions[maskedClassifyKey(
+            it->second, match, match_len)] = hit_next_index;
+    return 0;
+}
+
+int __wrap_vpp_classify_session_del(uint32_t table_index,
+        const uint8_t *match, uint32_t match_len)
+{
+    SWSS_LOG_ENTER();
+    auto it = vppMock().classifyTables.find(table_index);
+    if (it == vppMock().classifyTables.end())
+    {
+        return -1;
+    }
+    return it->second.sessions.erase(maskedClassifyKey(
+            it->second, match, match_len)) == 1 ? 0 : -1;
 }
 
 int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
-        uint32_t ip6_table_index, uint32_t other_table_index, bool is_input) {
+        uint32_t ip6_table_index, uint32_t other_table_index, bool is_input)
+{
     SWSS_LOG_ENTER();
+    (void)is_input;
+    vppMock().l2ClassifyTables[hwif_name] = {
+        ip4_table_index, ip6_table_index, other_table_index
+    };
     return 0;
 }
 
