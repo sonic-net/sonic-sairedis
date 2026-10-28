@@ -2332,32 +2332,16 @@ sai_status_t SwitchVpp::setLag(
 
     if (attr_type != NULL)
     {
-        if (attr_type->value.oid == SAI_NULL_OBJECT_ID) {
-            sai_attribute_t attr;
-
-            attr.id = SAI_LAG_ATTR_INGRESS_ACL;
-            if (get(SAI_OBJECT_TYPE_LAG, lagId, 1, &attr) != SAI_STATUS_SUCCESS) {
-                aclBindUnbindPort(lagId, attr.value.oid, true, false);
-            }
-        } else {
-            aclBindUnbindPort(lagId, attr_type->value.oid, true, true);
-        }
+        CHECK_STATUS(aclSetPortTableGroup(SAI_OBJECT_TYPE_LAG, lagId,
+                    SAI_LAG_ATTR_INGRESS_ACL, attr_type->value.oid, true));
     }
 
     attr_type = sai_metadata_get_attr_by_id(SAI_LAG_ATTR_EGRESS_ACL, 1, lagAttr);
 
     if (attr_type != NULL)
     {
-        if (attr_type->value.oid == SAI_NULL_OBJECT_ID) {
-            sai_attribute_t attr;
-
-            attr.id = SAI_LAG_ATTR_EGRESS_ACL;
-            if (get(SAI_OBJECT_TYPE_LAG, lagId, 1, &attr) != SAI_STATUS_SUCCESS) {
-                aclBindUnbindPort(lagId, attr.value.oid, false, false);
-            }
-        } else {
-            aclBindUnbindPort(lagId, attr_type->value.oid, false, true);
-        }
+        CHECK_STATUS(aclSetPortTableGroup(SAI_OBJECT_TYPE_LAG, lagId,
+                    SAI_LAG_ATTR_EGRESS_ACL, attr_type->value.oid, false));
     }
 
     auto sid = sai_serialize_object_id(lagId);

@@ -57,10 +57,11 @@ tests_SOURCES = main.cpp \
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
 				TestSwitchVppPbh.cpp \
-				MockVppXlate.cpp MockVppXlate.h
+				MockVppXlate.cpp MockVppXlate.h \
+				TestSwitchVppAclRules.cpp TestVppAclInheritance.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
-				create_sub_interface delete_sub_interface configure_lcp_interface \
+				create_sub_interface create_vlan_sub_interface delete_sub_interface configure_lcp_interface \
 				set_sw_interface_l2_bridge interface_set_state refresh_interfaces_list \
 				vpp_set_mac_event_cb vpp_l2fib_dump vpp_bfd_session_dump vpp_ip_flow_hash_set set_interface_vrf \
 				get_interface_vrf ip_vrf_add ip_vrf_del interface_ip_address_del_all \
@@ -80,3 +81,20 @@ tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscomm
 			  -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 TESTS = tests
+
+if USE_VPP
+# Exercise the real SwitchVpp object store and setters without a VPP daemon.
+# Keep these boundary mocks in a separate executable from the other VS tests.
+bin_PROGRAMS += vpp_acl_binding_tests
+vpp_acl_binding_tests_SOURCES = main.cpp TestSwitchVppAclBinding.cpp
+vpp_acl_binding_tests_CXXFLAGS = $(tests_CXXFLAGS)
+vpp_acl_binding_tests_LDADD = $(tests_LDADD)
+vpp_acl_binding_tests_LDFLAGS = \
+	-Wl,--wrap=_ZN5saivs9SwitchVpp17vpp_dp_initializeEv \
+	-Wl,--wrap=vpp_set_mac_event_cb \
+	-Wl,--wrap=vpp_acl_add_replace \
+	-Wl,--wrap=vpp_acl_interface_bind \
+	-Wl,--wrap=vpp_acl_interface_unbind \
+	-Wl,--wrap=vpp_sonic_ext_feature_get
+TESTS += vpp_acl_binding_tests
+endif

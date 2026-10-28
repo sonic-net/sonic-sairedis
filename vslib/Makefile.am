@@ -85,6 +85,7 @@ libSaiVS_a_SOURCES +=\
 					  vpp/VppInterfaceRegistry.cpp \
 					  vpp/SwitchVpp.cpp \
 					  vpp/SwitchVppAcl.cpp \
+					  vpp/SwitchVppAclRules.cpp \
 					  vpp/SwitchVppPbh.cpp \
 					  vpp/SwitchVppPolicer.cpp \
 					  vpp/SwitchVppHostifTrap.cpp \

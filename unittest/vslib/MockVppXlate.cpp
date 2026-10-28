@@ -391,6 +391,11 @@ extern "C" int __wrap_create_sub_interface(const char *parent, uint32_t id, uint
     return vppMock().interfaces.insert(std::string(parent) + "." + std::to_string(id)).second ? 0 : -1;
 }
 
+extern "C" int __wrap_create_vlan_sub_interface(const char *parent, uint32_t id, uint16_t vlan)
+{
+    return __wrap_create_sub_interface(parent, id, vlan);
+}
+
 extern "C" int __wrap_delete_sub_interface(const char *parent, uint32_t id)
 {
     SWSS_LOG_ENTER();
