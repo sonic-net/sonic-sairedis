@@ -681,9 +681,12 @@ int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_inde
     return 0;
 }
 
+// recorded as id = other-slot table, sub_id = IP4-slot table
 int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
         uint32_t ip6_table_index, uint32_t other_table_index, bool is_input) {
     SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_classify_set_interface_l2_tables", hwif_name,
+            other_table_index, ip4_table_index, is_input});
     return 0;
 }
 

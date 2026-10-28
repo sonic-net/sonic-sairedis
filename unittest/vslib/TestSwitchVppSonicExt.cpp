@@ -257,6 +257,25 @@ class SwitchVppSonicExtFeature : public ::testing::Test
             return createObject(SAI_OBJECT_TYPE_ACL_ENTRY, attrs);
         }
 
+        // next nodes of the classify sessions in a table
+        std::set<uint32_t> sessionNexts(
+                uint32_t table)
+        {
+            SWSS_LOG_ENTER();
+
+            std::set<uint32_t> nexts;
+
+            for (auto& call : vppMock().callsTo("vpp_classify_session_add", ""))
+            {
+                if (call.id == table)
+                {
+                    nexts.insert(call.sub_id);
+                }
+            }
+
+            return nexts;
+        }
+
         // enable flag of each ip2me call made for the port, in order
         std::vector<bool> ip2meCalls()
         {
@@ -275,6 +294,8 @@ class SwitchVppSonicExtFeature : public ::testing::Test
         static constexpr uint16_t VLAN_ID = 100;
         static constexpr const char *PORT_HWIF = "bobm1";
         static constexpr const char *OTHER_PORT_HWIF = "bobm10";
+        static constexpr const char *TAGGED_MEMBER_HWIF = "bobm1.100";
+        static constexpr uint32_t NO_TABLE = ~0u;
 
         const sai_object_id_t m_switchId = 0x2100000000;
 
@@ -293,6 +314,8 @@ class SwitchVppSonicExtFeature : public ::testing::Test
 constexpr uint16_t SwitchVppSonicExtFeature::VLAN_ID;
 constexpr const char *SwitchVppSonicExtFeature::PORT_HWIF;
 constexpr const char *SwitchVppSonicExtFeature::OTHER_PORT_HWIF;
+constexpr const char *SwitchVppSonicExtFeature::TAGGED_MEMBER_HWIF;
+constexpr uint32_t SwitchVppSonicExtFeature::NO_TABLE;
 
 TEST_F(SwitchVppSonicExtFeature, ip2meFollowsAclLifecycleWhenEnabled)
 {
@@ -399,6 +422,11 @@ TEST_F(SwitchVppSonicExtFeature, ip2meFailedProgrammingIsRetried)
  * The first VLAN member sets up the l2-input-classify punt tables. Their next
  * nodes are the Linux control plane punt node, always, and the sonic-ext
  * l2-trap-fixup and l2-vlan-filter nodes, each only while its feature is on.
+ *
+ * Without flood control on the VLAN, an untagged member gets the DHCP table
+ * in its IP4 slot and the LLDP table, which also filters tagged frames, in
+ * its other slot. A tagged member only gets the tagged DHCP table, which
+ * exists only with l2-trap-fixup.
  */
 TEST_F(SwitchVppSonicExtFeature, l2ClassifyNextNodesFollowFeatures)
 {
@@ -444,16 +472,40 @@ TEST_F(SwitchVppSonicExtFeature, l2ClassifyNextNodesFollowFeatures)
                     nexts.insert(call.id);
                 }
 
-                std::set<uint32_t> hits;
                 for (auto& call : vppMock().callsTo("vpp_classify_session_add", ""))
                 {
                     check(nexts.count(call.sub_id) == 1, "every session hits an added next node");
-                    hits.insert(call.sub_id);
                 }
 
-                check(hits.count(punt[0].id) == 1, "a session punts to linux-cp-punt");
-                check(!trapFixup || hits.count(fixup[0].id) == 1, "a session uses l2-trap-fixup");
-                check(!vlanFilter || hits.count(filter[0].id) == 1, "a session uses l2-vlan-filter");
+                auto untagged = vppMock().callsTo("vpp_classify_set_interface_l2_tables", OTHER_PORT_HWIF);
+                auto tagged = vppMock().callsTo("vpp_classify_set_interface_l2_tables", TAGGED_MEMBER_HWIF);
+
+                check(untagged.size() == 1 && untagged[0].flag, "untagged member's input tables set once");
+                check(tagged.size() == 1 && tagged[0].flag, "tagged member's input tables set once");
+
+                std::set<uint32_t> lldp = {punt[0].id};
+                if (vlanFilter)
+                {
+                    lldp.insert(filter[0].id);
+                }
+
+                check(untagged[0].sub_id != NO_TABLE &&
+                        sessionNexts(untagged[0].sub_id) == std::set<uint32_t>({punt[0].id}),
+                        "untagged DHCP table punts to linux-cp-punt");
+                check(untagged[0].id != NO_TABLE && sessionNexts(untagged[0].id) == lldp,
+                        "untagged LLDP table punts, and filters tagged frames only with l2-vlan-filter");
+
+                check(tagged[0].sub_id == NO_TABLE, "tagged member gets no IP4 table");
+                if (trapFixup)
+                {
+                    check(tagged[0].id != NO_TABLE &&
+                            sessionNexts(tagged[0].id) == std::set<uint32_t>({fixup[0].id}),
+                            "tagged DHCP table goes through l2-trap-fixup");
+                }
+                else
+                {
+                    check(tagged[0].id == NO_TABLE, "tagged member gets no punt table without l2-trap-fixup");
+                }
                 _exit(0);
             }, ::testing::ExitedWithCode(0), "");
         }
