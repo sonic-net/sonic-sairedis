@@ -51,10 +51,11 @@ namespace saivs
      * value-returning resolve*() accessors, which do the whole read inside the
      * lock, never by dereferencing a findBy*() result.
      *
-     * The VPP API RX thread (staticMacEventCb) must still NEVER touch it: that
-     * thread runs holding VPP_LOCK, and taking any further lock there would
-     * break the "never acquire another lock while holding vpp_mutex" ordering
-     * rule. It only enqueues onto m_mac_event_queue.
+     * The VPP event thread (staticMacEventCb) must still NEVER touch it: that
+     * thread runs holding EVENT_LOCK (the same vpp_mutex as VPP_LOCK), and
+     * taking any further lock there would break the "never acquire another
+     * lock while holding vpp_mutex" ordering rule. It only enqueues onto
+     * m_mac_event_queue.
      *
      * This class makes no VPP API calls. Resolving a sw_if_index from VPP stays
      * in SwitchVpp, which then calls bindSwIfIndex(); that keeps the registry
