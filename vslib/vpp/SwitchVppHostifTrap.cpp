@@ -233,7 +233,8 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
         _In_ const vpp_trap_entry_t &trap,
         _In_ uint32_t vpp_policer_index,
         _In_ sai_object_id_t policer_oid,
-        _In_ sai_object_id_t excluded_trap_group_oid)
+        _In_ sai_object_id_t excluded_trap_group_oid,
+        _In_ bool select_alternate_owner)
 {
     SWSS_LOG_ENTER();
 
@@ -265,7 +266,7 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
 
     sai_status_t status = programTrapClassifyNow(
             trap_oid, trap, vpp_policer_index, policer_oid,
-            excluded_trap_group_oid);
+            excluded_trap_group_oid, true, select_alternate_owner);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -347,7 +348,8 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
         _In_ uint32_t vpp_policer_index,
         _In_ sai_object_id_t policer_oid,
         _In_ sai_object_id_t excluded_trap_group_oid,
-        _In_ bool reconcile_shared_owners)
+        _In_ bool reconcile_shared_owners,
+        _In_ bool select_alternate_owner)
 {
     SWSS_LOG_ENTER();
 
@@ -432,7 +434,8 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
     // A VPP row can be shared by multiple SAI traps. If this trap has no
     // desired policer, select another installed owner before deleting the row.
-    if (reconcile_shared_owners && policer_oid == SAI_NULL_OBJECT_ID)
+    if (reconcile_shared_owners && select_alternate_owner &&
+            policer_oid == SAI_NULL_OBJECT_ID)
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
 
@@ -828,6 +831,39 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
     sai_object_id_t object_id;
     sai_deserialize_object_id(serializedObjectId, object_id);
 
+    // Queue and administrative-state changes are cache-only for the VPP
+    // classify path. Rebinding here is not merely redundant for shared DHCP
+    // rows: a trap group that no longer owns the physical row could overwrite
+    // the current owner's policer. Only a policer change needs to re-resolve
+    // and reprogram the affected bindings.
+    if (attr->id != SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER)
+    {
+        sai_status_t status = set_internal(
+                SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP, serializedObjectId, attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return status;
+        }
+
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+        auto it = m_trap_group_map.find(object_id);
+        if (it == m_trap_group_map.end())
+        {
+            vpp_trap_group_entry_t entry{};
+            entry.admin_state = true; // SAI default
+            it = m_trap_group_map.emplace(object_id, entry).first;
+        }
+        if (attr->id == SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE)
+        {
+            it->second.admin_state = attr->value.booldata;
+        }
+        else if (attr->id == SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE)
+        {
+            it->second.queue = attr->value.u32;
+        }
+        return SAI_STATUS_SUCCESS;
+    }
+
     // Build the prospective state without publishing it. VPP must accept every
     // affected rebind before set_internal() or the replay cache is changed.
     vpp_trap_group_entry_t old_entry{};
@@ -844,6 +880,7 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
     std::map<uint32_t, std::pair<sai_object_id_t, vpp_trap_entry_t>>
         binding_representatives;
     uint32_t new_vpp_policer_index = (uint32_t)~0;
+    bool policer_changed = false;
 
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
@@ -875,41 +912,45 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
                 break;
         }
 
-        auto new_pit = m_policer_map.find(new_entry.policer_oid);
-        if (new_pit != m_policer_map.end())
+        policer_changed = new_entry.policer_oid != old_entry.policer_oid;
+        if (policer_changed)
         {
-            new_vpp_policer_index = new_pit->second.vpp_policer_index;
-        }
-
-        // Trap group attribute changes (particularly a POLICER rebind) affect
-        // every trap currently bound to this group; re-resolve their classify
-        // bindings against the prospective policer.
-        for (auto &kv : m_trap_map)
-        {
-            if (kv.second.trap_group_oid == object_id && kv.second.classify_installed)
+            auto new_pit = m_policer_map.find(new_entry.policer_oid);
+            if (new_pit != m_policer_map.end())
             {
-                to_reinstall.emplace_back(kv.first, kv.second);
+                new_vpp_policer_index = new_pit->second.vpp_policer_index;
+            }
 
-                uint32_t key = 0;
-                if (trapBindingKey(kv.second.trap_type, key))
+            // A changed policer affects every installed trap in this group;
+            // snapshot and re-resolve their physical bindings transactionally.
+            for (auto &kv : m_trap_map)
+            {
+                if (kv.second.trap_group_oid == object_id &&
+                        kv.second.classify_installed)
                 {
-                    binding_representatives.emplace(key,
-                            std::make_pair(kv.first, kv.second));
-                    binding_snapshot_t snapshot;
-                    auto bit = m_trap_binding_map.find(key);
-                    if (bit != m_trap_binding_map.end())
+                    to_reinstall.emplace_back(kv.first, kv.second);
+
+                    uint32_t key = 0;
+                    if (trapBindingKey(kv.second.trap_type, key))
                     {
-                        snapshot.present = true;
-                        snapshot.entry = bit->second;
-                        auto pit = m_policer_map.find(
-                                snapshot.entry.policer_oid);
-                        if (pit != m_policer_map.end())
+                        binding_representatives.emplace(key,
+                                std::make_pair(kv.first, kv.second));
+                        binding_snapshot_t snapshot;
+                        auto bit = m_trap_binding_map.find(key);
+                        if (bit != m_trap_binding_map.end())
                         {
-                            snapshot.vpp_policer_index =
-                                pit->second.vpp_policer_index;
+                            snapshot.present = true;
+                            snapshot.entry = bit->second;
+                            auto pit = m_policer_map.find(
+                                    snapshot.entry.policer_oid);
+                            if (pit != m_policer_map.end())
+                            {
+                                snapshot.vpp_policer_index =
+                                    pit->second.vpp_policer_index;
+                            }
                         }
+                        old_bindings[key] = snapshot;
                     }
-                    old_bindings[key] = snapshot;
                 }
             }
         }
@@ -1349,6 +1390,19 @@ sai_status_t SwitchVpp::setHostifTrap(
                     }
                 }
             }
+
+            // A DHCP action-only update changes the effective TRAP/COPY
+            // policy, not ownership of the singleton physical row. Preserve
+            // the journaled owner's policer instead of replacing it with the
+            // older SAI trap's group policer.
+            if (isDhcpTrap(new_entry.trap_type) &&
+                    attr->id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION &&
+                    old_entry.packet_action != new_entry.packet_action &&
+                    old_binding_present)
+            {
+                new_policer_oid = old_effective_policer_oid;
+                new_vpp_policer_index = old_effective_vpp_policer_index;
+            }
         }
     }
 
@@ -1363,8 +1417,14 @@ sai_status_t SwitchVpp::setHostifTrap(
 
     if (need_install)
     {
+        bool action_only_dhcp_update =
+            isDhcpTrap(new_entry.trap_type) &&
+            attr->id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION &&
+            old_entry.packet_action != new_entry.packet_action &&
+            old_binding_present;
         status = installTrapClassifyNow(object_id, new_entry,
-                new_vpp_policer_index, new_policer_oid);
+                new_vpp_policer_index, new_policer_oid,
+                SAI_NULL_OBJECT_ID, !action_only_dhcp_update);
     }
     else if (need_uninstall)
     {

@@ -1188,7 +1188,8 @@ namespace saivs
                     _In_ const vpp_trap_entry_t &trap,
                     _In_ uint32_t vpp_policer_index,
                     _In_ sai_object_id_t policer_oid,
-                    _In_ sai_object_id_t excluded_trap_group_oid = SAI_NULL_OBJECT_ID);
+                    _In_ sai_object_id_t excluded_trap_group_oid = SAI_NULL_OBJECT_ID,
+                    _In_ bool select_alternate_owner = true);
 
             sai_status_t programTrapClassifyNow(
                     _In_ sai_object_id_t trap_oid,
@@ -1196,7 +1197,8 @@ namespace saivs
                     _In_ uint32_t vpp_policer_index,
                     _In_ sai_object_id_t policer_oid,
                     _In_ sai_object_id_t excluded_trap_group_oid,
-                    _In_ bool reconcile_shared_owners = true);
+                    _In_ bool reconcile_shared_owners = true,
+                    _In_ bool select_alternate_owner = true);
 
             sai_status_t uninstallTrapClassify(
                     _In_ sai_object_id_t trap_oid,

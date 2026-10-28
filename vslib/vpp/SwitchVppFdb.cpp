@@ -68,12 +68,20 @@ using namespace saivs;
  * The two are independent knobs.  See
  * SwitchVpp::vpp_set_vlan_attribute().
  *
- * DHCP/DHCPv6 is deliberately absent from these tables. sonic-ext parses
- * client packets on l2-input-ip4/ip6 after ethernet-input and the access-port
- * VLAN filter have admitted them (including IPv4 options and IPv6 extension
- * headers), then reads the live semantic TRAP/COPY binding. An absent trap
- * therefore keeps normal VLAN flooding, TRAP consumes the original, and COPY
- * sends one CPU clone while preserving forwarding.
+ * DHCP/DHCPv6 has no dedicated fixed-offset classifier. With the default
+ * flood policy, sonic-ext parses client packets on l2-input-ip4/ip6 after
+ * ethernet-input and the access-port VLAN filter have admitted them (including
+ * IPv4 options and IPv6 extension headers), then reads the live semantic
+ * TRAP/COPY binding. An absent trap therefore keeps normal VLAN flooding,
+ * TRAP consumes the original, and COPY sends one CPU clone while preserving
+ * normal forwarding eligibility.
+ *
+ * UNKNOWN_MULTICAST flood NONE is deliberately stronger: its broad 33:33
+ * classifier terminates DHCPv6 before that feature arc, just as it terminates
+ * every other IPv6 multicast flood. COPY does not override an explicit VLAN
+ * flood policy. The terminal CPU packet still exits through the member LCP
+ * host tap and sonic-ext-copp-ifout, which applies the live DHCPv6 policer
+ * (including unresolved-name fail-closed behavior).
  *
  * These classifiers only implement LLDP and the independent per-VLAN flood
  * suppression knobs. Untagged ARP and IPv6 use separate OTHER/IP6 slots.
