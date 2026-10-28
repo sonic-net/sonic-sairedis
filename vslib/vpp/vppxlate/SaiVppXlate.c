@@ -4399,6 +4399,7 @@ int vpp_sonic_ext_copp_neighbor_miss_bind(
 int vpp_sonic_ext_copp_dhcp_bind(
         const char *policer_name,
         bool is_ipv6,
+        bool is_copy,
         bool is_bind)
 {
     vat_main_t *vam = &vat_main;
@@ -4417,14 +4418,15 @@ int vpp_sonic_ext_copp_dhcp_bind(
     snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s",
             policer_name ? policer_name : "");
     mp->is_ipv6 = is_ipv6;
+    mp->is_copy = is_copy;
     mp->is_bind = is_bind;
 
     S (mp);
     WR_COPP (ret);
     end_copp_request();
 
-    if (ret) { SAIVPP_ERROR("%s failed(%d) policer_name %s is_ipv6 %d is_bind %d", __func__, ret, policer_name ? policer_name : "", is_ipv6, is_bind); }
-    else { SAIVPP_INFO("%s policer_name %s is_ipv6 %d is_bind %d", __func__, policer_name ? policer_name : "", is_ipv6, is_bind); }
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer_name %s is_ipv6 %d is_copy %d is_bind %d", __func__, ret, policer_name ? policer_name : "", is_ipv6, is_copy, is_bind); }
+    else { SAIVPP_INFO("%s policer_name %s is_ipv6 %d is_copy %d is_bind %d", __func__, policer_name ? policer_name : "", is_ipv6, is_copy, is_bind); }
 
     VPP_UNLOCK();
 

@@ -105,6 +105,7 @@ TEST_F(SwitchVppNeighborMissTrap, BindsDhcpFamiliesToTheirConfiguredPolicers)
     EXPECT_EQ("copp-policer-0x1200000013",
             vppMock().coppDhcpBindCalls[1].policerName);
     EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isIpv6);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isCopy);
     EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isBind);
 
     ASSERT_EQ(SAI_STATUS_SUCCESS,
@@ -164,6 +165,7 @@ TEST_F(SwitchVppNeighborMissTrap, DhcpNullPolicerKeepsTheTrapActiveUnpoliced)
     EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].policerName.empty());
     EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
     EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isIpv6);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isCopy);
 
     ASSERT_EQ(SAI_STATUS_SUCCESS,
             m_sw->uninstallTrapClassifyNow(trapOid, trap));
@@ -204,10 +206,12 @@ TEST_F(SwitchVppNeighborMissTrap, DhcpFailedReplacementRestoresUnpolicedState)
     EXPECT_EQ("copp-policer-0x1200000026",
             vppMock().coppDhcpBindCalls[0].policerName);
     EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isCopy);
     EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
     EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].policerName.empty());
     EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isBind);
     EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isIpv6);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isCopy);
 }
 
 TEST_F(SwitchVppNeighborMissTrap, DhcpRemoveFailureRestoresPhysicalAndMapState)
@@ -374,7 +378,8 @@ class SwitchVppDhcpVlanPunt : public ::testing::Test
                     m_sw->vpp_create_vlan_member(3, mattrs));
         }
 
-        static std::vector<uint8_t> dhcp6(bool tagged, uint16_t dport = 547)
+        static std::vector<uint8_t> dhcp6(
+                bool tagged, uint16_t dport = 547, bool extension = false)
         {
             std::vector<uint8_t> frame = {
                 0x33, 0x33, 0x00, 0x01, 0x00, 0x02,
@@ -388,10 +393,10 @@ class SwitchVppDhcpVlanPunt : public ::testing::Test
             }
             frame.insert(frame.end(), {0x86, 0xdd});
 
-            std::vector<uint8_t> ip6(48, 0);
+            std::vector<uint8_t> ip6(extension ? 56 : 48, 0);
             ip6[0] = 0x60;
-            ip6[4] = 0; ip6[5] = 8;
-            ip6[6] = 17;
+            ip6[4] = 0; ip6[5] = extension ? 16 : 8;
+            ip6[6] = extension ? 0 : 17;
             ip6[7] = 64;
             ip6[8 + 15] = 1; // source ::1
             const uint8_t dst[16] = {
@@ -399,11 +404,17 @@ class SwitchVppDhcpVlanPunt : public ::testing::Test
                 0, 0, 0, 0, 0, 1, 0, 2
             };
             memcpy(&ip6[24], dst, sizeof(dst));
-            ip6[40] = (uint8_t)(546 >> 8);
-            ip6[41] = (uint8_t)(546 & 0xff);
-            ip6[42] = (uint8_t)(dport >> 8);
-            ip6[43] = (uint8_t)(dport & 0xff);
-            ip6[44] = 0; ip6[45] = 8;
+            size_t udp = extension ? 48 : 40;
+            if (extension)
+            {
+                ip6[40] = 17; // Hop-by-Hop next header is UDP
+                ip6[41] = 0;  // 8-byte extension header
+            }
+            ip6[udp] = (uint8_t)(546 >> 8);
+            ip6[udp + 1] = (uint8_t)(546 & 0xff);
+            ip6[udp + 2] = (uint8_t)(dport >> 8);
+            ip6[udp + 3] = (uint8_t)(dport & 0xff);
+            ip6[udp + 4] = 0; ip6[udp + 5] = 8;
             frame.insert(frame.end(), ip6.begin(), ip6.end());
             return frame;
         }
@@ -417,21 +428,35 @@ class SwitchVppDhcpVlanPunt : public ::testing::Test
 
 constexpr uint16_t SwitchVppDhcpVlanPunt::VLAN_ID;
 
-TEST_F(SwitchVppDhcpVlanPunt, PuntsDhcp6OnTaggedAndUntaggedMembersOnly)
+TEST_F(SwitchVppDhcpVlanPunt, LeavesDhcpCandidatesOnProviderCapturePath)
 {
     addMember("bobm0", false);
     addMember("bobm1", true);
 
-    EXPECT_EQ(vppMock().nodeNext("l2-input-classify", "linux-cp-punt"),
-            vppMock().classifyFrame("bobm0", 1, dhcp6(false)));
-    EXPECT_EQ(vppMock().nodeNext(
-                    "l2-input-classify", "sonic-ext-l2-trap-fixup"),
-            vppMock().classifyFrame("bobm1.100", 2, dhcp6(true)));
+    // DHCP interception is no longer a terminal fixed-offset classifier.
+    // sonic-ext-capture parses the live packet and applies TRAP/COPY from the
+    // semantic binding, so absent traps preserve ordinary VLAN forwarding.
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
+            "bobm0", 1, dhcp6(false)));
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
+            "bobm1.100", 2, dhcp6(true)));
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
+            "bobm0", 1, dhcp6(false, 547, true)));
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
+            "bobm1.100", 2, dhcp6(true, 547, true)));
+}
 
-    EXPECT_EQ(~0u, vppMock().classifyFrame(
-            "bobm0", 1, dhcp6(false, 548)));
-    EXPECT_EQ(~0u, vppMock().classifyFrame(
-            "bobm1.100", 2, dhcp6(true, 548)));
+TEST_F(SwitchVppDhcpVlanPunt, RebuildsClassifierAfterMockReset)
+{
+    addMember("bobm2", false);
+    uint32_t puntNext = vppMock().nodeNext(
+            "l2-input-classify", "linux-cp-punt");
+    ASSERT_NE(~0u, puntNext);
+
+    std::vector<uint8_t> lldp(16, 0);
+    lldp[12] = 0x88;
+    lldp[13] = 0xcc;
+    EXPECT_EQ(puntNext, vppMock().classifyFrame("bobm2", 2, lldp));
 }
 
 TEST_F(SwitchVppNeighborMissTrap, BindsAndUnbindsTheNeighborMissPolicer)
