@@ -150,6 +150,7 @@ static uint32_t s_vlan_filter_next_index = ~0; /* sonic-ext-l2-vlan-filter (acce
 static uint32_t s_untag_other_table = ~0;     /* LLDP by ethertype */
 static uint32_t s_untag_ip4_table   = ~0;     /* DHCPv4 client broadcast */
 static uint32_t s_untag_arp_table   = ~0;     /* broadcast ARP (bcast flood NONE) */
+static uint32_t s_untag_dhcp6_table = ~0;     /* DHCPv6 client multicast */
 static uint32_t s_untag_ip6mc_table = ~0;     /* IPv6 multicast, IP6 slot (mcast flood NONE) */
 
 /* Tagged member table: outer ethertype is 0x8100, so EVERY tagged
@@ -164,7 +165,8 @@ static uint32_t s_untag_ip6mc_table = ~0;     /* IPv6 multicast, IP6 slot (mcast
  * through the ARP table and one that skips it -- to cover all four
  * on/off combinations. */
 static uint32_t s_tag_dhcp_table  = ~0;       /* DHCPv4 broadcast over .1Q */
-static uint32_t s_tag_arp_table   = ~0;       /* broadcast ARP over .1Q -> s_tag_dhcp_table */
+static uint32_t s_tag_dhcp6_table = ~0;       /* DHCPv6 over .1Q -> s_tag_dhcp_table */
+static uint32_t s_tag_arp_table   = ~0;       /* broadcast ARP -> DHCPv6 -> DHCPv4 */
 static uint32_t s_tag_ip6mc_table = ~0;       /* IPv6 mcast over .1Q -> s_tag_arp_table */
 static uint32_t s_tag_ip6mc_only_table = ~0;  /* IPv6 mcast over .1Q -> s_tag_dhcp_table */
 
@@ -189,6 +191,8 @@ static uint32_t s_tag_ip6mc_only_table = ~0;  /* IPv6 mcast over .1Q -> s_tag_dh
  */
 #define SAIVS_DHCP_BOOTPC 68
 #define SAIVS_DHCP_BOOTPS 67
+#define SAIVS_DHCP6_CLIENT 546
+#define SAIVS_DHCP6_SERVER 547
 
 /* Called only from the single SAI processing thread; the s_* globals need no locking. */
 static int l2_punt_classify_init()
@@ -439,6 +443,43 @@ static int l2_punt_classify_init()
         }
     }
 
+    /* --- Untagged DHCPv6 table (IP6 slot) ---
+     * Match the client Solicit/Request path to ff02::1:2, UDP 546 -> 547.
+     * This table is used when generic IPv6 multicast flooding remains
+     * enabled; if flood suppression is active, s_untag_ip6mc_table already
+     * punts this packet as part of all IPv6 multicast. */
+    {
+        uint8_t mask[64] = {0};
+        mask[0] = mask[1] = mask[2] = mask[3] = mask[4] = mask[5] = 0xFF;
+        mask[12] = mask[13] = 0xFF;
+        mask[20] = 0xFF;
+        for (size_t i = 38; i <= 53; i++) mask[i] = 0xFF;
+        mask[54] = mask[55] = mask[56] = mask[57] = 0xFF;
+
+        if (vpp_classify_table_create(
+                8, 4*1024, 0, 4, ~0, ~0,
+                mask, 64, &s_untag_dhcp6_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: untag_dhcp6 table create failed");
+            s_untag_dhcp6_table = ~0;
+        } else {
+            uint8_t m[64] = {0};
+            const uint8_t dst[16] = {
+                0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2
+            };
+            m[0] = 0x33; m[1] = 0x33; m[2] = 0x00;
+            m[3] = 0x01; m[4] = 0x00; m[5] = 0x02;
+            m[12] = 0x86; m[13] = 0xDD;
+            m[20] = 0x11;
+            memcpy(&m[38], dst, sizeof(dst));
+            m[54] = (SAIVS_DHCP6_CLIENT >> 8) & 0xFF;
+            m[55] = SAIVS_DHCP6_CLIENT & 0xFF;
+            m[56] = (SAIVS_DHCP6_SERVER >> 8) & 0xFF;
+            m[57] = SAIVS_DHCP6_SERVER & 0xFF;
+            vpp_classify_session_add(s_untag_dhcp6_table, s_punt_next_index,
+                                     m, 64, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        }
+    }
+
     /* --- Tagged DHCP table.  Frame at l2-input-classify on a tagged
      *     sub-if still carries the outer 802.1Q tag (VTR pop has not
      *     yet run), so all post-L2 offsets shift by +4.
@@ -482,6 +523,40 @@ static int l2_punt_classify_init()
         }
     }
 
+    /* --- Tagged DHCPv6 table. All tagged traffic uses the OTHER slot, so
+     * this table chains to the existing DHCPv4 table on miss. */
+    if (s_trap_fixup_next_index != ~0u) {
+        uint8_t mask[64] = {0};
+        mask[0] = mask[1] = mask[2] = mask[3] = mask[4] = mask[5] = 0xFF;
+        mask[16] = mask[17] = 0xFF;
+        mask[24] = 0xFF;
+        for (size_t i = 42; i <= 57; i++) mask[i] = 0xFF;
+        mask[58] = mask[59] = mask[60] = mask[61] = 0xFF;
+
+        if (vpp_classify_table_create(
+                8, 4*1024, 0, 4, s_tag_dhcp_table, ~0,
+                mask, 64, &s_tag_dhcp6_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: tag_dhcp6 table create failed");
+            s_tag_dhcp6_table = ~0;
+        } else {
+            uint8_t m[64] = {0};
+            const uint8_t dst[16] = {
+                0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2
+            };
+            m[0] = 0x33; m[1] = 0x33; m[2] = 0x00;
+            m[3] = 0x01; m[4] = 0x00; m[5] = 0x02;
+            m[16] = 0x86; m[17] = 0xDD;
+            m[24] = 0x11;
+            memcpy(&m[42], dst, sizeof(dst));
+            m[58] = (SAIVS_DHCP6_CLIENT >> 8) & 0xFF;
+            m[59] = SAIVS_DHCP6_CLIENT & 0xFF;
+            m[60] = (SAIVS_DHCP6_SERVER >> 8) & 0xFF;
+            m[61] = SAIVS_DHCP6_SERVER & 0xFF;
+            vpp_classify_session_add(s_tag_dhcp6_table, s_trap_fixup_next_index,
+                                     m, 64, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        }
+    }
+
     /* --- Tagged broadcast-ARP-over-.1Q table (proxy-ARP VLANs only) ---
      *
      * Same purpose as s_untag_arp_table, for tagged members.  At
@@ -507,7 +582,8 @@ static int l2_punt_classify_init()
         if (vpp_classify_table_create(
                 8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
                 0 /*skip*/, 2 /*match_n_vectors*/,
-                s_tag_dhcp_table /*next_table: chain to DHCP on miss*/,
+                s_tag_dhcp6_table != ~0u ? s_tag_dhcp6_table :
+                    s_tag_dhcp_table /*next_table: DHCPv6 then DHCPv4*/,
                 ~0 /*miss_next=continue*/,
                 mask, 32, &s_tag_arp_table) != 0) {
             SWSS_LOG_ERROR("l2_punt_classify_init: tag_arp table create failed");
@@ -562,7 +638,8 @@ static int l2_punt_classify_init()
             const char *name;
         } variants[] = {
             { s_tag_arp_table,  &s_tag_ip6mc_table,      "tag_ip6mc"      },
-            { s_tag_dhcp_table, &s_tag_ip6mc_only_table, "tag_ip6mc_only" },
+            { s_tag_dhcp6_table != ~0u ? s_tag_dhcp6_table : s_tag_dhcp_table,
+              &s_tag_ip6mc_only_table, "tag_ip6mc_only" },
         };
 
         for (auto &v: variants) {
@@ -583,13 +660,14 @@ static int l2_punt_classify_init()
 
     s_l2_punt_classify_inited = true;
     SWSS_LOG_NOTICE("L2 punt classify tables initialized: "
-                    "untag_ip4=%u untag_other=%u untag_arp=%u untag_ip6mc=%u "
-                    "tag_dhcp=%u tag_arp=%u tag_ip6mc=%u tag_ip6mc_only=%u "
-                    "punt_next=%u trap_fixup_next=%u vlan_filter_next=%u",
+                    "untag_ip4=%u untag_other=%u untag_arp=%u untag_dhcp6=%u "
+                    "untag_ip6mc=%u tag_dhcp=%u tag_dhcp6=%u tag_arp=%u "
+                    "tag_ip6mc=%u tag_ip6mc_only=%u punt_next=%u "
+                    "trap_fixup_next=%u vlan_filter_next=%u",
                     s_untag_ip4_table, s_untag_other_table, s_untag_arp_table,
-                    s_untag_ip6mc_table,
-                    s_tag_dhcp_table, s_tag_arp_table, s_tag_ip6mc_table,
-                    s_tag_ip6mc_only_table,
+                    s_untag_dhcp6_table, s_untag_ip6mc_table,
+                    s_tag_dhcp_table, s_tag_dhcp6_table, s_tag_arp_table,
+                    s_tag_ip6mc_table, s_tag_ip6mc_only_table,
                     s_punt_next_index, s_trap_fixup_next_index, s_vlan_filter_next_index);
     return 0;
 }
@@ -624,7 +702,8 @@ static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
      * LLDP (0x88CC) in the OTHER slot -- three separate slots, so the
      * untagged punts do not interact at all. */
     uint32_t ip4_tbl = is_tagged ? (uint32_t)~0u : s_untag_ip4_table;
-    uint32_t ip6_tbl = (!is_tagged && punt_ip6mc) ? s_untag_ip6mc_table : (uint32_t)~0u;
+    uint32_t ip6_tbl = is_tagged ? (uint32_t)~0u :
+        (punt_ip6mc ? s_untag_ip6mc_table : s_untag_dhcp6_table);
     uint32_t other_tbl;
 
     bool arp_ok   = false;
@@ -651,7 +730,8 @@ static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
             other_tbl = s_tag_ip6mc_only_table;
             ip6mc_ok = true;
         } else {
-            other_tbl = s_tag_dhcp_table;
+            other_tbl = s_tag_dhcp6_table != ~0u ?
+                s_tag_dhcp6_table : s_tag_dhcp_table;
         }
     } else {
         /* s_untag_arp_table chains to s_untag_other_table (LLDP) on miss. */

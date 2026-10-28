@@ -70,6 +70,260 @@ class SwitchVppNeighborMissTrap : public ::testing::Test
         std::shared_ptr<TestableSwitchVpp> m_sw;
 };
 
+TEST_F(SwitchVppNeighborMissTrap, BindsDhcpFamiliesToTheirConfiguredPolicers)
+{
+    const sai_object_id_t v4Group = 0x1200000010;
+    const sai_object_id_t v6Group = 0x1200000011;
+    const sai_object_id_t v4Policer = 0x1200000012;
+    const sai_object_id_t v6Policer = 0x1200000013;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = v4Policer;
+    m_sw->m_trap_group_map[v4Group] = group;
+    group.policer_oid = v6Policer;
+    m_sw->m_trap_group_map[v6Group] = group;
+
+    vpp_trap_entry_t v4{};
+    v4.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    v4.packet_action = SAI_PACKET_ACTION_TRAP;
+    v4.trap_group_oid = v4Group;
+    vpp_trap_entry_t v6 = v4;
+    v6.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    v6.trap_group_oid = v6Group;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(0x1200000014, v4, 12));
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(0x1200000015, v6, 13));
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+
+    EXPECT_EQ("copp-policer-0x1200000012",
+            vppMock().coppDhcpBindCalls[0].policerName);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isIpv6);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_EQ("copp-policer-0x1200000013",
+            vppMock().coppDhcpBindCalls[1].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isIpv6);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isBind);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->uninstallTrapClassifyNow(0x1200000014, v4));
+    ASSERT_EQ(3u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[2].isIpv6);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[2].isBind);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpBindFailureCleansTheAttemptedOwner)
+{
+    const sai_object_id_t groupOid = 0x1200000020;
+    const sai_object_id_t policerOid = 0x1200000021;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = policerOid;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = groupOid;
+
+    vppMock().coppDhcpBindFailOnCall = 1;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->installTrapClassifyNow(0x1200000022, trap, 21));
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_EQ("copp-policer-0x1200000021",
+            vppMock().coppDhcpBindCalls[1].policerName);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpFailedReplacementRestoresOldOwner)
+{
+    const sai_object_id_t groupOid = 0x1200000030;
+    const sai_object_id_t oldPolicer = 0x1200000031;
+    const sai_object_id_t newPolicer = 0x1200000032;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = oldPolicer;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_policer_entry_t oldEntry{};
+    oldEntry.vpp_policer_index = 31;
+    m_sw->m_policer_map[oldPolicer] = oldEntry;
+    vpp_policer_entry_t newEntry{};
+    newEntry.vpp_policer_index = 32;
+    m_sw->m_policer_map[newPolicer] = newEntry;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = groupOid;
+    const sai_object_id_t trapOid = 0x1200000033;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, 31));
+    vppMock().coppDhcpBindCalls.clear();
+
+    group.policer_oid = newPolicer;
+    m_sw->m_trap_group_map[groupOid] = group;
+    vppMock().coppDhcpBindFailOnCall = 1;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->installTrapClassifyNow(trapOid, trap, 32));
+
+    ASSERT_EQ(3u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000032",
+            vppMock().coppDhcpBindCalls[0].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_EQ("copp-policer-0x1200000031",
+            vppMock().coppDhcpBindCalls[2].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isIpv6);
+}
+
+class SwitchVppDhcpVlanPunt : public ::testing::Test
+{
+    protected:
+
+        void SetUp() override
+        {
+            vppMock().reset();
+            vppMock().classifyAvailable = true;
+            vppMock().enabledFeatures.insert("l2-trap-fixup");
+            vppMock().enabledFeatures.insert("l2-vlan-filter");
+
+            auto sc = std::make_shared<SwitchConfig>(0, "");
+            sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+            sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+            sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+            sc->m_useTapDevice = false;
+            sc->m_profileMap[SAI_KEY_VS_PORT_CONFIG_FILE] = "/dev/null";
+            sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+            sc->m_eventQueue = std::make_shared<EventQueue>(
+                    std::make_shared<Signal>());
+
+            auto scc = std::make_shared<SwitchConfigContainer>();
+            scc->insert(sc);
+            m_mgr = std::make_shared<RealObjectIdManager>(0, scc);
+            m_sw = std::make_shared<TestableSwitchVpp>(m_switchId, m_mgr, sc);
+            sc->m_useTapDevice = true;
+
+            m_vlan = m_mgr->allocateNewObjectId(
+                    SAI_OBJECT_TYPE_VLAN, m_switchId);
+            sai_attribute_t vattr{};
+            vattr.id = SAI_VLAN_ATTR_VLAN_ID;
+            vattr.value.u16 = VLAN_ID;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+                    SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(m_vlan),
+                    m_switchId, 1, &vattr));
+        }
+
+        void TearDown() override
+        {
+            m_sw->m_switchConfig->m_useTapDevice = false;
+            m_sw.reset();
+        }
+
+        void addMember(const char *hwif, bool tagged)
+        {
+            auto port = m_mgr->allocateNewObjectId(
+                    SAI_OBJECT_TYPE_PORT, m_switchId);
+            sai_attribute_t pattr{};
+            pattr.id = SAI_PORT_ATTR_ADMIN_STATE;
+            pattr.value.booldata = false;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+                    SAI_OBJECT_TYPE_PORT, sai_serialize_object_id(port),
+                    m_switchId, 1, &pattr));
+            ASSERT_NE(nullptr, m_sw->m_ifaceRegistry.addPhysicalPort(
+                    hwif, std::string("os_") + hwif, port));
+
+            auto bridgePort = m_mgr->allocateNewObjectId(
+                    SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+            sai_attribute_t battrs[2]{};
+            battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+            battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+            battrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+            battrs[1].value.oid = port;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+                    SAI_OBJECT_TYPE_BRIDGE_PORT,
+                    sai_serialize_object_id(bridgePort), m_switchId,
+                    2, battrs));
+
+            sai_attribute_t mattrs[3]{};
+            mattrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+            mattrs[0].value.oid = m_vlan;
+            mattrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
+            mattrs[1].value.oid = bridgePort;
+            mattrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
+            mattrs[2].value.s32 = tagged ? SAI_VLAN_TAGGING_MODE_TAGGED :
+                SAI_VLAN_TAGGING_MODE_UNTAGGED;
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->vpp_create_vlan_member(3, mattrs));
+        }
+
+        static std::vector<uint8_t> dhcp6(bool tagged, uint16_t dport = 547)
+        {
+            std::vector<uint8_t> frame = {
+                0x33, 0x33, 0x00, 0x01, 0x00, 0x02,
+                0x02, 0x00, 0x00, 0x00, 0x00, 0x01
+            };
+            if (tagged)
+            {
+                frame.insert(frame.end(), {
+                    0x81, 0x00, 0x00, (uint8_t)VLAN_ID
+                });
+            }
+            frame.insert(frame.end(), {0x86, 0xdd});
+
+            std::vector<uint8_t> ip6(48, 0);
+            ip6[0] = 0x60;
+            ip6[4] = 0; ip6[5] = 8;
+            ip6[6] = 17;
+            ip6[7] = 64;
+            ip6[8 + 15] = 1; // source ::1
+            const uint8_t dst[16] = {
+                0xff, 0x02, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 1, 0, 2
+            };
+            memcpy(&ip6[24], dst, sizeof(dst));
+            ip6[40] = (uint8_t)(546 >> 8);
+            ip6[41] = (uint8_t)(546 & 0xff);
+            ip6[42] = (uint8_t)(dport >> 8);
+            ip6[43] = (uint8_t)(dport & 0xff);
+            ip6[44] = 0; ip6[45] = 8;
+            frame.insert(frame.end(), ip6.begin(), ip6.end());
+            return frame;
+        }
+
+        static constexpr uint16_t VLAN_ID = 100;
+        const sai_object_id_t m_switchId = 0x2100000000;
+        sai_object_id_t m_vlan = SAI_NULL_OBJECT_ID;
+        std::shared_ptr<RealObjectIdManager> m_mgr;
+        std::shared_ptr<TestableSwitchVpp> m_sw;
+};
+
+constexpr uint16_t SwitchVppDhcpVlanPunt::VLAN_ID;
+
+TEST_F(SwitchVppDhcpVlanPunt, PuntsDhcp6OnTaggedAndUntaggedMembersOnly)
+{
+    addMember("bobm0", false);
+    addMember("bobm1", true);
+
+    EXPECT_EQ(vppMock().nodeNext("l2-input-classify", "linux-cp-punt"),
+            vppMock().classifyFrame("bobm0", 1, dhcp6(false)));
+    EXPECT_EQ(vppMock().nodeNext(
+                    "l2-input-classify", "sonic-ext-l2-trap-fixup"),
+            vppMock().classifyFrame("bobm1.100", 2, dhcp6(true)));
+
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
+            "bobm0", 1, dhcp6(false, 548)));
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
+            "bobm1.100", 2, dhcp6(true, 548)));
+}
+
 TEST_F(SwitchVppNeighborMissTrap, BindsAndUnbindsTheNeighborMissPolicer)
 {
     const sai_object_id_t trapGroupOid = 0x1200000001;

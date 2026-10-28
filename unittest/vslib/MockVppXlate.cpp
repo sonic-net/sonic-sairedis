@@ -119,6 +119,64 @@ const std::vector<vpp_pbh_rule_t>& VppMock::lastPbhRules() const
     return pbhTableCalls.empty() ? none : pbhTableCalls.back().rules;
 }
 
+namespace
+{
+    std::vector<uint8_t> maskedClassifyKey(
+            const VppClassifyTable& table,
+            const uint8_t *data,
+            size_t len)
+    {
+        std::vector<uint8_t> key(table.match * 16, 0);
+        for (size_t i = 0; i < key.size(); i++)
+        {
+            size_t off = table.skip * 16 + i;
+            key[i] = (uint8_t)((off < len ? data[off] : 0) & table.mask[i]);
+        }
+        return key;
+    }
+}
+
+uint32_t VppMock::classifyFrame(
+        const std::string& hwif,
+        size_t slot,
+        const std::vector<uint8_t>& frame) const
+{
+    SWSS_LOG_ENTER();
+
+    auto binding = l2ClassifyTables.find(hwif);
+    if (binding == l2ClassifyTables.end() || slot >= binding->second.size())
+    {
+        return ~0u;
+    }
+
+    uint32_t tableIndex = binding->second[slot];
+    while (tableIndex != ~0u)
+    {
+        auto table = classifyTables.find(tableIndex);
+        if (table == classifyTables.end())
+        {
+            return ~0u;
+        }
+        auto session = table->second.sessions.find(maskedClassifyKey(
+                table->second, frame.data(), frame.size()));
+        if (session != table->second.sessions.end())
+        {
+            return session->second;
+        }
+        tableIndex = table->second.nextTable;
+    }
+    return ~0u;
+}
+
+uint32_t VppMock::nodeNext(
+        const std::string& node,
+        const std::string& next) const
+{
+    SWSS_LOG_ENTER();
+    auto it = nodeNexts.find({node, next});
+    return it == nodeNexts.end() ? ~0u : it->second;
+}
+
 int TestableSwitchVpp::vs_set_dev_admin_up(const char *, bool)
 {
     SWSS_LOG_ENTER();
@@ -241,6 +299,31 @@ extern "C" int __wrap_vpp_sonic_ext_copp_neighbor_miss_bind(
     }
 
     return vppMock().coppNeighborMissBindResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_dhcp_bind(
+        const char *policer_name,
+        bool is_ipv6,
+        bool is_bind)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().coppDhcpBindCalls.push_back({
+        policer_name ? policer_name : "",
+        is_ipv6,
+        is_bind,
+    });
+
+    if ((vppMock().coppDhcpBindFailOnCall != 0 &&
+         vppMock().coppDhcpBindCalls.size() ==
+         vppMock().coppDhcpBindFailOnCall) ||
+            vppMock().coppDhcpBindFailOnCalls.count(
+                    (unsigned int)vppMock().coppDhcpBindCalls.size()) != 0)
+    {
+        return -1;
+    }
+
+    return vppMock().coppDhcpBindResult;
 }
 
 extern "C" int __wrap_vpp_sonic_ext_copp_ifout_bind(
@@ -724,15 +807,97 @@ uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
     return vppMock().nextSwIfIndex++;
 }
 
-// no classify punt in these tests: its one-time setup fails, which the VLAN member path tolerates
-int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint32_t *next_index) {
+int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint32_t *next_index)
+{
     SWSS_LOG_ENTER();
-    return -1;
+    if (!vppMock().classifyAvailable)
+    {
+        return -1;
+    }
+
+    auto key = std::make_pair(std::string(node_name), std::string(next_name));
+    auto it = vppMock().nodeNexts.find(key);
+    if (it == vppMock().nodeNexts.end())
+    {
+        it = vppMock().nodeNexts.emplace(
+                key, 10 + vppMock().nodeNextCounts[node_name]++).first;
+    }
+    *next_index = it->second;
+    return 0;
+}
+
+int __wrap_vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
+        uint32_t skip_n_vectors, uint32_t match_n_vectors,
+        uint32_t next_table_index, uint32_t miss_next_index,
+        const uint8_t *mask, uint32_t mask_len, uint32_t *new_table_index)
+{
+    SWSS_LOG_ENTER();
+    (void)nbuckets;
+    (void)memory_size;
+    (void)miss_next_index;
+
+    if (!vppMock().classifyAvailable || mask_len != match_n_vectors * 16)
+    {
+        return -1;
+    }
+
+    VppClassifyTable table;
+    table.skip = skip_n_vectors;
+    table.match = match_n_vectors;
+    table.nextTable = next_table_index;
+    table.mask.assign(mask, mask + mask_len);
+    *new_table_index = vppMock().nextClassifyTable++;
+    vppMock().classifyTables[*new_table_index] = table;
+    return 0;
+}
+
+int __wrap_vpp_classify_table_delete(uint32_t table_index)
+{
+    SWSS_LOG_ENTER();
+    vppMock().classifyTables.erase(table_index);
+    return 0;
+}
+
+int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+        const uint8_t *match, uint32_t match_len, uint32_t opaque_index,
+        int32_t advance, uint8_t action)
+{
+    SWSS_LOG_ENTER();
+    (void)opaque_index;
+    (void)advance;
+    (void)action;
+
+    auto it = vppMock().classifyTables.find(table_index);
+    if (it == vppMock().classifyTables.end())
+    {
+        return -1;
+    }
+    it->second.sessions[maskedClassifyKey(
+            it->second, match, match_len)] = hit_next_index;
+    return 0;
+}
+
+int __wrap_vpp_classify_session_del(uint32_t table_index,
+        const uint8_t *match, uint32_t match_len)
+{
+    SWSS_LOG_ENTER();
+    auto it = vppMock().classifyTables.find(table_index);
+    if (it == vppMock().classifyTables.end())
+    {
+        return -1;
+    }
+    return it->second.sessions.erase(maskedClassifyKey(
+            it->second, match, match_len)) == 1 ? 0 : -1;
 }
 
 int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
-        uint32_t ip6_table_index, uint32_t other_table_index, bool is_input) {
+        uint32_t ip6_table_index, uint32_t other_table_index, bool is_input)
+{
     SWSS_LOG_ENTER();
+    (void)is_input;
+    vppMock().l2ClassifyTables[hwif_name] = {
+        ip4_table_index, ip6_table_index, other_table_index
+    };
     return 0;
 }
 

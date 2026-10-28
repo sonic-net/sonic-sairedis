@@ -89,6 +89,14 @@ namespace
         return trap_type == SAI_HOSTIF_TRAP_TYPE_BGP || trap_type == SAI_HOSTIF_TRAP_TYPE_BGPV6;
     }
 
+    bool isDhcpTrap(sai_hostif_trap_type_t trap_type)
+    {
+        SWSS_LOG_ENTER();
+
+        return trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP ||
+            trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    }
+
     bool isNeighborMissTrap(sai_hostif_trap_type_t trap_type)
     {
         SWSS_LOG_ENTER();
@@ -110,6 +118,13 @@ namespace
         if (isBgpTrap(lhs) || isBgpTrap(rhs))
         {
             return isBgpTrap(lhs) && isBgpTrap(rhs);
+        }
+
+        if (isDhcpTrap(lhs) || isDhcpTrap(rhs))
+        {
+            // DHCPv4 and DHCPv6 have separate plugin rows, while duplicate
+            // SAI owners of the same family share one semantic binding.
+            return lhs == rhs;
         }
 
         if (lhs == SAI_HOSTIF_TRAP_TYPE_IP2ME ||
@@ -143,6 +158,18 @@ namespace
         if (isBgpTrap(trap_type))
         {
             key = 0x10001;
+            return true;
+        }
+
+        if (trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP)
+        {
+            key = 0x10003;
+            return true;
+        }
+
+        if (trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6)
+        {
+            key = 0x10004;
             return true;
         }
 
@@ -245,17 +272,31 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
     // was therefore not advanced. Reconcile the attempted owner explicitly
     // before restoring the previous semantic slot. An already-rejected bind
     // makes this unbind an idempotent no-op.
-    if ((isBgpTrap(trap.trap_type) ||
+    if ((isBgpTrap(trap.trap_type) || isDhcpTrap(trap.trap_type) ||
          trap.trap_type == SAI_HOSTIF_TRAP_TYPE_IP2ME) &&
             policer_oid != SAI_NULL_OBJECT_ID)
     {
         char attempted_name[64];
         snprintf(attempted_name, sizeof(attempted_name),
                 "copp-policer-0x%lx", (unsigned long)policer_oid);
-        int cleanup_ret = isBgpTrap(trap.trap_type) ?
-            vpp_sonic_ext_copp_ip2me_bind_condition(
-                    attempted_name, 179, false) :
-            vpp_sonic_ext_copp_ip2me_bind(attempted_name, false);
+        int cleanup_ret;
+        if (isBgpTrap(trap.trap_type))
+        {
+            cleanup_ret = vpp_sonic_ext_copp_ip2me_bind_condition(
+                    attempted_name, 179, false);
+        }
+        else if (isDhcpTrap(trap.trap_type))
+        {
+            cleanup_ret = vpp_sonic_ext_copp_dhcp_bind(
+                    attempted_name,
+                    trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6,
+                    false);
+        }
+        else
+        {
+            cleanup_ret = vpp_sonic_ext_copp_ip2me_bind(
+                    attempted_name, false);
+        }
         if (cleanup_ret != 0)
         {
             // The cleanup may or may not have taken effect. Publish the
@@ -477,6 +518,51 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
         {
             mark_binding_uncertain();
             SWSS_LOG_ERROR("failed to bind BGP policer for trap 0x%lx: ret %d",
+                    (unsigned long)trap_oid, pret);
+            return SAI_STATUS_FAILURE;
+        }
+
+        record_binding(policer_oid);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (isDhcpTrap(trap.trap_type))
+    {
+        bool is_ipv6 = trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+
+        if (!have_policer)
+        {
+            if (current_policer_oid == SAI_NULL_OBJECT_ID)
+            {
+                return SAI_STATUS_SUCCESS;
+            }
+
+            char policer_name[64];
+            snprintf(policer_name, sizeof(policer_name),
+                    "copp-policer-0x%lx",
+                    (unsigned long)current_policer_oid);
+            int pret = vpp_sonic_ext_copp_dhcp_bind(
+                    policer_name, is_ipv6, false);
+            if (pret != 0)
+            {
+                mark_binding_uncertain();
+                return SAI_STATUS_FAILURE;
+            }
+            record_binding(SAI_NULL_OBJECT_ID);
+            return SAI_STATUS_SUCCESS;
+        }
+
+        char policer_name[64];
+        snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx",
+                (unsigned long)policer_oid);
+        int pret = vpp_sonic_ext_copp_dhcp_bind(
+                policer_name, is_ipv6, true);
+
+        if (pret != 0)
+        {
+            mark_binding_uncertain();
+            SWSS_LOG_ERROR("failed to bind %s policer for trap 0x%lx: ret %d",
+                    is_ipv6 ? "DHCPv6" : "DHCPv4",
                     (unsigned long)trap_oid, pret);
             return SAI_STATUS_FAILURE;
         }

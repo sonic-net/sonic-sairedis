@@ -1952,6 +1952,14 @@ vl_api_sonic_ext_copp_neighbor_miss_bind_reply_t_handler(
 }
 
 static void
+vl_api_sonic_ext_copp_dhcp_bind_reply_t_handler(
+        vl_api_sonic_ext_copp_dhcp_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_copp_reply_status(msg->context, retval);
+}
+
+static void
 vl_api_sonic_ext_copp_ip2me_addr_add_del_reply_t_handler(vl_api_sonic_ext_copp_ip2me_addr_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2520,6 +2528,7 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(SONIC_EXT_MSG_ID(SONIC_EXT_MIRROR_ENCAP_FIXUP_ENABLE_DISABLE_REPLY), sonic_ext_mirror_encap_fixup_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IFOUT_BIND_REPLY), sonic_ext_copp_ifout_bind_reply) \
     _(SONIC_EXT_COPP_MSG_ID(SONIC_EXT_COPP_NEIGHBOR_MISS_BIND_REPLY), sonic_ext_copp_neighbor_miss_bind_reply) \
+    _(SONIC_EXT_COPP_MSG_ID(SONIC_EXT_COPP_DHCP_BIND_REPLY), sonic_ext_copp_dhcp_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_ADDR_ADD_DEL_REPLY), sonic_ext_copp_ip2me_addr_add_del_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_REPLY), sonic_ext_copp_ip2me_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_CONDITION_REPLY), sonic_ext_copp_ip2me_bind_condition_reply) \
@@ -4378,6 +4387,44 @@ int vpp_sonic_ext_copp_neighbor_miss_bind(
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) policer_name %s is_bind %d", __func__, ret, policer_name ? policer_name : "", is_bind); }
     else { SAIVPP_INFO("%s policer_name %s is_bind %d", __func__, policer_name ? policer_name : "", is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/* Dedicated DHCPv4/DHCPv6 trap-group policer binding. The sonic_ext plugin
+ * owns the fixed packet predicates; sairedis selects only the address family
+ * and the policer attached to the SAI trap group. */
+int vpp_sonic_ext_copp_dhcp_bind(
+        const char *policer_name,
+        bool is_ipv6,
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_dhcp_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_copp_msg_id_base;
+
+    M (SONIC_EXT_COPP_DHCP_BIND, mp);
+    mp->context = begin_copp_request();
+
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s",
+            policer_name ? policer_name : "");
+    mp->is_ipv6 = is_ipv6;
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR_COPP (ret);
+    end_copp_request();
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer_name %s is_ipv6 %d is_bind %d", __func__, ret, policer_name ? policer_name : "", is_ipv6, is_bind); }
+    else { SAIVPP_INFO("%s policer_name %s is_ipv6 %d is_bind %d", __func__, policer_name ? policer_name : "", is_ipv6, is_bind); }
 
     VPP_UNLOCK();
 

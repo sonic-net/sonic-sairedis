@@ -10,6 +10,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct VppCall
@@ -70,6 +71,13 @@ struct VppCoppNeighborMissBindCall
     bool isBind;
 };
 
+struct VppCoppDhcpBindCall
+{
+    std::string policerName;
+    bool isIpv6;
+    bool isBind;
+};
+
 struct VppCoppIfoutBindCall
 {
     uint16_t ethertype;
@@ -84,6 +92,15 @@ struct VppCoppIp2meBindCall
     uint16_t tcpPort;
     bool conditional;
     bool isBind;
+};
+
+struct VppClassifyTable
+{
+    uint32_t skip = 0;
+    uint32_t match = 0;
+    uint32_t nextTable = ~0u;
+    std::vector<uint8_t> mask;
+    std::map<std::vector<uint8_t>, uint32_t> sessions;
 };
 
 struct VppMock
@@ -144,6 +161,12 @@ struct VppMock
     unsigned int coppNeighborMissBindFailOnCall = 0;
     std::vector<VppCoppNeighborMissBindCall> coppNeighborMissBindCalls;
 
+    // CoPP semantic DHCPv4/DHCPv6 bindings.
+    int coppDhcpBindResult = 0;
+    unsigned int coppDhcpBindFailOnCall = 0;
+    std::set<unsigned int> coppDhcpBindFailOnCalls;
+    std::vector<VppCoppDhcpBindCall> coppDhcpBindCalls;
+
     // CoPP interface-output and TTL punt bindings.
     int coppIfoutBindResult = 0;
     unsigned int coppIfoutBindFailOnCall = 0;
@@ -157,6 +180,14 @@ struct VppMock
     unsigned int coppIp2meBindFailOnCall = 0;
     std::set<unsigned int> coppIp2meBindFailOnCalls;
     std::vector<VppCoppIp2meBindCall> coppIp2meBindCalls;
+
+    // Minimal VPP classify model for VLAN-member punt tests.
+    bool classifyAvailable = false;
+    uint32_t nextClassifyTable = 0;
+    std::map<uint32_t, VppClassifyTable> classifyTables;
+    std::map<std::pair<std::string, std::string>, uint32_t> nodeNexts;
+    std::map<std::string, uint32_t> nodeNextCounts;
+    std::map<std::string, std::array<uint32_t, 3>> l2ClassifyTables;
 
     std::map<std::string, uint32_t> interfaceVrfs;
     std::set<uint32_t> vrfTables;
@@ -187,6 +218,13 @@ struct VppMock
      * what VPP holds for the table the caller last programmed.
      */
     const std::vector<vpp_pbh_rule_t>& lastPbhRules() const;
+    uint32_t classifyFrame(
+            const std::string& hwif,
+            size_t slot,
+            const std::vector<uint8_t>& frame) const;
+    uint32_t nodeNext(
+            const std::string& node,
+            const std::string& next) const;
 };
 
 VppMock& vppMock();
