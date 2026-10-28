@@ -825,7 +825,7 @@ run_ptf()
         rc=0
         run_one_ptf "$target" "$common_configured" "group-${group}-test-${idx}" "$TEST_TIMEOUT" || rc="$?"
         archive_test_logs "group-${group}-test-${idx}-${target}" "$rc"
-        if [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then
+        if [[ "$rc" -eq 124 ]]; then
             # A hung backend would stall the rest of its group too.
             prev_group="timed-out"
             # evaluate_ci_baseline.py treats exit codes >= 2 as infrastructure failures.
@@ -1048,6 +1048,7 @@ run_one_ptf()
     local common_configured="$2"
     local invocation_namespace="$3"
     local timeout_s="${4:-0}"
+    local start_s="$SECONDS"
     local test_rc
     local xunit_dir
     local -a ptf_cmd=(ptf)
@@ -1074,7 +1075,12 @@ run_one_ptf()
     test_rc="${PIPESTATUS[0]}"
     set -e
 
-    if [[ "$test_rc" -eq 124 || "$test_rc" -eq 137 ]]; then
+    # 137 is a timeout only if timeout escalated to SIGKILL.
+    if [[ "$test_rc" -eq 137 && "$timeout_s" -gt 0 ]] && (( SECONDS - start_s >= timeout_s )); then
+        test_rc=124
+    fi
+
+    if [[ "$test_rc" -eq 124 ]]; then
         log "ERROR: PTF${test_target:+ for $test_target} timed out after ${timeout_s}s"
         # PTF is killed before it writes JUnit XML; record the timeout as a test error.
         printf '<testsuite name="%s" tests="1" errors="1"><testcase classname="%s" name="runTest"><error message="timed out after %ss"/></testcase></testsuite>\n' \
