@@ -224,6 +224,55 @@ TEST_F(SwitchVppSonicExtFeature, ip2meDisabledAtStartupIsNeverEnabled)
     }, ::testing::ExitedWithCode(0), "");
 }
 
+TEST_F(SwitchVppSonicExtFeature, ip2meFailedFeatureQueryIsNotEnabled)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT({
+        vppMock().enabledFeatures.insert("ip2me");
+        vppMock().featureResult = -1;
+
+        auto table = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId);
+
+        bindDropTable(table);
+
+        check(vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF).empty(),
+                "ip2me not programmed while its feature query fails");
+
+        // a failed answer is not kept, so the next refresh asks again
+        vppMock().featureResult = 0;
+        m_sw->ip2meRefreshPort(PORT_HWIF);
+
+        auto calls = vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF);
+        check(calls.size() == 1 && calls[0].flag, "ip2me enabled once the query succeeds");
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(SwitchVppSonicExtFeature, ip2meFailedProgrammingIsRetried)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT({
+        vppMock().enabledFeatures.insert("ip2me");
+        vppMock().ip2meResult = -1;
+
+        auto table = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId);
+
+        bindDropTable(table);
+
+        check(vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF).size() == 1,
+                "ip2me enable attempted");
+        check(m_sw->m_ip2me_enabled_ports.empty(), "a failed enable is not tracked as enabled");
+
+        vppMock().ip2meResult = 0;
+        m_sw->ip2meRefreshPort(PORT_HWIF);
+
+        auto calls = vppMock().callsTo("vpp_sonic_ext_ip2me_enable_disable", PORT_HWIF);
+        check(calls.size() == 2 && calls[1].flag, "the next refresh retries the enable");
+        check(m_sw->m_ip2me_enabled_ports.count(PORT_HWIF) == 1, "port tracked once enabled");
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
 /*
  * The first VLAN member sets up the l2-input-classify punt tables. Their next
  * nodes are the Linux control plane punt node, always, and the sonic-ext
@@ -287,4 +336,34 @@ TEST_F(SwitchVppSonicExtFeature, l2ClassifyNextNodesFollowFeatures)
             }, ::testing::ExitedWithCode(0), "");
         }
     }
+}
+
+TEST_F(SwitchVppSonicExtFeature, l2FailedFeatureQueryAddsNoFeatureNodes)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT({
+        vppMock().addNodeNextResult = 0;
+        vppMock().enabledFeatures.insert("l2-trap-fixup");
+        vppMock().enabledFeatures.insert("l2-vlan-filter");
+        vppMock().featureResult = -1;
+
+        check(addMember(m_bridgePort, SAI_VLAN_TAGGING_MODE_TAGGED) == SAI_STATUS_SUCCESS,
+                "tagged member created");
+        check(addMember(m_otherBridgePort, SAI_VLAN_TAGGING_MODE_UNTAGGED) == SAI_STATUS_SUCCESS,
+                "untagged member created");
+
+        auto punt = vppMock().callsTo("vpp_add_node_next", "linux-cp-punt");
+
+        check(punt.size() == 1, "linux-cp-punt still added");
+        check(vppMock().callsTo("vpp_add_node_next", "sonic-ext-l2-trap-fixup").empty(),
+                "l2-trap-fixup not added while its query fails");
+        check(vppMock().callsTo("vpp_add_node_next", "sonic-ext-l2-vlan-filter").empty(),
+                "l2-vlan-filter not added while its query fails");
+
+        for (auto& call : vppMock().callsTo("vpp_classify_session_add", ""))
+        {
+            check(call.sub_id == punt[0].id, "every session punts to linux-cp-punt");
+        }
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
 }
