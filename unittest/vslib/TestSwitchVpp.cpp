@@ -132,11 +132,121 @@ TEST_F(SwitchVppNeighborMissTrap, DhcpBindFailureCleansTheAttemptedOwner)
     vppMock().coppDhcpBindFailOnCall = 1;
     EXPECT_EQ(SAI_STATUS_FAILURE,
             m_sw->installTrapClassifyNow(0x1200000022, trap, 21));
-    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    ASSERT_EQ(3u, vppMock().coppDhcpBindCalls.size());
     EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
     EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
     EXPECT_EQ("copp-policer-0x1200000021",
             vppMock().coppDhcpBindCalls[1].policerName);
+    // The physical snapshot was absent, not present+NULL. Reconcile that
+    // tri-state explicitly after the owner-qualified timeout cleanup.
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].policerName.empty());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[2].isBind);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpNullPolicerKeepsTheTrapActiveUnpoliced)
+{
+    const sai_object_id_t groupOid = 0x1200000023;
+    const sai_object_id_t trapOid = 0x1200000024;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = SAI_NULL_OBJECT_ID;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = groupOid;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, (uint32_t)~0));
+    ASSERT_EQ(1u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].policerName.empty());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isIpv6);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->uninstallTrapClassifyNow(trapOid, trap));
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].policerName.empty());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpFailedReplacementRestoresUnpolicedState)
+{
+    const sai_object_id_t groupOid = 0x1200000025;
+    const sai_object_id_t policerOid = 0x1200000026;
+    const sai_object_id_t trapOid = 0x1200000027;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = SAI_NULL_OBJECT_ID;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    trap.packet_action = SAI_PACKET_ACTION_COPY;
+    trap.trap_group_oid = groupOid;
+    trap.classify_installed = true;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, (uint32_t)~0));
+    m_sw->m_trap_map[trapOid] = trap;
+    vppMock().coppDhcpBindCalls.clear();
+
+    group.policer_oid = policerOid;
+    m_sw->m_trap_group_map[groupOid] = group;
+    vppMock().coppDhcpBindFailOnCall = 1;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->installTrapClassifyNow(trapOid, trap, 26, policerOid));
+
+    ASSERT_EQ(3u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000026",
+            vppMock().coppDhcpBindCalls[0].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].policerName.empty());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isIpv6);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpRemoveFailureRestoresPhysicalAndMapState)
+{
+    const sai_object_id_t groupOid = 0x1200000028;
+    const sai_object_id_t policerOid = 0x1200000029;
+    const sai_object_id_t trapOid = 0x120000002a;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = policerOid;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 29;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = groupOid;
+    trap.classify_installed = true;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, 29, policerOid));
+    m_sw->m_trap_map[trapOid] = trap;
+    vppMock().coppDhcpBindCalls.clear();
+
+    m_sw->removeInternalResult = SAI_STATUS_FAILURE;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->removeHostifTrap(sai_serialize_object_id(trapOid)));
+
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_EQ("copp-policer-0x1200000029",
+            vppMock().coppDhcpBindCalls[1].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_EQ(1u, m_sw->m_trap_map.count(trapOid));
+    EXPECT_EQ(policerOid, m_sw->m_trap_binding_map.at(0x10003));
 }
 
 TEST_F(SwitchVppNeighborMissTrap, DhcpFailedReplacementRestoresOldOwner)

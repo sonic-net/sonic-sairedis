@@ -240,6 +240,9 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
     uint32_t old_vpp_policer_index = (uint32_t)~0;
     sai_object_id_t old_policer_oid = SAI_NULL_OBJECT_ID;
     uint32_t binding_key = 0;
+    bool old_binding_present = false;
+    vpp_trap_entry_t old_binding_trap = trap;
+    old_binding_trap.packet_action = SAI_PACKET_ACTION_DROP;
 
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
@@ -248,11 +251,32 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
             auto bit = m_trap_binding_map.find(binding_key);
             if (bit != m_trap_binding_map.end())
             {
+                old_binding_present = true;
                 old_policer_oid = bit->second;
                 auto pit = m_policer_map.find(old_policer_oid);
                 if (pit != m_policer_map.end())
                 {
                     old_vpp_policer_index = pit->second.vpp_policer_index;
+                }
+
+                // Keep the action of an installed owner as part of the
+                // physical-state snapshot. Present+NULL is an active,
+                // intentionally-unpoliced semantic row, while an absent map
+                // key means no row at all.
+                for (const auto &kv : m_trap_map)
+                {
+                    if (kv.second.classify_installed &&
+                            trapsShareBinding(trap.trap_type,
+                                kv.second.trap_type))
+                    {
+                        old_binding_trap = kv.second;
+                        break;
+                    }
+                }
+                if (old_binding_trap.packet_action != SAI_PACKET_ACTION_TRAP &&
+                        old_binding_trap.packet_action != SAI_PACKET_ACTION_COPY)
+                {
+                    old_binding_trap.packet_action = SAI_PACKET_ACTION_TRAP;
                 }
             }
         }
@@ -319,7 +343,8 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
     // TTL_ERROR and future compound bindings can fail after changing an
     // earlier VPP component. Restore this row before returning the failure.
     sai_status_t rollback_status = programTrapClassifyNow(
-            trap_oid, trap, old_vpp_policer_index, old_policer_oid,
+            trap_oid, old_binding_trap, old_vpp_policer_index,
+            old_binding_present ? old_policer_oid : SAI_NULL_OBJECT_ID,
             SAI_NULL_OBJECT_ID, false);
 
     if (rollback_status != SAI_STATUS_SUCCESS)
@@ -386,6 +411,9 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
         m_trap_binding_uncertain.insert(binding_key);
     };
 
+    bool semantic_active = trap.packet_action == SAI_PACKET_ACTION_TRAP ||
+        trap.packet_action == SAI_PACKET_ACTION_COPY;
+
     // A VPP row can be shared by multiple SAI traps. If this trap has no
     // desired policer, select another installed owner before deleting the row.
     if (reconcile_shared_owners &&
@@ -404,25 +432,31 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
                 continue;
             }
 
+            semantic_active = true;
+
             auto git = m_trap_group_map.find(kv.second.trap_group_oid);
-            if (git == m_trap_group_map.end() ||
-                    git->second.policer_oid == SAI_NULL_OBJECT_ID)
+            if (git == m_trap_group_map.end())
             {
                 continue;
             }
 
-            auto pit = m_policer_map.find(git->second.policer_oid);
-            if (pit != m_policer_map.end())
+            if (git->second.policer_oid != SAI_NULL_OBJECT_ID)
             {
                 policer_oid = git->second.policer_oid;
-                vpp_policer_index = pit->second.vpp_policer_index;
+                auto pit = m_policer_map.find(policer_oid);
+                if (pit != m_policer_map.end())
+                {
+                    vpp_policer_index = pit->second.vpp_policer_index;
+                }
                 break;
             }
         }
     }
 
-    bool have_policer = vpp_policer_index != (uint32_t)~0 &&
-        policer_oid != SAI_NULL_OBJECT_ID;
+    // The plugin resolves policers by name and deliberately fails closed
+    // while a nonempty name is unresolved. A configured OID therefore still
+    // represents a policed row even if the local index journal is missing.
+    bool have_policer = policer_oid != SAI_NULL_OBJECT_ID;
 
     if (isNeighborMissTrap(trap.trap_type))
     {
@@ -430,9 +464,8 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
         // explicitly means unpoliced, while is_bind=false means no trap.
         if (!have_policer)
         {
-            bool active = trap.packet_action == SAI_PACKET_ACTION_TRAP ||
-                trap.packet_action == SAI_PACKET_ACTION_COPY;
-            int pret = vpp_sonic_ext_copp_neighbor_miss_bind("", active);
+            int pret = vpp_sonic_ext_copp_neighbor_miss_bind(
+                    "", semantic_active);
 
             if (pret != 0)
             {
@@ -443,9 +476,9 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
             }
 
             SWSS_LOG_NOTICE("%s NEIGHBOR_MISS row for trap 0x%lx",
-                    active ? "installed unpoliced" : "removed",
+                    semantic_active ? "installed unpoliced" : "removed",
                     (unsigned long)trap_oid);
-            if (active)
+            if (semantic_active)
             {
                 std::lock_guard<std::mutex> lock(m_copp_state_mutex);
                 // Present+NULL is distinct from an absent key: it records an
@@ -532,23 +565,24 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
         if (!have_policer)
         {
-            if (current_policer_oid == SAI_NULL_OBJECT_ID)
-            {
-                return SAI_STATUS_SUCCESS;
-            }
-
-            char policer_name[64];
-            snprintf(policer_name, sizeof(policer_name),
-                    "copp-policer-0x%lx",
-                    (unsigned long)current_policer_oid);
             int pret = vpp_sonic_ext_copp_dhcp_bind(
-                    policer_name, is_ipv6, false);
+                    "", is_ipv6, semantic_active);
             if (pret != 0)
             {
                 mark_binding_uncertain();
                 return SAI_STATUS_FAILURE;
             }
-            record_binding(SAI_NULL_OBJECT_ID);
+
+            if (semantic_active)
+            {
+                std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+                m_trap_binding_map[binding_key] = SAI_NULL_OBJECT_ID;
+                m_trap_binding_uncertain.erase(binding_key);
+            }
+            else
+            {
+                record_binding(SAI_NULL_OBJECT_ID);
+            }
             return SAI_STATUS_SUCCESS;
         }
 
@@ -1072,6 +1106,10 @@ sai_status_t SwitchVpp::removeHostifTrap(
     sai_deserialize_object_id(serializedObjectId, object_id);
 
     bool need_uninstall = false;
+    bool old_binding_present = false;
+    uint32_t old_binding_key = 0;
+    uint32_t old_effective_vpp_policer_index = (uint32_t)~0;
+    sai_object_id_t old_effective_policer_oid = SAI_NULL_OBJECT_ID;
     vpp_trap_entry_t trap_copy;
     memset(&trap_copy, 0, sizeof(trap_copy));
 
@@ -1084,6 +1122,22 @@ sai_status_t SwitchVpp::removeHostifTrap(
         {
             need_uninstall = true;
             trap_copy = it->second;
+
+            if (trapBindingKey(trap_copy.trap_type, old_binding_key))
+            {
+                auto bit = m_trap_binding_map.find(old_binding_key);
+                if (bit != m_trap_binding_map.end())
+                {
+                    old_binding_present = true;
+                    old_effective_policer_oid = bit->second;
+                    auto pit = m_policer_map.find(old_effective_policer_oid);
+                    if (pit != m_policer_map.end())
+                    {
+                        old_effective_vpp_policer_index =
+                            pit->second.vpp_policer_index;
+                    }
+                }
+            }
         }
     }
 
@@ -1092,12 +1146,50 @@ sai_status_t SwitchVpp::removeHostifTrap(
         CHECK_STATUS(uninstallTrapClassify(object_id, trap_copy));
     }
 
+    // Keep the authoritative map entry until the SAI object removal commits.
+    // If the replay-cache update fails, restore the exact physical binding
+    // snapshot instead of leaving an object that still exists internally but
+    // has disappeared from both m_trap_map and VPP.
+    sai_status_t status = remove_internal(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, serializedObjectId);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        if (need_uninstall)
+        {
+            sai_status_t rollback_status;
+            if (old_binding_present)
+            {
+                rollback_status = programTrapClassifyNow(
+                        object_id, trap_copy,
+                        old_effective_vpp_policer_index,
+                        old_effective_policer_oid,
+                        SAI_NULL_OBJECT_ID, false);
+            }
+            else
+            {
+                rollback_status = installTrapClassifyNow(
+                        object_id, trap_copy,
+                        old_effective_vpp_policer_index,
+                        old_effective_policer_oid);
+            }
+
+            if (rollback_status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("failed to restore trap 0x%lx after internal "
+                        "remove failure: status %d",
+                        (unsigned long)object_id, rollback_status);
+                return rollback_status;
+            }
+        }
+        return status;
+    }
+
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
         m_trap_map.erase(object_id);
     }
 
-    return remove_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, serializedObjectId);
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::setHostifTrap(

@@ -257,8 +257,12 @@ class TestableSwitchVpp : public saivs::SwitchVpp
 {
 public:
     using SwitchVpp::SwitchVpp;
+    sai_status_t removeInternalResult = SAI_STATUS_SUCCESS;
 
 protected:
+    sai_status_t remove_internal(
+            sai_object_type_t object_type,
+            const std::string& serializedObjectId) override;
     int vs_set_dev_admin_up(const char *dev, bool up) override;
     int exec(const std::string& command, std::string& output) override;
 };

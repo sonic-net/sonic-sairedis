@@ -177,6 +177,20 @@ uint32_t VppMock::nodeNext(
     return it == nodeNexts.end() ? ~0u : it->second;
 }
 
+sai_status_t TestableSwitchVpp::remove_internal(
+        sai_object_type_t object_type,
+        const std::string& serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    if (removeInternalResult != SAI_STATUS_SUCCESS)
+    {
+        return removeInternalResult;
+    }
+
+    return SwitchVpp::remove_internal(object_type, serializedObjectId);
+}
+
 int TestableSwitchVpp::vs_set_dev_admin_up(const char *, bool)
 {
     SWSS_LOG_ENTER();
