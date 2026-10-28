@@ -28,6 +28,22 @@ public:
         return true;
     }
 };
+
+class PlatformEventSwitchState final : public SwitchStateBase
+{
+public:
+    using SwitchStateBase::SwitchStateBase;
+
+    void syncOnPlatformEvent(
+            _In_ std::shared_ptr<EventPayloadPlatformEvent> payload) override
+    {
+        SWSS_LOG_ENTER();
+
+        m_payloads.push_back(payload);
+    }
+
+    std::vector<std::shared_ptr<EventPayloadPlatformEvent>> m_payloads;
+};
 }
 
 class VirtualSwitchSaiInterfaceTest : public ::testing::Test
@@ -159,6 +175,32 @@ TEST_F(VirtualSwitchSaiInterfaceTest, portBulkAddRemove)
     {
         ASSERT_EQ(statusList.at(i), SAI_STATUS_SUCCESS);
     }
+}
+
+TEST_F(VirtualSwitchSaiInterfaceTest, syncProcessEventPlatformEvent)
+{
+    auto original_state = m_vssai->m_switchStateMap.at(m_swid);
+    auto state = std::make_shared<PlatformEventSwitchState>(
+            m_swid,
+            m_vssai->m_realObjectIdManager,
+            m_sc);
+
+    m_vssai->m_switchStateMap.at(m_swid) = state;
+
+    // The event goes to the switch whose platform posted it
+    auto payload = std::make_shared<EventPayloadPlatformEvent>(m_swid);
+
+    m_vssai->syncProcessEventPlatformEvent(payload);
+
+    ASSERT_EQ(state->m_payloads.size(), 1u);
+    EXPECT_EQ(state->m_payloads.at(0), payload);
+
+    // An event for a switch that no longer exists is dropped
+    m_vssai->syncProcessEventPlatformEvent(std::make_shared<EventPayloadPlatformEvent>(SAI_NULL_OBJECT_ID));
+
+    EXPECT_EQ(state->m_payloads.size(), 1u);
+
+    m_vssai->m_switchStateMap.at(m_swid) = original_state;
 }
 
 TEST_F(VirtualSwitchSaiInterfaceTest, queryApiVersion)

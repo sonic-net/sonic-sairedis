@@ -18,6 +18,8 @@ namespace saivs
 
         EVENT_TYPE_NOTIFICATION,
 
+        EVENT_TYPE_PLATFORM_EVENT,
+
     } EventType;
 
     class Event
