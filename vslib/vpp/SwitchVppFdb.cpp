@@ -22,8 +22,8 @@ using namespace saivs;
  * Scope:
  *   - LLDP (0x88cc): redirect to linux-cp-punt at l2-input-classify
  *     so the frame ends up on the originating member's LCP host tap.
- *   - DHCP/DHCPv6 is not classify-driven. sonic-ext-capture applies the
- *     live semantic packet action before ethernet/L2 processing.
+ *   - DHCP/DHCPv6 is not classify-driven. sonic-ext applies the live
+ *     semantic packet action on the L2 feature arc after VLAN admission.
  *
  * LLDP needs the classifier to work around a VPP behavior: link-local
  * multicast frames (DA in 01:80:c2:00:00:00..0F) are flooded by the BD
@@ -68,11 +68,12 @@ using namespace saivs;
  * The two are independent knobs.  See
  * SwitchVpp::vpp_set_vlan_attribute().
  *
- * DHCP/DHCPv6 is deliberately absent from these tables. sonic-ext-capture
- * parses client packets on device-input (including IPv4 options, VLAN tags,
- * and IPv6 extension headers) and reads the live semantic TRAP/COPY binding.
- * An absent trap therefore keeps normal VLAN flooding, TRAP consumes the
- * original, and COPY sends a CPU clone while preserving forwarding.
+ * DHCP/DHCPv6 is deliberately absent from these tables. sonic-ext parses
+ * client packets on l2-input-ip4/ip6 after ethernet-input and the access-port
+ * VLAN filter have admitted them (including IPv4 options and IPv6 extension
+ * headers), then reads the live semantic TRAP/COPY binding. An absent trap
+ * therefore keeps normal VLAN flooding, TRAP consumes the original, and COPY
+ * sends one CPU clone while preserving forwarding.
  *
  * These classifiers only implement LLDP and the independent per-VLAN flood
  * suppression knobs. Untagged ARP and IPv6 use separate OTHER/IP6 slots.

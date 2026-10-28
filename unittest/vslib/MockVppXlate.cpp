@@ -194,6 +194,21 @@ sai_status_t TestableSwitchVpp::remove_internal(
     return SwitchVpp::remove_internal(object_type, serializedObjectId);
 }
 
+sai_status_t TestableSwitchVpp::set_internal(
+        sai_object_type_t object_type,
+        const std::string& serializedObjectId,
+        const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (setInternalResult != SAI_STATUS_SUCCESS)
+    {
+        return setInternalResult;
+    }
+
+    return SwitchVpp::set_internal(object_type, serializedObjectId, attr);
+}
+
 int TestableSwitchVpp::vs_set_dev_admin_up(const char *, bool)
 {
     SWSS_LOG_ENTER();

@@ -1138,10 +1138,11 @@ namespace saivs
 
             std::map<sai_object_id_t, vpp_trap_group_entry_t> m_trap_group_map;
             std::map<sai_object_id_t, vpp_trap_entry_t> m_trap_map;
-            // Physical VPP binding key -> currently programmed policer OID.
+            // Physical VPP binding key -> exact currently programmed row.
             // Shared SAI traps can overwrite one physical row, so rollback
-            // must restore this effective state rather than one trap's config.
-            std::map<uint32_t, sai_object_id_t> m_trap_binding_map;
+            // must restore its presence, policer, and effective packet action
+            // rather than one arbitrary trap owner's configuration.
+            std::map<uint32_t, vpp_trap_binding_entry_t> m_trap_binding_map;
             // Keys whose last multi-step RPC result is not authoritative.
             // Rollback must retry these even when the OID journal is unchanged.
             std::set<uint32_t> m_trap_binding_uncertain;
