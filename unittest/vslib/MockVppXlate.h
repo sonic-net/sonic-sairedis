@@ -79,6 +79,10 @@ struct VppMock
     unsigned int interfaceCreates = 0;
     uint32_t kernelVrfId = 0;
     int kernelVrfResult = 0;
+    std::string kernelLinkNames;
+    int kernelLinkResult = 0;
+    std::vector<std::string> kernelCommands;
+    std::set<std::string> kernelInterfaces;
     int getVrfResult = 0;
     int setVrfResult = 0;
     unsigned int vrfSetCalls = 0;
