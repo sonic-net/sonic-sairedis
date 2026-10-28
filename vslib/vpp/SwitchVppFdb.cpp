@@ -236,6 +236,29 @@ static uint32_t s_tag_ip6mc_only_table = ~0;  /* IPv6 mcast over .1Q -> s_tag_dh
  */
 static bool     s_dhcp_member_sessions = false; /* DHCPv4 sessions present in the member tables */
 
+
+/* Unit tests replace the mocked VPP graph between cases while this translation
+ * unit remains loaded. Reset every process-global table/index cache with it. */
+extern "C" void saivpp_reset_l2_punt_classify_for_test()
+{
+    s_l2_punt_classify_inited = false;
+    s_punt_next_index = ~0u;
+    s_trap_fixup_next_index = ~0u;
+    s_trap_learn_next_index = ~0u;
+    s_vlan_filter_next_index = ~0u;
+    s_untag_other_table = ~0u;
+    s_untag_ip4_table = ~0u;
+    s_untag_arp_table = ~0u;
+    s_untag_dhcp6_table = ~0u;
+    s_untag_ip6mc_table = ~0u;
+    s_tag_dhcp_table = ~0u;
+    s_tag_dhcp6_table = ~0u;
+    s_tag_arp_table = ~0u;
+    s_tag_ip6mc_table = ~0u;
+    s_tag_ip6mc_only_table = ~0u;
+    s_dhcp_member_sessions = false;
+}
+
 /* Untagged member: DHCPv4 client broadcast, see s_untag_ip4_table. */
 static void dhcp_untag_match(uint8_t m[48])
 {

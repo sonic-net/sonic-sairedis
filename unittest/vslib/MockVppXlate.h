@@ -86,6 +86,7 @@ struct VppCoppDhcpBindCall
 {
     std::string policerName;
     bool isIpv6;
+    bool isCopy;
     bool isBind;
 };
 

@@ -314,6 +314,7 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
             cleanup_ret = vpp_sonic_ext_copp_dhcp_bind(
                     attempted_name,
                     trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6,
+                    false,
                     false);
         }
         else
@@ -566,7 +567,9 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
         if (!have_policer)
         {
             int pret = vpp_sonic_ext_copp_dhcp_bind(
-                    "", is_ipv6, semantic_active);
+                    "", is_ipv6,
+                    trap.packet_action == SAI_PACKET_ACTION_COPY,
+                    semantic_active);
             if (pret != 0)
             {
                 mark_binding_uncertain();
@@ -590,7 +593,8 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
         snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx",
                 (unsigned long)policer_oid);
         int pret = vpp_sonic_ext_copp_dhcp_bind(
-                policer_name, is_ipv6, true);
+                policer_name, is_ipv6,
+                trap.packet_action == SAI_PACKET_ACTION_COPY, true);
 
         if (pret != 0)
         {

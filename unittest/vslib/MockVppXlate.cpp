@@ -2,6 +2,8 @@
 
 #include <arpa/inet.h>
 
+extern "C" void saivpp_reset_l2_punt_classify_for_test();
+
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
@@ -91,6 +93,7 @@ void VppMock::reset()
 {
     SWSS_LOG_ENTER();
     *this = VppMock{};
+    saivpp_reset_l2_punt_classify_for_test();
 }
 
 bool VppMock::isAdminUp(const std::string& hwif) const
@@ -320,6 +323,7 @@ extern "C" int __wrap_vpp_sonic_ext_copp_neighbor_miss_bind(
 extern "C" int __wrap_vpp_sonic_ext_copp_dhcp_bind(
         const char *policer_name,
         bool is_ipv6,
+        bool is_copy,
         bool is_bind)
 {
     SWSS_LOG_ENTER();
@@ -327,6 +331,7 @@ extern "C" int __wrap_vpp_sonic_ext_copp_dhcp_bind(
     vppMock().coppDhcpBindCalls.push_back({
         policer_name ? policer_name : "",
         is_ipv6,
+        is_copy,
         is_bind,
     });
 
