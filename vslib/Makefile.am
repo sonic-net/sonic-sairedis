@@ -27,6 +27,7 @@ libSaiVS_a_SOURCES = \
 					  EventPayloadNetLinkMsg.cpp \
 					  EventPayloadNotification.cpp \
 					  EventPayloadPacket.cpp \
+					  EventPayloadPlatformEvent.cpp \
 					  EventQueue.cpp \
 					  FdbInfo.cpp \
 					  HostInterfaceInfo.cpp \
@@ -79,10 +80,12 @@ libSaiVS_a_SOURCES = \
 if USE_VPP
 libSaiVS_a_SOURCES +=\
 					  vpp/CRMTracker.cpp \
+					  vpp/EventPayloadVppEvent.cpp \
 					  vpp/SaiObjectDB.cpp \
 					  vpp/VppInterfaceRegistry.cpp \
 					  vpp/SwitchVpp.cpp \
 					  vpp/SwitchVppAcl.cpp \
+					  vpp/SwitchVppPbh.cpp \
 					  vpp/SwitchVppPolicer.cpp \
 					  vpp/SwitchVppHostifTrap.cpp \
 					  vpp/SwitchVppNexthop.cpp \

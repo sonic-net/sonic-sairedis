@@ -12,6 +12,7 @@ tests_SOURCES = main.cpp \
 				TestCorePortIndexMapFileParser.cpp \
 				TestEventPayloadNetLinkMsg.cpp \
 				TestEventPayloadPacket.cpp \
+				TestEventPayloadPlatformEvent.cpp \
 				TestEventQueue.cpp \
 				TestFdbInfo.cpp \
 				TestSaiAttrWrap.cpp \
@@ -54,37 +55,28 @@ tests_SOURCES = main.cpp \
 				TestTAM.cpp
 
 if USE_VPP
-tests_SOURCES += TestSwitchVpp.cpp
-
-# TestSwitchVpp.cpp replaces these VPP API calls with recording stubs, so the
-# SwitchVpp code paths under test run without a VPP instance.
-tests_LDFLAGS = \
-				-Wl,--wrap=init_vpp_client \
-				-Wl,--wrap=vpp_sync_for_events \
-				-Wl,--wrap=vpp_ev_dequeue \
-				-Wl,--wrap=vpp_want_l2_macs_events2 \
-				-Wl,--wrap=refresh_interfaces_list \
-				-Wl,--wrap=l2fib_add_del \
-				-Wl,--wrap=l2fib_flush_all \
-				-Wl,--wrap=l2fib_flush_int \
-				-Wl,--wrap=l2fib_flush_bd \
-				-Wl,--wrap=l2fib_add_del_by_index \
-				-Wl,--wrap=vpp_vxlan_tunnel_add_del \
-				-Wl,--wrap=set_sw_interface_l2_bridge_by_index \
-				-Wl,--wrap=set_sw_interface_l2_bridge_shg_by_index \
-				-Wl,--wrap=set_l2_interface_flags_by_index \
-				-Wl,--wrap=interface_set_state \
-				-Wl,--wrap=interface_set_promiscuous \
-				-Wl,--wrap=create_sub_interface \
-				-Wl,--wrap=delete_sub_interface \
-				-Wl,--wrap=set_sw_interface_l2_bridge \
-				-Wl,--wrap=set_l2_interface_vlan_tag_rewrite \
-				-Wl,--wrap=set_bridge_domain_flags \
-				-Wl,--wrap=bridge_domain_get_member_count \
-				-Wl,--wrap=vpp_bridge_domain_add_del \
-				-Wl,--wrap=vpp_get_swif_idx_by_name \
-				-Wl,--wrap=vpp_add_node_next \
-				-Wl,--wrap=vpp_classify_set_interface_l2_tables
+tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
+				TestSwitchVppPbh.cpp \
+				MockVppXlate.cpp MockVppXlate.h
+VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
+				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
+				create_sub_interface delete_sub_interface configure_lcp_interface \
+				l2fib_add_del l2fib_flush_all l2fib_flush_int l2fib_flush_bd \
+				l2fib_add_del_by_index vpp_vxlan_tunnel_add_del \
+				set_sw_interface_l2_bridge_by_index set_sw_interface_l2_bridge_shg_by_index \
+				set_l2_interface_flags_by_index \
+								set_sw_interface_l2_bridge interface_set_state refresh_interfaces_list \
+				vpp_set_mac_event_cb vpp_l2fib_dump vpp_bfd_session_dump vpp_ip_flow_hash_set set_interface_vrf \
+				get_interface_vrf ip_vrf_add ip_vrf_del interface_ip_address_del_all \
+				init_vpp_client vpp_wait_for_events vpp_drain_events vpp_sync_for_events vpp_ev_dequeue \
+				interface_set_promiscuous set_l2_interface_vlan_tag_rewrite set_bridge_domain_flags \
+				bridge_domain_get_member_count vpp_bridge_domain_add_del \
+				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
+				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state interface_get_state \
+				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
+				vpp_pbh_profile_add_del vpp_pbh_table_add_replace vpp_pbh_table_del \
+				vpp_pbh_interface_attach_detach vpp_rule_stats_query
+tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control

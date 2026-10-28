@@ -67,6 +67,7 @@ MTU
 Mellanox
 NHG
 NPU
+NUL
 OA
 OIDs
 OTN
@@ -471,3 +472,10 @@ VNI
 VTEP
 anycast
 ARGV
+vppxlate
+PBH
+pbh
+subtree
+iface
+loopback
+resync

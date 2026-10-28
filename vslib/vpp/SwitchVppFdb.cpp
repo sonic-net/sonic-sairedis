@@ -1500,7 +1500,8 @@ sai_status_t SwitchVpp::vpp_set_vlan_attribute(
 
 sai_status_t SwitchVpp::vpp_create_bvi_interface(
         _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ const sai_attribute_t *attr_list,
+        _Inout_ RifCreateState& state)
 {
     SWSS_LOG_ENTER();
 
@@ -1605,6 +1606,11 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
         SWSS_LOG_ERROR("Failed to create BVI for VLAN %u", vlan_id);
         return SAI_STATUS_FAILURE;
     }
+    state.hwif = VppVlanInterface::hwifNameFor(static_cast<uint16_t>(vlan_id));
+    state.tap = "tap_Vlan" + std::to_string(vlan_id);
+    state.vlan = vlan_id;
+    state.bvi = true;
+    state.interface_created = true;
 
     // Get new list of physical interfaces from VS
     refresh_interfaces_list();
@@ -1617,13 +1623,16 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     if (vrf_id != 0 && set_interface_vrf(hw_ifname, 0, vrf_id, false) != 0)
     {
         SWSS_LOG_ERROR("Failed to bind %s to IPv4 VRF table %u", hw_ifname, vrf_id);
-        delete_bvi_interface(hw_ifname);
-        refresh_interfaces_list();
         return SAI_STATUS_FAILURE;
     }
 
     //Create bridge and set the l2 port as BVI
-    set_sw_interface_l2_bridge(hw_ifname,vlan_id, true, VPP_API_PORT_TYPE_BVI);
+    if (set_sw_interface_l2_bridge(hw_ifname, vlan_id, true, VPP_API_PORT_TYPE_BVI) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to attach BVI %s to bridge %u", hw_ifname, vlan_id);
+        return SAI_STATUS_FAILURE;
+    }
+    state.bridge_attached = true;
 
     //Set interface state up
     interface_set_state(hw_ifname, true);
@@ -1648,7 +1657,12 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 
         SWSS_LOG_NOTICE("configure_lcp_interface vpp_name:%s tap:%s",
                         vpp_ifname.c_str(), tap_name.c_str());
-        configure_lcp_interface(vpp_ifname.c_str(), tap_name.c_str(), true);
+        if (configure_lcp_interface(vpp_ifname.c_str(), tap_name.c_str(), true) != 0)
+        {
+            SWSS_LOG_ERROR("Failed to create LCP pair for %s", vpp_ifname.c_str());
+            return SAI_STATUS_FAILURE;
+        }
+        state.lcp_created = true;
 
         refresh_interfaces_list();
         interface_set_state(tap_name.c_str(), true);
@@ -1665,6 +1679,19 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
         {
             m_ifaceRegistry.setTapName(bvi_rec->getHwifName(), tap_name);
         }
+    }
+
+    // Apply a create-time loopback (hairpin) packet action on the BVI so a VLAN
+    // RIF created with SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION=DROP is
+    // programmed immediately. SAI marks the attribute CREATE_AND_SET, so a
+    // conforming create can carry it; without this the BVI would forward until a
+    // later SET (vpp_update_bvi_interface) arrived.
+    auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+
+    if (attr_loopback != NULL)
+    {
+        std::string bvi_hwif = std::string("bvi") + std::to_string(vlan_id);
+        CHECK_STATUS(vpp_apply_loopback_action(bvi_hwif, attr_loopback->value.s32));
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1765,6 +1792,16 @@ sai_status_t SwitchVpp::vpp_update_bvi_interface(
         SWSS_LOG_INFO("Set MTU %u on BVI %s", attr_mtu->value.u32, hwif_name);
 
         set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_mtu);
+    }
+
+    // Apply the loopback (hairpin) packet action on the BVI, so a VLAN RIF is
+    // covered like any port/LAG RIF.
+    auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+
+    if (attr_loopback != NULL)
+    {
+        CHECK_STATUS(vpp_apply_loopback_action(hwif_name, attr_loopback->value.s32));
+        set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_loopback);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1889,7 +1926,7 @@ uint32_t SwitchVpp::find_new_bond_id()
     // Get list of PortChannels from ip command
     cmd << IP_CMD << " -o link show | awk -F': ' '{print $2}' | grep " << PORTCHANNEL_PREFIX;
 
-    int ret = swss::exec(cmd.str(), res);
+    int ret = exec(cmd.str(), res);
     if (ret) {
         SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
         return ~0;
@@ -1906,18 +1943,38 @@ uint32_t SwitchVpp::find_new_bond_id()
 
     std::istringstream iss(res);
     std::string line;
+    const std::string prefix = PORTCHANNEL_PREFIX;
     bool found_new_bond_id = false;
     while (std::getline(iss, line)) {
-        std::string portchannel_name = line.substr(0, line.find('\n'));
-        bond_id = std::stoi(portchannel_name.substr(strlen(PORTCHANNEL_PREFIX)));
+        // Match the parent name, not e.g. Po54.54@PortChannel54.
+        if (line.compare(0, prefix.size(), prefix) != 0)
+        {
+            continue;
+        }
+        const std::string id = line.substr(prefix.size());
+        if (id.empty() || id.find_first_not_of("0123456789") != std::string::npos)
+        {
+            continue;
+        }
+
+        std::istringstream number(id);
+        if (!(number >> bond_id) || bond_id == ~0u)
+        {
+            SWSS_LOG_WARN("Ignoring out-of-range PortChannel name: %s", line.c_str());
+            continue;
+        }
 
         if (existing_bond_ids.find(bond_id) == existing_bond_ids.end()) {
-            SWSS_LOG_NOTICE("Found new bond id from PortChannel name: %d", bond_id);
+            SWSS_LOG_NOTICE("Found new bond id from PortChannel name: %u", bond_id);
             found_new_bond_id = true;
             break;
         }
     }
 
+    if (!found_new_bond_id)
+    {
+        SWSS_LOG_ERROR("No unclaimed PortChannel found in output of command '%s'", cmd.str().c_str());
+    }
     return found_new_bond_id ? bond_id : ~0;
 }
 
@@ -3268,6 +3325,123 @@ bool SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
 
     SWSS_LOG_NOTICE("FDB: notified AGED for MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u",
                     key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+    return true;
+}
+
+/*
+ * The VPP event connection was re-established, so MAC events VPP generated
+ * meanwhile are lost: a lost DELETE leaves a stale entry, a lost MOVE a wrong
+ * port, a lost ADD a missing one, and VPP re-learning the MAC does not repair
+ * the first two (ADD for a known key is skipped). Bring m_vpp_fdb_entries and
+ * the FDB notifications in line with VPP's L2FIB.
+ *
+ * Runs on the aging thread under MUTEX(). Events queued behind the RESYNC
+ * marker are applied afterwards, in order, so a change VPP makes after the dump
+ * still lands. Entries VPP ages out after its re-subscription flush are still
+ * in the dump; their DELETE events follow.
+ *
+ * Returns false, changing nothing, if VPP's L2FIB cannot be dumped.
+ */
+bool SwitchVpp::resyncFdbWithVpp()
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<vpp_l2fib_entry_t> dump;
+
+    if (vpp_l2fib_dump(~0u, [](const vpp_l2fib_entry_t *e, void *ctx)
+                       { static_cast<std::vector<vpp_l2fib_entry_t> *>(ctx)->push_back(*e); }, &dump) != 0)
+    {
+        SWSS_LOG_ERROR("FDB: L2FIB dump failed, FDB resync with VPP will be retried");
+        return false;
+    }
+
+    // VPP's learned MACs, keyed and gated like MAC events
+    std::map<VppFdbKey, uint32_t> vpp_macs;
+
+    for (const auto &e : dump)
+    {
+        auto rec = m_ifaceRegistry.findBySwIfIndex(e.sw_if_index);
+
+        if (e.is_static || !rec || !rec->hasBdId())
+            continue;
+
+        // A row from a BD the interface has left: VPP flushed it then, and
+        // keeps it only until its aging scan deletes it
+        if (e.bd_id != rec->getBdId())
+            continue;
+
+        VppFdbKey key;
+        memcpy(key.mac, e.mac, sizeof(key.mac));
+        key.bd_id = e.bd_id;
+        vpp_macs[key] = e.sw_if_index;
+    }
+
+    size_t aged = 0, learned = 0, moved = 0;
+
+    for (auto it = m_vpp_fdb_entries.begin(); it != m_vpp_fdb_entries.end(); )
+    {
+        if (vpp_macs.find(it->first) != vpp_macs.end())
+        {
+            ++it;
+            continue;
+        }
+
+        generateFdbAgedEvent(it->first);
+        SWSS_LOG_INFO("FDB: resync aged MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u (not in VPP L2FIB)",
+                      it->first.mac[0], it->first.mac[1], it->first.mac[2],
+                      it->first.mac[3], it->first.mac[4], it->first.mac[5],
+                      it->first.bd_id, it->second);
+        it = m_vpp_fdb_entries.erase(it);
+        aged++;
+    }
+
+    auto &fdb_objects = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+    for (const auto &m : vpp_macs)
+    {
+        auto it = m_vpp_fdb_entries.find(m.first);
+
+        if (it == m_vpp_fdb_entries.end())
+        {
+            // VPP also holds the FDB entries orchagent programs; leave those alone.
+            sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
+            sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
+
+            findBridgeVlanForPortVlan(m_ifaceRegistry.resolveIfOid(m.second),
+                                      (sai_vlan_id_t)m.first.bd_id, bv_id, bridge_port_id);
+
+            sai_fdb_entry_t fdb_entry = {};
+            fdb_entry.switch_id = m_switch_id;
+            fdb_entry.bv_id = bv_id;
+            memcpy(fdb_entry.mac_address, m.first.mac, sizeof(sai_mac_t));
+
+            if (fdb_objects.find(sai_serialize_fdb_entry(fdb_entry)) != fdb_objects.end())
+                continue;
+
+            if (generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_LEARNED))
+            {
+                m_vpp_fdb_entries[m.first] = m.second;
+                learned++;
+                SWSS_LOG_INFO("FDB: resync learned MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u (not in FDB)",
+                              m.first.mac[0], m.first.mac[1], m.first.mac[2],
+                              m.first.mac[3], m.first.mac[4], m.first.mac[5],
+                              m.first.bd_id, m.second);
+            }
+        }
+        else if (it->second != m.second &&
+                 generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_MOVE))
+        {
+            SWSS_LOG_INFO("FDB: resync moved MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u sw_if_index %u -> %u",
+                          m.first.mac[0], m.first.mac[1], m.first.mac[2],
+                          m.first.mac[3], m.first.mac[4], m.first.mac[5],
+                          m.first.bd_id, it->second, m.second);
+            it->second = m.second;
+            moved++;
+        }
+    }
+
+    SWSS_LOG_NOTICE("FDB: resynced with VPP L2FIB (%zu learned MACs): %zu aged, %zu learned, %zu moved",
+                    vpp_macs.size(), aged, learned, moved);
     return true;
 }
 
