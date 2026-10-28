@@ -136,6 +136,9 @@ struct VppMock
     int bfdDumpResult = 0;
     unsigned int bfdDumpCalls = 0;
     std::vector<vpp_bfd_state_notif_t> bfdSessions;
+    bool natSupported = true;
+    // NAT sessions VPP reports, by inside address (network order)
+    std::map<uint32_t, std::vector<vpp_nat44_session_t>> natSessions;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
