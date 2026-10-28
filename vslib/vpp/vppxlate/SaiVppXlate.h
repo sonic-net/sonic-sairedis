@@ -135,6 +135,57 @@ _Static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
         vpp_acl_rule_t rules[0];
     } vpp_acl_t;
 
+    /*
+     * Policy Based Hashing.
+     *
+     * These mirror the sonic_ext plugin's sonic_ext_pbh_hash_field_t and
+     * sonic_ext_pbh_rule_t.  The values of the field and qualifier enums are
+     * part of the binary API contract and must stay in step with pbh.h in the
+     * plugin; they are spelled out here rather than pulled from the generated
+     * api_enum.h because the qualifier bitmap is built from an X-macro that
+     * vppapigen does not export.
+     */
+    typedef enum {
+        VPP_PBH_HF_INNER_IP_PROTOCOL = 0,
+        VPP_PBH_HF_INNER_L4_SRC_PORT,
+        VPP_PBH_HF_INNER_L4_DST_PORT,
+        VPP_PBH_HF_INNER_SRC_IPV4,
+        VPP_PBH_HF_INNER_DST_IPV4,
+        VPP_PBH_HF_INNER_SRC_IPV6,
+        VPP_PBH_HF_INNER_DST_IPV6,
+    } vpp_pbh_hash_field_e;
+
+    typedef enum {
+        VPP_PBH_Q_ETHER_TYPE       = (1 << 0),
+        VPP_PBH_Q_IP_PROTOCOL      = (1 << 1),
+        VPP_PBH_Q_IPV6_NEXT_HEADER = (1 << 2),
+        VPP_PBH_Q_L4_DST_PORT      = (1 << 3),
+        VPP_PBH_Q_GRE_KEY          = (1 << 4),
+        VPP_PBH_Q_INNER_ETHER_TYPE = (1 << 5),
+    } vpp_pbh_qualifier_e;
+
+    typedef struct _vpp_pbh_hash_field {
+        uint8_t field;          /* vpp_pbh_hash_field_e */
+        uint32_t sequence_id;   /* order; equal ids are XOR-folded together */
+        uint8_t mask[16];       /* wire order; ignored by non-IP fields */
+    } vpp_pbh_hash_field_t;
+
+    typedef struct _vpp_pbh_rule {
+        uint32_t rule_id;       /* caller's id, echoed by `show` */
+        uint32_t priority;      /* higher wins; first match stops the walk */
+        uint32_t qualifiers;    /* bitmap of vpp_pbh_qualifier_e */
+        uint16_t ether_type;
+        uint16_t inner_ether_type;
+        uint16_t l4_dst_port;
+        uint8_t ip_protocol;
+        uint8_t ipv6_next_header;
+        uint32_t gre_key;
+        uint32_t gre_key_mask;
+        uint32_t ecmp_profile;  /* profile index, ~0 for no action */
+        uint32_t lag_profile;   /* profile index, ~0 for no action */
+        bool flow_counter;
+    } vpp_pbh_rule_t;
+
     typedef struct {
         vpp_ip_addr_t dst_prefix;
         vpp_ip_addr_t dst_prefix_mask;
@@ -236,6 +287,17 @@ _Static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
     typedef enum {
 	VPP_INTF_LINK_STATUS = 1,
         VPP_BFD_STATE_CHANGE,
+        /*
+         * No data. Link events VPP sent while the event connection was down
+         * are lost: the consumer re-reads the link state of every interface.
+         * Queued behind the events read before the connection failed.
+         */
+        VPP_INTF_LINK_RESYNC,
+        /*
+         * No data. Like VPP_INTF_LINK_RESYNC, for BFD events: the consumer
+         * re-reads the state of every BFD session (vpp_bfd_session_dump()).
+         */
+        VPP_BFD_RESYNC,
     } vpp_event_type_e;
 
     typedef union vpp_event_data_ {
@@ -444,13 +506,22 @@ typedef enum {
     extern int create_sub_interface(const char *hwif_name, uint32_t sub_id, uint16_t vlan_id);
     extern int delete_sub_interface(const char *hwif_name, uint32_t sub_id);
     extern int set_interface_vrf(const char *hwif_name, uint32_t sub_id, uint32_t vrf_id, bool is_ipv6);
+    extern int get_interface_vrf(const char *hwif_name, bool is_ipv6, uint32_t *vrf_id);
     extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
     extern int interface_ip_address_del_all(const char *hwif_name);
     extern int interface_set_state (const char *hwif_name, bool is_up);
+    typedef struct {
+        uint32_t mtu[4];
+        bool admin_up;
+        bool link_up;
+    } vpp_interface_state_t;
+    extern int get_interface_state(const char *hwif_name, vpp_interface_state_t *state);
+    extern int get_interface_mpls_enabled(const char *hwif_name, bool *enabled);
     extern int interface_set_state_by_index (uint32_t sw_if_index, bool is_up);
     extern int interface_set_promiscuous (const char *hwif_name, bool enable);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
+    extern int sw_interface_set_mtu_all(const char *hwif_name, const uint32_t mtu[4]);
     extern int sw_interface_set_link_speed(const char *hwif_name, uint32_t link_speed);
     extern int sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address);
     extern int sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address);
@@ -490,6 +561,22 @@ typedef enum {
 				      bool is_input);
     extern int vpp_acl_interface_unbind(const char *hwif_name, uint32_t acl_index,
 					bool is_input);
+    /*
+     * PBH.  profile_index and table_index are allocated by VPP and returned;
+     * pass ~0 in *table_index to create a table rather than replace one.
+     * Counters are deliberately absent: they are read from the stats segment
+     * by vpp_rule_stats_query(), not over the binary API.
+     */
+    extern int vpp_pbh_profile_add_del(bool is_add,
+				       const vpp_pbh_hash_field_t *fields,
+				       uint32_t n_fields, uint32_t *profile_index);
+    extern int vpp_pbh_table_add_replace(const char *name,
+					 const vpp_pbh_rule_t *rules,
+					 uint32_t n_rules, uint32_t *table_index);
+    extern int vpp_pbh_table_del(uint32_t table_index);
+    extern int vpp_pbh_interface_attach_detach(const char *hwif_name,
+					       uint32_t table_index, bool attach);
+
     extern int vpp_tunterm_acl_add_replace (uint32_t *tunterm_index, uint32_t count, vpp_tunterm_acl_t *acl);
     extern int vpp_tunterm_acl_del (uint32_t tunterm_index);
     extern int vpp_tunterm_acl_interface_add_del (uint32_t tunterm_index,
@@ -497,6 +584,8 @@ typedef enum {
     extern int interface_get_state(const char *hwif_name, bool *link_is_up);
     extern int vpp_refresh_interface_speed(const char *hwif_name);
     extern int vpp_get_interface_speed(const char *hwif_name, uint32_t *speed);
+    extern int vpp_wait_for_events(int timeout_ms);
+    extern int vpp_drain_events();
     extern int vpp_sync_for_events();
     extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
     extern int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
@@ -524,6 +613,10 @@ typedef enum {
         VPP_MAC_ACTION_ADD    = 0,  /* newly learned */
         VPP_MAC_ACTION_DELETE = 1,  /* aged out */
         VPP_MAC_ACTION_MOVE   = 2,  /* moved to a different port */
+        /* Not from VPP: the event connection was re-established and MAC events
+         * may have been lost. mac/sw_if_index are unused; the consumer should
+         * reconcile its FDB with vpp_l2fib_dump(). */
+        VPP_MAC_ACTION_RESYNC = 3,
     } vpp_mac_action_t;
 
     /* MAC event callback types for push-based FDB notification via WANT_L2_MACS_EVENTS2 */
@@ -533,19 +626,39 @@ typedef enum {
         uint8_t  action; /* vpp_mac_action_t */
     } vpp_mac_event_t;
 
-    /* Batch callback: invoked once per l2_macs_event message with all entries.
-     * Called on the VPP API receive thread — must NOT acquire m_apimutex. */
+    /* Batch callback: invoked once per l2_macs_event message with all entries,
+     * and with a single VPP_MAC_ACTION_RESYNC entry after the event connection
+     * is re-established.
+     * Called on the thread reading the VPP event socket (the vpp event thread),
+     * under EVENT_LOCK — must NOT acquire m_apimutex. */
     typedef void (*vpp_mac_event_cb_fn)(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
 
-    /* Register/deregister for push-based MAC learn/age/move events from VPP.
-     * cb is invoked on the VPP API receive thread — implementations MUST NOT
-     * acquire the saivpp main mutex (m_apimutex) directly; enqueue the event
-     * and process it from a thread that safely holds the mutex. */
-    extern int vpp_want_l2_macs_events2(bool enable, vpp_mac_event_cb_fn cb, void *ctx);
+    /* Set (cb != NULL) or clear (cb == NULL) the receiver of push-based MAC
+     * learn/age/move events. The VPP subscription itself is made by
+     * init_vpp_client() along with interface and BFD events; events arriving
+     * while no callback is set are dropped. Implementations MUST NOT acquire
+     * the saivpp main mutex (m_apimutex) directly; enqueue the event and
+     * process it from a thread that safely holds the mutex. */
+    extern void vpp_set_mac_event_cb(vpp_mac_event_cb_fn cb, void *ctx);
 
     /* Set the L2 FIB scan delay (in units of 10ms, default=10 → 100ms).
      * Reduces the interval between VPP scanning for aged/moved MACs. */
     extern int vpp_l2fib_set_scan_delay(uint16_t delay_10ms);
+
+    /* One VPP L2FIB entry, as reported by vpp_l2fib_dump() */
+    typedef struct {
+        uint8_t  mac[6];
+        uint32_t bd_id;
+        uint32_t sw_if_index;
+        bool     is_static; /* static, BVI or filter entry */
+    } vpp_l2fib_entry_t;
+
+    typedef void (*vpp_l2fib_entry_cb_fn)(const vpp_l2fib_entry_t *entry, void *ctx);
+
+    /* Dump VPP's L2FIB (bd_id ~0u: all bridge domains) on the command
+     * connection; cb is called for each entry once the dump has completed,
+     * outside the VPP API lock. Returns 0 on success. */
+    extern int vpp_l2fib_dump(uint32_t bd_id, vpp_l2fib_entry_cb_fn cb, void *ctx);
 
     /* Reverse-lookup: return the VPP sw_if_index for a given hw interface name,
      * or ~0u if not found. */
@@ -557,6 +670,13 @@ typedef enum {
     extern int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
                            vpp_ip_addr_t *peer_addr);
     extern int bfd_udp_set_tos(uint8_t tos);
+
+    typedef void (*vpp_bfd_session_cb_fn)(const vpp_bfd_state_notif_t *session, void *ctx);
+
+    /* Dump VPP's BFD UDP sessions, with their state, on the command
+     * connection; cb is called for each session once the dump has completed,
+     * outside the VPP API lock. Returns 0 on success. */
+    extern int vpp_bfd_session_dump(vpp_bfd_session_cb_fn cb, void *ctx);
 
     extern int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add,  uint32_t *sw_if_index);
     extern int vpp_ip_addr_t_to_string(vpp_ip_addr_t *ip_addr, char *buffer, size_t maxlen);
@@ -576,6 +696,7 @@ typedef enum {
     extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
 
     extern int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable);
+    extern int vpp_iface_loopback_set_action(const char *hwif_name, int action);
     extern int vpp_sonic_ext_feature_get(const char *feature, bool *enabled);
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
     extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);

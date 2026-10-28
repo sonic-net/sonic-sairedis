@@ -67,6 +67,7 @@ MTU
 Mellanox
 NHG
 NPU
+NUL
 OA
 OIDs
 OTN
@@ -466,3 +467,10 @@ BondEthernet
 PortChannel
 VPP
 ARGV
+vppxlate
+PBH
+pbh
+subtree
+iface
+loopback
+resync

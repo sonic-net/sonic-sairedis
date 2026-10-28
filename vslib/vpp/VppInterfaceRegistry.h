@@ -51,10 +51,11 @@ namespace saivs
      * value-returning resolve*() accessors, which do the whole read inside the
      * lock, never by dereferencing a findBy*() result.
      *
-     * The VPP API RX thread (staticMacEventCb) must still NEVER touch it: that
-     * thread runs holding VPP_LOCK, and taking any further lock there would
-     * break the "never acquire another lock while holding vpp_mutex" ordering
-     * rule. It only enqueues onto m_mac_event_queue.
+     * The VPP event thread (staticMacEventCb) must still NEVER touch it: that
+     * thread runs holding EVENT_LOCK (the same vpp_mutex as VPP_LOCK), and
+     * taking any further lock there would break the "never acquire another
+     * lock while holding vpp_mutex" ordering rule. It only enqueues onto
+     * m_mac_event_queue.
      *
      * This class makes no VPP API calls. Resolving a sw_if_index from VPP stays
      * in SwitchVpp, which then calls bindSwIfIndex(); that keeps the registry
@@ -122,11 +123,14 @@ namespace saivs
              * returned as is. The tagged VLAN member and sub-port RIF paths both
              * land here, but SONiC never overlaps them -- one is deleted before
              * the other is created -- so there is no ownership to arbitrate.
+             * A RIF supplies the actual kernel name, which may use SONiC's
+             * short or long spelling; L2 members use the derived name.
              */
             std::shared_ptr<VppSubInterface> addSubInterface(
                     _In_ const std::shared_ptr<VppInterface>& parent,
                     _In_ uint32_t subId,
-                    _In_ uint16_t vlanId);
+                    _In_ uint16_t vlanId,
+                    _In_ const std::string& osIf = std::string());
 
             /*
              * The VLAN oid is recorded so that a BVI can be resolved straight
@@ -183,6 +187,9 @@ namespace saivs
 
             bool setRifOid(
                     _In_ const std::string& hwifName,
+                    _In_ sai_object_id_t rifOid);
+
+            bool clearRifOid(
                     _In_ sai_object_id_t rifOid);
 
             bool setBdId(
@@ -292,6 +299,10 @@ namespace saivs
                     _In_ sai_object_id_t oid,
                     _In_ uint32_t vlanId) const;
 
+            // RIF identity is separate from the backing PORT/LAG/VLAN oid.
+            std::string resolveHwIfByRifOid(
+                    _In_ sai_object_id_t rifOid) const;
+
             /*
              * A LAG that is fully realised: registered, of LAG type and bound
              * to a VPP sw_if_index. addLag() takes the bond id, the sw_if_index
@@ -320,7 +331,7 @@ namespace saivs
 
             /*
              * VPP interface name of a host OS interface name ("Ethernet0",
-             * "PortChannel1", "PortChannel1.100", "Vlan200"). The input is the
+             * "PortChannel1", "Po1.100", "Vlan200"). The input is the
              * SONiC-side netdev name as produced by resolveOsIf(); a bond LCP
              * tap name ("be1") is deliberately not accepted. Empty on miss.
              *
@@ -390,7 +401,7 @@ namespace saivs
             mutable std::recursive_mutex m_mutex;
 
             /*
-             * All five indexes hold a shared_ptr rather than a raw pointer.
+             * All indexes hold a shared_ptr rather than a raw pointer.
              * Consistency is then structural: a missed erase leaves a stale
              * entry, which is diagnosable, instead of a dangling pointer, which
              * is undefined behaviour on the FDB hot path.
@@ -405,8 +416,11 @@ namespace saivs
             /* only records that CURRENTLY have a host tap */
             std::map<std::string, std::shared_ptr<VppInterface>> m_byTap;
 
-            /* PARTIAL: PORT and LAG oids only, never ROUTER_INTERFACE */
+            /* PARTIAL: PORT, LAG and VLAN oids only, never ROUTER_INTERFACE */
             std::map<sai_object_id_t, std::shared_ptr<VppInterface>> m_byOid;
+
+            /* RIF bindings, added/cleared by successful SAI RIF lifecycle calls */
+            std::map<sai_object_id_t, std::shared_ptr<VppInterface>> m_byRifOid;
 
             /* only records whose sw_if_index has been resolved */
             std::map<uint32_t, std::shared_ptr<VppInterface>> m_bySwIfIndex;

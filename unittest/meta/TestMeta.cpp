@@ -448,6 +448,112 @@ TEST_F(MetaTest, remove_nonexistent_generic_object)
     EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
 }
 
+static void fill_chardata(
+        _Out_ sai_attribute_t& attr,
+        _In_ sai_attr_id_t id,
+        _In_ size_t length,
+        _In_ char character)
+{
+    SWSS_LOG_ENTER();
+
+    memset(&attr, 0, sizeof(attr));
+
+    attr.id = id;
+    memset(attr.value.chardata, character, length);
+}
+
+TEST_F(MetaTest, chardata_generic_validation)
+{
+    SWSS_LOG_ENTER();
+
+    CreatePort();
+
+    sai_attribute_t mirror[3]{};
+
+    mirror[0].id = SAI_MIRROR_SESSION_ATTR_TYPE;
+    mirror[0].value.s32 = SAI_MIRROR_SESSION_TYPE_LOCAL;
+
+    mirror[1].id = SAI_MIRROR_SESSION_ATTR_MONITOR_PORT;
+    mirror[1].value.oid = m_port_id;
+
+    fill_chardata(mirror[2], SAI_MIRROR_SESSION_ATTR_LABEL, 31, 'a');
+
+    sai_object_id_t mirror_id = SAI_NULL_OBJECT_ID;
+
+    // A 31-character label fits in the buffer.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(SAI_OBJECT_TYPE_MIRROR_SESSION, &mirror_id, m_switch_id, 3, mirror));
+
+    fill_chardata(mirror[2], SAI_MIRROR_SESSION_ATTR_LABEL, 32, 'b');
+
+    // All 32 bytes are valid when none of them is NUL.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->set(SAI_OBJECT_TYPE_MIRROR_SESSION, mirror_id, &mirror[2]));
+
+    fill_chardata(mirror[2], SAI_MIRROR_SESSION_ATTR_LABEL, 1, '\x01');
+
+    // A non-printable byte is rejected.
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m_meta->set(SAI_OBJECT_TYPE_MIRROR_SESSION, mirror_id, &mirror[2]));
+}
+
+TEST_F(MetaTest, chardata_hostif_name)
+{
+    SWSS_LOG_ENTER();
+
+    CreatePort();
+
+    sai_attribute_t hostif[3]{};
+
+    hostif[0].id = SAI_HOSTIF_ATTR_TYPE;
+    hostif[0].value.s32 = SAI_HOSTIF_TYPE_NETDEV;
+
+    hostif[1].id = SAI_HOSTIF_ATTR_OBJ_ID;
+    hostif[1].value.oid = m_port_id;
+
+    fill_chardata(hostif[2], SAI_HOSTIF_ATTR_NAME, 15, 'h');
+
+    sai_object_id_t hostif_id = SAI_NULL_OBJECT_ID;
+
+    // 15 characters leave room for the NUL in the 16-byte name.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif_id, m_switch_id, 3, hostif));
+
+    fill_chardata(hostif[2], SAI_HOSTIF_ATTR_NAME, 16, 'h');
+
+    // 16 characters leave no room for the NUL.
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif_id, m_switch_id, 3, hostif));
+
+    fill_chardata(hostif[2], SAI_HOSTIF_ATTR_NAME, 0, 'h');
+
+    // An empty name is rejected.
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif_id, m_switch_id, 3, hostif));
+}
+
+TEST_F(MetaTest, chardata_genetlink_multicast_group_name)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t genetlink[3]{};
+
+    genetlink[0].id = SAI_HOSTIF_ATTR_TYPE;
+    genetlink[0].value.s32 = SAI_HOSTIF_TYPE_GENETLINK;
+
+    fill_chardata(genetlink[1], SAI_HOSTIF_ATTR_NAME, 4, 'n');
+    fill_chardata(genetlink[2], SAI_HOSTIF_ATTR_GENETLINK_MCGRP_NAME, 15, 'g');
+
+    sai_object_id_t hostif_id = SAI_NULL_OBJECT_ID;
+
+    // 15 characters leave room for the NUL in the 16-byte group name.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif_id, m_switch_id, 3, genetlink));
+
+    fill_chardata(genetlink[2], SAI_HOSTIF_ATTR_GENETLINK_MCGRP_NAME, 16, 'g');
+
+    // 16 characters leave no room for the NUL in the group name.
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif_id, m_switch_id, 3, genetlink));
+
+    fill_chardata(genetlink[2], SAI_HOSTIF_ATTR_GENETLINK_MCGRP_NAME, 0, 'g');
+
+    // An empty group name is rejected.
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif_id, m_switch_id, 3, genetlink));
+}
+
 TEST(Meta, initialize)
 {
     Meta m(std::make_shared<DummySaiInterface>());
