@@ -1544,6 +1544,8 @@ sai_status_t SwitchStateBase::create_default_virtual_router()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
+static const uint32_t DEFAULT_MAX_STP_INSTANCE = 63;
+
 sai_status_t SwitchStateBase::create_default_stp_instance()
 {
     SWSS_LOG_ENTER();
@@ -1558,6 +1560,14 @@ sai_status_t SwitchStateBase::create_default_stp_instance()
 
     attr.id = SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID;
     attr.value.oid = stp_instance_id;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // Orchagent sizes spanning tree from this and does not initialise STP
+    // when the query fails. Broadcom SAI reports 63 (the default instance
+    // plus 62 more), so the limit behaves the same here as on hardware.
+    attr.id = SAI_SWITCH_ATTR_MAX_STP_INSTANCE;
+    attr.value.u32 = DEFAULT_MAX_STP_INSTANCE;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
@@ -2369,6 +2379,18 @@ sai_status_t SwitchStateBase::warm_update_switch()
         CHECK_STATUS(set_initial_tam_objects());
     }
 
+    // check for the STP instance limit, which dumps written before it was
+    // set do not carry
+
+    attr.id = SAI_SWITCH_ATTR_MAX_STP_INSTANCE;
+
+    if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        attr.value.u32 = DEFAULT_MAX_STP_INSTANCE;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+    }
+
     // check for default supported object types
 
     attr.id = SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST;
@@ -2744,6 +2766,7 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP:
             case SAI_SWITCH_ATTR_DEFAULT_VLAN_ID:
             case SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID:
+            case SAI_SWITCH_ATTR_MAX_STP_INSTANCE:
             case SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID:
                 return SAI_STATUS_SUCCESS;
 
