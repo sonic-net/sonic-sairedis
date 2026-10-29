@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -335,6 +336,202 @@ TEST_F(SwitchVppSubIfAdminState, SubPortSetDownBeforeThePortComesUpStaysDown)
 
     EXPECT_EQ(2u, vppMock().callsTo("interface_set_state", SUB_PORT_HWIF).size());
     EXPECT_FALSE(vppMock().isAdminUp(SUB_PORT_HWIF));
+}
+
+/*
+ * The L2 punt classify sessions trap DHCPv4, ARP and IPv6 multicast to the
+ * control plane. With sonic-ext's l2-trap-learn on, they send the frame to
+ * sonic-ext-l2-trap-learn, so that VPP learns its source MAC, as an ASIC does;
+ * LLDP's session never does. The first VLAN member sets up the sessions of
+ * untagged and tagged members alike, once per process, and
+ * sonicExtFeatureEnabled() keeps what VPP reports, so each case runs in a
+ * process of its own.
+ */
+class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
+{
+    protected:
+
+        // the next index of each node a punt session can send a frame to
+        enum : uint32_t
+        {
+            PUNT = 1,       // linux-cp-punt
+            TRAP_FIXUP,     // sonic-ext-l2-trap-fixup
+            VLAN_FILTER,    // sonic-ext-l2-vlan-filter
+            TRAP_LEARN,     // sonic-ext-l2-trap-learn
+        };
+
+        // the nexts of the punt sessions, by what they match
+        using Nexts = std::map<std::string, std::vector<uint32_t>>;
+
+        // What a punt session matches: the ethertype of a tagged frame
+        // follows its 802.1Q tag
+        static std::string matched(
+                const std::vector<uint8_t>& match)
+        {
+            SWSS_LOG_ENTER();
+
+            auto u16 = [&match](size_t at) {
+                return at + 1 < match.size() ? (match[at] << 8) | match[at + 1] : 0;
+            };
+
+            bool tagged = u16(16) != 0;
+            std::string member = tagged ? "tagged " : "untagged ";
+
+            if (u16(0) == 0x3333)
+            {
+                return member + "IPv6 multicast";
+            }
+
+            switch (tagged ? u16(16) : u16(12))
+            {
+                case 0x0800:
+                    return member + "DHCPv4";
+                case 0x0806:
+                    return member + "ARP";
+                case 0x88cc:
+                    return "LLDP";
+                case 0x8100:
+                    return "VLAN filter";
+                default:
+                    return "other";
+            }
+        }
+
+        static Nexts puntNexts()
+        {
+            SWSS_LOG_ENTER();
+
+            Nexts nexts;
+
+            for (const auto& session: vppMock().classifySessions)
+            {
+                nexts[matched(session.match)].push_back(session.hit_next_index);
+            }
+
+            return nexts;
+        }
+
+        // the nexts, by the name of each node
+        std::string str(
+                const Nexts& nexts) const
+        {
+            SWSS_LOG_ENTER();
+
+            std::map<uint32_t, std::string> names;
+
+            for (const auto& node: NODES)
+            {
+                names[node.second] = node.first;
+            }
+
+            std::string s;
+
+            for (const auto& kv: nexts)
+            {
+                s += "  " + kv.first + ":";
+
+                for (auto next: kv.second)
+                {
+                    s += " " + (names.count(next) ? names[next] : std::to_string(next));
+                }
+
+                s += "\n";
+            }
+
+            return s;
+        }
+
+        // The punt sessions the first VLAN member sets up have the nexts
+        // expected, with these sonic-ext features on and these nodes in VPP
+        void expectPuntNexts(
+                const std::set<std::string>& features,
+                const std::map<std::string, uint32_t>& nodes,
+                const Nexts& expected)
+        {
+            SWSS_LOG_ENTER();
+
+            ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+            ASSERT_EXIT({
+                vppMock().enabledFeatures = features;
+                vppMock().nodeNexts = nodes;
+
+                addTaggedMember(m_bridgePort);
+
+                auto nexts = puntNexts();
+
+                if (nexts != expected)
+                {
+                    fprintf(stderr, "punt session nexts:\n%sexpected:\n%s",
+                            str(nexts).c_str(), str(expected).c_str());
+                }
+
+                _exit(nexts == expected && !::testing::Test::HasFailure() ? 0 : 1);
+            }, ::testing::ExitedWithCode(0), "");
+        }
+
+        const std::set<std::string> FEATURES = {"l2-trap-fixup", "l2-trap-learn", "l2-vlan-filter"};
+
+        const std::map<std::string, uint32_t> NODES = {
+            {"linux-cp-punt", PUNT},
+            {"sonic-ext-l2-trap-fixup", TRAP_FIXUP},
+            {"sonic-ext-l2-vlan-filter", VLAN_FILTER},
+            {"sonic-ext-l2-trap-learn", TRAP_LEARN},
+        };
+
+        // the nexts without sonic-ext-l2-trap-learn, as before it; tagged
+        // IPv6 multicast has a session in each of its two tables
+        const Nexts NEXTS_WITHOUT_TRAP_LEARN = {
+            {"untagged DHCPv4", {PUNT}},
+            {"untagged ARP", {PUNT}},
+            {"untagged IPv6 multicast", {PUNT}},
+            {"tagged DHCPv4", {TRAP_FIXUP}},
+            {"tagged ARP", {TRAP_FIXUP}},
+            {"tagged IPv6 multicast", {TRAP_FIXUP, TRAP_FIXUP}},
+            {"LLDP", {PUNT}},
+            {"VLAN filter", {VLAN_FILTER}},
+        };
+};
+
+TEST_F(SwitchVppL2TrapLearn, TrapsGoToTrapLearnWhenItIsOn)
+{
+    expectPuntNexts(FEATURES, NODES, {
+        {"untagged DHCPv4", {TRAP_LEARN}},
+        {"untagged ARP", {TRAP_LEARN}},
+        {"untagged IPv6 multicast", {TRAP_LEARN}},
+        {"tagged DHCPv4", {TRAP_LEARN}},
+        {"tagged ARP", {TRAP_LEARN}},
+        {"tagged IPv6 multicast", {TRAP_LEARN, TRAP_LEARN}},
+        {"LLDP", {PUNT}},
+        {"VLAN filter", {VLAN_FILTER}},
+    });
+}
+
+TEST_F(SwitchVppL2TrapLearn, TrapsKeepTheirNextsWhenTrapLearnIsOff)
+{
+    expectPuntNexts({"l2-trap-fixup", "l2-vlan-filter"}, NODES, NEXTS_WITHOUT_TRAP_LEARN);
+}
+
+// a sonic-ext plugin that reports l2-trap-learn on without having its node
+TEST_F(SwitchVppL2TrapLearn, TrapsKeepTheirNextsWhenVppHasNoTrapLearnNode)
+{
+    auto nodes = NODES;
+
+    nodes.erase("sonic-ext-l2-trap-learn");
+
+    expectPuntNexts(FEATURES, nodes, NEXTS_WITHOUT_TRAP_LEARN);
+}
+
+// sonic-ext-l2-trap-learn sends its copy of the frame to
+// sonic-ext-l2-trap-fixup, so it isn't used without it
+TEST_F(SwitchVppL2TrapLearn, TrapsDoNotGoToTrapLearnWithoutTrapFixup)
+{
+    expectPuntNexts({"l2-trap-learn", "l2-vlan-filter"}, NODES, {
+        {"untagged DHCPv4", {PUNT}},
+        {"untagged ARP", {PUNT}},
+        {"untagged IPv6 multicast", {PUNT}},
+        {"LLDP", {PUNT}},
+        {"VLAN filter", {VLAN_FILTER}},
+    });
 }
 
 TEST(SwitchVpp, fdbResyncRetriesFailedL2fibDump)

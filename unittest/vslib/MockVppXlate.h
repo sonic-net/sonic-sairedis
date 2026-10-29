@@ -64,6 +64,17 @@ struct VppRuleStatsCall
     uint32_t rule_index;
 };
 
+/**
+ * @brief One vpp_classify_session_add() call: the node a frame the session
+ * matches goes to, and its match, which tells what it is for.
+ */
+struct VppClassifySession
+{
+    uint32_t table_index;
+    uint32_t hit_next_index;
+    std::vector<uint8_t> match;
+};
+
 struct VppMock
 {
     bool loopbackEnabled = false;
@@ -95,6 +106,13 @@ struct VppMock
     // sonic-ext features reported as enabled. "iface-loopback" keeps its own
     // flag because the loopback tests predate this set.
     std::set<std::string> enabledFeatures;
+
+    // The nodes vpp_add_node_next() adds as nexts, with the next index each
+    // gets; it fails for any other. None by default, so the one-time setup of
+    // the L2 punt classify tables fails, which the VLAN member path tolerates.
+    std::map<std::string, uint32_t> nodeNexts;
+    uint32_t nextClassifyTable = 0;
+    std::vector<VppClassifySession> classifySessions;
 
     // Policy Based Hashing.
     int pbhProfileResult = 0;
