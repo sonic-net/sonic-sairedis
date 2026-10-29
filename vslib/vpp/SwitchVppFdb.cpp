@@ -3387,7 +3387,7 @@ bool SwitchVpp::resyncFdbWithVpp()
 
         if (it == m_vpp_fdb_entries.end())
         {
-            // VPP also holds the FDB entries orchagent programs; leave those alone.
+            // VPP also holds the FDB entries orchagent programs: not learned MACs
             sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
             sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
 
@@ -3399,8 +3399,31 @@ bool SwitchVpp::resyncFdbWithVpp()
             fdb_entry.bv_id = bv_id;
             memcpy(fdb_entry.mac_address, m.first.mac, sizeof(sai_mac_t));
 
-            if (fdb_objects.find(sai_serialize_fdb_entry(fdb_entry)) != fdb_objects.end())
+            auto fdb_it = fdb_objects.find(sai_serialize_fdb_entry(fdb_entry));
+
+            if (fdb_it != fdb_objects.end())
+            {
+                /*
+                 * An FDB entry orchagent created: VPP doesn't age it, unless
+                 * it moved it to another port, as it may have while its MOVE
+                 * event was lost. Take that move, so the entry is tracked.
+                 */
+                sai_attribute_t attr;
+                attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+
+                if (get(SAI_OBJECT_TYPE_FDB_ENTRY, fdb_it->first, 1, &attr) == SAI_STATUS_SUCCESS &&
+                    attr.value.oid != bridge_port_id &&
+                    generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_MOVE))
+                {
+                    m_vpp_fdb_entries[m.first] = m.second;
+                    moved++;
+                    SWSS_LOG_INFO("FDB: resync moved MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u to sw_if_index %u (FDB entry orchagent created)",
+                                  m.first.mac[0], m.first.mac[1], m.first.mac[2],
+                                  m.first.mac[3], m.first.mac[4], m.first.mac[5],
+                                  m.first.bd_id, m.second);
+                }
                 continue;
+            }
 
             if (generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_LEARNED))
             {

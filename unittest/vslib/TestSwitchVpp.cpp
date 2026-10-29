@@ -1557,6 +1557,26 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
             m_sw->processFdbEntriesForAging();
         }
 
+        // the event socket reconnected, and VPP's L2FIB has the MAC on sw_if_index
+        void resync(
+                uint32_t sw_if_index)
+        {
+            SWSS_LOG_ENTER();
+
+            vpp_l2fib_entry_t row = {};
+
+            memcpy(row.mac, MAC, sizeof(row.mac));
+            row.bd_id = VLAN_ID;
+            row.sw_if_index = sw_if_index;
+
+            vppMock().l2fib = {row};
+
+            m_sw->m_mac_event_queue.push({{0}, ~0u, VPP_MAC_ACTION_RESYNC});
+            m_sw->processFdbEntriesForAging();
+
+            EXPECT_EQ(1u, vppMock().l2fibDumpCalls);
+        }
+
         // the one FDB notification saivpp sent since the last call
         std::string fdbNotification()
         {
@@ -1653,4 +1673,34 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, EntryRemovedAfterVppMovedItIsForgotten)
     macEvent(VPP_MAC_ACTION_ADD, OTHER_PORT_SW_IF_INDEX);
 
     EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_LEARNED"));
+}
+
+// VPP moved the entry while its MOVE event was lost: the resync takes the move
+TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovedWhileItsEventsWereLostIsMovedByTheResync)
+{
+    resync(OTHER_PORT_SW_IF_INDEX);
+
+    auto ntf = fdbNotification();
+
+    EXPECT_NE(std::string::npos, ntf.find("SAI_FDB_EVENT_MOVE"));
+    EXPECT_NE(std::string::npos, ntf.find(MAC_STR));
+    EXPECT_EQ(m_otherBridgePort, entryBridgePort());
+
+    // and its aging is reported
+    macEvent(VPP_MAC_ACTION_DELETE, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_AGED"));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+// VPP has the entry on its own port: not a MAC VPP learned, nothing to report
+TEST_F(SwitchVppFdbAgingCreatedEntry, EntryOnItsPortIsLeftAloneByTheResync)
+{
+    resync(PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
