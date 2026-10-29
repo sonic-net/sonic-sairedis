@@ -470,5 +470,9 @@ PBH
 pbh
 subtree
 iface
+saivpp
+fixup
+DHCP
+LLDP
 loopback
 resync

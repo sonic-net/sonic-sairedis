@@ -55,8 +55,8 @@ tests_SOURCES = main.cpp \
 				TestTAM.cpp
 
 if USE_VPP
-tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
-				TestSwitchVppPbh.cpp \
+tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestSwitchVppSonicExt.cpp \
+				TestVppInterfaceRegistry.cpp TestSwitchVppPbh.cpp \
 				MockVppXlate.cpp MockVppXlate.h \
 				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
@@ -73,6 +73,9 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
 				vpp_pbh_profile_add_del vpp_pbh_table_add_replace vpp_pbh_table_del \
 				vpp_pbh_interface_attach_detach vpp_rule_stats_query \
+				vpp_classify_table_create vpp_classify_session_add \
+				vpp_sonic_ext_ip2me_enable_disable vpp_acl_add_replace \
+				vpp_acl_interface_bind vpp_acl_interface_unbind \
 				vpp_nat44_ed_supported vpp_nat44_ed_enable_disable \
 				vpp_nat44_forwarding_enable_disable vpp_nat44_ed_output_interface_add_del \
 				vpp_nat44_static_mapping_add_del vpp_nat44_user_sessions_dump
