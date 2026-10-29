@@ -575,11 +575,7 @@ void SwitchVpp::vppProcessEvents ()
 {
     SWSS_LOG_ENTER();
 
-    // How long the thread waits between drains of the event queue.  This is a
-    // safety net behind the event socket rather than the delivery path, so it
-    // is deliberately long -- and therefore has to be interruptible.
-    static constexpr auto pollInterval = std::chrono::seconds(2);
-
+    const struct timespec req = {2, 0};
     vpp_event_info_t *evp;
     int ret;
 
@@ -588,20 +584,8 @@ void SwitchVpp::vppProcessEvents ()
     // interface events (edge-only delivery would otherwise miss it).
     m_operResyncDue.store(true, std::memory_order_relaxed);
 
-    while (true) {
-        {
-            std::unique_lock<std::mutex> lock(m_vpp_events_mutex);
-
-            // Returns as soon as the destructor clears the flag, so teardown
-            // costs the time to notify rather than the rest of the interval.
-            m_vpp_events_cv.wait_for(lock, pollInterval,
-                                     [this]() { return !m_run_vpp_events_thread; });
-
-            if (!m_run_vpp_events_thread)
-            {
-                break;
-            }
-        }
+    while(m_run_vpp_events_thread) {
+        nanosleep(&req, NULL);
 
         ret = vpp_sync_for_events();
         SWSS_LOG_NOTICE("Checking for any VS events status %d", ret);
