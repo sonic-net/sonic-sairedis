@@ -95,8 +95,8 @@ struct VppMock
     int mplsResult = 0;
     int adminResult = 0;
     int deleteResult = 0;
-    // sw_interface_set_ip_directed_broadcast() result, for the refcounted
-    // directed-broadcast flag of the subnet broadcast neighbors.
+    // sw_interface_set_ip_directed_broadcast() result, for the ref-counted
+    // directed-broadcast flag of the sub-net broadcast neighbors.
     int directedBcastResult = 0;
 
     // sonic-ext features reported as enabled. "iface-loopback" keeps its own

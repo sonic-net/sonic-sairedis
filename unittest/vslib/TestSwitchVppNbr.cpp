@@ -27,6 +27,7 @@ namespace
 
             void SetUp() override
             {
+                SWSS_LOG_ENTER();
                 SwitchVppTest::SetUp();
 
                 m_vlan = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN, m_switchId);
@@ -61,6 +62,7 @@ namespace
             std::string neighborId(
                     const char *ip) const
             {
+                SWSS_LOG_ENTER();
                 sai_neighbor_entry_t entry {};
 
                 entry.switch_id = m_switchId;
@@ -76,6 +78,7 @@ namespace
                     const char *ip,
                     const sai_mac_t mac)
             {
+                SWSS_LOG_ENTER();
                 sai_attribute_t attr {};
 
                 attr.id = SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS;
@@ -87,12 +90,14 @@ namespace
             sai_status_t removeNeighbor(
                     const char *ip)
             {
+                SWSS_LOG_ENTER();
                 return m_sw->removeIpNbr(neighborId(ip));
             }
 
             bool neighborExists(
                     const char *ip) const
             {
+                SWSS_LOG_ENTER();
                 auto it = m_sw->m_objectHash.find(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY);
 
                 return it != m_sw->m_objectHash.end() && it->second.count(neighborId(ip)) != 0;
@@ -100,6 +105,7 @@ namespace
 
             std::vector<VppCall> directedBcastCalls() const
             {
+                SWSS_LOG_ENTER();
                 return vppCallsTo("sw_interface_set_ip_directed_broadcast");
             }
 
@@ -109,8 +115,8 @@ namespace
 }
 
 /*
- * IntfsOrch programs one subnet broadcast neighbor per subnet, so a VLAN with
- * two subnets puts two of them on the same BVI. The interface flag is one bit,
+ * IntfsOrch programs one sub-net broadcast neighbor per sub-net, so a VLAN with
+ * two sub-nets puts two of them on the same BVI. The interface flag is one bit,
  * so it is enabled on the first and only disabled once the last one is gone.
  */
 TEST_F(SwitchVppNbrTest, broadcastNeighborsShareOneDirectedBroadcastFlag)
@@ -174,7 +180,7 @@ TEST_F(SwitchVppNbrTest, failedDirectedBroadcastEnableIsRetryable)
 }
 
 /*
- * Only an all-ones MAC is a subnet broadcast: an ordinary neighbor keeps its
+ * Only an all-ones MAC is a sub-net broadcast: an ordinary neighbor keeps its
  * adjacency and host route and never touches the interface flag.
  */
 TEST_F(SwitchVppNbrTest, unicastNeighborDoesNotTouchDirectedBroadcast)
