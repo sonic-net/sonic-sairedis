@@ -2729,6 +2729,32 @@ sai_status_t SwitchVpp::FdbEntrydel(
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId));
 
+    /*
+     * Forget the MAC if VPP learned it, or moved this entry
+     * (generateFdbLearnedOrMoveEvent()): there is nothing left to age, and its
+     * next learn has to be reported. Keyed by the entry's own VLAN, which is
+     * also the bridge domain.
+     */
+    sai_fdb_entry_t fdb_entry;
+    sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+
+    sai_attribute_t attr;
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+    if (objectTypeQuery(fdb_entry.bv_id) == SAI_OBJECT_TYPE_VLAN &&
+        get(SAI_OBJECT_TYPE_VLAN, fdb_entry.bv_id, 1, &attr) == SAI_STATUS_SUCCESS)
+    {
+        FdbInfo fi;
+        fi.setVlanId(attr.value.u16);
+        memcpy(fi.m_fdbEntry.mac_address, fdb_entry.mac_address, sizeof(sai_mac_t));
+        m_fdb_info_set.erase(fi);
+
+        VppFdbKey key = {};
+        memcpy(key.mac, fdb_entry.mac_address, sizeof(key.mac));
+        key.bd_id = attr.value.u16;
+        m_vpp_fdb_entries.erase(key);
+    }
+
     return SAI_STATUS_SUCCESS;
 
 }
@@ -3166,13 +3192,31 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
         memcpy(fi_search.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
 
         existing_it = m_fdb_info_set.find(fi_search);
-        if (existing_it == m_fdb_info_set.end())
+        if (existing_it != m_fdb_info_set.end())
         {
-            SWSS_LOG_WARN("FDB: entry not found in m_fdb_info_set for bd %u, treating as learn",
-                          key.bd_id);
-            return generateFdbLearnedOrMoveEvent(key, sw_if_index, SAI_FDB_EVENT_LEARNED);
+            fi = *existing_it;
         }
-        fi = *existing_it;
+        else
+        {
+            fi.m_fdbEntry.switch_id = m_switch_id;
+            fi.m_fdbEntry.bv_id = bv_id;
+            memcpy(fi.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+
+            /*
+             * Not a MAC VPP learned. If orchagent created its FDB entry --
+             * dynamic, as VPP doesn't move a static one -- VPP has moved that
+             * entry and now ages it like a learned MAC: track it, so its
+             * aging is reported. Otherwise report the MAC as learned.
+             */
+            auto &fdbs = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+            if (fdbs.find(sai_serialize_fdb_entry(fi.m_fdbEntry)) == fdbs.end())
+            {
+                SWSS_LOG_WARN("FDB: entry not found in m_fdb_info_set for bd %u, treating as learn",
+                              key.bd_id);
+                return generateFdbLearnedOrMoveEvent(key, sw_if_index, SAI_FDB_EVENT_LEARNED);
+            }
+        }
     }
     else
     {
@@ -3214,7 +3258,7 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
         return false;
     }
 
-    if (is_move)
+    if (existing_it != m_fdb_info_set.end())
         m_fdb_info_set.erase(existing_it);
     m_fdb_info_set.insert(fi);
 
@@ -3480,6 +3524,13 @@ std::set<uint32_t> SwitchVpp::vpp_vlan_bridge_domains()
     return m_ifaceRegistry.collectMemberBdIds();
 }
 
+/*
+ * Only learned MACs age. VPP never ages an entry added over its API
+ * (l2fib_add_entry() marks it age-not), so an FDB entry SAI creates, even a
+ * dynamic one, stays until SAI removes it, and no DELETE event comes for it.
+ * If traffic moves it to another port, VPP reports the move and from then on
+ * ages it like a learned MAC; generateFdbLearnedOrMoveEvent() tracks it then.
+ */
 sai_status_t SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
 {
     SWSS_LOG_ENTER();

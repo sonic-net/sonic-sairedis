@@ -476,6 +476,16 @@ extern "C" int __wrap_vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_
     vppMock().bdMacAges[bd_id] = mac_age;
     return 0;
 }
+
+// the L2FIB entry SAI programs: bd_id, is_add and is_static_mac
+extern "C" int __wrap_l2fib_add_del(const char *hwif_name, const uint8_t *, uint32_t bd_id,
+        bool is_add, bool is_static_mac)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"l2fib_add_del", hwif_name ? hwif_name : "", bd_id, is_add, is_static_mac});
+    return 0;
+}
+
 extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
     SWSS_LOG_ENTER();
     return 0;
