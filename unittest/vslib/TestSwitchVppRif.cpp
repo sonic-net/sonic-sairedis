@@ -943,7 +943,7 @@ TEST_F(SwitchVppRifTest, ipv6AdminDownRifTakesNoLock)
 /*
  * create_bond_interface() lets VPP pick the bond MAC, and the bond only
  * inherits a member's MAC once one is enslaved, which can happen after the RIF
- * is created. ip6_link_enable() derives the EUI-64 link-local once and never
+ * is created. ip6_link_enable() derives the link-local once and never
  * recomputes it, so the RIF MAC has to reach the bond first for the link-local
  * to match the kernel's PortChannel.
  */
