@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 #include <memory>
 #include <cmath>
+#include <chrono>
 
 using namespace saimeta;
 using namespace sairedis;
@@ -264,6 +265,132 @@ TEST_F(TestPortPhyAttr, CollectDataAndValidateCountersDB)
     }
 
     flexCounter->removeCounter(testPortOid);
+}
+
+/**
+ * Test that collectData() retries immediately when the FEC lane count grows.
+ *
+ * Mock SAI initially reports 8 lanes, then returns BUFFER_OVERFLOW requiring 32.
+ * Verify that collectData() resizes the buffer and retries within the same
+ * polling cycle, writing the expanded lane data to COUNTERS_DB.
+ * Exactly three SAI GET calls are expected: addCounter() queries the initial
+ * lane count, the first collection reports overflow, and its immediate retry
+ * succeeds with the resized buffer. These are not three polling cycles.
+ */
+TEST_F(TestPortPhyAttr, CollectDataRetriesWhenFecLaneCountIncreases)
+{
+    constexpr uint32_t initialLaneCount = 8;
+    constexpr uint32_t expandedLaneCount = 32;
+    sai_object_id_t portOid = 0x1000000000003;
+    sai_object_id_t portRid = 0x1000000000003;
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, PORT_PHY_ATTR_TABLE, false);
+    std::string expectedKey = toOid(portOid);
+    countersTable.del(expectedKey);
+
+    int getCallCount = 0;
+    bool laneCountIncreased = false;
+    bool retrySucceeded = false;
+
+    sai->mock_get = [&](sai_object_type_t objectType,
+                        sai_object_id_t objectId,
+                        uint32_t attrCount,
+                        sai_attribute_t *attrList) -> sai_status_t
+    {
+        getCallCount++;
+
+        EXPECT_EQ(objectType, SAI_OBJECT_TYPE_PORT);
+        EXPECT_EQ(objectId, portRid);
+        EXPECT_EQ(attrCount, 1u);
+        EXPECT_NE(attrList, nullptr);
+        if (attrCount != 1 || attrList == nullptr)
+        {
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+        EXPECT_EQ(attrList[0].id, SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK);
+        if (attrList[0].id != SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK)
+        {
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        auto &laneList = attrList[0].value.portlanelatchstatuslist;
+
+        if (laneList.list == nullptr)
+        {
+            EXPECT_EQ(getCallCount, 1);
+            laneList.count = initialLaneCount;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        if (!laneCountIncreased)
+        {
+            EXPECT_EQ(laneList.count, initialLaneCount);
+            laneCountIncreased = true;
+            laneList.count = expandedLaneCount;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        EXPECT_EQ(laneList.count, expandedLaneCount);
+        if (laneList.count != expandedLaneCount)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+
+        for (uint32_t lane = 0; lane < expandedLaneCount; lane++)
+        {
+            laneList.list[lane].lane = lane;
+            laneList.list[lane].value.changed = false;
+            laneList.list[lane].value.current_status = true;
+        }
+        laneList.count = expandedLaneCount;
+        retrySucceeded = true;
+        return SAI_STATUS_SUCCESS;
+    };
+
+    vector<swss::FieldValueTuple> portPhyAttrValues;
+    portPhyAttrValues.emplace_back(
+        PORT_PHY_ATTR_ID_LIST, "SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK");
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+    flexCounter->addCounter(portOid, portRid, portPhyAttrValues);
+
+    vector<swss::FieldValueTuple> pluginValues;
+    // Keep the next poll beyond the timeout so only an immediate retry can pass.
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "10000");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    flexCounter->addCounterPlugin(pluginValues);
+
+    std::string fecAlignmentValue;
+    bool found = false;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        found = countersTable.hget(
+            expectedKey, "pcs_fec_lane_alignment_lock", fecAlignmentValue);
+        if (found)
+        {
+            break;
+        }
+        usleep(1000 * 100);
+    }
+
+    // Synchronize with the polling thread before checking mock state.
+    flexCounter->removeCounter(portOid);
+
+    EXPECT_EQ(getCallCount, 3);
+    EXPECT_TRUE(laneCountIncreased);
+    EXPECT_TRUE(retrySucceeded);
+
+    EXPECT_TRUE(found) << "Timed out waiting for the FEC lane data after retry";
+    if (found)
+    {
+        EXPECT_NE(fecAlignmentValue.find("\"31\":"), std::string::npos);
+    }
+
+    countersTable.del(expectedKey);
 }
 
 /**
