@@ -1501,7 +1501,14 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
             addUntaggedMember(PORT_HWIF, PORT_SW_IF_INDEX, m_port);
             addUntaggedMember(OTHER_PORT_HWIF, OTHER_PORT_SW_IF_INDEX, m_otherPort);
 
-            // orchagent's dynamic FDB entry, on the first port
+            createEntry();
+        }
+
+        // orchagent creates its dynamic FDB entry, on the first port
+        void createEntry()
+        {
+            SWSS_LOG_ENTER();
+
             sai_fdb_entry_t fdb_entry = {};
 
             fdb_entry.switch_id = m_switchId;
@@ -1518,7 +1525,7 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
             attrs[1].value.oid = m_bridgePort;
 
             ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId, m_switchId, 2, attrs));
-            ASSERT_EQ(1u, vppMock().callsTo("l2fib_add_del", PORT_HWIF).size());
+            ASSERT_FALSE(vppMock().callsTo("l2fib_add_del", PORT_HWIF).empty());
         }
 
         void addUntaggedMember(
@@ -1540,8 +1547,8 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
                     m_sw->set_internal(SAI_OBJECT_TYPE_PORT, sai_serialize_object_id(port), &attr));
         }
 
-        // VPP reports the MAC on sw_if_index, and saivpp's aging pass takes it
-        void macEvent(
+        // VPP reports the MAC on sw_if_index
+        void queueMacEvent(
                 uint8_t action,
                 uint32_t sw_if_index)
         {
@@ -1554,11 +1561,21 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
             ev.action = action;
 
             m_sw->m_mac_event_queue.push(ev);
+        }
+
+        // VPP reports the MAC on sw_if_index, and saivpp's aging pass takes it
+        void macEvent(
+                uint8_t action,
+                uint32_t sw_if_index)
+        {
+            SWSS_LOG_ENTER();
+
+            queueMacEvent(action, sw_if_index);
             m_sw->processFdbEntriesForAging();
         }
 
-        // the event socket reconnected, and VPP's L2FIB has the MAC on sw_if_index
-        void resync(
+        // VPP's L2FIB has the MAC on sw_if_index
+        void l2fibHasMac(
                 uint32_t sw_if_index)
         {
             SWSS_LOG_ENTER();
@@ -1570,6 +1587,15 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
             row.sw_if_index = sw_if_index;
 
             vppMock().l2fib = {row};
+        }
+
+        // the event socket reconnected, and VPP's L2FIB has the MAC on sw_if_index
+        void resync(
+                uint32_t sw_if_index)
+        {
+            SWSS_LOG_ENTER();
+
+            l2fibHasMac(sw_if_index);
 
             m_sw->m_mac_event_queue.push({{0}, ~0u, VPP_MAC_ACTION_RESYNC});
             m_sw->processFdbEntriesForAging();
@@ -1713,6 +1739,8 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovedAwayAndBackWhileItsEventsWere
 
     EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
 
+    // VPP ages it: out of its L2FIB, then the DELETE
+    vppMock().l2fib.clear();
     macEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
 
     auto ntf = fdbNotification();
@@ -1736,6 +1764,24 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, StaticEntryIsNotRemovedByADelete)
 
     macEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
 
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+}
+
+// VPP's DELETE waited in the queue while orchagent removed the entry and
+// created it again: VPP has the new entry, and nothing is aged
+TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteQueuedBeforeOrchagentRecreatedTheEntryAgesNothing)
+{
+    queueMacEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId));
+    createEntry();
+    l2fibHasMac(PORT_SW_IF_INDEX);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(1u, vppMock().l2fibDumpCalls);
     EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
     EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
     EXPECT_TRUE(m_sw->m_fdb_info_set.empty());

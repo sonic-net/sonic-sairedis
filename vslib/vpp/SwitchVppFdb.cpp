@@ -3278,7 +3278,7 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
  * misses that if VPP moved it away and back while its events were lost: the
  * resync then finds it on its own port. Track it when VPP deletes it, so its
  * aging is reported. Returns false if orchagent has no dynamic FDB entry for
- * the MAC.
+ * the MAC, or VPP has the MAC.
  */
 bool SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index)
 {
@@ -3315,6 +3315,35 @@ bool SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index)
     // VPP doesn't age a static entry
     if (get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 2, attrs) != SAI_STATUS_SUCCESS ||
         attrs[0].value.s32 != SAI_FDB_ENTRY_TYPE_DYNAMIC)
+    {
+        return false;
+    }
+
+    /*
+     * VPP takes the MAC out of its L2FIB before it reports the DELETE, which
+     * may then wait in the queue while orchagent removes the entry and creates
+     * it again, or VPP learns the MAC again. If VPP has the MAC, nothing aged.
+     */
+    struct Lookup
+    {
+        const VppFdbKey *key;
+        bool found;
+    } lookup = {&key, false};
+
+    if (vpp_l2fib_dump(key.bd_id, [](const vpp_l2fib_entry_t *e, void *ctx)
+                       {
+                           auto l = static_cast<Lookup *>(ctx);
+
+                           if (e->bd_id == l->key->bd_id && memcmp(e->mac, l->key->mac, sizeof(e->mac)) == 0)
+                               l->found = true;
+                       }, &lookup) != 0)
+    {
+        SWSS_LOG_WARN("FDB: L2FIB dump failed, not aging MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u of an FDB entry orchagent created",
+                      key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+        return false;
+    }
+
+    if (lookup.found)
     {
         return false;
     }
