@@ -1419,7 +1419,7 @@ sai_status_t SwitchVpp::programTrimGlobal()
         return SAI_STATUS_FAILURE;
     }
 
-    if (m_trim_policy.enabled || m_trim_dataplane_armed)
+    if (m_trim_policy.enabled || m_trim_dataplane_armed || m_trim_reconcile_pending)
     {
         sai_status_t refresh_status = refreshTrimDataplane();
 
@@ -3650,7 +3650,12 @@ sai_status_t SwitchVpp::set_internal(
             }
         }
 
-        if (m_trim_reconcile_pending)
+        // Reconciliation is event-driven; there is no timer retry. An explicit
+        // disable can clear a broken enabled policy without replaying it first,
+        // allowing disable -> repair configuration -> re-enable recovery.
+        bool disable = global && attr->id == SAI_SWITCH_ATTR_PACKET_TRIM_SIZE &&
+                !next_policy.enabled;
+        if (m_trim_reconcile_pending && !disable)
         {
             sai_status_t status = programTrimGlobal();
             if (status != SAI_STATUS_SUCCESS)
@@ -3694,6 +3699,7 @@ sai_status_t SwitchVpp::set_internal(
             }
             return status;
         }
+        m_trim_reconcile_pending = false;
     }
 
     m_object_db.create_or_update(objectType, serializedObjectId, 1, attr, false /*is_create*/);

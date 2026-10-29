@@ -878,6 +878,8 @@ namespace saivs
             // A failed refresh may have installed only part of the queue state.
             // Keep cleanup armed until a disabled sweep succeeds.
             bool m_trim_dataplane_armed = false;
+            // Relevant SETs and switch CREATE reconcile pending state; there
+            // is no timer/backoff or guaranteed automatic caller retry.
             bool m_trim_reconcile_pending = false;
 
             static sai_status_t updateTrimPolicy(

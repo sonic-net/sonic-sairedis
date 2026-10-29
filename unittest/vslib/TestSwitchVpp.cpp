@@ -342,6 +342,36 @@ protected:
         put(SAI_OBJECT_TYPE_PORT, port_id, attr);
     }
 
+    void pendingUnsupportedQosMap(sai_object_id_t &queue_map)
+    {
+        SWSS_LOG_ENTER();
+
+        sai_object_id_t port_id, dscp_map;
+        qosMaps(port_id, dscp_map, queue_map);
+        auto queue = trimQueue(1);
+        sai_attribute_t attr = {};
+        attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+        attr.value.objlist = {1, &queue};
+        put(SAI_OBJECT_TYPE_PORT, port_id, attr);
+        ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+
+        // Replay can expose a port binding before its map CREATE.
+        queue_map = manager->allocateNewObjectId(SAI_OBJECT_TYPE_QOS_MAP, switch_id);
+        put(SAI_OBJECT_TYPE_PORT, port_id,
+                oidAttr(SAI_PORT_ATTR_QOS_TC_TO_QUEUE_MAP, queue_map));
+        sai_qos_map_t entry = {};
+        entry.key.tc = 2;
+        entry.value.queue_index = 8;
+        sai_attribute_t attrs[2] = {};
+        attrs[0].id = SAI_QOS_MAP_ATTR_TYPE;
+        attrs[0].value.s32 = SAI_QOS_MAP_TYPE_TC_TO_QUEUE;
+        attrs[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+        attrs[1].value.qosmap = {1, &entry};
+        ASSERT_EQ(SAI_STATUS_SUCCESS, state->create_internal(SAI_OBJECT_TYPE_QOS_MAP,
+                sai_serialize_object_id(queue_map), switch_id, 2, attrs));
+        ASSERT_TRUE(state->m_trim_reconcile_pending);
+    }
+
     std::shared_ptr<SwitchConfig> config;
     std::shared_ptr<RealObjectIdManager> manager;
     std::shared_ptr<SwitchVpp> state;
@@ -747,6 +777,122 @@ TEST_F(SwitchVppTrimTest, failedRollbackRequiresReconciliationBeforeNextSet)
     EXPECT_EQ(SAI_STATUS_SUCCESS, setSwitchByte(SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_VALUE, 48));
     EXPECT_FALSE(state->m_trim_reconcile_pending);
     EXPECT_EQ(48u, state->m_trim_policy.dscp_value);
+}
+
+TEST_F(SwitchVppTrimTest, pendingInvalidQosCanBeDisabledRepairedAndEnabled)
+{
+    sai_object_id_t queue_map;
+    pendingUnsupportedQosMap(queue_map);
+    ASSERT_TRUE(state->m_trim_reconcile_pending);
+    sai_qos_map_t entry = {};
+    entry.key.tc = 2;
+    entry.value.queue_index = 5;
+    sai_attribute_t attr = {};
+    attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+    attr.value.qosmap = {1, &entry};
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, state->set_internal(
+            SAI_OBJECT_TYPE_QOS_MAP, sai_serialize_object_id(queue_map), &attr));
+    EXPECT_TRUE(state->m_trim_reconcile_pending);
+    global_calls.clear();
+    queue_calls.clear();
+    map_calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(0));
+    ASSERT_EQ(1u, global_calls.size());
+    EXPECT_FALSE(global_calls.back().enabled);
+    EXPECT_FALSE(state->m_trim_policy.enabled);
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+    EXPECT_FALSE(state->m_trim_dataplane_armed);
+    ASSERT_EQ(8u, queue_calls.size());
+    for (const auto &call : queue_calls)
+    {
+        EXPECT_FALSE(call.eligible);
+        EXPECT_EQ(UINT64_MAX, call.rate);
+        EXPECT_EQ(UINT64_MAX, call.capacity);
+    }
+    EXPECT_TRUE(map_calls.empty());
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->set_internal(
+            SAI_OBJECT_TYPE_QOS_MAP, sai_serialize_object_id(queue_map), &attr));
+    EXPECT_EQ(8u, queue_calls.size());
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(256));
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+    EXPECT_TRUE(queue_state.at({"pg0", 1}).eligible);
+    ASSERT_FALSE(map_calls.empty());
+    EXPECT_EQ(5u, map_calls.back()[10]);
+}
+
+TEST_F(SwitchVppTrimTest, pendingDisableFailuresRetainCommittedPolicy)
+{
+    sai_object_id_t queue_map;
+    pendingUnsupportedQosMap(queue_map);
+    ASSERT_TRUE(state->m_trim_reconcile_pending);
+
+    for (bool fail_global : {true, false})
+    {
+        SCOPED_TRACE(fail_global);
+        global_calls.clear();
+        if (fail_global)
+        {
+            global_results = {-99};
+        }
+        else
+        {
+            queue_results = {-99};
+        }
+        EXPECT_EQ(SAI_STATUS_FAILURE, setSize(0));
+        ASSERT_FALSE(global_calls.empty());
+        EXPECT_FALSE(global_calls.front().enabled);
+        EXPECT_TRUE(global_calls.back().enabled);
+        EXPECT_TRUE(state->m_trim_policy.enabled);
+        EXPECT_TRUE(state->m_trim_dataplane_armed);
+        EXPECT_TRUE(state->m_trim_reconcile_pending);
+        sai_attribute_t attr = {};
+        attr.id = SAI_SWITCH_ATTR_PACKET_TRIM_SIZE;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, state->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr));
+        EXPECT_EQ(256u, attr.value.u32);
+    }
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setSize(0));
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+}
+
+TEST_F(SwitchVppTrimTest, pendingDisableCleansEvenWhenNotPreviouslyArmed)
+{
+    port({trimQueue(1)});
+    global_results = {-99, -99};
+    ASSERT_EQ(SAI_STATUS_FAILURE, setSize(256));
+    ASSERT_TRUE(state->m_trim_reconcile_pending);
+    ASSERT_FALSE(state->m_trim_dataplane_armed);
+    ASSERT_TRUE(queue_calls.empty());
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSize(0));
+    EXPECT_FALSE(state->m_trim_reconcile_pending);
+    EXPECT_FALSE(state->m_trim_dataplane_armed);
+    ASSERT_EQ(8u, queue_calls.size());
+    for (const auto &call : queue_calls)
+    {
+        EXPECT_FALSE(call.eligible);
+    }
+}
+
+TEST_F(SwitchVppTrimTest, pendingDisableStillFailsForUnresolvedPort)
+{
+    sai_object_id_t queue_map;
+    pendingUnsupportedQosMap(queue_map);
+    ASSERT_TRUE(state->m_trim_reconcile_pending);
+    auto unresolved = object(SAI_OBJECT_TYPE_PORT);
+    sai_attribute_t attr = {};
+    attr.id = SAI_PORT_ATTR_TYPE;
+    attr.value.s32 = SAI_PORT_TYPE_LOGICAL;
+    put(SAI_OBJECT_TYPE_PORT, unresolved, attr);
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, setSize(0));
+    EXPECT_TRUE(state->m_trim_reconcile_pending);
+    EXPECT_TRUE(state->m_trim_dataplane_armed);
+    EXPECT_TRUE(state->m_trim_policy.enabled);
+    attr.id = SAI_SWITCH_ATTR_PACKET_TRIM_SIZE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, state->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr));
+    EXPECT_EQ(256u, attr.value.u32);
 }
 
 TEST_F(SwitchVppTrimTest, queueFailureStopsBeforeRemainingQueuesAndClassifier)
