@@ -1,4 +1,5 @@
 #include "MockVppXlate.h"
+#include "SwitchVppTestHarness.h"
 #include "vpp/vppxlate/SaiIntfStats.h"
 #include "ContextConfigContainer.h"
 #include "meta/DummySaiInterface.h"
@@ -873,4 +874,145 @@ TEST_F(SwitchVppRifTest, failedPortSnapshotRestoresActionWithoutDeletingPort)
     EXPECT_NE(nullptr, sw->m_ifaceRegistry.findByOid(port));
     EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
     EXPECT_EQ(0u, sw->m_rifStatsBaseMap.count(rif));
+}
+
+/*
+ * VPP builds an interface's IPv6 link-local inside ip6_link_enable(), which
+ * only runs when something takes an IPv6 lock on it, so a RIF has to take one
+ * of its own instead of waiting for a global address to arrive.
+ */
+TEST_F(SwitchVppRifTest, rifCreateEnablesIpv6AndRemoveReleasesIt)
+{
+    for (auto backing : {port, lag})
+    {
+        const std::string name = backing == port ? "port0" : "BondEthernet2";
+        SCOPED_TRACE(name);
+        const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+
+        ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, backing)));
+        ASSERT_EQ(1u, vppMock().callsTo("sw_interface_ip6_enable_disable", name).size());
+        EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", name)[0].flag);
+        EXPECT_EQ(1, vppMock().ip6Locks.at(name));
+
+        // the port or bond outlives the RIF, so the lock has to be given back
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+        ASSERT_EQ(2u, vppMock().callsTo("sw_interface_ip6_enable_disable", name).size());
+        EXPECT_FALSE(vppMock().callsTo("sw_interface_ip6_enable_disable", name)[1].flag);
+        EXPECT_EQ(0, vppMock().ip6Locks.at(name));
+    }
+}
+
+// An interface this RIF created is deleted on remove, which drops its locks.
+TEST_F(SwitchVppRifTest, ownedInterfaceKeepsIpv6LockUntilItIsDeleted)
+{
+    for (auto type : {SAI_ROUTER_INTERFACE_TYPE_VLAN, SAI_ROUTER_INTERFACE_TYPE_SUB_PORT})
+    {
+        const bool bvi = type == SAI_ROUTER_INTERFACE_TYPE_VLAN;
+        const std::string name = bvi ? "bvi100" : "port0.10";
+        SCOPED_TRACE(name);
+        const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+
+        ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(type, bvi ? vlan : port)));
+        ASSERT_EQ(1u, vppMock().callsTo("sw_interface_ip6_enable_disable", name).size());
+        EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", name)[0].flag);
+
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+        EXPECT_EQ(1u, vppMock().callsTo("sw_interface_ip6_enable_disable", name).size());
+        EXPECT_EQ(0u, vppMock().interfaces.count(name));
+    }
+}
+
+TEST_F(SwitchVppRifTest, ipv6AdminDownRifTakesNoLock)
+{
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    sai_attribute_t adminV6;
+    memset(&adminV6, 0, sizeof(adminV6));
+    adminV6.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    adminV6.value.booldata = false;
+    attrs.push_back(adminV6);
+
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").empty());
+
+    // and the remove must not release a lock it never took
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").empty());
+}
+
+/*
+ * create_bond_interface() lets VPP pick the bond MAC, and the bond only
+ * inherits a member's MAC once one is enslaved, which can happen after the RIF
+ * is created. ip6_link_enable() derives the EUI-64 link-local once and never
+ * recomputes it, so the RIF MAC has to reach the bond first for the link-local
+ * to match the kernel's PortChannel.
+ */
+TEST_F(SwitchVppRifTest, lagRifProgramsBondMacBeforeEnablingIpv6)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, lag)));
+
+    ASSERT_EQ(1u, vppMock().callsTo("sw_interface_set_mac", "BondEthernet2").size());
+    EXPECT_EQ("00:00:00:00:00:01", vppMock().macs.at("BondEthernet2"));
+
+    const int mac = saivs_test::vppCallIndex("sw_interface_set_mac", "BondEthernet2");
+    const int ip6 = saivs_test::vppCallIndex("sw_interface_ip6_enable_disable", "BondEthernet2");
+    ASSERT_NE(-1, mac);
+    ASSERT_NE(-1, ip6);
+    EXPECT_LT(mac, ip6);
+
+    // a physical port already had its MAC programmed when its hostif was made
+    const auto portRif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(portRif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_set_mac", "port0").empty());
+}
+
+TEST_F(SwitchVppRifTest, ipv6EnableToleratesAlreadyEnabledButNotOtherErrors)
+{
+    // VNET_API_ERROR_VALUE_EXIST and _IP6_NOT_ENABLED still moved the lock
+    // count, so they are the no-op they look like
+    for (int result : {-81, -62})
+    {
+        SCOPED_TRACE(result);
+        const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+        vppMock().ip6EnableResult = result;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+        EXPECT_EQ(1u, vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").size());
+
+        vppMock().ip6EnableResult = 0;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+        vppMock().calls.clear();
+    }
+
+    // anything else fails the create, which must leave no RIF behind
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    vppMock().ip6EnableResult = -1;
+    ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
+    EXPECT_EQ(0, vppMock().ip6Locks["port0"]);
+
+    vppMock().ip6EnableResult = 0;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+}
+
+// A create that fails after the enable has to give the lock back itself.
+TEST_F(SwitchVppRifTest, createRollbackReleasesIpv6Lock)
+{
+    SwitchVpp::RifCreateState state;
+    state.hwif = "port0";
+    state.ip6_enabled = true;
+    vppMock().ip6Locks["port0"] = 1;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->rollbackRifCreate(state));
+    ASSERT_EQ(1u, vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").size());
+    EXPECT_FALSE(vppMock().callsTo("sw_interface_ip6_enable_disable", "port0")[0].flag);
+    EXPECT_EQ(0, vppMock().ip6Locks.at("port0"));
+
+    // nothing was taken for an IPv6 admin-down RIF, so nothing is given back
+    vppMock().calls.clear();
+    SwitchVpp::RifCreateState untouched;
+    untouched.hwif = "port0";
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->rollbackRifCreate(untouched));
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").empty());
 }

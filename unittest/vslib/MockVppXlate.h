@@ -95,6 +95,14 @@ struct VppMock
     int mplsResult = 0;
     int adminResult = 0;
     int deleteResult = 0;
+    // sw_interface_ip6_enable_disable() result, and the per-interface lock count
+    // VPP keeps for IPv6 (ip6_link_t.il_locks), so a test can check that the
+    // enables a RIF takes are released again.
+    int ip6EnableResult = 0;
+    std::map<std::string, int> ip6Locks;
+    // sw_interface_set_mac() result, and the MAC each interface carries.
+    int macResult = 0;
+    std::map<std::string, std::string> macs;
 
     // sonic-ext features reported as enabled. "iface-loopback" keeps its own
     // flag because the loopback tests predate this set.

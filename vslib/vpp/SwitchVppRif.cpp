@@ -1984,7 +1984,9 @@ sai_status_t SwitchVpp::rollbackRifCreate(
         }
         if (state.ip6_enabled)
         {
-            check(sw_interface_ip6_enable_disable(state.hwif.c_str(), false),
+            // through the wrapper, so an interface something else already
+            // dropped the last lock on is not reported as a rollback failure
+            check(vpp_rif_ip6_enable_disable(state.hwif, false),
                     "release IPv6 reference");
         }
         if (state.mpls_changed)
