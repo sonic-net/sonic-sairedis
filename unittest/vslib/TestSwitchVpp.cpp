@@ -511,7 +511,9 @@ TEST_F(SwitchVppL2TrapLearn, TrapsKeepTheirNextsWhenTrapLearnIsOff)
     expectPuntNexts({"l2-trap-fixup", "l2-vlan-filter"}, NODES, NEXTS_WITHOUT_TRAP_LEARN);
 }
 
-// a sonic-ext plugin that reports l2-trap-learn on without having its node
+/*
+ * A sonic-ext plugin that reports l2-trap-learn on without having its node.
+ */
 TEST_F(SwitchVppL2TrapLearn, TrapsKeepTheirNextsWhenVppHasNoTrapLearnNode)
 {
     auto nodes = NODES;
@@ -521,8 +523,10 @@ TEST_F(SwitchVppL2TrapLearn, TrapsKeepTheirNextsWhenVppHasNoTrapLearnNode)
     expectPuntNexts(FEATURES, nodes, NEXTS_WITHOUT_TRAP_LEARN);
 }
 
-// sonic-ext-l2-trap-learn sends its copy of the frame to
-// sonic-ext-l2-trap-fixup, so it isn't used without it
+/*
+ * sonic-ext-l2-trap-learn sends its copy of the frame to
+ * sonic-ext-l2-trap-fixup, so it is not used without it.
+ */
 TEST_F(SwitchVppL2TrapLearn, TrapsDoNotGoToTrapLearnWithoutTrapFixup)
 {
     expectPuntNexts({"l2-trap-learn", "l2-vlan-filter"}, NODES, {
