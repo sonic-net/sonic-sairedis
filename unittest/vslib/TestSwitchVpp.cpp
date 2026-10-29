@@ -1862,3 +1862,26 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedBehindAResyncAgesNothing)
     EXPECT_EQ(m_otherBridgePort, entryBridgePort());
     EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
 }
+
+/*
+ * VPP doesn't move a static entry, but a MOVE VPP sent for the MAC before
+ * orchagent made the entry static can still be in the queue: it doesn't move
+ * orchagent's static entry, nor does a resync.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, StaticEntryIsNotMoved)
+{
+    sai_attribute_t attr;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attr.value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId, &attr));
+
+    macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+    resync(OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
