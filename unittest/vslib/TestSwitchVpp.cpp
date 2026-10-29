@@ -1704,3 +1704,39 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, EntryOnItsPortIsLeftAloneByTheResync)
     EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
+
+// VPP moved the entry away and back while its events were lost: the resync
+// finds it on its own port, but VPP now ages it, and its aging is reported
+TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovedAwayAndBackWhileItsEventsWereLostAgesOut)
+{
+    resync(PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+
+    macEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+
+    auto ntf = fdbNotification();
+
+    EXPECT_NE(std::string::npos, ntf.find("SAI_FDB_EVENT_AGED"));
+    EXPECT_NE(std::string::npos, ntf.find(MAC_STR));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+// VPP doesn't age a static entry, and a DELETE doesn't remove one
+TEST_F(SwitchVppFdbAgingCreatedEntry, StaticEntryIsNotRemovedByADelete)
+{
+    sai_attribute_t attr;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attr.value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId, &attr));
+
+    macEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+}
