@@ -2916,6 +2916,32 @@ sai_status_t SwitchVpp::FdbEntrydel(
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId));
 
+    /*
+     * Forget the MAC if VPP learned it, or moved this entry
+     * (generateFdbLearnedOrMoveEvent()): there is nothing left to age, and its
+     * next learn has to be reported. Keyed by the entry's own VLAN, which is
+     * also the bridge domain.
+     */
+    sai_fdb_entry_t fdb_entry;
+    sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+
+    sai_attribute_t attr;
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+    if (objectTypeQuery(fdb_entry.bv_id) == SAI_OBJECT_TYPE_VLAN &&
+        get(SAI_OBJECT_TYPE_VLAN, fdb_entry.bv_id, 1, &attr) == SAI_STATUS_SUCCESS)
+    {
+        FdbInfo fi;
+        fi.setVlanId(attr.value.u16);
+        memcpy(fi.m_fdbEntry.mac_address, fdb_entry.mac_address, sizeof(sai_mac_t));
+        m_fdb_info_set.erase(fi);
+
+        VppFdbKey key = {};
+        memcpy(key.mac, fdb_entry.mac_address, sizeof(key.mac));
+        key.bd_id = attr.value.u16;
+        m_vpp_fdb_entries.erase(key);
+    }
+
     return SAI_STATUS_SUCCESS;
 
 }
@@ -3394,10 +3420,14 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
     memcpy(fi.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
 
     /*
-     * A MAC address SAI holds but VPP did not learn here: a remote one that
-     * VPP has just moved to a local port, since it was not static. That is a
-     * move for orchagent too, and the only event that updates an existing
-     * entry (a LEARNED for it is ignored).
+     * A MAC address SAI holds but VPP did not learn here, which VPP has just
+     * moved to a local port, since it was not static:
+     * - a remote one;
+     * - an FDB entry orchagent created, which VPP doesn't age until it moves
+     *   it, and from then on ages like a learned MAC.
+     * That is a move for orchagent too, and the only event that updates an
+     * existing entry (a LEARNED for it is ignored). The move tracks the MAC,
+     * so that its aging is reported.
      */
     bool sai_has_entry = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(
             sai_serialize_fdb_entry(fi.m_fdbEntry)) != 0;
@@ -3736,6 +3766,13 @@ std::set<uint32_t> SwitchVpp::vpp_vlan_bridge_domains()
     return m_ifaceRegistry.collectMemberBdIds();
 }
 
+/*
+ * Only learned MACs age. VPP never ages an entry added over its API
+ * (l2fib_add_entry() marks it age-not), so an FDB entry SAI creates, even a
+ * dynamic one, stays until SAI removes it, and no DELETE event comes for it.
+ * If traffic moves it to another port, VPP reports the move and from then on
+ * ages it like a learned MAC; generateFdbLearnedOrMoveEvent() tracks it then.
+ */
 sai_status_t SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
 {
     SWSS_LOG_ENTER();
