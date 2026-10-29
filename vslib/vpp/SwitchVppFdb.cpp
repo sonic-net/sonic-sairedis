@@ -3272,14 +3272,14 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
 }
 
 /*
- * VPP reports the deletion of a MAC it learned, or of an FDB entry orchagent
- * created that traffic moved, as the move clears age-not (see
- * vpp_set_fdb_aging_time()). saivpp tracks such an entry from its move, but
- * misses that if VPP moved it away and back while its events were lost: the
- * resync then finds it on its own port. Track it when VPP deletes it, so its
- * aging is reported.
+ * The dynamic FDB entry orchagent created for a MAC VPP reports on
+ * sw_if_index, if any. VPP reports the deletion of such an entry only once
+ * traffic has moved it, as the move clears age-not (see
+ * vpp_set_fdb_aging_time()). saivpp tracks the entry from its move, but misses
+ * that if VPP moved it away and back while its events were lost: the resync
+ * then finds it on its own port.
  */
-SwitchVpp::CreatedFdbEntry SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index)
+bool SwitchVpp::findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, FdbInfo &fi)
 {
     SWSS_LOG_ENTER();
 
@@ -3291,10 +3291,10 @@ SwitchVpp::CreatedFdbEntry SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key,
 
     if (bv_id == SAI_NULL_OBJECT_ID)
     {
-        return CreatedFdbEntry::NONE;
+        return false;
     }
 
-    FdbInfo fi;
+    fi = FdbInfo();
     fi.m_fdbEntry.switch_id = m_switch_id;
     fi.m_fdbEntry.bv_id = bv_id;
     memcpy(fi.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
@@ -3304,7 +3304,7 @@ SwitchVpp::CreatedFdbEntry SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key,
 
     if (fdbs.find(sid) == fdbs.end())
     {
-        return CreatedFdbEntry::NONE;
+        return false;
     }
 
     sai_attribute_t attrs[2];
@@ -3315,14 +3315,27 @@ SwitchVpp::CreatedFdbEntry SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key,
     if (get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 2, attrs) != SAI_STATUS_SUCCESS ||
         attrs[0].value.s32 != SAI_FDB_ENTRY_TYPE_DYNAMIC)
     {
-        return CreatedFdbEntry::NONE;
+        return false;
     }
 
-    /*
-     * VPP takes the MAC out of its L2FIB before it reports the DELETE, which
-     * may then wait in the queue while orchagent removes the entry and creates
-     * it again, or VPP learns the MAC again. If VPP has the MAC, nothing aged.
-     */
+    fi.setBridgePortId(attrs[1].value.oid);
+    fi.setVlanId((sai_vlan_id_t)key.bd_id);
+    fi.setTimestamp((uint32_t)time(NULL));
+
+    return true;
+}
+
+/*
+ * VPP takes a MAC out of its L2FIB before it reports the DELETE, which may
+ * then wait in the queue while orchagent removes the FDB entry and creates it
+ * again, or VPP learns the MAC again; a DELETE queued again after a failed
+ * dump also waits behind the events VPP sent later. Whether VPP has the MAC
+ * now tells whether it aged.
+ */
+SwitchVpp::L2fibLookup SwitchVpp::lookupL2fibMac(const VppFdbKey &key)
+{
+    SWSS_LOG_ENTER();
+
     struct Lookup
     {
         const VppFdbKey *key;
@@ -3337,24 +3350,10 @@ SwitchVpp::CreatedFdbEntry SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key,
                                l->found = true;
                        }, &lookup) != 0)
     {
-        SWSS_LOG_WARN("FDB: L2FIB dump failed, DELETE of MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u will be retried",
-                      key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
-        return CreatedFdbEntry::RETRY;
+        return L2fibLookup::FAILED;
     }
 
-    if (lookup.found)
-    {
-        return CreatedFdbEntry::NONE;
-    }
-
-    fi.setBridgePortId(attrs[1].value.oid);
-    fi.setVlanId((sai_vlan_id_t)key.bd_id);
-    fi.setTimestamp((uint32_t)time(NULL));
-    m_fdb_info_set.insert(fi);
-
-    SWSS_LOG_NOTICE("FDB: VPP deleted MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u of an FDB entry orchagent created",
-                    key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
-    return CreatedFdbEntry::TRACKED;
+    return lookup.found ? L2fibLookup::PRESENT : L2fibLookup::ABSENT;
 }
 
 bool SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
@@ -3639,7 +3638,7 @@ std::set<uint32_t> SwitchVpp::vpp_vlan_bridge_domains()
  * dynamic one, stays until SAI removes it, and no DELETE event comes for it.
  * If traffic moves it to another port, VPP reports the move and from then on
  * ages it like a learned MAC; generateFdbLearnedOrMoveEvent() tracks it then,
- * or trackCreatedFdbEntry() once VPP ages it, if the moves were missed.
+ * or, if its moves were missed, its DELETE finds it (findCreatedFdbEntry()).
  */
 sai_status_t SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
 {

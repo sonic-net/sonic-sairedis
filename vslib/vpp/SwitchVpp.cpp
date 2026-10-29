@@ -1412,26 +1412,55 @@ void SwitchVpp::processFdbEntriesForAging()
             break;
 
         case VPP_MAC_ACTION_DELETE:
-            if (m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end()) {
+        {
+            bool tracked = m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end();
+
+            if (tracked && !ev.retry) {
+                if (generateFdbAgedEvent(key)) {
+                    m_vpp_fdb_entries.erase(key);
+                }
+                break;
+            }
+
+            // Not tracked: an FDB entry orchagent created, whose moves were missed?
+            FdbInfo created;
+
+            if (!tracked && !findCreatedFdbEntry(key, ev.sw_if_index, created)) {
+                SWSS_LOG_INFO("FDB: DELETE for unknown MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u, skipping",
+                              key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                              key.bd_id);
+                break;
+            }
+
+            // That, or a DELETE queued again: it aged only if VPP doesn't have the MAC
+            L2fibLookup lookup = lookupL2fibMac(key);
+
+            if (lookup == L2fibLookup::FAILED) {
+                SWSS_LOG_WARN("FDB: L2FIB dump failed, DELETE of MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u will be retried",
+                              key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                              key.bd_id);
+                // The next aging pass retries it, as for a failed resync
+                VppMacEvent again = ev;
+                again.retry = true;
+                std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
+                m_mac_event_queue.push(again);
+            } else if (lookup == L2fibLookup::PRESENT) {
+                SWSS_LOG_INFO("FDB: VPP has MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u again, skipping its DELETE",
+                              key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                              key.bd_id);
+            } else if (tracked) {
                 if (generateFdbAgedEvent(key)) {
                     m_vpp_fdb_entries.erase(key);
                 }
             } else {
-                CreatedFdbEntry created = trackCreatedFdbEntry(key, ev.sw_if_index);
-
-                if (created == CreatedFdbEntry::TRACKED) {
-                    generateFdbAgedEvent(key);
-                } else if (created == CreatedFdbEntry::RETRY) {
-                    // The next aging pass retries it, as for a failed resync
-                    std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
-                    m_mac_event_queue.push(ev);
-                } else {
-                    SWSS_LOG_INFO("FDB: DELETE for unknown MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u, skipping",
-                                  key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
-                                  key.bd_id);
-                }
+                SWSS_LOG_NOTICE("FDB: VPP deleted MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u of an FDB entry orchagent created",
+                                key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                                key.bd_id);
+                m_fdb_info_set.insert(created);
+                generateFdbAgedEvent(key);
             }
             break;
+        }
 
         case VPP_MAC_ACTION_MOVE:
             if (generateFdbLearnedOrMoveEvent(key, ev.sw_if_index, SAI_FDB_EVENT_MOVE)) {

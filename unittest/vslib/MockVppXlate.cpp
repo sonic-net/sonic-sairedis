@@ -441,6 +441,11 @@ extern "C" int __wrap_vpp_l2fib_dump(uint32_t, vpp_l2fib_entry_cb_fn cb, void *c
 {
     SWSS_LOG_ENTER();
     ++vppMock().l2fibDumpCalls;
+    if (vppMock().l2fibDumpFailures > 0)
+    {
+        --vppMock().l2fibDumpFailures;
+        return -1;
+    }
     if (vppMock().l2fibDumpResult == 0)
     {
         for (const auto& entry : vppMock().l2fib)
