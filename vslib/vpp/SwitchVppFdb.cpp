@@ -3316,7 +3316,21 @@ bool SwitchVpp::findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, 
     return true;
 }
 
-// VPP's L2FIB entry for a MAC, if it has one
+/*
+ * Whether a VPP L2FIB row is from a bridge domain its interface is in, and so
+ * gated like MAC events. VPP keeps the row of an interface that left a bridge
+ * domain -- flushed then -- only until its aging scan deletes it.
+ */
+bool SwitchVpp::isCurrentL2fibRow(const vpp_l2fib_entry_t &e)
+{
+    SWSS_LOG_ENTER();
+
+    auto rec = m_ifaceRegistry.findBySwIfIndex(e.sw_if_index);
+
+    return rec && rec->hasBdId() && rec->getBdId() == e.bd_id;
+}
+
+// VPP's L2FIB entry for a MAC, if it has a current one
 SwitchVpp::L2fibLookup SwitchVpp::lookupL2fibMac(const VppFdbKey &key, vpp_l2fib_entry_t &entry)
 {
     SWSS_LOG_ENTER();
@@ -3342,7 +3356,7 @@ SwitchVpp::L2fibLookup SwitchVpp::lookupL2fibMac(const VppFdbKey &key, vpp_l2fib
         return L2fibLookup::FAILED;
     }
 
-    return lookup.found ? L2fibLookup::PRESENT : L2fibLookup::ABSENT;
+    return lookup.found && isCurrentL2fibRow(entry) ? L2fibLookup::PRESENT : L2fibLookup::ABSENT;
 }
 
 /*
@@ -3509,14 +3523,7 @@ bool SwitchVpp::resyncFdbWithVpp()
 
     for (const auto &e : dump)
     {
-        auto rec = m_ifaceRegistry.findBySwIfIndex(e.sw_if_index);
-
-        if (e.is_static || !rec || !rec->hasBdId())
-            continue;
-
-        // A row from a BD the interface has left: VPP flushed it then, and
-        // keeps it only until its aging scan deletes it
-        if (e.bd_id != rec->getBdId())
+        if (e.is_static || !isCurrentL2fibRow(e))
             continue;
 
         VppFdbKey key;

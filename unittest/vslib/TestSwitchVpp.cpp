@@ -1989,3 +1989,28 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, MoveOfAMacVppHasButSaivppDoesNotTrackIsLea
     EXPECT_EQ(m_otherBridgePort, entryBridgePort());
     EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
 }
+
+// VPP keeps the row of a port that left the bridge domain until its aging
+// scan deletes it: that row doesn't keep the MAC
+TEST_F(SwitchVppFdbAgingCreatedEntry, RowOfAPortThatLeftTheBridgeDomainDoesNotKeepTheMac)
+{
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+    ASSERT_TRUE(m_sw->m_ifaceRegistry.clearBdId(OTHER_PORT_HWIF));
+
+    macEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_AGED"));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+}
+
+// The same in a resync: that row doesn't move orchagent's entry there
+TEST_F(SwitchVppFdbAgingCreatedEntry, ResyncIgnoresTheRowOfAPortThatLeftTheBridgeDomain)
+{
+    ASSERT_TRUE(m_sw->m_ifaceRegistry.clearBdId(OTHER_PORT_HWIF));
+
+    resync(OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}

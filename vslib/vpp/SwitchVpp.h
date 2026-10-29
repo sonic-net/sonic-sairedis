@@ -1748,6 +1748,7 @@ namespace saivs
                 FAILED,     // VPP's L2FIB couldn't be dumped
             };
             L2fibLookup lookupL2fibMac(const VppFdbKey &key, vpp_l2fib_entry_t &entry);
+            bool isCurrentL2fibRow(const vpp_l2fib_entry_t &e);
             void reconcileFdbEntryWithVpp(const VppFdbKey &key, const VppMacEvent &ev);
 
             // Reconcile m_vpp_fdb_entries/FDB notifications with VPP's L2FIB
