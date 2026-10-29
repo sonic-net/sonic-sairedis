@@ -254,9 +254,9 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.u64, dst_attr.value.u64);
             break;
 
-//        case SAI_ATTR_VALUE_TYPE_INT64:
-//            transfer_primitive(src_attr.value.s64, dst_attr.value.s64);
-//            break;
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            transfer_primitive(src_attr.value.s64, dst_attr.value.s64);
+            break;
 
         case SAI_ATTR_VALUE_TYPE_MAC:
             transfer_primitive(src_attr.value.mac, dst_attr.value.mac);
@@ -2454,8 +2454,8 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_UINT64:
             return sai_serialize_number(attr.value.u64);
 
-//        case SAI_ATTR_VALUE_TYPE_INT64:
-//            return sai_serialize_number(attr.value.s64);
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            return sai_serialize_number(attr.value.s64);
 
         case SAI_ATTR_VALUE_TYPE_MAC:
             return sai_serialize_mac(attr.value.mac);
@@ -5194,8 +5194,8 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_UINT64:
             return sai_deserialize_number(s, attr.value.u64);
 
-//        case SAI_ATTR_VALUE_TYPE_INT64:
-//            return sai_deserialize_number(s, attr.value.s64);
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            return sai_deserialize_number(s, attr.value.s64);
 
         case SAI_ATTR_VALUE_TYPE_MAC:
             return sai_deserialize_mac(s, attr.value.mac);

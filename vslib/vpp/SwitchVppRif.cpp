@@ -1916,7 +1916,8 @@ sai_status_t SwitchVpp::vpp_apply_loopback_action(
     CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", enabled));
     if (!enabled)
     {
-        return SAI_STATUS_SUCCESS;
+        return packet_action == SAI_PACKET_ACTION_FORWARD ?
+            SAI_STATUS_SUCCESS : SAI_STATUS_NOT_SUPPORTED;
     }
 
     int action = (packet_action == SAI_PACKET_ACTION_DROP) ? 1 : 0;
@@ -2079,7 +2080,7 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     /*
      * Three names are needed below and each has exactly one source:
      *   osif_name   SONiC netdev, for `ip link` / VRF enslavement lookups;
-     *               gains the ".<vlan>" suffix for a sub-port
+     *               uses the existing short or long spelling for a sub-port
      *   parent_hwif VPP interface, for the VPP API calls
      *   tap_name    linux-cp tap, only for the SUB_PORT LCP pair
      * They differ for a LAG (PortChannel<id> / BondEthernet<id> / be<id>) and
@@ -2106,10 +2107,24 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     if (attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
         const std::string suffix = "." + std::to_string(vlan_id);
+        const std::string short_osif = VppSubInterface::osIfFor(osif_name, vlan_id);
+        osif_name += suffix;
+
+        // Both PortChannel<N>.<vlan> and Po<N>.<vlan> are valid SONiC names.
+        if (ot == SAI_OBJECT_TYPE_LAG)
+        {
+            std::string output;
+            if (exec(std::string(IP_CMD) + " link show dev " + osif_name, output) != 0)
+            {
+                SWSS_LOG_DEBUG("Sub-interface %s not found; checking %s",
+                        osif_name.c_str(), short_osif.c_str());
+                osif_name = short_osif;
+            }
+        }
 
         /*
          * For a port-channel sub-port the LCP host tap must be be<id>.<vlan>
-         * (a VLAN netdev on the be<id> bond tap), NOT PortChannel<id>.<vlan>:
+         * (a VLAN netdev on the be<id> bond tap), NOT Po<id>.<vlan>:
          * that name collides with the kernel 8021q netdev owned by the Linux
          * bond/team stack. linux-cp-punt-xc lands on be<id>.<vlan> and the
          * sonic_ext aggr-tap-redirect steers the punted copy to the
@@ -2162,13 +2177,13 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
             if (parent_rec)
             {
                 auto sub_rec = m_ifaceRegistry.addSubInterface(parent_rec, vlan_id,
-                        static_cast<uint16_t>(vlan_id));
+                        static_cast<uint16_t>(vlan_id), osif_name);
 
                 if (sub_rec)
                 {
                     /*
                      * For a bond parent this is "be<id>.<vlan>", which is NOT
-                     * the SONiC name "PortChannel<id>.<vlan>" -- the tap has to
+                     * the SONiC sub-interface name -- the tap has to
                      * be recorded, it cannot be derived from the SONiC name.
                      */
                     m_ifaceRegistry.setTapName(sub_hwif, subif_tap);
@@ -2194,7 +2209,6 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         /* Get new list of physical interfaces from VS */
         refresh_interfaces_list();
 
-        osif_name += suffix;
     }
 
     sai_object_id_t vrf_obj_id = 0;
@@ -2676,9 +2690,28 @@ sai_status_t SwitchVpp::createRouterif(
     bool new_binding = m_ifaceRegistry.resolveHwIfByRifOid(object_id).empty();
     RifCreateState state;
     sai_status_t status = SAI_STATUS_SUCCESS;
+    std::vector<sai_attribute_t> effective_attrs;
 
     if (m_switchConfig->m_useTapDevice == true)
     {
+        auto attr_loopback = sai_metadata_get_attr_by_id(
+                SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+        if (attr_loopback != nullptr && attr_loopback->value.s32 == SAI_PACKET_ACTION_DROP)
+        {
+            bool enabled = false;
+            CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", enabled));
+            if (!enabled)
+            {
+                // Use the same effective CREATE attributes for programming and persistence.
+                effective_attrs.assign(attr_list, attr_list + attr_count);
+                effective_attrs.erase(effective_attrs.begin() + (attr_loopback - attr_list));
+                attr_count = static_cast<uint32_t>(effective_attrs.size());
+                attr_list = effective_attrs.data();
+                SWSS_LOG_WARN("RIF %s: iface-loopback disabled; CREATE DROP omitted, using FORWARD",
+                        sai_serialize_object_id(object_id).c_str());
+            }
+        }
+
         sai_attribute_t tattr;
 
         tattr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
@@ -2711,6 +2744,16 @@ sai_status_t SwitchVpp::createRouterif(
         vpp_resync_sub_interface_admin_state(state.hwif);
     }
 
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        auto attr_zone = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_NAT_ZONE_ID, attr_count, attr_list);
+
+        if (attr_zone != NULL)
+        {
+            m_nat.setRouterInterfaceZone(object_id, attr_zone->value.u32);
+        }
+    }
+
     if (status != SAI_STATUS_SUCCESS)
     {
         if (new_binding)
@@ -2731,6 +2774,9 @@ sai_status_t SwitchVpp::removeRouterif(
         _In_ sai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
+
+    // the outside feature goes before the interface does
+    m_nat.removeRouterInterface(objectId);
 
     if (m_switchConfig->m_useTapDevice == true)
     {

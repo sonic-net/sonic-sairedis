@@ -60,6 +60,9 @@
 #include <vpp_plugins/sflow/sflow.api_enum.h>
 #include <vpp_plugins/sflow/sflow.api_types.h>
 
+#include <vpp_plugins/nat/nat44-ed/nat44_ed.api_enum.h>
+#include <vpp_plugins/nat/nat44-ed/nat44_ed.api_types.h>
+
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_enum.h>
 #include <vpp_plugins/tunterm_acl/tunterm_acl.api_types.h>
 
@@ -398,6 +401,24 @@
 
 #define vl_api_version(n, v) static u32 sflow_api_version = v;
 #include <vpp_plugins/sflow/sflow.api.h>
+#undef vl_api_version
+
+/* nat44_ed API inclusion (nat_plugin.so; optional, see nat44_ed_msg_id_base) */
+
+#define vl_typedefs
+#include <vpp_plugins/nat/nat44-ed/nat44_ed.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/nat/nat44-ed/nat44_ed.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/nat/nat44-ed/nat44_ed.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 nat44_ed_api_version = v;
+#include <vpp_plugins/nat/nat44-ed/nat44_ed.api.h>
 #undef vl_api_version
 
 /* BOND API inclusion */
@@ -1624,6 +1645,66 @@ vl_api_bfd_udp_enable_multihop_reply_t_handler (vl_api_bfd_udp_enable_multihop_r
 }
 
 static void
+vl_api_nat44_ed_plugin_enable_disable_reply_t_handler(vl_api_nat44_ed_plugin_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_nat44_forwarding_enable_disable_reply_t_handler(vl_api_nat44_forwarding_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_nat44_ed_add_del_output_interface_reply_t_handler(vl_api_nat44_ed_add_del_output_interface_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_nat44_add_del_static_mapping_v2_reply_t_handler(vl_api_nat44_add_del_static_mapping_v2_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+typedef struct {
+    vpp_nat44_session_cb_fn cb;
+    void *ctx;
+} nat44_session_dump_ctx_t;
+
+static void
+vl_api_nat44_user_session_v3_details_t_handler(vl_api_nat44_user_session_v3_details_t *mp)
+{
+    if (!mp->context)
+        return;
+
+    nat44_session_dump_ctx_t *dctx = (nat44_session_dump_ctx_t *) get_index_ptr(mp->context);
+    if (!dctx || !dctx->cb)
+        return;
+
+    vpp_nat44_session_t s;
+
+    memset(&s, 0, sizeof(s));
+    memcpy(&s.inside_addr, mp->inside_ip_address, 4);
+    memcpy(&s.outside_addr, mp->outside_ip_address, 4);
+    memcpy(&s.ext_host_addr, mp->ext_host_address, 4);
+    s.inside_port = ntohs(mp->inside_port);
+    s.outside_port = ntohs(mp->outside_port);
+    s.ext_host_port = ntohs(mp->ext_host_port);
+    s.protocol = ntohs(mp->protocol);
+    s.is_static = (mp->flags & NAT_IS_STATIC) != 0;
+    s.total_bytes = clib_net_to_host_u64(mp->total_bytes);
+    s.total_pkts = ntohl(mp->total_pkts);
+
+    dctx->cb(&s, dctx->ctx);
+}
+
+static void
 vl_api_sflow_enable_disable_reply_t_handler(vl_api_sflow_enable_disable_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2244,6 +2325,16 @@ static void vpp_base_vpe_init(void)
 #define SFLOW_MSG_ID(id) \
     (VL_API_##id + sflow_msg_id_base)
 
+#define NAT44_ED_MSG_ID(id) \
+    (VL_API_##id + nat44_ed_msg_id_base)
+
+#define foreach_vpe_nat44_ed_api_reply_msg                              \
+    _(NAT44_ED_MSG_ID(NAT44_ED_PLUGIN_ENABLE_DISABLE_REPLY), nat44_ed_plugin_enable_disable_reply) \
+    _(NAT44_ED_MSG_ID(NAT44_FORWARDING_ENABLE_DISABLE_REPLY), nat44_forwarding_enable_disable_reply) \
+    _(NAT44_ED_MSG_ID(NAT44_ED_ADD_DEL_OUTPUT_INTERFACE_REPLY), nat44_ed_add_del_output_interface_reply) \
+    _(NAT44_ED_MSG_ID(NAT44_ADD_DEL_STATIC_MAPPING_V2_REPLY), nat44_add_del_static_mapping_v2_reply) \
+    _(NAT44_ED_MSG_ID(NAT44_USER_SESSION_V3_DETAILS), nat44_user_session_v3_details)
+
 #define foreach_vpe_ext_api_reply_msg                                   \
     _(INTERFACE_MSG_ID(SW_INTERFACE_DETAILS), sw_interface_details)     \
     _(INTERFACE_MSG_ID(CREATE_LOOPBACK_INSTANCE_REPLY), create_loopback_instance_reply) \
@@ -2307,6 +2398,12 @@ static void vpp_base_vpe_init(void)
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
 static u16 acl_msg_id_base;
 static u16 sflow_msg_id_base;
+/*
+ * ~0 when VPP runs without nat_plugin.so: the NAT44 calls then fail with
+ * -ENOTSUP instead of the connect asserting, so an image whose startup.conf
+ * does not load the plugin keeps working without NAT.
+ */
+static u16 nat44_ed_msg_id_base = (u16) ~0;
 static u16 sonic_ext_msg_id_base;
 static u16 policer_msg_id_base;
 
@@ -2548,6 +2645,26 @@ static void vpp_plugin_vpe_init(void)
 #undef _
 }
 
+static void vpp_nat44_ed_vpe_init(void)
+{
+    if (nat44_ed_msg_id_base == (u16) ~0)
+        return;
+
+#define _(N,n)                                                  \
+    vl_msg_api_set_handlers(N,                                  \
+                            #n,                                 \
+                            vl_api_##n##_t_handler,             \
+                            vl_noop_handler,                    \
+                            vl_api_##n##_t_endian,              \
+                            sizeof(vl_api_##n##_t), 1,          \
+                            vl_noop_handler,                    \
+                            vl_noop_handler,                    \
+                            vl_api_##n##_t_calc_size);
+
+    foreach_vpe_nat44_ed_api_reply_msg;
+#undef _
+}
+
 static void get_base_msg_id()
 {
     u8 *msg_base_lookup_name = format (0, "interface_%08x%c", interface_api_version, 0);
@@ -2640,6 +2757,12 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "sonic_ext_%08x%c", sonic_ext_api_version, 0);
     sonic_ext_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sonic_ext_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "nat44_ed_%08x%c", nat44_ed_api_version, 0);
+    nat44_ed_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    if (nat44_ed_msg_id_base == (u16) ~0) {
+        SAIVPP_WARN("VPP has no nat44_ed API (nat_plugin.so not loaded): NAT is not supported");
+    }
 }
 
 #define API_SOCKET_FILE "/run/vpp/api.sock"
@@ -3158,6 +3281,7 @@ int init_vpp_client()
         get_base_msg_id();
         vpp_ext_vpe_init();
         vpp_plugin_vpe_init();
+        vpp_nat44_ed_vpe_init();
 
         rc = api_sw_interface_dump(vam);
         if (rc == 0) {
@@ -8269,4 +8393,218 @@ vpp_get_swif_idx_by_name (const char *hwif_name)
     vat_main_t *vam = &vat_main;
     u32 idx = get_swif_idx(vam, hwif_name);
     return (idx == (u32)~0) ? (uint32_t)~0u : (uint32_t)idx;
+}
+
+/* =========================================================================
+ * NAT44 endpoint-dependent (nat_plugin.so)
+ * ========================================================================= */
+
+bool vpp_nat44_ed_supported(void)
+{
+    return nat44_ed_msg_id_base != (u16) ~0;
+}
+
+int vpp_nat44_ed_enable_disable(bool enable, uint32_t sessions)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_nat44_ed_plugin_enable_disable_t *mp;
+    int ret;
+
+    if (!vpp_nat44_ed_supported())
+        return -ENOTSUP;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = nat44_ed_msg_id_base;
+    M(NAT44_ED_PLUGIN_ENABLE_DISABLE, mp);
+    mp->enable = enable;
+    mp->sessions = htonl(sessions);
+    mp->inside_vrf = 0;
+    mp->outside_vrf = 0;
+    mp->flags = 0;
+
+    S(mp);
+    WR(ret);
+
+    /* enabling an enabled plugin, or disabling a disabled one, is not an error */
+    if (ret == VNET_API_ERROR_FEATURE_ALREADY_ENABLED || ret == VNET_API_ERROR_FEATURE_ALREADY_DISABLED)
+        ret = 0;
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) enable %d sessions %u", __func__, ret, enable, sessions);
+    } else {
+        SAIVPP_INFO("%s enable %d sessions %u", __func__, enable, sessions);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_nat44_forwarding_enable_disable(bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_nat44_forwarding_enable_disable_t *mp;
+    int ret;
+
+    if (!vpp_nat44_ed_supported())
+        return -ENOTSUP;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = nat44_ed_msg_id_base;
+    M(NAT44_FORWARDING_ENABLE_DISABLE, mp);
+    mp->enable = enable;
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) enable %d", __func__, ret, enable);
+    } else {
+        SAIVPP_INFO("%s enable %d", __func__, enable);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_nat44_ed_output_interface_add_del(const char *hwif_name, bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_nat44_ed_add_del_output_interface_t *mp;
+    int ret;
+    u32 idx;
+
+    if (!vpp_nat44_ed_supported())
+        return -ENOTSUP;
+
+    if (!hwif_name)
+        return -EINVAL;
+
+    VPP_LOCK();
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    __plugin_msg_base = nat44_ed_msg_id_base;
+    M(NAT44_ED_ADD_DEL_OUTPUT_INTERFACE, mp);
+    /* autoendian: VPP converts from network order on receipt */
+    mp->sw_if_index = htonl(idx);
+    mp->is_add = is_add;
+
+    S(mp);
+    WR(ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s is_add %d", __func__, ret, hwif_name, is_add);
+    } else {
+        SAIVPP_INFO("%s %s is_add %d", __func__, hwif_name, is_add);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_nat44_static_mapping_add_del(const vpp_nat44_static_mapping_t *m, bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_nat44_add_del_static_mapping_v2_t *mp;
+    int ret;
+
+    if (!vpp_nat44_ed_supported())
+        return -ENOTSUP;
+
+    if (!m)
+        return -EINVAL;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = nat44_ed_msg_id_base;
+    M(NAT44_ADD_DEL_STATIC_MAPPING_V2, mp);
+    mp->is_add = is_add;
+    mp->match_pool = 0;
+    memcpy(mp->local_ip_address, &m->local, 4);
+    memcpy(mp->external_ip_address, &m->external, 4);
+    mp->external_sw_if_index = htonl(~0U);
+    mp->vrf_id = htonl(m->vrf_id);
+    if (m->addr_only) {
+        mp->flags = NAT_IS_ADDR_ONLY;
+    } else {
+        mp->flags = NAT_IS_NONE;
+        mp->protocol = m->protocol;
+        /* VPP keeps ports in network order */
+        mp->local_port = htons(m->local_port);
+        mp->external_port = htons(m->external_port);
+    }
+    snprintf((char *) mp->tag, sizeof(mp->tag), "sai");
+
+    S(mp);
+    WR(ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    char l[INET_ADDRSTRLEN], e[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &m->local, l, sizeof(l));
+    inet_ntop(AF_INET, &m->external, e, sizeof(e));
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) local %s:%u external %s:%u proto %u vrf %u addr_only %d is_add %d",
+                     __func__, ret, l, m->local_port, e, m->external_port, m->protocol, m->vrf_id,
+                     m->addr_only, is_add);
+    } else {
+        SAIVPP_INFO("%s local %s:%u external %s:%u proto %u vrf %u addr_only %d is_add %d",
+                    __func__, l, m->local_port, e, m->external_port, m->protocol, m->vrf_id,
+                    m->addr_only, is_add);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_nat44_user_sessions_dump(struct in_addr inside_addr, uint32_t vrf_id,
+                                 vpp_nat44_session_cb_fn cb, void *ctx)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_nat44_user_session_v3_dump_t *mp;
+    vl_api_control_ping_t *mp_ping;
+    nat44_session_dump_ctx_t dctx = { cb, ctx };
+    int ret;
+
+    if (!vpp_nat44_ed_supported())
+        return -ENOTSUP;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = nat44_ed_msg_id_base;
+    M(NAT44_USER_SESSION_V3_DUMP, mp);
+    memcpy(mp->ip_address, &inside_addr, 4);
+    mp->vrf_id = htonl(vrf_id);
+
+    uint32_t context = store_ptr(&dctx);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
+
+    S(mp);
+
+    __plugin_msg_base = memclnt_msg_id_base;
+    PING(NULL, mp_ping);
+    S(mp_ping);
+
+    WR(ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
+
+    VPP_UNLOCK();
+    return ret;
 }
