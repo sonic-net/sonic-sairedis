@@ -130,38 +130,50 @@ sai_status_t SwitchVpp::updateDirectedBroadcast(
 {
     SWSS_LOG_ENTER();
 
-    bool enable;
+    auto it = m_directed_bcast_hwif.find(hwif_name);
+    uint32_t count = (it == m_directed_bcast_hwif.end()) ? 0 : it->second;
 
-    if (is_add)
+    if (!is_add && count == 0)
     {
-        if (m_directed_bcast_hwif[hwif_name]++ != 0)
-        {
-            return SAI_STATUS_SUCCESS;
-        }
-
-        enable = true;
+        return SAI_STATUS_SUCCESS;
     }
-    else
+
+    uint32_t new_count = is_add ? count + 1 : count - 1;
+
+    if (count != 0 && new_count != 0)
     {
-        auto it = m_directed_bcast_hwif.find(hwif_name);
+        // Broadcast neighbors on this interface both before and after the
+        // change, so the flag keeps its value and only the count moves.
+        it->second = new_count;
 
-        if (it == m_directed_bcast_hwif.end() || --it->second != 0)
-        {
-            return SAI_STATUS_SUCCESS;
-        }
-
-        m_directed_bcast_hwif.erase(it);
-        enable = false;
+        return SAI_STATUS_SUCCESS;
     }
 
     init_vpp_client();
 
-    int ret = sw_interface_set_ip_directed_broadcast(hwif_name.c_str(), enable);
+    int ret = sw_interface_set_ip_directed_broadcast(hwif_name.c_str(), is_add);
 
     SWSS_LOG_NOTICE("%s ip directed broadcast on %s status %d",
-                    (enable ? "Enable" : "Disable"), hwif_name.c_str(), ret);
+                    (is_add ? "Enable" : "Disable"), hwif_name.c_str(), ret);
 
-    return (ret == 0) ? SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
+    if (ret != 0)
+    {
+        // The flag did not change, so neither does the count: a later add
+        // retries the enable, and a later remove does not disable an interface
+        // whose flag is still off.
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (new_count == 0)
+    {
+        m_directed_bcast_hwif.erase(it);
+    }
+    else
+    {
+        m_directed_bcast_hwif[hwif_name] = new_count;
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::addRemoveIpNbr(
@@ -492,7 +504,23 @@ sai_status_t SwitchVpp::addIpNbr(
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, switch_id, attr_count, attr_list));
 
     if (is_ip_nbr_active() == true) {
-        CHECK_STATUS(addRemoveIpNbr(serializedObjectId, attr_count, attr_list, true, false, true));
+        sai_status_t status = addRemoveIpNbr(serializedObjectId, attr_count, attr_list, true, false, true);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Host route programming failed for neighbor %s, rolling back",
+                           serializedObjectId.c_str());
+
+            // create_internal() has already published the neighbor, so orchagent
+            // would retry this create and fail with "object already exists".
+            // Undo the adjacency first: its remove pass reads the MAC back from
+            // the object that remove_internal() then drops.
+            addRemoveIpNbr(serializedObjectId, 0, NULL, false, true, false);
+
+            remove_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId);
+
+            return status;
+        }
     }
 
     return SAI_STATUS_SUCCESS;
