@@ -3457,6 +3457,16 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
                           key.bd_id);
             return generateFdbLearnedOrMoveEvent(key, sw_if_index, SAI_FDB_EVENT_LEARNED);
         }
+        else if (!vppMovesFdbEntry(sai_serialize_fdb_entry(fi.m_fdbEntry)))
+        {
+            /*
+             * VPP doesn't move a static entry: the event was sent before
+             * orchagent made the MAC's FDB entry static.
+             */
+            SWSS_LOG_INFO("FDB: MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u has a static FDB entry, not moved",
+                          key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+            return false;
+        }
     }
 
     fi.setBridgePortId(bridge_port_id);
@@ -3565,6 +3575,27 @@ bool SwitchVpp::findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, 
     fi.setTimestamp((uint32_t)time(NULL));
 
     return true;
+}
+
+/*
+ * Whether VPP holds an FDB entry SAI has as an L2FIB entry it can move: VPP
+ * doesn't move a static one. orchagent's static entries are static in VPP,
+ * except a remote one it allows to move (remote_fdb_target()).
+ */
+bool SwitchVpp::vppMovesFdbEntry(const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    auto type = stored_attr(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, SAI_FDB_ENTRY_ATTR_TYPE);
+
+    if (type == nullptr || type->value.s32 != SAI_FDB_ENTRY_TYPE_STATIC)
+    {
+        return true;
+    }
+
+    auto it = m_remote_fdb.find(serializedObjectId);
+
+    return it != m_remote_fdb.end() && !it->second.is_static;
 }
 
 /*
@@ -3726,20 +3757,17 @@ bool SwitchVpp::resyncFdbWithVpp()
             fdb_entry.bv_id = bv_id;
             memcpy(fdb_entry.mac_address, m.first.mac, sizeof(sai_mac_t));
 
-            auto fdb_it = fdb_objects.find(sai_serialize_fdb_entry(fdb_entry));
-
-            if (fdb_it != fdb_objects.end())
+            if (fdb_objects.find(sai_serialize_fdb_entry(fdb_entry)) != fdb_objects.end())
             {
                 /*
                  * An FDB entry orchagent created: VPP doesn't age it, unless
                  * it moved it to another port, as it may have while its MOVE
                  * event was lost. Take that move, so the entry is tracked.
                  */
-                sai_attribute_t attr;
-                attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+                FdbInfo created;
 
-                if (get(SAI_OBJECT_TYPE_FDB_ENTRY, fdb_it->first, 1, &attr) == SAI_STATUS_SUCCESS &&
-                    attr.value.oid != bridge_port_id &&
+                if (findCreatedFdbEntry(m.first, m.second, created) &&
+                    created.getBridgePortId() != bridge_port_id &&
                     generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_MOVE))
                 {
                     m_vpp_fdb_entries[m.first] = m.second;

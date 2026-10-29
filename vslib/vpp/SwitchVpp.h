@@ -1776,6 +1776,7 @@ namespace saivs
             bool generateFdbAgedEvent(const VppFdbKey &key);
 
             bool findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, FdbInfo &fi);
+            bool vppMovesFdbEntry(const std::string &serializedObjectId);
 
             // Whether VPP's L2FIB has a MAC
             enum class L2fibLookup
