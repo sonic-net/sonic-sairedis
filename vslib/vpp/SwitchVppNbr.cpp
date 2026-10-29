@@ -282,6 +282,12 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
     // and the entry stays dpo-drop. The per-interface directed-broadcast flag is the
     // only knob that makes VPP replace that drop with a path out of the interface
     // using the broadcast adjacency, so toggle it instead.
+    //
+    // The flag is per interface, not per prefix: enabling it forwards the directed
+    // broadcast of every IPv4 subnet on the hwif, not only the one this neighbor
+    // belongs to. That matches SONiC, which programs a broadcast neighbor for every
+    // subnet it configures on the interface, so the extra subnets would be enabled
+    // by their own neighbors anyway.
     if (nbr_entry.ip_address.addr_family == SAI_IP_ADDR_FAMILY_IPV4 &&
         neighbor_dst_mac_is_broadcast(this, serializedObjectId, attr_count, attr_list, is_add))
     {
@@ -570,6 +576,13 @@ sai_status_t SwitchVpp::setIpNbr(
         // VPP updates an existing neighbor in place, so re-adding it rewrites the
         // adjacency with the new MAC. NO_HOST_ROUTE is passed along so the
         // no-fib-entry flag stays consistent.
+        //
+        // Only the adjacency pass runs here, so a MAC changing to or from the
+        // all-ones subnet broadcast MAC would not move the interface's
+        // directed-broadcast refcount. IntfsOrch creates and removes the subnet
+        // broadcast neighbor with its interface address, never setting a new MAC
+        // on one, so that transition does not occur; handling it would mean
+        // refcounting against the previous MAC as well.
         sai_attribute_t attrs[2];
         attrs[0] = *attr;
         attrs[1].id = SAI_NEIGHBOR_ENTRY_ATTR_NO_HOST_ROUTE;

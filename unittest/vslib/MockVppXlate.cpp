@@ -591,6 +591,44 @@ int __wrap_interface_set_promiscuous(const char *hwif_name, bool enable) {
     return 0;
 }
 
+/*
+ * Neighbor programming. Recorded as name: interface for the interface flag and
+ * the adjacency, empty for a route; id: the route's prefix length; sub_id: the
+ * returned status; flag: enable or is_add.
+ */
+int __wrap_sw_interface_set_ip_directed_broadcast(const char *hwif_name, bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    int ret = vppMock().directedBcastResult;
+
+    vppMock().calls.push_back({"sw_interface_set_ip_directed_broadcast",
+            hwif_name ? hwif_name : "", 0, (uint32_t)ret, enable});
+
+    return ret;
+}
+
+int __wrap_ip4_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct sockaddr_in *addr,
+        bool is_static, bool no_fib_entry, uint8_t *mac, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"ip4_nbr_add_del", hwif_name ? hwif_name : "",
+            addr ? addr->sin_addr.s_addr : 0, 0, is_add});
+
+    return 0;
+}
+
+int __wrap_ip_route_add_del(vpp_ip_route_t *prefix, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"ip_route_add_del", "",
+            prefix ? prefix->prefix_len : 0, 0, is_add});
+
+    return 0;
+}
+
 int __wrap_set_l2_interface_vlan_tag_rewrite(const char *hwif_name, uint32_t tag1, uint32_t tag2, uint32_t push_dot1q, uint32_t vtr_op) {
     SWSS_LOG_ENTER();
     return 0;
