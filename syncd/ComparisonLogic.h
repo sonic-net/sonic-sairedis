@@ -137,6 +137,33 @@ namespace syncd
                     _In_ const std::shared_ptr<SaiObj>& currentBestMatch,
                     _In_ const std::shared_ptr<SaiObj>& temporaryObj);
 
+            /**
+             * @brief Object's attributes ordered so that each condition
+             * source of a valid only attribute comes before the attributes
+             * that depend on it.
+             */
+            static std::vector<std::shared_ptr<SaiAttr>> orderConditionSourcesFirst(
+                    _In_ const std::shared_ptr<const SaiObj> obj);
+
+            /**
+             * @brief Whether attribute's valid only condition is not met on
+             * the given attributes.
+             *
+             * False for an attribute that is not valid only conditional.
+             */
+            static bool isValidOnlyConditionUnmet(
+                    _In_ const std::vector<sai_attribute_t> &attrs,
+                    _In_ const sai_attr_metadata_t *meta);
+
+            /**
+             * @brief Whether a SET of the attribute is skipped on warm reboot:
+             * a CREATE_AND_SET, non-OID attribute whose valid only condition
+             * is not met on the given (temporary object's) attributes.
+             */
+            static bool isSetSkippedForUnmetValidOnly(
+                    _In_ const std::vector<sai_attribute_t> &attrs,
+                    _In_ const sai_attr_metadata_t *meta);
+
             bool performObjectSetTransition(
                     _In_ AsicView& currentView,
                     _In_ AsicView& temporaryView,
