@@ -1416,12 +1416,20 @@ void SwitchVpp::processFdbEntriesForAging()
                 if (generateFdbAgedEvent(key)) {
                     m_vpp_fdb_entries.erase(key);
                 }
-            } else if (trackCreatedFdbEntry(key, ev.sw_if_index)) {
-                generateFdbAgedEvent(key);
             } else {
-                SWSS_LOG_INFO("FDB: DELETE for unknown MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u, skipping",
-                              key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
-                              key.bd_id);
+                CreatedFdbEntry created = trackCreatedFdbEntry(key, ev.sw_if_index);
+
+                if (created == CreatedFdbEntry::TRACKED) {
+                    generateFdbAgedEvent(key);
+                } else if (created == CreatedFdbEntry::RETRY) {
+                    // The next aging pass retries it, as for a failed resync
+                    std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
+                    m_mac_event_queue.push(ev);
+                } else {
+                    SWSS_LOG_INFO("FDB: DELETE for unknown MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u, skipping",
+                                  key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
+                                  key.bd_id);
+                }
             }
             break;
 

@@ -1736,7 +1736,15 @@ namespace saivs
 
             bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
             bool generateFdbAgedEvent(const VppFdbKey &key);
-            bool trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index);
+
+            // What trackCreatedFdbEntry() found
+            enum class CreatedFdbEntry
+            {
+                NONE,       // nothing to age
+                TRACKED,    // an FDB entry orchagent created, which VPP no longer has
+                RETRY,      // VPP's L2FIB couldn't be dumped
+            };
+            CreatedFdbEntry trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index);
 
             // Reconcile m_vpp_fdb_entries/FDB notifications with VPP's L2FIB
             // after MAC events were lost (VPP_MAC_ACTION_RESYNC). Returns

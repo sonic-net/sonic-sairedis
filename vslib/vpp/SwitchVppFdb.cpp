@@ -3277,10 +3277,9 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
  * vpp_set_fdb_aging_time()). saivpp tracks such an entry from its move, but
  * misses that if VPP moved it away and back while its events were lost: the
  * resync then finds it on its own port. Track it when VPP deletes it, so its
- * aging is reported. Returns false if orchagent has no dynamic FDB entry for
- * the MAC, or VPP has the MAC.
+ * aging is reported.
  */
-bool SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index)
+SwitchVpp::CreatedFdbEntry SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index)
 {
     SWSS_LOG_ENTER();
 
@@ -3292,7 +3291,7 @@ bool SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index)
 
     if (bv_id == SAI_NULL_OBJECT_ID)
     {
-        return false;
+        return CreatedFdbEntry::NONE;
     }
 
     FdbInfo fi;
@@ -3305,7 +3304,7 @@ bool SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index)
 
     if (fdbs.find(sid) == fdbs.end())
     {
-        return false;
+        return CreatedFdbEntry::NONE;
     }
 
     sai_attribute_t attrs[2];
@@ -3316,7 +3315,7 @@ bool SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index)
     if (get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 2, attrs) != SAI_STATUS_SUCCESS ||
         attrs[0].value.s32 != SAI_FDB_ENTRY_TYPE_DYNAMIC)
     {
-        return false;
+        return CreatedFdbEntry::NONE;
     }
 
     /*
@@ -3338,14 +3337,14 @@ bool SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index)
                                l->found = true;
                        }, &lookup) != 0)
     {
-        SWSS_LOG_WARN("FDB: L2FIB dump failed, not aging MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u of an FDB entry orchagent created",
+        SWSS_LOG_WARN("FDB: L2FIB dump failed, DELETE of MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u will be retried",
                       key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
-        return false;
+        return CreatedFdbEntry::RETRY;
     }
 
     if (lookup.found)
     {
-        return false;
+        return CreatedFdbEntry::NONE;
     }
 
     fi.setBridgePortId(attrs[1].value.oid);
@@ -3355,7 +3354,7 @@ bool SwitchVpp::trackCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index)
 
     SWSS_LOG_NOTICE("FDB: VPP deleted MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u of an FDB entry orchagent created",
                     key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
-    return true;
+    return CreatedFdbEntry::TRACKED;
 }
 
 bool SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
