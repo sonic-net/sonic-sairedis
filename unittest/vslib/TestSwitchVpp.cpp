@@ -1597,10 +1597,12 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
 
             l2fibHasMac(sw_if_index);
 
+            auto dumps = vppMock().l2fibDumpCalls;
+
             m_sw->m_mac_event_queue.push({{0}, ~0u, VPP_MAC_ACTION_RESYNC});
             m_sw->processFdbEntriesForAging();
 
-            EXPECT_EQ(1u, vppMock().l2fibDumpCalls);
+            EXPECT_EQ(dumps + 1, vppMock().l2fibDumpCalls);
         }
 
         // the one FDB notification saivpp sent since the last call
@@ -1657,6 +1659,7 @@ constexpr uint32_t SwitchVppFdbAgingCreatedEntry::OTHER_PORT_SW_IF_INDEX;
 TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovesIsReportedAndAgesOut)
 {
     // Traffic from the MAC on the other port: VPP moves the entry
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
     macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
 
     auto ntf = fdbNotification();
@@ -1679,6 +1682,7 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovesIsReportedAndAgesOut)
 
 TEST_F(SwitchVppFdbAgingCreatedEntry, EntryRemovedAfterVppMovedItIsForgotten)
 {
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
     macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
 
     EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_MOVE"));
@@ -1832,7 +1836,7 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedBehindAMoveAgesNothing)
 
     m_sw->processFdbEntriesForAging();
 
-    EXPECT_EQ(2u, vppMock().l2fibDumpCalls);
+    EXPECT_EQ(3u, vppMock().l2fibDumpCalls);
     EXPECT_TRUE(m_sw->m_mac_event_queue.empty());
     EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
     EXPECT_EQ(m_otherBridgePort, entryBridgePort());
@@ -1884,4 +1888,104 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, StaticEntryIsNotMoved)
     EXPECT_EQ(m_bridgePort, entryBridgePort());
     EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+// VPP's MOVE waited in the queue while orchagent removed the entry and
+// created it again: VPP has the new entry where orchagent put it
+TEST_F(SwitchVppFdbAgingCreatedEntry, MoveQueuedBeforeOrchagentRecreatedTheEntryMovesNothing)
+{
+    queueMacEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId));
+    createEntry();
+    l2fibHasMac(PORT_SW_IF_INDEX);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(1u, vppMock().l2fibDumpCalls);
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+// VPP's L2FIB can't be dumped to check the MOVE: the next aging pass retries it
+TEST_F(SwitchVppFdbAgingCreatedEntry, MoveRetriedAfterAFailedL2fibDump)
+{
+    vppMock().l2fibDumpFailures = 1;
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+
+    macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    ASSERT_EQ(1u, m_sw->m_mac_event_queue.size());
+    EXPECT_TRUE(m_sw->m_mac_event_queue.front().retry);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_MOVE"));
+    EXPECT_EQ(m_otherBridgePort, entryBridgePort());
+    EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
+    EXPECT_TRUE(m_sw->m_mac_event_queue.empty());
+}
+
+// A MOVE that waited in the queue while orchagent removed the entry: VPP no
+// longer has the MAC, which isn't learned back
+TEST_F(SwitchVppFdbAgingCreatedEntry, MoveQueuedBeforeOrchagentRemovedTheEntryLearnsNothing)
+{
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+    macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_MOVE"));
+
+    // VPP moves it back, and orchagent removes the entry before saivpp takes that
+    queueMacEvent(VPP_MAC_ACTION_MOVE, PORT_SW_IF_INDEX);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId));
+    vppMock().l2fib.clear();
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+// A DELETE retried behind a MOVE that made saivpp track the entry ages it,
+// once VPP no longer has the MAC
+TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedBehindAMoveAgesTheMacVppDeleted)
+{
+    vppMock().l2fibDumpFailures = 1;
+
+    queueMacEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+    queueMacEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_MOVE"));
+    ASSERT_EQ(1u, m_sw->m_mac_event_queue.size());
+
+    // VPP ages it before the retry
+    vppMock().l2fib.clear();
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_AGED"));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+// A MOVE for a MAC saivpp doesn't track, which VPP has: learned
+TEST_F(SwitchVppFdbAgingCreatedEntry, MoveOfAMacVppHasButSaivppDoesNotTrackIsLearned)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId));
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+
+    macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_LEARNED"));
+    EXPECT_EQ(m_otherBridgePort, entryBridgePort());
+    EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
 }

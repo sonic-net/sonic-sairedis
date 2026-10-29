@@ -3316,35 +3316,124 @@ bool SwitchVpp::findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, 
     return true;
 }
 
-/*
- * VPP takes a MAC out of its L2FIB before it reports the DELETE, which may
- * then wait in the queue while orchagent removes the FDB entry and creates it
- * again, or VPP learns the MAC again; a DELETE queued again after a failed
- * dump also waits behind the events VPP sent later. Whether VPP has the MAC
- * now tells whether it aged.
- */
-SwitchVpp::L2fibLookup SwitchVpp::lookupL2fibMac(const VppFdbKey &key)
+// VPP's L2FIB entry for a MAC, if it has one
+SwitchVpp::L2fibLookup SwitchVpp::lookupL2fibMac(const VppFdbKey &key, vpp_l2fib_entry_t &entry)
 {
     SWSS_LOG_ENTER();
 
     struct Lookup
     {
         const VppFdbKey *key;
+        vpp_l2fib_entry_t *entry;
         bool found;
-    } lookup = {&key, false};
+    } lookup = {&key, &entry, false};
 
     if (vpp_l2fib_dump(key.bd_id, [](const vpp_l2fib_entry_t *e, void *ctx)
                        {
                            auto l = static_cast<Lookup *>(ctx);
 
                            if (e->bd_id == l->key->bd_id && memcmp(e->mac, l->key->mac, sizeof(e->mac)) == 0)
+                           {
+                               *l->entry = *e;
                                l->found = true;
+                           }
                        }, &lookup) != 0)
     {
         return L2fibLookup::FAILED;
     }
 
     return lookup.found ? L2fibLookup::PRESENT : L2fibLookup::ABSENT;
+}
+
+/*
+ * Bring a MAC in line with VPP's L2FIB, for a MAC event that may be stale:
+ *
+ * - one for a MAC orchagent has a dynamic FDB entry for, which saivpp doesn't
+ *   track: it may have waited in the queue while orchagent removed the entry
+ *   and created it again;
+ * - a MOVE for a MAC saivpp doesn't track, which may have waited while
+ *   orchagent removed the entry;
+ * - an event queued again after a failed L2FIB dump, behind the events VPP
+ *   sent later.
+ *
+ * VPP's L2FIB as it is now decides, as in resyncFdbWithVpp(). A MAC VPP has
+ * on the port of orchagent's entry is left alone: VPP doesn't age an entry
+ * orchagent created, unless it moved it (vpp_set_fdb_aging_time()), and if it
+ * moved it away and back, its DELETE comes here. The event is queued again
+ * if the L2FIB can't be dumped.
+ */
+void SwitchVpp::reconcileFdbEntryWithVpp(const VppFdbKey &key, const VppMacEvent &ev)
+{
+    SWSS_LOG_ENTER();
+
+    vpp_l2fib_entry_t entry = {};
+    L2fibLookup lookup = lookupL2fibMac(key, entry);
+
+    if (lookup == L2fibLookup::FAILED)
+    {
+        SWSS_LOG_WARN("FDB: L2FIB dump failed, MAC event for %02x:%02x:%02x:%02x:%02x:%02x bd %u will be retried",
+                      key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+
+        // The next aging pass retries it, as for a failed resync
+        VppMacEvent again = ev;
+        again.retry = true;
+
+        std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
+        m_mac_event_queue.push(again);
+        return;
+    }
+
+    bool present = lookup == L2fibLookup::PRESENT;
+    auto it = m_vpp_fdb_entries.find(key);
+
+    if (it != m_vpp_fdb_entries.end())
+    {
+        if (!present)
+        {
+            if (generateFdbAgedEvent(key))
+                m_vpp_fdb_entries.erase(it);
+        }
+        else if (entry.sw_if_index != it->second &&
+                 generateFdbLearnedOrMoveEvent(key, entry.sw_if_index, SAI_FDB_EVENT_MOVE))
+        {
+            it->second = entry.sw_if_index;
+        }
+        return;
+    }
+
+    FdbInfo created;
+
+    if (findCreatedFdbEntry(key, ev.sw_if_index, created))
+    {
+        if (!present)
+        {
+            SWSS_LOG_NOTICE("FDB: VPP deleted MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u of an FDB entry orchagent created",
+                            key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+            m_fdb_info_set.insert(created);
+            generateFdbAgedEvent(key);
+            return;
+        }
+
+        sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
+        sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
+
+        findBridgeVlanForPortVlan(m_ifaceRegistry.resolveIfOid(entry.sw_if_index),
+                                  (sai_vlan_id_t)key.bd_id, bv_id, bridge_port_id);
+
+        if (!entry.is_static && bridge_port_id != created.getBridgePortId() &&
+            generateFdbLearnedOrMoveEvent(key, entry.sw_if_index, SAI_FDB_EVENT_MOVE))
+        {
+            m_vpp_fdb_entries[key] = entry.sw_if_index;
+        }
+        return;
+    }
+
+    // Neither tracked nor orchagent's dynamic entry: a MAC VPP learned
+    if (present && !entry.is_static &&
+        generateFdbLearnedOrMoveEvent(key, entry.sw_if_index, SAI_FDB_EVENT_LEARNED))
+    {
+        m_vpp_fdb_entries[key] = entry.sw_if_index;
+    }
 }
 
 bool SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)

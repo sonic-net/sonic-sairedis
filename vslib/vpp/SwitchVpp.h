@@ -1747,7 +1747,8 @@ namespace saivs
                 PRESENT,
                 FAILED,     // VPP's L2FIB couldn't be dumped
             };
-            L2fibLookup lookupL2fibMac(const VppFdbKey &key);
+            L2fibLookup lookupL2fibMac(const VppFdbKey &key, vpp_l2fib_entry_t &entry);
+            void reconcileFdbEntryWithVpp(const VppFdbKey &key, const VppMacEvent &ev);
 
             // Reconcile m_vpp_fdb_entries/FDB notifications with VPP's L2FIB
             // after MAC events were lost (VPP_MAC_ACTION_RESYNC). Returns
