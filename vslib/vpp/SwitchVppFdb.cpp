@@ -1003,21 +1003,6 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
-    /* Disable unknown-unicast flooding on this bridge domain.
-     *
-     * VPP auto-creates the bridge domain (with all flooding enabled by
-     * default) when the first member is added above. Clearing UU_FLOOD makes
-     * VPP drop unknown-unicast frames (destination MAC not in the L2FIB)
-     * instead of flooding them to all BD members. Broadcast/multicast
-     * flooding (VPP_BD_FLAG_FLOOD) is left enabled so ARP/ND still work.
-     *
-     * Best-effort: on failure the member still comes up, only unknown-unicast
-     * flooding remains enabled.
-     */
-    if (set_bridge_domain_flags(bridge_id, VPP_BD_FLAG_UU_FLOOD, false) != 0) {
-        SWSS_LOG_WARN("Failed to disable UU flood on bridge domain %u", bridge_id);
-    }
-
     return SAI_STATUS_SUCCESS;
 }
 
