@@ -1705,7 +1705,9 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, EntryRemovedAfterVppMovedItIsForgotten)
     EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_LEARNED"));
 }
 
-// VPP moved the entry while its MOVE event was lost: the resync takes the move
+/*
+ * VPP moved the entry while its MOVE event was lost: the resync takes the move.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovedWhileItsEventsWereLostIsMovedByTheResync)
 {
     resync(OTHER_PORT_SW_IF_INDEX);
@@ -1724,7 +1726,9 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovedWhileItsEventsWereLostIsMoved
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
 
-// VPP has the entry on its own port: not a MAC VPP learned, nothing to report
+/*
+ * VPP has the entry on its own port: not a MAC VPP learned, nothing to report.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, EntryOnItsPortIsLeftAloneByTheResync)
 {
     resync(PORT_SW_IF_INDEX);
@@ -1735,8 +1739,10 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, EntryOnItsPortIsLeftAloneByTheResync)
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
 
-// VPP moved the entry away and back while its events were lost: the resync
-// finds it on its own port, but VPP now ages it, and its aging is reported
+/*
+ * VPP moved the entry away and back while its events were lost: the resync
+ * finds it on its own port, but VPP now ages it, and its aging is reported.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovedAwayAndBackWhileItsEventsWereLostAgesOut)
 {
     resync(PORT_SW_IF_INDEX);
@@ -1756,7 +1762,9 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovedAwayAndBackWhileItsEventsWere
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
 
-// VPP doesn't age a static entry, and a DELETE doesn't remove one
+/*
+ * VPP doesn't age a static entry, and a DELETE doesn't remove one.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, StaticEntryIsNotRemovedByADelete)
 {
     sai_attribute_t attr;
@@ -1773,8 +1781,10 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, StaticEntryIsNotRemovedByADelete)
     EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
 }
 
-// VPP's DELETE waited in the queue while orchagent removed the entry and
-// created it again: VPP has the new entry, and nothing is aged
+/*
+ * VPP's DELETE waited in the queue while orchagent removed the entry and
+ * created it again: VPP has the new entry, and nothing is aged.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteQueuedBeforeOrchagentRecreatedTheEntryAgesNothing)
 {
     queueMacEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
@@ -1791,7 +1801,9 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteQueuedBeforeOrchagentRecreatedTheEnt
     EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
 }
 
-// VPP's L2FIB can't be dumped to check the DELETE: the next aging pass retries it
+/*
+ * VPP's L2FIB can't be dumped to check the DELETE: the next aging pass retries it.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedAfterAFailedL2fibDump)
 {
     vppMock().l2fibDumpResult = -1;
@@ -1844,7 +1856,9 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedBehindAMoveAgesNothing)
     EXPECT_EQ(1u, m_sw->m_fdb_info_set.size());
 }
 
-// The same with the move taken by a resync
+/*
+ * The same with the move taken by a resync.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedBehindAResyncAgesNothing)
 {
     vppMock().l2fibDumpFailures = 1;
@@ -1890,8 +1904,10 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, StaticEntryIsNotMoved)
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
 
-// VPP's MOVE waited in the queue while orchagent removed the entry and
-// created it again: VPP has the new entry where orchagent put it
+/*
+ * VPP's MOVE waited in the queue while orchagent removed the entry and
+ * created it again: VPP has the new entry where orchagent put it.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, MoveQueuedBeforeOrchagentRecreatedTheEntryMovesNothing)
 {
     queueMacEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
@@ -1909,7 +1925,9 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, MoveQueuedBeforeOrchagentRecreatedTheEntry
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
 
-// VPP's L2FIB can't be dumped to check the MOVE: the next aging pass retries it
+/*
+ * VPP's L2FIB can't be dumped to check the MOVE: the next aging pass retries it.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, MoveRetriedAfterAFailedL2fibDump)
 {
     vppMock().l2fibDumpFailures = 1;
@@ -1930,8 +1948,10 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, MoveRetriedAfterAFailedL2fibDump)
     EXPECT_TRUE(m_sw->m_mac_event_queue.empty());
 }
 
-// A MOVE that waited in the queue while orchagent removed the entry: VPP no
-// longer has the MAC, which isn't learned back
+/*
+ * A MOVE that waited in the queue while orchagent removed the entry: VPP no
+ * longer has the MAC, which is not learned back.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, MoveQueuedBeforeOrchagentRemovedTheEntryLearnsNothing)
 {
     l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
@@ -1952,8 +1972,10 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, MoveQueuedBeforeOrchagentRemovedTheEntryLe
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
 
-// A DELETE retried behind a MOVE that made saivpp track the entry ages it,
-// once VPP no longer has the MAC
+/*
+ * A DELETE retried behind a MOVE that made saivpp track the entry ages it,
+ * once VPP no longer has the MAC.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedBehindAMoveAgesTheMacVppDeleted)
 {
     vppMock().l2fibDumpFailures = 1;
@@ -1977,7 +1999,9 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedBehindAMoveAgesTheMacVppDelet
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
 
-// A MOVE for a MAC saivpp doesn't track, which VPP has: learned
+/*
+ * A MOVE for a MAC saivpp doesn't track, which VPP has: learned.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, MoveOfAMacVppHasButSaivppDoesNotTrackIsLearned)
 {
     ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId));
@@ -1990,8 +2014,10 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, MoveOfAMacVppHasButSaivppDoesNotTrackIsLea
     EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
 }
 
-// VPP keeps the row of a port that left the bridge domain until its aging
-// scan deletes it: that row doesn't keep the MAC
+/*
+ * VPP keeps the row of a port that left the bridge domain until its aging
+ * scan deletes it: that row doesn't keep the MAC.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, RowOfAPortThatLeftTheBridgeDomainDoesNotKeepTheMac)
 {
     l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
@@ -2003,7 +2029,9 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, RowOfAPortThatLeftTheBridgeDomainDoesNotKe
     EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
 }
 
-// The same in a resync: that row doesn't move orchagent's entry there
+/*
+ * The same in a resync: that row doesn't move orchagent's entry there.
+ */
 TEST_F(SwitchVppFdbAgingCreatedEntry, ResyncIgnoresTheRowOfAPortThatLeftTheBridgeDomain)
 {
     ASSERT_TRUE(m_sw->m_ifaceRegistry.clearBdId(OTHER_PORT_HWIF));
