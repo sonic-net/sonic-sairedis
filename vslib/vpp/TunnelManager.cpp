@@ -706,8 +706,29 @@ TunnelManager::remove_vpp_vxlan_decap(
     return SAI_STATUS_SUCCESS;
 }
 
+TunnelManager::L2TunnelKey
+TunnelManager::l2_tunnel_key(
+    _In_ const sai_ip_address_t& src_ip,
+    _In_ const sai_ip_address_t& dst_ip,
+    _In_ uint32_t vni)
+{
+    SWSS_LOG_ENTER();
+
+    auto ip_key = [](const sai_ip_address_t& ip) {
+        if (ip.addr_family == SAI_IP_ADDR_FAMILY_IPV6) {
+            return std::string(1, '6') +
+                std::string(reinterpret_cast<const char *>(ip.addr.ip6), sizeof(ip.addr.ip6));
+        }
+        return std::string(1, '4') +
+            std::string(reinterpret_cast<const char *>(&ip.addr.ip4), sizeof(ip.addr.ip4));
+    };
+
+    return L2TunnelKey{ip_key(src_ip), ip_key(dst_ip), vni};
+}
+
 sai_status_t
 TunnelManager::create_l2_vxlan_tunnel_for_vni(
+    _In_ sai_object_id_t tunnel_oid,
     _In_ sai_ip_address_t src_ip,
     _In_ sai_ip_address_t dst_ip,
     _In_ uint32_t vni,
@@ -720,34 +741,25 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
 
     sw_if_index = ~0;
 
-    auto existing_it = m_l2_tunnel_map.find(vni);
-    if (existing_it != m_l2_tunnel_map.end()) {
-        const TunnelVPPData& existing = existing_it->second;
+    auto key = l2_tunnel_key(src_ip, dst_ip, vni);
 
-        // Preserve the existing EVPN behavior for multiple P2P tunnel
-        // objects that reference the same VNI. m_l2_tunnel_map predates the
-        // term-owned path and can represent only one of those objects; making
-        // that limitation a hard error here would reject control-plane state
-        // that was previously accepted. The stricter comparison below is for
-        // the new term-owned path, where silently reusing a different match
-        // would claim that a SAI termination entry had been implemented when
-        // it had not.
+    auto existing_it = m_l2_tunnel_map.find(key);
+    if (existing_it != m_l2_tunnel_map.end()) {
+        const TunnelVPPData& existing = existing_it->second.data;
+
         const bool existing_term_owned =
             existing.tunnel_term_oid != SAI_NULL_OBJECT_ID;
         const bool requested_term_owned =
             tunnel_term_oid != SAI_NULL_OBJECT_ID;
 
+        // Another SAI P2P tunnel to the same VTEP for the VNI (EVPN) shares
+        // the VPP tunnel, which stays until the last of them is removed.
         if (!existing_term_owned && !requested_term_owned) {
-            SWSS_LOG_NOTICE("VNI %u already has an object-owned L2 VXLAN "
-                            "tunnel, preserving the existing one", vni);
+            existing_it->second.owners.insert(tunnel_oid);
             sw_if_index = existing.sw_if_index;
+            SWSS_LOG_INFO("L2 VXLAN tunnel for VNI %u to this VTEP exists (sw_if %u)", vni, sw_if_index);
             return SAI_STATUS_SUCCESS;
         }
-
-        const bool same_match =
-            existing.vlan_id == vlan_id &&
-            sai_ip_address_equal(existing.src_ip, src_ip) &&
-            sai_ip_address_equal(existing.dst_ip, dst_ip);
 
         // Term-owned tunnels can only be reused by the same term and map entry.
         // Sharing with another SAI object would let either owner remove the
@@ -757,7 +769,7 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
             existing.tunnel_term_oid == tunnel_term_oid &&
             existing.tunnel_map_entry_oid == tunnel_map_entry_oid;
 
-        if (!same_match || !owner_compatible) {
+        if (existing.vlan_id != vlan_id || !owner_compatible) {
             SWSS_LOG_ERROR("VNI %u already has an incompatible L2 VXLAN "
                            "match/owner (existing term=%s, requested term=%s)",
                            vni,
@@ -791,8 +803,12 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
     tunnel_data.tunnel_term_oid = tunnel_term_oid;
     tunnel_data.tunnel_map_entry_oid = tunnel_map_entry_oid;
 
+    char src_str[INET6_ADDRSTRLEN], dst_str[INET6_ADDRSTRLEN];
+    vpp_ip_addr_t_to_string(&req.src_address, src_str, sizeof(src_str));
+    vpp_ip_addr_t_to_string(&req.dst_address, dst_str, sizeof(dst_str));
+
     if (create_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true) != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_ERROR("Failed to create VPP VXLAN tunnel for VNI=%u", vni);
+        SWSS_LOG_ERROR("Failed to create VPP VXLAN tunnel src=%s dst=%s VNI=%u", src_str, dst_str, vni);
         return SAI_STATUS_FAILURE;
     }
 
@@ -817,8 +833,18 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
         }
     }
 
-    int vpp_status = set_sw_interface_l2_bridge_by_index(
-        tunnel_data.sw_if_index, vlan_id, true, VPP_API_PORT_TYPE_NORMAL);
+    /*
+     * Every remote VTEP of an EVPN VNI gets its own tunnel, and this VTEP
+     * replicates BUM traffic to each of them itself. A frame that came in on
+     * one of them must not be flooded out on the others: the remote VTEP has
+     * sent it to all of its peers already, and with split horizon group 0 it
+     * would loop around the mesh. Local ports and the BVI stay in group 0, and
+     * so does a term-owned tunnel, which never sends.
+     */
+    tunnel_data.l2_shg = tunnel_term_oid != SAI_NULL_OBJECT_ID ? 0 : L2_TUNNEL_SHG;
+
+    int vpp_status = set_sw_interface_l2_bridge_shg_by_index(
+        tunnel_data.sw_if_index, vlan_id, true, VPP_API_PORT_TYPE_NORMAL, tunnel_data.l2_shg);
     if (vpp_status != 0) {
         SWSS_LOG_ERROR("Failed to add tunnel sw_if %u to BD %u",
             tunnel_data.sw_if_index, vlan_id);
@@ -833,51 +859,231 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
         return SAI_STATUS_FAILURE;
     }
 
-    // A term-owned tunnel is decap-only, so it has nothing to learn. VPP also
-    // drops a frame whose source MAC is static on another bridge port, such
-    // as a decapsulated frame sourced from the VLAN BVI MAC. Entering bridge
-    // mode enables learning, so this must follow the bridge attach.
-    if (tunnel_term_oid != SAI_NULL_OBJECT_ID &&
-        set_l2_interface_flags_by_index(tunnel_data.sw_if_index,
+    /*
+     * Entering bridge mode enables learning, so turn it off after the bridge
+     * attach. A term-owned tunnel is decap-only, so it has nothing to learn.
+     * VPP also drops a frame whose source MAC is static on another bridge
+     * port, such as a decapsulated frame sourced from the VLAN BVI MAC. For an
+     * EVPN tunnel, EVPN is the control plane for the MAC addresses behind the
+     * remote VTEP: orchagent programs them as FDB entries on the tunnel
+     * bridge port. A MAC VPP learned from the data plane would sit on
+     * whichever tunnel a frame last came in on, with no SAI bridge port to
+     * report it against.
+     */
+    if (set_l2_interface_flags_by_index(tunnel_data.sw_if_index,
                                         VPP_BD_FLAG_LEARN, false) != 0) {
-        SWSS_LOG_ERROR("Failed to disable learning on L2 VXLAN tunnel sw_if %u",
-                       tunnel_data.sw_if_index);
-        set_sw_interface_l2_bridge_by_index(
-            tunnel_data.sw_if_index, vlan_id, false, VPP_API_PORT_TYPE_NORMAL);
-        if (vpp_classify_set_interface_l2_tables_by_index(
-                tunnel_data.sw_if_index, ~0u, ~0u, ~0u,
-                false /* output */) == 0) {
-            vpp_classify_table_delete(tunnel_data.l2_output_drop_table_index);
+        if (tunnel_term_oid == SAI_NULL_OBJECT_ID) {
+            SWSS_LOG_WARN("Failed to disable MAC learning on tunnel sw_if %u",
+                          tunnel_data.sw_if_index);
+        } else {
+            SWSS_LOG_ERROR("Failed to disable learning on L2 VXLAN tunnel sw_if %u",
+                           tunnel_data.sw_if_index);
+            set_sw_interface_l2_bridge_shg_by_index(
+                tunnel_data.sw_if_index, vlan_id, false, VPP_API_PORT_TYPE_NORMAL,
+                tunnel_data.l2_shg);
+            if (vpp_classify_set_interface_l2_tables_by_index(
+                    tunnel_data.sw_if_index, ~0u, ~0u, ~0u,
+                    false /* output */) == 0) {
+                vpp_classify_table_delete(tunnel_data.l2_output_drop_table_index);
+            }
+            remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
+            return SAI_STATUS_FAILURE;
         }
-        remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
-        return SAI_STATUS_FAILURE;
     }
 
-    m_l2_tunnel_map[vni] = tunnel_data;
+    L2Tunnel& tunnel = m_l2_tunnel_map[key];
+    tunnel.data = tunnel_data;
     sw_if_index = tunnel_data.sw_if_index;
-
-    char src_str[INET6_ADDRSTRLEN], dst_str[INET6_ADDRSTRLEN];
-    vpp_ip_addr_t_to_string(&req.src_address, src_str, sizeof(src_str));
-    vpp_ip_addr_t_to_string(&req.dst_address, dst_str, sizeof(dst_str));
 
     SWSS_LOG_NOTICE("Created L2 VXLAN: src=%s dst=%s VNI=%u VLAN=%u sw_if=%u",
         src_str, dst_str, vni, vlan_id, sw_if_index);
+
+    if (tunnel_term_oid == SAI_NULL_OBJECT_ID) {
+        tunnel.owners.insert(tunnel_oid);
+
+        // MAC addresses orchagent already pointed at this VTEP
+        m_switch_db->remote_fdb_resync(vlan_id);
+    }
 
     return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t
+TunnelManager::remove_l2_vxlan_tunnel(
+    _In_ std::map<L2TunnelKey, L2Tunnel>::iterator it)
+{
+    SWSS_LOG_ENTER();
+
+    TunnelVPPData& tunnel_data = it->second.data;
+    const uint32_t vni = tunnel_data.vni;
+
+    // VPP keeps a provisioned L2FIB entry after its interface is gone, and
+    // takes a delete only while the interface exists
+    if (!m_switch_db->remote_fdb_drop_tunnel(tunnel_data.sw_if_index)) {
+        SWSS_LOG_ERROR("Failed to drop remote FDB entries on L2 VXLAN tunnel "
+                       "VNI=%u sw_if=%u", vni, tunnel_data.sw_if_index);
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (set_sw_interface_l2_bridge_shg_by_index(
+            tunnel_data.sw_if_index, tunnel_data.vlan_id,
+            false, VPP_API_PORT_TYPE_NORMAL, tunnel_data.l2_shg) != 0) {
+        SWSS_LOG_ERROR("Failed to detach L2 VXLAN tunnel VNI=%u sw_if=%u "
+                       "from VLAN=%u", vni, tunnel_data.sw_if_index,
+                       tunnel_data.vlan_id);
+        return SAI_STATUS_FAILURE;
+    }
+
+    const uint32_t drop_table = tunnel_data.l2_output_drop_table_index;
+    if (drop_table != ~0u &&
+        vpp_classify_set_interface_l2_tables_by_index(
+            tunnel_data.sw_if_index, ~0u, ~0u, ~0u,
+            false /* output */) != 0) {
+        SWSS_LOG_ERROR("Failed to unbind L2 VXLAN output guard for VNI=%u; "
+                       "leaving the tunnel outside the bridge", vni);
+        return SAI_STATUS_FAILURE;
+    }
+
+    vpp_vxlan_tunnel_t req;
+    memset(&req, 0, sizeof(req));
+    req.vni = tunnel_data.vni;
+    req.src_port = m_vxlan_port;
+    req.dst_port = m_vxlan_port;
+    req.instance = ~0;
+    req.decap_next_index = ~0;
+    sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.src_ip, req.src_address);
+    sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.dst_ip, req.dst_address);
+
+    if (remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true) !=
+        SAI_STATUS_SUCCESS) {
+        if (drop_table != ~0u &&
+            vpp_classify_set_interface_l2_tables_by_index(
+                tunnel_data.sw_if_index, drop_table, drop_table, drop_table,
+                false /* output */) != 0) {
+            SWSS_LOG_ERROR("Failed to restore L2 VXLAN output guard for VNI=%u; "
+                           "leaving the tunnel outside the bridge", vni);
+            return SAI_STATUS_FAILURE;
+        }
+        if (set_sw_interface_l2_bridge_shg_by_index(
+                tunnel_data.sw_if_index, tunnel_data.vlan_id,
+                true, VPP_API_PORT_TYPE_NORMAL, tunnel_data.l2_shg) != 0) {
+            SWSS_LOG_ERROR("Failed to restore L2 VXLAN tunnel VNI=%u to "
+                           "VLAN=%u after delete failure", vni,
+                           tunnel_data.vlan_id);
+            return SAI_STATUS_FAILURE;
+        }
+        // Bridge reattachment enables learning, so turn it off again just as
+        // on initial creation.
+        if (set_l2_interface_flags_by_index(tunnel_data.sw_if_index,
+                                            VPP_BD_FLAG_LEARN, false) != 0) {
+            SWSS_LOG_ERROR("Failed to disable learning on restored L2 VXLAN "
+                           "tunnel VNI=%u sw_if=%u", vni,
+                           tunnel_data.sw_if_index);
+        }
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (drop_table != ~0u && vpp_classify_table_delete(drop_table) != 0) {
+        SWSS_LOG_ERROR("Failed to delete L2 VXLAN output guard table %u for VNI=%u",
+                       drop_table, vni);
+    }
+
+    char dst_str[INET6_ADDRSTRLEN];
+    vpp_ip_addr_t_to_string(&req.dst_address, dst_str, sizeof(dst_str));
+
+    SWSS_LOG_NOTICE("Removed L2 VXLAN tunnel dst=%s VNI=%u (sw_if=%u, VLAN=%u)",
+        dst_str, vni, tunnel_data.sw_if_index, tunnel_data.vlan_id);
+
+    m_l2_tunnel_map.erase(it);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t
+TunnelManager::release_l2_vxlan_tunnel(
+    _In_ std::map<L2TunnelKey, L2Tunnel>::iterator it,
+    _In_ sai_object_id_t tunnel_oid)
+{
+    SWSS_LOG_ENTER();
+
+    if (it->second.owners.count(tunnel_oid) == 0) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (it->second.owners.size() > 1) {
+        it->second.owners.erase(tunnel_oid);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // Keep the last owner in `owners` until teardown succeeds so a retry of
+    // handle_l2_vxlan_tunnel_removal(tunnel_oid) can still find this entry;
+    // remove_l2_vxlan_tunnel erases the whole map entry on success.
+    return remove_l2_vxlan_tunnel(it);
+}
+
+sai_status_t
+TunnelManager::handle_l2_vxlan_tunnel_removal(
+    _In_ sai_object_id_t tunnel_oid)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    for (auto it = m_l2_tunnel_map.begin(); it != m_l2_tunnel_map.end();) {
+        auto next = std::next(it);
+        if (it->second.owners.count(tunnel_oid)) {
+            sai_status_t rc = release_l2_vxlan_tunnel(it, tunnel_oid);
+            if (rc != SAI_STATUS_SUCCESS) {
+                status = rc;
+            }
+        }
+        it = next;
+    }
+
+    return status;
+}
+
+bool
+TunnelManager::find_l2_vxlan_tunnel(
+    _In_ const sai_ip_address_t& src_ip,
+    _In_ const sai_ip_address_t& dst_ip,
+    _In_ uint16_t vlan_id,
+    _Out_ uint32_t& sw_if_index) const
+{
+    SWSS_LOG_ENTER();
+
+    for (auto& kv : m_l2_tunnel_map) {
+        const TunnelVPPData& data = kv.second.data;
+        // a term-owned tunnel is decap-only
+        if (data.tunnel_term_oid == SAI_NULL_OBJECT_ID &&
+            data.vlan_id == vlan_id &&
+            sai_ip_address_equal(data.dst_ip, dst_ip) &&
+            sai_ip_address_equal(data.src_ip, src_ip)) {
+            sw_if_index = data.sw_if_index;
+            return true;
+        }
+    }
+
+    sw_if_index = ~0;
+    return false;
+}
+
+sai_status_t
 TunnelManager::rollback_l2_vxlan_tunnels(
-    _In_ const std::vector<uint32_t>& created_vnis)
+    _In_ const std::vector<L2TunnelKey>& created_tunnels)
 {
     SWSS_LOG_ENTER();
 
     sai_status_t rollback_status = SAI_STATUS_SUCCESS;
-    for (auto it = created_vnis.rbegin(); it != created_vnis.rend(); ++it) {
-        sai_status_t status = remove_l2_vxlan_tunnel_for_vni(*it);
+    for (auto it = created_tunnels.rbegin(); it != created_tunnels.rend(); ++it) {
+        auto tunnel_it = m_l2_tunnel_map.find(*it);
+        if (tunnel_it == m_l2_tunnel_map.end()) {
+            continue;
+        }
+        sai_status_t status = remove_l2_vxlan_tunnel(tunnel_it);
         if (status != SAI_STATUS_SUCCESS) {
             SWSS_LOG_ERROR("Failed to roll back L2 VXLAN VNI %u: status=%d",
-                           *it, status);
+                           it->vni, status);
             rollback_status = status;
         }
     }
@@ -891,16 +1097,19 @@ TunnelManager::create_l2_vxlan_tunnels_for_object(
     _In_ sai_ip_address_t remote_ip,
     _In_ sai_object_id_t tunnel_term_oid,
     _Out_ uint32_t& sw_if_index,
-    _Out_ std::vector<uint32_t>* new_vnis)
+    _Out_ std::vector<L2TunnelKey>* new_tunnels)
 {
     SWSS_LOG_ENTER();
 
     sw_if_index = ~0;
-    if (new_vnis) {
-        new_vnis->clear();
+    if (new_tunnels) {
+        new_tunnels->clear();
     }
     sai_attribute_t attr;
-    std::vector<uint32_t> created_vnis;
+    std::vector<L2TunnelKey> created_tunnels;
+
+    sai_object_id_t tunnel_oid;
+    sai_deserialize_object_id(tunnel_obj->get_id(), tunnel_oid);
 
     auto decap_mappers = tunnel_obj->get_linked_objects(
         SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_DECAP_MAPPERS);
@@ -938,22 +1147,23 @@ TunnelManager::create_l2_vxlan_tunnels_for_object(
                 continue;
             }
 
+            auto key = l2_tunnel_key(local_ip, remote_ip, vni);
             const bool already_present =
-                m_l2_tunnel_map.find(vni) != m_l2_tunnel_map.end();
+                m_l2_tunnel_map.find(key) != m_l2_tunnel_map.end();
             uint32_t vni_sw_if_index;
             sai_status_t status = create_l2_vxlan_tunnel_for_vni(
-                local_ip, remote_ip, vni, vlan_id, vni_sw_if_index,
+                tunnel_oid, local_ip, remote_ip, vni, vlan_id, vni_sw_if_index,
                 tunnel_term_oid, map_entry_oid);
             if (status != SAI_STATUS_SUCCESS) {
-                sai_status_t rollback_status = rollback_l2_vxlan_tunnels(created_vnis);
+                sai_status_t rollback_status = rollback_l2_vxlan_tunnels(created_tunnels);
                 if (rollback_status != SAI_STATUS_SUCCESS) {
                     return rollback_status;
                 }
                 return status;
             }
             if (!already_present &&
-                m_l2_tunnel_map.find(vni) != m_l2_tunnel_map.end()) {
-                created_vnis.push_back(vni);
+                m_l2_tunnel_map.find(key) != m_l2_tunnel_map.end()) {
+                created_tunnels.push_back(key);
             }
 
             if (sw_if_index == (uint32_t)~0) {
@@ -962,8 +1172,8 @@ TunnelManager::create_l2_vxlan_tunnels_for_object(
         }
     }
 
-    if (new_vnis) {
-        *new_vnis = std::move(created_vnis);
+    if (new_tunnels) {
+        *new_tunnels = std::move(created_tunnels);
     }
     return SAI_STATUS_SUCCESS;
 }
@@ -1038,11 +1248,11 @@ TunnelManager::create_l2_vxlan_tunnel_term(
     _In_ const std::string& serializedObjectId,
     _In_ uint32_t attr_count,
     _In_ const sai_attribute_t *attr_list,
-    _Out_ std::vector<uint32_t>& created_vnis)
+    _Out_ std::vector<L2TunnelKey>& created_tunnels)
 {
     SWSS_LOG_ENTER();
 
-    created_vnis.clear();
+    created_tunnels.clear();
     SaiCachedObject term_obj(m_switch_db, SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY,
                              serializedObjectId, attr_count, attr_list);
 
@@ -1116,10 +1326,10 @@ TunnelManager::create_l2_vxlan_tunnel_term(
     uint32_t sw_if_index;
     status = create_l2_vxlan_tunnels_for_object(
         tunnel_obj.get(), match.local_ip, match.remote_ip,
-        term_oid, sw_if_index, &created_vnis);
+        term_oid, sw_if_index, &created_tunnels);
     if (status != SAI_STATUS_SUCCESS) {
-        // The helper rolls back exactly the VNIs created by this attempt.
-        // Compatible VNIs that existed before it must remain untouched.
+        // The helper rolls back exactly the tunnels created by this attempt.
+        // Compatible tunnels that existed before it must remain untouched.
         return status;
     }
 
@@ -1462,23 +1672,40 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry(
         return SAI_STATUS_SUCCESS;
     }
 
-    const bool had_l2_tunnel = m_l2_tunnel_map.find(vni) != m_l2_tunnel_map.end();
     sai_object_id_t map_entry_oid;
     sai_deserialize_object_id(serializedObjectId, map_entry_oid);
+
+    // The tunnels this map entry created, removed again if it fails
+    std::vector<L2TunnelKey> created_tunnels;
+    auto create_for_vni = [&](sai_object_id_t tunnel_oid,
+                              const sai_ip_address_t& src_ip,
+                              const sai_ip_address_t& dst_ip,
+                              sai_object_id_t term_oid) {
+        auto key = l2_tunnel_key(src_ip, dst_ip, vni);
+        const bool already_present =
+            m_l2_tunnel_map.find(key) != m_l2_tunnel_map.end();
+        uint32_t vni_sw_if_index;
+        sai_status_t status = create_l2_vxlan_tunnel_for_vni(
+            tunnel_oid, src_ip, dst_ip, vni, vlan_id, vni_sw_if_index,
+            term_oid, map_entry_oid);
+        if (status == SAI_STATUS_SUCCESS && !already_present &&
+            m_l2_tunnel_map.find(key) != m_l2_tunnel_map.end()) {
+            created_tunnels.push_back(key);
+        }
+        return status;
+    };
     auto fail_l2_map_create = [&](sai_status_t status) {
-        if (!had_l2_tunnel && m_l2_tunnel_map.find(vni) != m_l2_tunnel_map.end()) {
-            sai_status_t rollback_status = remove_l2_vxlan_tunnel_for_vni(vni);
-            if (rollback_status != SAI_STATUS_SUCCESS) {
-                SWSS_LOG_ERROR("Failed to roll back newly-created L2 VXLAN VNI %u: "
-                               "status=%d", vni, rollback_status);
-            }
+        sai_status_t rollback_status = rollback_l2_vxlan_tunnels(created_tunnels);
+        if (rollback_status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to roll back newly-created L2 VXLAN tunnels "
+                           "of VNI %u: status=%d", vni, rollback_status);
         }
         return status;
     };
 
     // Find tunnels that reference this mapper. EVPN P2P tunnels carry an
-    // explicit ENCAP_DST_IP and retain the existing object-owned behavior;
-    // static tunnels defer to their stored exact P2P termination entry.
+    // explicit ENCAP_DST_IP and get a VPP tunnel to that VTEP each; static
+    // tunnels defer to their stored exact P2P termination entry.
     auto mapper_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL_MAP,
         sai_serialize_object_id(tunnel_map_oid));
     if (!mapper_obj) {
@@ -1504,6 +1731,9 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry(
             continue;
         }
 
+        sai_object_id_t tunnel_oid;
+        sai_deserialize_object_id(tunnel_obj->get_id(), tunnel_oid);
+
         attr.id = SAI_TUNNEL_ATTR_TYPE;
         if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS ||
             attr.value.s32 != SAI_TUNNEL_TYPE_VXLAN) continue;
@@ -1518,10 +1748,11 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry(
             }
             sai_ip_address_t src_ip = attr.value.ipaddr;
 
-            uint32_t vni_sw_if_index;
-            sai_status_t status = create_l2_vxlan_tunnel_for_vni(
-                src_ip, dst_ip, vni, vlan_id, vni_sw_if_index,
-                SAI_NULL_OBJECT_ID, map_entry_oid);
+            SWSS_LOG_NOTICE("Late mapper entry: creating VPP tunnel for VNI=%u VLAN=%u "
+                "on existing P2P tunnel %s", vni, vlan_id, tunnel_obj->get_id().c_str());
+
+            sai_status_t status = create_for_vni(
+                tunnel_oid, src_ip, dst_ip, SAI_NULL_OBJECT_ID);
             if (status != SAI_STATUS_SUCCESS) {
                 return fail_l2_map_create(status);
             }
@@ -1546,10 +1777,8 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry(
                 sai_object_id_t term_oid;
                 sai_deserialize_object_id(term_pair.first, term_oid);
 
-                uint32_t vni_sw_if_index;
-                status = create_l2_vxlan_tunnel_for_vni(
-                    match.local_ip, match.remote_ip, vni, vlan_id,
-                    vni_sw_if_index, term_oid, map_entry_oid);
+                status = create_for_vni(
+                    tunnel_oid, match.local_ip, match.remote_ip, term_oid);
                 if (status != SAI_STATUS_SUCCESS) {
                     return fail_l2_map_create(status);
                 }
@@ -1566,89 +1795,6 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry(
 }
 
 sai_status_t
-TunnelManager::remove_l2_vxlan_tunnel_for_vni(_In_ uint32_t vni)
-{
-    SWSS_LOG_ENTER();
-
-    auto it = m_l2_tunnel_map.find(vni);
-    if (it == m_l2_tunnel_map.end()) {
-        return SAI_STATUS_SUCCESS;
-    }
-
-    TunnelVPPData& tunnel_data = it->second;
-
-    if (set_sw_interface_l2_bridge_by_index(
-            tunnel_data.sw_if_index, tunnel_data.vlan_id,
-            false, VPP_API_PORT_TYPE_NORMAL) != 0) {
-        SWSS_LOG_ERROR("Failed to detach L2 VXLAN tunnel VNI=%u sw_if=%u "
-                       "from VLAN=%u", vni, tunnel_data.sw_if_index,
-                       tunnel_data.vlan_id);
-        return SAI_STATUS_FAILURE;
-    }
-
-    const uint32_t drop_table = tunnel_data.l2_output_drop_table_index;
-    if (drop_table != ~0u &&
-        vpp_classify_set_interface_l2_tables_by_index(
-            tunnel_data.sw_if_index, ~0u, ~0u, ~0u,
-            false /* output */) != 0) {
-        SWSS_LOG_ERROR("Failed to unbind L2 VXLAN output guard for VNI=%u; "
-                       "leaving the tunnel outside the bridge", vni);
-        return SAI_STATUS_FAILURE;
-    }
-
-    vpp_vxlan_tunnel_t req;
-    memset(&req, 0, sizeof(req));
-    req.vni = tunnel_data.vni;
-    req.src_port = m_vxlan_port;
-    req.dst_port = m_vxlan_port;
-    req.instance = ~0;
-    req.decap_next_index = ~0;
-    sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.src_ip, req.src_address);
-    sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.dst_ip, req.dst_address);
-
-    if (remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true) !=
-        SAI_STATUS_SUCCESS) {
-        if (drop_table != ~0u &&
-            vpp_classify_set_interface_l2_tables_by_index(
-                tunnel_data.sw_if_index, drop_table, drop_table, drop_table,
-                false /* output */) != 0) {
-            SWSS_LOG_ERROR("Failed to restore L2 VXLAN output guard for VNI=%u; "
-                           "leaving the tunnel outside the bridge", vni);
-            return SAI_STATUS_FAILURE;
-        }
-        if (set_sw_interface_l2_bridge_by_index(
-                tunnel_data.sw_if_index, tunnel_data.vlan_id,
-                true, VPP_API_PORT_TYPE_NORMAL) != 0) {
-            SWSS_LOG_ERROR("Failed to restore L2 VXLAN tunnel VNI=%u to "
-                           "VLAN=%u after delete failure", vni,
-                           tunnel_data.vlan_id);
-            return SAI_STATUS_FAILURE;
-        }
-        // Bridge reattachment enables learning, so restore the decap-only
-        // setting just as on initial creation.
-        if (tunnel_data.tunnel_term_oid != SAI_NULL_OBJECT_ID &&
-            set_l2_interface_flags_by_index(tunnel_data.sw_if_index,
-                                            VPP_BD_FLAG_LEARN, false) != 0) {
-            SWSS_LOG_ERROR("Failed to disable learning on restored L2 VXLAN "
-                           "tunnel VNI=%u sw_if=%u", vni,
-                           tunnel_data.sw_if_index);
-        }
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (drop_table != ~0u && vpp_classify_table_delete(drop_table) != 0) {
-        SWSS_LOG_ERROR("Failed to delete L2 VXLAN output guard table %u for VNI=%u",
-                       drop_table, vni);
-    }
-
-    SWSS_LOG_NOTICE("Removed L2 VXLAN tunnel VNI=%u (sw_if=%u, VLAN=%u)",
-                    vni, tunnel_data.sw_if_index, tunnel_data.vlan_id);
-    m_l2_tunnel_map.erase(it);
-
-    return SAI_STATUS_SUCCESS;
-}
-
-sai_status_t
 TunnelManager::remove_l2_vxlan_tunnel_term(
     _In_ const std::string& serializedObjectId)
 {
@@ -1657,18 +1803,15 @@ TunnelManager::remove_l2_vxlan_tunnel_term(
     sai_object_id_t term_oid;
     sai_deserialize_object_id(serializedObjectId, term_oid);
 
-    std::vector<uint32_t> owned_vnis;
-    for (const auto& entry : m_l2_tunnel_map) {
-        if (entry.second.tunnel_term_oid == term_oid) {
-            owned_vnis.push_back(entry.first);
+    for (auto it = m_l2_tunnel_map.begin(); it != m_l2_tunnel_map.end();) {
+        auto next = std::next(it);
+        if (it->second.data.tunnel_term_oid == term_oid) {
+            sai_status_t status = remove_l2_vxlan_tunnel(it);
+            if (status != SAI_STATUS_SUCCESS) {
+                return status;
+            }
         }
-    }
-
-    for (uint32_t vni : owned_vnis) {
-        sai_status_t status = remove_l2_vxlan_tunnel_for_vni(vni);
-        if (status != SAI_STATUS_SUCCESS) {
-            return status;
-        }
+        it = next;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1717,14 +1860,59 @@ TunnelManager::handle_l2_vxlan_tunnel_map_entry_removal(
         return SAI_STATUS_SUCCESS;
     }
     uint32_t vni = attr.value.u32;
-    auto tunnel_it = m_l2_tunnel_map.find(vni);
-    if (tunnel_it != m_l2_tunnel_map.end() &&
-        tunnel_it->second.tunnel_term_oid != SAI_NULL_OBJECT_ID) {
-        if (tunnel_it->second.tunnel_map_entry_oid != map_entry_oid) {
-            return SAI_STATUS_SUCCESS;
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    // A term-owned tunnel goes with the map entry that created it
+    for (auto it = m_l2_tunnel_map.begin(); it != m_l2_tunnel_map.end();) {
+        auto next = std::next(it);
+        if (it->first.vni == vni &&
+            it->second.data.tunnel_term_oid != SAI_NULL_OBJECT_ID &&
+            it->second.data.tunnel_map_entry_oid == map_entry_oid) {
+            sai_status_t remove_status = remove_l2_vxlan_tunnel(it);
+            if (remove_status != SAI_STATUS_SUCCESS) {
+                return remove_status;
+            }
+        }
+        it = next;
+    }
+
+    attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+    if (entry_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    auto mapper_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL_MAP,
+        sai_serialize_object_id(attr.value.oid));
+    if (!mapper_obj) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    auto tunnels = mapper_obj->get_child_objs(SAI_OBJECT_TYPE_TUNNEL);
+    if (!tunnels) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // The VNI goes away on every remote VTEP whose SAI tunnel uses the mapper
+    for (auto& tunnel_pair : *tunnels) {
+        sai_object_id_t tunnel_oid;
+        sai_deserialize_object_id(tunnel_pair.second->get_id(), tunnel_oid);
+
+        for (auto it = m_l2_tunnel_map.begin(); it != m_l2_tunnel_map.end();) {
+            auto next = std::next(it);
+            if (it->first.vni == vni && it->second.owners.count(tunnel_oid)) {
+                SWSS_LOG_NOTICE("Releasing L2 VXLAN tunnel VNI=%u sw_if=%u on map entry deletion",
+                    vni, it->second.data.sw_if_index);
+                sai_status_t release_status = release_l2_vxlan_tunnel(it, tunnel_oid);
+                if (release_status != SAI_STATUS_SUCCESS) {
+                    status = release_status;
+                }
+            }
+            it = next;
         }
     }
-    return remove_l2_vxlan_tunnel_for_vni(vni);
+
+    return status;
 }
 
 sai_status_t

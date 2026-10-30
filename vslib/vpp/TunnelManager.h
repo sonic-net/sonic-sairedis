@@ -3,7 +3,9 @@
 #include <array>
 #include <vector>
 #include <map>
+#include <set>
 #include <string>
+#include <tuple>
 #include "SwitchVpp.h"
 #include "vppxlate/SaiVppXlate.h"
 
@@ -43,6 +45,7 @@ namespace saivs
         sai_object_id_t tunnel_term_oid = SAI_NULL_OBJECT_ID;
         sai_object_id_t tunnel_map_entry_oid = SAI_NULL_OBJECT_ID;
         uint32_t l2_output_drop_table_index = ~0u;
+        uint8_t l2_shg = 0;   // split horizon group in the VLAN's bridge domain
     };
 
     /**
@@ -163,6 +166,20 @@ namespace saivs
             _Out_ uint32_t& sw_if_index);
 
         /**
+         * @brief An L2 VXLAN tunnel: (local VTEP, remote VTEP, VNI), which is
+         *        also how VPP tells VXLAN tunnels apart.
+         */
+        struct L2TunnelKey {
+            std::string src;    // address family and address bytes
+            std::string dst;
+            uint32_t vni;
+
+            bool operator<(const L2TunnelKey& other) const {
+                return std::tie(vni, dst, src) < std::tie(other.vni, other.dst, other.src);
+            }
+        };
+
+        /**
          * @brief Create L2 VXLAN decap from a SAI tunnel termination entry.
          *
          * Static L2 tunnels without SAI_TUNNEL_ATTR_ENCAP_DST_IP derive their
@@ -170,20 +187,21 @@ namespace saivs
          * shapes remain stored in SAI but are not programmed by this path.
          * Existing ENCAP_DST_IP/EVPN tunnels remain object-owned.
          * Reads the pending term from the request, before SAI publication.
-         * Failure rolls back only VNIs created by this attempt. On success,
-         * created_vnis records those VNIs for rollback if publication fails.
+         * Failure rolls back only tunnels created by this attempt. On success,
+         * created_tunnels records those tunnels for rollback if publication
+         * fails.
          */
         sai_status_t create_l2_vxlan_tunnel_term(
             _In_ const std::string& serializedObjectId,
             _In_ uint32_t attr_count,
             _In_ const sai_attribute_t *attr_list,
-            _Out_ std::vector<uint32_t>& created_vnis);
+            _Out_ std::vector<L2TunnelKey>& created_tunnels);
 
         /**
-         * @brief Roll back only the VNIs created by one programming attempt.
+         * @brief Roll back only the tunnels created by one programming attempt.
          */
         sai_status_t rollback_l2_vxlan_tunnels(
-            _In_ const std::vector<uint32_t>& created_vnis);
+            _In_ const std::vector<L2TunnelKey>& created_tunnels);
 
         /**
          * @brief Remove L2 VXLAN decap objects owned by a termination entry.
@@ -226,6 +244,34 @@ namespace saivs
             _In_ sai_object_id_t tunnel_oid);
 
         /**
+         * @brief Remove the L2 VXLAN tunnels a SAI P2P tunnel created.
+         *
+         * Called before a TUNNEL is removed from the SAI DB. A VPP tunnel
+         * that another SAI tunnel with the same source, destination and VNI
+         * still uses is kept.
+         *
+         * @param tunnel_oid The tunnel object ID about to be removed.
+         * @return SAI_STATUS_SUCCESS on success, error status on failure.
+         */
+        sai_status_t handle_l2_vxlan_tunnel_removal(
+            _In_ sai_object_id_t tunnel_oid);
+
+        /**
+         * @brief Find the L2 VXLAN tunnel to a remote VTEP that carries a VLAN.
+         *
+         * @param src_ip Local VTEP IP.
+         * @param dst_ip Remote VTEP IP.
+         * @param vlan_id VLAN (bridge domain) the tunnel is a member of.
+         * @param sw_if_index Output VPP interface index of the tunnel.
+         * @return true if there is one.
+         */
+        bool find_l2_vxlan_tunnel(
+            _In_ const sai_ip_address_t& src_ip,
+            _In_ const sai_ip_address_t& dst_ip,
+            _In_ uint16_t vlan_id,
+            _Out_ uint32_t& sw_if_index) const;
+
+        /**
          * @brief Handle late tunnel map entry for L2 VXLAN.
          *
          * Called when a VNI-to-VLAN mapper entry is created after a P2P tunnel
@@ -246,8 +292,9 @@ namespace saivs
          * @brief Handle tunnel map entry removal for L2 VXLAN.
          *
          * Called before a VNI-to-VLAN mapper entry is removed from the SAI DB.
-         * Removes its VPP tunnel for that VNI, allowing individual map entries
-         * to be deleted without tearing down the entire tunnel.
+         * Removes the VPP tunnels of that VNI to every remote VTEP whose SAI
+         * tunnel uses the mapper, allowing individual map entries to be
+         * deleted without tearing down the SAI tunnels.
          *
          * @param serializedObjectId The serialized tunnel map entry object ID.
          * @return SAI_STATUS_SUCCESS on success or if not applicable.
@@ -267,8 +314,39 @@ namespace saivs
         };
         // One next hop can select a different mapped VNI for each route VRF.
         std::unordered_map<sai_object_id_t, std::vector<VxlanEncapEntry>> m_tunnel_encap_nexthop_map;
-        // Map from VNI to VPP tunnel data (L2 VXLAN / EVPN)
-        std::unordered_map<uint32_t, TunnelVPPData> m_l2_tunnel_map;
+        /*
+         * L2 VXLAN tunnels, one per (local VTEP, remote VTEP, VNI). An EVPN
+         * one is a member of the VNI's VLAN bridge domain in split horizon
+         * group L2_TUNNEL_SHG, so BUM traffic from one remote VTEP is not
+         * flooded back out to the others: every VTEP replicates to all of its
+         * peers itself (head-end replication). A term-owned (static) one is
+         * decap-only and stays in group 0.
+         */
+        struct L2Tunnel {
+            TunnelVPPData data;
+            // SAI P2P tunnels that use this VPP tunnel (EVPN only; a
+            // term-owned tunnel is owned by data.tunnel_term_oid)
+            std::set<sai_object_id_t> owners;
+        };
+
+        static const uint8_t L2_TUNNEL_SHG = 1;
+
+        static L2TunnelKey l2_tunnel_key(
+            _In_ const sai_ip_address_t& src_ip,
+            _In_ const sai_ip_address_t& dst_ip,
+            _In_ uint32_t vni);
+
+        std::map<L2TunnelKey, L2Tunnel> m_l2_tunnel_map;
+
+        // Drop one SAI tunnel's use of an L2 tunnel, and remove the VPP
+        // tunnel once no SAI tunnel uses it.
+        sai_status_t release_l2_vxlan_tunnel(
+            _In_ std::map<L2TunnelKey, L2Tunnel>::iterator it,
+            _In_ sai_object_id_t tunnel_oid);
+
+        // Remove the VPP tunnel. On failure the tunnel is left in place.
+        sai_status_t remove_l2_vxlan_tunnel(
+            _In_ std::map<L2TunnelKey, L2Tunnel>::iterator it);
 
         // Map from an L3 VNET decap map-entry (VNI -> Virtual Router) OID to the
         // VPP decap objects installed for each VXLAN VTEP.
@@ -361,20 +439,20 @@ namespace saivs
             _In_ sai_ip_address_t remote_ip,
             _In_ sai_object_id_t tunnel_term_oid,
             _Out_ uint32_t& sw_if_index,
-            _Out_ std::vector<uint32_t>* new_vnis = nullptr);
-
-        /**
-         * @brief Remove one VPP L2 VXLAN tunnel identified by VNI.
-         */
-        sai_status_t remove_l2_vxlan_tunnel_for_vni(_In_ uint32_t vni);
+            _Out_ std::vector<L2TunnelKey>* new_tunnels = nullptr);
 
          /**
          * @brief Create a single VPP VXLAN tunnel for one VNI.
          *
          * Shared helper used by both create_l2_vxlan_tunnel (BGP IMET trigger)
-         * and handle_l2_vxlan_tunnel_map_entry (late mapper trigger). Reuses an
-         * existing VNI only when its endpoint match and ownership are compatible.
+         * and handle_l2_vxlan_tunnel_map_entry (late mapper trigger). If the
+         * (source, destination, VNI) tunnel exists already, it reuses it: an
+         * EVPN tunnel records tunnel_oid as one more user of it, and a
+         * term-owned one only when term and map entry are the same. Once an
+         * EVPN tunnel is created, the FDB entries already waiting for it are
+         * programmed on it.
          *
+         * @param tunnel_oid The SAI P2P tunnel the VPP tunnel is created for.
          * @param src_ip Source VTEP IP.
          * @param dst_ip Destination VTEP IP.
          * @param vni VXLAN Network Identifier.
@@ -383,9 +461,10 @@ namespace saivs
          * @param tunnel_term_oid Owning SAI termination entry, or NULL for an
          *        object-owned EVPN tunnel.
          * @param tunnel_map_entry_oid Owning SAI decap map entry.
-         * @return SAI_STATUS_SUCCESS on success or for a compatible existing VNI.
+         * @return SAI_STATUS_SUCCESS on success or for a compatible existing tunnel.
          */
         sai_status_t create_l2_vxlan_tunnel_for_vni(
+            _In_ sai_object_id_t tunnel_oid,
             _In_ sai_ip_address_t src_ip,
             _In_ sai_ip_address_t dst_ip,
             _In_ uint32_t vni,
