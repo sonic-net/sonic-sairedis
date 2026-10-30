@@ -546,6 +546,7 @@ config_syncd_mlnx()
     apply_sai_profile_configdb /tmp/sai.profile || exit 1
 
     # Other profile consumers also need one value per key, with the last winning.
+    printf '\n' >> /tmp/sai.profile || exit 1
     tac /tmp/sai.profile | awk -F= '!seen[$1]++' | tac > /tmp/sai-temp.profile
     mv /tmp/sai-temp.profile /tmp/sai.profile
 
