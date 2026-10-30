@@ -315,12 +315,23 @@ function merge_config_yml_files()
 apply_sai_profile_configdb()
 {
     local profile_file="$1"
+    local runtime_file="${2:-}"
     local dynamic_template="$TEMPLATES_DIR/sai_profile_dynamic.j2"
     local rendered
 
     if [[ -f "$dynamic_template" ]]; then
         rendered="$(sonic-cfggen -d -t "$dynamic_template")"
         if [[ -n "$rendered" ]]; then
+            # Only create a separate runtime profile when overrides are present.
+            if [[ -n "$runtime_file" ]]; then
+                mkdir -p "$(dirname "$runtime_file")" || return 1
+                if [[ -f "$profile_file" ]]; then
+                    cp -f "$profile_file" "$runtime_file" || return 1
+                else
+                    : > "$runtime_file" || return 1
+                fi
+                profile_file="$runtime_file"
+            fi
             # ">>" creates profile_file if it does not already exist, so
             # SAI_PROFILE CONFIG_DB entries are still applied even when a
             # vendor has no pre-existing static sai.profile at all.
@@ -332,22 +343,15 @@ apply_sai_profile_configdb()
             logger -t syncd_init_common "SAI_PROFILE CONFIG_DB entries applied to $profile_file: $(echo "$rendered" | tr '\n' ' ' | sed 's/ *$//')"
         fi
     fi
+
+    # With a runtime destination, return the selected profile to the caller.
+    if [[ -n "$runtime_file" ]]; then
+        printf '%s\n' "$profile_file"
+    fi
 }
 
 config_syncd_bcm()
 {
-    local BCM_SAI_PROFILE_FILE="$SAI_PROFILE_DIR/sai-runtime.profile"
-
-    # Rebuild from static defaults so removed CONFIG_DB overrides do not persist.
-    mkdir -p "$SAI_PROFILE_DIR" || exit 1
-    if [ -f "$SAI_PROFILE_DIR/sai.profile" ]; then
-        cp -f "$SAI_PROFILE_DIR/sai.profile" "$BCM_SAI_PROFILE_FILE" || exit 1
-    elif [ -f "$HWSKU_DIR/sai.profile" ]; then
-        cp -f "$HWSKU_DIR/sai.profile" "$BCM_SAI_PROFILE_FILE" || exit 1
-    else
-        : > "$BCM_SAI_PROFILE_FILE" || exit 1
-    fi
-
     PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
     PLT_CONFIG_BCM=""
     PLT_CONFIG_YML=""
@@ -361,8 +365,9 @@ config_syncd_bcm()
 
     if [ ! -z "$PLT_CONFIG_BCM" ] && [ -f $PLATFORM_DIR/common_config_support ] ; then
        cp -f $PLT_CONFIG_BCM /tmp
+       cp -f /etc/sai.d/sai.profile /tmp
        CONFIG_BCM=$(find /tmp -name '*.bcm')
-       SAI_PROFILE="$BCM_SAI_PROFILE_FILE"
+       SAI_PROFILE=$(find /tmp -name 'sai.profile')
        sed -i 's+/usr/share/sonic/hwsku+/tmp+g' $SAI_PROFILE
 
        #Get first three characters of chip id
@@ -381,14 +386,15 @@ config_syncd_bcm()
        sync
 
        # copy the final config.bcm and sai.profile to the shared folder for 'show tech'
-       cp -f "$BCM_SAI_PROFILE_FILE" /var/run/sswsyncd/sai.profile
+       cp -f /tmp/sai.profile /var/run/sswsyncd/
        cp -f /tmp/*.bcm /var/run/sswsyncd/
     fi
 
     if [ ! -z "$PLT_CONFIG_YML" ] && [ -f $PLATFORM_DIR/common_config_support ]; then
        cp -f $PLT_CONFIG_YML /tmp
+       cp -f /etc/sai.d/sai.profile /tmp
        CONFIG_YML=$(find /tmp -name '*.yml')
-       SAI_PROFILE="$BCM_SAI_PROFILE_FILE"
+       SAI_PROFILE=$(find /tmp -name 'sai.profile')
        sed -i 's+/usr/share/sonic/hwsku+/tmp+g' $SAI_PROFILE
 
        #Get first three characters of chip id
@@ -407,15 +413,24 @@ config_syncd_bcm()
        sync
 
        # copy the final config.bcm and sai.profile to the shared folder for 'show tech'
-       cp -f "$BCM_SAI_PROFILE_FILE" /var/run/sswsyncd/sai.profile
+       cp -f /tmp/sai.profile /var/run/sswsyncd/
        cp -f /tmp/*.yml /var/run/sswsyncd/
+    fi
+
+    local BCM_SAI_PROFILE_FILE
+    if [ -f "/tmp/sai.profile" ]; then
+        BCM_SAI_PROFILE_FILE="/tmp/sai.profile"
+    elif [ -f "/etc/sai.d/sai.profile" ]; then
+        BCM_SAI_PROFILE_FILE="/etc/sai.d/sai.profile"
+    else
+        BCM_SAI_PROFILE_FILE="$HWSKU_DIR/sai.profile"
     fi
 
     # Apply the generic SAI_PROFILE CONFIG_DB table last, so a hwsku's
     # sai.profile[.j2] does not need its own
     # '{% include "sai_profile_dynamic.j2" %}' to pick up CONFIG_DB-driven
     # overrides - this alone is enough to support SAI_PROFILE on Broadcom.
-    apply_sai_profile_configdb "$BCM_SAI_PROFILE_FILE"
+    BCM_SAI_PROFILE_FILE="$(apply_sai_profile_configdb "$BCM_SAI_PROFILE_FILE" "$SAI_PROFILE_DIR/sai-runtime.profile")" || exit 1
 
     CMD_ARGS+=" -p $BCM_SAI_PROFILE_FILE"
 
