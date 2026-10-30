@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <algorithm>
 #include <unordered_map>
 #include <map>
 #include <vector>
@@ -2603,7 +2604,7 @@ public:
 
         for (size_t i = 0; i < counter_ids.size(); i++)
         {
-            sai_attribute_t attr;
+            sai_attribute_t attr = {};
             attr.id = static_cast<sai_port_attr_t>(counter_ids[i]);
 
             if (!initAttrForLaneCountQuery(attr))
@@ -3056,7 +3057,7 @@ public:
     {
         SWSS_LOG_ENTER();
 
-        sai_attribute_t attr;
+        sai_attribute_t attr = {};
         attr.id = SAI_PORT_SERDES_ATTR_PORT_ID;
         sai_status_t status = Base::m_vendorSai->get(Base::m_objectType, port_serdes_rid, 1, &attr);
 
@@ -3127,7 +3128,7 @@ public:
 
         sai_object_id_t port_rid;
         uint32_t laneCount;
-        sai_attribute_t attr;
+        sai_attribute_t attr = {};
 
         auto it = m_portSerdesIdToPortIdMap.find(port_serdes_rid);
         if (it == m_portSerdesIdToPortIdMap.end())
@@ -3151,10 +3152,12 @@ public:
 
         laneCount = attr.value.u32list.count;
 
-        // Store the lane count in the map
-        m_portSerdesIdToLaneCountMap[port_serdes_rid] = laneCount;
+        // Keep the largest count observed so the buffers remain large enough
+        // if the port changes mode after the SerDes object is initialized.
+        auto &cachedLaneCount = m_portSerdesIdToLaneCountMap[port_serdes_rid];
+        cachedLaneCount = std::max(cachedLaneCount, laneCount);
         SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Stored lane count for port_serdes_rid:0x%" PRIx64 " = %u lanes",
-                      port_serdes_rid, laneCount);
+                      port_serdes_rid, cachedLaneCount);
     }
 
     void updatePortSerdesTapsCountMap(sai_object_id_t port_serdes_rid)
@@ -3171,7 +3174,7 @@ public:
         for (const auto& attrId : countAttrs)
         {
             uint32_t count;
-            sai_attribute_t attr;
+            sai_attribute_t attr = {};
             attr.id = attrId;
 
             sai_status_t status = Base::m_vendorSai->get(
@@ -3189,9 +3192,12 @@ public:
 
             count = attr.value.u32;
 
-            m_portSerdesTapsCountMap[port_serdes_rid][attrId] = count;
+            // A larger buffer is valid when the active tap mode later uses
+            // fewer taps, so retain the largest count observed.
+            auto &cachedCount = m_portSerdesTapsCountMap[port_serdes_rid][attrId];
+            cachedCount = std::max(cachedCount, count);
             SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Stored %s for port_serdes_rid:0x%" PRIx64 " = %u",
-                          sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, count);
+                          sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, cachedCount);
         }
     }
 
@@ -3347,6 +3353,120 @@ public:
         Base::removeObject(vid);
     }
 
+    uint32_t getCachedLaneCount(sai_object_id_t rid) const
+    {
+        auto it = m_portSerdesIdToLaneCountMap.find(rid);
+        return it == m_portSerdesIdToLaneCountMap.end() ? 0 : it->second;
+    }
+
+    uint32_t getCachedTapCount(sai_object_id_t rid) const
+    {
+        auto countIt = m_portSerdesTapsCountMap.find(rid);
+        if (countIt == m_portSerdesTapsCountMap.end())
+        {
+            return 0;
+        }
+
+        auto tapIt = countIt->second.find(SAI_PORT_SERDES_ATTR_TX_FIR_COUNT);
+        return tapIt == countIt->second.end() ? 0 : tapIt->second;
+    }
+
+    bool updateCachedBufferRequirementsAfterOverflow(
+            sai_object_id_t vid,
+            sai_object_id_t rid,
+            const std::vector<sai_attribute_t> &attrs,
+            const PortPhySerdesAttributeData &data)
+    {
+        const uint32_t oldLaneCount = getCachedLaneCount(rid);
+        const uint32_t oldTapCount = getCachedTapCount(rid);
+        uint32_t requiredLaneCount = oldLaneCount;
+        uint32_t requiredTapCount = oldTapCount;
+
+        for (const auto &attr : attrs)
+        {
+            switch (attr.id)
+            {
+                case SAI_PORT_SERDES_ATTR_RX_VGA:
+                    // SAI returns the required size when the list is too small.
+                    requiredLaneCount = std::max(requiredLaneCount, attr.value.u32list.count);
+                    break;
+
+                case SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST:
+                    // The outer count is the required number of taps.
+                    requiredTapCount = std::max(requiredTapCount, attr.value.portserdestaps.count);
+
+                    // An inner lane list can overflow independently. Inspect
+                    // only allocated entries since the returned outer count
+                    // can be greater than txFirTapsList.size().
+                    for (const auto &tapList : data.txFirTapsList)
+                    {
+                        requiredLaneCount = std::max(requiredLaneCount, tapList.count);
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        if (requiredLaneCount > oldLaneCount)
+        {
+            m_portSerdesIdToLaneCountMap[rid] = requiredLaneCount;
+        }
+
+        if (requiredTapCount > oldTapCount)
+        {
+            m_portSerdesTapsCountMap[rid][SAI_PORT_SERDES_ATTR_TX_FIR_COUNT] = requiredTapCount;
+        }
+
+        bool requirementsUpdated =
+                requiredLaneCount > oldLaneCount ||
+                requiredTapCount > oldTapCount;
+        const char *sizeSource = "BUFFER_OVERFLOW list counts";
+
+        if (!requirementsUpdated)
+        {
+            SWSS_LOG_NOTICE(
+                "PORT_PHY_SERDES_ATTR: BUFFER_OVERFLOW did not report larger "
+                "list counts for VID 0x%" PRIx64 ", RID:0x%" PRIx64
+                "; querying current lane and tap counts",
+                vid, rid);
+
+            // Compatibility fallback for a vendor implementation that returns
+            // BUFFER_OVERFLOW without updating the required list counts.
+            updatePortSerdesIdToLaneCountMap(rid);
+            updatePortSerdesTapsCountMap(rid);
+            requiredLaneCount = getCachedLaneCount(rid);
+            requiredTapCount = getCachedTapCount(rid);
+            requirementsUpdated =
+                    requiredLaneCount > oldLaneCount ||
+                    requiredTapCount > oldTapCount;
+            sizeSource = "explicit count queries";
+        }
+
+        if (!requirementsUpdated)
+        {
+            SWSS_LOG_ERROR(
+                "PORT_PHY_SERDES_ATTR: SAI returned BUFFER_OVERFLOW for VID 0x%" PRIx64
+                ", RID:0x%" PRIx64 " but neither the returned list counts nor "
+                "explicit count queries reported larger buffer requirements",
+                vid, rid);
+            return false;
+        }
+
+        SWSS_LOG_NOTICE(
+            "PORT_PHY_SERDES_ATTR: Updated cached buffer requirements for "
+            "VID 0x%" PRIx64 ", RID:0x%" PRIx64
+            ": lanes %u->%u, taps %u->%u using %s; buffers will be rebuilt "
+            "before retry",
+            vid, rid,
+            oldLaneCount, requiredLaneCount,
+            oldTapCount, requiredTapCount,
+            sizeSource);
+
+        return true;
+    }
+
     void collectData(_In_ swss::Table &countersTable) override
     {
         SWSS_LOG_ENTER();
@@ -3362,7 +3482,7 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-            std::vector<sai_attribute_t> attrs = {};
+            std::vector<sai_attribute_t> attrs;
             PortPhySerdesAttributeData attrData;
 
             SWSS_LOG_DEBUG(
@@ -3370,43 +3490,92 @@ public:
                 "with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                 attrIds.size(), vid, rid);
 
-            // Initialize attributes - only collect successfully initialized ones
-            for (size_t i = 0; i < attrIds.size(); i++)
+            // sai_taps_list_t has two independently sized levels: the outer
+            // tap list and each inner lane list. A vendor may report them in
+            // separate BUFFER_OVERFLOW responses, so allow one retry for each
+            // level in addition to the initial GET.
+            constexpr uint32_t maxBufferResizeRetries = 2;
+            constexpr uint32_t maxGetAttempts = maxBufferResizeRetries + 1;
+            bool getSucceeded = false;
+
+            for (uint32_t attempt = 1; attempt <= maxGetAttempts; ++attempt)
             {
-                sai_attribute_t attr = {};
-                attr.id = attrIds[i];
-                if (!initAttrData(rid, &attr, &attrData))
+                // attrs contains pointers into attrData. Release the
+                // attributes before resetting their backing storage. On a
+                // retry, initAttrData() rebuilds the buffers using the updated
+                // cached requirements.
+                attrs.clear();
+                attrData = PortPhySerdesAttributeData{};
+
+                // Initialize attributes - only collect successfully initialized ones.
+                for (const auto attrId : attrIds)
+                {
+                    sai_attribute_t attr = {};
+                    attr.id = attrId;
+                    if (!initAttrData(rid, &attr, &attrData))
+                    {
+                        SWSS_LOG_WARN(
+                            "PORT_PHY_SERDES_ATTR: Failed to initialize "
+                            "attribute %s for RID:0x%" PRIx64 ", "
+                            "skipping this attribute only",
+                            sai_serialize_port_serdes_attr(attrId).c_str(),
+                            rid);
+                        continue;
+                    }
+                    attrs.push_back(attr);
+                }
+
+                if (attrs.empty())
                 {
                     SWSS_LOG_WARN(
-                        "PORT_PHY_SERDES_ATTR: Failed to initialize "
-                        "attribute %s for RID:0x%" PRIx64 ", "
-                        "skipping this attribute only",
-                        sai_serialize_port_serdes_attr(attrIds[i]).c_str(),
-                        rid);
-                    continue;
+                        "PORT_PHY_SERDES_ATTR: No attributes could be "
+                        "initialized for RID:0x%" PRIx64 ", "
+                        "skipping object", rid);
+                    break;
                 }
-                attrs.push_back(attr);
+
+                sai_status_t status = Base::m_vendorSai->get(
+                        Base::m_objectType,
+                        rid,
+                        static_cast<uint32_t>(attrs.size()),
+                        attrs.data());
+
+                if (status == SAI_STATUS_SUCCESS)
+                {
+                    getSucceeded = true;
+                    break;
+                }
+
+                if (status != SAI_STATUS_BUFFER_OVERFLOW)
+                {
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes attr for VID 0x%" PRIx64 ", status: %d",
+                            vid, status);
+                    break;
+                }
+
+                if (!updateCachedBufferRequirementsAfterOverflow(
+                            vid, rid, attrs, attrData))
+                {
+                    break;
+                }
+
+                if (attempt == maxGetAttempts)
+                {
+                    SWSS_LOG_ERROR(
+                        "PORT_PHY_SERDES_ATTR: BUFFER_OVERFLOW persisted for "
+                        "VID 0x%" PRIx64 " after %u GET attempts",
+                        vid, maxGetAttempts);
+                    break;
+                }
+
+                SWSS_LOG_NOTICE(
+                    "PORT_PHY_SERDES_ATTR: Rebuilding buffers and retrying GET "
+                    "for VID 0x%" PRIx64 ", attempt %u/%u",
+                    vid, attempt + 1, maxGetAttempts);
             }
 
-            if (attrs.empty())
+            if (!getSucceeded)
             {
-                SWSS_LOG_WARN(
-                    "PORT_PHY_SERDES_ATTR: No attributes could be "
-                    "initialized for RID:0x%" PRIx64 ", "
-                    "skipping object", rid);
-                continue;
-            }
-
-            sai_status_t status = Base::m_vendorSai->get(
-                    Base::m_objectType,
-                    rid,
-                    static_cast<uint32_t>(attrs.size()),
-                    attrs.data());
-
-            if (status != SAI_STATUS_SUCCESS)
-            {
-                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes attr for VID 0x%" PRIx64 ", status: %d",
-                        vid, status);
                 continue;
             }
 
@@ -3523,7 +3692,7 @@ public:
                 // need not repeat these global checks for each object
                 return;
             }
-            sai_attribute_t attr;
+            sai_attribute_t attr = {};
             attr.id = SAI_SWITCH_ATTR_DASH_CAPS_MAX_METER_BUCKET_COUNT_PER_ENI;
             auto status = m_vendorSai->get(SAI_OBJECT_TYPE_SWITCH, m_switchId,
                                            1, &attr);

@@ -18,6 +18,7 @@
 #include <string>
 #include <gtest/gtest.h>
 #include <memory>
+#include <functional>
 #include <nlohmann/json.hpp>
 
 using namespace saimeta;
@@ -511,3 +512,635 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
     flexCounter->removeCounter(partialSerdesOid);
 }
 
+
+// Exercise individual polls without enabling the background collector. The
+// unittest target already uses -fno-access-control for FlexCounter internals.
+class TestPortPhySerdesAttrResize : public TestPortPhySerdesAttr
+{
+protected:
+    void SetUp() override
+    {
+        TestPortPhySerdesAttr::SetUp();
+        flexCounter->endFlexCounterThread();
+
+        // Use distinct VIDs and RIDs to check publication under the port VID.
+        testPortSerdesOid = 0x570000000000f1;
+        testPortSerdesRid = 0x570000000000b1;
+        testPortOid = 0x10000000000f1;
+        testPortRid = 0x10000000000b1;
+
+        db.reset(new swss::DBConnector("COUNTERS_DB", 0));
+        phyTable.reset(new swss::Table(db.get(), PORT_PHY_ATTR_TABLE));
+        mappingTable.reset(new swss::Table(db.get(), "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP"));
+        phyTable->del(toOid(testPortOid));
+        phyTable->hset(toOid(testPortOid), "rx_vga", "previous-rx");
+        phyTable->hset(toOid(testPortOid), "tx_fir_taps_list", "previous-taps");
+        mappingTable->hset("", toOid(testPortSerdesOid), toOid(testPortOid));
+
+        sai->mock_get = [this](sai_object_type_t type, sai_object_id_t rid,
+                              uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+        {
+            if (type == SAI_OBJECT_TYPE_PORT && rid == testPortRid &&
+                count == 1 && attrs[0].id == SAI_PORT_ATTR_HW_LANE_LIST)
+            {
+                ++laneQueries;
+                EXPECT_EQ(0u, attrs[0].value.u32list.count);
+                EXPECT_EQ(nullptr, attrs[0].value.u32list.list);
+                attrs[0].value.u32list.count = queriedLanes;
+                return laneQueryStatus;
+            }
+            if (type == SAI_OBJECT_TYPE_PORT_SERDES && rid == testPortSerdesRid)
+            {
+                if (count == 1 && attrs[0].id == SAI_PORT_SERDES_ATTR_PORT_ID)
+                {
+                    attrs[0].value.oid = testPortRid;
+                    return SAI_STATUS_SUCCESS;
+                }
+                if (count == 1 && attrs[0].id == SAI_PORT_SERDES_ATTR_TX_FIR_COUNT)
+                {
+                    ++tapQueries;
+                    attrs[0].value.u32 = queriedTaps;
+                    return tapQueryStatus;
+                }
+                ++collectionGets;
+                if (onCollect)
+                    return onCollect(count, attrs);
+            }
+            ADD_FAILURE() << "Unexpected GET: type=" << type << ", RID=" << toOid(rid);
+            return SAI_STATUS_FAILURE;
+        };
+    }
+
+    void TearDown() override
+    {
+        flexCounter.reset();
+        if (phyTable)
+        {
+            phyTable->del(toOid(testPortOid));
+            if (secondPortOid != SAI_NULL_OBJECT_ID)
+                phyTable->del(toOid(secondPortOid));
+        }
+        if (mappingTable)
+        {
+            mappingTable->hdel("", toOid(testPortSerdesOid));
+            if (secondSerdesOid != SAI_NULL_OBJECT_ID)
+                mappingTable->hdel("", toOid(secondSerdesOid));
+        }
+        phyTable.reset();
+        mappingTable.reset();
+        db.reset();
+        TestPortPhySerdesAttr::TearDown();
+    }
+
+    void registerCounter(bool rx = true, bool taps = true)
+    {
+        std::string ids;
+        if (rx)
+            ids = "SAI_PORT_SERDES_ATTR_RX_VGA";
+        if (taps)
+        {
+            if (!ids.empty())
+                ids += ",";
+            ids += "SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST";
+        }
+        test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT_SERDES);
+        flexCounter->addCounter(testPortSerdesOid, testPortSerdesRid,
+                {{PORT_PHY_SERDES_ATTR_ID_LIST, ids}});
+        EXPECT_EQ(0u, collectionGets);
+        EXPECT_EQ(1u, laneQueries);
+        EXPECT_EQ(1u, tapQueries);
+    }
+
+    void poll()
+    {
+        swss::Table countersTable(db.get(), "COUNTERS");
+        flexCounter->collectCounters(countersTable);
+    }
+
+    void expectCapacity(uint32_t count, sai_attribute_t *attrs,
+                        uint32_t lanes, uint32_t taps)
+    {
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            if (attrs[i].id == SAI_PORT_SERDES_ATTR_RX_VGA)
+            {
+                EXPECT_EQ(lanes, attrs[i].value.u32list.count);
+                EXPECT_NE(nullptr, attrs[i].value.u32list.list);
+            }
+            else
+            {
+                ASSERT_EQ(SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST, attrs[i].id);
+                auto &list = attrs[i].value.portserdestaps;
+                ASSERT_EQ(taps, list.count);
+                ASSERT_NE(nullptr, list.list);
+                for (uint32_t tap = 0; tap < list.count; ++tap)
+                {
+                    EXPECT_EQ(lanes, list.list[tap].count) << "tap " << tap;
+                    EXPECT_NE(nullptr, list.list[tap].list) << "tap " << tap;
+                }
+            }
+        }
+    }
+
+    // Fill only a successful GET. Guard every write by the capacity supplied
+    // by the caller, so a regression fails the test instead of overrunning it.
+    sai_status_t completeGet(uint32_t count, sai_attribute_t *attrs,
+                             uint32_t lanes, uint32_t taps)
+    {
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            if (attrs[i].id == SAI_PORT_SERDES_ATTR_RX_VGA)
+            {
+                auto &list = attrs[i].value.u32list;
+                if (!list.list || list.count < lanes)
+                {
+                    ADD_FAILURE() << "RX_VGA buffer was not resized";
+                    return SAI_STATUS_FAILURE;
+                }
+                for (uint32_t lane = 0; lane < lanes; ++lane)
+                    list.list[lane] = 100 + lane;
+                list.count = lanes;
+            }
+            else if (attrs[i].id == SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST)
+            {
+                auto &list = attrs[i].value.portserdestaps;
+                if (!list.list || list.count < taps)
+                {
+                    ADD_FAILURE() << "Outer tap buffer was not resized";
+                    return SAI_STATUS_FAILURE;
+                }
+                for (uint32_t tap = 0; tap < taps; ++tap)
+                {
+                    auto &inner = list.list[tap];
+                    if (!inner.list || inner.count < lanes)
+                    {
+                        ADD_FAILURE() << "Lane buffer was not resized for tap " << tap;
+                        return SAI_STATUS_FAILURE;
+                    }
+                    for (uint32_t lane = 0; lane < lanes; ++lane)
+                        inner.list[lane] = -100 + 10 * static_cast<int32_t>(tap) + static_cast<int32_t>(lane);
+                    inner.count = lanes;
+                }
+                list.count = taps;
+            }
+            else
+            {
+                ADD_FAILURE() << "Unexpected collection attribute " << attrs[i].id;
+                return SAI_STATUS_FAILURE;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    }
+
+    void expectPublished(uint32_t lanes, uint32_t taps, bool rx = true, bool tx = true)
+    {
+        json expectedRx = json::object();
+        json expectedTx = json::object();
+        for (uint32_t lane = 0; lane < lanes; ++lane)
+        {
+            const auto key = std::to_string(lane);
+            expectedRx[key] = 100 + lane;
+            expectedTx[key] = json::array();
+            for (uint32_t tap = 0; tap < taps; ++tap)
+            {
+                const int32_t value = -100 + 10 * static_cast<int32_t>(tap) + static_cast<int32_t>(lane);
+                expectedTx[key].push_back({{"tap" + std::to_string(tap), value}});
+            }
+        }
+        std::string value;
+        if (rx)
+        {
+            ASSERT_TRUE(phyTable->hget(toOid(testPortOid), "rx_vga", value));
+            EXPECT_EQ(expectedRx, json::parse(value));
+        }
+        if (tx)
+        {
+            ASSERT_TRUE(phyTable->hget(toOid(testPortOid), "tx_fir_taps_list", value));
+            EXPECT_EQ(expectedTx, json::parse(value));
+        }
+    }
+
+    void expectUnchanged()
+    {
+        std::string value;
+        ASSERT_TRUE(phyTable->hget(toOid(testPortOid), "rx_vga", value));
+        EXPECT_EQ("previous-rx", value);
+        ASSERT_TRUE(phyTable->hget(toOid(testPortOid), "tx_fir_taps_list", value));
+        EXPECT_EQ("previous-taps", value);
+    }
+
+    std::unique_ptr<swss::DBConnector> db;
+    std::unique_ptr<swss::Table> phyTable;
+    std::unique_ptr<swss::Table> mappingTable;
+    std::function<sai_status_t(uint32_t, sai_attribute_t *)> onCollect;
+    uint32_t queriedLanes = 2;
+    uint32_t queriedTaps = 3;
+    uint32_t laneQueries = 0;
+    uint32_t tapQueries = 0;
+    uint32_t collectionGets = 0;
+    sai_status_t laneQueryStatus = SAI_STATUS_BUFFER_OVERFLOW;
+    sai_status_t tapQueryStatus = SAI_STATUS_SUCCESS;
+    sai_object_id_t secondPortOid = SAI_NULL_OBJECT_ID;
+    sai_object_id_t secondSerdesOid = SAI_NULL_OBJECT_ID;
+};
+
+TEST_F(TestPortPhySerdesAttrResize, TapCountGrowthRetriesAndCachesCapacity)
+{
+    registerCounter(false, true);
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        EXPECT_EQ(1u, count);
+        expectCapacity(count, attrs, 2, collectionGets == 1 ? 3 : 6);
+        if (collectionGets == 1)
+        {
+            // Only the required outer count changes. There are still just
+            // three allocated entries; the overflow handler must not read six.
+            attrs[0].value.portserdestaps.count = 6;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        if (collectionGets == 2)
+            expectUnchanged();
+        return completeGet(count, attrs, 2, 6);
+    };
+
+    poll();
+    ASSERT_EQ(2u, collectionGets);
+    expectPublished(2, 6, false, true);
+    poll();
+    EXPECT_EQ(3u, collectionGets);
+    expectPublished(2, 6, false, true);
+    // Explicit queries still report 3 taps: returned list counts take priority.
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, RxVgaLaneGrowthRetriesAndCachesCapacity)
+{
+    registerCounter(true, false);
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        EXPECT_EQ(1u, count);
+        expectCapacity(count, attrs, collectionGets == 1 ? 2 : 4, 3);
+        if (collectionGets == 1)
+        {
+            attrs[0].value.u32list.count = 4;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        return completeGet(count, attrs, 4, 3);
+    };
+
+    poll();
+    ASSERT_EQ(2u, collectionGets);
+    expectPublished(4, 3, true, false);
+    poll();
+    EXPECT_EQ(3u, collectionGets);
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, InnerLaneGrowthUsesLargestReturnedCount)
+{
+    registerCounter(false, true);
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs, collectionGets == 1 ? 2 : 8, 3);
+        if (collectionGets == 1)
+        {
+            auto &list = attrs[0].value.portserdestaps;
+            list.list[0].count = 4;
+            list.list[2].count = 8;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        return completeGet(count, attrs, 8, 3);
+    };
+
+    poll();
+    EXPECT_EQ(2u, collectionGets);
+    expectPublished(8, 3, false, true);
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, TapThenLaneOverflowUsesThirdAttempt)
+{
+    registerCounter(false, true);
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs, collectionGets < 3 ? 2 : 4,
+                       collectionGets == 1 ? 3 : 6);
+        if (collectionGets == 1)
+        {
+            attrs[0].value.portserdestaps.count = 6;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        if (collectionGets == 2)
+        {
+            attrs[0].value.portserdestaps.list[5].count = 4;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        return completeGet(count, attrs, 4, 6);
+    };
+
+    poll();
+    ASSERT_EQ(3u, collectionGets);
+    expectPublished(4, 6, false, true);
+    poll();
+    EXPECT_EQ(4u, collectionGets);
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, SimultaneousGrowthRebuildsBothAttributeBuffers)
+{
+    registerCounter();
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        EXPECT_EQ(2u, count);
+        expectCapacity(count, attrs, collectionGets == 1 ? 2 : 4,
+                       collectionGets == 1 ? 3 : 6);
+        if (collectionGets == 1)
+        {
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                if (attrs[i].id == SAI_PORT_SERDES_ATTR_RX_VGA)
+                    attrs[i].value.u32list.count = 4;
+                else
+                {
+                    attrs[i].value.portserdestaps.list[0].count = 4;
+                    attrs[i].value.portserdestaps.count = 6;
+                }
+            }
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        return completeGet(count, attrs, 4, 6);
+    };
+
+    poll();
+    EXPECT_EQ(2u, collectionGets);
+    expectPublished(4, 6);
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
+}
+
+struct SerdesFallbackCounts
+{
+    uint32_t initialLanes;
+    uint32_t initialTaps;
+    uint32_t reportedLanes;
+    uint32_t reportedTaps;
+    uint32_t expectedLaneCapacity;
+    uint32_t expectedTapCapacity;
+};
+
+class TestPortPhySerdesAttrFallback : public TestPortPhySerdesAttrResize,
+                                    public ::testing::WithParamInterface<SerdesFallbackCounts>
+{
+};
+
+TEST_P(TestPortPhySerdesAttrFallback, QueriesGrowBuffersWithoutShrinkingOtherDimension)
+{
+    const auto sizes = GetParam();
+    queriedLanes = sizes.initialLanes;
+    queriedTaps = sizes.initialTaps;
+    registerCounter();
+    queriedLanes = sizes.reportedLanes;
+    queriedTaps = sizes.reportedTaps;
+    onCollect = [this, sizes](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs,
+                collectionGets == 1 ? sizes.initialLanes : sizes.expectedLaneCapacity,
+                collectionGets == 1 ? sizes.initialTaps : sizes.expectedTapCapacity);
+        if (collectionGets == 1)
+            return SAI_STATUS_BUFFER_OVERFLOW; // Vendor leaves all counts unchanged.
+        return completeGet(count, attrs, sizes.reportedLanes, sizes.reportedTaps);
+    };
+
+    poll();
+    ASSERT_EQ(2u, collectionGets);
+    expectPublished(sizes.reportedLanes, sizes.reportedTaps);
+    EXPECT_EQ(2u, laneQueries);
+    EXPECT_EQ(2u, tapQueries);
+    poll();
+    EXPECT_EQ(3u, collectionGets);
+    EXPECT_EQ(2u, laneQueries);
+    EXPECT_EQ(2u, tapQueries);
+}
+
+INSTANTIATE_TEST_SUITE_P(CountChanges, TestPortPhySerdesAttrFallback,
+        ::testing::Values(
+            SerdesFallbackCounts{2, 3, 4, 3, 4, 3},
+            SerdesFallbackCounts{2, 3, 2, 6, 2, 6},
+            SerdesFallbackCounts{2, 3, 4, 6, 4, 6},
+            SerdesFallbackCounts{4, 6, 2, 8, 4, 8},
+            SerdesFallbackCounts{4, 6, 8, 3, 8, 6}));
+
+TEST_F(TestPortPhySerdesAttrResize, OverflowWithoutLargerCountsStops)
+{
+    registerCounter();
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs, 2, 3);
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    };
+
+    poll();
+    EXPECT_EQ(1u, collectionGets);
+    EXPECT_EQ(2u, laneQueries);
+    EXPECT_EQ(2u, tapQueries);
+    expectUnchanged();
+}
+
+TEST_F(TestPortPhySerdesAttrResize, FailedCountQueriesStopWithoutRetry)
+{
+    registerCounter();
+    laneQueryStatus = SAI_STATUS_FAILURE;
+    tapQueryStatus = SAI_STATUS_FAILURE;
+    // Failed queries must not corrupt cached capacities, even if they write data.
+    queriedLanes = 9;
+    queriedTaps = 9;
+    onCollect = [](uint32_t, sai_attribute_t *) -> sai_status_t
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    };
+
+    poll();
+    ASSERT_EQ(1u, collectionGets);
+    EXPECT_EQ(2u, laneQueries);
+    EXPECT_EQ(2u, tapQueries);
+    expectUnchanged();
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs, 2, 3);
+        return completeGet(count, attrs, 2, 3);
+    };
+    poll();
+    EXPECT_EQ(2u, collectionGets);
+    expectPublished(2, 3);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, RetryLimitPreservesRequirementsForNextPoll)
+{
+    registerCounter(false, true);
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs, 2, 2 + collectionGets);
+        ++attrs[0].value.portserdestaps.count;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    };
+
+    poll();
+    ASSERT_EQ(3u, collectionGets);
+    expectUnchanged();
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs, 2, 6);
+        return completeGet(count, attrs, 2, 6);
+    };
+    poll();
+    EXPECT_EQ(4u, collectionGets);
+    expectPublished(2, 6, false, true);
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, SmallerSuccessfulListsDoNotShrinkCapacity)
+{
+    queriedLanes = 4;
+    queriedTaps = 6;
+    registerCounter();
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs, 4, 6);
+        return completeGet(count, attrs, 2, 3);
+    };
+
+    poll();
+    expectPublished(2, 3);
+    poll();
+    EXPECT_EQ(2u, collectionGets);
+    expectPublished(2, 3);
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
+}
+
+class TestPortPhySerdesAttrGetFailure : public TestPortPhySerdesAttrResize,
+                                      public ::testing::WithParamInterface<bool>
+{
+};
+
+TEST_P(TestPortPhySerdesAttrGetFailure, OrdinaryErrorDoesNotRetryOrPublish)
+{
+    const bool failAfterResize = GetParam();
+    registerCounter(false, true);
+    onCollect = [this, failAfterResize](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs, 2, collectionGets == 1 ? 3 : 6);
+        if (failAfterResize && collectionGets == 1)
+        {
+            attrs[0].value.portserdestaps.count = 6;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        return SAI_STATUS_FAILURE;
+    };
+
+    poll();
+    EXPECT_EQ(failAfterResize ? 2u : 1u, collectionGets);
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
+    expectUnchanged();
+}
+
+INSTANTIATE_TEST_SUITE_P(InitialAndRetry, TestPortPhySerdesAttrGetFailure,
+        ::testing::Bool());
+
+TEST_F(TestPortPhySerdesAttrResize, PartialInitializationStillAllowsResizeRetry)
+{
+    tapQueryStatus = SAI_STATUS_FAILURE;
+    phyTable->hdel(toOid(testPortOid), "tx_fir_taps_list");
+    registerCounter();
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        EXPECT_EQ(1u, count);
+        EXPECT_EQ(SAI_PORT_SERDES_ATTR_RX_VGA, attrs[0].id);
+        expectCapacity(count, attrs, collectionGets == 1 ? 2 : 4, 0);
+        if (collectionGets == 1)
+        {
+            attrs[0].value.u32list.count = 4;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        return completeGet(count, attrs, 4, 0);
+    };
+
+    poll();
+    EXPECT_EQ(2u, collectionGets);
+    expectPublished(4, 0, true, false);
+    std::string value;
+    EXPECT_FALSE(phyTable->hget(toOid(testPortOid), "tx_fir_taps_list", value));
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, NoInitializedAttributesSkipsCollectionGet)
+{
+    laneQueryStatus = SAI_STATUS_FAILURE;
+    registerCounter();
+    poll();
+    EXPECT_EQ(0u, collectionGets);
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
+    expectUnchanged();
+}
+
+TEST_F(TestPortPhySerdesAttrResize, FailedObjectDoesNotBlockOtherObjects)
+{
+    registerCounter();
+    onCollect = [](uint32_t, sai_attribute_t *) -> sai_status_t
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW; // No progress after the fallback queries.
+    };
+
+    secondSerdesOid = testPortSerdesOid + 1;
+    secondPortOid = testPortOid + 1;
+    const sai_object_id_t secondSerdesRid = testPortSerdesRid + 1;
+    const sai_object_id_t secondPortRid = testPortRid + 1;
+    mappingTable->hset("", toOid(secondSerdesOid), toOid(secondPortOid));
+    phyTable->del(toOid(secondPortOid));
+    uint32_t secondGets = 0;
+    const auto firstGet = sai->mock_get;
+    sai->mock_get = [&, firstGet](sai_object_type_t type, sai_object_id_t rid,
+                                uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        if (type == SAI_OBJECT_TYPE_PORT && rid == secondPortRid && count == 1 &&
+            attrs[0].id == SAI_PORT_ATTR_HW_LANE_LIST)
+        {
+            attrs[0].value.u32list.count = 2;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        if (type == SAI_OBJECT_TYPE_PORT_SERDES && rid == secondSerdesRid)
+        {
+            if (count == 1 && attrs[0].id == SAI_PORT_SERDES_ATTR_PORT_ID)
+            {
+                attrs[0].value.oid = secondPortRid;
+                return SAI_STATUS_SUCCESS;
+            }
+            if (count == 1 && attrs[0].id == SAI_PORT_SERDES_ATTR_TX_FIR_COUNT)
+            {
+                attrs[0].value.u32 = 3;
+                return SAI_STATUS_SUCCESS;
+            }
+            ++secondGets;
+            return completeGet(count, attrs, 2, 3);
+        }
+        return firstGet(type, rid, count, attrs);
+    };
+    flexCounter->addCounter(secondSerdesOid, secondSerdesRid,
+            {{PORT_PHY_SERDES_ATTR_ID_LIST, "SAI_PORT_SERDES_ATTR_RX_VGA"}});
+
+    poll();
+    EXPECT_EQ(1u, collectionGets);
+    EXPECT_EQ(1u, secondGets);
+    expectUnchanged();
+    std::string value;
+    ASSERT_TRUE(phyTable->hget(toOid(secondPortOid), "rx_vga", value));
+    EXPECT_EQ((json{{"0", 100}, {"1", 101}}), json::parse(value));
+}
