@@ -594,7 +594,10 @@ int __wrap_interface_set_promiscuous(const char *hwif_name, bool enable) {
 
 /*
  * IPv6 link enable/disable, recorded as name: interface, sub_id: the returned
- * status, flag: enable. VPP reference counts these, so the mock does too.
+ * status, flag: enable. VPP reference counts these, so the mock does too, and
+ * it counts them the way VPP does: ip6_link_enable() takes the lock even when
+ * it reports VALUE_EXIST for an interface someone else enabled first, while
+ * IP6_NOT_ENABLED means ip6_link_disable() found no lock to drop.
  */
 int __wrap_sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
 {
@@ -602,11 +605,17 @@ int __wrap_sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
 
     std::string name = hwif_name ? hwif_name : "";
 
+    const int VPP_API_ERROR_VALUE_EXIST = -81;
+
     int ret = vppMock().ip6EnableResult;
 
-    if (ret == 0)
+    if (enable && (ret == 0 || ret == VPP_API_ERROR_VALUE_EXIST))
     {
-        vppMock().ip6Locks[name] += enable ? 1 : -1;
+        vppMock().ip6Locks[name]++;
+    }
+    else if (!enable && ret == 0)
+    {
+        vppMock().ip6Locks[name]--;
     }
 
     vppMock().calls.push_back({"sw_interface_ip6_enable_disable", name, 0, (uint32_t)ret, enable});

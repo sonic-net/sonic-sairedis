@@ -969,24 +969,28 @@ TEST_F(SwitchVppRifTest, lagRifProgramsBondMacBeforeEnablingIpv6)
 
 TEST_F(SwitchVppRifTest, ipv6EnableToleratesAlreadyEnabledButNotOtherErrors)
 {
-    // VNET_API_ERROR_VALUE_EXIST and _IP6_NOT_ENABLED still moved the lock
-    // count, so they are the no-op they look like
-    for (int result : {-81, -62})
-    {
-        SCOPED_TRACE(result);
-        const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
-        vppMock().ip6EnableResult = result;
-        ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
-        EXPECT_EQ(1u, vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").size());
+    // An interface something else enabled first answers VALUE_EXIST, and VPP
+    // still counts this lock, so the create succeeds and stays balanced
+    auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    vppMock().ip6EnableResult = -81;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
 
-        vppMock().ip6EnableResult = 0;
-        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
-        vppMock().calls.clear();
-    }
+    vppMock().ip6EnableResult = 0;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    EXPECT_EQ(0, vppMock().ip6Locks.at("port0"));
+
+    // IP6_NOT_ENABLED on the way out means the lock is already gone, which is
+    // no reason to fail the remove and leave the SAI RIF behind
+    rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    vppMock().ip6EnableResult = -62;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
 
     // anything else fails the create, which must leave no RIF behind
-    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    vppMock().ip6Locks.clear();
     vppMock().ip6EnableResult = -1;
+    rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
     ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
     EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
     EXPECT_EQ(0, vppMock().ip6Locks["port0"]);
