@@ -336,6 +336,18 @@ apply_sai_profile_configdb()
 
 config_syncd_bcm()
 {
+    local BCM_SAI_PROFILE_FILE="$SAI_PROFILE_DIR/sai-runtime.profile"
+
+    # Rebuild from static defaults so removed CONFIG_DB overrides do not persist.
+    mkdir -p "$SAI_PROFILE_DIR" || exit 1
+    if [ -f "$SAI_PROFILE_DIR/sai.profile" ]; then
+        cp -f "$SAI_PROFILE_DIR/sai.profile" "$BCM_SAI_PROFILE_FILE" || exit 1
+    elif [ -f "$HWSKU_DIR/sai.profile" ]; then
+        cp -f "$HWSKU_DIR/sai.profile" "$BCM_SAI_PROFILE_FILE" || exit 1
+    else
+        : > "$BCM_SAI_PROFILE_FILE" || exit 1
+    fi
+
     PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
     PLT_CONFIG_BCM=""
     PLT_CONFIG_YML=""
@@ -349,9 +361,8 @@ config_syncd_bcm()
 
     if [ ! -z "$PLT_CONFIG_BCM" ] && [ -f $PLATFORM_DIR/common_config_support ] ; then
        cp -f $PLT_CONFIG_BCM /tmp
-       cp -f /etc/sai.d/sai.profile /tmp
        CONFIG_BCM=$(find /tmp -name '*.bcm')
-       SAI_PROFILE=$(find /tmp -name 'sai.profile')
+       SAI_PROFILE="$BCM_SAI_PROFILE_FILE"
        sed -i 's+/usr/share/sonic/hwsku+/tmp+g' $SAI_PROFILE
 
        #Get first three characters of chip id
@@ -370,15 +381,14 @@ config_syncd_bcm()
        sync
 
        # copy the final config.bcm and sai.profile to the shared folder for 'show tech'
-       cp -f /tmp/sai.profile /var/run/sswsyncd/
+       cp -f "$BCM_SAI_PROFILE_FILE" /var/run/sswsyncd/sai.profile
        cp -f /tmp/*.bcm /var/run/sswsyncd/
     fi
 
     if [ ! -z "$PLT_CONFIG_YML" ] && [ -f $PLATFORM_DIR/common_config_support ]; then
        cp -f $PLT_CONFIG_YML /tmp
-       cp -f /etc/sai.d/sai.profile /tmp
        CONFIG_YML=$(find /tmp -name '*.yml')
-       SAI_PROFILE=$(find /tmp -name 'sai.profile')
+       SAI_PROFILE="$BCM_SAI_PROFILE_FILE"
        sed -i 's+/usr/share/sonic/hwsku+/tmp+g' $SAI_PROFILE
 
        #Get first three characters of chip id
@@ -397,22 +407,8 @@ config_syncd_bcm()
        sync
 
        # copy the final config.bcm and sai.profile to the shared folder for 'show tech'
-       cp -f /tmp/sai.profile /var/run/sswsyncd/
+       cp -f "$BCM_SAI_PROFILE_FILE" /var/run/sswsyncd/sai.profile
        cp -f /tmp/*.yml /var/run/sswsyncd/
-    fi
-
-    if [ -f "/tmp/sai.profile" ]; then
-        BCM_SAI_PROFILE_FILE="/tmp/sai.profile"
-	elif [ -f "/etc/sai.d/sai.profile" ]; then
-        BCM_SAI_PROFILE_FILE="/etc/sai.d/sai.profile"
-    else
-        # $HWSKU_DIR is typically a read-only mount; copy the static profile
-        # (if any) to a writable location first so apply_sai_profile_configdb
-        # below can append to it. Tolerate the source being absent (no
-        # pre-existing static sai.profile at all): apply_sai_profile_configdb
-        # will still create /tmp/sai.profile from CONFIG_DB entries alone.
-        cp -f "$HWSKU_DIR/sai.profile" /tmp/sai.profile 2>/dev/null || true
-        BCM_SAI_PROFILE_FILE="/tmp/sai.profile"
     fi
 
     # Apply the generic SAI_PROFILE CONFIG_DB table last, so a hwsku's
