@@ -472,3 +472,9 @@ subtree
 iface
 loopback
 resync
+DHCPv
+LLDP
+cp
+ethertype
+fixup
+nexts

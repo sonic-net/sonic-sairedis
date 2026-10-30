@@ -128,6 +128,14 @@ using namespace saivs;
  *     multicast (rewrites VLIB_RX from bridged sub-if to parent phys
  *     before handing to linux-cp-punt, because a bridged sub-if has no
  *     LCP pair).
+ *   - sonic-ext-l2-trap-learn: DHCPv4, ARP and IPv6 multicast, tagged and
+ *     untagged, in place of the two above when the l2-trap-learn feature
+ *     is on.  A trapped frame never reaches l2-learn, so its source MAC
+ *     is never learned, while an ASIC learns the source MAC of the frames
+ *     it traps.  The node sends a copy of the frame on to
+ *     sonic-ext-l2-trap-fixup -- which leaves an untagged frame's VLIB_RX
+ *     alone, as it is the parent phys already -- and the frame itself to
+ *     l2-learn, from where it is dropped.
  *   - sonic-ext-l2-vlan-filter: 802.1Q frames on an untagged (access)
  *     member.  Accepts frames whose VID equals the member's access
  *     VLAN (pops the tag and re-bridges) and drops any other VID, so
@@ -142,6 +150,7 @@ using namespace saivs;
 static bool     s_l2_punt_classify_inited = false;
 static uint32_t s_punt_next_index = ~0;       /* linux-cp-punt (untagged + LLDP) */
 static uint32_t s_trap_fixup_next_index = ~0; /* sonic-ext-l2-trap-fixup (tagged DHCP only) */
+static uint32_t s_trap_learn_next_index = ~0; /* sonic-ext-l2-trap-learn (DHCP/ARP/IPv6-mc, if on) */
 static uint32_t s_vlan_filter_next_index = ~0; /* sonic-ext-l2-vlan-filter (access-port ingress VLAN filter) */
 
 /* Untagged member tables: ip4 slot holds DHCPv4 broadcast,
@@ -250,6 +259,33 @@ static int l2_punt_classify_init()
         s_vlan_filter_next_index = ~0;
     }
 
+    /* sonic-ext-l2-trap-learn next: hit-next of the DHCPv4, ARP and IPv6
+     * multicast trap sessions, tagged and untagged, so that the source MAC
+     * of a trapped frame is learned.  It sends its copy of the frame to
+     * sonic-ext-l2-trap-fixup, so it is only used along with that node.
+     * Not fatal if unavailable: those sessions then trap straight to
+     * linux-cp-punt (untagged) or sonic-ext-l2-trap-fixup (tagged), and
+     * the source MACs of trapped frames are not learned.  LLDP is not
+     * learned either way. */
+    uint32_t untag_trap_next_index = s_punt_next_index;
+    uint32_t tag_trap_next_index = s_trap_fixup_next_index;
+    if (s_trap_fixup_next_index == ~0u) {
+        s_trap_learn_next_index = ~0;
+    } else if (!sonicExtFeatureEnabled("l2-trap-learn")) {
+        SWSS_LOG_NOTICE("l2_punt_classify_init: sonic-ext-l2-trap-learn disabled; "
+                        "source MACs of trapped frames will not be learned");
+        s_trap_learn_next_index = ~0;
+    } else if (vpp_add_node_next("l2-input-classify", "sonic-ext-l2-trap-learn",
+                                &s_trap_learn_next_index) != 0) {
+        SWSS_LOG_WARN("l2_punt_classify_init: sonic-ext-l2-trap-learn not registered; "
+                      "source MACs of trapped frames will not be learned");
+        s_trap_learn_next_index = ~0;
+    } else {
+        untag_trap_next_index = tag_trap_next_index = s_trap_learn_next_index;
+        SWSS_LOG_NOTICE("l2_punt_classify_init: trap_learn_next_index=%u",
+                        s_trap_learn_next_index);
+    }
+
     SWSS_LOG_NOTICE("l2_punt_classify_init: punt_next_index=%u", s_punt_next_index);
 
     /* --- Untagged IP4-slot table (DHCPv4 broadcast) ---
@@ -267,7 +303,9 @@ static int l2_punt_classify_init()
      * Hit_next is linux-cp-punt directly: VLIB_RX is already the
      * parent phys (untagged BD member IS the parent phys; sub-if
      * dispatch never ran), so linux-cp-punt picks the correct LCP
-     * pair straight away.  No fixup node needed.
+     * pair straight away.  No fixup node needed.  With l2-trap-learn on
+     * it is sonic-ext-l2-trap-learn instead, as for every trap session
+     * except LLDP's.
      *
      * No chain on miss: non-DHCP IPv4 traffic should fall through to
      * the rest of the L2 feature arc unchanged.
@@ -293,7 +331,7 @@ static int l2_punt_classify_init()
             m[23] = 0x11;                                /* IPPROTO_UDP */
             m[36] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
             m[37] =  SAIVS_DHCP_BOOTPS       & 0xFF;
-            vpp_classify_session_add(s_untag_ip4_table, s_punt_next_index,
+            vpp_classify_session_add(s_untag_ip4_table, untag_trap_next_index,
                                      m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
@@ -341,7 +379,7 @@ static int l2_punt_classify_init()
      *
      * This table *is* the implementation of that attribute: a classify
      * hit is terminal (l2-input-classify dispatches straight to the
-     * session's next node and never re-enters the L2 feature arc), so
+     * session's next node, and the frame never reaches l2-flood), so
      * matching here both delivers the request to the control plane and
      * stops it reaching l2-flood.  That is exactly what the attribute
      * asks for, and it is why the BD's L2_FLOOD bit is left alone --
@@ -386,7 +424,7 @@ static int l2_punt_classify_init()
             uint8_t m[16] = {0};
             m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
             m[12] = 0x08; m[13] = 0x06;        /* ARP */
-            vpp_classify_session_add(s_untag_arp_table, s_punt_next_index,
+            vpp_classify_session_add(s_untag_arp_table, untag_trap_next_index,
                                      m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
@@ -434,7 +472,7 @@ static int l2_punt_classify_init()
         } else {
             uint8_t m[16] = {0};
             m[0] = 0x33; m[1] = 0x33;          /* IPv6 multicast DA prefix */
-            vpp_classify_session_add(s_untag_ip6mc_table, s_punt_next_index,
+            vpp_classify_session_add(s_untag_ip6mc_table, untag_trap_next_index,
                                      m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
@@ -455,6 +493,9 @@ static int l2_punt_classify_init()
      * the frame.  The fixup node rewrites VLIB_RX to the parent phys
      * (Ethernet0), which always has an LCP pair.  Skip table install
      * if the fixup node is not registered (untagged DHCP still works).
+     * With l2-trap-learn on, hit_next is sonic-ext-l2-trap-learn, which
+     * hands its copy of the frame to the fixup node -- here and for the
+     * tagged ARP and IPv6 multicast tables below.
      */
     if (s_trap_fixup_next_index != ~0u) {
         uint8_t mask[48] = {0};
@@ -477,7 +518,7 @@ static int l2_punt_classify_init()
             m[27] = 0x11;
             m[40] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
             m[41] =  SAIVS_DHCP_BOOTPS       & 0xFF;
-            vpp_classify_session_add(s_tag_dhcp_table, s_trap_fixup_next_index,
+            vpp_classify_session_add(s_tag_dhcp_table, tag_trap_next_index,
                                      m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
@@ -516,7 +557,7 @@ static int l2_punt_classify_init()
             uint8_t m[32] = {0};
             m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
             m[16] = 0x08; m[17] = 0x06;
-            vpp_classify_session_add(s_tag_arp_table, s_trap_fixup_next_index,
+            vpp_classify_session_add(s_tag_arp_table, tag_trap_next_index,
                                      m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
@@ -575,7 +616,7 @@ static int l2_punt_classify_init()
                 SWSS_LOG_ERROR("l2_punt_classify_init: %s table create failed", v.name);
                 *v.out = ~0;
             } else {
-                vpp_classify_session_add(*v.out, s_trap_fixup_next_index,
+                vpp_classify_session_add(*v.out, tag_trap_next_index,
                                          m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
             }
         }
@@ -585,12 +626,14 @@ static int l2_punt_classify_init()
     SWSS_LOG_NOTICE("L2 punt classify tables initialized: "
                     "untag_ip4=%u untag_other=%u untag_arp=%u untag_ip6mc=%u "
                     "tag_dhcp=%u tag_arp=%u tag_ip6mc=%u tag_ip6mc_only=%u "
-                    "punt_next=%u trap_fixup_next=%u vlan_filter_next=%u",
+                    "punt_next=%u trap_fixup_next=%u trap_learn_next=%u "
+                    "vlan_filter_next=%u",
                     s_untag_ip4_table, s_untag_other_table, s_untag_arp_table,
                     s_untag_ip6mc_table,
                     s_tag_dhcp_table, s_tag_arp_table, s_tag_ip6mc_table,
                     s_tag_ip6mc_only_table,
-                    s_punt_next_index, s_trap_fixup_next_index, s_vlan_filter_next_index);
+                    s_punt_next_index, s_trap_fixup_next_index, s_trap_learn_next_index,
+                    s_vlan_filter_next_index);
     return 0;
 }
 
@@ -602,7 +645,7 @@ static int l2_punt_classify_init()
  *   punt_ip6mc <- SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE == NONE
  *
  * A classify hit is terminal -- l2-input-classify dispatches straight to the
- * session's next node and never re-enters the L2 feature arc -- so each punt
+ * session's next node, and the frame never reaches l2-flood -- so each punt
  * suppresses flooding for its own traffic class without affecting the other,
  * and without touching the bridge domain's shared L2_FLOOD bit.  See the
  * s_untag_arp_table and s_untag_ip6mc_table comments in
