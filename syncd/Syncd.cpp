@@ -183,8 +183,6 @@ Syncd::Syncd(
 
     m_vendorSai->setOptions(VendorSaiOptions::OPTIONS_KEY, vso);
 
-    m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters, m_commandLineOptions->m_supportingBulkCounterGroups);
-
     loadProfileMap();
 
     m_profileIter = m_profileMap.begin();
@@ -298,6 +296,9 @@ Syncd::Syncd(
     m_translator = std::make_shared<VirtualOidTranslator>(m_client, m_virtualObjectIdManager,  vendorSai);
 
     m_processor->m_translator = m_translator; // TODO as param
+
+    // Create after m_translator. Flex counters use it to resolve VIDs to RIDs.
+    m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters, m_commandLineOptions->m_supportingBulkCounterGroups, m_translator);
 
     m_veryFirstRun = isVeryFirstRun();
 

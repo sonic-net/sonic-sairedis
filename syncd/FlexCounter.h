@@ -41,6 +41,8 @@ struct PortPhySerdesAttributeData {
 
 namespace syncd
 {
+    class VirtualOidTranslator;
+
     class BaseCounterContext
     {
     public:
@@ -123,7 +125,8 @@ namespace syncd
                     _In_ const std::string& instanceId,
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
                     _In_ const std::string& dbCounters,
-                    _In_ const bool noDoubleCheckBulkCapability=false);
+                    _In_ const bool noDoubleCheckBulkCapability=false,
+                    _In_ std::shared_ptr<VirtualOidTranslator> translator=nullptr);
 
             virtual ~FlexCounter();
 
@@ -244,6 +247,8 @@ namespace syncd
             std::map<std::string, std::shared_ptr<BaseCounterContext>> m_counterContext;
 
             bool m_noDoubleCheckBulkCapability;
+
+            std::shared_ptr<VirtualOidTranslator> m_translator;
 
             static const std::map<std::string, std::string> m_plugIn2CounterType;
 
