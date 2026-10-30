@@ -919,7 +919,11 @@ TunnelManager::remove_l2_vxlan_tunnel(
 
     // VPP keeps a provisioned L2FIB entry after its interface is gone, and
     // takes a delete only while the interface exists
-    m_switch_db->remote_fdb_drop_tunnel(tunnel_data.sw_if_index);
+    if (!m_switch_db->remote_fdb_drop_tunnel(tunnel_data.sw_if_index)) {
+        SWSS_LOG_ERROR("Failed to drop remote FDB entries on L2 VXLAN tunnel "
+                       "VNI=%u sw_if=%u", vni, tunnel_data.sw_if_index);
+        return SAI_STATUS_FAILURE;
+    }
 
     if (set_sw_interface_l2_bridge_shg_by_index(
             tunnel_data.sw_if_index, tunnel_data.vlan_id,
@@ -1002,28 +1006,41 @@ TunnelManager::release_l2_vxlan_tunnel(
 {
     SWSS_LOG_ENTER();
 
-    it->second.owners.erase(tunnel_oid);
-
-    if (it->second.owners.empty()) {
-        return remove_l2_vxlan_tunnel(it);
+    if (it->second.owners.count(tunnel_oid) == 0) {
+        return SAI_STATUS_SUCCESS;
     }
 
-    return SAI_STATUS_SUCCESS;
+    if (it->second.owners.size() > 1) {
+        it->second.owners.erase(tunnel_oid);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // Keep the last owner in `owners` until teardown succeeds so a retry of
+    // handle_l2_vxlan_tunnel_removal(tunnel_oid) can still find this entry;
+    // remove_l2_vxlan_tunnel erases the whole map entry on success.
+    return remove_l2_vxlan_tunnel(it);
 }
 
-void
+sai_status_t
 TunnelManager::handle_l2_vxlan_tunnel_removal(
     _In_ sai_object_id_t tunnel_oid)
 {
     SWSS_LOG_ENTER();
 
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
     for (auto it = m_l2_tunnel_map.begin(); it != m_l2_tunnel_map.end();) {
         auto next = std::next(it);
         if (it->second.owners.count(tunnel_oid)) {
-            release_l2_vxlan_tunnel(it, tunnel_oid);
+            sai_status_t rc = release_l2_vxlan_tunnel(it, tunnel_oid);
+            if (rc != SAI_STATUS_SUCCESS) {
+                status = rc;
+            }
         }
         it = next;
     }
+
+    return status;
 }
 
 bool

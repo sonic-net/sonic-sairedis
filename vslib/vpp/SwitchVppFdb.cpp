@@ -2714,7 +2714,10 @@ sai_status_t SwitchVpp::FdbEntrydel(
 {
     SWSS_LOG_ENTER();
 
-    remote_fdb_forget(serializedObjectId);
+    if (!remote_fdb_forget(serializedObjectId))
+    {
+        return SAI_STATUS_FAILURE;
+    }
 
     vpp_fdbentry_del(serializedObjectId);
 
@@ -3772,7 +3775,14 @@ void SwitchVpp::remote_fdb_sync(
     // the add replaced the entry in its bridge domain; one in another goes
     if (it != m_remote_fdb.end() && it->second.bd_id != want.bd_id)
     {
-        l2fib_add_del_by_index(it->second.sw_if_index, fdb_entry.mac_address, it->second.bd_id, false, false);
+        ret = l2fib_add_del_by_index(it->second.sw_if_index, fdb_entry.mac_address, it->second.bd_id, false, false);
+
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("FDB: failed to delete remote MAC %s from previous bd %u on tunnel sw_if_index %u: %d",
+                    mac.c_str(), it->second.bd_id, it->second.sw_if_index, ret);
+            return;
+        }
     }
 
     m_remote_fdb[serializedObjectId] = want;
@@ -3793,7 +3803,7 @@ void SwitchVpp::remote_fdb_sync(
     m_fdb_info_set.erase(fi);
 }
 
-void SwitchVpp::remote_fdb_forget(
+bool SwitchVpp::remote_fdb_forget(
         _In_ const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
@@ -3802,19 +3812,39 @@ void SwitchVpp::remote_fdb_forget(
 
     if (it == m_remote_fdb.end())
     {
-        return;
+        return true;
     }
 
     sai_fdb_entry_t fdb_entry;
-    sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+
+    try
+    {
+        sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+    }
+    catch (const std::exception& e)
+    {
+        SWSS_LOG_ERROR("FDB: failed to deserialize remote FDB entry %s: %s",
+                serializedObjectId.c_str(), e.what());
+        return false;
+    }
+
+    auto mac = sai_serialize_mac(fdb_entry.mac_address);
 
     // VPP deletes it only while it is still on the tunnel, not after a move
     int ret = l2fib_add_del_by_index(it->second.sw_if_index, fdb_entry.mac_address, it->second.bd_id, false, false);
 
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("FDB: failed to delete remote MAC %s bd %u on tunnel sw_if_index %u: %d",
+                mac.c_str(), it->second.bd_id, it->second.sw_if_index, ret);
+        return false;
+    }
+
     SWSS_LOG_NOTICE("FDB: deleted remote MAC %s bd %u on tunnel sw_if_index %u: %d",
-            sai_serialize_mac(fdb_entry.mac_address).c_str(), it->second.bd_id, it->second.sw_if_index, ret);
+            mac.c_str(), it->second.bd_id, it->second.sw_if_index, ret);
 
     m_remote_fdb.erase(it);
+    return true;
 }
 
 void SwitchVpp::remote_fdb_resync(
@@ -3844,10 +3874,12 @@ void SwitchVpp::remote_fdb_resync(
     }
 }
 
-void SwitchVpp::remote_fdb_drop_tunnel(
+bool SwitchVpp::remote_fdb_drop_tunnel(
         _In_ uint32_t sw_if_index)
 {
     SWSS_LOG_ENTER();
+
+    bool ok = true;
 
     for (auto it = m_remote_fdb.begin(); it != m_remote_fdb.end();)
     {
@@ -3855,9 +3887,14 @@ void SwitchVpp::remote_fdb_drop_tunnel(
 
         if (it->second.sw_if_index == sw_if_index)
         {
-            remote_fdb_forget(it->first);
+            if (!remote_fdb_forget(it->first))
+            {
+                ok = false;
+            }
         }
 
         it = next;
     }
+
+    return ok;
 }

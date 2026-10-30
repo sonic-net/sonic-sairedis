@@ -251,8 +251,9 @@ namespace saivs
          * still uses is kept.
          *
          * @param tunnel_oid The tunnel object ID about to be removed.
+         * @return SAI_STATUS_SUCCESS on success, error status on failure.
          */
-        void handle_l2_vxlan_tunnel_removal(
+        sai_status_t handle_l2_vxlan_tunnel_removal(
             _In_ sai_object_id_t tunnel_oid);
 
         /**

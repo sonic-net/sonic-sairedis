@@ -32,6 +32,7 @@ using namespace saivs;
 namespace
 {
     uint32_t g_nextSwIfIndex = 100;
+    int g_l2fibByIndexDelResult = 0;
 
     // destination address of each VXLAN tunnel the stub created, by sw_if_index
     std::map<uint32_t, std::string> g_vxlanTunnelDst;
@@ -173,7 +174,7 @@ int __wrap_l2fib_add_del_by_index(uint32_t sw_if_index, const uint8_t *mac, uint
     SWSS_LOG_ENTER();
 
     vppMock().calls.push_back({"l2fib_add_del_by_index", std::to_string(sw_if_index) + " " + macStr(mac), bd_id, is_static_mac, is_add});
-    return 0;
+    return is_add ? 0 : g_l2fibByIndexDelResult;
 }
 
 }
@@ -1439,6 +1440,8 @@ class SwitchVppEvpnRemoteMac : public SwitchVppLagFdb
                     m_sw->create_internal(SAI_OBJECT_TYPE_TUNNEL_MAP, sai_serialize_object_id(m_mapper), m_switchId, 1, &mattr));
 
             vppMock().calls.clear();
+            g_nextSwIfIndex = 100;
+            g_l2fibByIndexDelResult = 0;
             g_vxlanTunnelDst.clear();
         }
 
@@ -2028,5 +2031,72 @@ TEST_F(SwitchVppEvpnRemoteMac, FlushedRemoteMacIsDeletedFromVpp)
     ASSERT_EQ(1u, dels.size());
     EXPECT_EQ(onTunnel(tunnelTo(VTEP_A)), dels[0].name);
     EXPECT_FALSE(dels[0].flag);
+}
+
+TEST_F(SwitchVppEvpnRemoteMac, FailedRemoteMacDeleteKeepsTheEntryForRetry)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    addRemoteVtep(VTEP_A, &bpA);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A));
+
+    vppMock().calls.clear();
+    g_l2fibByIndexDelResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, remoteSid()));
+    EXPECT_EQ(1u, m_sw->m_remote_fdb.count(remoteSid()));
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(remoteSid()));
+
+    vppMock().calls.clear();
+    g_l2fibByIndexDelResult = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, remoteSid()));
+    EXPECT_EQ(0u, m_sw->m_remote_fdb.count(remoteSid()));
+
+    auto dels = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_A)), dels[0].name);
+    EXPECT_FALSE(dels[0].flag);
+}
+
+TEST_F(SwitchVppEvpnRemoteMac, FailedTunnelTeardownKeepsTheLastOwnerForRetry)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    auto tunnelA = addRemoteVtep(VTEP_A, &bpA);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A));
+
+    uint32_t swifA = tunnelTo(VTEP_A);
+
+    vppMock().calls.clear();
+    g_l2fibByIndexDelResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnelA)));
+    EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_TUNNEL).count(sai_serialize_object_id(tunnelA)));
+
+    vppMock().calls.clear();
+    g_l2fibByIndexDelResult = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnelA)));
+
+    auto dels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_FALSE(dels[0].flag);
+    EXPECT_EQ(VNI, dels[0].id);
+
+    auto macDels = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, macDels.size());
+    EXPECT_EQ(onTunnel(swifA), macDels[0].name);
+    EXPECT_FALSE(macDels[0].flag);
 }
 

@@ -1775,7 +1775,7 @@ namespace saivs
                     _In_ const std::string &serializedObjectId);
 
             // Delete an FDB entry from VPP's L2FIB if it holds it as remote.
-            void remote_fdb_forget(
+            bool remote_fdb_forget(
                     _In_ const std::string &serializedObjectId);
 
             // Program the remote FDB entries of a VLAN that are not in VPP
@@ -1786,7 +1786,7 @@ namespace saivs
             // Delete the remote FDB entries on an L2 tunnel that is about to
             // be removed. The SAI entries stay, and are programmed again if
             // their tunnel comes back.
-            void remote_fdb_drop_tunnel(
+            bool remote_fdb_drop_tunnel(
                     _In_ uint32_t sw_if_index);
 
             bool vlan_id_of_bv(

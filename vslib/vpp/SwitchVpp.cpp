@@ -2241,7 +2241,7 @@ sai_status_t SwitchVpp::remove(
         // before the SAI object and its DECAP_MAPPERS links are torn down, in case
         // the TUNNEL is deleted while its TUNNEL_MAP_ENTRYs are still present.
         m_tunnel_mgr.handle_l3_vxlan_tunnel_removal(object_id);
-        m_tunnel_mgr.handle_l2_vxlan_tunnel_removal(object_id);
+        CHECK_STATUS(m_tunnel_mgr.handle_l2_vxlan_tunnel_removal(object_id));
         return remove_internal(object_type, serializedObjectId);
     }
 
