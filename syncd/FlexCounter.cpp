@@ -6,6 +6,8 @@
 #include <mutex>
 
 #include "FlexCounter.h"
+#include "PollCycleGuard.h"
+#include "UpdateLock.h"
 #include "VendorSaiOptions.h"
 #include "VidManager.h"
 
@@ -22,8 +24,31 @@ using namespace std;
 using json = nlohmann::json;
 
 
-#define MUTEX std::unique_lock<std::mutex> _lock(m_mtx);
+#define MUTEX std::unique_lock<std::mutex> _lock(m_syncState.mutex);
 #define MUTEX_UNLOCK _lock.unlock();
+#define UPDATE_LOCK UpdateLock _lock(m_syncState);
+
+namespace
+{
+    // Iterators into live maps cannot survive a checkpoint: a waiting update may
+    // erase or replace entries. Snapshot only keys and look up current data later.
+    template <typename Map>
+    std::vector<typename Map::key_type> snapshotKeys(
+            _In_ const Map& objects)
+    {
+        SWSS_LOG_ENTER();
+
+        std::vector<typename Map::key_type> keys;
+        keys.reserve(objects.size());
+
+        for (const auto& object : objects)
+        {
+            keys.push_back(object.first);
+        }
+
+        return keys;
+    }
+}
 
 // Reconnect backoff used when the poll interval is not yet configured.
 #define FLEX_COUNTER_RECONNECT_BACKOFF_MS 1000
@@ -113,11 +138,105 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, OTN_OA_ATTR_ID_LIST}, ATTR_TYPE_OTN_OA_ATTR},
 };
 
-BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
-m_name(name),
-m_instanceId(instance)
+BaseCounterContext::BaseCounterContext(
+        _In_ const std::string& name,
+        _In_ const std::string& instance,
+        _In_ std::shared_ptr<const PollingState> pollingState):
+    m_name(name),
+    m_instanceId(instance),
+    m_pollingState(std::move(pollingState))
 {
     SWSS_LOG_ENTER();
+
+    if (!m_pollingState)
+    {
+        SWSS_LOG_THROW("Counter context requires polling state");
+    }
+}
+
+bool BaseCounterContext::supportsRidReplacement() const
+{
+    SWSS_LOG_ENTER();
+
+    return false;
+}
+
+void BaseCounterContext::clearSamples(
+        _In_ sai_stats_mode_t statsMode)
+{
+    SWSS_LOG_ENTER();
+
+    m_sampledEpochs.clear();
+    m_pollStatsMode = statsMode;
+    m_pollEpochs.clear();
+
+    // Freeze registration epochs for the whole context, including VIDs
+    // split across scalar and bulk prefixes. New registrations are first
+    // admitted in the next sweep.
+    const auto& registrations = m_pollingState->registrations;
+    auto registration = registrations.lower_bound({m_name, SAI_NULL_OBJECT_ID});
+
+    while (registration != registrations.end() && registration->first.first == m_name)
+    {
+        m_pollEpochs.emplace(registration->first.second, registration->second.epoch);
+        ++registration;
+    }
+}
+
+bool BaseCounterContext::isPollRegistrationCurrent(
+        _In_ sai_object_id_t vid) const
+{
+    SWSS_LOG_ENTER();
+
+    const auto initial = m_pollEpochs.find(vid);
+    const auto& registrations = m_pollingState->registrations;
+    const auto current = registrations.find({m_name, vid});
+
+    return initial != m_pollEpochs.end() && current != registrations.end() &&
+        initial->second == current->second.epoch;
+}
+
+void BaseCounterContext::markSampled(
+        _In_ sai_object_id_t vid)
+{
+    SWSS_LOG_ENTER();
+
+    if (isPollRegistrationCurrent(vid))
+    {
+        m_sampledEpochs[vid] = m_pollEpochs.at(vid);
+    }
+}
+
+bool BaseCounterContext::isSampleReady(
+        _In_ sai_object_id_t vid) const
+{
+    SWSS_LOG_ENTER();
+
+    // Preserve existing plugin membership, including failed polls, when no
+    // update interrupted the sweep. A yielded sweep must not expose a newly
+    // enrolled or replaced object using a previous physical object's sample.
+    // A same-RID configuration refresh must still aggregate completed cleared
+    // samples once; its new configuration is polled in the next sweep.
+    // Object removal deliberately excludes registrations from later plugins:
+    // their final cleared sample is not guaranteed an aggregate. This prevents
+    // post-removal scripts from consuming/recreating stale VID data.
+    if (!m_pollingState->yielded)
+    {
+        return true;
+    }
+
+    const auto sample = m_sampledEpochs.find(vid);
+
+    if (sample == m_sampledEpochs.end())
+    {
+        return false;
+    }
+
+    const auto& registrations = m_pollingState->registrations;
+    const auto registration = registrations.find({m_name, vid});
+
+    return registration != registrations.end() &&
+        registration->second.epoch == sample->second;
 }
 
 void BaseCounterContext::addPlugins(
@@ -584,16 +703,88 @@ protected:
 public:
     typedef CounterIds<StatType> CounterIdsType;
     typedef BulkStatsContext<StatType> BulkContextType;
+    struct BulkPollPlan
+    {
+        std::vector<sai_object_id_t> object_vids;
+
+        std::vector<sai_object_key_t> object_keys;
+
+        std::vector<StatType> counter_ids;
+
+        std::string name;
+
+        uint32_t default_bulk_chunk_size;
+    };
 
     CounterContext(
             _In_ const std::string &name,
             _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
-            _In_ sai_stats_mode_t &stats_mode):
-    BaseCounterContext(name, instance), m_objectType(object_type), m_vendorSai(vendor_sai), m_groupStatsMode(stats_mode)
+            _In_ std::shared_ptr<const BaseCounterContext::PollingState> pollingState):
+    BaseCounterContext(name, instance, std::move(pollingState)),
+    m_objectType(object_type),
+    m_vendorSai(vendor_sai)
     {
         SWSS_LOG_ENTER();
+    }
+
+    ObjectRidMap getObjectRids(
+            _In_ const std::vector<sai_object_id_t>& vids) const override
+    {
+        SWSS_LOG_ENTER();
+
+        ObjectRidMap result;
+
+        if (vids.empty())
+        {
+            return result;
+        }
+
+        auto record = [&](sai_object_id_t vid, sai_object_id_t rid)
+        {
+            const auto inserted = result.emplace(vid, ObjectRid{rid, true});
+
+            if (!inserted.second && inserted.first->second.rid != rid)
+            {
+                inserted.first->second.consistent = false;
+            }
+        };
+
+        const std::set<sai_object_id_t> requested(vids.begin(), vids.end());
+
+        for (const auto vid : requested)
+        {
+            const auto object = m_objectIdsMap.find(vid);
+
+            if (object != m_objectIdsMap.end())
+            {
+                record(vid, object->second->rid);
+            }
+        }
+
+        // Scan each fragment once, not once per VID in a bulk enrollment.
+        for (const auto& fragment : m_bulkContexts)
+        {
+            const auto& ctx = *fragment.second;
+
+            for (size_t i = 0; i < ctx.object_vids.size(); ++i)
+            {
+                if (requested.count(ctx.object_vids[i]))
+                {
+                    record(ctx.object_vids[i], ctx.object_keys[i].key.object_id);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    bool supportsRidReplacement() const override
+    {
+        SWSS_LOG_ENTER();
+
+        return true;
     }
 
     virtual void addObjectWithCounterGroups(
@@ -621,12 +812,12 @@ public:
                 SWSS_LOG_WARN("Stats mode %s not supported for flex counter. Using STATS_MODE_READ_AND_CLEAR", per_object_stats_mode.c_str());
             }
 
-            effective_stats_mode = (m_groupStatsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
+            effective_stats_mode = (m_pollingState->statsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
                                     instance_stats_mode == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
         }
         else
         {
-            effective_stats_mode = m_groupStatsMode;
+            effective_stats_mode = m_pollingState->statsMode;
         }
 
         std::vector<StatType> counter_ids;
@@ -737,12 +928,12 @@ public:
                 SWSS_LOG_WARN("Stats mode %s not supported for flex counter. Using STATS_MODE_READ_AND_CLEAR", per_object_stats_mode.c_str());
             }
 
-            effective_stats_mode = (m_groupStatsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
+            effective_stats_mode = (m_pollingState->statsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
                                     instance_stats_mode == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
         }
         else
         {
-            effective_stats_mode = m_groupStatsMode;
+            effective_stats_mode = m_pollingState->statsMode;
         }
 
         std::vector<StatType> counter_ids;
@@ -1090,7 +1281,7 @@ public:
         }
         else
         {
-            effective_stats_mode = m_groupStatsMode;
+            effective_stats_mode = m_pollingState->statsMode;
         }
 
         std::vector<StatType> allCounterIds;
@@ -1117,7 +1308,7 @@ public:
         }
 
         std::map<std::vector<StatType>, std::tuple<const std::string, uint32_t>> bulkUnsupportedCounters;
-        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+        auto statsMode = m_pollingState->statsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
         auto checkAndUpdateBulkCapability = [&](const std::vector<StatType> &counter_ids, const std::string &prefix, uint32_t bulk_chunk_size)
         {
             BulkContextType ctx;
@@ -1291,7 +1482,7 @@ public:
         }
         else
         {
-            effective_stats_mode = m_groupStatsMode;
+            effective_stats_mode = m_pollingState->statsMode;
         }
 
         std::vector<StatType> allCounterIds, supportedIds;
@@ -1318,7 +1509,7 @@ public:
         }
 
         std::map<std::vector<StatType>, std::tuple<const std::string, uint32_t>> bulkUnsupportedCounters;
-        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+        auto statsMode = m_pollingState->statsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
         auto checkAndUpdateBulkCapability = [&](const std::vector<StatType> &counter_ids, const std::string &prefix, uint32_t bulk_chunk_size)
         {
             BulkContextType ctx;
@@ -1567,21 +1758,81 @@ public:
 
 
     virtual void collectData(
-            _In_ swss::Table &countersTable) override
+            _In_ swss::Table &countersTable,
+            _In_ const PollCheckpoint& checkpoint) override
     {
         SWSS_LOG_ENTER();
-        sai_stats_mode_t effective_stats_mode = m_groupStatsMode;
-        for (const auto &kv : m_objectIdsMap)
+
+        // Snapshot scalar and every bulk prefix before yielding. Prefix updates
+        // may rebuild the live bulk contexts, so finish the old admitted plan
+        // before using the new configuration next sweep. Never copy unused bulk
+        // result buffers.
+        std::vector<std::pair<sai_object_id_t, CounterIdsType>> scalarPlan;
+        scalarPlan.reserve(m_objectIdsMap.size());
+
+        for (const auto& object : m_objectIdsMap)
         {
-            const auto &vid = kv.first;
-            const auto &rid = kv.second->rid;
-            const auto &statIds = kv.second->counter_ids;
+            if (isPollRegistrationCurrent(object.first))
+            {
+                scalarPlan.emplace_back(object.first, *object.second);
+            }
+        }
+
+        std::vector<BulkPollPlan> bulkPlans;
+        bulkPlans.reserve(m_bulkContexts.size());
+
+        for (const auto& context : m_bulkContexts)
+        {
+            const auto& ctx = *context.second;
+
+            if (ctx.counter_ids.empty())
+            {
+                // A zero-stat no-op cannot establish a valid sampled object.
+                continue;
+            }
+
+            BulkPollPlan plan;
+            plan.counter_ids = ctx.counter_ids;
+            plan.name = ctx.name;
+            plan.default_bulk_chunk_size = ctx.default_bulk_chunk_size;
+            plan.object_vids.reserve(ctx.object_vids.size());
+            plan.object_keys.reserve(ctx.object_keys.size());
+
+            for (size_t i = 0; i < ctx.object_vids.size(); ++i)
+            {
+                if (isPollRegistrationCurrent(ctx.object_vids[i]))
+                {
+                    plan.object_vids.push_back(ctx.object_vids[i]);
+                    plan.object_keys.push_back(ctx.object_keys[i]);
+                }
+            }
+
+            bulkPlans.push_back(std::move(plan));
+        }
+
+        for (const auto& object : scalarPlan)
+        {
+            const auto vid = object.first;
+
+            if (!checkpoint(countersTable))
+            {
+                return;
+            }
+
+            if (!isPollRegistrationCurrent(vid))
+            {
+                continue;
+            }
+
+            const auto &rid = object.second.rid;
+            const auto &statIds = object.second.counter_ids;
+            auto effective_stats_mode = m_pollStatsMode;
 
             // TODO: use if const expression when cpp17 is supported
             if (HasStatsMode<CounterIdsType>::value)
             {
-                effective_stats_mode = (m_groupStatsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
-                                        kv.second->getStatsMode() == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
+                effective_stats_mode = (m_pollStatsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
+                                        object.second.getStatsMode() == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
             }
 
             std::vector<uint64_t> stats(statIds.size(), 0);
@@ -1609,11 +1860,17 @@ public:
                 values.emplace_back(serializeStat(statIds[i]), std::to_string(stats[i]));
             }
             countersTable.set(sai_serialize_object_id(vid), values, "");
+            markSampled(vid);
         }
 
-        for (const auto &kv : m_bulkContexts)
+        for (const auto& plan : bulkPlans)
         {
-            bulkCollectData(countersTable, *kv.second.get());
+            if (!checkpoint(countersTable))
+            {
+                return;
+            }
+
+            bulkCollectData(countersTable, plan, checkpoint);
         }
     }
 
@@ -1632,17 +1889,28 @@ public:
 
         std::vector<std::string> idStrings;
         idStrings.reserve(m_objectIdsMap.size());
-        std::transform(m_objectIdsMap.begin(),
-                       m_objectIdsMap.end(),
-                       std::back_inserter(idStrings),
-                       [] (auto &kv) { return sai_serialize_object_id(kv.first); });
+        for (const auto& object : m_objectIdsMap)
+        {
+            if (isSampleReady(object.first))
+            {
+                idStrings.push_back(sai_serialize_object_id(object.first));
+            }
+        }
 
         for (auto &kv : m_bulkContexts)
         {
-            std::transform(kv.second->object_vids.begin(),
-                           kv.second->object_vids.end(),
-                           std::back_inserter(idStrings),
-                           [] (auto &vid) { return sai_serialize_object_id(vid); });
+            for (const auto vid : kv.second->object_vids)
+            {
+                if (isSampleReady(vid))
+                {
+                    idStrings.push_back(sai_serialize_object_id(vid));
+                }
+            }
+        }
+
+        if (idStrings.empty())
+        {
+            return;
         }
 
         std::for_each(m_plugins.begin(),
@@ -1798,70 +2066,114 @@ private:
 
     void bulkCollectData(
         _In_ swss::Table &countersTable,
-        _Inout_ BulkContextType &ctx)
+        _In_ const BulkPollPlan &ctx,
+        _In_ const PollCheckpoint& checkpoint)
     {
         SWSS_LOG_ENTER();
-        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+
+        // This immutable plan is independent of live prefix-context replacement.
+        // Registration epoch checks still reject removed or replaced objects.
+        const auto& objectVids = ctx.object_vids;
+        const auto& objectKeys = ctx.object_keys;
+        const auto& counterIds = ctx.counter_ids;
+        const auto& name = ctx.name;
         uint32_t bulk_chunk_size = ctx.default_bulk_chunk_size;
-        uint32_t size = static_cast<uint32_t>(ctx.object_keys.size());
+        const auto size = static_cast<uint32_t>(objectVids.size());
+
         if (bulk_chunk_size > size || bulk_chunk_size == 0)
         {
             bulk_chunk_size = size;
         }
+
         uint32_t current = 0;
 
-        SWSS_LOG_INFO("Before getting bulk %s %s %s size %u bulk chunk size %u current %u", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), size, bulk_chunk_size, current);
+        SWSS_LOG_INFO("Before getting bulk %s %s %s size %u bulk chunk size %u current %u", m_instanceId.c_str(), m_name.c_str(), name.c_str(), size, bulk_chunk_size, current);
 
         while (current < size)
         {
+            if (!checkpoint(countersTable))
+            {
+                return;
+            }
+
+            const auto count = std::min(bulk_chunk_size, size - current);
+            std::vector<sai_object_id_t> vids;
+            std::vector<sai_object_key_t> keys;
+            vids.reserve(count);
+            keys.reserve(count);
+
+            for (uint32_t i = current; i < current + count; ++i)
+            {
+                if (isPollRegistrationCurrent(objectVids[i]))
+                {
+                    vids.push_back(objectVids[i]);
+                    keys.push_back(objectKeys[i]);
+                }
+            }
+
+            current += count;
+
+            if (keys.empty())
+            {
+                continue;
+            }
+
+            std::vector<sai_status_t> statuses(keys.size(), SAI_STATUS_NOT_EXECUTED);
+            std::vector<uint64_t> counters(keys.size() * counterIds.size());
+            const auto statsMode = m_pollStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
             sai_status_t status = m_vendorSai->bulkGetStats(
                 SAI_NULL_OBJECT_ID,
                 m_objectType,
-                bulk_chunk_size,
-                ctx.object_keys.data() + current,
-                static_cast<uint32_t>(ctx.counter_ids.size()),
-                reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
+                static_cast<uint32_t>(keys.size()),
+                keys.data(),
+                static_cast<uint32_t>(counterIds.size()),
+                reinterpret_cast<const sai_stat_id_t *>(counterIds.data()),
                 statsMode,
-                ctx.object_statuses.data() + current,
-                ctx.counters.data() + current * ctx.counter_ids.size());
+                statuses.data(),
+                counters.data());
+
             if (SAI_STATUS_SUCCESS != status)
             {
                 SWSS_LOG_WARN("Failed to bulk get stats for %s %s %s %s starting object %u bulk chunk size %u: %d",
-                              m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), sai_serialize_object_type(m_objectType).c_str(), current, bulk_chunk_size, status);
+                              m_instanceId.c_str(), m_name.c_str(), name.c_str(), sai_serialize_object_type(m_objectType).c_str(), current - count, count, status);
             }
-            current += bulk_chunk_size;
 
-            SWSS_LOG_DEBUG("After getting bulk %s %s %s index %u(advanced to %u) bulk chunk size %u", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), current - bulk_chunk_size, current, bulk_chunk_size);
-
-            if (size - current < bulk_chunk_size)
+            // Publish each completed chunk before the next checkpoint. In
+            // READ_AND_CLEAR mode these samples must not be lost or overwritten
+            // while waiting updates run; plugins still run once after the sweep.
+            for (size_t i = 0; i < keys.size(); ++i)
             {
-                bulk_chunk_size = size - current;
+                // SAI defines per-object statuses only for an overall failure.
+                // On success the SDK may leave every status slot untouched.
+                if (status != SAI_STATUS_SUCCESS && statuses[i] != SAI_STATUS_SUCCESS)
+                {
+                    // An untouched slot is covered by the chunk's warning;
+                    // it is not an object failure reported by the SDK.
+                    if (statuses[i] != SAI_STATUS_NOT_EXECUTED)
+                    {
+                        SWSS_LOG_ERROR("Failed to get stats of %s 0x%" PRIx64 " 0x%" PRIx64 ": %d", m_name.c_str(), vids[i], keys[i].key.object_id, statuses[i]);
+                    }
+
+                    continue;
+                }
+
+                std::vector<swss::FieldValueTuple> values;
+
+                for (size_t j = 0; j < counterIds.size(); ++j)
+                {
+                    values.emplace_back(serializeStat(counterIds[j]), std::to_string(counters[i * counterIds.size() + j]));
+                }
+
+                countersTable.set(sai_serialize_object_id(vids[i]), values, "");
+                markSampled(vids[i]);
             }
         }
 
-        SWSS_LOG_INFO("After getting bulk %s %s %s total %u objects", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), size);
+        SWSS_LOG_INFO("After getting bulk %s %s %s total %u objects", m_instanceId.c_str(), m_name.c_str(), name.c_str(), size);
 
         auto time_stamp = std::chrono::steady_clock::now().time_since_epoch().count();
 
         std::vector<swss::FieldValueTuple> values;
-        for (size_t i = 0; i < ctx.object_keys.size(); i++)
-        {
-            if (SAI_STATUS_SUCCESS != ctx.object_statuses[i])
-            {
-                SWSS_LOG_ERROR("Failed to get stats of %s 0x%" PRIx64 " 0x%" PRIx64 ": %d", m_name.c_str(), ctx.object_vids[i], ctx.object_keys[i].key.object_id, ctx.object_statuses[i]);
-                continue;
-            }
-            const auto &vid = ctx.object_vids[i];
-
-            for (size_t j = 0; j < ctx.counter_ids.size(); j++)
-            {
-                values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
-            }
-
-            countersTable.set(sai_serialize_object_id(vid), values, "");
-            values.clear();
-        }
-
         // First generate the key, then replace spaces with underscores to avoid issues when Lua plugins handle the timestamp
         std::string timestamp_key = m_instanceId + "_" + m_name + "_time_stamp";
         std::replace(timestamp_key.begin(), timestamp_key.end(), ' ', '_');
@@ -1869,7 +2181,7 @@ private:
         values.emplace_back(timestamp_key, std::to_string(time_stamp));
         countersTable.set("TIME_STAMP", values, "");
 
-        SWSS_LOG_DEBUG("After pushing db %s %s %s", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str());
+        SWSS_LOG_DEBUG("After pushing db %s %s %s", m_instanceId.c_str(), m_name.c_str(), name.c_str());
     }
 
     auto getBulkStatsContext(
@@ -1985,15 +2297,8 @@ private:
                 ctx.counters.resize(ctx.counter_ids.size() * ctx.object_keys.size());
                 ctx.object_statuses.pop_back();
             }
-            if (m_counterChunkSizeMapFromPrefix.empty())
-            {
-                break;
-            }
-            else
-            {
-                // There can be more than one bulk context containing the VID when the per counter ID bulk chunk size is configured
-                continue;
-            }
+            // Repeated enrollment may leave a VID in several counter-ID sets,
+            // even without a per-prefix chunk configuration. Retire them all.
         }
 
         for (auto iter : bulkContextsToBeRemoved)
@@ -2013,7 +2318,7 @@ private:
         BulkContextType ctx;
         ctx.counter_ids = counter_ids;
         addBulkStatsContext(vid, rid, counter_ids, ctx);
-        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+        auto statsMode = m_pollingState->statsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
         sai_status_t status = m_vendorSai->bulkGetStats(
                             SAI_NULL_OBJECT_ID,
                             m_objectType,
@@ -2260,7 +2565,6 @@ private:
 protected:
     sai_object_type_t m_objectType;
     sairedis::SaiInterface *m_vendorSai;
-    sai_stats_mode_t& m_groupStatsMode;
     std::set<StatType> m_supportedCounters;
     std::set<StatType> m_supportedBulkCounters;
 
@@ -2284,6 +2588,15 @@ template <typename AttrType, typename AttrDataType = NoAttrData>
 class AttrContext : public CounterContext<AttrType>
 {
 public:
+    bool supportsRidReplacement() const override
+    {
+        SWSS_LOG_ENTER();
+
+        return false;
+    }
+
+    using PollCheckpoint = BaseCounterContext::PollCheckpoint;
+
     typedef CounterIds<AttrType> AttrIdsType;
     typedef CounterContext<AttrType> Base;
     AttrContext(
@@ -2291,8 +2604,8 @@ public:
             _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
-            _In_ sai_stats_mode_t &stats_mode):
-    CounterContext<AttrType>(name, instance, object_type, vendor_sai, stats_mode)
+            _In_ std::shared_ptr<const BaseCounterContext::PollingState> pollingState):
+    CounterContext<AttrType>(name, instance, object_type, vendor_sai, std::move(pollingState))
     {
         SWSS_LOG_ENTER();
     }
@@ -2360,20 +2673,40 @@ public:
     }
 
     void collectData(
-            _In_ swss::Table &countersTable) override
+            _In_ swss::Table &countersTable,
+            _In_ const PollCheckpoint& checkpoint) override
     {
         SWSS_LOG_ENTER();
 
-        if (m_bulkGetSupported && collectDataBulk(countersTable))
+        if (m_bulkGetSupported)
         {
-            return;
+            if (!checkpoint(countersTable))
+            {
+                return;
+            }
+
+            if (collectDataBulk(countersTable))
+            {
+                return;
+            }
         }
 
-        for (const auto &kv : Base::m_objectIdsMap)
+        for (const auto vid : snapshotKeys(Base::m_objectIdsMap))
         {
-            const auto &vid = kv.first;
-            const auto &rid = kv.second->rid;
-            const auto &attrIds = kv.second->counter_ids;
+            if (!checkpoint(countersTable))
+            {
+                return;
+            }
+
+            const auto iter = Base::m_objectIdsMap.find(vid);
+
+            if (iter == Base::m_objectIdsMap.end() || !Base::isPollRegistrationCurrent(vid))
+            {
+                continue;
+            }
+
+            const auto &rid = iter->second->rid;
+            const auto &attrIds = iter->second->counter_ids;
 
             std::vector<sai_attribute_t> attrs(attrIds.size());
             for (size_t i = 0; i < attrIds.size(); i++)
@@ -2395,7 +2728,7 @@ public:
                 continue;
             }
 
-            publishAttrs(countersTable, vid, attrIds, attrs.data());
+            publishAttrs(countersTable, vid, attrs);
         }
     }
 
@@ -2409,24 +2742,26 @@ private:
     void publishAttrs(
             _In_ swss::Table &countersTable,
             _In_ sai_object_id_t vid,
-            _In_ const std::vector<AttrType> &attrIds,
-            _In_ const sai_attribute_t *attrs)
+            _In_ const std::vector<sai_attribute_t>& attrs)
     {
         SWSS_LOG_ENTER();
 
         std::vector<swss::FieldValueTuple> values;
 
-        for (size_t i = 0; i != attrIds.size(); i++)
+        for (const auto& attr : attrs)
         {
-            auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
+            auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attr.id);
+
             if (!meta)
             {
                 SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
             }
-            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
+
+            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attr));
         }
 
         countersTable.set(sai_serialize_object_id(vid), values, "");
+        Base::markSampled(vid);
     }
 
     // Read every object's attributes in one SAI call.
@@ -2442,9 +2777,9 @@ private:
     {
         SWSS_LOG_ENTER();
 
-        const size_t count = Base::m_objectIdsMap.size();
+        const size_t capacity = Base::m_objectIdsMap.size();
 
-        if (count == 0)
+        if (capacity == 0)
         {
             return true;
         }
@@ -2454,13 +2789,20 @@ private:
         std::vector<uint32_t> attrCounts;
         std::vector<std::vector<sai_attribute_t>> attrStorage;
 
-        vids.reserve(count);
-        rids.reserve(count);
-        attrCounts.reserve(count);
-        attrStorage.reserve(count);
+        vids.reserve(capacity);
+        rids.reserve(capacity);
+        attrCounts.reserve(capacity);
+        attrStorage.reserve(capacity);
 
         for (const auto &kv : Base::m_objectIdsMap)
         {
+            // Another context may have yielded earlier in this logical sweep.
+            // Only registrations admitted to this pass may enter the bulk call.
+            if (!Base::isPollRegistrationCurrent(kv.first))
+            {
+                continue;
+            }
+
             const auto &attrIds = kv.second->counter_ids;
 
             std::vector<sai_attribute_t> attrs(attrIds.size());
@@ -2473,6 +2815,13 @@ private:
             rids.push_back(kv.second->rid);
             attrCounts.push_back(static_cast<uint32_t>(attrIds.size()));
             attrStorage.push_back(std::move(attrs));
+        }
+
+        const size_t count = vids.size();
+
+        if (count == 0)
+        {
+            return true;
         }
 
         std::vector<sai_attribute_t*> attrList;
@@ -2511,20 +2860,19 @@ private:
             return false;
         }
 
-        size_t n = 0;
-        for (const auto &kv : Base::m_objectIdsMap)
+        // Keep the batch and its publication under the group mutex. All arrays
+        // use the same admitted VID order, including after a prior checkpoint.
+        for (size_t n = 0; n < count; n++)
         {
             if (statuses[n] != SAI_STATUS_SUCCESS)
             {
                 SWSS_LOG_ERROR("Failed to get attr of %s 0x%" PRIx64 ": %d",
                         sai_serialize_object_type(Base::m_objectType).c_str(),
-                        kv.first, statuses[n]);
-                n++;
+                        vids[n], statuses[n]);
                 continue;
             }
 
-            publishAttrs(countersTable, vids[n], kv.second->counter_ids, attrStorage[n].data());
-            n++;
+            publishAttrs(countersTable, vids[n], attrStorage[n]);
         }
 
         return true;
@@ -2546,10 +2894,10 @@ public:
             _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
-            _In_ sai_stats_mode_t &stats_mode,
+            _In_ std::shared_ptr<const BaseCounterContext::PollingState> pollingState,
             _In_ const std::string &dbCounters,
             _In_ bool isTcpConn):
-        Base(name, instance, object_type, vendor_sai, stats_mode),
+        Base(name, instance, object_type, vendor_sai, std::move(pollingState)),
         m_dbCounters(dbCounters),
         m_isTcpConn(isTcpConn)
     {
@@ -2747,7 +3095,9 @@ public:
         Base::removeObject(vid);
     }
 
-    void collectData(_In_ swss::Table &countersTable) override
+    void collectData(
+            _In_ swss::Table &countersTable,
+            _In_ const PollCheckpoint& checkpoint) override
     {
         SWSS_LOG_ENTER();
 
@@ -2756,11 +3106,22 @@ public:
         swss::RedisPipeline pipeline(&db);
         swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
 
-        for (const auto &kv : Base::m_objectIdsMap)
+        for (const auto vid : snapshotKeys(Base::m_objectIdsMap))
         {
-            const auto &vid = kv.first;
-            const auto &rid = kv.second->rid;
-            const auto &attrIds = kv.second->counter_ids;
+            if (!checkpoint(portPhyAttrTable))
+            {
+                break;
+            }
+
+            const auto iter = Base::m_objectIdsMap.find(vid);
+
+            if (iter == Base::m_objectIdsMap.end() || !Base::isPollRegistrationCurrent(vid))
+            {
+                continue;
+            }
+
+            const auto &rid = iter->second->rid;
+            const auto &attrIds = iter->second->counter_ids;
 
             std::vector<sai_attribute_t> attrs = {};
             PortPhyAttributeData attrData;
@@ -2902,6 +3263,8 @@ public:
                 // with PortSerdesAttrContext writing to the same table
                 portPhyAttrTable.hset(vid_str, it->second, attr_value, "");
             }
+
+            Base::markSampled(vid);
         }
 
         portPhyAttrTable.flush();
@@ -3042,10 +3405,10 @@ public:
             _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
-            _In_ sai_stats_mode_t &stats_mode,
+            _In_ std::shared_ptr<const BaseCounterContext::PollingState> pollingState,
             _In_ const std::string &dbCounters,
             _In_ bool isTcpConn):
-        Base(name, instance, object_type, vendor_sai, stats_mode),
+        Base(name, instance, object_type, vendor_sai, std::move(pollingState)),
         m_dbCounters(dbCounters),
         m_isTcpConn(isTcpConn)
     {
@@ -3347,7 +3710,9 @@ public:
         Base::removeObject(vid);
     }
 
-    void collectData(_In_ swss::Table &countersTable) override
+    void collectData(
+            _In_ swss::Table &countersTable,
+            _In_ const PollCheckpoint& checkpoint) override
     {
         SWSS_LOG_ENTER();
 
@@ -3356,11 +3721,22 @@ public:
         swss::RedisPipeline pipeline(&db);
         swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
 
-        for (const auto &kv : Base::m_objectIdsMap)
+        for (const auto vid : snapshotKeys(Base::m_objectIdsMap))
         {
-            const auto &vid = kv.first;
-            const auto &rid = kv.second->rid;
-            const auto &attrIds = kv.second->counter_ids;
+            if (!checkpoint(portPhyAttrTable))
+            {
+                break;
+            }
+
+            const auto iter = Base::m_objectIdsMap.find(vid);
+
+            if (iter == Base::m_objectIdsMap.end() || !Base::isPollRegistrationCurrent(vid))
+            {
+                continue;
+            }
+
+            const auto &rid = iter->second->rid;
+            const auto &attrIds = iter->second->counter_ids;
 
             std::vector<sai_attribute_t> attrs = {};
             PortPhySerdesAttributeData attrData;
@@ -3448,6 +3824,8 @@ public:
                 // with PortPhyAttrContext writing to the same table
                 portPhyAttrTable.hset(port_vid_str, it->second, attr_value, "");
             }
+
+            Base::markSampled(vid);
         }
 
         portPhyAttrTable.flush();
@@ -3482,13 +3860,42 @@ const std::unordered_map<sai_port_serdes_attr_t, std::string> PortPhySerdesAttrC
 class DashMeterCounterContext : public BaseCounterContext
 {
 public:
+    ObjectRidMap getObjectRids(
+            _In_ const std::vector<sai_object_id_t>& vids) const override
+    {
+        SWSS_LOG_ENTER();
+
+        ObjectRidMap result;
+
+        for (const auto vid : vids)
+        {
+            const auto object = m_bulkMeterContexts.find(vid);
+
+            if (object == m_bulkMeterContexts.end() || object->second.object_keys.empty())
+            {
+                continue;
+            }
+
+            const auto rid = object->second.object_keys.front().key.meter_bucket_entry.eni_id;
+            const auto consistent = std::all_of(object->second.object_keys.begin(), object->second.object_keys.end(),
+                    [&](const sai_object_key_t& key) { return key.key.meter_bucket_entry.eni_id == rid; });
+            result.emplace(vid, ObjectRid{rid, consistent});
+        }
+
+        return result;
+    }
+
     DashMeterCounterContext(
             _In_ const std::string &name,
             _In_ const std::string &instance,
             _In_ sairedis::SaiInterface *vendor_sai,
+            _In_ std::shared_ptr<const PollingState> pollingState,
             _In_ std::string dbCounters,
             _In_ bool isTcpConn):
-    BaseCounterContext(name, instance), m_dbCounters(dbCounters), m_isTcpConn(isTcpConn), m_vendorSai(vendor_sai)
+    BaseCounterContext(name, instance, std::move(pollingState)),
+    m_dbCounters(dbCounters),
+    m_isTcpConn(isTcpConn),
+    m_vendorSai(vendor_sai)
     {
         SWSS_LOG_ENTER();
     }
@@ -3584,12 +3991,28 @@ public:
         m_bulkMeterContexts.erase(it);
     }
 
-    void collectData(_In_ swss::Table &countersTable) override
+    void collectData(
+            _In_ swss::Table &countersTable,
+            _In_ const PollCheckpoint& checkpoint) override
     {
         SWSS_LOG_ENTER();
-        for (auto &kv : m_bulkMeterContexts)
+
+        for (const auto vid : snapshotKeys(m_bulkMeterContexts))
         {
-            bulkCollectData(countersTable, kv.second);
+            if (!checkpoint(countersTable))
+            {
+                break;
+            }
+
+            const auto iter = m_bulkMeterContexts.find(vid);
+
+            if (iter != m_bulkMeterContexts.end() && isPollRegistrationCurrent(vid))
+            {
+                if (bulkCollectData(countersTable, iter->second))
+                {
+                    markSampled(vid);
+                }
+            }
         }
     }
 
@@ -3606,6 +4029,11 @@ public:
 
         for (auto &kv : m_bulkMeterContexts)
         {
+            if (!isSampleReady(kv.first))
+            {
+                continue;
+            }
+
             auto& ctx = kv.second;
             std::vector<std::string> idStrings;
             idStrings.reserve(m_meterBucketsPerEni);
@@ -3924,7 +4352,7 @@ void FlexCounter::setPollInterval(
     if (m_pollInterval != pollInterval)
     {
         m_pollInterval = pollInterval;
-        m_cvSleep.notify_all();
+        notifySleep();
 
         SWSS_LOG_INFO("Set POLL INTERVAL %d for FC %s", pollInterval, m_instanceId.c_str());
     }
@@ -3938,7 +4366,7 @@ void FlexCounter::setSecondaryPollFactor(
     if (m_secondaryPollFactor != secondaryPollFactor)
     {
         m_secondaryPollFactor = secondaryPollFactor;
-        m_cvSleep.notify_all();
+        notifySleep();
 
         SWSS_LOG_INFO("Set SECONDARY POLL FACTOR %u for FC %s", secondaryPollFactor, m_instanceId.c_str());
     }
@@ -3959,7 +4387,7 @@ void FlexCounter::setStatus(
     if (m_enable != cit->second)
     {
         m_enable = cit->second;
-        m_cvSleep.notify_all();
+        notifySleep();
 
         SWSS_LOG_INFO("Set STATUS %s for FC %s", status.c_str(), m_instanceId.c_str());
     }
@@ -3977,10 +4405,10 @@ void FlexCounter::setStatsMode(
         return;
     }
 
-    if (m_statsMode != cit->second)
+    if (m_pollingState->statsMode != cit->second)
     {
-        m_statsMode = cit->second;
-        m_cvSleep.notify_all();
+        m_pollingState->statsMode = cit->second;
+        notifySleep();
 
         SWSS_LOG_INFO("Set STATS MODE %s for FC %s", mode.c_str(), m_instanceId.c_str());
     }
@@ -4007,9 +4435,12 @@ void FlexCounter::removeDataFromCountersDB(
 
 void FlexCounter::removeCounterPlugins()
 {
-    MUTEX;
-
     SWSS_LOG_ENTER();
+
+    UPDATE_LOCK;
+
+    // Preserve aggregation of already-cleared samples before removing scripts.
+    _lock.waitForPollEnd(m_runFlexCounterThread);
 
     for (const auto &kv : m_counterContext)
     {
@@ -4022,9 +4453,20 @@ void FlexCounter::removeCounterPlugins()
 void FlexCounter::addCounterPlugin(
         _In_ const std::vector<swss::FieldValueTuple>& values)
 {
-    MUTEX;
-
     SWSS_LOG_ENTER();
+
+    UPDATE_LOCK;
+
+    for (const auto& value : values)
+    {
+        if (m_plugIn2CounterType.count(fvField(value)) != 0)
+        {
+            // Plugin changes apply after the complete old sweep. Pure polling
+            // settings still take effect promptly at object checkpoints.
+            _lock.waitForPollEnd(m_runFlexCounterThread);
+            break;
+        }
+    }
 
     m_isDiscarded = false;
     uint32_t bulkChunkSize = 0;
@@ -4121,9 +4563,9 @@ void FlexCounter::addCounterPlugin(
 
 bool FlexCounter::isEmpty()
 {
-    MUTEX;
-
     SWSS_LOG_ENTER();
+
+    UPDATE_LOCK;
 
     return allIdsEmpty() && allPluginsEmpty();
 }
@@ -4132,7 +4574,9 @@ bool FlexCounter::isDiscarded()
 {
     SWSS_LOG_ENTER();
 
-    return isEmpty() && m_isDiscarded;
+    UPDATE_LOCK;
+
+    return allIdsEmpty() && allPluginsEmpty() && m_isDiscarded;
 }
 
 bool FlexCounter::allIdsEmpty() const
@@ -4172,19 +4616,19 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     SWSS_LOG_ENTER();
     if (context_name == COUNTER_TYPE_PORT)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_WRED_ECN_PORT)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_PORT_DEBUG)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
@@ -4193,32 +4637,32 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_QUEUE)
     {
-        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_WRED_ECN_QUEUE)
     {
-        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_PG)
     {
-        auto context = std::make_shared<CounterContext<sai_ingress_priority_group_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_ingress_priority_group_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_RIF)
     {
-        return std::make_shared<CounterContext<sai_router_interface_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<CounterContext<sai_router_interface_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == COUNTER_TYPE_SWITCH_DEBUG)
     {
-        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
@@ -4227,13 +4671,13 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_MACSEC_FLOW)
     {
-        auto context = std::make_shared<CounterContext<sai_macsec_flow_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_FLOW, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_macsec_flow_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_FLOW, m_vendorSai.get(), m_pollingState);
         context->use_sai_stats_capa_query = false;
         return context;
     }
     else if (context_name == COUNTER_TYPE_MACSEC_SA)
     {
-        auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->dont_clear_support_counter = true;
@@ -4241,7 +4685,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_FLOW)
     {
-        auto context = std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_pollingState);
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
 
@@ -4249,67 +4693,67 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_TUNNEL)
     {
-        auto context = std::make_shared<CounterContext<sai_tunnel_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_TUNNEL, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_tunnel_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_TUNNEL, m_vendorSai.get(), m_pollingState);
         context->use_sai_stats_capa_query = false;
         return context;
     }
     else if (context_name == COUNTER_TYPE_BUFFER_POOL)
     {
-        auto context = std::make_shared<CounterContext<sai_buffer_pool_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_BUFFER_POOL, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_buffer_pool_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_BUFFER_POOL, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_ENI)
     {
-        auto context = std::make_shared<CounterContext<sai_eni_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_ENI, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_eni_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_ENI, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_HA_SET)
     {
-        auto context = std::make_shared<CounterContext<sai_ha_set_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_ha_set_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_METER_BUCKET)
     {
-        return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters, m_isTcpConn);
+        return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_pollingState, m_dbCounters, m_isTcpConn);
     }
     else if (context_name == ATTR_TYPE_PORT_PHY_ATTR)
     {
-        return std::make_shared<PortPhyAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn);
+        return std::make_shared<PortPhyAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_pollingState, m_dbCounters, m_isTcpConn);
     }
     else if (context_name == ATTR_TYPE_PORT_PHY_SERDES_ATTR)
     {
-        return std::make_shared<PortPhySerdesAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT_SERDES, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn);
+        return std::make_shared<PortPhySerdesAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT_SERDES, m_vendorSai.get(), m_pollingState, m_dbCounters, m_isTcpConn);
     }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
-        return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == ATTR_TYPE_PG)
     {
-        return std::make_shared<AttrContext<sai_ingress_priority_group_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_ingress_priority_group_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == ATTR_TYPE_MACSEC_SA)
     {
-        return std::make_shared<AttrContext<sai_macsec_sa_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_macsec_sa_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == ATTR_TYPE_ACL_COUNTER)
     {
-        return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == COUNTER_TYPE_POLICER)
     {
-        return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == COUNTER_TYPE_SRV6)
     {
-        return std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == COUNTER_TYPE_SWITCH)
     {
-        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_pollingState);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = true;
         // BROADCOM_LEGACY_SAI_COMPAT: sai_get_stats_ext crashes on some legacy ASICs for switch objects;
@@ -4319,16 +4763,209 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == ATTR_TYPE_OTN_ATTENUATOR_ATTR)
     {
-        return std::make_shared<AttrContext<sai_otn_attenuator_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_otn_attenuator_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, m_vendorSai.get(), m_pollingState);
     }
     else if (context_name == ATTR_TYPE_OTN_OA_ATTR)
     {
-        return std::make_shared<AttrContext<sai_otn_oa_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_otn_oa_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, m_vendorSai.get(), m_pollingState);
     }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
     // GCC 8.3 requires a return value here
     return nullptr;
+}
+
+bool FlexCounter::hasSameRidRegistration(
+        _In_ sai_object_id_t vid,
+        _In_ sai_object_id_t rid) const
+{
+    SWSS_LOG_ENTER();
+
+    for (const auto& context : m_counterContext)
+    {
+        const auto registration = m_pollingState->registrations.find({context.first, vid});
+
+        if (registration != m_pollingState->registrations.end() && registration->second.rid == rid)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void FlexCounter::recordRegistration(
+        _In_ const std::string& name,
+        _In_ sai_object_id_t vid,
+        _In_ sai_object_id_t rid)
+{
+    SWSS_LOG_ENTER();
+
+    const auto key = std::make_pair(name, vid);
+    const auto existing = m_pollingState->registrations.find(key);
+
+    // Same-RID refreshes wait for the old sweep and plugins before enrollment,
+    // so one registration epoch is sufficient for admission and sample validity.
+    // Removal erases the record: even same-RID re-enrollment must receive a
+    // new epoch and cannot consume the previous registration's sample.
+    const auto epoch = existing != m_pollingState->registrations.end() && existing->second.rid == rid ?
+        existing->second.epoch : ++m_nextObjectEpoch;
+    m_pollingState->registrations[key] = {epoch, rid};
+}
+
+void FlexCounter::enrollCounterObjects(
+        _In_ const std::string& name,
+        _In_ const std::vector<sai_object_id_t>& vids,
+        _In_ const std::vector<sai_object_id_t>& rids,
+        _In_ const std::vector<std::string>& idStrings,
+        _In_ const std::string& statsMode,
+        _In_ bool bulk,
+        _In_ bool perPortDiscovery)
+{
+    SWSS_LOG_ENTER();
+
+    if (vids.empty())
+    {
+        return;
+    }
+
+    auto context = getCounterContext(name);
+    const auto previous = context->getObjectRids(vids);
+    std::vector<sai_object_id_t> acceptedVids;
+    std::vector<sai_object_id_t> acceptedRids;
+    std::vector<std::pair<sai_object_id_t, sai_object_id_t>> ridReplacements;
+    acceptedVids.reserve(vids.size());
+    acceptedRids.reserve(rids.size());
+    std::set<sai_object_id_t> seenVids;
+    const bool canReplaceRid = !perPortDiscovery && context->supportsRidReplacement();
+
+    for (size_t i = 0; i < vids.size(); ++i)
+    {
+        if (!seenVids.insert(vids[i]).second)
+        {
+            continue;
+        }
+
+        const auto old = previous.find(vids[i]);
+
+        if (old != previous.end() && !old->second.consistent)
+        {
+            SWSS_LOG_ERROR("%s VID %s has conflicting SDK keys; removing all fragments and dropping registration",
+                    name.c_str(), sai_serialize_object_id(vids[i]).c_str());
+            context->removeObject(vids[i]);
+            m_pollingState->registrations.erase({name, vids[i]});
+            continue;
+        }
+
+        if (old != previous.end() && old->second.rid != rids[i] && !canReplaceRid)
+        {
+            // These paths retain duplicate keys instead of replacing them.
+            // Reject before any support probe or auxiliary metadata mutation.
+            SWSS_LOG_ERROR("%s VID %s retains RID %s; this registration path cannot replace it with RID %s",
+                    name.c_str(), sai_serialize_object_id(vids[i]).c_str(),
+                    sai_serialize_object_id(old->second.rid).c_str(), sai_serialize_object_id(rids[i]).c_str());
+            continue;
+        }
+
+        if (bulk && old != previous.end() && old->second.rid != rids[i])
+        {
+            // Orchagent uses bulk enrollment even for one VID. Bulk fragments
+            // can retain duplicate SDK keys, whereas the supported per-object
+            // path validates counters before removing and replacing the old RID.
+            ridReplacements.emplace_back(vids[i], rids[i]);
+            continue;
+        }
+
+        acceptedVids.push_back(vids[i]);
+        acceptedRids.push_back(rids[i]);
+    }
+
+    if (acceptedVids.empty() && ridReplacements.empty())
+    {
+        return;
+    }
+
+    auto reconcile = [&]
+    {
+        const auto actual = context->getObjectRids(acceptedVids);
+
+        for (size_t i = 0; i < acceptedVids.size(); ++i)
+        {
+            const auto vid = acceptedVids[i];
+            const auto object = actual.find(vid);
+
+            if (object == actual.end())
+            {
+                m_pollingState->registrations.erase({name, vid});
+            }
+            else if (!object->second.consistent)
+            {
+                SWSS_LOG_ERROR("%s VID %s acquired conflicting SDK keys; removing all fragments",
+                        name.c_str(), sai_serialize_object_id(vid).c_str());
+                context->removeObject(vid);
+                m_pollingState->registrations.erase({name, vid});
+            }
+            else
+            {
+                const auto registration = m_pollingState->registrations.find({name, vid});
+
+                // A rejected replacement can leave the old object enrolled.
+                // Preserve its registration epoch and any cleared sample.
+                if (object->second.rid == acceptedRids[i] || registration == m_pollingState->registrations.end() ||
+                        registration->second.rid != object->second.rid)
+                {
+                    recordRegistration(name, vid, object->second.rid);
+                }
+            }
+        }
+    };
+
+    try
+    {
+        if (bulk)
+        {
+            if (!acceptedVids.empty())
+            {
+                if (perPortDiscovery)
+                {
+                    context->bulkAddObjectWithCounterGroups(acceptedVids, acceptedRids, idStrings, statsMode);
+                }
+                else
+                {
+                    context->bulkAddObject(acceptedVids, acceptedRids, idStrings, statsMode);
+                }
+            }
+
+            for (const auto& replacement : ridReplacements)
+            {
+                // Include the member before invoking an enrollment that may
+                // reject or throw after changing storage. Later replacements
+                // that have not been invoked are left out of reconciliation.
+                acceptedVids.push_back(replacement.first);
+                acceptedRids.push_back(replacement.second);
+                context->addObject(replacement.first, replacement.second, idStrings, statsMode);
+            }
+        }
+        else if (perPortDiscovery)
+        {
+            context->addObjectWithCounterGroups(acceptedVids.front(), acceptedRids.front(), idStrings, statsMode);
+        }
+        else
+        {
+            context->addObject(acceptedVids.front(), acceptedRids.front(), idStrings, statsMode);
+        }
+    }
+    catch (...)
+    {
+        // Enrollment APIs can retain, remove or partially accept objects before
+        // throwing. Neither optimistic registration nor blanket rollback is safe.
+        reconcile();
+        notifyPoll();
+
+        throw;
+    }
+
+    reconcile();
 }
 
 std::shared_ptr<BaseCounterContext> FlexCounter::getCounterContext(
@@ -4378,13 +5015,57 @@ bool FlexCounter::hasCounterContext(
 }
 
 void FlexCounter::collectCounters(
-        _In_ swss::Table &countersTable)
+        _In_ swss::Table &countersTable,
+        _Inout_ std::unique_lock<std::mutex>& lock)
 {
     SWSS_LOG_ENTER();
 
-    for (const auto &it : m_counterContext)
+    m_pollingState->yielded = false;
+
+    for (const auto& context : m_counterContext)
     {
-        it.second->collectData(countersTable);
+        context.second->clearSamples(m_pollingState->statsMode);
+    }
+
+    const BaseCounterContext::PollCheckpoint checkpoint = [&](swss::Table& table)
+    {
+        if (m_syncState.pendingUpdates != 0)
+        {
+            m_pollingState->yielded = true;
+            // Flush on the polling thread before releasing object protection:
+            // buffered writes must not recreate entries after a removal.
+            countersTable.flush();
+
+            if (&table != &countersTable)
+            {
+                table.flush();
+            }
+
+            // Deliberately prioritize updates. A continuous update stream can
+            // delay polling; this is not a fairness or hard latency guarantee.
+            m_syncState.condition.wait(lock, [&]
+            {
+                return m_syncState.pendingUpdates == 0 || !m_runFlexCounterThread;
+            });
+        }
+
+        return m_runFlexCounterThread.load();
+    };
+
+    for (const auto& name : snapshotKeys(m_counterContext))
+    {
+        if (!checkpoint(countersTable))
+        {
+            break;
+        }
+
+        const auto iter = m_counterContext.find(name);
+
+        if (iter != m_counterContext.end())
+        {
+            const auto context = iter->second;
+            context->collectData(countersTable, checkpoint);
+        }
     }
 
     countersTable.flush();
@@ -4392,6 +5073,8 @@ void FlexCounter::collectCounters(
 
 void FlexCounter::runPlugins(
         _In_ swss::DBConnector& counters_db,
+        _In_ uint32_t pollInterval,
+        _In_ uint32_t secondaryPollFactor,
         _In_ int64_t cycleStartUs,
         _In_ int64_t collectUs)
 {
@@ -4405,8 +5088,8 @@ void FlexCounter::runPlugins(
     {
         std::to_string(counters_db.getDbId()),
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval),
-        std::to_string(m_secondaryPollFactor),
+        std::to_string(pollInterval),
+        std::to_string(secondaryPollFactor),
         std::to_string(cycleStartUs),
         std::to_string(collectUs)
     };
@@ -4494,18 +5177,20 @@ void FlexCounter::flexCounterThreadRunFunction()
                             m_instanceId.c_str(), consecutiveConnectFailures, failureReason.c_str());
                 }
 
-                // m_pollInterval is written with m_mtx held: setPollInterval() does
+                // m_pollInterval is written with m_syncState.mutex held: setPollInterval() does
                 // not take the lock itself, but its only caller, addCounterPlugin(),
                 // does. Reading it here without the lock would therefore be a data
-                // race. Take a snapshot rather than holding m_mtx across the wait
+                // race. Take a snapshot rather than holding m_syncState.mutex across the wait
                 // below: this path is deliberately outside the counter mutex so that
                 // a slow or refused connect cannot block addCounter()/removeCounter().
                 uint32_t pollInterval;
+                uint64_t sleepGeneration;
 
                 {
                     MUTEX;
 
                     pollInterval = m_pollInterval;
+                    sleepGeneration = m_sleepGeneration;
                 }
 
                 // A constant wait with no jitter. Every counter group loses
@@ -4517,7 +5202,10 @@ void FlexCounter::flexCounterThreadRunFunction()
 
                 std::unique_lock<std::mutex> lk(m_mtxSleep);
 
-                m_cvSleep.wait_for(lk, std::chrono::milliseconds(backoff));
+                m_cvSleep.wait_for(lk, std::chrono::milliseconds(backoff), [&]
+                {
+                    return !m_runFlexCounterThread || m_sleepGeneration != sleepGeneration;
+                });
 
                 continue;
             }
@@ -4525,9 +5213,24 @@ void FlexCounter::flexCounterThreadRunFunction()
 
         MUTEX;
 
+        // Do not reacquire the polling lock ahead of registered control-plane
+        // operations, including the manager's post-removal isDiscarded() query.
+        // Same-object refreshes withdrawn at checkpoints must run before another
+        // sweep, but they do not stop the previous sweep from completing.
+        m_syncState.condition.wait(_lock, [&]
+        {
+            return (m_syncState.pendingUpdates == 0 && m_syncState.deferredUpdates == 0) || !m_runFlexCounterThread;
+        });
+
         if (m_enable && !allIdsEmpty() && (m_pollInterval > 0))
         {
             auto start = std::chrono::steady_clock::now();
+            // Membership updates take effect at checkpoints. Group polling
+            // configuration stays consistent for this logical sweep and its
+            // aggregation scripts; a changed mode/interval applies next cycle.
+            const auto pollInterval = m_pollInterval;
+            const auto secondaryPollFactor = m_secondaryPollFactor;
+            const auto sleepGeneration = m_sleepGeneration.load();
 
             bool pollFailed = false;
             std::string failureReason;
@@ -4536,29 +5239,28 @@ void FlexCounter::flexCounterThreadRunFunction()
             // transient by nature (Redis I/O, protocol desync, malformed reply), so
             // log it, drop the connection and retry on the next cycle.
             //
-            // Note that, unlike the connect and the release, this runs with the
-            // counter mutex held: collecting the counters flushes the pipeline, and
-            // that blocks while reading the replies. A Redis that refuses the
-            // connection fails fast and is handled outside the lock, but one that
-            // accepts and then stops answering, blocked on a background save for
-            // instance, holds up addCounter()/removeCounter() until the socket gives
-            // up. The guard does not change where the poll is serialized, so this is
-            // no worse than before; it is worth knowing that retrying forever also
-            // means such a stall can now repeat every cycle rather than ending in an
-            // abort.
+            // Object/chunk checkpoints let membership updates run between reads.
+            // A vendor call, Redis flush/reply, snapshot construction or plugin
+            // invocation remains serialized under the group mutex; those operations
+            // cannot be interrupted by this change. Redis retry also does not bound
+            // a peer that accepts the connection but stops answering.
             try
             {
+                PollCycleGuard pollCycle(m_syncState);
                 // start of this cycle; successive values differ by the true period
                 auto cycleStartUs = std::chrono::duration_cast<std::chrono::microseconds>(
                         start.time_since_epoch()).count();
 
-                collectCounters(*countersTable);
+                collectCounters(*countersTable, _lock);
 
                 // time spent collecting; the term that scales with object count
                 auto collectUs = std::chrono::duration_cast<std::chrono::microseconds>(
                         std::chrono::steady_clock::now() - start).count();
 
-                runPlugins(*db, cycleStartUs, collectUs);
+                if (m_runFlexCounterThread)
+                {
+                    runPlugins(*db, pollInterval, secondaryPollFactor, cycleStartUs, collectUs);
+                }
             }
             catch (const std::exception& e)
             {
@@ -4597,8 +5299,9 @@ void FlexCounter::flexCounterThreadRunFunction()
             uint32_t delay = static_cast<uint32_t>(
                     std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
 
-            uint32_t correction = delay % m_pollInterval;
-            correction = m_pollInterval - correction;
+            // Group configuration may have changed while the sweep yielded.
+            uint32_t correction = m_pollInterval == 0 ? 0 :
+                m_pollInterval - delay % m_pollInterval;
             MUTEX_UNLOCK; // explicit unlock
 
             if (pollFailed)
@@ -4615,7 +5318,10 @@ void FlexCounter::flexCounterThreadRunFunction()
 
             std::unique_lock<std::mutex> lk(m_mtxSleep);
 
-            m_cvSleep.wait_for(lk, std::chrono::milliseconds(correction));
+            m_cvSleep.wait_for(lk, std::chrono::milliseconds(correction), [&]
+            {
+                return !m_runFlexCounterThread || m_sleepGeneration != sleepGeneration;
+            });
 
             continue;
         }
@@ -4642,7 +5348,7 @@ void FlexCounter::endFlexCounterThread(void)
 {
     SWSS_LOG_ENTER();
 
-    MUTEX;
+    UPDATE_LOCK;
 
     if (!m_runFlexCounterThread)
     {
@@ -4653,7 +5359,7 @@ void FlexCounter::endFlexCounterThread(void)
 
     notifyPoll();
 
-    m_cvSleep.notify_all();
+    notifySleep();
 
     if (m_flexCounterThread != nullptr)
     {
@@ -4672,9 +5378,9 @@ void FlexCounter::endFlexCounterThread(void)
 void FlexCounter::removeCounter(
         _In_ sai_object_id_t vid)
 {
-    MUTEX;
-
     SWSS_LOG_ENTER();
+
+    UPDATE_LOCK;
 
     auto objectType = VidManager::objectTypeQuery(vid);
 
@@ -4848,6 +5554,11 @@ void FlexCounter::removeCounter(
         SWSS_LOG_ERROR("Object type for removal not supported, %s",
                 sai_serialize_object_type(objectType).c_str());
     }
+
+    for (const auto& context : m_counterContext)
+    {
+        m_pollingState->registrations.erase({context.first, vid});
+    }
 }
 
 void FlexCounter::addCounter(
@@ -4855,9 +5566,14 @@ void FlexCounter::addCounter(
         _In_ sai_object_id_t rid,
         _In_ const std::vector<swss::FieldValueTuple>& values)
 {
-    MUTEX;
-
     SWSS_LOG_ENTER();
+
+    UPDATE_LOCK;
+
+    if (hasSameRidRegistration(vid, rid))
+    {
+        _lock.waitForPollEnd(m_runFlexCounterThread);
+    }
 
     sai_object_type_t objectType = VidManager::objectTypeQuery(vid); // VID and RID will have the same object type
 
@@ -4879,24 +5595,8 @@ void FlexCounter::addCounter(
         const auto &counterGroupRef = m_objectTypeField2CounterType.find({objectType, field});
         if (counterGroupRef != m_objectTypeField2CounterType.end())
         {
-            auto counterContext = getCounterContext(counterGroupRef->second);
-
-            if (enablePerPortCounterDiscovery)
-            {
-                counterContext->addObjectWithCounterGroups(
-                        vid,
-                        rid,
-                        idStrings,
-                        "");
-            }
-            else
-            {
-                counterContext->addObject(
-                        vid,
-                        rid,
-                        idStrings,
-                        "");
-            }
+            enrollCounterObjects(counterGroupRef->second, {vid}, {rid}, idStrings,
+                    "", false, enablePerPortCounterDiscovery);
         }
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
         {
@@ -4918,11 +5618,8 @@ void FlexCounter::addCounter(
 
     if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && counterIds.size())
     {
-        getCounterContext(COUNTER_TYPE_BUFFER_POOL)->addObject(
-                vid,
-                rid,
-                counterIds,
-                statsMode);
+        enrollCounterObjects(COUNTER_TYPE_BUFFER_POOL, {vid}, {rid}, counterIds,
+                statsMode, false, false);
     }
 
     // notify thread to start polling
@@ -4935,9 +5632,37 @@ void FlexCounter::bulkAddCounter(
         _In_ const std::vector<sai_object_id_t>& rids,
         _In_ const std::vector<swss::FieldValueTuple>& values)
 {
-    MUTEX;
-
     SWSS_LOG_ENTER();
+
+    UPDATE_LOCK;
+
+    if (vids.size() != rids.size())
+    {
+        SWSS_LOG_ERROR("Bulk counter VID/RID lists have different lengths");
+        return;
+    }
+
+    std::map<sai_object_id_t, sai_object_id_t> requestedRids;
+
+    for (size_t i = 0; i < vids.size(); ++i)
+    {
+        const auto inserted = requestedRids.emplace(vids[i], rids[i]);
+
+        if (!inserted.second && inserted.first->second != rids[i])
+        {
+            SWSS_LOG_ERROR("Bulk counter VID %s has conflicting RIDs", sai_serialize_object_id(vids[i]).c_str());
+            return;
+        }
+    }
+
+    for (size_t i = 0; i < vids.size(); ++i)
+    {
+        if (hasSameRidRegistration(vids[i], rids[i]))
+        {
+            _lock.waitForPollEnd(m_runFlexCounterThread);
+            break;
+        }
+    }
 
     std::vector<std::string> counterIds;
 
@@ -4957,24 +5682,8 @@ void FlexCounter::bulkAddCounter(
         const auto &counterGroupRef = m_objectTypeField2CounterType.find({objectType, field});
         if (counterGroupRef != m_objectTypeField2CounterType.end())
         {
-            auto counterContext = getCounterContext(counterGroupRef->second);
-
-            if (enablePerPortCounterDiscovery)
-            {
-               counterContext->bulkAddObjectWithCounterGroups(
-                        vids,
-                        rids,
-                        idStrings,
-                        "");
-            }
-            else
-            {
-                counterContext->bulkAddObject(
-                        vids,
-                        rids,
-                        idStrings,
-                        "");
-            }
+            enrollCounterObjects(counterGroupRef->second, vids, rids, idStrings,
+                    "", true, enablePerPortCounterDiscovery);
         }
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
         {
@@ -4996,24 +5705,8 @@ void FlexCounter::bulkAddCounter(
 
     if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && counterIds.size())
     {
-        auto counterContext = getCounterContext(COUNTER_TYPE_BUFFER_POOL);
-
-        if (enablePerPortCounterDiscovery)
-        {
-            counterContext->bulkAddObjectWithCounterGroups(
-                    vids,
-                    rids,
-                    counterIds,
-                    statsMode);
-        }
-        else
-        {
-            counterContext->bulkAddObject(
-                    vids,
-                    rids,
-                    counterIds,
-                    statsMode);
-        }
+        enrollCounterObjects(COUNTER_TYPE_BUFFER_POOL, vids, rids, counterIds,
+                statsMode, true, enablePerPortCounterDiscovery);
     }
 
     // notify thread to start polling
@@ -5034,4 +5727,13 @@ void FlexCounter::notifyPoll()
     std::unique_lock<std::mutex> lk(m_mtxSleep);
     m_readyToPoll = true;
     m_pollCond.notify_all();
+}
+
+void FlexCounter::notifySleep()
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_mtxSleep);
+    ++m_sleepGeneration;
+    m_cvSleep.notify_all();
 }
