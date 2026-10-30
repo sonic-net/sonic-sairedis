@@ -2057,10 +2057,12 @@ private:
 
         // Check if a matching counter group already exists
         const std::set<StatType> requestedCounters(counter_ids.begin(), counter_ids.end());
+
         for (size_t i = 0; i < m_counterGroupsSorted.size(); i++)
         {
             // Try match
             const std::set<StatType>& counterSet = m_supportedCounterGroups[m_counterGroupsSorted[i].idx];
+
             // Orch registers the exact stat list per OID (e.g. 4 on egress Queue, 2 on VOQ for QUEUE type). Only
             // reuse a counter group with the same stat IDs; do not probe with a larger group or attach a smaller group
             // when orch registered more stats for this OID.
