@@ -1719,6 +1719,7 @@ namespace saivs
                 uint8_t  mac[6];
                 uint32_t sw_if_index;
                 uint8_t  action; // 0=ADD(learn), 1=DELETE(age), 2=MOVE, 3=RESYNC
+                bool     retry = false; // a DELETE queued again, behind later events
             };
             std::mutex              m_mac_event_queue_mutex;
             std::queue<VppMacEvent> m_mac_event_queue;
@@ -1737,6 +1738,19 @@ namespace saivs
             bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
             bool generateFdbAgedEvent(const VppFdbKey &key);
 
+            bool findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, FdbInfo &fi);
+
+            // Whether VPP's L2FIB has a MAC
+            enum class L2fibLookup
+            {
+                ABSENT,
+                PRESENT,
+                FAILED,     // VPP's L2FIB couldn't be dumped
+            };
+            L2fibLookup lookupL2fibMac(const VppFdbKey &key, vpp_l2fib_entry_t &entry);
+            bool isCurrentL2fibRow(const vpp_l2fib_entry_t &e);
+            void reconcileFdbEntryWithVpp(const VppFdbKey &key, const VppMacEvent &ev);
+
             // Reconcile m_vpp_fdb_entries/FDB notifications with VPP's L2FIB
             // after MAC events were lost (VPP_MAC_ACTION_RESYNC). Returns
             // false, changing nothing, if VPP's L2FIB cannot be dumped.
@@ -1752,6 +1766,31 @@ namespace saivs
             // does not imply bridge domain membership.
             void swif_bdid_track(const char *hwif_name, uint32_t bd_id);
             void swif_bdid_untrack(const char *hwif_name);
+
+            // FDB aging. VPP ages the learned MACs of each bridge domain itself
+            // (mac_age, in whole minutes) and reports each aged one as a DELETE
+            // MAC event, which becomes SAI_FDB_EVENT_AGED. SAI has one aging
+            // time for the switch, in seconds.
+
+            // SAI_SWITCH_ATTR_FDB_AGING_TIME as a bridge domain mac_age
+            static uint8_t fdb_aging_time_to_mac_age(uint32_t aging_time);
+
+            // Apply a new aging time to the VLAN bridge domains with a member
+            sai_status_t vpp_set_fdb_aging_time(uint32_t aging_time);
+
+            // Apply the switch's aging time to the bridge domain a VLAN member
+            // joins, unless it has another member already (bd_has_member)
+            void vpp_apply_fdb_aging_time(uint32_t bd_id, bool bd_has_member);
+
+            // The bridge domains VPP has a VLAN's port or LAG member in
+            std::set<uint32_t> vpp_vlan_bridge_domains();
+
+            uint32_t switch_fdb_aging_time();
+
+            // Whether the VLAN bridge domains with a member all have the MAC age
+            // of the stored aging time. Cleared when VPP fails to set one, until
+            // an aging time is set on all of them.
+            bool m_fdb_mac_age_applied = true;
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 

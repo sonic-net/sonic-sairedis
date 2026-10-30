@@ -67,7 +67,8 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				get_interface_vrf ip_vrf_add ip_vrf_del interface_ip_address_del_all \
 				init_vpp_client vpp_wait_for_events vpp_drain_events vpp_sync_for_events vpp_ev_dequeue \
 				interface_set_promiscuous set_l2_interface_vlan_tag_rewrite set_bridge_domain_flags \
-				bridge_domain_get_member_count vpp_bridge_domain_add_del \
+				bridge_domain_get_member_count vpp_bridge_domain_add_del vpp_bridge_domain_set_mac_age \
+				l2fib_add_del \
 				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
 				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state interface_get_state \
 				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \

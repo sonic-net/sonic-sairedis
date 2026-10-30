@@ -142,12 +142,21 @@ class SwitchVppSubIfAdminState : public ::testing::Test
         {
             SWSS_LOG_ENTER();
 
+            return addTaggedMember(bridgePort, m_vlan);
+        }
+
+        sai_object_id_t addTaggedMember(
+                sai_object_id_t bridgePort,
+                sai_object_id_t vlan)
+        {
+            SWSS_LOG_ENTER();
+
             auto member = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN_MEMBER, m_switchId);
 
             sai_attribute_t attrs[3];
 
             attrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
-            attrs[0].value.oid = m_vlan;
+            attrs[0].value.oid = vlan;
             attrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
             attrs[1].value.oid = bridgePort;
             attrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
@@ -1079,4 +1088,957 @@ TEST(SwitchVpp, bfdResyncReportsStateChangesLostWithTheEventSocket)
 
     EXPECT_EQ(3u, vppMock().bfdDumpCalls);
     EXPECT_EQ(0u, sc->m_eventQueue->size());
+}
+
+/*
+ * VPP ages the MAC addresses each bridge domain has learned, in whole minutes
+ * (mac_age, 0: never), and reports each aged one as a DELETE MAC event. SAI's
+ * FDB aging time is in seconds, for the whole switch.
+ */
+TEST(SwitchVpp, fdbAgingTimeRoundsUpToWholeMinutes)
+{
+    EXPECT_EQ(0, SwitchVpp::fdb_aging_time_to_mac_age(0));
+    EXPECT_EQ(1, SwitchVpp::fdb_aging_time_to_mac_age(1));
+    EXPECT_EQ(1, SwitchVpp::fdb_aging_time_to_mac_age(60));
+    EXPECT_EQ(2, SwitchVpp::fdb_aging_time_to_mac_age(61));
+    EXPECT_EQ(10, SwitchVpp::fdb_aging_time_to_mac_age(600));
+    EXPECT_EQ(255, SwitchVpp::fdb_aging_time_to_mac_age(255 * 60));
+    EXPECT_EQ(255, SwitchVpp::fdb_aging_time_to_mac_age(255 * 60 + 1));
+    EXPECT_EQ(255, SwitchVpp::fdb_aging_time_to_mac_age(UINT32_MAX));
+}
+
+/*
+ * The fixture's switch, VLAN 100 and ports, with the switch object orchagent
+ * sets SAI_SWITCH_ATTR_FDB_AGING_TIME on.
+ */
+class SwitchVppFdbAging : public SwitchVppSubIfAdminState
+{
+    protected:
+
+        void SetUp() override
+        {
+            SwitchVppSubIfAdminState::SetUp();
+
+            // vslib's default
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+            attr.value.u32 = 0;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), m_switchId, 1, &attr));
+        }
+
+        // orchagent sets SAI_SWITCH_ATTR_FDB_AGING_TIME
+        sai_status_t setAgingTime(
+                uint32_t aging_time)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+            attr.value.u32 = aging_time;
+
+            return m_sw->set(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), &attr);
+        }
+
+        uint32_t agingTime()
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->get(SAI_OBJECT_TYPE_SWITCH, m_switchId, 1, &attr));
+
+            return attr.value.u32;
+        }
+
+        // the mac_age values set on bridge domain bd_id, in order
+        std::vector<uint32_t> macAges(
+                uint32_t bd_id)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<uint32_t> ages;
+
+            for (auto& call: vppMock().callsTo("vpp_bridge_domain_set_mac_age", std::to_string(bd_id)))
+            {
+                ages.push_back(call.sub_id);
+            }
+
+            return ages;
+        }
+
+        // the mac_age VPP has on bridge domain bd_id
+        uint32_t macAge(
+                uint32_t bd_id)
+        {
+            SWSS_LOG_ENTER();
+
+            auto bd = vppMock().bdMacAges.find(bd_id);
+
+            return bd == vppMock().bdMacAges.end() ? 0 : bd->second;
+        }
+
+        // orchagent creates another VLAN
+        sai_object_id_t addVlan(
+                uint16_t vlan_id)
+        {
+            SWSS_LOG_ENTER();
+
+            auto vlan = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN, m_switchId);
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_VLAN_ATTR_VLAN_ID;
+            attr.value.u16 = vlan_id;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(vlan), m_switchId, 1, &attr));
+
+            return vlan;
+        }
+
+        // VLAN 300, with a member on the other port, and VLAN 100 with one on
+        // the first port: bridge domains 300 and 100
+        void addTwoVlans()
+        {
+            SWSS_LOG_ENTER();
+
+            addTaggedMember(m_bridgePort);
+            addTaggedMember(m_otherBridgePort, addVlan(OTHER_VLAN_ID));
+        }
+
+        // orchagent creates VLAN 100's router interface: its bridge virtual
+        // interface joins bridge domain 100, which VPP creates if no member did
+        void addVlanRouterInterface()
+        {
+            SWSS_LOG_ENTER();
+
+            auto vrf = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+            sai_attribute_t attr{};
+
+            attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+            attr.value.oid = vrf;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->set_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), &attr));
+
+            sai_attribute_t attrs[3]{};
+
+            attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+            attrs[0].value.oid = m_vlan;
+            attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+            attrs[1].value.oid = vrf;
+            attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+
+            SwitchVpp::RifCreateState state;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_create_bvi_interface(3, attrs, state));
+            ASSERT_EQ(std::set<std::string>({"bvi100"}), vppMock().bdMembers[VLAN_ID]);
+        }
+
+        static constexpr uint16_t OTHER_VLAN_ID = 300;
+};
+
+constexpr uint16_t SwitchVppFdbAging::OTHER_VLAN_ID;
+
+TEST_F(SwitchVppFdbAging, AgingTimeAppliesToTheBridgeDomainsOfVlansWithMembers)
+{
+    // Members join bridge domain 100 with the switch's aging time, 0: no aging
+    addTaggedMember(m_bridgePort);
+    addTaggedMember(m_otherBridgePort);
+
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+
+    vppMock().calls.clear();
+
+    // Once per bridge domain, however many members it has
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    EXPECT_EQ(std::vector<uint32_t>({10}), macAges(VLAN_ID));
+    EXPECT_EQ(600u, agingTime());
+
+    // An aging time with the same MAC age changes nothing in VPP
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(590));
+
+    EXPECT_EQ(std::vector<uint32_t>({10}), macAges(VLAN_ID));
+    EXPECT_EQ(590u, agingTime());
+
+    // 0 turns aging off
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(0));
+
+    EXPECT_EQ(std::vector<uint32_t>({10, 0}), macAges(VLAN_ID));
+    EXPECT_EQ(0u, agingTime());
+}
+
+TEST_F(SwitchVppFdbAging, BridgeDomainCreatedAfterTheAgingTimeIsSetAges)
+{
+    // No VLAN has a member yet, so VPP has no bridge domain to set
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(90));
+
+    EXPECT_TRUE(vppMock().callsTo("vpp_bridge_domain_set_mac_age", std::to_string(VLAN_ID)).empty());
+
+    // The first member makes VPP create bridge domain 100, which then ages
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(std::vector<uint32_t>({2}), macAges(VLAN_ID));
+}
+
+/*
+ * VPP keeps the bridge domain of a VLAN with a router interface when the
+ * VLAN's last member leaves, as the VLAN's bridge virtual interface is still
+ * in it, and the bridge domain keeps its MAC age. An aging time set while the
+ * VLAN has no member doesn't reach it: the next member sets it, also when it
+ * turns aging off.
+ */
+TEST_F(SwitchVppFdbAging, BridgeDomainKeptForItsBviGetsTheAgingTimeWhenAMemberJoins)
+{
+    addVlanRouterInterface();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    auto member = addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeVlanMember(member));
+    ASSERT_EQ(std::set<std::string>({"bvi100"}), vppMock().bdMembers[VLAN_ID]);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(0));
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+}
+
+/*
+ * VPP creates the bridge domain of a VLAN for its router interface's bridge
+ * virtual interface if no member did. That interface is no member: the first
+ * member sets the switch's aging time, set before the router interface was
+ * created.
+ */
+TEST_F(SwitchVppFdbAging, FirstMemberOfAVlanWithARouterInterfaceSetsTheAgingTime)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    addVlanRouterInterface();
+
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+}
+
+/*
+ * VPP fails to set the MAC age of one of two bridge domains: the set fails,
+ * the aging time is not stored, and setting it again sets both.
+ */
+TEST_F(SwitchVppFdbAging, AgingTimeVppFailsToSetIsNotStored)
+{
+    addTwoVlans();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    vppMock().macAgeFailures.insert(OTHER_VLAN_ID);
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, setAgingTime(0));
+
+    EXPECT_EQ(600u, agingTime());
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+    EXPECT_EQ(10u, macAge(OTHER_VLAN_ID));
+
+    vppMock().macAgeFailures.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setAgingTime(0));
+
+    EXPECT_EQ(0u, agingTime());
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+    EXPECT_EQ(0u, macAge(OTHER_VLAN_ID));
+}
+
+/*
+ * After a failed set, a bridge domain may not have the stored aging time
+ * anymore: setting the stored aging time again sets it on every bridge domain.
+ */
+TEST_F(SwitchVppFdbAging, StoredAgingTimeIsSetAgainAfterAFailure)
+{
+    addTwoVlans();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    vppMock().macAgeFailures.insert(OTHER_VLAN_ID);
+
+    ASSERT_EQ(SAI_STATUS_FAILURE, setAgingTime(0));
+    ASSERT_EQ(0u, macAge(VLAN_ID));
+
+    vppMock().macAgeFailures.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    EXPECT_EQ(600u, agingTime());
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+    EXPECT_EQ(10u, macAge(OTHER_VLAN_ID));
+}
+
+/*
+ * VPP fails to set the MAC age of the bridge domain a member joins: the
+ * member still comes up, and the next aging time set reaches the bridge
+ * domain, even one with the same MAC age.
+ */
+TEST_F(SwitchVppFdbAging, BridgeDomainVppFailsToSetForAMemberGetsTheNextAgingTime)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    vppMock().macAgeFailures.insert(VLAN_ID);
+
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(std::set<std::string>({MEMBER_HWIF}), vppMock().bdMembers[VLAN_ID]);
+    EXPECT_EQ(0u, macAge(VLAN_ID));
+
+    vppMock().macAgeFailures.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+}
+
+/*
+ * The bridge domain of a VLAN with a member has the switch's MAC age: a
+ * config reload adds every server port to the VLAN, and only the first one
+ * sets it.
+ */
+TEST_F(SwitchVppFdbAging, MemberJoiningABridgeDomainWithAMemberSetsNothing)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    addTaggedMember(m_bridgePort);
+    addTaggedMember(m_otherBridgePort);
+
+    EXPECT_EQ(std::vector<uint32_t>({10}), macAges(VLAN_ID));
+}
+
+/*
+ * After VPP failed to set a MAC age, a bridge domain with a member may not
+ * have the stored aging time: a member joining it sets it.
+ */
+TEST_F(SwitchVppFdbAging, MemberJoiningAfterAFailureSetsTheStoredAgingTime)
+{
+    addTwoVlans();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    // Turning aging off fails on bridge domain 300 only: 600 s stays stored
+    vppMock().macAgeFailures.insert(OTHER_VLAN_ID);
+
+    ASSERT_EQ(SAI_STATUS_FAILURE, setAgingTime(0));
+    ASSERT_EQ(0u, macAge(VLAN_ID));
+
+    // The other port joins VLAN 100 too
+    addTaggedMember(m_otherBridgePort);
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+}
+
+/*
+ * Creating the switch, vslib makes the bridge ports members of the default
+ * VLAN, VLAN 1, only as SAI objects: SwitchStateBase::create_vlan_members()
+ * doesn't go through SwitchVpp, so VPP has no bridge domain 1, and rejects a
+ * MAC age for it. orchagent removes these members, but syncd's cold replay
+ * restores the switch attributes before that.
+ */
+TEST_F(SwitchVppFdbAging, AgingTimeIgnoresDefaultVlanMembersVppDoesNotHave)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_default_vlan());
+
+    m_sw->m_bridge_port_list_port_based = {m_bridgePort, m_otherBridgePort};
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_vlan_members());
+    ASSERT_EQ(2u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_VLAN_MEMBER).size());
+    ASSERT_TRUE(vppMock().bdMembers.empty());
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setAgingTime(600));
+
+    EXPECT_EQ(600u, agingTime());
+    EXPECT_TRUE(vppMock().callsTo("vpp_bridge_domain_set_mac_age", "1").empty());
+
+    // A member orchagent creates reaches VPP, and its bridge domain ages
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_EQ(10u, macAge(VLAN_ID));
+}
+
+/*
+ * VPP never ages an FDB entry orchagent creates, as it adds it over its API,
+ * until traffic from the MAC on another port moves it: VPP then reports the
+ * move, and ages the entry like a learned MAC.
+ */
+class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
+{
+    protected:
+
+        void SetUp() override
+        {
+            SwitchVppFdbAging::SetUp();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+            attr.value.ptr = reinterpret_cast<void *>(0x1);
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->set_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), &attr));
+
+            // Both ports are untagged members of VLAN 100, in bridge domain 100
+            addUntaggedMember(PORT_HWIF, PORT_SW_IF_INDEX, m_port);
+            addUntaggedMember(OTHER_PORT_HWIF, OTHER_PORT_SW_IF_INDEX, m_otherPort);
+
+            createEntry();
+        }
+
+        // orchagent creates its dynamic FDB entry, on the first port
+        void createEntry()
+        {
+            SWSS_LOG_ENTER();
+
+            sai_fdb_entry_t fdb_entry = {};
+
+            fdb_entry.switch_id = m_switchId;
+            fdb_entry.bv_id = m_vlan;
+            memcpy(fdb_entry.mac_address, MAC, sizeof(sai_mac_t));
+
+            m_fdbId = sai_serialize_fdb_entry(fdb_entry);
+
+            sai_attribute_t attrs[2];
+
+            attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+            attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+            attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+            attrs[1].value.oid = m_bridgePort;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId, m_switchId, 2, attrs));
+            ASSERT_FALSE(vppMock().callsTo("l2fib_add_del", PORT_HWIF).empty());
+        }
+
+        void addUntaggedMember(
+                const char *hwif,
+                uint32_t sw_if_index,
+                sai_object_id_t port)
+        {
+            SWSS_LOG_ENTER();
+
+            ASSERT_TRUE(m_sw->m_ifaceRegistry.bindSwIfIndex(hwif, sw_if_index));
+            ASSERT_TRUE(m_sw->m_ifaceRegistry.setBdId(hwif, VLAN_ID));
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+            attr.value.u16 = VLAN_ID;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->set_internal(SAI_OBJECT_TYPE_PORT, sai_serialize_object_id(port), &attr));
+        }
+
+        // VPP reports the MAC on sw_if_index
+        void queueMacEvent(
+                uint8_t action,
+                uint32_t sw_if_index)
+        {
+            SWSS_LOG_ENTER();
+
+            SwitchVpp::VppMacEvent ev = {};
+
+            memcpy(ev.mac, MAC, sizeof(ev.mac));
+            ev.sw_if_index = sw_if_index;
+            ev.action = action;
+
+            m_sw->m_mac_event_queue.push(ev);
+        }
+
+        // VPP reports the MAC on sw_if_index, and saivpp's aging pass takes it
+        void macEvent(
+                uint8_t action,
+                uint32_t sw_if_index)
+        {
+            SWSS_LOG_ENTER();
+
+            queueMacEvent(action, sw_if_index);
+            m_sw->processFdbEntriesForAging();
+        }
+
+        // VPP's L2FIB has the MAC on sw_if_index
+        void l2fibHasMac(
+                uint32_t sw_if_index)
+        {
+            SWSS_LOG_ENTER();
+
+            vpp_l2fib_entry_t row = {};
+
+            memcpy(row.mac, MAC, sizeof(row.mac));
+            row.bd_id = VLAN_ID;
+            row.sw_if_index = sw_if_index;
+
+            vppMock().l2fib = {row};
+        }
+
+        // the event socket reconnected, and VPP's L2FIB has the MAC on sw_if_index
+        void resync(
+                uint32_t sw_if_index)
+        {
+            SWSS_LOG_ENTER();
+
+            l2fibHasMac(sw_if_index);
+
+            auto dumps = vppMock().l2fibDumpCalls;
+
+            m_sw->m_mac_event_queue.push({{0}, ~0u, VPP_MAC_ACTION_RESYNC});
+            m_sw->processFdbEntriesForAging();
+
+            EXPECT_EQ(dumps + 1, vppMock().l2fibDumpCalls);
+        }
+
+        // the one FDB notification saivpp sent since the last call
+        std::string fdbNotification()
+        {
+            SWSS_LOG_ENTER();
+
+            auto queue = m_sw->m_switchConfig->m_eventQueue;
+
+            EXPECT_EQ(1u, queue->size());
+
+            if (queue->size() == 0)
+            {
+                return "";
+            }
+
+            auto event = queue->dequeue();
+
+            EXPECT_EQ(EVENT_TYPE_NOTIFICATION, event->getType());
+
+            auto ntf = std::dynamic_pointer_cast<EventPayloadNotification>(event->getPayload())->getNotification();
+
+            EXPECT_EQ(SAI_SWITCH_NOTIFICATION_TYPE_FDB_EVENT, ntf->getNotificationType());
+
+            return ntf->getSerializedNotification();
+        }
+
+        sai_object_id_t entryBridgePort()
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->get(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId, 1, &attr));
+
+            return attr.value.oid;
+        }
+
+        static constexpr uint8_t MAC[6] = {0x02, 0x11, 0x22, 0x33, 0x44, 0x66};
+        static constexpr const char *MAC_STR = "02:11:22:33:44:66";
+        static constexpr uint32_t PORT_SW_IF_INDEX = 5;
+        static constexpr uint32_t OTHER_PORT_SW_IF_INDEX = 6;
+
+        std::string m_fdbId;
+};
+
+constexpr uint8_t SwitchVppFdbAgingCreatedEntry::MAC[6];
+constexpr const char *SwitchVppFdbAgingCreatedEntry::MAC_STR;
+constexpr uint32_t SwitchVppFdbAgingCreatedEntry::PORT_SW_IF_INDEX;
+constexpr uint32_t SwitchVppFdbAgingCreatedEntry::OTHER_PORT_SW_IF_INDEX;
+
+TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovesIsReportedAndAgesOut)
+{
+    // Traffic from the MAC on the other port: VPP moves the entry
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+    macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+
+    auto ntf = fdbNotification();
+
+    EXPECT_NE(std::string::npos, ntf.find("SAI_FDB_EVENT_MOVE"));
+    EXPECT_NE(std::string::npos, ntf.find(MAC_STR));
+    EXPECT_EQ(m_otherBridgePort, entryBridgePort());
+
+    // From then on VPP ages it like a learned MAC, and its aging is reported
+    macEvent(VPP_MAC_ACTION_DELETE, OTHER_PORT_SW_IF_INDEX);
+
+    ntf = fdbNotification();
+
+    EXPECT_NE(std::string::npos, ntf.find("SAI_FDB_EVENT_AGED"));
+    EXPECT_NE(std::string::npos, ntf.find(MAC_STR));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+TEST_F(SwitchVppFdbAgingCreatedEntry, EntryRemovedAfterVppMovedItIsForgotten)
+{
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+    macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_MOVE"));
+
+    // orchagent removes the entry: VPP deletes it where it moved it to, and
+    // saivpp forgets the MAC
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId));
+
+    auto dels = vppMock().callsTo("l2fib_add_del", OTHER_PORT_HWIF);
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_EQ(VLAN_ID, dels[0].id);
+    EXPECT_EQ(0u, dels[0].sub_id);
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+
+    // VPP learns the MAC again: reported as learned
+    macEvent(VPP_MAC_ACTION_ADD, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_LEARNED"));
+}
+
+/*
+ * VPP moved the entry while its MOVE event was lost: the resync takes the move.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovedWhileItsEventsWereLostIsMovedByTheResync)
+{
+    resync(OTHER_PORT_SW_IF_INDEX);
+
+    auto ntf = fdbNotification();
+
+    EXPECT_NE(std::string::npos, ntf.find("SAI_FDB_EVENT_MOVE"));
+    EXPECT_NE(std::string::npos, ntf.find(MAC_STR));
+    EXPECT_EQ(m_otherBridgePort, entryBridgePort());
+
+    // and its aging is reported
+    macEvent(VPP_MAC_ACTION_DELETE, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_AGED"));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+/*
+ * VPP has the entry on its own port: not a MAC VPP learned, nothing to report.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, EntryOnItsPortIsLeftAloneByTheResync)
+{
+    resync(PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+/*
+ * VPP moved the entry away and back while its events were lost: the resync
+ * finds it on its own port, but VPP now ages it, and its aging is reported.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, EntryVppMovedAwayAndBackWhileItsEventsWereLostAgesOut)
+{
+    resync(PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+
+    // VPP ages it: out of its L2FIB, then the DELETE
+    vppMock().l2fib.clear();
+    macEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+
+    auto ntf = fdbNotification();
+
+    EXPECT_NE(std::string::npos, ntf.find("SAI_FDB_EVENT_AGED"));
+    EXPECT_NE(std::string::npos, ntf.find(MAC_STR));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+/*
+ * VPP doesn't age a static entry, and a DELETE doesn't remove one.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, StaticEntryIsNotRemovedByADelete)
+{
+    sai_attribute_t attr;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attr.value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId, &attr));
+
+    macEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+}
+
+/*
+ * VPP's DELETE waited in the queue while orchagent removed the entry and
+ * created it again: VPP has the new entry, and nothing is aged.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteQueuedBeforeOrchagentRecreatedTheEntryAgesNothing)
+{
+    queueMacEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId));
+    createEntry();
+    l2fibHasMac(PORT_SW_IF_INDEX);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(1u, vppMock().l2fibDumpCalls);
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+}
+
+/*
+ * VPP's L2FIB can't be dumped to check the DELETE: the next aging pass retries it.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedAfterAFailedL2fibDump)
+{
+    vppMock().l2fibDumpResult = -1;
+
+    macEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    ASSERT_EQ(1u, m_sw->m_mac_event_queue.size());
+    EXPECT_EQ(static_cast<uint8_t>(VPP_MAC_ACTION_DELETE), m_sw->m_mac_event_queue.front().action);
+    EXPECT_TRUE(m_sw->m_mac_event_queue.front().retry);
+
+    // The dump works again, and VPP doesn't have the MAC: its aging is reported
+    vppMock().l2fibDumpResult = 0;
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(2u, vppMock().l2fibDumpCalls);
+    EXPECT_TRUE(m_sw->m_mac_event_queue.empty());
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_AGED"));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+}
+
+/*
+ * A DELETE queued again waits behind the events VPP sent later: by the retry,
+ * VPP may have the MAC again, as here where it moved it, and the MOVE made
+ * saivpp track the entry. The retry checks VPP's L2FIB all the same.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedBehindAMoveAgesNothing)
+{
+    vppMock().l2fibDumpFailures = 1;
+
+    queueMacEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+    queueMacEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_MOVE"));
+    ASSERT_EQ(1u, m_sw->m_mac_event_queue.size());
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(3u, vppMock().l2fibDumpCalls);
+    EXPECT_TRUE(m_sw->m_mac_event_queue.empty());
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_otherBridgePort, entryBridgePort());
+    EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
+    EXPECT_EQ(1u, m_sw->m_fdb_info_set.size());
+}
+
+/*
+ * The same with the move taken by a resync.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedBehindAResyncAgesNothing)
+{
+    vppMock().l2fibDumpFailures = 1;
+
+    queueMacEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+    m_sw->m_mac_event_queue.push({{0}, ~0u, VPP_MAC_ACTION_RESYNC});
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_MOVE"));
+    ASSERT_EQ(1u, m_sw->m_mac_event_queue.size());
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(3u, vppMock().l2fibDumpCalls);
+    EXPECT_TRUE(m_sw->m_mac_event_queue.empty());
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_otherBridgePort, entryBridgePort());
+    EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
+}
+
+/*
+ * VPP doesn't move a static entry, but a MOVE VPP sent for the MAC before
+ * orchagent made the entry static can still be in the queue: it doesn't move
+ * orchagent's static entry, nor does a resync.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, StaticEntryIsNotMoved)
+{
+    sai_attribute_t attr;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attr.value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId, &attr));
+
+    macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+    resync(OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+/*
+ * VPP's MOVE waited in the queue while orchagent removed the entry and
+ * created it again: VPP has the new entry where orchagent put it.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, MoveQueuedBeforeOrchagentRecreatedTheEntryMovesNothing)
+{
+    queueMacEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId));
+    createEntry();
+    l2fibHasMac(PORT_SW_IF_INDEX);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(1u, vppMock().l2fibDumpCalls);
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+/*
+ * VPP's L2FIB can't be dumped to check the MOVE: the next aging pass retries it.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, MoveRetriedAfterAFailedL2fibDump)
+{
+    vppMock().l2fibDumpFailures = 1;
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+
+    macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    ASSERT_EQ(1u, m_sw->m_mac_event_queue.size());
+    EXPECT_TRUE(m_sw->m_mac_event_queue.front().retry);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_MOVE"));
+    EXPECT_EQ(m_otherBridgePort, entryBridgePort());
+    EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
+    EXPECT_TRUE(m_sw->m_mac_event_queue.empty());
+}
+
+/*
+ * A MOVE that waited in the queue while orchagent removed the entry: VPP no
+ * longer has the MAC, which is not learned back.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, MoveQueuedBeforeOrchagentRemovedTheEntryLearnsNothing)
+{
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+    macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_MOVE"));
+
+    // VPP moves it back, and orchagent removes the entry before saivpp takes that
+    queueMacEvent(VPP_MAC_ACTION_MOVE, PORT_SW_IF_INDEX);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId));
+    vppMock().l2fib.clear();
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+/*
+ * A DELETE retried behind a MOVE that made saivpp track the entry ages it,
+ * once VPP no longer has the MAC.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedBehindAMoveAgesTheMacVppDeleted)
+{
+    vppMock().l2fibDumpFailures = 1;
+
+    queueMacEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+    queueMacEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_MOVE"));
+    ASSERT_EQ(1u, m_sw->m_mac_event_queue.size());
+
+    // VPP ages it before the retry
+    vppMock().l2fib.clear();
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_AGED"));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+/*
+ * A MOVE for a MAC saivpp doesn't track, which VPP has: learned.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, MoveOfAMacVppHasButSaivppDoesNotTrackIsLearned)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, m_fdbId));
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+
+    macEvent(VPP_MAC_ACTION_MOVE, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_LEARNED"));
+    EXPECT_EQ(m_otherBridgePort, entryBridgePort());
+    EXPECT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
+}
+
+/*
+ * VPP keeps the row of a port that left the bridge domain until its aging
+ * scan deletes it: that row doesn't keep the MAC.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, RowOfAPortThatLeftTheBridgeDomainDoesNotKeepTheMac)
+{
+    l2fibHasMac(OTHER_PORT_SW_IF_INDEX);
+    ASSERT_TRUE(m_sw->m_ifaceRegistry.clearBdId(OTHER_PORT_HWIF));
+
+    macEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_AGED"));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+}
+
+/*
+ * The same in a resync: that row doesn't move orchagent's entry there.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, ResyncIgnoresTheRowOfAPortThatLeftTheBridgeDomain)
+{
+    ASSERT_TRUE(m_sw->m_ifaceRegistry.clearBdId(OTHER_PORT_HWIF));
+
+    resync(OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }

@@ -10,6 +10,8 @@
 
 #include "SwitchVppUtils.h"
 
+#include <algorithm>
+
 using namespace saivs;
 
 /* ======================================================================
@@ -900,6 +902,9 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
     const char *hw_ifname;
     char host_subifname[32];
 
+    /* Whether VPP has another member of the VLAN in its bridge domain already */
+    bool bd_has_member = m_ifaceRegistry.collectMemberBdIds().count(bridge_id) != 0;
+
     /* If this VLAN already has flood suppression configured, the new member
      * must join with the matching punting classify tables so its broadcast
      * ARP / IPv6 multicast is punted rather than flooded to the other
@@ -1017,6 +1022,12 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
     if (set_bridge_domain_flags(bridge_id, VPP_BD_FLAG_UU_FLOOD, false) != 0) {
         SWSS_LOG_WARN("Failed to disable UU flood on bridge domain %u", bridge_id);
     }
+
+    /* The bridge domain can have any MAC age when the first member joins:
+     * VPP keeps the one of a VLAN with a router interface, with its MAC age,
+     * when the last member leaves, and creates one in the slot of a deleted
+     * bridge domain without resetting its MAC age */
+    vpp_apply_fdb_aging_time(bridge_id, bd_has_member);
 
     return SAI_STATUS_SUCCESS;
 }
@@ -2718,6 +2729,32 @@ sai_status_t SwitchVpp::FdbEntrydel(
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId));
 
+    /*
+     * Forget the MAC if VPP learned it, or moved this entry
+     * (generateFdbLearnedOrMoveEvent()): there is nothing left to age, and its
+     * next learn has to be reported. Keyed by the entry's own VLAN, which is
+     * also the bridge domain.
+     */
+    sai_fdb_entry_t fdb_entry;
+    sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+
+    sai_attribute_t attr;
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+    if (objectTypeQuery(fdb_entry.bv_id) == SAI_OBJECT_TYPE_VLAN &&
+        get(SAI_OBJECT_TYPE_VLAN, fdb_entry.bv_id, 1, &attr) == SAI_STATUS_SUCCESS)
+    {
+        FdbInfo fi;
+        fi.setVlanId(attr.value.u16);
+        memcpy(fi.m_fdbEntry.mac_address, fdb_entry.mac_address, sizeof(sai_mac_t));
+        m_fdb_info_set.erase(fi);
+
+        VppFdbKey key = {};
+        memcpy(key.mac, fdb_entry.mac_address, sizeof(key.mac));
+        key.bd_id = attr.value.u16;
+        m_vpp_fdb_entries.erase(key);
+    }
+
     return SAI_STATUS_SUCCESS;
 
 }
@@ -3155,13 +3192,22 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
         memcpy(fi_search.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
 
         existing_it = m_fdb_info_set.find(fi_search);
-        if (existing_it == m_fdb_info_set.end())
+        if (existing_it != m_fdb_info_set.end())
         {
+            fi = *existing_it;
+        }
+        else if (!findCreatedFdbEntry(key, sw_if_index, fi))
+        {
+            /*
+             * Not a MAC VPP learned, nor an FDB entry orchagent created that
+             * VPP moved -- which it then ages like a learned MAC, so that is
+             * tracked from here, for its aging to be reported. A static
+             * entry VPP doesn't move.
+             */
             SWSS_LOG_WARN("FDB: entry not found in m_fdb_info_set for bd %u, treating as learn",
                           key.bd_id);
             return generateFdbLearnedOrMoveEvent(key, sw_if_index, SAI_FDB_EVENT_LEARNED);
         }
-        fi = *existing_it;
     }
     else
     {
@@ -3203,7 +3249,7 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
         return false;
     }
 
-    if (is_move)
+    if (existing_it != m_fdb_info_set.end())
         m_fdb_info_set.erase(existing_it);
     m_fdb_info_set.insert(fi);
 
@@ -3214,6 +3260,194 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
                     key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
                     key.bd_id, sw_if_index);
     return true;
+}
+
+/*
+ * The dynamic FDB entry orchagent created for a MAC VPP reports on
+ * sw_if_index, if any. VPP reports the deletion of such an entry only once
+ * traffic has moved it, as the move clears age-not (see
+ * vpp_set_fdb_aging_time()). saivpp tracks the entry from its move, but misses
+ * that if VPP moved it away and back while its events were lost: the resync
+ * then finds it on its own port.
+ */
+bool SwitchVpp::findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, FdbInfo &fi)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
+
+    findBridgeVlanForPortVlan(m_ifaceRegistry.resolveIfOid(sw_if_index),
+                              (sai_vlan_id_t)key.bd_id, bv_id, bridge_port_id);
+
+    if (bv_id == SAI_NULL_OBJECT_ID)
+    {
+        return false;
+    }
+
+    fi = FdbInfo();
+    fi.m_fdbEntry.switch_id = m_switch_id;
+    fi.m_fdbEntry.bv_id = bv_id;
+    memcpy(fi.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+
+    auto sid = sai_serialize_fdb_entry(fi.m_fdbEntry);
+    auto &fdbs = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+    if (fdbs.find(sid) == fdbs.end())
+    {
+        return false;
+    }
+
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+
+    // VPP doesn't age a static entry
+    if (get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 2, attrs) != SAI_STATUS_SUCCESS ||
+        attrs[0].value.s32 != SAI_FDB_ENTRY_TYPE_DYNAMIC)
+    {
+        return false;
+    }
+
+    fi.setBridgePortId(attrs[1].value.oid);
+    fi.setVlanId((sai_vlan_id_t)key.bd_id);
+    fi.setTimestamp((uint32_t)time(NULL));
+
+    return true;
+}
+
+/*
+ * Whether a VPP L2FIB row is from a bridge domain its interface is in, and so
+ * gated like MAC events. VPP keeps the row of an interface that left a bridge
+ * domain -- flushed then -- only until its aging scan deletes it.
+ */
+bool SwitchVpp::isCurrentL2fibRow(const vpp_l2fib_entry_t &e)
+{
+    SWSS_LOG_ENTER();
+
+    auto rec = m_ifaceRegistry.findBySwIfIndex(e.sw_if_index);
+
+    return rec && rec->hasBdId() && rec->getBdId() == e.bd_id;
+}
+
+// VPP's L2FIB entry for a MAC, if it has a current one
+SwitchVpp::L2fibLookup SwitchVpp::lookupL2fibMac(const VppFdbKey &key, vpp_l2fib_entry_t &entry)
+{
+    SWSS_LOG_ENTER();
+
+    struct Lookup
+    {
+        const VppFdbKey *key;
+        vpp_l2fib_entry_t *entry;
+        bool found;
+    } lookup = {&key, &entry, false};
+
+    if (vpp_l2fib_dump(key.bd_id, [](const vpp_l2fib_entry_t *e, void *ctx)
+                       {
+                           auto l = static_cast<Lookup *>(ctx);
+
+                           if (e->bd_id == l->key->bd_id && memcmp(e->mac, l->key->mac, sizeof(e->mac)) == 0)
+                           {
+                               *l->entry = *e;
+                               l->found = true;
+                           }
+                       }, &lookup) != 0)
+    {
+        return L2fibLookup::FAILED;
+    }
+
+    return lookup.found && isCurrentL2fibRow(entry) ? L2fibLookup::PRESENT : L2fibLookup::ABSENT;
+}
+
+/*
+ * Bring a MAC in line with VPP's L2FIB, for a MAC event that may be stale:
+ *
+ * - one for a MAC orchagent has a dynamic FDB entry for, which saivpp doesn't
+ *   track: it may have waited in the queue while orchagent removed the entry
+ *   and created it again;
+ * - a MOVE for a MAC saivpp doesn't track, which may have waited while
+ *   orchagent removed the entry;
+ * - an event queued again after a failed L2FIB dump, behind the events VPP
+ *   sent later.
+ *
+ * VPP's L2FIB as it is now decides, as in resyncFdbWithVpp(). A MAC VPP has
+ * on the port of orchagent's entry is left alone: VPP doesn't age an entry
+ * orchagent created, unless it moved it (vpp_set_fdb_aging_time()), and if it
+ * moved it away and back, its DELETE comes here. The event is queued again
+ * if the L2FIB can't be dumped.
+ */
+void SwitchVpp::reconcileFdbEntryWithVpp(const VppFdbKey &key, const VppMacEvent &ev)
+{
+    SWSS_LOG_ENTER();
+
+    vpp_l2fib_entry_t entry = {};
+    L2fibLookup lookup = lookupL2fibMac(key, entry);
+
+    if (lookup == L2fibLookup::FAILED)
+    {
+        SWSS_LOG_WARN("FDB: L2FIB dump failed, MAC event for %02x:%02x:%02x:%02x:%02x:%02x bd %u will be retried",
+                      key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+
+        // The next aging pass retries it, as for a failed resync
+        VppMacEvent again = ev;
+        again.retry = true;
+
+        std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
+        m_mac_event_queue.push(again);
+        return;
+    }
+
+    bool present = lookup == L2fibLookup::PRESENT;
+    auto it = m_vpp_fdb_entries.find(key);
+
+    if (it != m_vpp_fdb_entries.end())
+    {
+        if (!present)
+        {
+            if (generateFdbAgedEvent(key))
+                m_vpp_fdb_entries.erase(it);
+        }
+        else if (entry.sw_if_index != it->second &&
+                 generateFdbLearnedOrMoveEvent(key, entry.sw_if_index, SAI_FDB_EVENT_MOVE))
+        {
+            it->second = entry.sw_if_index;
+        }
+        return;
+    }
+
+    FdbInfo created;
+
+    if (findCreatedFdbEntry(key, ev.sw_if_index, created))
+    {
+        if (!present)
+        {
+            SWSS_LOG_NOTICE("FDB: VPP deleted MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u of an FDB entry orchagent created",
+                            key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+            m_fdb_info_set.insert(created);
+            generateFdbAgedEvent(key);
+            return;
+        }
+
+        sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
+        sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
+
+        findBridgeVlanForPortVlan(m_ifaceRegistry.resolveIfOid(entry.sw_if_index),
+                                  (sai_vlan_id_t)key.bd_id, bv_id, bridge_port_id);
+
+        if (!entry.is_static && bridge_port_id != created.getBridgePortId() &&
+            generateFdbLearnedOrMoveEvent(key, entry.sw_if_index, SAI_FDB_EVENT_MOVE))
+        {
+            m_vpp_fdb_entries[key] = entry.sw_if_index;
+        }
+        return;
+    }
+
+    // Neither tracked nor orchagent's dynamic entry: a MAC VPP learned
+    if (present && !entry.is_static &&
+        generateFdbLearnedOrMoveEvent(key, entry.sw_if_index, SAI_FDB_EVENT_LEARNED))
+    {
+        m_vpp_fdb_entries[key] = entry.sw_if_index;
+    }
 }
 
 bool SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
@@ -3289,14 +3523,7 @@ bool SwitchVpp::resyncFdbWithVpp()
 
     for (const auto &e : dump)
     {
-        auto rec = m_ifaceRegistry.findBySwIfIndex(e.sw_if_index);
-
-        if (e.is_static || !rec || !rec->hasBdId())
-            continue;
-
-        // A row from a BD the interface has left: VPP flushed it then, and
-        // keeps it only until its aging scan deletes it
-        if (e.bd_id != rec->getBdId())
+        if (e.is_static || !isCurrentL2fibRow(e))
             continue;
 
         VppFdbKey key;
@@ -3332,7 +3559,7 @@ bool SwitchVpp::resyncFdbWithVpp()
 
         if (it == m_vpp_fdb_entries.end())
         {
-            // VPP also holds the FDB entries orchagent programs; leave those alone.
+            // VPP also holds the FDB entries orchagent programs: not learned MACs
             sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
             sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
 
@@ -3345,7 +3572,27 @@ bool SwitchVpp::resyncFdbWithVpp()
             memcpy(fdb_entry.mac_address, m.first.mac, sizeof(sai_mac_t));
 
             if (fdb_objects.find(sai_serialize_fdb_entry(fdb_entry)) != fdb_objects.end())
+            {
+                /*
+                 * An FDB entry orchagent created: VPP doesn't age it, unless
+                 * it moved it to another port, as it may have while its MOVE
+                 * event was lost. Take that move, so the entry is tracked.
+                 */
+                FdbInfo created;
+
+                if (findCreatedFdbEntry(m.first, m.second, created) &&
+                    created.getBridgePortId() != bridge_port_id &&
+                    generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_MOVE))
+                {
+                    m_vpp_fdb_entries[m.first] = m.second;
+                    moved++;
+                    SWSS_LOG_INFO("FDB: resync moved MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u to sw_if_index %u (FDB entry orchagent created)",
+                                  m.first.mac[0], m.first.mac[1], m.first.mac[2],
+                                  m.first.mac[3], m.first.mac[4], m.first.mac[5],
+                                  m.first.bd_id, m.second);
+                }
                 continue;
+            }
 
             if (generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_LEARNED))
             {
@@ -3416,6 +3663,143 @@ void SwitchVpp::swif_bdid_untrack(const char *hwif_name)
      * interface.
      */
     m_ifaceRegistry.clearBdId(hwif_name);
+}
+
+/*
+ * VPP ages in whole minutes, so round up, which also keeps a short aging time
+ * from turning aging off. VPP keeps an entry's last-seen time to the minute
+ * and scans every 60 s, so an entry ages between mac_age - 1 and mac_age + 1
+ * minutes after the last frame from its MAC. mac_age is a u8: longer aging
+ * times age after 255 minutes.
+ */
+uint8_t SwitchVpp::fdb_aging_time_to_mac_age(uint32_t aging_time)
+{
+    SWSS_LOG_ENTER();
+
+    if (aging_time == 0)
+    {
+        return 0;
+    }
+
+    uint64_t minutes = ((uint64_t)aging_time + 59) / 60;
+
+    return (uint8_t)std::min<uint64_t>(minutes, UINT8_MAX);
+}
+
+uint32_t SwitchVpp::switch_fdb_aging_time()
+{
+    SWSS_LOG_ENTER();
+
+    // Read the stored attribute directly: get() logs every switch attribute read
+    auto &switches = m_objectHash.at(SAI_OBJECT_TYPE_SWITCH);
+    auto sw = switches.find(sai_serialize_object_id(m_switch_id));
+
+    if (sw == switches.end())
+    {
+        return 0;
+    }
+
+    auto md = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_FDB_AGING_TIME);
+    auto attr = sw->second.find(md->attridname);
+
+    return attr == sw->second.end() ? 0 : attr->second->getAttr()->value.u32;
+}
+
+std::set<uint32_t> SwitchVpp::vpp_vlan_bridge_domains()
+{
+    SWSS_LOG_ENTER();
+
+    // Not from the VLAN_MEMBER objects: the default VLAN's members, which
+    // SwitchStateBase creates with the switch, never reach VPP, so VPP has no
+    // bridge domain for them. Not a bridge domain with only a BVI either: VPP
+    // doesn't learn on a BVI, and the first member to join sets it.
+    return m_ifaceRegistry.collectMemberBdIds();
+}
+
+/*
+ * Only learned MACs age. VPP never ages an entry added over its API
+ * (l2fib_add_entry() marks it age-not), so an FDB entry SAI creates, even a
+ * dynamic one, stays until SAI removes it, and no DELETE event comes for it.
+ * If traffic moves it to another port, VPP reports the move and from then on
+ * ages it like a learned MAC; generateFdbLearnedOrMoveEvent() tracks it then,
+ * or, if its moves were missed, its DELETE finds it (findCreatedFdbEntry()).
+ */
+sai_status_t SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
+{
+    SWSS_LOG_ENTER();
+
+    uint8_t mac_age = fdb_aging_time_to_mac_age(aging_time);
+
+    // set() runs before the attribute is stored: this compares with the
+    // previous aging time, which the bridge domains have unless VPP failed to
+    // set one since
+    if (m_fdb_mac_age_applied && mac_age == fdb_aging_time_to_mac_age(switch_fdb_aging_time()))
+    {
+        SWSS_LOG_INFO("FDB: aging time %u s keeps MAC age %u min", aging_time, mac_age);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (aging_time > UINT8_MAX * 60u)
+    {
+        SWSS_LOG_WARN("FDB: aging time %u s is longer than VPP supports, aging after %u minutes",
+                      aging_time, mac_age);
+    }
+
+    auto bd_ids = vpp_vlan_bridge_domains();
+    size_t failed = 0;
+
+    for (auto bd_id: bd_ids)
+    {
+        if (vpp_bridge_domain_set_mac_age(bd_id, mac_age) != 0)
+        {
+            SWSS_LOG_ERROR("FDB: failed to set MAC age %u min on bridge domain %u", mac_age, bd_id);
+            failed++;
+        }
+    }
+
+    // After a failure, the bridge domains don't all have the stored aging
+    // time anymore, so the next one is set on all of them
+    m_fdb_mac_age_applied = (failed == 0);
+
+    if (failed != 0)
+    {
+        SWSS_LOG_ERROR("FDB: aging time %u s not set: MAC age %u min failed on %zu of %zu VLAN bridge domains",
+                       aging_time, mac_age, failed, bd_ids.size());
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("FDB: aging time %u s: MAC age %u min on %zu VLAN bridge domains",
+                    aging_time, mac_age, bd_ids.size());
+
+    return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::vpp_apply_fdb_aging_time(uint32_t bd_id, bool bd_has_member)
+{
+    SWSS_LOG_ENTER();
+
+    // A bridge domain with a member has the MAC age of the stored aging time,
+    // unless VPP failed to set one since
+    if (bd_has_member && m_fdb_mac_age_applied)
+    {
+        return;
+    }
+
+    uint8_t mac_age = fdb_aging_time_to_mac_age(switch_fdb_aging_time());
+
+    /*
+     * Also 0: a bridge domain without a member can have any MAC age. VPP
+     * keeps the bridge domain of a VLAN with a router interface when its last
+     * member leaves, as the BVI is still in it, with its MAC age, which an
+     * aging time set since skipped. And VPP creates a bridge domain in the
+     * slot of a deleted one without resetting its MAC age.
+     */
+    if (vpp_bridge_domain_set_mac_age(bd_id, mac_age) != 0)
+    {
+        // The member still comes up; the next aging time set reaches this bridge domain
+        SWSS_LOG_ERROR("FDB: failed to set MAC age %u min on bridge domain %u", mac_age, bd_id);
+        m_fdb_mac_age_applied = false;
+    }
 }
 
 void SwitchVpp::vpp_fdb_entries_invalidate_all()

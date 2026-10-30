@@ -1398,6 +1398,23 @@ void SwitchVpp::processFdbEntriesForAging()
         memcpy(key.mac, ev.mac, 6);
         key.bd_id = bd_id;
 
+        /*
+         * An event that may be stale is taken against VPP's L2FIB as it is
+         * now instead (reconcileFdbEntryWithVpp()): one queued again, a MOVE
+         * for a MAC saivpp doesn't track, and one for a MAC orchagent has a
+         * dynamic FDB entry for, which saivpp doesn't track.
+         */
+        bool tracked = m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end();
+        FdbInfo created;
+
+        if (ev.retry ||
+            (!tracked && (ev.action == VPP_MAC_ACTION_MOVE ||
+                          findCreatedFdbEntry(key, ev.sw_if_index, created)))) {
+            reconcileFdbEntryWithVpp(key, ev);
+            events.pop();
+            continue;
+        }
+
         switch (ev.action) {
         case VPP_MAC_ACTION_ADD:
             if (m_vpp_fdb_entries.find(key) == m_vpp_fdb_entries.end()) {
@@ -1412,7 +1429,7 @@ void SwitchVpp::processFdbEntriesForAging()
             break;
 
         case VPP_MAC_ACTION_DELETE:
-            if (m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end()) {
+            if (tracked) {
                 if (generateFdbAgedEvent(key)) {
                     m_vpp_fdb_entries.erase(key);
                 }
@@ -2580,6 +2597,19 @@ sai_status_t SwitchVpp::set(
             case SAI_SWITCH_ATTR_NAT_ENABLE:
                 {
                     CHECK_STATUS(m_nat.setEnable(attr->value.booldata));
+                    break;
+                }
+            case SAI_SWITCH_ATTR_FDB_AGING_TIME:
+                {
+                    // VPP ages the MACs itself. set_internal() below caches
+                    // the attribute for the bridge domains created later, only
+                    // once VPP has set it on all of them.
+                    sai_status_t status = vpp_set_fdb_aging_time(attr->value.u32);
+
+                    if (status != SAI_STATUS_SUCCESS)
+                    {
+                        return status;
+                    }
                     break;
                 }
             case SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED:

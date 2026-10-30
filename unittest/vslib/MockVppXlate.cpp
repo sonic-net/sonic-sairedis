@@ -414,16 +414,18 @@ extern "C" int __wrap_configure_lcp_interface(const char *name, const char *, bo
     return vppMock().lcpPairs.erase(name) == 1 ? 0 : -1;
 }
 
-extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t, bool add, uint32_t)
+extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t bd_id, bool add, uint32_t)
 {
     SWSS_LOG_ENTER();
     if (add)
     {
         vppMock().bridgePorts.insert(name);
+        vppMock().bdMembers[bd_id].insert(name);
     }
     else
     {
         vppMock().bridgePorts.erase(name);
+        vppMock().bdMembers[bd_id].erase(name);
     }
     return 0;
 }
@@ -439,6 +441,11 @@ extern "C" int __wrap_vpp_l2fib_dump(uint32_t, vpp_l2fib_entry_cb_fn cb, void *c
 {
     SWSS_LOG_ENTER();
     ++vppMock().l2fibDumpCalls;
+    if (vppMock().l2fibDumpFailures > 0)
+    {
+        --vppMock().l2fibDumpFailures;
+        return -1;
+    }
     if (vppMock().l2fibDumpResult == 0)
     {
         for (const auto& entry : vppMock().l2fib)
@@ -461,6 +468,29 @@ extern "C" int __wrap_vpp_bfd_session_dump(vpp_bfd_session_cb_fn cb, void *ctx)
     }
     return vppMock().bfdDumpResult;
 }
+extern "C" int __wrap_vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_age)
+{
+    SWSS_LOG_ENTER();
+    // VPP rejects a bridge domain it doesn't have
+    bool fails = vppMock().macAgeFailures.count(bd_id) != 0 || vppMock().bdMembers.count(bd_id) == 0;
+    vppMock().calls.push_back({"vpp_bridge_domain_set_mac_age", std::to_string(bd_id), bd_id, mac_age, !fails});
+    if (fails)
+    {
+        return -1;
+    }
+    vppMock().bdMacAges[bd_id] = mac_age;
+    return 0;
+}
+
+// the L2FIB entry SAI programs: bd_id, is_add and is_static_mac
+extern "C" int __wrap_l2fib_add_del(const char *hwif_name, const uint8_t *, uint32_t bd_id,
+        bool is_add, bool is_static_mac)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"l2fib_add_del", hwif_name ? hwif_name : "", bd_id, is_add, is_static_mac});
+    return 0;
+}
+
 extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
     SWSS_LOG_ENTER();
     return 0;
@@ -604,12 +634,19 @@ int __wrap_bridge_domain_get_member_count(uint32_t bd_id, uint32_t *member_count
 {
     SWSS_LOG_ENTER();
 
-    *member_count = 0;
+    auto bd = vppMock().bdMembers.find(bd_id);
+
+    *member_count = bd == vppMock().bdMembers.end() ? 0 : static_cast<uint32_t>(bd->second.size());
     return 0;
 }
 
 int __wrap_vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add) {
     SWSS_LOG_ENTER();
+    if (!is_add)
+    {
+        vppMock().bdMembers.erase(bridge_id);
+        vppMock().bdMacAges.erase(bridge_id);
+    }
     return 0;
 }
 uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
