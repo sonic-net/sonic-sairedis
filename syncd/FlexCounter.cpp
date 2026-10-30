@@ -8,6 +8,7 @@
 #include "FlexCounter.h"
 #include "VendorSaiOptions.h"
 #include "VidManager.h"
+#include "VirtualOidTranslator.h"
 
 #include <chrono>
 #include <nlohmann/json.hpp>
@@ -2823,46 +2824,46 @@ public:
             _In_ sairedis::SaiInterface *vendor_sai,
             _In_ sai_stats_mode_t &stats_mode,
             _In_ const std::string &dbCounters,
-            _In_ bool isTcpConn):
+            _In_ bool isTcpConn,
+            _In_ std::shared_ptr<VirtualOidTranslator> translator):
         Base(name, instance, object_type, vendor_sai, stats_mode),
         m_dbCounters(dbCounters),
-        m_isTcpConn(isTcpConn)
+        m_isTcpConn(isTcpConn),
+        m_translator(translator)
     {
         SWSS_LOG_ENTER();
     }
 
     /*
-     * Resolve port_vid -> port_rid by reading ASIC_DB's VIDTORID hash directly.
+     * Resolve port_vid -> port_rid with the VirtualOidTranslator of syncd.
      *
-     * VIDTORID on ASIC_DB is maintained by syncd itself at object create time
-     * and is authoritative for any port whose VID we already know.
+     * The translator owns the VID to RID mapping of the active syncd context.
+     * It reads the mapping from its local cache or from the ASIC database that
+     * the context uses. It does not call the vendor SAI.
+     *
+     * Call this only from addObject(), which runs on the syncd main thread.
+     * The translator uses the ASIC database connection of the main thread, so
+     * do not call it from the flex counter thread (collectData()).
      */
     bool getPortRidFromPortVid(sai_object_id_t port_vid, sai_object_id_t &port_rid)
     {
         SWSS_LOG_ENTER();
 
-        try
+        if (!m_translator)
         {
-            swss::DBConnector db("ASIC_DB", 0, m_isTcpConn);
-
-            std::string vid_str = sai_serialize_object_id(port_vid);
-
-            auto rid_str = db.hget("VIDTORID", vid_str);
-
-            if (rid_str)
-            {
-                sai_deserialize_object_id(*rid_str, port_rid);
-                return true;
-            }
-
-            SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: port_vid:0x%" PRIx64
-                          " not found in ASIC_DB VIDTORID", port_vid);
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: No VID to RID translator, "
+                           "cannot resolve port_vid:0x%" PRIx64, port_vid);
+            return false;
         }
-        catch (const std::exception &e)
+
+        if (port_vid != SAI_NULL_OBJECT_ID &&
+            m_translator->tryTranslateVidToRid(port_vid, port_rid))
         {
-            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Exception while querying "
-                           "ASIC_DB VIDTORID: %s", e.what());
+            return true;
         }
+
+        SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: port_vid:0x%" PRIx64
+                      " has no RID mapping", port_vid);
 
         return false;
     }
@@ -2902,7 +2903,7 @@ public:
      * The lookup goes:
      *   port_serdes_vid --(COUNTERS_DB COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP,
      *                      written by orchagent as part of the same enrollment)--> port_vid
-     *   port_vid        --(ASIC_DB VIDTORID, written by syncd at PORT create time)-> port_rid
+     *   port_vid        --(VirtualOidTranslator of syncd)--> port_rid
      *
      */
     void updatePortSerdesIdToPortIdMap(sai_object_id_t port_serdes_rid,
@@ -3275,6 +3276,7 @@ private:
 
     std::string m_dbCounters;
     bool m_isTcpConn;
+    std::shared_ptr<VirtualOidTranslator> m_translator;
     std::map<sai_object_id_t, PortIdInfo> m_portSerdesIdToPortIdMap;
     std::map<sai_object_id_t, uint32_t> m_portSerdesIdToLaneCountMap;
     std::map<sai_object_id_t, std::map<sai_port_serdes_attr_t, uint32_t>> m_portSerdesTapsCountMap;
@@ -3697,13 +3699,15 @@ FlexCounter::FlexCounter(
         _In_ const std::string& instanceId,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ const std::string& dbCounters,
-        _In_ const bool noDoubleCheckBulkCapability):
+        _In_ const bool noDoubleCheckBulkCapability,
+        _In_ std::shared_ptr<VirtualOidTranslator> translator):
     m_readyToPoll(false),
     m_pollInterval(0),
     m_instanceId(instanceId),
     m_vendorSai(vendorSai),
     m_dbCounters(dbCounters),
-    m_noDoubleCheckBulkCapability(noDoubleCheckBulkCapability)
+    m_noDoubleCheckBulkCapability(noDoubleCheckBulkCapability),
+    m_translator(translator)
 {
     SWSS_LOG_ENTER();
 
@@ -4069,7 +4073,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == ATTR_TYPE_PORT_PHY_SERDES_ATTR)
     {
-        return std::make_shared<PortPhySerdesAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT_SERDES, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn);
+        return std::make_shared<PortPhySerdesAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT_SERDES, m_vendorSai.get(), m_statsMode, m_dbCounters, m_isTcpConn, m_translator);
     }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
