@@ -1443,6 +1443,16 @@ sai_status_t SwitchStateBase::create_ports()
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
+        attr.id = SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
         attr.id = SAI_PORT_ATTR_SPEED;
         attr.value.u32 = 40 * 1000;     // TODO from config
 
@@ -2083,6 +2093,18 @@ sai_status_t SwitchStateBase::create_port_dependencies(
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
     // attributes are not required since they will be set outside this function
+
+    // Preserve sampling attributes supplied when the port was created.
+    for (auto id : { SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE,
+                     SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE })
+    {
+        attr.id = id;
+        if (get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr) == SAI_STATUS_NOT_IMPLEMENTED)
+        {
+            attr.value.oid = SAI_NULL_OBJECT_ID;
+            CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+        }
+    }
 
     CHECK_STATUS(create_ingress_priority_groups_per_port(port_id));
     CHECK_STATUS(create_qos_queues_per_port(port_id));
