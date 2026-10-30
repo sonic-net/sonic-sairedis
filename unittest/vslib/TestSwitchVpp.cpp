@@ -1625,13 +1625,16 @@ class SwitchVppDhcpTrap : public ::testing::Test
             return nodeNext("l2-input-classify", "sonic-ext-l2-trap-fixup");
         }
 
-        // TRAP: punted on both members, so the BVI never sees it
+        // TRAP: punted on both members, so the BVI never sees it, and limited
+        // broadcasts on L3 tables stay at VPP's default drop
         void expectTrap()
         {
             SWSS_LOG_ENTER();
 
             EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcpOnWire(false)));
             EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcpOnWire(true)));
+            EXPECT_FALSE(receivesLimitedBroadcast(0));
+            EXPECT_FALSE(policesLimitedBroadcast());
         }
 
         // COPY: flooded on both members, and the BVI's copy received, under the IP2ME policer
@@ -1761,13 +1764,14 @@ TEST_F(SwitchVppDhcpTrap, CopyLeavesTheOtherPuntsAlone)
 }
 
 /*
- * The local 255.255.255.255/32 comes with the table, whatever the DHCP trap
- * action: under TRAP the client broadcast is punted at the member and never
- * reaches the BVI, and any other limited broadcast the BVI gets is received.
+ * The local 255.255.255.255/32 route and IP2ME entry are installed only while
+ * the DHCP trap action is COPY: under TRAP (or without a DHCP trap) a client
+ * broadcast is punted at the VLAN member and routed ports keep VPP's default
+ * drop on 255.255.255.255/32.
  */
-TEST_F(SwitchVppDhcpTrap, TheBviTableReceivesLimitedBroadcastsWhateverTheAction)
+TEST_F(SwitchVppDhcpTrap, TheBviTableReceivesLimitedBroadcastsOnlyUnderCopy)
 {
-    createTrap(SAI_PACKET_ACTION_TRAP);
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
     addMembers();
 
     EXPECT_FALSE(receivesLimitedBroadcast(0));
@@ -1775,20 +1779,34 @@ TEST_F(SwitchVppDhcpTrap, TheBviTableReceivesLimitedBroadcastsWhateverTheAction)
 
     createBvi();
 
-    EXPECT_TRUE(receivesLimitedBroadcast(0));
-    EXPECT_TRUE(policesLimitedBroadcast());
     expectTrap();
 
-    // the route stays with the table, not the BVI
+    setTrapAction(trap, SAI_PACKET_ACTION_COPY);
+    expectCopy();
+
+    // the route stays with the table, not the BVI, while COPY is active
     ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_delete_bvi_interface(m_rif));
 
     EXPECT_TRUE(receivesLimitedBroadcast(0));
     EXPECT_TRUE(policesLimitedBroadcast());
+
+    setTrapAction(trap, SAI_PACKET_ACTION_TRAP);
+
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+    EXPECT_FALSE(policesLimitedBroadcast());
 }
 
 TEST_F(SwitchVppDhcpTrap, AVrfTableReceivesLimitedBroadcastsUntilItIsRemoved)
 {
     auto vrf = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    // without a COPY DHCP trap, a VRF table keeps VPP's default drop
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_FALSE(policesLimitedBroadcast());
+    ASSERT_EQ(0, m_sw->vpp_del_ip_vrf(vrf));
+
+    createTrap(SAI_PACKET_ACTION_COPY);
 
     ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
 
@@ -1814,16 +1832,18 @@ TEST_F(SwitchVppDhcpTrap, AVrfTableReceivesLimitedBroadcastsUntilItIsRemoved)
     EXPECT_EQ("ip_vrf_del", vppMock().calls[1].api);
     EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
 
-    // the address set is switch-wide, and other tables still receive limited broadcasts
+    // the address set is switch-wide while COPY is active
     EXPECT_TRUE(policesLimitedBroadcast());
 }
 
 /*
  * Table 0 outlives every VRF object, so removing one leaves its route in
- * place.
+ * place while COPY is active.
  */
 TEST_F(SwitchVppDhcpTrap, TheDefaultTableKeepsItsRouteWhenAVrfObjectGoesAway)
 {
+    createTrap(SAI_PACKET_ACTION_COPY);
+
     ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(m_defaultVr, 0));
 
     EXPECT_TRUE(receivesLimitedBroadcast(0));

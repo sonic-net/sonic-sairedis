@@ -1723,6 +1723,14 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
         return 0;
     }
 
+    bool has_vrf_table = false;
+    for (const auto &kv : vrf_objMap) {
+        if (kv.second != nullptr && kv.second->m_vrf_id == vrf_id) {
+            has_vrf_table = true;
+            break;
+        }
+    }
+
     std::string vrf_name = "vrf_" + std::to_string(vrf_id);
 
     if (vrf_id && ip_vrf_add(vrf_id, vrf_name.c_str(), false) != 0) {
@@ -1733,7 +1741,9 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
     SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
     vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
 
-    vpp_ip4_limited_broadcast_receive(vrf_id, true);
+    if (m_dhcp_trap_copy && !has_vrf_table) {
+        vpp_ip4_limited_broadcast_receive(vrf_id, true);
+    }
 
     uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
         VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
@@ -1760,7 +1770,7 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
         if (sw != nullptr) {
                  SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
            // table 0 outlives every VRF object, and other router interfaces may still use it
-           if (sw->m_vrf_id != 0)
+           if (m_dhcp_trap_copy && sw->m_vrf_id != 0)
            {
                vpp_ip4_limited_broadcast_receive(sw->m_vrf_id, false);
            }
@@ -1786,14 +1796,15 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
  * to the interface's host tap. For a VLAN that is the BVI's copy of a
  * flooded broadcast, and it is how a DHCPv4 client broadcast reaches the
  * DHCP relay when the SAI_HOSTIF_TRAP_TYPE_DHCP action is COPY (see
- * SwitchVppFdb.cpp). Under TRAP the client broadcast is punted at the VLAN
- * member and never reaches the BVI.
+ * SwitchVppFdb.cpp). Under TRAP (or when no DHCP trap is configured) the
+ * client broadcast is punted at the VLAN member and never reaches the BVI,
+ * while routed ports keep VPP's default drop on 255.255.255.255/32 so a
+ * switch without a COPY DHCP trap (such as a T1 spine) does not punt limited
+ * broadcasts to the CPU.
  *
- * A limited broadcast is to-me traffic, so the address also goes into
- * sonic-ext-copp-ip2me's address set with the switch's own addresses, and
- * the IP2ME trap group's policer meters it on the punt path. The set is
- * switch-wide and every table gets the route, so the address stays in it
- * once added.
+ * While COPY is active a limited broadcast is to-me traffic, so the address
+ * also goes into sonic-ext-copp-ip2me's address set with the switch's own
+ * addresses, and the IP2ME trap group's policer meters it on the punt path.
  */
 int SwitchVpp::vpp_ip4_limited_broadcast_receive(
         _In_ uint32_t vrf_id,
