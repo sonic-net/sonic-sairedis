@@ -519,6 +519,7 @@ typedef enum {
     extern int get_interface_mpls_enabled(const char *hwif_name, bool *enabled);
     extern int interface_set_state_by_index (uint32_t sw_if_index, bool is_up);
     extern int interface_set_promiscuous (const char *hwif_name, bool enable);
+    extern int sw_interface_set_ip_directed_broadcast (const char *hwif_name, bool enable);
     extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
     extern int sw_interface_set_mtu_all(const char *hwif_name, const uint32_t mtu[4]);

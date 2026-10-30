@@ -82,6 +82,100 @@ static bool neighbor_no_host_route(
     return false;
 }
 
+static bool neighbor_dst_mac_is_broadcast(
+        SwitchVpp *switch_db,
+        _In_ const std::string &serializedObjectId,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    attr.id = SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS;
+
+    if (is_add)
+    {
+        SaiCachedObject nbr_obj(switch_db, SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, attr_count, attr_list);
+
+        if (nbr_obj.get_attr(attr) != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+    }
+    else
+    {
+        auto nbr_obj = switch_db->get_sai_object(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId);
+
+        if (nbr_obj == nullptr || nbr_obj->get_attr(attr) != SAI_STATUS_SUCCESS)
+        {
+            return false;
+        }
+    }
+
+    for (size_t i = 0; i < sizeof(sai_mac_t); i++)
+    {
+        if (attr.value.mac[i] != 0xFF)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+sai_status_t SwitchVpp::updateDirectedBroadcast(
+        _In_ const std::string &hwif_name,
+        _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_directed_bcast_hwif.find(hwif_name);
+    uint32_t count = (it == m_directed_bcast_hwif.end()) ? 0 : it->second;
+
+    if (!is_add && count == 0)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    uint32_t new_count = is_add ? count + 1 : count - 1;
+
+    if (count != 0 && new_count != 0)
+    {
+        // Broadcast neighbors on this interface both before and after the
+        // change, so the flag keeps its value and only the count moves.
+        it->second = new_count;
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    init_vpp_client();
+
+    int ret = sw_interface_set_ip_directed_broadcast(hwif_name.c_str(), is_add);
+
+    SWSS_LOG_NOTICE("%s ip directed broadcast on %s status %d",
+                    (is_add ? "Enable" : "Disable"), hwif_name.c_str(), ret);
+
+    if (ret != 0)
+    {
+        // The flag did not change, so neither does the count: a later add
+        // retries the enable, and a later remove does not disable an interface
+        // whose flag is still off.
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (new_count == 0)
+    {
+        m_directed_bcast_hwif.erase(it);
+    }
+    else
+    {
+        m_directed_bcast_hwif[hwif_name] = new_count;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::addRemoveIpNbr(
         _In_ const std::string &serializedObjectId,
         _In_ uint32_t attr_count,
@@ -177,6 +271,33 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
     else
     {
         SWSS_LOG_NOTICE("Skipping neighbor VPP programming for RIF type %d", rif_type);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // IntfsOrch::addDirectedBroadcast() programs the subnet broadcast address as a
+    // neighbor with an all-ones MAC. VPP owns that /32 itself: when the interface
+    // address is configured ip4_add_subnet_bcast_route() installs the prefix from
+    // FIB_SOURCE_INTERFACE, which outranks both FIB_SOURCE_API (the host route below)
+    // and FIB_SOURCE_ADJ (the neighbor adjacency), so anything programmed here loses
+    // and the entry stays dpo-drop. The per-interface directed-broadcast flag is the
+    // only knob that makes VPP replace that drop with a path out of the interface
+    // using the broadcast adjacency, so toggle it instead.
+    //
+    // The flag is per interface, not per prefix: enabling it forwards the directed
+    // broadcast of every IPv4 subnet on the hwif, not only the one this neighbor
+    // belongs to. That matches SONiC, which programs a broadcast neighbor for every
+    // subnet it configures on the interface, so the extra subnets would be enabled
+    // by their own neighbors anyway.
+    if (nbr_entry.ip_address.addr_family == SAI_IP_ADDR_FAMILY_IPV4 &&
+        neighbor_dst_mac_is_broadcast(this, serializedObjectId, attr_count, attr_list, is_add))
+    {
+        // addIpNbr()/removeIpNbr() call this twice per neighbor; act only on the
+        // host route pass so the flag is refcounted once per neighbor.
+        if (program_host_route)
+        {
+            return updateDirectedBroadcast(hwif_name, is_add);
+        }
+
         return SAI_STATUS_SUCCESS;
     }
 
@@ -389,7 +510,23 @@ sai_status_t SwitchVpp::addIpNbr(
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, switch_id, attr_count, attr_list));
 
     if (is_ip_nbr_active() == true) {
-        CHECK_STATUS(addRemoveIpNbr(serializedObjectId, attr_count, attr_list, true, false, true));
+        sai_status_t status = addRemoveIpNbr(serializedObjectId, attr_count, attr_list, true, false, true);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Host route programming failed for neighbor %s, rolling back",
+                           serializedObjectId.c_str());
+
+            // create_internal() has already published the neighbor, so orchagent
+            // would retry this create and fail with "object already exists".
+            // Undo the adjacency first: its remove pass reads the MAC back from
+            // the object that remove_internal() then drops.
+            addRemoveIpNbr(serializedObjectId, 0, NULL, false, true, false);
+
+            remove_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId);
+
+            return status;
+        }
     }
 
     return SAI_STATUS_SUCCESS;
@@ -439,6 +576,13 @@ sai_status_t SwitchVpp::setIpNbr(
         // VPP updates an existing neighbor in place, so re-adding it rewrites the
         // adjacency with the new MAC. NO_HOST_ROUTE is passed along so the
         // no-fib-entry flag stays consistent.
+        //
+        // Only the adjacency pass runs here, so a MAC changing to or from the
+        // all-ones subnet broadcast MAC would not move the interface's
+        // directed-broadcast refcount. IntfsOrch creates and removes the subnet
+        // broadcast neighbor with its interface address, never setting a new MAC
+        // on one, so that transition does not occur; handling it would mean
+        // refcounting against the previous MAC as well.
         sai_attribute_t attrs[2];
         attrs[0] = *attr;
         attrs[1].id = SAI_NEIGHBOR_ENTRY_ATTR_NO_HOST_ROUTE;
