@@ -339,12 +339,26 @@ sai_status_t VirtualSwitchSaiInterface::create(
 
     std::string str_object_id = sai_serialize_object_id(*objectId);
 
-    return create(
+    sai_status_t status = create(
             switchId,
             objectType,
             str_object_id,
             attr_count,
             attr_list);
+
+    if (objectType == SAI_OBJECT_TYPE_SWITCH && status != SAI_STATUS_SUCCESS)
+    {
+        auto config = m_contextConfig->m_scc->getConfig(
+                RealObjectIdManager::getSwitchIndex(switchId));
+        // A failed warm CREATE must not discard recovered state.
+        if (!config || config->m_bootType != SAI_VS_BOOT_TYPE_WARM)
+        {
+            m_switchStateMap.erase(switchId);
+            m_realObjectIdManager->releaseObjectId(switchId);
+        }
+        *objectId = SAI_NULL_OBJECT_ID;
+    }
+    return status;
 }
 
 sai_status_t VirtualSwitchSaiInterface::remove(

@@ -12,6 +12,7 @@ extern "C" {
 #include <gtest/gtest.h>
 
 #include "ContextConfigContainer.h"
+#include "ResourceLimiter.h"
 #include "VirtualSwitchSaiInterface.h"
 
 using namespace saivs;
@@ -122,6 +123,59 @@ TEST_F(VirtualSwitchSaiInterfaceTest, nativePacketSamplingSkipsKernelSampler)
             SAI_STATUS_SUCCESS);
 
     m_vssai->m_switchStateMap.at(m_swid) = original_state;
+}
+
+TEST_F(VirtualSwitchSaiInterfaceTest, failedSwitchCreateReleasesStateAndId)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_vssai->remove(SAI_OBJECT_TYPE_SWITCH, m_swid));
+    m_sc->m_resourceLimiter = std::make_shared<ResourceLimiter>(m_scid);
+    m_sc->m_resourceLimiter->setObjectTypeLimit(SAI_OBJECT_TYPE_SWITCH, 0);
+    sai_attribute_t attr = {};
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+    EXPECT_EQ(SAI_STATUS_INSUFFICIENT_RESOURCES,
+            m_vssai->create(SAI_OBJECT_TYPE_SWITCH, &m_swid, SAI_NULL_OBJECT_ID, 1, &attr));
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, m_swid);
+    EXPECT_TRUE(m_vssai->m_switchStateMap.empty());
+    m_sc->m_resourceLimiter->clearLimits();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_vssai->create(SAI_OBJECT_TYPE_SWITCH, &m_swid, SAI_NULL_OBJECT_ID, 1, &attr));
+}
+
+TEST_F(VirtualSwitchSaiInterfaceTest, failedWarmSwitchCreatePreservesStateAndId)
+{
+    sai_attribute_t attr = {};
+    attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+    attr.value.u32 = 123;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_vssai->set(SAI_OBJECT_TYPE_SWITCH, m_swid, &attr));
+
+    WarmBootState warm;
+    warm.m_switchId = m_swid;
+    warm.m_objectHash = m_vssai->m_switchStateMap.at(m_swid)->m_objectHash;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_vssai->remove(SAI_OBJECT_TYPE_SWITCH, m_swid));
+    m_vssai->m_warmBootState[m_swid] = warm;
+    m_sc->m_bootType = SAI_VS_BOOT_TYPE_WARM;
+    m_sc->m_resourceLimiter = std::make_shared<ResourceLimiter>(m_scid);
+    m_sc->m_resourceLimiter->setObjectTypeLimit(SAI_OBJECT_TYPE_SWITCH, 0);
+    auto meta = std::make_shared<saimeta::Meta>(m_vssai);
+    m_vssai->setMeta(meta);
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+    sai_object_id_t failed_id = SAI_NULL_OBJECT_ID;
+    EXPECT_EQ(SAI_STATUS_INSUFFICIENT_RESOURCES, m_vssai->create(
+            SAI_OBJECT_TYPE_SWITCH, &failed_id, SAI_NULL_OBJECT_ID, 1, &attr));
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, failed_id);
+    EXPECT_EQ(1u, m_vssai->m_switchStateMap.count(m_swid));
+    EXPECT_EQ(1u, m_vssai->m_realObjectIdManager->m_switchIndexes.count(m_scid));
+    if (m_vssai->m_switchStateMap.count(m_swid))
+    {
+        attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+        attr.value.u32 = 0;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, m_vssai->get(
+                SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr));
+        EXPECT_EQ(123u, attr.value.u32);
+    }
 }
 
 TEST_F(VirtualSwitchSaiInterfaceTest, portBulkAddRemove)

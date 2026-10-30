@@ -77,6 +77,7 @@ struct VppMock
     int lcpResult = 0;
     unsigned int statsCalls = 0;
     unsigned int interfaceCreates = 0;
+    unsigned int interfaceLookups = 0;
     uint32_t kernelVrfId = 0;
     int kernelVrfResult = 0;
     std::string kernelLinkNames;

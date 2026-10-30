@@ -616,6 +616,7 @@ uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
 {
     SWSS_LOG_ENTER();
 
+    ++vppMock().interfaceLookups;
     return vppMock().nextSwIfIndex++;
 }
 

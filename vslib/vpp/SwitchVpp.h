@@ -11,6 +11,7 @@
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
 #include "SwitchVppPbh.h"
+#include "SwitchVppTrim.h"
 #include "SwitchVppPolicer.h"
 #include "SwitchVppHostifTrap.h"
 #include "SwitchVppNat.h"
@@ -273,6 +274,17 @@ namespace saivs
                     _In_ sai_object_type_t object_type,
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability) override;
+
+            virtual sai_status_t queryAttrEnumValuesCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Inout_ sai_s32_list_t *enum_values_capability) override;
+
+            virtual sai_status_t queryStatsCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_capability_list_t *stats_capability) override;
 
             virtual sai_status_t queryStatsStCapability(
                     _In_ sai_object_id_t switch_id,
@@ -754,12 +766,15 @@ namespace saivs
 
             friend class TunnelManager;
             friend class SwitchVppPbh;
+            friend class SwitchVppTrim;
 
         private: // VPP
 
             SaiObjectDB m_object_db;
             TunnelManager m_tunnel_mgr;
             SwitchVppPbh m_pbh;
+
+            SwitchVppTrim m_trim;
 
         private: // VPP
 

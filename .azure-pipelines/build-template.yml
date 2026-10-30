@@ -88,6 +88,19 @@ jobs:
     clean: true
     submodules: true
 
+  - ${{ if ne(parameters.vpp_run_id, '') }}:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        source: specific
+        project: build
+        pipeline: sonic-net.sonic-platform-vpp
+        artifact: vpp-${{ parameters.debian_version }}
+        path: $(Pipeline.Workspace)/staged/vpp
+        runVersion: specific
+        runId: ${{ parameters.vpp_run_id }}
+        allowPartiallySucceededBuilds: true
+      displayName: Stage requested VPP build
+
   # A consumer reusing this template can stage current-run upstream artifacts
   # under the names used by build-env/upstream-artifacts.yaml.
   - ${{ each up in parameters.staged_upstreams }}:
@@ -135,6 +148,9 @@ jobs:
         | jq -r '.[] | .name' \
         | xargs -I{} echo --required-staged-upstream {} \
         | tr '\n' ' ')
+      if [ -n "$REQUESTED_VPP_RUN_ID" ]; then
+        REQ_ARGS="$REQ_ARGS --required-staged-upstream vpp"
+      fi
       PYTHONPATH=/tmp/sw-common/ci python3 -m buildenv_setup \
         --repo-dir $(Build.SourcesDirectory) \
         --scope build \
@@ -147,6 +163,7 @@ jobs:
     env:
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       STAGED_UPSTREAMS_JSON: ${{ convertToJson(parameters.staged_upstreams) }}
+      REQUESTED_VPP_RUN_ID: ${{ parameters.vpp_run_id }}
 
   - script: ASAN=${{ parameters.asan }} ./build-env/build.sh
     displayName: "Compile sonic sairedis with coverage enabled"
