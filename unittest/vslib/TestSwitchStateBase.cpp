@@ -15,6 +15,7 @@
 #include "ContextConfigContainer.h"
 
 #include "SwitchStateBase.h"
+#include "SwitchBCM56850.h"
 
 using namespace saimeta;
 using namespace saivs;
@@ -56,6 +57,60 @@ protected:
     const std::uint32_t m_guid = 0; // default context config id
     const std::uint32_t m_scid = 0; // default switch config id
 };
+
+TEST_F(SwitchStateBaseTest, portSamplePacketDefaults)
+{
+    m_sc->m_useTapDevice = false;
+    m_sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    m_ss = std::make_shared<SwitchBCM56850>(m_swid, m_ridmgr, m_sc);
+    ASSERT_EQ(m_ss->initialize_default_objects(0, nullptr), SAI_STATUS_SUCCESS);
+
+    sai_attribute_t attr{};
+    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+    std::vector<sai_object_id_t> ports(attr.value.u32);
+    ASSERT_FALSE(ports.empty());
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = static_cast<uint32_t>(ports.size());
+    attr.value.objlist.list = ports.data();
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+
+    for (auto port : ports)
+    {
+        for (auto id : { SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE,
+                         SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE })
+        {
+            attr.id = id;
+            attr.value.oid = m_swid;
+            ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_PORT, port, 1, &attr), SAI_STATUS_SUCCESS);
+            EXPECT_EQ(attr.value.oid, SAI_NULL_OBJECT_ID);
+        }
+    }
+
+    // Dynamic creation must default missing attributes without overwriting
+    // either direction's explicitly supplied SamplePacket.
+    sai_object_id_t sample;
+    attr.id = SAI_SAMPLEPACKET_ATTR_SAMPLE_RATE;
+    attr.value.u32 = 1000;
+    ASSERT_EQ(m_ss->create(SAI_OBJECT_TYPE_SAMPLEPACKET, &sample, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+    for (int configured = -1; configured < 2; ++configured)
+    {
+        sai_attribute_t attrs[2]{};
+        attrs[0].id = SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
+        attrs[1].id = SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE;
+        const auto port = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_swid);
+        if (configured >= 0)
+            attrs[configured].value.oid = sample;
+        ASSERT_EQ(m_ss->create(SAI_OBJECT_TYPE_PORT, sai_serialize_object_id(port), m_swid,
+                               configured < 0 ? 0 : 1,
+                               configured < 0 ? nullptr : &attrs[configured]), SAI_STATUS_SUCCESS);
+        for (int direction = 0; direction < 2; ++direction)
+        {
+            ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_PORT, port, 1, &attrs[direction]), SAI_STATUS_SUCCESS);
+            EXPECT_EQ(attrs[direction].value.oid, direction == configured ? sample : SAI_NULL_OBJECT_ID);
+        }
+    }
+}
 
 TEST_F(SwitchStateBaseTest, switchHashGet)
 {
