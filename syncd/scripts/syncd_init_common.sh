@@ -800,7 +800,31 @@ config_syncd()
     set_start_type
 
     if [ ${ENABLE_SAITHRIFT} == 1 ]; then
-        CMD_ARGS+=" -r -m $HWSKU_DIR/port_config.ini"
+        local port_config="$HWSKU_DIR/port_config.ini"
+        if [ ! -e "$port_config" ]; then
+            if ! mkdir -p -m 0755 /var/run/syncd; then
+                echo "Failed to create SAI Thrift port map directory /var/run/syncd" >&2
+                exit 1
+            fi
+            port_config=/var/run/syncd/port_config.ini
+            if ! (
+                set -o pipefail
+                sonic-db-cli CONFIG_DB EVAL '
+                    local rows = {}
+                    for _, key in ipairs(redis.call("KEYS", "PORT|*")) do
+                        local values = redis.call("HMGET", key, "lanes", "alias", "index")
+                        local row = {key:sub(6), values[1], values[2], values[3]}
+                        table.insert(rows, table.concat(row, "\t"))
+                    end
+                    return rows
+                ' 0 | sort -k1,1V > "$port_config"
+            ) || ! grep -q '[^[:space:]]' "$port_config"; then
+                rm -f "$port_config"
+                echo "Failed to generate SAI Thrift port map from CONFIG_DB" >&2
+                exit 1
+            fi
+        fi
+        CMD_ARGS+=" -r -m $port_config"
     fi
 
     [ -r $PLATFORM_DIR/syncd.conf ] && . $PLATFORM_DIR/syncd.conf
