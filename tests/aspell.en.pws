@@ -472,3 +472,10 @@ subtree
 iface
 loopback
 resync
+CLI
+GETRESPONSE
+saiconfig
+HGETALL
+HMGET
+bvid
+LPUSH
