@@ -189,7 +189,9 @@ TEST_F(SwitchVppRifTest, subPortCreateUsesSonicNameForVrfLookup)
         vppMock().kernelCommands.clear();
         vppMock().kernelVrfId = 100;
         auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
-        ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, backing)));
+        auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, backing);
+        attrs[2].value.oid = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+        ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
         EXPECT_NE(vppMock().kernelCommands.end(), std::find(vppMock().kernelCommands.begin(),
                 vppMock().kernelCommands.end(), "/sbin/ip link show dev " + osif));
         EXPECT_EQ(100u, vppMock().interfaceVrfs[hwif]);
@@ -203,7 +205,9 @@ TEST_F(SwitchVppRifTest, subPortCreateUsesSonicNameForVrfLookup)
 
     vppMock().kernelInterfaces = {"Ethernet0.10"};
     auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
-    EXPECT_EQ(SAI_STATUS_FAILURE, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, lag)));
+    auto failAttrs = attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, lag);
+    failAttrs[2].value.oid = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+    EXPECT_EQ(SAI_STATUS_FAILURE, create(rif, failAttrs));
     EXPECT_EQ(nullptr, sw->m_ifaceRegistry.findSubIf("BondEthernet2", 10));
     EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
 }

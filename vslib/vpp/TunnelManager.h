@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <vector>
 #include <map>
 #include <string>
@@ -34,6 +35,10 @@ namespace saivs
         u_int32_t bd_id = 0;
         vpp_ip_addr_t bvi_addr;
         bool owns_local_receive = false;
+
+        // Host tap of the linux-cp pair giving the decap BVI a path to the
+        // kernel; empty when the BVI has none.
+        std::string decap_host_if;
 
         // L2 VXLAN fields
         u_int32_t vni = 0;
@@ -259,11 +264,40 @@ namespace saivs
         SwitchVpp* m_switch_db;
         std::array<uint8_t, 6> m_router_mac;
         u_int16_t m_vxlan_port;
+
+        /**
+         * @brief Kernel-side hooks of the decap host path. The constructor
+         * points them at the sysfs lookup and the tc redirect; unit tests
+         * replace them.
+         */
+        std::function<std::string(const std::string&)> m_netdev_master;
+        std::function<sai_status_t(const std::string&, const std::string&)> m_add_tc_redirect;
+
+        static std::string read_netdev_master(
+            _In_ const std::string& netdev);
+
+        /**
+         * @brief Kernel VRF device of a virtual router, found through the
+         * kernel netdev of one of its VLAN router interfaces; empty if none.
+         */
+        std::string get_kernel_vrf(
+            _In_ sai_object_id_t vr_oid);
+
+        sai_status_t create_decap_host_path(
+            _Inout_ TunnelVPPData& tunnel_data,
+            _In_ const char* hw_bvi_ifname);
+
+        void remove_decap_host_path(
+            _Inout_ TunnelVPPData& tunnel_data,
+            _In_ const char* hw_bvi_ifname);
         struct VxlanEncapEntry {
             vpp_vxlan_tunnel_t req;
             TunnelVPPData tunnel_data;
             std::array<uint8_t, 6> dst_mac;
             bool has_decap = false;
+            // The next hop names its VNI, so a route in any VRF uses this
+            // tunnel; tunnel_data.ip_vrf only says where its decap BVI routes.
+            bool any_vrf = false;
         };
         // One next hop can select a different mapped VNI for each route VRF.
         std::unordered_map<sai_object_id_t, std::vector<VxlanEncapEntry>> m_tunnel_encap_nexthop_map;

@@ -1,5 +1,9 @@
 #include <algorithm>
+#include <climits>
+#include <cstring>
 #include <functional>
+
+#include <unistd.h>
 
 #include "SwitchVppUtils.h"
 #include "SwitchVpp.h"
@@ -87,6 +91,22 @@ sai_status_t get_exact_vxlan_term_match(
     return SAI_STATUS_SUCCESS;
 }
 
+// Bind a decap BVI to its VRF in both address families: the tunnel carries
+// IPv4 and IPv6, and an inner IPv6 packet would otherwise be routed in
+// table 0.
+int set_decap_bvi_table(
+    _In_ const char *hw_bvi_ifname,
+    _In_ uint32_t vrf_id)
+{
+    SWSS_LOG_ENTER();
+
+    int ret = set_interface_vrf(hw_bvi_ifname, 0, vrf_id, false);
+    if (ret == 0) {
+        ret = set_interface_vrf(hw_bvi_ifname, 0, vrf_id, true);
+    }
+    return ret;
+}
+
 }
 
 TunnelManager::TunnelManager(SwitchVpp* switch_db): m_switch_db(switch_db)
@@ -95,6 +115,9 @@ TunnelManager::TunnelManager(SwitchVpp* switch_db): m_switch_db(switch_db)
 
     m_router_mac = {0, 0, 0, 0, 0, 1};
     m_vxlan_port = 4789;
+
+    m_netdev_master = TunnelManager::read_netdev_master;
+    m_add_tc_redirect = SwitchVpp::add_tc_filter_redirect;
 }
 
 const std::array<uint8_t, 6>&
@@ -137,7 +160,8 @@ TunnelManager::get_tunnel_if(
         auto find_interface = [&]() {
             const auto& entries = it->second;
             if (entries.size() == 1 &&
-                (!entries.front().tunnel_data.ip_vrf ||
+                (entries.front().any_vrf ||
+                 !entries.front().tunnel_data.ip_vrf ||
                  entries.front().tunnel_data.ip_vrf->m_obj_id == vrf_oid)) {
                 sw_if_index = entries.front().tunnel_data.sw_if_index;
                 return true;
@@ -308,9 +332,37 @@ TunnelManager::tunnel_encap_nexthop_action(
 
     std::map<uint32_t, std::shared_ptr<IpVrfInfo>> vni_to_vrf_map;
     if (override_vni != 0) {
-        // The next-hop VNI replaces the mapper result. It does not create a
-        // corresponding VNI-to-VRF decapsulation mapping.
+        // The next-hop VNI replaces the mapper result, so any route VRF can
+        // use this tunnel. The tunnel still needs a decap side: VPP matches
+        // the exact (remote, local, VNI) key of this tunnel before the
+        // source-independent decap term of the VNI, and a tunnel with no
+        // bridge domain drops what it receives. Decapsulate into the VRF
+        // that the VR->VNI map entry carrying this VNI names, if there is one.
         vni_to_vrf_map[override_vni] = nullptr;
+        auto mappers = tunnel_obj->get_linked_objects(
+            SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_ENCAP_MAPPERS);
+        for (const auto& mapper : mappers) {
+            attr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+            if (mapper->get_attr(attr) != SAI_STATUS_SUCCESS ||
+                attr.value.s32 != SAI_TUNNEL_MAP_TYPE_VIRTUAL_ROUTER_ID_TO_VNI) {
+                continue;
+            }
+            auto entries = mapper->get_child_objs(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY);
+            if (!entries) {
+                continue;
+            }
+            for (const auto& pair : *entries) {
+                attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_VALUE;
+                if (pair.second->get_attr(attr) != SAI_STATUS_SUCCESS ||
+                    attr.value.u32 != override_vni) {
+                    continue;
+                }
+                attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VIRTUAL_ROUTER_ID_KEY;
+                if (pair.second->get_attr(attr) == SAI_STATUS_SUCCESS) {
+                    vni_to_vrf_map[override_vni] = m_switch_db->vpp_get_ip_vrf(attr.value.oid);
+                }
+            }
+        }
     } else {
         auto mappers = tunnel_obj->get_linked_objects(
             SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_ENCAP_MAPPERS);
@@ -385,6 +437,7 @@ TunnelManager::tunnel_encap_nexthop_action(
         entry.tunnel_data.ip_vrf = pair.second;
         entry.tunnel_data.vni = pair.first;
         entry.dst_mac = dst_mac;
+        entry.any_vrf = override_vni != 0;
 
         if (create_vpp_vxlan_encap(entry.req, entry.tunnel_data, false,
                                    entry.dst_mac.data()) != SAI_STATUS_SUCCESS) {
@@ -605,6 +658,7 @@ TunnelManager::create_vpp_vxlan_decap(
     }
     bool bridge_created = false;
     auto rollback = [&]() -> sai_status_t {
+        remove_decap_host_path(tunnel_data, hw_bvi_ifname);
         delete_bvi_interface(hw_bvi_ifname);
         if (bridge_created) {
             vpp_bridge_domain_add_del(tunnel_data.bd_id, false);
@@ -623,6 +677,15 @@ TunnelManager::create_vpp_vxlan_decap(
         return rollback();
     }
 
+    // Before the BVI joins its bridge domain, see create_decap_host_path.
+    // Without a host path the switch's own addresses in the VRF are unreachable
+    // over the tunnel, but transit still works, so a failure is not fatal; a
+    // failed attempt leaves nothing half-built behind.
+    if (create_decap_host_path(tunnel_data, hw_bvi_ifname) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_WARN("%s has no host path: the switch's own addresses in the VRF of VNI %u are unreachable over the tunnel",
+            hw_bvi_ifname, tunnel_data.vni);
+    }
+
     //Create bridge and set BVI to the BD
     vpp_status = set_sw_interface_l2_bridge(hw_bvi_ifname, bd_id, true, VPP_API_PORT_TYPE_BVI);
     if (vpp_status != 0) {
@@ -632,7 +695,7 @@ TunnelManager::create_vpp_vxlan_decap(
     bridge_created = true;
 
     //bind bvi to vrf
-    vpp_status = set_interface_vrf(hw_bvi_ifname, 0, tunnel_data.ip_vrf->m_vrf_id, tunnel_data.ip_vrf->m_is_ipv6);
+    vpp_status = set_decap_bvi_table(hw_bvi_ifname, tunnel_data.ip_vrf->m_vrf_id);
     if (vpp_status != 0) {
         SWSS_LOG_ERROR("Failed to bind VXLAN bvi interface to vrf");
         return rollback();
@@ -685,6 +748,8 @@ TunnelManager::remove_vpp_vxlan_decap(
 
     snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", tunnel_data.bd_id);
 
+    remove_decap_host_path(tunnel_data, hw_bvi_ifname);
+
     delete_bvi_interface(hw_bvi_ifname);
 
     // Detach the vxlan tunnel interface from the BD before deleting the BD. The
@@ -704,6 +769,142 @@ TunnelManager::remove_vpp_vxlan_decap(
     SWSS_LOG_INFO("successfully deleted decap of vxlan tunnel %d with BD %d",
                         tunnel_data.sw_if_index, tunnel_data.bd_id);
     return SAI_STATUS_SUCCESS;
+}
+
+std::string
+TunnelManager::read_netdev_master(
+    _In_ const std::string& netdev)
+{
+    SWSS_LOG_ENTER();
+
+    std::string link = "/sys/class/net/" + netdev + "/master";
+    char target[PATH_MAX];
+
+    ssize_t len = readlink(link.c_str(), target, sizeof(target) - 1);
+    if (len <= 0) {
+        return "";
+    }
+    target[len] = '\0';
+
+    // the link reads ../<master>
+    const char *slash = strrchr(target, '/');
+    return slash ? std::string(slash + 1) : std::string(target);
+}
+
+std::string
+TunnelManager::get_kernel_vrf(
+    _In_ sai_object_id_t vr_oid)
+{
+    SWSS_LOG_ENTER();
+
+    auto& objects = m_switch_db->m_objectHash;
+    auto rifs = objects.find(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto vlans = objects.find(SAI_OBJECT_TYPE_VLAN);
+
+    if (rifs == objects.end() || vlans == objects.end()) {
+        return "";
+    }
+
+    auto md_type = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_TYPE);
+    auto md_vr = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID);
+    auto md_vlan = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
+    auto md_vlan_id = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_VLAN, SAI_VLAN_ATTR_VLAN_ID);
+
+    for (auto& rif: rifs->second) {
+        auto& attrs = rif.second;
+        auto type = attrs.find(md_type->attridname);
+        auto vr = attrs.find(md_vr->attridname);
+        auto vlan = attrs.find(md_vlan->attridname);
+
+        if (type == attrs.end() || vr == attrs.end() || vlan == attrs.end() ||
+            type->second->getAttr()->value.s32 != SAI_ROUTER_INTERFACE_TYPE_VLAN ||
+            vr->second->getAttr()->value.oid != vr_oid) {
+            continue;
+        }
+
+        auto vlan_obj = vlans->second.find(sai_serialize_object_id(vlan->second->getAttr()->value.oid));
+        if (vlan_obj == vlans->second.end()) {
+            continue;
+        }
+        auto vid = vlan_obj->second.find(md_vlan_id->attridname);
+        if (vid == vlan_obj->second.end()) {
+            continue;
+        }
+
+        // SONiC names a VLAN's SVI Vlan<id>, and enslaves it to the VRF.
+        std::string vrf = m_netdev_master("Vlan" + std::to_string(vid->second->getAttr()->value.u16));
+        if (!vrf.empty()) {
+            return vrf;
+        }
+    }
+    return "";
+}
+
+sai_status_t
+TunnelManager::create_decap_host_path(
+    _Inout_ TunnelVPPData& tunnel_data,
+    _In_ const char* hw_bvi_ifname)
+{
+    SWSS_LOG_ENTER();
+
+    // A packet decapsulated into the VRF for one of the switch's own addresses
+    // (a BGP session to a loopback, say) is punted from the BVI, and without a
+    // linux-cp pair VPP has nowhere to punt it and drops it. Pair the BVI with
+    // a tap and redirect the tap into the VRF's kernel device, the same tc
+    // arrangement vpp_add_lpb uses for a loopback.
+    //
+    // The pair has to exist before the BVI joins its bridge domain. The
+    // sonic_ext plugin classifies a pair once, when it is added, and turns on
+    // aggr-tap-redirect for the tap of any BVI. That feature re-steers a punt
+    // to the tap of the port the packet arrived on, which is right for a VLAN
+    // SVI and wrong here: that port is the underlay, so the inner packet would
+    // reach the kernel on it, outside the VRF.
+    if (!tunnel_data.ip_vrf) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string vrf = get_kernel_vrf(tunnel_data.ip_vrf->m_obj_id);
+    if (vrf.empty()) {
+        SWSS_LOG_NOTICE("No kernel VRF found for the VR of VNI %u, %s gets no host path",
+            tunnel_data.vni, hw_bvi_ifname);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string tap = std::string("tap_") + hw_bvi_ifname;
+
+    if (configure_lcp_interface(hw_bvi_ifname, tap.c_str(), true) != 0) {
+        SWSS_LOG_ERROR("Failed to pair %s with host tap %s", hw_bvi_ifname, tap.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+    tunnel_data.decap_host_if = tap;
+
+    if (m_add_tc_redirect(tap, vrf) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to redirect host tap %s into VRF %s", tap.c_str(), vrf.c_str());
+        // Without the redirect the pair punts into the tap outside the VRF,
+        // which is worse than no host path at all. Take it back down.
+        remove_decap_host_path(tunnel_data, hw_bvi_ifname);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("%s punts to host tap %s, redirected into VRF %s",
+        hw_bvi_ifname, tap.c_str(), vrf.c_str());
+    return SAI_STATUS_SUCCESS;
+}
+
+void
+TunnelManager::remove_decap_host_path(
+    _Inout_ TunnelVPPData& tunnel_data,
+    _In_ const char* hw_bvi_ifname)
+{
+    SWSS_LOG_ENTER();
+
+    if (tunnel_data.decap_host_if.empty()) {
+        return;
+    }
+
+    // the tc filter goes with the tap
+    configure_lcp_interface(hw_bvi_ifname, tunnel_data.decap_host_if.c_str(), false);
+    tunnel_data.decap_host_if.clear();
 }
 
 sai_status_t
@@ -1926,7 +2127,7 @@ TunnelManager::create_vxlan_decap_term(
         rollback_bd_bvi();
         return SAI_STATUS_FAILURE;
     }
-    if (set_interface_vrf(hw_bvi_ifname, 0, ip_vrf->m_vrf_id, ip_vrf->m_is_ipv6) != 0) {
+    if (set_decap_bvi_table(hw_bvi_ifname, ip_vrf->m_vrf_id) != 0) {
         SWSS_LOG_ERROR("VXLAN decap term: failed to set VRF %u on BVI %s for VNI %u",
                        ip_vrf->m_vrf_id, hw_bvi_ifname, vni);
         rollback_bd_bvi();
