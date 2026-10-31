@@ -10,7 +10,6 @@
 
 #include "SwitchVppUtils.h"
 
-#include <arpa/inet.h>
 #include <set>
 
 using namespace saivs;
@@ -829,11 +828,6 @@ void SwitchVpp::vpp_set_dhcp_trap_copy(
     for (uint32_t vrf_id : vrfs)
     {
         vpp_ip4_limited_broadcast_receive(vrf_id, copy);
-    }
-
-    if (!copy && !vrfs.empty())
-    {
-        vpp_sonic_ext_copp_ip2me_addr_add_del(htonl(INADDR_BROADCAST), false);
     }
 }
 

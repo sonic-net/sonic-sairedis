@@ -1741,8 +1741,14 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
     SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
     vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
 
-    if (m_dhcp_trap_copy && !has_vrf_table) {
-        vpp_ip4_limited_broadcast_receive(vrf_id, true);
+    if (!has_vrf_table) {
+        if (vpp_sonic_ext_copp_ip2me_addr_add_del(htonl(INADDR_BROADCAST), true) != 0) {
+            SWSS_LOG_ERROR("Failed to add 255.255.255.255 to the CoPP IP2ME addresses, "
+                           "so limited broadcasts reach the CPU unpoliced");
+        }
+        if (m_dhcp_trap_copy) {
+            vpp_ip4_limited_broadcast_receive(vrf_id, true);
+        }
     }
 
     uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
@@ -1802,9 +1808,10 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
  * switch without a COPY DHCP trap (such as a T1 spine) does not punt limited
  * broadcasts to the CPU.
  *
- * While COPY is active a limited broadcast is to-me traffic, so the address
- * also goes into sonic-ext-copp-ip2me's address set with the switch's own
- * addresses, and the IP2ME trap group's policer meters it on the punt path.
+ * While COPY is active a limited broadcast is to-me traffic, and
+ * vpp_add_ip_vrf() adds 255.255.255.255 to sonic-ext-copp-ip2me's address set
+ * with the switch's own addresses so the IP2ME trap group's policer meters
+ * limited broadcasts on the punt path regardless of trap mode.
  */
 int SwitchVpp::vpp_ip4_limited_broadcast_receive(
         _In_ uint32_t vrf_id,
@@ -1844,13 +1851,6 @@ int SwitchVpp::vpp_ip4_limited_broadcast_receive(
     {
         SWSS_LOG_NOTICE("%s the 255.255.255.255/32 local receive in VRF %u",
                 is_add ? "Added" : "Removed", vrf_id);
-    }
-
-    if (ret == 0 && is_add &&
-            vpp_sonic_ext_copp_ip2me_addr_add_del(htonl(INADDR_BROADCAST), true) != 0)
-    {
-        SWSS_LOG_ERROR("Failed to add 255.255.255.255 to the CoPP IP2ME addresses, "
-                "so limited broadcasts reach the CPU unpoliced");
     }
 
     return ret;

@@ -1634,7 +1634,6 @@ class SwitchVppDhcpTrap : public ::testing::Test
             EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcpOnWire(false)));
             EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcpOnWire(true)));
             EXPECT_FALSE(receivesLimitedBroadcast(0));
-            EXPECT_FALSE(policesLimitedBroadcast());
         }
 
         // COPY: flooded on both members, and the BVI's copy received, under the IP2ME policer
@@ -1764,10 +1763,11 @@ TEST_F(SwitchVppDhcpTrap, CopyLeavesTheOtherPuntsAlone)
 }
 
 /*
- * The local 255.255.255.255/32 route and IP2ME entry are installed only while
- * the DHCP trap action is COPY: under TRAP (or without a DHCP trap) a client
- * broadcast is punted at the VLAN member and routed ports keep VPP's default
- * drop on 255.255.255.255/32.
+ * The local 255.255.255.255/32 route is installed only while the DHCP trap
+ * action is COPY: under TRAP (or without a DHCP trap) a client broadcast is
+ * punted at the VLAN member and routed ports keep VPP's default drop on
+ * 255.255.255.255/32, while 255.255.255.255 stays in the IP2ME address set once
+ * any VRF table is set up.
  */
 TEST_F(SwitchVppDhcpTrap, TheBviTableReceivesLimitedBroadcastsOnlyUnderCopy)
 {
@@ -1780,6 +1780,7 @@ TEST_F(SwitchVppDhcpTrap, TheBviTableReceivesLimitedBroadcastsOnlyUnderCopy)
     createBvi();
 
     expectTrap();
+    EXPECT_TRUE(policesLimitedBroadcast());
 
     setTrapAction(trap, SAI_PACKET_ACTION_COPY);
     expectCopy();
@@ -1793,17 +1794,18 @@ TEST_F(SwitchVppDhcpTrap, TheBviTableReceivesLimitedBroadcastsOnlyUnderCopy)
     setTrapAction(trap, SAI_PACKET_ACTION_TRAP);
 
     EXPECT_FALSE(receivesLimitedBroadcast(0));
-    EXPECT_FALSE(policesLimitedBroadcast());
+    EXPECT_TRUE(policesLimitedBroadcast());
 }
 
 TEST_F(SwitchVppDhcpTrap, AVrfTableReceivesLimitedBroadcastsUntilItIsRemoved)
 {
     auto vrf = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
 
-    // without a COPY DHCP trap, a VRF table keeps VPP's default drop
+    // without a COPY DHCP trap, a VRF table keeps VPP's default drop while
+    // 255.255.255.255 is registered in the IP2ME address set
     ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
     EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
-    EXPECT_FALSE(policesLimitedBroadcast());
+    EXPECT_TRUE(policesLimitedBroadcast());
     ASSERT_EQ(0, m_sw->vpp_del_ip_vrf(vrf));
 
     createTrap(SAI_PACKET_ACTION_COPY);
@@ -1832,7 +1834,7 @@ TEST_F(SwitchVppDhcpTrap, AVrfTableReceivesLimitedBroadcastsUntilItIsRemoved)
     EXPECT_EQ("ip_vrf_del", vppMock().calls[1].api);
     EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
 
-    // the address set is switch-wide while COPY is active
+    // the address set is switch-wide and stays once added
     EXPECT_TRUE(policesLimitedBroadcast());
 }
 
