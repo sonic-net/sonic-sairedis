@@ -363,3 +363,152 @@ TEST_F(TestPortPhyAttr, CollectDataSkipsWhenInitAttrDataFails)
 
     flexCounter->removeCounter(failPortOid);
 }
+
+/**
+ * Test that collectData() collects only the successfully initialized attributes
+ * when one attribute fails initAttrData(), leaving the others unaffected.
+ *
+ * Scenario: SAI does not support SAI_PORT_ATTR_RX_SIGNAL_DETECT (returns
+ * NOT_SUPPORTED on lane count query), but FEC_ALIGNMENT_LOCK and RX_SNR
+ * are supported and return valid data.
+ *
+ * Expected behaviour after the fix:
+ *   - phy_rx_signal_detect is NOT written to COUNTERS_DB
+ *   - pcs_fec_lane_alignment_lock IS written to COUNTERS_DB with correct data
+ *   - rx_snr IS written to COUNTERS_DB with correct data
+ *   - sai_get() is called once with only the 2 successful attrs
+ */
+TEST_F(TestPortPhyAttr, CollectDataPartialSuccess)
+{
+    sai_object_id_t partialPortOid = 0x1000000000002;
+    sai_object_id_t partialPortRid = 0x1000000000002;
+
+    sai->mock_get = [](sai_object_type_t object_type,
+                      sai_object_id_t /*object_id*/,
+                      uint32_t attr_count,
+                      sai_attribute_t *attr_list) -> sai_status_t
+    {
+        if (object_type != SAI_OBJECT_TYPE_PORT)
+        {
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            switch (attr_list[i].id)
+            {
+                case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+                    // Simulate unsupported attribute: lane count query fails
+                    return SAI_STATUS_NOT_SUPPORTED;
+
+                case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                    if (attr_list[i].value.portlanelatchstatuslist.list == nullptr)
+                    {
+                        attr_list[i].value.portlanelatchstatuslist.count =
+                            MAX_LANES_PER_PORT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    }
+                    for (uint32_t lane = 0;
+                         lane < attr_list[i].value.portlanelatchstatuslist.count
+                         && lane < MAX_LANES_PER_PORT; lane++)
+                    {
+                        attr_list[i].value.portlanelatchstatuslist.list[lane]
+                            .lane = lane;
+                        attr_list[i].value.portlanelatchstatuslist.list[lane]
+                            .value.changed = (lane % 2 == 0);
+                        attr_list[i].value.portlanelatchstatuslist.list[lane]
+                            .value.current_status = true;
+                    }
+                    attr_list[i].value.portlanelatchstatuslist.count =
+                        std::min(attr_list[i].value.portlanelatchstatuslist.count,
+                                 static_cast<uint32_t>(MAX_LANES_PER_PORT));
+                    break;
+
+                case SAI_PORT_ATTR_RX_SNR:
+                    if (attr_list[i].value.portsnrlist.list == nullptr)
+                    {
+                        attr_list[i].value.portsnrlist.count = MAX_LANES_PER_PORT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    }
+                    for (uint32_t lane = 0;
+                         lane < attr_list[i].value.portsnrlist.count
+                         && lane < MAX_LANES_PER_PORT; lane++)
+                    {
+                        attr_list[i].value.portsnrlist.list[lane].lane = lane;
+                        attr_list[i].value.portsnrlist.list[lane].snr =
+                            static_cast<sai_uint16_t>(200 + lane);
+                    }
+                    attr_list[i].value.portsnrlist.count =
+                        std::min(attr_list[i].value.portsnrlist.count,
+                                 static_cast<uint32_t>(MAX_LANES_PER_PORT));
+                    break;
+
+                default:
+                    return SAI_STATUS_NOT_SUPPORTED;
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    vector<swss::FieldValueTuple> portPhyAttrValues;
+    std::string attrIds =
+        "SAI_PORT_ATTR_RX_SIGNAL_DETECT,"
+        "SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK,"
+        "SAI_PORT_ATTR_RX_SNR";
+    portPhyAttrValues.emplace_back(PORT_PHY_ATTR_ID_LIST, attrIds);
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+    flexCounter->addCounter(partialPortOid, partialPortRid, portPhyAttrValues);
+
+    vector<swss::FieldValueTuple> pluginValues;
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    flexCounter->addCounterPlugin(pluginValues);
+
+    usleep(1000 * 1050); // 1.05 seconds - one poll cycle
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, PORT_PHY_ATTR_TABLE, false);
+
+    std::string expectedKey = toOid(partialPortOid);
+
+    // The failing attribute must NOT appear in DB
+    std::string rxSignalDetectValue;
+    bool found = countersTable.hget(
+        expectedKey, "phy_rx_signal_detect", rxSignalDetectValue);
+    EXPECT_FALSE(found)
+        << "phy_rx_signal_detect should NOT be in COUNTERS_DB "
+           "when its initAttrData fails";
+
+    // The successful attributes MUST appear in DB with correct data
+    std::string fecAlignmentValue;
+    found = countersTable.hget(
+        expectedKey, "pcs_fec_lane_alignment_lock", fecAlignmentValue);
+    EXPECT_TRUE(found)
+        << "pcs_fec_lane_alignment_lock MUST be in COUNTERS_DB "
+           "even when another attribute's initAttrData failed";
+
+    std::string rxSnrValue;
+    found = countersTable.hget(expectedKey, "rx_snr", rxSnrValue);
+    EXPECT_TRUE(found)
+        << "rx_snr MUST be in COUNTERS_DB "
+           "even when another attribute's initAttrData failed";
+
+    // Spot-check rx_snr lane values
+    for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++)
+    {
+        uint32_t raw_snr = 200 + lane;
+        double dB = std::round(
+            static_cast<double>(raw_snr) / 256.0 * 100.0) / 100.0;
+        std::ostringstream expected_entry;
+        expected_entry << "\"" << lane << "\":" << dB;
+        EXPECT_TRUE(
+            rxSnrValue.find(expected_entry.str()) != std::string::npos)
+            << "Lane " << lane << " SNR should be " << dB << " dB"
+            << "\nActual: " << rxSnrValue;
+    }
+
+    flexCounter->removeCounter(partialPortOid);
+}
