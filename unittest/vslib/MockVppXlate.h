@@ -21,6 +21,14 @@ struct VppCall
     bool flag;
 };
 
+struct VppRouteCall
+{
+    bool isAdd;
+    bool isMultipath;
+    uint32_t nextHopCount;
+    std::string nextHop;
+};
+
 /**
  * @brief One vpp_pbh_profile_add_del() call, carrying the field vector exactly
  * as the SAI translation produced it.
@@ -95,6 +103,9 @@ struct VppMock
     int mplsResult = 0;
     int adminResult = 0;
     int deleteResult = 0;
+    uint32_t routeStatsIndex = 42;
+    std::vector<int> routeResults;
+    std::vector<VppRouteCall> routeCalls;
 
     // sonic-ext features reported as enabled. "iface-loopback" keeps its own
     // flag because the loopback tests predate this set.
