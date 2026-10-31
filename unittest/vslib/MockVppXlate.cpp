@@ -127,6 +127,34 @@ int TestableSwitchVpp::vs_set_dev_admin_up(const char *, bool)
     return 0;
 }
 
+extern "C" int __wrap_ip_route_add_del_get_stats(
+        vpp_ip_route_t *route, bool is_add, uint32_t *stats_index)
+{
+    SWSS_LOG_ENTER();
+    char next_hop[INET6_ADDRSTRLEN] = {};
+    if (route->nexthop_cnt)
+    {
+        const auto& address = route->nexthop[0].addr;
+        if (address.sa_family == AF_INET)
+        {
+            inet_ntop(AF_INET, &address.addr.ip4.sin_addr, next_hop, sizeof(next_hop));
+        }
+        else
+        {
+            inet_ntop(AF_INET6, &address.addr.ip6.sin6_addr, next_hop, sizeof(next_hop));
+        }
+    }
+    auto& mock = vppMock();
+    auto index = mock.routeCalls.size();
+    mock.routeCalls.push_back({is_add, route->is_multipath, route->nexthop_cnt, next_hop});
+    int result = index < mock.routeResults.size() ? mock.routeResults[index] : 0;
+    if (result == 0 && stats_index)
+    {
+        *stats_index = mock.routeStatsIndex;
+    }
+    return result;
+}
+
 int TestableSwitchVpp::exec(const std::string& command, std::string& output)
 {
     SWSS_LOG_ENTER();
