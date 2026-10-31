@@ -1021,6 +1021,10 @@ namespace saivs
             int vpp_del_ip_vrf(
                     _In_ sai_object_id_t objectId);
 
+            int vpp_ip4_limited_broadcast_receive(
+                    _In_ uint32_t vrf_id,
+                    _In_ bool is_add);
+
             int vpp_get_vrf_id(
                     _In_ const char *linux_ifname,
                     _Out_ uint32_t *vrf_id);
@@ -1183,6 +1187,20 @@ namespace saivs
             sai_status_t uninstallTrapClassifyNow(
                     _In_ sai_object_id_t trap_oid,
                     _In_ const vpp_trap_entry_t &trap);
+
+        protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCP packet action
+
+            // True while every DHCP hostif trap has SAI_PACKET_ACTION_COPY
+            // (and there is at least one), which floods DHCPv4 client
+            // broadcasts in their VLAN and copies them to the CPU. Otherwise
+            // they are trapped, as before. See SwitchVppFdb.cpp.
+            bool m_dhcp_trap_copy = false;
+
+            // Re-derives m_dhcp_trap_copy from m_trap_map and applies it.
+            void vpp_update_dhcp_trap_action();
+
+            void vpp_set_dhcp_trap_copy(
+                    _In_ bool copy);
 
 
         protected: // VPP
