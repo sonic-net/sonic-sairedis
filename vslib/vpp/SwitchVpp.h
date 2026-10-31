@@ -1737,6 +1737,13 @@ namespace saivs
             bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
             bool generateFdbAgedEvent(const VppFdbKey &key);
 
+            // Delete the tracked MAC addresses that inScope() selects from VPP's
+            // L2FIB one by one, ahead of a lazy flush, except those SAI holds
+            // as static; see vpp_fdbentry_flush(). Returns how many VPP deleted.
+            size_t vpp_fdb_entries_delete_from_l2fib(
+                    _In_ const std::string& scope,
+                    _In_ const std::function<bool(const VppFdbKey&, uint32_t)>& inScope);
+
             // Reconcile m_vpp_fdb_entries/FDB notifications with VPP's L2FIB
             // after MAC events were lost (VPP_MAC_ACTION_RESYNC). Returns
             // false, changing nothing, if VPP's L2FIB cannot be dumped.
