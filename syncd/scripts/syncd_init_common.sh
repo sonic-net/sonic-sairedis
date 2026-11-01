@@ -812,8 +812,9 @@ config_syncd()
                 sonic-db-cli CONFIG_DB EVAL '
                     local rows = {}
                     for _, key in ipairs(redis.call("KEYS", "PORT|*")) do
-                        local values = redis.call("HMGET", key, "lanes", "alias", "index")
-                        local row = {key:sub(6), values[1], values[2], values[3]}
+                        local name = key:sub(6)
+                        local values = redis.call("HMGET", key, "lanes", "alias")
+                        local row = {name, values[1], values[2] or name}
                         table.insert(rows, table.concat(row, "\t"))
                     end
                     return rows
