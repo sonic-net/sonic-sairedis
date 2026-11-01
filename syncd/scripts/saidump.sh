@@ -28,21 +28,14 @@ import subprocess
 import sys
 
 hostname, port, socket_path, destination = sys.argv[1:]
-command = ['redis-cli']
-password_input = None
 if int(port) == 0:
-    from sonic_py_common.redis_auth import connection_kwargs
-    command += ['-s', socket_path]
-    credentials = connection_kwargs(unix_socket_path=socket_path)
-    if 'password' in credentials:
-        command += ['--user', credentials['username'], '--askpass']
-        password = credentials['password']
-        password_input = (password.encode() if isinstance(password, str) else password) + b'\n'
+    from swsscommon.swsscommon import exportRedisRdb
+    exportRedisRdb(socket_path, destination, 60000)
 else:
-    command += ['-h', hostname, '-p', port]
-command += ['--rdb', destination]
-subprocess.run(command, input=password_input, stdout=subprocess.DEVNULL,
-               stderr=subprocess.DEVNULL, check=True)
+    command = ['redis-cli', '-h', hostname, '-p', port, '--rdb', destination]
+    subprocess.run(command, stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL, check=True)
+
 PY
   [ $? -eq 0 ] || return 1
 

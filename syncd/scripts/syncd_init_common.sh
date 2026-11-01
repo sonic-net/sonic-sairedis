@@ -44,7 +44,7 @@ mkdir -p /var/log/sai_failure_dump/
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
 SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
 SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.swss_zmq')
-ASYNC_REC=$(sonic-db-cli CONFIG_DB hget "SYSTEM_DEFAULTS|async_rec" "status")
+ASYNC_REC=$(sonic-db-cli -s CONFIG_DB hget "SYSTEM_DEFAULTS|async_rec" "status")
 
 if [ "$SWITCH_TYPE" == "dpu" ]; then
     CMD_ARGS+=" -z zmq_sync -x $CONTEXT_CONFIG_FILE"
@@ -90,7 +90,7 @@ case "$(cat /proc/cmdline)" in
     ;;
   *SONIC_BOOT_TYPE=fast*|*fast-reboot*)
     # check that the key exists
-    SYSTEM_FAST_REBOOT=`sonic-db-cli STATE_DB hget "FAST_RESTART_ENABLE_TABLE|system" enable`
+    SYSTEM_FAST_REBOOT=`sonic-db-cli -s STATE_DB hget "FAST_RESTART_ENABLE_TABLE|system" enable`
     if [[ x"${SYSTEM_FAST_REBOOT}" == x"true" ]]; then
        FAST_REBOOT='yes'
     else
@@ -509,7 +509,7 @@ config_syncd_cavium()
     export XP_ROOT=/usr/bin/
 
     # Wait until redis-server starts
-    until [ $(sonic-db-cli PING | grep -c PONG) -gt 0 ]; do
+    until [ $(sonic-db-cli -s PING | grep -c PONG) -gt 0 ]; do
         sleep 1
     done
 }
@@ -567,7 +567,7 @@ config_syncd_nephos()
 
 config_syncd_vs()
 {
-    if [[ $(sonic-db-cli CONFIG_DB hget 'DEVICE_METADATA|localhost' switch_type) == 'dpu' ]]; then
+    if [[ $(sonic-db-cli -s CONFIG_DB hget 'DEVICE_METADATA|localhost' switch_type) == 'dpu' ]]; then
         if [[ -f /usr/bin/syncd_dash ]]; then
             CMD_SYNCD=/usr/bin/syncd_dash
             CMD=$CMD_SYNCD
