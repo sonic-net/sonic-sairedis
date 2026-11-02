@@ -225,27 +225,6 @@ extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabl
 }
 
 /*
- * L2 punt classify tables: each table gets a new index, as from VPP, and each
- * session is kept with the node it sends a frame to.
- */
-extern "C" int __wrap_vpp_classify_table_create(uint32_t, uint32_t, uint32_t, uint32_t,
-        uint32_t, uint32_t, const uint8_t *, uint32_t, uint32_t *new_table_index)
-{
-    SWSS_LOG_ENTER();
-    *new_table_index = vppMock().nextClassifyTable++;
-    return 0;
-}
-
-extern "C" int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
-        const uint8_t *match, uint32_t match_len, uint32_t, int32_t, uint8_t)
-{
-    SWSS_LOG_ENTER();
-    vppMock().classifySessions.push_back({table_index, hit_next_index,
-            std::vector<uint8_t>(match, match + match_len)});
-    return 0;
-}
-
-/*
  * PBH. The indices are handed out by VPP, so the mock allocates them the same
  * way: an in-index of ~0 asks for a new one, anything else names an existing
  * object to replace or drop.
@@ -505,16 +484,18 @@ extern "C" int __wrap_get_interface_vrf(const char *name, bool, uint32_t *table)
     return vppMock().getVrfResult;
 }
 
-extern "C" int __wrap_ip_vrf_add(uint32_t table, const char *, bool)
+extern "C" int __wrap_ip_vrf_add(uint32_t table, const char *vrf_name, bool)
 {
     SWSS_LOG_ENTER();
     vppMock().vrfTables.insert(table);
+    vppMock().calls.push_back({"ip_vrf_add", vrf_name ? vrf_name : "", table, 0, true});
     return 0;
 }
 
-extern "C" int __wrap_ip_vrf_del(uint32_t table, const char *, bool)
+extern "C" int __wrap_ip_vrf_del(uint32_t table, const char *vrf_name, bool)
 {
     SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"ip_vrf_del", vrf_name ? vrf_name : "", table, 0, false});
     vppMock().vrfTables.erase(table);
     return 0;
 }
@@ -650,12 +631,6 @@ int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint3
         return -1;
     }
     *next_index = next->second;
-    return 0;
-}
-
-int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
-        uint32_t ip6_table_index, uint32_t other_table_index, bool is_input) {
-    SWSS_LOG_ENTER();
     return 0;
 }
 
