@@ -2794,6 +2794,56 @@ TEST_F(FlexCounterTcpFallback, tcpFallbackWhenNoUnixSocket)
     countersTable.del(key);
 }
 
+TEST(FlexCounter, onlyProbeRequestedCounterGroups)
+{
+    ScopedPerPortCounterDiscovery enablePerPortCounterDiscovery(true);
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_QUEUE);
+    auto oids = generateOids(2, SAI_OBJECT_TYPE_QUEUE);
+    std::vector<uint32_t> secondQueueProbeSizes;
+    std::vector<sai_stat_id_t> secondQueueProbedCounters;
+
+    // Force fallback discovery
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t,
+                                        sai_stat_capability_list_t *)
+    {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t,
+        const sai_object_key_t *, uint32_t,
+        const sai_stat_id_t *, sai_stats_mode_t,
+        sai_status_t *, uint64_t *)
+    {
+        return SAI_STATUS_FAILURE;
+    };
+
+    // Record which counters are checked for the second queue
+    sai->mock_getStats = [&](sai_object_type_t, sai_object_id_t rid,
+                             uint32_t count, const sai_stat_id_t *counterIds, uint64_t *)
+    {
+        if (rid == oids[1])
+        {
+            secondQueueProbeSizes.push_back(count);
+            secondQueueProbedCounters.insert(
+                secondQueueProbedCounters.end(), counterIds, counterIds + count);
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    // Queue 0 caches a two-counter group; queue 1 requests a subset of that group
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+    fc.addCounter(oids[0], oids[0],
+        {{QUEUE_COUNTER_ID_LIST, "SAI_QUEUE_STAT_WRED_ECN_MARKED_BYTES,SAI_QUEUE_STAT_WRED_DROPPED_PACKETS"}});
+    fc.addCounter(oids[1], oids[1],
+        {{QUEUE_COUNTER_ID_LIST, "SAI_QUEUE_STAT_WRED_DROPPED_PACKETS"}});
+
+    // The cached super set is skipped, single counter group is probed twice total
+    EXPECT_EQ(secondQueueProbeSizes, std::vector<uint32_t>({1, 1}));
+    EXPECT_EQ(secondQueueProbedCounters,
+              std::vector<sai_stat_id_t>({SAI_QUEUE_STAT_WRED_DROPPED_PACKETS,
+                                          SAI_QUEUE_STAT_WRED_DROPPED_PACKETS}));
+}
+
 TEST(FlexCounter, dynamicCounterGroups)
 {
     ScopedPerPortCounterDiscovery enablePerPortCounterDiscovery(true);
