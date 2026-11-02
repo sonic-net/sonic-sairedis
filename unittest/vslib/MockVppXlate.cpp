@@ -225,6 +225,27 @@ extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabl
 }
 
 /*
+ * L2 punt classify tables: each table gets a new index, as from VPP, and each
+ * session is kept with the node it sends a frame to.
+ */
+extern "C" int __wrap_vpp_classify_table_create(uint32_t, uint32_t, uint32_t, uint32_t,
+        uint32_t, uint32_t, const uint8_t *, uint32_t, uint32_t *new_table_index)
+{
+    SWSS_LOG_ENTER();
+    *new_table_index = vppMock().nextClassifyTable++;
+    return 0;
+}
+
+extern "C" int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+        const uint8_t *match, uint32_t match_len, uint32_t, int32_t, uint8_t)
+{
+    SWSS_LOG_ENTER();
+    vppMock().classifySessions.push_back({table_index, hit_next_index,
+            std::vector<uint8_t>(match, match + match_len)});
+    return 0;
+}
+
+/*
  * PBH. The indices are handed out by VPP, so the mock allocates them the same
  * way: an in-index of ~0 asks for a new one, anything else names an existing
  * object to replace or drop.
@@ -619,10 +640,16 @@ uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
     return vppMock().nextSwIfIndex++;
 }
 
-// no classify punt in these tests: its one-time setup fails, which the VLAN member path tolerates
+// Adds only the nodes in vppMock().nodeNexts
 int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint32_t *next_index) {
     SWSS_LOG_ENTER();
-    return -1;
+    auto next = vppMock().nodeNexts.find(next_name);
+    if (next == vppMock().nodeNexts.end())
+    {
+        return -1;
+    }
+    *next_index = next->second;
+    return 0;
 }
 
 int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
