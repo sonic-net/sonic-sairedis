@@ -1083,6 +1083,7 @@ static void set_reply_sw_if_index (vl_api_interface_index_t sw_if_index)
  * from an earlier request that timed out (see vpp_l2fib_dump()).
  */
 static uint32_t last_ping_reply_context;
+static int last_ping_reply_status;
 
 static void
 vl_api_control_ping_reply_t_handler (vl_api_control_ping_reply_t *mp)
@@ -1090,7 +1091,8 @@ vl_api_control_ping_reply_t_handler (vl_api_control_ping_reply_t *mp)
   vat_main_t *vam = cur_vam();
 
   last_ping_reply_context = mp->context;
-  set_reply_status((int)ntohl ((uint32_t)mp->retval));
+  last_ping_reply_status = (int)ntohl ((uint32_t)mp->retval);
+  set_reply_status(last_ping_reply_status);
 
   if (vam->socket_client_main)
     vam->socket_client_main->control_pings_outstanding--;
@@ -2304,6 +2306,55 @@ vl_api_acl_stats_intf_counters_enable_reply_t_handler (vl_api_acl_stats_intf_cou
     set_reply_status(retval);
 }
 
+typedef struct {
+    bool seen;
+    int retval;
+} acl_list_set_result_t;
+
+typedef struct {
+    u32 sw_if_index;
+    bool seen;
+    bool invalid;
+    u32 input_count;
+    u32 output_count;
+    u32 input[255];
+    u32 output[255];
+} acl_list_dump_result_t;
+
+static void
+vl_api_acl_interface_set_acl_list_reply_t_handler(vl_api_acl_interface_set_acl_list_reply_t *msg)
+{
+    acl_list_set_result_t *result = (void *)get_index_ptr(msg->context);
+    if (result) {
+        result->seen = true;
+        result->retval = (int)ntohl((uint32_t)msg->retval);
+        set_reply_status(result->retval);
+    }
+}
+
+static void
+vl_api_acl_interface_list_details_t_handler(vl_api_acl_interface_list_details_t *msg)
+{
+    acl_list_dump_result_t *result = (void *)get_index_ptr(msg->context);
+    if (!result || ntohl(msg->sw_if_index) != result->sw_if_index) {
+        return;
+    }
+    if (result->seen || msg->n_input > msg->count) {
+        result->invalid = true;
+        return;
+    }
+    result->seen = true;
+    result->input_count = msg->n_input;
+    result->output_count = msg->count - msg->n_input;
+    for (u32 i = 0; i < msg->count; ++i) {
+        if (i < msg->n_input) {
+            result->input[i] = ntohl(msg->acls[i]);
+        } else {
+            result->output[i - msg->n_input] = ntohl(msg->acls[i]);
+        }
+    }
+}
+
 static void
 vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_t *msg)
 {
@@ -2416,6 +2467,8 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(ACL_MSG_ID(ACL_DEL_REPLY), acl_del_reply) \
     _(ACL_MSG_ID(ACL_STATS_INTF_COUNTERS_ENABLE_REPLY), acl_stats_intf_counters_enable_reply) \
     _(ACL_MSG_ID(ACL_INTERFACE_ADD_DEL_REPLY), acl_interface_add_del_reply) \
+    _(ACL_MSG_ID(ACL_INTERFACE_SET_ACL_LIST_REPLY), acl_interface_set_acl_list_reply) \
+    _(ACL_MSG_ID(ACL_INTERFACE_LIST_DETAILS), acl_interface_list_details) \
     _(VXLAN_MSG_ID(VXLAN_ADD_DEL_TUNNEL_V3_REPLY), vxlan_add_del_tunnel_v3_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_INTERFACE_ADD_DEL_REPLY), tunterm_acl_interface_add_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_DEL_REPLY), tunterm_acl_del_reply) \
@@ -4568,6 +4621,131 @@ static int vpp_acl_counters_enable_disable (bool enable)
 
     VPP_UNLOCK();
 
+    return ret;
+}
+
+int vpp_acl_interface_set_acl_list(const char *hwif_name,
+        const uint32_t *ingress_acls, uint32_t ingress_count,
+        const uint32_t *egress_acls, uint32_t egress_count)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_acl_interface_set_acl_list_t *mp;
+    acl_list_set_result_t result = {0};
+    int ret;
+    if (!hwif_name || ingress_count > 255 || egress_count > 255 - ingress_count ||
+        (ingress_count && !ingress_acls) || (egress_count && !egress_acls)) {
+        return -EINVAL;
+    }
+    // VPP applies the two directions sequentially. Reject duplicate indices
+    // in both lists before sending, rather than letting the second one fail.
+    for (unsigned int direction = 0; direction < 2; ++direction) {
+        const uint32_t *indices = direction ? egress_acls : ingress_acls;
+        uint32_t count = direction ? egress_count : ingress_count;
+        for (uint32_t i = 0; i < count; ++i) {
+            for (uint32_t j = 0; j < i; ++j) {
+                if (indices[i] == indices[j]) {
+                    return -EINVAL;
+                }
+            }
+        }
+    }
+    VPP_LOCK();
+    u32 index = get_swif_idx(vam, hwif_name);
+    if (index == (u32)~0) {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    uint32_t context = store_ptr(&result);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    __plugin_msg_base = acl_msg_id_base;
+    uint32_t count = ingress_count + egress_count;
+    M22(ACL_INTERFACE_SET_ACL_LIST, mp, count * sizeof(mp->acls[0]));
+    mp->context = context;
+    mp->sw_if_index = htonl(index);
+    mp->count = (u8)count;
+    mp->n_input = (u8)ingress_count;
+    for (uint32_t i = 0; i < count; ++i) {
+        mp->acls[i] = htonl(i < ingress_count ? ingress_acls[i] : egress_acls[i - ingress_count]);
+    }
+    S(mp);
+    f64 deadline = vat_time_now(vam) + 10.0;
+    while (!result.seen && vat_time_now(vam) < deadline) {
+        WR(ret);
+        if (ret == -99) {
+            break;
+        }
+        if (!result.seen) {
+            vam->result_ready = 0;
+        }
+    }
+    ret = result.seen ? result.retval : -ETIMEDOUT;
+    release_index(context);
+    if (ret) {
+        SAIVPP_ERROR("ACL list replacement failed (%d) on %s", ret, hwif_name);
+    }
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_acl_interface_get_acl_list(const char *hwif_name,
+        uint32_t *ingress_acls, uint32_t *ingress_count,
+        uint32_t *egress_acls, uint32_t *egress_count)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_acl_interface_list_dump_t *mp;
+    vl_api_control_ping_t *mp_ping;
+    acl_list_dump_result_t result = {0};
+    int ret;
+    if (!hwif_name || !ingress_acls || !ingress_count || !egress_acls || !egress_count) {
+        return -EINVAL;
+    }
+    VPP_LOCK();
+    result.sw_if_index = get_swif_idx(vam, hwif_name);
+    if (result.sw_if_index == (u32)~0) {
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+    uint32_t context = store_ptr(&result);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    __plugin_msg_base = acl_msg_id_base;
+    M(ACL_INTERFACE_LIST_DUMP, mp);
+    mp->context = context;
+    mp->sw_if_index = htonl(result.sw_if_index);
+    S(mp);
+    __plugin_msg_base = memclnt_msg_id_base;
+    PING(NULL, mp_ping);
+    mp_ping->context = context;
+    S(mp_ping);
+    // An older request can have timed out. Only our tagged ping proves that
+    // this dump has completed, rather than a late reply from that request.
+    f64 deadline = vat_time_now(vam) + 10.0;
+    while (last_ping_reply_context != context && vat_time_now(vam) < deadline) {
+        WR(ret);
+        if (ret == -99) {
+            break;
+        }
+        if (last_ping_reply_context != context) {
+            vam->result_ready = 0;
+        }
+    }
+    ret = last_ping_reply_context == context ? last_ping_reply_status : -ETIMEDOUT;
+    if (ret == 0 && (!result.seen || result.invalid)) {
+        ret = -EIO;
+    }
+    release_index(context);
+    if (ret == 0) {
+        memcpy(ingress_acls, result.input, result.input_count * sizeof(result.input[0]));
+        memcpy(egress_acls, result.output, result.output_count * sizeof(result.output[0]));
+        *ingress_count = result.input_count;
+        *egress_count = result.output_count;
+    }
+    VPP_UNLOCK();
     return ret;
 }
 

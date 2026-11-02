@@ -1495,6 +1495,29 @@ namespace saivs
                     _In_ bool is_input,
                     _In_ bool is_bind);
 
+            sai_status_t aclApplyInterfacePolicy(
+                    _In_ const std::string &hwif_name,
+                    _In_ const PortAclTables &desired,
+                    _In_ bool change_input = true,
+                    _In_ bool change_output = true);
+
+            sai_status_t aclReadInterfacePolicy(
+                    _In_ const std::string &hwif_name);
+
+            sai_status_t aclReconcileGroupPbh(
+                    _In_ sai_object_id_t port_oid,
+                    _In_ sai_object_id_t group_oid,
+                    _In_ const std::set<sai_object_id_t> &desired);
+
+            sai_status_t aclRestorePbhRegularPolicy(
+                    _In_ sai_object_id_t port_oid,
+                    _In_ sai_object_id_t group_oid,
+                    _In_ bool is_input);
+
+            void aclRecordInterfacePolicy(
+                    _In_ const std::string &hwif_name,
+                    _In_ const PortAclTables &policy);
+
             sai_status_t aclBindInterfaceDefault(
                     _In_ const std::string &hwif_name,
                     _In_ bool is_input,
@@ -1920,5 +1943,18 @@ namespace saivs
             sai_status_t bindMirrorPort(
                     _In_ sai_object_id_t portId,
                     _In_ const sai_attribute_t* attr);
+        private:
+
+            // A failed list replacement can commit one direction. Do not use
+            // an unverified opposite-direction snapshot until readback succeeds.
+            std::set<std::string> m_acl_interface_state_unknown;
+            // Successful PBH attachments are independent of regular ACL lists.
+            // Retain rejected/partial updates here until cleanup succeeds.
+            std::map<std::pair<sai_object_id_t, sai_object_id_t>,
+                std::set<sai_object_id_t>> m_acl_group_pbh_tables;
+            // PBH-only groups leave independently installed regular policy
+            // intact. Retain its rollback intent if restoration also fails.
+            std::map<std::tuple<sai_object_id_t, sai_object_id_t, bool>,
+                std::map<std::string, PortAclTables>> m_acl_pbh_regular_restore;
     };
 }

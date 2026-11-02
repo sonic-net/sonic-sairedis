@@ -72,7 +72,8 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state interface_get_state \
 				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
 				vpp_pbh_profile_add_del vpp_pbh_table_add_replace vpp_pbh_table_del \
-				vpp_pbh_interface_attach_detach vpp_rule_stats_query
+				vpp_pbh_interface_attach_detach vpp_rule_stats_query \
+				vpp_acl_interface_set_acl_list vpp_acl_interface_get_acl_list
 tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 endif
 
@@ -95,6 +96,10 @@ vpp_acl_binding_tests_LDFLAGS = \
 	-Wl,--wrap=vpp_acl_add_replace \
 	-Wl,--wrap=vpp_acl_interface_bind \
 	-Wl,--wrap=vpp_acl_interface_unbind \
+	-Wl,--wrap=vpp_acl_interface_set_acl_list \
+	-Wl,--wrap=vpp_acl_interface_get_acl_list \
+	-Wl,--wrap=vpp_tunterm_acl_interface_add_del \
+	-Wl,--wrap=vpp_pbh_interface_attach_detach \
 	-Wl,--wrap=vpp_sonic_ext_feature_get
 TESTS += vpp_acl_binding_tests
 endif

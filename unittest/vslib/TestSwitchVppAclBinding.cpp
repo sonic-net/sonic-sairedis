@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 #include <tuple>
 #include <vector>
 
@@ -15,37 +16,38 @@ using namespace saivs;
 
 namespace
 {
+    using InterfaceKey = std::pair<std::string, bool>;
     struct BindingCall
     {
         std::string interface;
-        uint32_t acl;
-        bool input;
-        bool bind;
+        std::vector<uint32_t> ingress;
+        std::vector<uint32_t> egress;
+        bool succeeded;
     };
-
-    std::vector<BindingCall> bindingCalls;
-    using InterfaceKey = std::pair<std::string, bool>;
-    using FailureKey = std::tuple<std::string, uint32_t, bool, bool>;
-    std::map<InterfaceKey, std::vector<uint32_t>> actualBindings;
-    std::map<FailureKey, unsigned int> bindingFailures;
-    const uint32_t defaultAclIndex = 900;
-    uint32_t failNextBindIndex = 0;
-
-    bool failBinding(const char *interface, uint32_t index, bool input, bool bind)
+    struct ListFailure
     {
-        auto it = bindingFailures.find(FailureKey(interface, index, input, bind));
-        if (it == bindingFailures.end()) {
-            return false;
-        }
-        if (--it->second == 0) {
-            bindingFailures.erase(it);
-        }
-        return true;
-    }
+        std::string interface;
+        bool input;
+        std::vector<uint32_t> policy;
+        unsigned int remaining;
+        bool commitBeforeFailure;
+    };
+    using TuntermKey = std::tuple<std::string, uint32_t, bool>;
+    std::vector<BindingCall> bindingCalls;
+    std::vector<ListFailure> listFailures;
+    std::map<InterfaceKey, std::vector<uint32_t>> actualBindings;
+    std::map<TuntermKey, unsigned int> tuntermFailures;
+    std::map<std::pair<std::string, uint32_t>, bool> actualTunterm;
+    std::vector<TuntermKey> tuntermCalls;
+    std::map<std::string, std::set<uint32_t>> actualPbh;
+    std::vector<TuntermKey> pbhCalls;
+    std::map<std::string, unsigned int> readFailures;
+    std::vector<std::string> readCalls;
+    const uint32_t defaultAclIndex = 900;
 }
 
-// Linker wrappers isolate only the VPP boundary. The constructors, object
-// store, getter, PORT/LAG setters and ACL binding bookkeeping remain real.
+// Only the VPP boundary is substituted. Object storage, getters, PORT/LAG
+// setters, group-member lifecycle and attachment bookkeeping remain real.
 extern "C" sai_status_t __wrap__ZN5saivs9SwitchVpp17vpp_dp_initializeEv(SwitchVpp *)
 {
     return SAI_STATUS_SUCCESS;
@@ -61,33 +63,92 @@ extern "C" int __wrap_vpp_acl_add_replace(vpp_acl_t *, uint32_t *index, bool)
     return 0;
 }
 
-extern "C" int __wrap_vpp_acl_interface_bind(const char *interface, uint32_t index, bool input)
+extern "C" int __wrap_vpp_acl_interface_set_acl_list(const char *interface,
+        const uint32_t *ingress, uint32_t ingressCount,
+        const uint32_t *egress, uint32_t egressCount)
 {
-    bindingCalls.push_back({interface, index, input, true});
-    if (index == failNextBindIndex) {
-        failNextBindIndex = 0;
+    BindingCall call{interface, {}, {}, false};
+    if (ingressCount) call.ingress.assign(ingress, ingress + ingressCount);
+    if (egressCount) call.egress.assign(egress, egress + egressCount);
+    bool fail = ingressCount + egressCount > 255;
+    bool commitBeforeFailure = false;
+    bool commitInput = false;
+    for (auto it = listFailures.begin(); it != listFailures.end(); ++it) {
+        if (it->interface == interface &&
+                it->policy == (it->input ? call.ingress : call.egress)) {
+            fail = true;
+            commitBeforeFailure = it->commitBeforeFailure;
+            commitInput = it->input;
+            if (--it->remaining == 0) listFailures.erase(it);
+            break;
+        }
+    }
+    call.succeeded = !fail;
+    bindingCalls.push_back(call);
+    if (fail && !commitBeforeFailure) return -1;
+    if (fail) {
+        // Simulate a partially applied request or a lost error reply: one
+        // direction changed, so failure must trigger readback before rollback.
+        actualBindings[InterfaceKey(interface, commitInput)] =
+            commitInput ? call.ingress : call.egress;
         return -1;
     }
-    if (failBinding(interface, index, input, true)) {
-        return -1;
-    }
-    auto &order = actualBindings[InterfaceKey(interface, input)];
-    // acl_interface_add_del appends; its already-bound status is normalized
-    // to success by the SAI boundary without changing the existing order.
-    if (std::find(order.begin(), order.end(), index) == order.end()) {
-        order.push_back(index);
-    }
+    // A successful set replaces both directions, never appends individual ACLs.
+    actualBindings[InterfaceKey(interface, true)] = call.ingress;
+    actualBindings[InterfaceKey(interface, false)] = call.egress;
     return 0;
 }
 
-extern "C" int __wrap_vpp_acl_interface_unbind(const char *interface, uint32_t index, bool input)
+extern "C" int __wrap_vpp_acl_interface_get_acl_list(const char *interface,
+        uint32_t *ingress, uint32_t *ingressCount, uint32_t *egress, uint32_t *egressCount)
 {
-    bindingCalls.push_back({interface, index, input, false});
-    if (failBinding(interface, index, input, false)) {
+    readCalls.push_back(interface);
+    auto failure = readFailures.find(interface);
+    if (failure != readFailures.end()) {
+        if (--failure->second == 0) readFailures.erase(failure);
         return -1;
     }
-    auto &order = actualBindings[InterfaceKey(interface, input)];
-    order.erase(std::remove(order.begin(), order.end(), index), order.end());
+    const auto &in = actualBindings[InterfaceKey(interface, true)];
+    const auto &out = actualBindings[InterfaceKey(interface, false)];
+    std::copy(in.begin(), in.end(), ingress);
+    std::copy(out.begin(), out.end(), egress);
+    *ingressCount = static_cast<uint32_t>(in.size());
+    *egressCount = static_cast<uint32_t>(out.size());
+    return 0;
+}
+
+extern "C" int __wrap_vpp_acl_interface_bind(const char *, uint32_t, bool)
+{
+    ADD_FAILURE() << "Individual bind used instead of complete ACL list";
+    return -1;
+}
+
+extern "C" int __wrap_vpp_acl_interface_unbind(const char *, uint32_t, bool)
+{
+    ADD_FAILURE() << "Individual unbind used instead of complete ACL list";
+    return -1;
+}
+
+extern "C" int __wrap_vpp_tunterm_acl_interface_add_del(uint32_t index,
+        bool bind, const char *interface)
+{
+    const auto key = TuntermKey(interface, index, bind);
+    tuntermCalls.push_back(key);
+    auto it = tuntermFailures.find(key);
+    if (it != tuntermFailures.end()) {
+        if (--it->second == 0) tuntermFailures.erase(it);
+        return -1;
+    }
+    actualTunterm[{interface, index}] = bind;
+    return 0;
+}
+
+extern "C" int __wrap_vpp_pbh_interface_attach_detach(const char *interface,
+        uint32_t index, bool bind)
+{
+    pbhCalls.emplace_back(interface, index, bind);
+    if (bind) actualPbh[interface].insert(index);
+    else actualPbh[interface].erase(index);
     return 0;
 }
 
@@ -112,8 +173,14 @@ protected:
     {
         bindingCalls.clear();
         actualBindings.clear();
-        bindingFailures.clear();
-        failNextBindIndex = 0;
+        listFailures.clear();
+        tuntermFailures.clear();
+        actualTunterm.clear();
+        tuntermCalls.clear();
+        actualPbh.clear();
+        pbhCalls.clear();
+        readFailures.clear();
+        readCalls.clear();
         m_type = std::get<0>(GetParam());
         m_input = std::get<1>(GetParam());
         if (m_type == SAI_OBJECT_TYPE_PORT) {
@@ -182,6 +249,15 @@ protected:
         return member;
     }
 
+    void markPbh(const Group &group)
+    {
+        // As for regular ACLs, supply an already compiled table index. The
+        // real PBH classification and bind/unbind policy remain in use.
+        m_switch->m_acl_swindex_map.erase(group.table);
+        m_switch->m_pbh.m_tables.insert(group.table);
+        m_switch->m_pbh.m_table_index_map[group.table] = group.index;
+    }
+
     sai_status_t addMember(const Group &group, uint32_t priority = 10)
     {
         sai_attribute_t attrs[3] = {};
@@ -233,14 +309,41 @@ protected:
         ASSERT_TRUE(m_switch->m_ifaceRegistry.setBdId(interface + ".100", 100));
     }
 
-    void failUnbind(const std::string &interface, uint32_t index, unsigned int count = 1)
+    void failList(const std::string &interface, const std::vector<uint32_t> &policy,
+            unsigned int count = 1, bool commitBeforeFailure = false)
     {
-        bindingFailures[FailureKey(interface, index, m_input, false)] = count;
+        listFailures.push_back({interface, m_input, policy, count, commitBeforeFailure});
     }
 
-    void failBind(const std::string &interface, uint32_t index, unsigned int count = 1)
+    void failTunterm(const std::string &interface, uint32_t index, bool bind,
+            unsigned int count = 1)
     {
-        bindingFailures[FailureKey(interface, index, m_input, true)] = count;
+        tuntermFailures[TuntermKey(interface, index, bind)] = count;
+    }
+
+    void setOppositeGroup(sai_object_id_t group)
+    {
+        sai_attribute_t attr = {};
+        if (m_type == SAI_OBJECT_TYPE_PORT) {
+            attr.id = m_input ? SAI_PORT_ATTR_EGRESS_ACL : SAI_PORT_ATTR_INGRESS_ACL;
+        } else {
+            attr.id = m_input ? SAI_LAG_ATTR_EGRESS_ACL : SAI_LAG_ATTR_INGRESS_ACL;
+        }
+        attr.value.oid = group;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->set(m_type, m_port, &attr));
+    }
+
+    const std::vector<uint32_t> &policy(const BindingCall &call) const
+    {
+        return m_input ? call.ingress : call.egress;
+    }
+
+    void expectNoEmptyListUpdate()
+    {
+        for (const auto &call : bindingCalls) {
+            EXPECT_FALSE(policy(call).empty()) << call.interface;
+            EXPECT_EQ(defaultAclIndex, policy(call).empty() ? 0 : policy(call).back());
+        }
     }
 
     void expectPolicy(const std::string &interface, const std::vector<uint32_t> &expected, bool input)
@@ -326,18 +429,17 @@ protected:
         expectAssociation(group, present, m_port);
     }
 
-    void expectCall(size_t offset, uint32_t index, bool bind, const std::string &interface)
+    void expectCall(size_t offset, const std::vector<uint32_t> &expected,
+            const std::string &interface)
     {
         ASSERT_LT(offset, bindingCalls.size());
         EXPECT_EQ(interface, bindingCalls[offset].interface);
-        EXPECT_EQ(index, bindingCalls[offset].acl);
-        EXPECT_EQ(m_input, bindingCalls[offset].input);
-        EXPECT_EQ(bind, bindingCalls[offset].bind);
+        EXPECT_EQ(expected, policy(bindingCalls[offset]));
     }
 
-    void expectCall(size_t offset, uint32_t index, bool bind)
+    void expectCall(size_t offset, const std::vector<uint32_t> &expected)
     {
-        expectCall(offset, index, bind, m_interface);
+        expectCall(offset, expected, m_interface);
     }
 
     std::shared_ptr<RealObjectIdManager> m_manager;
@@ -356,23 +458,20 @@ TEST_P(SwitchVppAclBindingTest, FirstAssignmentBindsAfterMemberCreation)
     attr.id = m_attr;
     ASSERT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m_switch->get(m_type, m_port, 1, &attr));
     auto group = createGroup(100);
-
-    // SONiC first sets the port's group, then adds the group's table member.
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
     expectStoredGroup(group.oid);
     expectAssociation(group.oid, true);
-    ASSERT_TRUE(bindingCalls.empty());
-    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
-    ASSERT_EQ(2u, bindingCalls.size());
-    expectCall(0, group.index, true);
-    expectCall(1, defaultAclIndex, true);
+    EXPECT_TRUE(bindingCalls.empty());
 
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    ASSERT_EQ(1u, bindingCalls.size());
+    expectCall(0, {100, defaultAclIndex});
+    expectPolicy(m_interface, {100, defaultAclIndex});
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
-    expectAssociation(group.oid, true);
-    EXPECT_EQ(2u, bindingCalls.size());
+    EXPECT_EQ(1u, bindingCalls.size());
 }
 
-TEST_P(SwitchVppAclBindingTest, ExplicitNullDefaultBindsAndUnbinds)
+TEST_P(SwitchVppAclBindingTest, ExplicitNullDefaultBindsAndClearsCompleteList)
 {
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
     expectStoredGroup(SAI_NULL_OBJECT_ID);
@@ -380,47 +479,36 @@ TEST_P(SwitchVppAclBindingTest, ExplicitNullDefaultBindsAndUnbinds)
     auto group = createGroup(100);
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
-    expectStoredGroup(group.oid);
-    ASSERT_EQ(2u, bindingCalls.size());
-
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
+    ASSERT_EQ(2u, bindingCalls.size());
+    expectCall(0, {100, defaultAclIndex});
+    expectCall(1, {});
+    expectPolicy(m_interface, {});
     expectStoredGroup(SAI_NULL_OBJECT_ID);
     expectAssociation(group.oid, false);
-    ASSERT_EQ(4u, bindingCalls.size());
-    expectCall(2, group.index, false);
-    expectCall(3, defaultAclIndex, false);
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
-    EXPECT_EQ(4u, bindingCalls.size());
+    EXPECT_EQ(2u, bindingCalls.size());
     EXPECT_TRUE(m_switch->m_port_acl_tables.empty());
 }
 
 TEST_P(SwitchVppAclBindingTest, FirstBindingIncludesBridgedChild)
 {
-    auto parent = m_switch->m_ifaceRegistry.findByHwif(m_interface);
-    ASSERT_NE(nullptr, parent);
-    ASSERT_NE(nullptr, m_switch->m_ifaceRegistry.addSubInterface(parent, 100, 100));
+    addBridgedChild(m_interface);
     const auto child = m_interface + ".100";
-    ASSERT_TRUE(m_switch->m_ifaceRegistry.setBdId(child, 100));
     auto group = createGroup(100);
-
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
-    ASSERT_EQ(4u, bindingCalls.size());
-    expectCall(0, group.index, true);
-    expectCall(1, defaultAclIndex, true);
-    expectCall(2, group.index, true, child);
-    expectCall(3, defaultAclIndex, true, child);
-
+    ASSERT_EQ(2u, bindingCalls.size());
+    expectCall(0, {100, defaultAclIndex});
+    expectCall(1, {100, defaultAclIndex}, child);
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
-    ASSERT_EQ(8u, bindingCalls.size());
-    expectCall(4, group.index, false);
-    expectCall(5, defaultAclIndex, false);
-    expectCall(6, group.index, false, child);
-    expectCall(7, defaultAclIndex, false, child);
+    ASSERT_EQ(4u, bindingCalls.size());
+    expectCall(2, {});
+    expectCall(3, {}, child);
     EXPECT_TRUE(m_switch->m_port_acl_tables.empty());
 }
 
-TEST_P(SwitchVppAclBindingTest, ReplacementMovesTheBinding)
+TEST_P(SwitchVppAclBindingTest, ReplacementSubmitsOneOrderedList)
 {
     auto oldGroup = createGroup(100);
     auto newGroup = createGroup(200);
@@ -428,16 +516,13 @@ TEST_P(SwitchVppAclBindingTest, ReplacementMovesTheBinding)
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(newGroup));
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(oldGroup.oid));
     bindingCalls.clear();
-
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(newGroup.oid));
+    ASSERT_EQ(1u, bindingCalls.size());
+    expectCall(0, {200, defaultAclIndex});
     expectStoredGroup(newGroup.oid);
     expectAssociation(oldGroup.oid, false);
     expectAssociation(newGroup.oid, true);
-    ASSERT_EQ(4u, bindingCalls.size());
-    expectCall(0, oldGroup.index, false);
-    expectCall(1, defaultAclIndex, false);
-    expectCall(2, newGroup.index, true);
-    expectCall(3, defaultAclIndex, true);
+    expectNoEmptyListUpdate();
 }
 
 TEST_P(SwitchVppAclBindingTest, MissingObjectsRemainErrors)
@@ -451,22 +536,24 @@ TEST_P(SwitchVppAclBindingTest, MissingObjectsRemainErrors)
     EXPECT_EQ(0u, m_switch->m_objectHash.at(m_type).count(sai_serialize_object_id(missing)));
 }
 
-TEST_P(SwitchVppAclBindingTest, FailedInitialBindDoesNotStoreAttribute)
+TEST_P(SwitchVppAclBindingTest, FailedInitialListDoesNotStoreAttribute)
 {
     auto group = createGroup(100);
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
-    failNextBindIndex = group.index;
+    failList(m_interface, {100, defaultAclIndex});
     ASSERT_EQ(SAI_STATUS_FAILURE, setGroup(group.oid));
+    expectPolicy(m_interface, {});
     expectAssociation(group.oid, false);
     sai_attribute_t attr = {};
     attr.id = m_attr;
     EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m_switch->get(m_type, m_port, 1, &attr));
-    ASSERT_EQ(1u, bindingCalls.size());
-    expectCall(0, group.index, true);
+    ASSERT_FALSE(bindingCalls.empty());
+    EXPECT_FALSE(bindingCalls.front().succeeded);
+    EXPECT_FALSE(readCalls.empty());
     EXPECT_TRUE(m_switch->m_port_acl_tables.empty());
 }
 
-TEST_P(SwitchVppAclBindingTest, FailedReplacementRestoresOldBinding)
+TEST_P(SwitchVppAclBindingTest, FailedReplacementKeepsOldPolicyAndOwner)
 {
     auto oldGroup = createGroup(100);
     auto newGroup = createGroup(200);
@@ -474,332 +561,411 @@ TEST_P(SwitchVppAclBindingTest, FailedReplacementRestoresOldBinding)
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(newGroup));
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(oldGroup.oid));
     bindingCalls.clear();
-    failNextBindIndex = newGroup.index;
-
+    failList(m_interface, {200, defaultAclIndex});
     ASSERT_EQ(SAI_STATUS_FAILURE, setGroup(newGroup.oid));
+    expectPolicy(m_interface, {100, defaultAclIndex});
     expectStoredGroup(oldGroup.oid);
     expectAssociation(oldGroup.oid, true);
     expectAssociation(newGroup.oid, false);
-    ASSERT_EQ(5u, bindingCalls.size());
-    expectCall(0, oldGroup.index, false);
-    expectCall(1, defaultAclIndex, false);
-    expectCall(2, newGroup.index, true);
-    expectCall(3, oldGroup.index, true);
-    expectCall(4, defaultAclIndex, true);
+    expectNoEmptyListUpdate();
 }
 
-TEST_P(SwitchVppAclBindingTest, PartialDetachKeepsPrefixDefaultAndReplayOrder)
+TEST_P(SwitchVppAclBindingTest, MemberInsertionPreservesPriorityDefaultAndOppositeDirection)
 {
     auto members = createBoundThreeTableGroup();
     auto opposite = createGroup(500, !m_input);
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(opposite));
-    sai_attribute_t otherAttr = {};
-    if (m_type == SAI_OBJECT_TYPE_PORT) {
-        otherAttr.id = m_input ? SAI_PORT_ATTR_EGRESS_ACL : SAI_PORT_ATTR_INGRESS_ACL;
-    } else {
-        otherAttr.id = m_input ? SAI_LAG_ATTR_EGRESS_ACL : SAI_LAG_ATTR_INGRESS_ACL;
-    }
-    otherAttr.value.oid = opposite.oid;
-    ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->set(m_type, m_port, &otherAttr));
-    expectPolicy(m_interface, {100, 200, 300, defaultAclIndex});
+    setOppositeGroup(opposite.oid);
+    auto added = createTableMember(members[0].oid, 400);
     bindingCalls.clear();
-    failUnbind(m_interface, 200);
-
-    ASSERT_EQ(SAI_STATUS_FAILURE,
-            m_switch->aclBindUnbindPort(m_port, members[0].oid, m_input, false));
-    // Remove a low-priority suffix, then stop before either the higher
-    // priority survivor or shared default can be detached.
-    ASSERT_EQ(2u, bindingCalls.size());
-    expectCall(0, 300, false);
-    expectCall(1, 200, false);
-    expectPolicy(m_interface, {100, 200, defaultAclIndex});
-    expectAssociation(members[0].oid, true);
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS,
-            m_switch->aclBindUnbindPort(m_port, members[0].oid, m_input, true));
-    expectPolicy(m_interface, {100, 200, 300, defaultAclIndex});
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(added, 25));
+    ASSERT_EQ(1u, bindingCalls.size());
+    expectCall(0, {100, 400, 200, 300, defaultAclIndex});
+    const auto &oppositeList = m_input ? bindingCalls[0].egress : bindingCalls[0].ingress;
+    EXPECT_EQ((std::vector<uint32_t>{500, defaultAclIndex}), oppositeList);
     expectPolicy(m_interface, {500, defaultAclIndex}, !m_input);
-    expectMembers(members[0].oid, members);
-    expectStoredGroup(members[0].oid);
-    for (const auto &call : bindingCalls) {
-        EXPECT_EQ(m_input, call.input);
-    }
+    expectNoEmptyListUpdate();
+}
+
+TEST_P(SwitchVppAclBindingTest, MemberRemovalDoesNotClearPolicyFirst)
+{
+    auto members = createBoundThreeTableGroup();
+    bindingCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, removeMember(members[1]));
+    ASSERT_EQ(1u, bindingCalls.size());
+    expectCall(0, {100, 300, defaultAclIndex});
+    expectMembers(members[0].oid, {members[0], members[2]});
+    expectMemberObject(members[1], false);
+    expectNoEmptyListUpdate();
 }
 
 TEST_P(SwitchVppAclBindingTest, FailedMemberRemovalPreservesPolicyAndObject)
 {
     auto members = createBoundThreeTableGroup();
-    failUnbind(m_interface, 200);
-
+    failList(m_interface, {100, 300, defaultAclIndex});
     ASSERT_EQ(SAI_STATUS_FAILURE, removeMember(members[1]));
     expectPolicy(m_interface, {100, 200, 300, defaultAclIndex});
     expectMembers(members[0].oid, members);
+    expectMemberObject(members[1], true);
     expectAssociation(members[0].oid, true);
     expectStoredGroup(members[0].oid);
-    for (const auto &member : members) {
-        expectMemberObject(member, true);
-    }
-
+    expectNoEmptyListUpdate();
     ASSERT_EQ(SAI_STATUS_SUCCESS, removeMember(members[1]));
     expectPolicy(m_interface, {100, 300, defaultAclIndex});
-    expectMembers(members[0].oid, {members[0], members[2]});
     expectMemberObject(members[1], false);
-    expectAssociation(members[0].oid, true);
 }
 
 TEST_P(SwitchVppAclBindingTest, FailedMemberAdditionRemovesTentativeObject)
 {
     auto members = createBoundThreeTableGroup();
     auto added = createTableMember(members[0].oid, 400);
-    failUnbind(m_interface, 200);
-
+    failList(m_interface, {400, 100, 200, 300, defaultAclIndex});
     ASSERT_EQ(SAI_STATUS_FAILURE, addMember(added, 40));
     expectPolicy(m_interface, {100, 200, 300, defaultAclIndex});
     expectMembers(members[0].oid, members);
     expectMemberObject(added, false);
     expectAssociation(members[0].oid, true);
-    expectStoredGroup(members[0].oid);
-
-    // Reuse the same OID: a failed create must not leave an object that makes
-    // the retry fail with ITEM_ALREADY_EXISTS.
+    expectNoEmptyListUpdate();
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(added, 40));
     expectPolicy(m_interface, {400, 100, 200, 300, defaultAclIndex});
-    expectMembers(members[0].oid, {members[0], members[1], members[2], added});
     expectMemberObject(added, true);
 }
 
-TEST_P(SwitchVppAclBindingTest, FailedChildDetachRestoresAllPorts)
+TEST_P(SwitchVppAclBindingTest, FailedChildUpdateRestoresAllPorts)
 {
     auto members = createBoundThreeTableGroup();
-    const std::string secondInterface = m_type == SAI_OBJECT_TYPE_PORT ? "Ethernet4" : "BondEthernet2";
-    auto secondPort = createAdditionalPort(secondInterface);
-    addBridgedChild(secondInterface);
-    const auto child = secondInterface + ".100";
+    const std::string second = m_type == SAI_OBJECT_TYPE_PORT ? "Ethernet4" : "BondEthernet2";
+    auto secondPort = createAdditionalPort(second);
+    addBridgedChild(second);
+    const auto child = second + ".100";
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(members[0].oid, secondPort));
-    failUnbind(child, 200);
-
+    bindingCalls.clear();
+    failList(child, {100, 300, defaultAclIndex});
     ASSERT_EQ(SAI_STATUS_FAILURE, removeMember(members[1]));
-    // The first port and the second port's parent were already detached
-    // before the failure on its child. Recovery must include all three.
-    for (const auto &interface : {m_interface, secondInterface, child}) {
+    for (const auto &interface : {m_interface, second, child}) {
         expectPolicy(interface, {100, 200, 300, defaultAclIndex});
     }
     expectMembers(members[0].oid, members);
     expectMemberObject(members[1], true);
-    expectAssociation(members[0].oid, true);
     expectAssociation(members[0].oid, true, secondPort);
-    expectStoredGroup(members[0].oid);
-    expectStoredGroup(members[0].oid, secondPort);
-
+    expectNoEmptyListUpdate();
     ASSERT_EQ(SAI_STATUS_SUCCESS, removeMember(members[1]));
-    for (const auto &interface : {m_interface, secondInterface, child}) {
+    for (const auto &interface : {m_interface, second, child}) {
         expectPolicy(interface, {100, 300, defaultAclIndex});
     }
     expectMemberObject(members[1], false);
-    expectAssociation(members[0].oid, true);
-    expectAssociation(members[0].oid, true, secondPort);
 }
 
-TEST_P(SwitchVppAclBindingTest, FailedDefaultDetachRestoresMemberPolicy)
+TEST_P(SwitchVppAclBindingTest, FailedRecoveryKeepsTruthfulPolicyAndRetries)
 {
     auto members = createBoundThreeTableGroup();
-    bindingCalls.clear();
-    failUnbind(m_interface, defaultAclIndex);
-
+    const std::string second = m_type == SAI_OBJECT_TYPE_PORT ? "Ethernet4" : "BondEthernet2";
+    auto secondPort = createAdditionalPort(second);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(members[0].oid, secondPort));
+    failList(second, {100, 300, defaultAclIndex});
+    failList(m_interface, {100, 200, 300, defaultAclIndex});
     ASSERT_EQ(SAI_STATUS_FAILURE, removeMember(members[1]));
-    ASSERT_GE(bindingCalls.size(), 4u);
-    expectCall(0, 300, false);
-    expectCall(1, 200, false);
-    expectCall(2, 100, false);
-    expectCall(3, defaultAclIndex, false);
-    expectPolicy(m_interface, {100, 200, 300, defaultAclIndex});
+    // The first target accepted the change, then rejected recovery. Do not
+    // claim its old list was restored just because logical membership was.
+    expectPolicy(m_interface, {100, 300, defaultAclIndex});
+    expectPolicy(second, {100, 200, 300, defaultAclIndex});
     expectMembers(members[0].oid, members);
     expectMemberObject(members[1], true);
-    expectAssociation(members[0].oid, true);
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, removeMember(members[1]));
-    expectPolicy(m_interface, {100, 300, defaultAclIndex});
-    expectMemberObject(members[1], false);
-}
-
-TEST_P(SwitchVppAclBindingTest, FailedNewMemberBindRestoresOldPolicy)
-{
-    auto members = createBoundThreeTableGroup();
-    auto added = createTableMember(members[0].oid, 400);
-    bindingCalls.clear();
-    failBind(m_interface, added.index);
-
-    ASSERT_EQ(SAI_STATUS_FAILURE, addMember(added, 25));
-    ASSERT_GE(bindingCalls.size(), 7u);
-    expectCall(4, 100, true);
-    expectCall(5, added.index, true);
-    // Stop at the failed bind, then undo the successful prefix. Lower
-    // priority members must not be appended ahead of the failed member.
-    expectCall(6, 100, false);
-    expectPolicy(m_interface, {100, 200, 300, defaultAclIndex});
-    expectMembers(members[0].oid, members);
-    expectMemberObject(added, false);
-    expectAssociation(members[0].oid, true);
-    expectStoredGroup(members[0].oid);
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(added, 25));
-    expectPolicy(m_interface, {100, 400, 200, 300, defaultAclIndex});
-    expectMemberObject(added, true);
-}
-
-TEST_P(SwitchVppAclBindingTest, RepeatedRecoveryFailuresRemainRetryable)
-{
-    auto members = createBoundThreeTableGroup();
-    failUnbind(m_interface, 200, 2);
-    failBind(m_interface, 300, 2);
-
-    for (unsigned int attempt = 0; attempt < 2; ++attempt) {
-        SCOPED_TRACE(attempt);
-        ASSERT_EQ(SAI_STATUS_FAILURE, removeMember(members[1]));
-        // Recovery also failed, so preserve truthful partial bindings and
-        // desired membership. Neither attempt may be reported as success.
-        expectPolicy(m_interface, {100, 200, defaultAclIndex});
-        expectMembers(members[0].oid, members);
-        expectMemberObject(members[1], true);
-        expectAssociation(members[0].oid, true);
-        expectStoredGroup(members[0].oid);
-    }
-    EXPECT_TRUE(bindingFailures.empty());
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, removeMember(members[1]));
-    expectPolicy(m_interface, {100, 300, defaultAclIndex});
-    expectMembers(members[0].oid, {members[0], members[2]});
-    expectMemberObject(members[1], false);
-    expectAssociation(members[0].oid, true);
-}
-
-TEST_P(SwitchVppAclBindingTest, NullClearRemovesTentativeTableAfterFailedRollback)
-{
-    auto members = createBoundThreeTableGroup();
-    const std::string secondInterface = m_type == SAI_OBJECT_TYPE_PORT ? "Ethernet4" : "BondEthernet2";
-    auto secondPort = createAdditionalPort(secondInterface);
-    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(members[0].oid, secondPort));
-    auto added = createTableMember(members[0].oid, 400);
-    failBind(secondInterface, added.index);
-    // The first port accepts the tentative policy. Both undoing that policy
-    // and restoring the old policy then fail to remove its extra table.
-    failUnbind(m_interface, added.index, 2);
-
-    ASSERT_EQ(SAI_STATUS_FAILURE, addMember(added, 25));
-    expectPolicy(m_interface, {100, 400, defaultAclIndex});
-    expectPolicy(secondInterface, {100, 200, 300, defaultAclIndex});
-    expectMembers(members[0].oid, members);
-    expectMemberObject(added, false);
-    expectAssociation(members[0].oid, true);
-    expectAssociation(members[0].oid, true, secondPort);
-    EXPECT_TRUE(bindingFailures.empty());
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
-    expectPolicy(m_interface, {});
-    expectPolicy(secondInterface, {100, 200, 300, defaultAclIndex});
-    expectStoredGroup(SAI_NULL_OBJECT_ID);
-    expectAssociation(members[0].oid, false);
-    // Rebinding the old group must not leave the removed tentative table in
-    // front of its desired members, even though that table is no longer a member.
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(members[0].oid));
     expectPolicy(m_interface, {100, 200, 300, defaultAclIndex});
     expectAssociation(members[0].oid, true);
 }
 
-TEST_P(SwitchVppAclBindingTest, EmptyOldGroupCleansFailedFirstMemberRollback)
-{
-    auto group = createGroup(100);
-    const std::string secondInterface = m_type == SAI_OBJECT_TYPE_PORT ? "Ethernet4" : "BondEthernet2";
-    auto secondPort = createAdditionalPort(secondInterface);
-    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
-    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid, secondPort));
-    failBind(secondInterface, group.index);
-    failUnbind(m_interface, group.index, 2);
-
-    ASSERT_EQ(SAI_STATUS_FAILURE, addMember(group));
-    expectPolicy(m_interface, {group.index, defaultAclIndex});
-    expectPolicy(secondInterface, {});
-    EXPECT_EQ(0u, m_switch->m_acl_tbl_grp_mbr_map.count(group.oid));
-    expectMemberObject(group, false);
-    expectAssociation(group.oid, true);
-    expectAssociation(group.oid, true, secondPort);
-    EXPECT_TRUE(bindingFailures.empty());
-
-    // There is no old member list to enumerate. Clearing the SAI attachment
-    // must nevertheless remove the actually programmed table and permit.
-    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
-    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID, secondPort));
-    expectPolicy(m_interface, {});
-    expectPolicy(secondInterface, {});
-    expectAssociation(group.oid, false);
-    expectAssociation(group.oid, false, secondPort);
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
-    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid, secondPort));
-    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
-    expectPolicy(m_interface, {group.index, defaultAclIndex});
-    expectPolicy(secondInterface, {group.index, defaultAclIndex});
-    expectMembers(group.oid, {group});
-    expectMemberObject(group, true);
-}
-
-TEST_P(SwitchVppAclBindingTest, FailedReplacementDoesNotLeaveNewGroupAssociated)
+TEST_P(SwitchVppAclBindingTest, RejectedReplacementCannotAcquirePolicyOnLaterMemberChange)
 {
     auto oldGroup = createGroup(100);
-    auto newGroup = createGroup(200);
+    auto rejected = createGroup(200);
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(oldGroup));
-    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(newGroup));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(rejected));
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(oldGroup.oid));
-    failBind(m_interface, defaultAclIndex);
-    failUnbind(m_interface, newGroup.index);
-
-    // The new real ACL binds, but its default and its first rollback detach
-    // fail. Restoring the old group must remove both the actual new ACL and
-    // its desired port association.
-    ASSERT_EQ(SAI_STATUS_FAILURE, setGroup(newGroup.oid));
-    expectPolicy(m_interface, {oldGroup.index, defaultAclIndex});
+    failList(m_interface, {200, defaultAclIndex}, 1, true);
+    ASSERT_EQ(SAI_STATUS_FAILURE, setGroup(rejected.oid));
+    expectPolicy(m_interface, {100, defaultAclIndex});
     expectStoredGroup(oldGroup.oid);
     expectAssociation(oldGroup.oid, true);
-    expectAssociation(newGroup.oid, false);
-    EXPECT_TRUE(bindingFailures.empty());
-
-    // A later update to the unbound new group must not replace this port's
-    // restored old policy through an association left by the failed SET.
-    auto added = createTableMember(newGroup.oid, 300);
+    expectAssociation(rejected.oid, false);
+    auto added = createTableMember(rejected.oid, 300);
     bindingCalls.clear();
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(added));
     EXPECT_TRUE(bindingCalls.empty());
-    expectMembers(newGroup.oid, {newGroup, added});
-    expectPolicy(m_interface, {oldGroup.index, defaultAclIndex});
-    expectStoredGroup(oldGroup.oid);
-    expectAssociation(oldGroup.oid, true);
-    expectAssociation(newGroup.oid, false);
+    expectPolicy(m_interface, {100, defaultAclIndex});
 }
 
-TEST_P(SwitchVppAclBindingTest, NullClearRepairsFailedInitialAssignmentRollback)
+TEST_P(SwitchVppAclBindingTest, FailedClearIsAtomicAndPreservesOppositeDirection)
+{
+    auto group = createGroup(100);
+    auto opposite = createGroup(500, !m_input);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(opposite));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    setOppositeGroup(opposite.oid);
+    failList(m_interface, {});
+    ASSERT_EQ(SAI_STATUS_FAILURE, setGroup(SAI_NULL_OBJECT_ID));
+    expectPolicy(m_interface, {100, defaultAclIndex});
+    expectPolicy(m_interface, {500, defaultAclIndex}, !m_input);
+    expectStoredGroup(group.oid);
+    expectAssociation(group.oid, true);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
+    expectPolicy(m_interface, {});
+    expectPolicy(m_interface, {500, defaultAclIndex}, !m_input);
+}
+
+TEST_P(SwitchVppAclBindingTest, ReadbackRepairsSetErrorAfterPolicyWasApplied)
 {
     auto group = createGroup(100);
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
-    failBind(m_interface, defaultAclIndex);
-    // The table is installed, but its permit fails. Both the initial undo
-    // and restoration of the old null policy fail to remove the table.
-    failUnbind(m_interface, group.index, 2);
-
+    failList(m_interface, {100, defaultAclIndex}, 1, true);
     ASSERT_EQ(SAI_STATUS_FAILURE, setGroup(group.oid));
-    expectPolicy(m_interface, {group.index});
-    expectAssociation(group.oid, false);
-    sai_attribute_t attr = {};
-    attr.id = m_attr;
-    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m_switch->get(m_type, m_port, 1, &attr));
-    EXPECT_TRUE(bindingFailures.empty());
-
-    // The stored value is already null, but the failed operation left real
-    // attachments behind. An explicit null assignment must reconcile them.
-    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
+    EXPECT_FALSE(readCalls.empty());
     expectPolicy(m_interface, {});
+    expectAssociation(group.oid, false);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    expectPolicy(m_interface, {100, defaultAclIndex});
+    expectStoredGroup(group.oid);
+}
+
+TEST_P(SwitchVppAclBindingTest, FailedReadbackRequiresRefreshBeforePreservingOtherDirection)
+{
+    auto group = createGroup(100);
+    auto opposite = createGroup(500, !m_input);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(opposite));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    // Model a lost error reply after VPP applied the requested list. Both
+    // readback and immediate recovery refresh fail; later retry must refresh.
+    auto replacement = createGroup(200);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(replacement));
+    failList(m_interface, {200, defaultAclIndex}, 1, true);
+    readFailures[m_interface] = 100;
+    ASSERT_EQ(SAI_STATUS_FAILURE, setGroup(replacement.oid));
+    EXPECT_FALSE(readCalls.empty());
+    expectStoredGroup(group.oid);
+    expectAssociation(replacement.oid, false);
+    expectPolicy(m_interface, {200, defaultAclIndex});
+    readFailures.clear();
+    const auto beforeOppositeUpdate = actualBindings[InterfaceKey(m_interface, m_input)];
+    const auto readsBefore = readCalls.size();
+    setOppositeGroup(opposite.oid);
+    // Setting the opposite direction must preserve the actual list returned
+    // by the refreshed VPP read, rather than a stale pre-error snapshot.
+    expectPolicy(m_interface, beforeOppositeUpdate);
+    EXPECT_GT(readCalls.size(), readsBefore);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    expectPolicy(m_interface, {100, defaultAclIndex});
+    expectPolicy(m_interface, {500, defaultAclIndex}, !m_input);
+}
+
+TEST_P(SwitchVppAclBindingTest, AncillaryUnbindFailureIsRetainedAndRetried)
+{
+    auto group = createGroup(100);
+    m_switch->m_tunterm_acl_swindex_map[group.table] = 700;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    ASSERT_TRUE(actualTunterm[std::make_pair(m_interface, 700)]);
+    failTunterm(m_interface, 700, false);
+    ASSERT_EQ(SAI_STATUS_FAILURE,
+            m_switch->aclBindUnbindPort(m_port, group.oid, m_input, false));
+    expectPolicy(m_interface, {});
+    EXPECT_TRUE(actualTunterm[std::make_pair(m_interface, 700)]);
+    EXPECT_FALSE(m_switch->m_acl_tunterm_pending.empty());
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
+    EXPECT_FALSE(actualTunterm[std::make_pair(m_interface, 700)]);
+    EXPECT_TRUE(m_switch->m_acl_tunterm_pending.empty());
     expectStoredGroup(SAI_NULL_OBJECT_ID);
     expectAssociation(group.oid, false);
-    EXPECT_TRUE(m_switch->m_port_acl_tables.empty());
+}
+
+TEST_P(SwitchVppAclBindingTest, AncillaryBindFailureRollsBackMemberAndFullList)
+{
+    auto members = createBoundThreeTableGroup();
+    auto added = createTableMember(members[0].oid, 400);
+    m_switch->m_tunterm_acl_swindex_map[added.table] = 700;
+    failTunterm(m_interface, 700, true);
+    ASSERT_EQ(SAI_STATUS_FAILURE, addMember(added, 25));
+    expectPolicy(m_interface, {100, 200, 300, defaultAclIndex});
+    expectMembers(members[0].oid, members);
+    expectMemberObject(added, false);
+    EXPECT_TRUE(m_switch->m_acl_tunterm_pending.empty());
+    EXPECT_FALSE(actualTunterm[std::make_pair(m_interface, 700)]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(added, 25));
+    expectPolicy(m_interface, {100, 400, 200, 300, defaultAclIndex});
+    EXPECT_TRUE(actualTunterm[std::make_pair(m_interface, 700)]);
+}
+
+TEST_P(SwitchVppAclBindingTest, NewChildReceivesCompleteOrderedPolicy)
+{
+    createBoundThreeTableGroup();
+    auto opposite = createGroup(500, !m_input);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(opposite));
+    setOppositeGroup(opposite.oid);
+    addBridgedChild(m_interface);
+    const auto child = m_interface + ".100";
+    bindingCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->aclInheritInterfacePolicy(m_interface, child));
+    ASSERT_EQ(1u, bindingCalls.size());
+    expectCall(0, {100, 200, 300, defaultAclIndex}, child);
+    expectPolicy(child, {100, 200, 300, defaultAclIndex});
+    expectPolicy(child, {500, defaultAclIndex}, !m_input);
+    expectNoEmptyListUpdate();
+}
+
+TEST_P(SwitchVppAclBindingTest, FailedChildInheritanceClearsUnverifiedLists)
+{
+    createBoundThreeTableGroup();
+    addBridgedChild(m_interface);
+    const auto child = m_interface + ".100";
+    failList(child, {100, 200, 300, defaultAclIndex}, 1, true);
+    readFailures[child] = 100;
+    ASSERT_EQ(SAI_STATUS_FAILURE, m_switch->aclInheritInterfacePolicy(m_interface, child));
+    // Full child teardown can replace both directions with empty lists even
+    // when a failed dump prevents a safe direction-only update.
+    expectPolicy(child, {});
+    expectPolicy(child, {}, !m_input);
+    EXPECT_EQ(0u, m_switch->m_acl_interface_state_unknown.count(child));
+    expectPolicy(m_interface, {100, 200, 300, defaultAclIndex});
+    EXPECT_FALSE(readCalls.empty());
+}
+
+TEST_P(SwitchVppAclBindingTest, CombinedListLimitIncludesBothDefaultPermits)
+{
+    auto group = createGroup(1000);
+    auto opposite = createGroup(2000, !m_input);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(opposite));
+    for (uint32_t i = 1; i < 126; ++i) {
+        ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(createTableMember(group.oid, 1000 + i)));
+    }
+    for (uint32_t i = 1; i < 127; ++i) {
+        ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(createTableMember(opposite.oid, 2000 + i)));
+    }
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    setOppositeGroup(opposite.oid);
+    const auto before = actualBindings;
+    ASSERT_FALSE(bindingCalls.empty());
+    EXPECT_EQ(255u, bindingCalls.back().ingress.size() + bindingCalls.back().egress.size());
+    auto excess = createTableMember(group.oid, 3000);
+    const auto callsBefore = bindingCalls.size();
+    ASSERT_NE(SAI_STATUS_SUCCESS, addMember(excess));
+    EXPECT_EQ(callsBefore, bindingCalls.size());
+    EXPECT_EQ(before, actualBindings);
+    expectMemberObject(excess, false);
+    expectStoredGroup(group.oid);
+    expectAssociation(group.oid, true);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
+    expectPolicy(m_interface, {});
+    EXPECT_EQ(128u, actualBindings[InterfaceKey(m_interface, !m_input)].size());
+}
+
+TEST_P(SwitchVppAclBindingTest, ReplacementRemovesOldRegularAndPbhAttachments)
+{
+    auto regular = createGroup(100);
+    auto pbh = createGroup(700);
+    markPbh(pbh);
+    auto opposite = createGroup(500, !m_input);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(regular));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(pbh));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(opposite));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(regular.oid));
+    setOppositeGroup(opposite.oid);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(pbh.oid));
+    expectPolicy(m_interface, {});
+    expectPolicy(m_interface, {500, defaultAclIndex}, !m_input);
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[m_interface]);
+    expectStoredGroup(pbh.oid);
+    expectAssociation(regular.oid, false);
+    expectAssociation(pbh.oid, true);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(regular.oid));
+    expectPolicy(m_interface, {100, defaultAclIndex});
+    expectPolicy(m_interface, {500, defaultAclIndex}, !m_input);
+    EXPECT_TRUE(actualPbh[m_interface].empty());
+    expectAssociation(pbh.oid, false);
+    expectAssociation(regular.oid, true);
+}
+
+TEST_P(SwitchVppAclBindingTest, PbhMemberChangesLeaveRegularPolicyAttached)
+{
+    auto regular = createGroup(100);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(regular));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(regular.oid));
+    auto pbh = createTableMember(regular.oid, 700);
+    markPbh(pbh);
+    bindingCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(pbh));
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[m_interface]);
+    expectPolicy(m_interface, {100, defaultAclIndex});
+    ASSERT_EQ(SAI_STATUS_SUCCESS, removeMember(pbh));
+    EXPECT_TRUE(actualPbh[m_interface].empty());
+    expectPolicy(m_interface, {100, defaultAclIndex});
+    expectMemberObject(pbh, false);
+    expectNoEmptyListUpdate();
+}
+
+TEST_P(SwitchVppAclBindingTest, PbhOnlyOwnerRetriesIndependentRegularSnapshot)
+{
+    auto independent = createGroup(100);
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_switch->aclBindInterfaceTable(m_interface, independent.table, m_input, true));
+    auto pbh = createGroup(700);
+    markPbh(pbh);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(pbh));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(pbh.oid));
+    auto opposite = createGroup(500, !m_input);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(opposite));
+    setOppositeGroup(opposite.oid);
+    auto replacement = createGroup(200);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(replacement));
+
+    for (bool clear : {false, true}) {
+        SCOPED_TRACE(clear);
+        failList(m_interface, {200, defaultAclIndex}, 1, true);
+        // Preserve the failed snapshot across the whole unsuccessful setter,
+        // rather than letting an incidental second recovery attempt repair it.
+        failList(m_interface, {100, defaultAclIndex}, 100);
+        ASSERT_EQ(SAI_STATUS_FAILURE, setGroup(replacement.oid));
+        expectPolicy(m_interface, {200, defaultAclIndex});
+        expectPolicy(m_interface, {500, defaultAclIndex}, !m_input);
+        expectStoredGroup(pbh.oid);
+        expectAssociation(pbh.oid, true);
+        expectAssociation(replacement.oid, false);
+        EXPECT_FALSE(m_switch->m_acl_pbh_regular_restore.empty());
+
+        listFailures.clear();
+        ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(clear ? SAI_NULL_OBJECT_ID : pbh.oid));
+        // The PBH-only owner did not own this regular list. Both retry and
+        // explicit PBH clear must restore the saved list, not leave table 200.
+        expectPolicy(m_interface, {100, defaultAclIndex});
+        expectPolicy(m_interface, {500, defaultAclIndex}, !m_input);
+        EXPECT_TRUE(m_switch->m_acl_pbh_regular_restore.empty());
+        expectStoredGroup(clear ? SAI_NULL_OBJECT_ID : pbh.oid);
+        expectAssociation(pbh.oid, !clear);
+        EXPECT_EQ(!clear, actualPbh[m_interface].count(700) != 0);
+    }
+}
+
+TEST_P(SwitchVppAclBindingTest, TuntermRemainsWhileOtherDirectionUsesSameTable)
+{
+    auto group = createGroup(100);
+    m_switch->m_tunterm_acl_swindex_map[group.table] = 700;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_switch->aclBindInterfaceTable(m_interface, group.table, !m_input, true));
+    tuntermCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
+    EXPECT_TRUE(actualTunterm[std::make_pair(m_interface, 700)]);
+    for (const auto &call : tuntermCalls) EXPECT_TRUE(std::get<2>(call));
+    expectPolicy(m_interface, {100, defaultAclIndex}, !m_input);
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_switch->aclBindInterfaceTable(m_interface, group.table, !m_input, false));
+    EXPECT_FALSE(actualTunterm[std::make_pair(m_interface, 700)]);
+    expectPolicy(m_interface, {}, !m_input);
 }
 
 INSTANTIATE_TEST_SUITE_P(PortAndLagDirections, SwitchVppAclBindingTest,

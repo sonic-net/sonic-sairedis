@@ -565,6 +565,15 @@ typedef enum {
 				      bool is_input);
     extern int vpp_acl_interface_unbind(const char *hwif_name, uint32_t acl_index,
 					bool is_input);
+    /* Complete ordered lists, with ingress entries followed by egress entries.
+     * The VPP wire format permits at most 255 indices in total. */
+    extern int vpp_acl_interface_set_acl_list(const char *hwif_name,
+            const uint32_t *ingress_acls, uint32_t ingress_count,
+            const uint32_t *egress_acls, uint32_t egress_count);
+    /* Each output array must hold 255 indices; counts are output-only. */
+    extern int vpp_acl_interface_get_acl_list(const char *hwif_name,
+            uint32_t *ingress_acls, uint32_t *ingress_count,
+            uint32_t *egress_acls, uint32_t *egress_count);
     /*
      * PBH.  profile_index and table_index are allocated by VPP and returned;
      * pass ~0 in *table_index to create a table rather than replace one.
