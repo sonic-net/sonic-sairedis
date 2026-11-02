@@ -16,6 +16,7 @@ AsicView
 AttrHash
 BCM
 BFD
+BVI
 Bool
 CHARDATA
 COLDVIDS
@@ -25,6 +26,7 @@ CSIG
 CSP
 CreateObject
 DEI
+DHCP
 Decrement
 Destructor
 DPU
@@ -114,6 +116,7 @@ VIDTORID
 VIDs
 VLANS
 VOQ
+VRF
 VXLAN
 WRED
 Werror
