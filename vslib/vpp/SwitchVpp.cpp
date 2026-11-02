@@ -18,6 +18,8 @@
 #include <string>
 #include <sstream>
 #include <cerrno>
+#include <cstring>
+#include <cstdint>
 #include <algorithm>
 
 using namespace saivs;
@@ -56,6 +58,7 @@ SwitchVpp::SwitchVpp(
     m_object_db(this),
     m_tunnel_mgr(this),
     m_pbh(this),
+    m_trim(this),
     m_tunnel_mgr_srv6(this),
     m_tunnel_mgr_ipip(this),
     m_nat(this)
@@ -76,11 +79,14 @@ SwitchVpp::SwitchVpp(
     m_object_db(this),
     m_tunnel_mgr(this),
     m_pbh(this),
+    m_trim(this),
     m_tunnel_mgr_srv6(this),
     m_tunnel_mgr_ipip(this),
     m_nat(this)
 {
     SWSS_LOG_ENTER();
+
+    m_trim.restoreTrimPolicy();
 
     loadPortConfig();
 
@@ -1237,6 +1243,28 @@ sai_status_t SwitchVpp::queryAttributeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchVpp::queryAttrEnumValuesCapability(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_type_t object_type,
+        _In_ sai_attr_id_t attr_id,
+        _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    return m_trim.queryAttrEnumValuesCapability(
+            switch_id, object_type, attr_id, enum_values_capability);
+}
+
+sai_status_t SwitchVpp::queryStatsCapability(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_type_t object_type,
+        _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    return m_trim.queryStatsCapability(switch_id, object_type, stats_capability);
+}
+
 sai_status_t SwitchVpp::queryStatsStCapability(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type,
@@ -1862,6 +1890,12 @@ sai_status_t SwitchVpp::create_internal(
     CHECK_STATUS(check_create_internal(object_type, serializedObjectId));
 
     auto &objectHash = m_objectHash.at(object_type);
+
+    if (object_type == SAI_OBJECT_TYPE_SWITCH)
+    {
+        return m_trim.createSwitchTrimPolicy(serializedObjectId, attr_count, attr_list);
+    }
+
     if (objectHash.find(serializedObjectId) == objectHash.end())
     {
         /*
@@ -1880,6 +1914,8 @@ sai_status_t SwitchVpp::create_internal(
     }
 
     m_object_db.create_or_update(object_type, serializedObjectId, attr_count, attr_list, true /*is_create*/);
+
+    m_trim.refreshAfterCreate(object_type, serializedObjectId, attr_count, attr_list);
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1939,26 +1975,27 @@ sai_status_t SwitchVpp::createPort(
 
     auto sid = sai_serialize_object_id(object_id);
 
-    const sai_attribute_value_t     *oper_status;
-    uint32_t                        attr_index;
-    sai_status_t status = find_attrib_in_list(attr_count, attr_list,
-                            SAI_PORT_ATTR_OPER_STATUS, &oper_status, &attr_index);
-
-    if (status == SAI_STATUS_ITEM_NOT_FOUND) {
-        // SAI_PORT_ATTR_OPER_STATUS not found, create a copy of attr_list and add it
-        std::vector<sai_attribute_t> modified_attr_list(attr_list, attr_list + attr_count);
-
-        // Add the missing SAI_PORT_ATTR_OPER_STATUS attribute
-        sai_attribute_t oper_status_attr;
-        oper_status_attr.id = SAI_PORT_ATTR_OPER_STATUS;
-        oper_status_attr.value.s32 = SAI_PORT_OPER_STATUS_UNKNOWN;
-        modified_attr_list.push_back(oper_status_attr);
-
-        CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id,
-                                   static_cast<uint32_t>(modified_attr_list.size()), modified_attr_list.data()));
-    } else {
-        CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id, attr_count, attr_list));
+    std::vector<sai_attribute_t> attributes;
+    if (attr_count != 0)
+    {
+        attributes.assign(attr_list, attr_list + attr_count);
     }
+    if (!sai_metadata_get_attr_by_id(SAI_PORT_ATTR_OPER_STATUS, attr_count, attr_list))
+    {
+        sai_attribute_t attr = {};
+        attr.id = SAI_PORT_ATTR_OPER_STATUS;
+        attr.value.s32 = SAI_PORT_OPER_STATUS_UNKNOWN;
+        attributes.push_back(attr);
+    }
+    if (!sai_metadata_get_attr_by_id(SAI_PORT_ATTR_TYPE, attr_count, attr_list))
+    {
+        sai_attribute_t attr = {};
+        attr.id = SAI_PORT_ATTR_TYPE;
+        attr.value.s32 = SAI_PORT_TYPE_LOGICAL;
+        attributes.push_back(attr);
+    }
+    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id,
+            static_cast<uint32_t>(attributes.size()), attributes.data()));
 
     return create_port_dependencies(object_id, attr_count, attr_list);
 }
@@ -2600,6 +2637,8 @@ sai_status_t SwitchVpp::set(
                     break;
                 }
         }
+
+        return set_internal(objectType, serializedObjectId, attr);
     }
 
     if (objectType == SAI_OBJECT_TYPE_ACL_ENTRY)
@@ -2711,16 +2750,17 @@ sai_status_t SwitchVpp::set_internal(
         return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
-    //Update child-parent relationship before updating the attribute
-    m_object_db.create_or_update(objectType, serializedObjectId, 1, attr, false /*is_create*/);
-
     auto &attrHash = it->second;
-
     auto a = std::make_shared<SaiAttrWrap>(objectType, attr);
+    const std::string name = a->getAttrMetadata()->attridname;
 
-    // set have only one attribute
-    attrHash[a->getAttrMetadata()->attridname] = a;
+    if (SwitchVppTrim::isTrimDataplaneAttr(objectType, attr->id))
+    {
+        CHECK_STATUS(m_trim.set(objectType, serializedObjectId, a));
+    }
 
+    m_object_db.create_or_update(objectType, serializedObjectId, 1, attr, false /*is_create*/);
+    attrHash[name] = a;
     return SAI_STATUS_SUCCESS;
 }
 
@@ -3412,6 +3452,11 @@ sai_status_t SwitchVpp::refresh_read_only(
         _In_ sai_object_id_t object_id)
 {
     SWSS_LOG_ENTER();
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_PORT && meta->attrid == SAI_PORT_ATTR_TYPE)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
 
     // Handle VPP-specific refresh read-only logic first
     if (meta->objecttype == SAI_OBJECT_TYPE_BFD_SESSION)
