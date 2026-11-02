@@ -1,5 +1,7 @@
 #include "MockVppXlate.h"
 
+#include <arpa/inet.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
@@ -248,6 +250,27 @@ extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabl
             ? vppMock().loopbackEnabled
             : vppMock().enabledFeatures.count(vppMock().queriedFeature) != 0;
     return vppMock().featureResult;
+}
+
+/*
+ * L2 punt classify tables: each table gets a new index, as from VPP, and each
+ * session is kept with the node it sends a frame to.
+ */
+extern "C" int __wrap_vpp_classify_table_create(uint32_t, uint32_t, uint32_t, uint32_t,
+        uint32_t, uint32_t, const uint8_t *, uint32_t, uint32_t *new_table_index)
+{
+    SWSS_LOG_ENTER();
+    *new_table_index = vppMock().nextClassifyTable++;
+    return 0;
+}
+
+extern "C" int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+        const uint8_t *match, uint32_t match_len, uint32_t, int32_t, uint8_t)
+{
+    SWSS_LOG_ENTER();
+    vppMock().classifySessions.push_back({table_index, hit_next_index,
+            std::vector<uint8_t>(match, match + match_len)});
+    return 0;
 }
 
 /*
@@ -650,15 +673,88 @@ uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
     return vppMock().nextSwIfIndex++;
 }
 
-// no classify punt in these tests: its one-time setup fails, which the VLAN member path tolerates
+// Adds only the nodes in vppMock().nodeNexts
 int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint32_t *next_index) {
     SWSS_LOG_ENTER();
-    return -1;
+    auto next = vppMock().nodeNexts.find(next_name);
+    if (next == vppMock().nodeNexts.end())
+    {
+        return -1;
+    }
+    *next_index = next->second;
+    return 0;
 }
 
 int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
         uint32_t ip6_table_index, uint32_t other_table_index, bool is_input) {
     SWSS_LOG_ENTER();
+    return 0;
+}
+
+/*
+ * vpp_nat44_* calls. Recorded as name: interface, or the mapping for a static
+ * mapping; id: table, or the session count; flag: is_add or enable.
+ */
+bool __wrap_vpp_nat44_ed_supported()
+{
+    SWSS_LOG_ENTER();
+
+    return vppMock().natSupported;
+}
+
+int __wrap_vpp_nat44_ed_enable_disable(bool enable, uint32_t sessions)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"vpp_nat44_ed_enable_disable", "", sessions, 0, enable});
+    return 0;
+}
+
+int __wrap_vpp_nat44_forwarding_enable_disable(bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"vpp_nat44_forwarding_enable_disable", "", 0, 0, enable});
+    return 0;
+}
+
+int __wrap_vpp_nat44_ed_output_interface_add_del(const char *hwif_name, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"vpp_nat44_ed_output_interface_add_del", hwif_name ? hwif_name : "", 0, 0, is_add});
+    return 0;
+}
+
+int __wrap_vpp_nat44_static_mapping_add_del(const vpp_nat44_static_mapping_t *m, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    char l[INET_ADDRSTRLEN], e[INET_ADDRSTRLEN];
+
+    inet_ntop(AF_INET, &m->local, l, sizeof(l));
+    inet_ntop(AF_INET, &m->external, e, sizeof(e));
+
+    // name: "local:port>external:port/protocol" (no ports for an address-only mapping); id: table
+    std::string name = m->addr_only
+        ? std::string(l) + ">" + e
+        : std::string(l) + ":" + std::to_string(m->local_port) + ">" + e + ":" +
+          std::to_string(m->external_port) + "/" + std::to_string(m->protocol);
+
+    vppMock().calls.push_back({"vpp_nat44_static_mapping_add_del", name, m->vrf_id, 0, is_add});
+    return 0;
+}
+
+int __wrap_vpp_nat44_user_sessions_dump(struct in_addr inside_addr, uint32_t vrf_id,
+                                        vpp_nat44_session_cb_fn cb, void *ctx)
+{
+    SWSS_LOG_ENTER();
+
+    for (auto &s: vppMock().natSessions[inside_addr.s_addr])
+    {
+        cb(&s, ctx);
+    }
+
     return 0;
 }
 

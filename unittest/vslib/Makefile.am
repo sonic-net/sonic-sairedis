@@ -58,7 +58,8 @@ if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
 				TestSwitchVppPbh.cpp \
 				MockVppXlate.cpp MockVppXlate.h \
-				TestSwitchVppAclRules.cpp TestVppAclInheritance.cpp
+				TestSwitchVppAclRules.cpp TestVppAclInheritance.cpp \
+				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
 				create_sub_interface create_vlan_sub_interface delete_sub_interface configure_lcp_interface \
@@ -69,11 +70,15 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				interface_set_promiscuous set_l2_interface_vlan_tag_rewrite set_bridge_domain_flags \
 				bridge_domain_get_member_count vpp_bridge_domain_add_del \
 				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
+				vpp_classify_table_create vpp_classify_session_add \
 				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state interface_get_state \
 				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
 				vpp_pbh_profile_add_del vpp_pbh_table_add_replace vpp_pbh_table_del \
 				vpp_pbh_interface_attach_detach vpp_rule_stats_query \
-				vpp_acl_interface_set_acl_list vpp_acl_interface_get_acl_list
+				vpp_acl_interface_set_acl_list vpp_acl_interface_get_acl_list \
+				vpp_nat44_ed_supported vpp_nat44_ed_enable_disable \
+				vpp_nat44_forwarding_enable_disable vpp_nat44_ed_output_interface_add_del \
+				vpp_nat44_static_mapping_add_del vpp_nat44_user_sessions_dump
 tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 endif
 

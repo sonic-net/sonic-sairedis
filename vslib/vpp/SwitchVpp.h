@@ -14,6 +14,7 @@
 #include "SwitchVppPbh.h"
 #include "SwitchVppPolicer.h"
 #include "SwitchVppHostifTrap.h"
+#include "SwitchVppNat.h"
 #include "CRMTracker.h"
 #include "PortConfigMap.h"
 #include "VppInterfaceRegistry.h"
@@ -1956,5 +1957,11 @@ namespace saivs
             // intact. Retain its rollback intent if restoration also fails.
             std::map<std::tuple<sai_object_id_t, sai_object_id_t, bool>,
                 std::map<std::string, PortAclTables>> m_acl_pbh_regular_restore;
+
+        private: // VPP NAT
+
+            friend class SwitchVppNat;
+
+            SwitchVppNat m_nat;
     };
 }
