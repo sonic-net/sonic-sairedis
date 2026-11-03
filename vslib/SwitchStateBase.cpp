@@ -4173,6 +4173,64 @@ sai_status_t SwitchStateBase::queryNextHopGroupTypeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::fillEnumValuesCapability(
+                   _In_ const std::vector<int32_t> &values,
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count = static_cast<uint32_t>(values.size());
+
+    if (enum_values_capability->count < count)
+    {
+        enum_values_capability->count = count;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = count;
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        enum_values_capability->list[i] = values[i];
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryDebugCounterCapability(
+                   _In_ sai_attr_id_t attr_id,
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    // TODO: We should generate this metadata for the virtual switch rather
+    // than hard-coding it here.
+
+    switch (attr_id)
+    {
+        case SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST:
+            return fillEnumValuesCapability({
+                    SAI_IN_DROP_REASON_L2_ANY,
+                    SAI_IN_DROP_REASON_L3_ANY,
+                    SAI_IN_DROP_REASON_ACL_ANY }, enum_values_capability);
+
+        case SAI_DEBUG_COUNTER_ATTR_OUT_DROP_REASON_LIST:
+            return fillEnumValuesCapability({
+                    SAI_OUT_DROP_REASON_L2_ANY,
+                    SAI_OUT_DROP_REASON_L3_ANY }, enum_values_capability);
+
+        case SAI_DEBUG_COUNTER_ATTR_TYPE:
+            return fillEnumValuesCapability({
+                    SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS,
+                    SAI_DEBUG_COUNTER_TYPE_PORT_OUT_DROP_REASONS,
+                    SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS,
+                    SAI_DEBUG_COUNTER_TYPE_SWITCH_OUT_DROP_REASONS }, enum_values_capability);
+
+        default:
+            return SAI_STATUS_NOT_SUPPORTED;
+    }
+}
+
 sai_status_t SwitchStateBase::queryHashNativeHashFieldListCapability(
                    _Inout_ sai_s32_list_t *enum_values_capability)
 {
@@ -4372,7 +4430,11 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
 {
     SWSS_LOG_ENTER();
 
-    if (object_type == SAI_OBJECT_TYPE_TUNNEL && attr_id == SAI_TUNNEL_ATTR_PEER_MODE)
+    if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
+    {
+        return queryDebugCounterCapability(attr_id, enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_TUNNEL && attr_id == SAI_TUNNEL_ATTR_PEER_MODE)
     {
         return queryTunnelPeerModeCapability(enum_values_capability);
     }
