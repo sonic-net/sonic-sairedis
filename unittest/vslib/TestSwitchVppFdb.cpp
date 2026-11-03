@@ -803,42 +803,45 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
                     m_sw->set_internal(SAI_OBJECT_TYPE_PORT, sai_serialize_object_id(port), &attr));
         }
 
-        // VPP reports the MAC on sw_if_index
+        // VPP reports the MAC, or another one, on sw_if_index
         void queueMacEvent(
                 uint8_t action,
-                uint32_t sw_if_index)
+                uint32_t sw_if_index,
+                const uint8_t *mac = MAC)
         {
             SWSS_LOG_ENTER();
 
             SwitchVpp::VppMacEvent ev = {};
 
-            memcpy(ev.mac, MAC, sizeof(ev.mac));
+            memcpy(ev.mac, mac, sizeof(ev.mac));
             ev.sw_if_index = sw_if_index;
             ev.action = action;
 
             m_sw->m_mac_event_queue.push(ev);
         }
 
-        // VPP reports the MAC on sw_if_index, and saivpp's aging pass takes it
+        // VPP reports the MAC, or another one, on sw_if_index, and saivpp's aging pass takes it
         void macEvent(
                 uint8_t action,
-                uint32_t sw_if_index)
+                uint32_t sw_if_index,
+                const uint8_t *mac = MAC)
         {
             SWSS_LOG_ENTER();
 
-            queueMacEvent(action, sw_if_index);
+            queueMacEvent(action, sw_if_index, mac);
             m_sw->processFdbEntriesForAging();
         }
 
-        // VPP's L2FIB has the MAC on sw_if_index
+        // VPP's L2FIB has the MAC, or another one, on sw_if_index
         void l2fibHasMac(
-                uint32_t sw_if_index)
+                uint32_t sw_if_index,
+                const uint8_t *mac = MAC)
         {
             SWSS_LOG_ENTER();
 
             vpp_l2fib_entry_t row = {};
 
-            memcpy(row.mac, MAC, sizeof(row.mac));
+            memcpy(row.mac, mac, sizeof(row.mac));
             row.bd_id = VLAN_ID;
             row.sw_if_index = sw_if_index;
 
@@ -913,6 +916,9 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
 
         static constexpr uint8_t MAC[6] = {0x02, 0x11, 0x22, 0x33, 0x44, 0x66};
         static constexpr const char *MAC_STR = "02:11:22:33:44:66";
+        // a MAC with no FDB entry
+        static constexpr uint8_t OTHER_MAC[6] = {0x02, 0x11, 0x22, 0x33, 0x44, 0x77};
+        static constexpr const char *OTHER_MAC_STR = "02:11:22:33:44:77";
         static constexpr uint32_t PORT_SW_IF_INDEX = 5;
         static constexpr uint32_t OTHER_PORT_SW_IF_INDEX = 6;
 
@@ -921,6 +927,8 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
 
 constexpr uint8_t SwitchVppFdbAgingCreatedEntry::MAC[6];
 constexpr const char *SwitchVppFdbAgingCreatedEntry::MAC_STR;
+constexpr uint8_t SwitchVppFdbAgingCreatedEntry::OTHER_MAC[6];
+constexpr const char *SwitchVppFdbAgingCreatedEntry::OTHER_MAC_STR;
 constexpr uint32_t SwitchVppFdbAgingCreatedEntry::PORT_SW_IF_INDEX;
 constexpr uint32_t SwitchVppFdbAgingCreatedEntry::OTHER_PORT_SW_IF_INDEX;
 
@@ -1047,6 +1055,55 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, StaticEntryIsNotRemovedByADelete)
     EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
     EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
     EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+}
+
+/*
+ * A MAC VPP learned, which orchagent then makes static: set() changes the
+ * entry's type in SAI only, and VPP keeps its learned row, which ages. Its
+ * DELETE is reported once, as AGED with the entry's bridge port, and the
+ * entry is removed and forgotten, so orchagent can create the static entry
+ * again.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, LearnedEntryMadeStaticIsAgedWhenVppDeletesIt)
+{
+    l2fibHasMac(PORT_SW_IF_INDEX, OTHER_MAC);
+    macEvent(VPP_MAC_ACTION_ADD, PORT_SW_IF_INDEX, OTHER_MAC);
+
+    EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_LEARNED"));
+    ASSERT_EQ(1u, m_sw->m_vpp_fdb_entries.size());
+
+    sai_fdb_entry_t fdb_entry = {};
+
+    fdb_entry.switch_id = m_switchId;
+    fdb_entry.bv_id = m_vlan;
+    memcpy(fdb_entry.mac_address, OTHER_MAC, sizeof(sai_mac_t));
+
+    auto learnedId = sai_serialize_fdb_entry(fdb_entry);
+
+    ASSERT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(learnedId));
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attr.value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, learnedId, &attr));
+
+    // VPP ages its learned row
+    vppMock().l2fib.clear();
+    macEvent(VPP_MAC_ACTION_DELETE, PORT_SW_IF_INDEX, OTHER_MAC);
+
+    auto ntf = fdbNotification();
+
+    EXPECT_NE(std::string::npos, ntf.find("SAI_FDB_EVENT_AGED"));
+    EXPECT_NE(std::string::npos, ntf.find(OTHER_MAC_STR));
+    EXPECT_NE(std::string::npos, ntf.find(sai_serialize_object_id(m_bridgePort)));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(learnedId));
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+
+    // orchagent's entry for the other MAC stays
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
 }
 
 /*
