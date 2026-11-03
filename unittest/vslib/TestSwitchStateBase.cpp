@@ -618,3 +618,31 @@ TEST_F(SwitchStateBaseTest, hasNativePacketSamplingDefaultsToFalse)
 {
     EXPECT_FALSE(m_ss->hasNativePacketSampling());
 }
+
+TEST_F(SwitchStateBaseTest, refreshLearnedFdbTimestamp)
+{
+    const auto port = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_swid);
+    const sai_mac_t mac = {0x02, 0x11, 0x22, 0x33, 0x44, 0x55};
+    sai_fdb_entry_t entry = {};
+    std::copy(mac, mac + 6, entry.mac_address);
+
+    FdbInfo learned;
+    learned.setFdbEntry(entry);
+    learned.setPortId(port);
+    learned.setVlanId(1000);
+    learned.setTimestamp(1);
+    m_ss->m_fdb_info_set.insert(learned);
+
+    std::vector<uint8_t> frame(64, 0);
+    std::copy(mac, mac + 6, frame.begin() + 6);
+    frame[12] = 0x81;
+    frame[13] = 0x00;
+    frame[14] = 0x03;
+    frame[15] = 0xe8;
+    frame[16] = 0x08;
+    frame[17] = 0x06;
+    m_ss->process_packet_for_fdb_event(port, "Ethernet0", frame.data(), frame.size());
+
+    ASSERT_EQ(m_ss->m_fdb_info_set.size(), 1);
+    EXPECT_GT(m_ss->m_fdb_info_set.begin()->getTimestamp(), 1);
+}
