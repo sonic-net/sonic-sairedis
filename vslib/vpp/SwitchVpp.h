@@ -1756,7 +1756,11 @@ namespace saivs
                 uint8_t  mac[6];
                 uint32_t sw_if_index;
                 uint8_t  action; // 0=ADD(learn), 1=DELETE(age), 2=MOVE, 3=RESYNC
-                bool     retry = false; // a DELETE queued again, behind later events
+                bool     retry = false; // queued again after a failed L2FIB dump, behind later events
+                // For a retry: the bridge domain, and its VLAN or bridge, the
+                // event was taken in. sw_if_index may have left both since.
+                uint32_t bd_id = 0;
+                sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
             };
             std::mutex              m_mac_event_queue_mutex;
             std::queue<VppMacEvent> m_mac_event_queue;
@@ -1776,6 +1780,9 @@ namespace saivs
             bool generateFdbAgedEvent(const VppFdbKey &key);
 
             bool findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, FdbInfo &fi);
+            bool findCreatedFdbEntryInBv(const VppFdbKey &key, sai_object_id_t bv_id, FdbInfo &fi);
+            // The VLAN, or .1D bridge, of a MAC in bridge domain key.bd_id on sw_if_index
+            sai_object_id_t fdbBvIdOf(const VppFdbKey &key, uint32_t sw_if_index);
             bool vppMovesFdbEntry(const std::string &serializedObjectId);
 
             // Whether VPP's L2FIB has a MAC

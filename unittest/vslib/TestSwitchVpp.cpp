@@ -3560,6 +3560,18 @@ class SwitchVppFdbAgingCreatedEntry : public SwitchVppFdbAging
             vppMock().l2fib = {row};
         }
 
+        // orchagent removes the port from VLAN 100, its only VLAN, and so its bridge port
+        void leaveVlan(
+                const char *hwif,
+                sai_object_id_t bridgePort)
+        {
+            SWSS_LOG_ENTER();
+
+            ASSERT_TRUE(m_sw->m_ifaceRegistry.clearBdId(hwif));
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->remove_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bridgePort)));
+        }
+
         // the event socket reconnected, and VPP's L2FIB has the MAC on sw_if_index
         void resync(
                 uint32_t sw_if_index)
@@ -3797,6 +3809,65 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedAfterAFailedL2fibDump)
     EXPECT_NE(std::string::npos, fdbNotification().find("SAI_FDB_EVENT_AGED"));
     EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
     EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+}
+
+/*
+ * VPP moved orchagent's entry to the other port while its events were lost,
+ * and ages it there. VPP's L2FIB can't be dumped to check the DELETE, and the
+ * other port leaves the VLAN before the retry: the retry still takes the
+ * DELETE in bridge domain 100, and ages the entry on the first port.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedAfterItsPortLeftTheVlanAgesTheEntry)
+{
+    vppMock().l2fibDumpFailures = 1;
+
+    macEvent(VPP_MAC_ACTION_DELETE, OTHER_PORT_SW_IF_INDEX);
+
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    ASSERT_EQ(1u, m_sw->m_mac_event_queue.size());
+    EXPECT_TRUE(m_sw->m_mac_event_queue.front().retry);
+
+    leaveVlan(OTHER_PORT_HWIF, m_otherBridgePort);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(2u, vppMock().l2fibDumpCalls);
+    EXPECT_TRUE(m_sw->m_mac_event_queue.empty());
+
+    auto ntf = fdbNotification();
+
+    EXPECT_NE(std::string::npos, ntf.find("SAI_FDB_EVENT_AGED"));
+    EXPECT_NE(std::string::npos, ntf.find(MAC_STR));
+    EXPECT_NE(std::string::npos, ntf.find(sai_serialize_object_id(m_bridgePort)));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+/*
+ * The same, but by the retry VPP has the MAC again, on the first port. The
+ * retry looks the MAC up in bridge domain 100, and ages nothing.
+ */
+TEST_F(SwitchVppFdbAgingCreatedEntry, DeleteRetriedAfterItsPortLeftTheVlanAgesNothingVppHas)
+{
+    vppMock().l2fibDumpFailures = 1;
+
+    macEvent(VPP_MAC_ACTION_DELETE, OTHER_PORT_SW_IF_INDEX);
+
+    ASSERT_EQ(1u, m_sw->m_mac_event_queue.size());
+
+    leaveVlan(OTHER_PORT_HWIF, m_otherBridgePort);
+    l2fibHasMac(PORT_SW_IF_INDEX);
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_EQ(2u, vppMock().l2fibDumpCalls);
+    EXPECT_TRUE(m_sw->m_mac_event_queue.empty());
+    EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(m_fdbId));
+    EXPECT_EQ(m_bridgePort, entryBridgePort());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+    EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
 
 /*

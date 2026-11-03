@@ -3535,11 +3535,26 @@ bool SwitchVpp::findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, 
 {
     SWSS_LOG_ENTER();
 
+    return findCreatedFdbEntryInBv(key, fdbBvIdOf(key, sw_if_index), fi);
+}
+
+sai_object_id_t SwitchVpp::fdbBvIdOf(const VppFdbKey &key, uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
     sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
     sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
 
     findBridgeVlanForPortVlan(m_ifaceRegistry.resolveIfOid(sw_if_index),
                               (sai_vlan_id_t)key.bd_id, bv_id, bridge_port_id);
+
+    return bv_id;
+}
+
+// The same, in the VLAN or bridge bv_id the MAC was taken in
+bool SwitchVpp::findCreatedFdbEntryInBv(const VppFdbKey &key, sai_object_id_t bv_id, FdbInfo &fi)
+{
+    SWSS_LOG_ENTER();
 
     if (bv_id == SAI_NULL_OBJECT_ID)
     {
@@ -3656,11 +3671,15 @@ SwitchVpp::L2fibLookup SwitchVpp::lookupL2fibMac(const VppFdbKey &key, vpp_l2fib
  * on the port of orchagent's entry is left alone: VPP doesn't age an entry
  * orchagent created, unless it moved it (vpp_set_fdb_aging_time()), and if it
  * moved it away and back, its DELETE comes here. The event is queued again
- * if the L2FIB can't be dumped.
+ * if the L2FIB can't be dumped, with the bridge domain and VLAN it is taken
+ * in: its interface may leave them before the retry, which takes it all the
+ * same.
  */
 void SwitchVpp::reconcileFdbEntryWithVpp(const VppFdbKey &key, const VppMacEvent &ev)
 {
     SWSS_LOG_ENTER();
+
+    sai_object_id_t mac_bv_id = ev.retry ? ev.bv_id : fdbBvIdOf(key, ev.sw_if_index);
 
     vpp_l2fib_entry_t entry = {};
     L2fibLookup lookup = lookupL2fibMac(key, entry);
@@ -3673,6 +3692,8 @@ void SwitchVpp::reconcileFdbEntryWithVpp(const VppFdbKey &key, const VppMacEvent
         // The next aging pass retries it, as for a failed resync
         VppMacEvent again = ev;
         again.retry = true;
+        again.bd_id = key.bd_id;
+        again.bv_id = mac_bv_id;
 
         std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
         m_mac_event_queue.push(again);
@@ -3699,7 +3720,7 @@ void SwitchVpp::reconcileFdbEntryWithVpp(const VppFdbKey &key, const VppMacEvent
 
     FdbInfo created;
 
-    if (findCreatedFdbEntry(key, ev.sw_if_index, created))
+    if (findCreatedFdbEntryInBv(key, mac_bv_id, created))
     {
         if (!present)
         {

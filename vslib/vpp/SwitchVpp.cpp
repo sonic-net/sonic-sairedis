@@ -1399,6 +1399,23 @@ void SwitchVpp::processFdbEntriesForAging()
         }
 
         /*
+         * An event queued again after a failed L2FIB dump is taken in the
+         * bridge domain it passed the gate below for, against VPP's L2FIB as
+         * it is now (reconcileFdbEntryWithVpp()). Its interface may have left
+         * the bridge domain since, and the gate would drop it, leaving the
+         * FDB entry of a MAC VPP aged.
+         */
+        if (ev.retry) {
+            VppFdbKey key;
+            memcpy(key.mac, ev.mac, 6);
+            key.bd_id = ev.bd_id;
+
+            reconcileFdbEntryWithVpp(key, ev);
+            events.pop();
+            continue;
+        }
+
+        /*
          * Bridge-domain membership is the drop gate: an event from an interface
          * that is not in a BD is not a bridged MAC and must not reach ASIC_DB.
          *
@@ -1428,16 +1445,15 @@ void SwitchVpp::processFdbEntriesForAging()
 
         /*
          * An event that may be stale is taken against VPP's L2FIB as it is
-         * now instead (reconcileFdbEntryWithVpp()): one queued again, a MOVE
-         * for a MAC saivpp doesn't track, and one for a MAC orchagent has a
-         * dynamic FDB entry for, which saivpp doesn't track.
+         * now instead (reconcileFdbEntryWithVpp()): a MOVE for a MAC saivpp
+         * doesn't track, and one for a MAC orchagent has a dynamic FDB entry
+         * for, which saivpp doesn't track.
          */
         bool tracked = m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end();
         FdbInfo created;
 
-        if (ev.retry ||
-            (!tracked && (ev.action == VPP_MAC_ACTION_MOVE ||
-                          findCreatedFdbEntry(key, ev.sw_if_index, created)))) {
+        if (!tracked && (ev.action == VPP_MAC_ACTION_MOVE ||
+                         findCreatedFdbEntry(key, ev.sw_if_index, created))) {
             reconcileFdbEntryWithVpp(key, ev);
             events.pop();
             continue;
