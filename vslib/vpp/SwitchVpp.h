@@ -1838,6 +1838,13 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ sai_attr_id_t attr_id);
 
+            // Delete the tracked MAC addresses that inScope() selects from VPP's
+            // L2FIB one by one, ahead of a lazy flush, except those SAI holds
+            // as static; see vpp_fdbentry_flush(). Returns how many VPP deleted.
+            size_t vpp_fdb_entries_delete_from_l2fib(
+                    _In_ const std::string& scope,
+                    _In_ const std::function<bool(const VppFdbKey&, uint32_t)>& inScope);
+
             // Reconcile m_vpp_fdb_entries/FDB notifications with VPP's L2FIB
             // after MAC events were lost (VPP_MAC_ACTION_RESYNC). Returns
             // false, changing nothing, if VPP's L2FIB cannot be dumped.
