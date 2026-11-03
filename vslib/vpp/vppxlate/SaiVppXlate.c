@@ -1119,6 +1119,37 @@ static void set_reply_sw_if_index (vl_api_interface_index_t sw_if_index)
 }
 
 /*
+ * A request tagged with a store_ptr() context completes only on its own
+ * reply. A reply to an earlier request that timed out, whose context was
+ * released, completes nothing, so it can't end the WR() of the request now
+ * pending.
+ */
+static void complete_tagged_reply (uint32_t context, int retval)
+{
+    if (!get_index_ptr(context)) {
+        return;
+    }
+    release_index(context);
+    set_reply_status(retval);
+}
+
+/*
+ * The result of a request tagged with context, once WR() is done. If its own
+ * reply didn't complete it, WR() timed out or another request's reply ended
+ * it: release the context, so that its reply, should it come later, completes
+ * nothing, and fail the request.
+ */
+static int finish_tagged_request (uint32_t context, int ret)
+{
+    if (get_index_ptr(context)) {
+        release_index(context);
+        return ret ? ret : -EAGAIN;
+    }
+
+    return ret;
+}
+
+/*
  * Context of the last control ping reply read. Every read holds vpp_mutex, so
  * a request that tags its ping can tell the reply to it from one left over
  * from an earlier request that timed out (see vpp_l2fib_dump()).
@@ -1473,7 +1504,7 @@ static void
 vl_api_bridge_domain_set_mac_age_reply_t_handler (vl_api_bridge_domain_set_mac_age_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    complete_tagged_reply(msg->context, retval);
 }
 
 static void
@@ -2007,34 +2038,24 @@ vl_api_sonic_ext_egress_mirror_enable_disable_reply_t_handler(
 }
 
 static void
-complete_trim_set_reply(uint32_t context, int retval)
-{
-    if (!get_index_ptr(context)) {
-        return;
-    }
-    release_index(context);
-    set_reply_status(retval);
-}
-
-static void
 vl_api_sonic_ext_trim_global_set_reply_t_handler(vl_api_sonic_ext_trim_global_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    complete_trim_set_reply(msg->context, retval);
+    complete_tagged_reply(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_trim_dscp_map_set_reply_t_handler(vl_api_sonic_ext_trim_dscp_map_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    complete_trim_set_reply(msg->context, retval);
+    complete_tagged_reply(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_trim_queue_set_reply_t_handler(vl_api_sonic_ext_trim_queue_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    complete_trim_set_reply(msg->context, retval);
+    complete_tagged_reply(msg->context, retval);
 }
 
 static void
@@ -6639,19 +6660,33 @@ int vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_age)
 {
     vat_main_t *vam = &vat_main;
     vl_api_bridge_domain_set_mac_age_t *mp;
+    uint32_t context;
     int ret;
 
     VPP_LOCK();
+
+    /*
+     * Tagged, so that the reply to a request that timed out can't pass for
+     * this one's: a MAC age VPP rejected would be taken as set on all bridge
+     * domains, and not set again.
+     */
+    context = store_ptr(&ret);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
 
     __plugin_msg_base = l2_msg_id_base;
 
     M (BRIDGE_DOMAIN_SET_MAC_AGE, mp);
 
+    mp->context = context;
     mp->bd_id = htonl(bd_id);
     mp->mac_age = mac_age;
     S (mp);
 
     WR (ret);
+    ret = finish_tagged_request(context, ret);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) bd_id %u mac_age %u", __func__, ret, bd_id, mac_age); }
     else { SAIVPP_INFO("%s bd_id %u mac_age %u", __func__, bd_id, mac_age); }
