@@ -356,12 +356,14 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
     uint32_t binding_key = 0;
     bool have_binding_key = trapBindingKey(trap.trap_type, binding_key);
     sai_object_id_t current_policer_oid = SAI_NULL_OBJECT_ID;
+    bool current_binding_present = false;
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
         auto bit = have_binding_key ? m_trap_binding_map.find(binding_key) :
             m_trap_binding_map.end();
         if (bit != m_trap_binding_map.end())
         {
+            current_binding_present = true;
             current_policer_oid = bit->second.policer_oid;
         }
     }
@@ -400,6 +402,7 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
     bool semantic_active = trap.packet_action == SAI_PACKET_ACTION_TRAP ||
         trap.packet_action == SAI_PACKET_ACTION_COPY;
+    const bool requested_semantic_active = semantic_active;
     sai_packet_action_t effective_action = trap.packet_action;
 
     // DHCPv4 and DHCPv6 each have one physical row shared by all SAI trap
@@ -432,40 +435,80 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
             SAI_PACKET_ACTION_COPY : SAI_PACKET_ACTION_TRAP;
     }
 
-    // A VPP row can be shared by multiple SAI traps. If this trap has no
-    // desired policer, select another installed owner before deleting the row.
+    // A VPP row can be shared by multiple SAI traps. An active DHCP or
+    // NEIGHBOR_MISS trap with no policer explicitly requests a present+NULL
+    // (unpoliced) row; do not replace it with another owner's policer. During
+    // removal, preserve the journaled owner when it is still installed before
+    // falling back to any other remaining owner.
+    bool explicit_unpoliced_request = requested_semantic_active &&
+        (isDhcpTrap(trap.trap_type) || isNeighborMissTrap(trap.trap_type));
     if (reconcile_shared_owners && select_alternate_owner &&
-            policer_oid == SAI_NULL_OBJECT_ID)
+            policer_oid == SAI_NULL_OBJECT_ID && !explicit_unpoliced_request)
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
 
-        for (const auto &kv : m_trap_map)
+        bool preserved_current_owner = false;
+        if (current_binding_present)
         {
-            if (kv.first == trap_oid || !kv.second.classify_installed ||
-                    (excluded_trap_group_oid != SAI_NULL_OBJECT_ID &&
-                     kv.second.trap_group_oid == excluded_trap_group_oid) ||
-                    !trapsShareBinding(trap.trap_type, kv.second.trap_type))
+            for (const auto &kv : m_trap_map)
             {
-                continue;
-            }
+                if (kv.first == trap_oid || !kv.second.classify_installed ||
+                        (excluded_trap_group_oid != SAI_NULL_OBJECT_ID &&
+                         kv.second.trap_group_oid == excluded_trap_group_oid) ||
+                        !trapsShareBinding(trap.trap_type, kv.second.trap_type))
+                {
+                    continue;
+                }
 
-            semantic_active = true;
+                auto git = m_trap_group_map.find(kv.second.trap_group_oid);
+                if (git == m_trap_group_map.end() ||
+                        git->second.policer_oid != current_policer_oid)
+                {
+                    continue;
+                }
 
-            auto git = m_trap_group_map.find(kv.second.trap_group_oid);
-            if (git == m_trap_group_map.end())
-            {
-                continue;
-            }
-
-            if (git->second.policer_oid != SAI_NULL_OBJECT_ID)
-            {
-                policer_oid = git->second.policer_oid;
+                semantic_active = true;
+                policer_oid = current_policer_oid;
                 auto pit = m_policer_map.find(policer_oid);
                 if (pit != m_policer_map.end())
                 {
                     vpp_policer_index = pit->second.vpp_policer_index;
                 }
+                preserved_current_owner = true;
                 break;
+            }
+        }
+
+        if (!preserved_current_owner)
+        {
+            for (const auto &kv : m_trap_map)
+            {
+                if (kv.first == trap_oid || !kv.second.classify_installed ||
+                        (excluded_trap_group_oid != SAI_NULL_OBJECT_ID &&
+                         kv.second.trap_group_oid == excluded_trap_group_oid) ||
+                        !trapsShareBinding(trap.trap_type, kv.second.trap_type))
+                {
+                    continue;
+                }
+
+                semantic_active = true;
+
+                auto git = m_trap_group_map.find(kv.second.trap_group_oid);
+                if (git == m_trap_group_map.end())
+                {
+                    continue;
+                }
+
+                if (git->second.policer_oid != SAI_NULL_OBJECT_ID)
+                {
+                    policer_oid = git->second.policer_oid;
+                    auto pit = m_policer_map.find(policer_oid);
+                    if (pit != m_policer_map.end())
+                    {
+                        vpp_policer_index = pit->second.vpp_policer_index;
+                    }
+                    break;
+                }
             }
         }
     }
@@ -1541,5 +1584,5 @@ void SwitchVpp::vpp_update_dhcp_trap_action()
         }
     }
 
-    vpp_set_dhcp_trap_copy(any && all_copy);
+    vpp_set_dhcp_trap_state(any, any && all_copy);
 }

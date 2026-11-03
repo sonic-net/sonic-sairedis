@@ -1234,16 +1234,17 @@ namespace saivs
 
         protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCP packet action
 
-            // True while every DHCP hostif trap has SAI_PACKET_ACTION_COPY
-            // (and there is at least one), which floods DHCPv4 client
-            // broadcasts in their VLAN and copies them to the CPU. Otherwise
-            // they are trapped, as before. See SwitchVppFdb.cpp.
+            // A DHCPv4 trap makes routed limited broadcasts local receives.
+            // COPY additionally floods VLAN client broadcasts; TRAP keeps the
+            // terminal VLAN-member classifiers. See SwitchVppFdb.cpp.
+            bool m_dhcp_trap_active = false;
             bool m_dhcp_trap_copy = false;
 
-            // Re-derives m_dhcp_trap_copy from m_trap_map and applies it.
+            // Re-derives active/COPY state from m_trap_map and applies it.
             void vpp_update_dhcp_trap_action();
 
-            void vpp_set_dhcp_trap_copy(
+            void vpp_set_dhcp_trap_state(
+                    _In_ bool active,
                     _In_ bool copy);
 
 

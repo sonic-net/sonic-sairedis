@@ -221,18 +221,17 @@ static uint32_t s_tag_ip6mc_only_table = ~0;  /* IPv6 mcast over .1Q -> s_tag_dh
  *
  * The CPU gets the BVI's copy.  VPP installs 255.255.255.255/32 in every
  * IPv4 table as a drop, but at the lowest priority so that it can be
- * overridden, and while the DHCP trap action is COPY that entry is
- * overridden with a local receive in each VRF table (see
+ * overridden. While a DHCP trap is active that entry is overridden with a
+ * local receive in each VRF table (see
  * vpp_ip4_limited_broadcast_receive()).  So the copy goes to ip4-local,
  * and from there to the BVI's host tap the way any punted packet for the
  * BVI does: sonic-ext-aggr-tap-redirect moves it to the originating
  * member's tap (re-adding the tag for a tagged member) and the kernel
  * lifts it to the Vlan netdev, where the DHCP relay listens.
  *
- * Every other action, and no DHCP trap at all, keeps the TRAP behavior on
- * VLAN members and leaves VPP's default drop on 255.255.255.255/32 in place
- * so routed interfaces do not punt limited broadcasts when no COPY DHCP
- * trap is configured.
+ * TRAP keeps the terminal VLAN-member classifier, so it does not introduce
+ * VLAN flooding, but the same local route is needed for DHCP broadcasts that
+ * arrive on routed interfaces. With no DHCP trap, VPP's default drop remains.
  */
 static bool     s_dhcp_member_sessions = false; /* DHCPv4 sessions present in the member tables */
 
@@ -241,6 +240,8 @@ static bool     s_dhcp_member_sessions = false; /* DHCPv4 sessions present in th
  * unit remains loaded. Reset every process-global table/index cache with it. */
 extern "C" void saivpp_reset_l2_punt_classify_for_test()
 {
+    SWSS_LOG_ENTER();
+
     s_l2_punt_classify_inited = false;
     s_punt_next_index = ~0u;
     s_trap_fixup_next_index = ~0u;
@@ -945,38 +946,49 @@ static int l2_punt_classify_remove(const char *hwif_name)
  * (flood, and the CPU gets the BVI's copy).  See the s_dhcp_member_sessions
  * comment.
  */
-void SwitchVpp::vpp_set_dhcp_trap_copy(
+void SwitchVpp::vpp_set_dhcp_trap_state(
+        _In_ bool active,
         _In_ bool copy)
 {
     SWSS_LOG_ENTER();
 
-    if (copy == m_dhcp_trap_copy)
+    if (active == m_dhcp_trap_active && copy == m_dhcp_trap_copy)
     {
         return;
     }
 
+    bool active_changed = active != m_dhcp_trap_active;
+    bool copy_changed = copy != m_dhcp_trap_copy;
+    m_dhcp_trap_active = active;
     m_dhcp_trap_copy = copy;
 
-    SWSS_LOG_NOTICE("DHCP hostif trap action %s: DHCPv4 client broadcasts are %s",
-            copy ? "COPY" : "TRAP",
-            copy ? "flooded in their VLAN and copied to the CPU"
-                 : "trapped to the CPU and not flooded");
+    SWSS_LOG_NOTICE("DHCP hostif trap state %s%s",
+            active ? (copy ? "COPY" : "TRAP") : "absent",
+            active ? (copy ? ": VLAN flood plus CPU copy"
+                           : ": terminal VLAN trap plus routed receive")
+                   : ": routed limited-broadcast receive removed");
 
-    l2_punt_dhcp_sessions_set(!copy);
-
-    std::set<uint32_t> vrfs;
-
-    for (const auto &kv : vrf_objMap)
+    if (copy_changed)
     {
-        if (kv.second)
-        {
-            vrfs.insert(kv.second->m_vrf_id);
-        }
+        l2_punt_dhcp_sessions_set(!copy);
     }
 
-    for (uint32_t vrf_id : vrfs)
+    if (active_changed)
     {
-        vpp_ip4_limited_broadcast_receive(vrf_id, copy);
+        std::set<uint32_t> vrfs;
+
+        for (const auto &kv : vrf_objMap)
+        {
+            if (kv.second)
+            {
+                vrfs.insert(kv.second->m_vrf_id);
+            }
+        }
+
+        for (uint32_t vrf_id : vrfs)
+        {
+            vpp_ip4_limited_broadcast_receive(vrf_id, active);
+        }
     }
 }
 

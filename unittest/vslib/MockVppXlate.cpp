@@ -131,6 +131,8 @@ namespace
             const uint8_t *data,
             size_t len)
     {
+        SWSS_LOG_ENTER();
+
         std::vector<uint8_t> key(table.match * 16, 0);
         for (size_t i = 0; i < key.size(); i++)
         {
@@ -858,8 +860,7 @@ int __wrap_vpp_add_node_next(const char *node_name, const char *next_name, uint3
     auto it = vppMock().nodeNexts.find(key);
     if (it == vppMock().nodeNexts.end())
     {
-        it = vppMock().nodeNexts.emplace(
-                key, 10 + vppMock().nodeNextCounts[node_name]++).first;
+        return -1;
     }
     *next_index = it->second;
     return 0;

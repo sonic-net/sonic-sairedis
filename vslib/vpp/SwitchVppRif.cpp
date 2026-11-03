@@ -1746,7 +1746,7 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
             SWSS_LOG_ERROR("Failed to add 255.255.255.255 to the CoPP IP2ME addresses, "
                            "so limited broadcasts reach the CPU unpoliced");
         }
-        if (m_dhcp_trap_copy) {
+        if (m_dhcp_trap_active) {
             vpp_ip4_limited_broadcast_receive(vrf_id, true);
         }
     }
@@ -1776,7 +1776,7 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
         if (sw != nullptr) {
                  SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
            // table 0 outlives every VRF object, and other router interfaces may still use it
-           if (m_dhcp_trap_copy && sw->m_vrf_id != 0)
+           if (m_dhcp_trap_active && sw->m_vrf_id != 0)
            {
                vpp_ip4_limited_broadcast_receive(sw->m_vrf_id, false);
            }
@@ -1802,13 +1802,12 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
  * to the interface's host tap. For a VLAN that is the BVI's copy of a
  * flooded broadcast, and it is how a DHCPv4 client broadcast reaches the
  * DHCP relay when the SAI_HOSTIF_TRAP_TYPE_DHCP action is COPY (see
- * SwitchVppFdb.cpp). Under TRAP (or when no DHCP trap is configured) the
- * client broadcast is punted at the VLAN member and never reaches the BVI,
- * while routed ports keep VPP's default drop on 255.255.255.255/32 so a
- * switch without a COPY DHCP trap (such as a T1 spine) does not punt limited
- * broadcasts to the CPU.
+ * SwitchVppFdb.cpp). Under TRAP the VLAN-member classifier prevents flooding,
+ * while a limited broadcast arriving on a routed interface still needs this
+ * local route. With no DHCP trap, routed ports keep VPP's default drop so a
+ * switch that does not configure DHCP interception does not punt them.
  *
- * While COPY is active a limited broadcast is to-me traffic, and
+ * While a DHCP trap is active a limited broadcast is to-me traffic, and
  * vpp_add_ip_vrf() adds 255.255.255.255 to sonic-ext-copp-ip2me's address set
  * with the switch's own addresses so the IP2ME trap group's policer meters
  * limited broadcasts on the punt path regardless of trap mode.
