@@ -205,6 +205,8 @@ struct VppMock
 
     std::map<std::string, uint32_t> interfaceVrfs;
     std::set<uint32_t> vrfTables;
+    int ipRouteResult = 0;
+    unsigned int ipRouteCalls = 0;
     std::map<std::string, vpp_interface_stats_t> interfaceStats;
     std::map<std::string, int> actions;
     std::set<std::string> interfaces;

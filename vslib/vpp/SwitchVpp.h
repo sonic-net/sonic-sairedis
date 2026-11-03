@@ -1239,8 +1239,14 @@ namespace saivs
             // terminal VLAN-member classifiers. See SwitchVppFdb.cpp.
             bool m_dhcp_trap_active = false;
             bool m_dhcp_trap_copy = false;
+            // IPv4 tables whose limited-broadcast local route was confirmed
+            // installed.  Keep this separate from the desired trap state:
+            // failed adds/deletes then remain visible and an unchanged-state
+            // reconciliation retries them instead of returning early.
+            std::set<uint32_t> m_dhcp_route_vrfs;
 
-            // Re-derives active/COPY state from m_trap_map and applies it.
+            // Re-derives active/COPY state from m_trap_map and reconciles it,
+            // including any previously failed per-VRF route operation.
             void vpp_update_dhcp_trap_action();
 
             void vpp_set_dhcp_trap_state(

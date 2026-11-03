@@ -1716,7 +1716,21 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
     if (it != vrf_objMap.end()) {
         auto sw = it->second;
         if (sw != nullptr) {
-                 SWSS_LOG_NOTICE("VRF(%s) with id %u already exists", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
+            SWSS_LOG_NOTICE("VRF(%s) with id %u already exists",
+                    sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
+            bool route_installed =
+                m_dhcp_route_vrfs.count(sw->m_vrf_id) != 0;
+            if (route_installed != m_dhcp_trap_active) {
+                if (vpp_ip4_limited_broadcast_receive(
+                            sw->m_vrf_id, m_dhcp_trap_active) != 0) {
+                    return -1;
+                }
+                if (m_dhcp_trap_active) {
+                    m_dhcp_route_vrfs.insert(sw->m_vrf_id);
+                } else {
+                    m_dhcp_route_vrfs.erase(sw->m_vrf_id);
+                }
+            }
         } else {
             SWSS_LOG_ERROR("VRF(%s) object with null data", sai_serialize_object_id(objectId).c_str());
         }
@@ -1738,18 +1752,30 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
                        vrf_id, sai_serialize_object_id(objectId).c_str());
         return -1;
     }
-    SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
-    vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
+    if (m_dhcp_trap_active && m_dhcp_route_vrfs.count(vrf_id) == 0 &&
+        vpp_ip4_limited_broadcast_receive(vrf_id, true) != 0) {
+        SWSS_LOG_ERROR("Failed to install the DHCP limited-broadcast route "
+                       "in IPv4 VRF table %u", vrf_id);
+        if (!has_vrf_table && vrf_id &&
+            ip_vrf_del(vrf_id, vrf_name.c_str(), false) != 0) {
+            SWSS_LOG_ERROR("Failed to roll back IPv4 VRF table %u after "
+                           "the limited-broadcast route failure", vrf_id);
+        }
+        return -1;
+    }
+    if (m_dhcp_trap_active) {
+        m_dhcp_route_vrfs.insert(vrf_id);
+    }
 
     if (!has_vrf_table) {
         if (vpp_sonic_ext_copp_ip2me_addr_add_del(htonl(INADDR_BROADCAST), true) != 0) {
             SWSS_LOG_ERROR("Failed to add 255.255.255.255 to the CoPP IP2ME addresses, "
                            "so limited broadcasts reach the CPU unpoliced");
         }
-        if (m_dhcp_trap_active) {
-            vpp_ip4_limited_broadcast_receive(vrf_id, true);
-        }
     }
+
+    SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
+    vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
 
     uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
         VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
@@ -1774,14 +1800,23 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
     if (it != vrf_objMap.end()) {
         auto sw = it->second;
         if (sw != nullptr) {
-                 SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
-           // table 0 outlives every VRF object, and other router interfaces may still use it
-           if (m_dhcp_trap_active && sw->m_vrf_id != 0)
-           {
-               vpp_ip4_limited_broadcast_receive(sw->m_vrf_id, false);
-           }
-           ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), sw->m_is_ipv6);
-           vrf_objMap.erase(it);
+            SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u",
+                    sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
+            // Table 0 outlives every VRF object, and other router interfaces
+            // may still use it.
+            if (m_dhcp_route_vrfs.count(sw->m_vrf_id) != 0 &&
+                sw->m_vrf_id != 0) {
+                if (vpp_ip4_limited_broadcast_receive(
+                            sw->m_vrf_id, false) != 0) {
+                    // Keep the table and cache entry so public remove can fail
+                    // cleanly and retry the mandatory route cleanup.
+                    return -1;
+                }
+                m_dhcp_route_vrfs.erase(sw->m_vrf_id);
+            }
+            ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(),
+                    sw->m_is_ipv6);
+            vrf_objMap.erase(it);
         }
     }
     return 0;
@@ -2891,7 +2926,10 @@ sai_status_t SwitchVpp::removeVrf(
 
     if (m_switchConfig->m_useTapDevice == true)
     {
-        vpp_del_ip_vrf(objectId);
+        if (vpp_del_ip_vrf(objectId) != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
     }
 
     auto sid = sai_serialize_object_id(objectId);

@@ -104,6 +104,8 @@ int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
 {
     SWSS_LOG_ENTER();
 
+    vppMock().ipRouteCalls++;
+
     if (route->prefix_addr.sa_family != AF_INET || route->nexthop_cnt < 1)
     {
         return 0;
@@ -116,6 +118,11 @@ int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
     std::string prefix = std::string(addr) + "/" + std::to_string(route->prefix_len);
 
     vppMock().calls.push_back({"ip_route_add_del", prefix, route->vrf_id, 0, is_add});
+
+    if (vppMock().ipRouteResult != 0)
+    {
+        return vppMock().ipRouteResult;
+    }
 
     // VPP has no table to add the route to, or no route to delete (table 0 always exists)
     if (route->vrf_id != 0 && vppMock().vrfTables.count(route->vrf_id) == 0)
@@ -4084,6 +4091,101 @@ TEST_F(SwitchVppDhcpTrap, AVrfTableReceivesLimitedBroadcastsUntilItIsRemoved)
 
     // the address set is switch-wide and stays once added
     EXPECT_TRUE(policesLimitedBroadcast());
+}
+
+TEST_F(SwitchVppDhcpTrap, FailedActiveRouteTransitionIsRetriedWithoutAStateChange)
+{
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    ASSERT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    vppMock().ipRouteResult = -1;
+    createTrap(SAI_PACKET_ACTION_TRAP);
+
+    // The trap's desired state is retained, but a failed add is not recorded
+    // as installed.
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    ASSERT_EQ(1u, vppMock().ipRouteCalls);
+
+    vppMock().ipRouteResult = 0;
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, FailedInactiveRouteTransitionIsRetriedWithoutAStateChange)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+
+    vppMock().ipRouteResult = -1;
+    removeTrap(trap);
+
+    // A failed delete remains confirmed installed and therefore pending.
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    ASSERT_EQ(2u, vppMock().ipRouteCalls);
+
+    vppMock().ipRouteResult = 0;
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, VrfAddRouteFailureRollsBackCacheAndRetrySucceeds)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP);
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    vppMock().ipRouteResult = -1;
+    EXPECT_NE(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_EQ(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(0u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    vppMock().ipRouteResult = 0;
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_NE(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(1u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+}
+
+TEST_F(SwitchVppDhcpTrap, VrfRemoveRouteFailureIsPropagatedAndRetryable)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP);
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+    auto sid = sai_serialize_object_id(vrf);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, sid, m_switchId, 0, nullptr));
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    m_sw->m_switchConfig->m_useTapDevice = true;
+
+    vppMock().ipRouteResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVrf(vrf));
+
+    EXPECT_NE(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(1u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+
+    vppMock().ipRouteResult = 0;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeVrf(vrf));
+
+    EXPECT_EQ(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(0u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
 }
 
 /*

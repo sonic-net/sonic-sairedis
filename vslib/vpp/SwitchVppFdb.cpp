@@ -952,42 +952,66 @@ void SwitchVpp::vpp_set_dhcp_trap_state(
 {
     SWSS_LOG_ENTER();
 
-    if (active == m_dhcp_trap_active && copy == m_dhcp_trap_copy)
-    {
-        return;
-    }
-
     bool active_changed = active != m_dhcp_trap_active;
     bool copy_changed = copy != m_dhcp_trap_copy;
     m_dhcp_trap_active = active;
     m_dhcp_trap_copy = copy;
 
-    SWSS_LOG_NOTICE("DHCP hostif trap state %s%s",
-            active ? (copy ? "COPY" : "TRAP") : "absent",
-            active ? (copy ? ": VLAN flood plus CPU copy"
-                           : ": terminal VLAN trap plus routed receive")
-                   : ": routed limited-broadcast receive removed");
+    if (active_changed || copy_changed)
+    {
+        SWSS_LOG_NOTICE("DHCP hostif trap state %s%s",
+                active ? (copy ? "COPY" : "TRAP") : "absent",
+                active ? (copy ? ": VLAN flood plus CPU copy"
+                               : ": terminal VLAN trap plus routed receive")
+                       : ": routed limited-broadcast receive removed");
+    }
 
     if (copy_changed)
     {
         l2_punt_dhcp_sessions_set(!copy);
     }
 
-    if (active_changed)
-    {
-        std::set<uint32_t> vrfs;
+    /*
+     * Reconcile confirmed per-table route state even when the semantic state
+     * did not change.  A failed VPP add/delete leaves the old confirmed state
+     * in m_dhcp_route_vrfs, so the next create/set/remove reconciliation can
+     * retry it.  Include installed tables when disabling: table 0 deliberately
+     * outlives its VRF object and still needs cleanup when the final DHCP trap
+     * disappears.
+     */
+    std::set<uint32_t> vrfs;
 
-        for (const auto &kv : vrf_objMap)
+    for (const auto &kv : vrf_objMap)
+    {
+        if (kv.second)
         {
-            if (kv.second)
-            {
-                vrfs.insert(kv.second->m_vrf_id);
-            }
+            vrfs.insert(kv.second->m_vrf_id);
+        }
+    }
+
+    if (!active)
+    {
+        vrfs.insert(m_dhcp_route_vrfs.begin(), m_dhcp_route_vrfs.end());
+    }
+
+    for (uint32_t vrf_id : vrfs)
+    {
+        bool installed = m_dhcp_route_vrfs.count(vrf_id) != 0;
+        if (installed == active)
+        {
+            continue;
         }
 
-        for (uint32_t vrf_id : vrfs)
+        if (vpp_ip4_limited_broadcast_receive(vrf_id, active) == 0)
         {
-            vpp_ip4_limited_broadcast_receive(vrf_id, active);
+            if (active)
+            {
+                m_dhcp_route_vrfs.insert(vrf_id);
+            }
+            else
+            {
+                m_dhcp_route_vrfs.erase(vrf_id);
+            }
         }
     }
 }
