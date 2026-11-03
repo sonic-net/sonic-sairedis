@@ -58,6 +58,7 @@ if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
 				TestSwitchVppPbh.cpp \
 				TestSwitchVppTrim.cpp \
+				TestSwitchVppFdb.cpp \
 				MockVppXlate.cpp MockVppXlate.h \
 				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
