@@ -57,6 +57,14 @@ typedef struct vpp_interface_stats_ {
 
 int vpp_intf_stats_query(const char *intf_name, vpp_interface_stats_t *stats);
 
+/* Per-reason drop counters exported by the sonic_ext drop-reason-stats
+ * feature as /sonic-ext/drop-reason/<REASON>, indexed by sw_if_index.  The
+ * callback runs once per VPP thread and index, so callers must sum. */
+typedef void (*vpp_drop_reason_stats_cb)(const char *reason, uint32_t sw_if_index,
+                                         uint64_t count, void *data);
+
+int vpp_drop_reason_stats_dump(vpp_drop_reason_stats_cb cb, void *data);
+
 #ifdef __cplusplus
 }
 #endif

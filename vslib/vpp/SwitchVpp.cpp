@@ -800,6 +800,8 @@ void SwitchVpp::setPortStats(
         stats[SAI_PORT_STAT_IPV6_IN_RECEIVES] = port_stats.ip6;
     }
 
+    addPortDebugCounterStats(if_name, stats);
+
     debugSetStats(oid, stats);
 }
 
@@ -1313,6 +1315,10 @@ sai_status_t SwitchVpp::getStatsExt(
     {
         setPortStats(object_id);
     }
+    else if (object_type == SAI_OBJECT_TYPE_SWITCH)
+    {
+        setSwitchDebugCounterStats(object_id);
+    }
     else if (object_type == SAI_OBJECT_TYPE_COUNTER)
     {
         std::string route;
@@ -1343,13 +1349,22 @@ sai_status_t SwitchVpp::getStatsExt(
         return getRifStatsExt(object_id, number_of_counters, counter_ids, mode, counters);
     }
 
-    return SwitchStateBase::getStatsExt(
+    CHECK_STATUS(SwitchStateBase::getStatsExt(
             object_type,
             object_id,
             number_of_counters,
             counter_ids,
             mode,
-            counters);
+            counters));
+
+    if (mode == SAI_STATS_MODE_READ_AND_CLEAR ||
+            mode == SAI_STATS_MODE_BULK_READ_AND_CLEAR ||
+            mode == SAI_STATS_MODE_BULK_CLEAR)
+    {
+        clearDebugCounterStats(object_type, object_id, number_of_counters, counter_ids);
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 void SwitchVpp::processFdbEntriesForAging()
@@ -1507,7 +1522,7 @@ sai_status_t SwitchVpp::create(
     {
         sai_object_id_t object_id;
         sai_deserialize_object_id(serializedObjectId, object_id);
-        return createDebugCounter(object_id, switch_id, attr_count, attr_list);
+        return debugCounterCreate(object_id, switch_id, attr_count, attr_list);
     }
 
     if (object_type == SAI_OBJECT_TYPE_PORT)
@@ -2039,7 +2054,7 @@ sai_status_t SwitchVpp::remove(
     {
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
-        return removeDebugCounter(objectId);
+        return debugCounterRemove(objectId);
     }
 
     if (object_type == SAI_OBJECT_TYPE_PORT)
@@ -2554,6 +2569,13 @@ sai_status_t SwitchVpp::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setPort(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_DEBUG_COUNTER)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return debugCounterSet(objectId, serializedObjectId, attr);
     }
 
     if (objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE)

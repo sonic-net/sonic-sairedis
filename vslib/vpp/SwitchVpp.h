@@ -126,6 +126,79 @@ namespace saivs
             virtual sai_status_t refresh_port_oper_speed(
                     _In_ sai_object_id_t port_id) override;
 
+        protected:
+
+            virtual sai_status_t queryDebugCounterCapability(
+                    _In_ sai_attr_id_t attr_id,
+                    _Inout_ sai_s32_list_t *enum_values_capability) override;
+
+            virtual sai_status_t queryPortStatsCapability(
+                    _Inout_ sai_stat_capability_list_t *stats_capability) override;
+
+        private: // debug (configurable drop) counters, SwitchVppDebugCounter.cpp
+
+            struct VppDebugCounter
+            {
+                uint32_t index;
+
+                int32_t type;
+
+                // Stats segment leaf names under /sonic-ext/drop-reason/.
+                std::vector<std::string> reasons;
+
+                // Raw VPP count per sw_if_index when the counter was created or
+                // its reasons last changed, so that it reads 0 from then on.
+                std::map<uint32_t, uint64_t> base;
+            };
+
+            sai_status_t debugCounterCreate(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t debugCounterSet(
+                    _In_ sai_object_id_t object_id,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t debugCounterRemove(
+                    _In_ sai_object_id_t object_id);
+
+            void refreshDropReasonStats(
+                    _In_ bool force);
+
+            uint64_t debugCounterRawCount(
+                    _In_ const VppDebugCounter &counter,
+                    _In_ uint32_t sw_if_index) const;
+
+            uint64_t debugCounterValue(
+                    _Inout_ VppDebugCounter &counter,
+                    _In_ uint32_t sw_if_index);
+
+            void rebaseDebugCounter(
+                    _Inout_ VppDebugCounter &counter);
+
+            void addPortDebugCounterStats(
+                    _In_ const std::string &if_name,
+                    _Inout_ std::map<sai_stat_id_t, uint64_t> &stats);
+
+            void setSwitchDebugCounterStats(
+                    _In_ sai_object_id_t switch_id);
+
+            void clearDebugCounterStats(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids);
+
+            std::map<sai_object_id_t, VppDebugCounter> m_debugCounters;
+
+            // reason -> sw_if_index -> drops, summed over VPP threads.
+            std::map<std::string, std::map<uint32_t, uint64_t>> m_dropReasonStats;
+            std::chrono::steady_clock::time_point m_dropReasonStatsTime;
+            bool m_dropReasonStatsValid = false;
+
         private: // from vpp VirtualSwitchSaiInterface
 
             void setPortStats(

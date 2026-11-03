@@ -158,6 +158,14 @@ struct VppMock
     bool natSupported = true;
     // NAT sessions VPP reports, by inside address (network order)
     std::map<uint32_t, std::vector<vpp_nat44_session_t>> natSessions;
+    // sw_if_index vpp_get_swif_idx_by_name() returns for these names; any
+    // other name gets the next nextSwIfIndex
+    std::map<std::string, uint32_t> swIfIndexByName;
+    // /sonic-ext/drop-reason/<reason> counters: reason -> sw_if_index ->
+    // one value per VPP thread
+    std::map<std::string, std::map<uint32_t, std::vector<uint64_t>>> dropReasonStats;
+    int dropReasonDumpResult = 0;
+    unsigned int dropReasonDumpCalls = 0;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
