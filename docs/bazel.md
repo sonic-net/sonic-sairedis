@@ -277,8 +277,16 @@ Actions run page. In the names below, `<arch>` is `AMD64` or `ARM64`, and
 | `sonic-sairedis-bazel-trixie-<arch>-<workflow SHA>` | The 13 unique tar files from `artifacts/packages/`, `artifacts/provenance.json`, and the matching `artifacts/validation/dependencies/` evidence | Runs after preceding steps succeed; no matching files are an error |
 
 Use the job results and downloaded artifacts from the relevant Actions run to
-confirm which required checks and outputs succeeded. The existing Azure and
-CodeQL workflows continue to use Make.
+confirm which required checks and outputs succeeded. The existing Azure
+workflow and other branches' CodeQL jobs retain their Make path. The
+`bazel/runtime-package-metadata-20261028` review branch uses a native AMD64
+Trixie CodeQL build of `//:canonical_outputs`, without DEB generation. A fresh
+output base prepares only dependencies and generated source files before
+tracing; its configured action audit rejects any Sairedis C/C++ compilation.
+After initialization, the job compiles the complete reviewed component graph
+with external action-cache reads disabled. The finalized CodeQL database and
+source archive must contain the actual 358 compiled source files with their
+expected bytes. Configured reachability alone is not an extraction pass.
 
 ## Build modes
 
@@ -321,3 +329,14 @@ dpkg-buildpackage -us -uc -b -Psyncd,vs,nopython2 -j"$(nproc)"
 The build environment controls optional dependency detection such as VPP.
 Use the repository's documented SONiC build environment for the required
 distribution and target architecture.
+
+
+### Library-only package metadata
+
+`//:library_runtime_packages.json` exposes the original Debian control fields
+and exact runtime TAR hashes for `libsairedis` and `libsaimetadata`. Image
+consumers such as `sonic-buildimage`'s P4RT debug variant can add those source
+libraries and their matching symbols without building Syncd or VS SAI merely
+to obtain package records. The full `//:runtime_packages.json` retains all
+original package records by combining the library and Syncd/VS metadata.
+Both interfaces reuse the same source-owned declarations and dependency checks.

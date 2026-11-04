@@ -16,6 +16,8 @@ on:
 jobs:
   analyze:
     name: Analyze
+    # The source-metadata PR uses the audited native build below; other refs keep legacy CI.
+    if: ${{ (github.head_ref || github.ref_name) != 'bazel/runtime-package-metadata-20261028' }}
     runs-on: ubuntu-22.04
     permissions:
       actions: read
@@ -100,3 +102,99 @@ jobs:
       uses: github/codeql-action/analyze@ec3cf9c605b848da5f1e41e8452719eb1ccfb9a6 # v2.1.29
       with:
         category: "/language:${{matrix.language}}"
+
+  bazel-cpp:
+    name: Analyze native source (cpp, AMD64)
+    if: ${{ (github.head_ref || github.ref_name) == 'bazel/runtime-package-metadata-20261028' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    container:
+      image: debian:trixie-20260918@sha256:d5ce19d4736f0ebbacd686d1040271a5aeb0cc920f5990c1bfae1717627f0674
+      options: --init
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    env:
+      SONIC_BAZEL_REGISTRY_REVISION: a6b4e2e529e2635e9419393e3dccb652408aba25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install execution tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends binutils build-essential ca-certificates git python3 tar unzip xz-utils zstd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure the native container checkout
+        run: |
+          . /etc/os-release
+          test "$ID:$VERSION_CODENAME" = debian:trixie
+          test "$(uname -m)" = x86_64
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          test ! -e MODULE.bazel.lock
+          git check-ignore --quiet MODULE.bazel.lock
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-version: 1.29.0
+          bazelisk-cache: true
+          repository-cache: true
+          cache-version: "8.5.1"
+      - name: Record the immutable review registry and preserve local caches
+        run: python3 bazel/ci/prepare_review.py --output artifacts/codeql/registry
+      - name: Test preparation and extracted-source guards
+        run: python3 -B -m unittest discover -s bazel/ci/codeql -p 'test_*.py'
+      - name: Prepare declared dependencies and generated sources before tracing
+        run: |
+          base="$(mktemp -d "$RUNNER_TEMP/sairedis-codeql.XXXXXX")"
+          printf 'SAIREDIS_CODEQL_OUTPUT_BASE=%s\n' "$base" >> "$GITHUB_ENV"
+          export SAIREDIS_CODEQL_OUTPUT_BASE="$base"
+          bash bazel/ci/codeql/build.sh prepare
+      - name: Initialize traced C++ analysis
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          config-file: ./.github/codeql/codeql-config.yml
+          languages: cpp
+          build-mode: manual
+          db-location: ${{ runner.temp }}/sairedis-codeql-db
+          tools: https://github.com/github/codeql-action/releases/download/codeql-bundle-v2.27.0/codeql-bundle-linux64.tar.gz
+      - name: Compile the reviewed component source inventory under tracing
+        run: bash bazel/ci/codeql/build.sh trace
+      - name: Analyze compiled C++
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          category: /language:cpp
+      - name: Require actual extracted compilations and exact source bytes
+        id: coverage
+        run: |
+          python3 bazel/ci/codeql/check.py coverage artifacts/codeql/expected-sources.json \
+            --database "$RUNNER_TEMP/sairedis-codeql-db/cpp" \
+            --output artifacts/codeql/extracted-source-coverage.json
+      - name: Stage available source and extraction evidence
+        if: always()
+        env:
+          COVERAGE_SUCCEEDED: ${{ steps.coverage.outcome == 'success' }}
+        run: |
+          database="$RUNNER_TEMP/sairedis-codeql-db/cpp"
+          evidence="artifacts/codeql/database"
+          mkdir -p "$evidence"
+          if [[ "$COVERAGE_SUCCEEDED" == true ]]; then
+            test -f "$database/src.zip"
+            test -d "$database/log"
+          fi
+          if [[ -f "$database/src.zip" ]]; then
+            cp "$database/src.zip" "$evidence/src.zip"
+          fi
+          if [[ -d "$database/log" ]]; then
+            cp -a "$database/log" "$evidence/log"
+          fi
+      - name: Retain source and extraction evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sairedis-codeql-source-evidence-amd64
+          path: |
+            artifacts/codeql/
+          if-no-files-found: error

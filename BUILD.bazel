@@ -1,7 +1,7 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@sonic_build_infra//oci:runtime_packages.bzl", "runtime_packages")
+load("@sonic_build_infra//oci:runtime_packages.bzl", "runtime_packages", "runtime_packages_group")
 load("//bazel:common.bzl", "sairedis_config", "unavailable_cc_dependency")
 
 package(default_visibility = ["//visibility:public"])
@@ -349,26 +349,53 @@ filegroup(
 # Reuse the Debian package declarations and generate dependency controls from
 # these exact source-built TARs. The JSON is a build output, not another recipe.
 runtime_packages(
-    name = "runtime_packages.json",
-    apt_packages = {
-        "@trixie//" + package + ":data": "@trixie//" + package + ":control"
-        for package in [
-            "zlib1g",
-        ]
-    },
+    name = "library_runtime_packages.json",
     changelog = "debian/changelog",
     control = "debian/control",
     debian_files = {"compat": "debian/compat"},
-    dependencies = ["@sonic_swss_common//:runtime_packages.json"] + select({
+    dependencies = ["@sonic_swss_common//:runtime_packages.json"],
+    packages = {
+        "libsairedis": "//lib:libsairedis_pkg",
+        "libsaimetadata": "//meta:libsaimetadata_pkg",
+    },
+    required_paths = {
+        "libsairedis": [
+            "usr/lib/{multiarch}/libsairedis.so.0",
+            "usr/lib/{multiarch}/libsairedis.so.0.0.0",
+        ],
+        "libsaimetadata": [
+            "usr/lib/{multiarch}/libsaimeta.so.0",
+            "usr/lib/{multiarch}/libsaimeta.so.0.0.0",
+            "usr/lib/{multiarch}/libsaimetadata.so.0",
+            "usr/lib/{multiarch}/libsaimetadata.so.0.0.0",
+        ],
+    },
+    visibility = ["//visibility:public"],
+)
+
+runtime_packages(
+    name = "syncd_runtime_packages.json",
+    apt_packages = {"@trixie//zlib1g:data": "@trixie//zlib1g:control"},
+    changelog = "debian/changelog",
+    control = "debian/control",
+    debian_files = {"compat": "debian/compat"},
+    dependencies = [":library_runtime_packages.json"] + select({
         "//:dashsai_vs_enabled": [":dash_runtime_metadata"],
         "//conditions:default": [],
     }),
     packages = {
-        "libsairedis": "//lib:libsairedis_pkg",
-        "libsaimetadata": "//meta:libsaimetadata_pkg",
         "libsaivs": "//vslib:libsaivs_pkg",
         "syncd-vs": "//syncd:syncd_pkg",
     },
+)
+
+# Preserve the existing full owner interface for Syncd consumers.
+runtime_packages_group(
+    name = "runtime_packages.json",
+    packages = [
+        ":library_runtime_packages.json",
+        ":syncd_runtime_packages.json",
+    ],
     visibility = ["//visibility:public"],
 )
 

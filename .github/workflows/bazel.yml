@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+# Accepted native dependency interfaces also used by the P4RT image.
+env:
+  SONIC_BAZEL_REGISTRY_REVISION: a6b4e2e529e2635e9419393e3dccb652408aba25
+
 jobs:
   component:
     name: Component (${{ matrix.arch }})
@@ -77,32 +81,11 @@ jobs:
           git check-ignore --quiet MODULE.bazel.lock
           git diff --exit-code HEAD --
 
-      - name: Record the maintained registry inputs
-        run: |
-          python3 - <<'PYTHON'
-          import json
-          from pathlib import Path
-          import re
-          import subprocess
-          main = "https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main"
-          revision = subprocess.check_output([
-              "git", "ls-remote", "https://github.com/securely1g/sonic-bazel-registry.git",
-              "refs/heads/main",
-          ], text=True).split()[0]
-          assert re.fullmatch(r"[0-9a-f]{40}", revision)
-          configuration = Path(".bazelrc").read_text()
-          assert configuration.count(main) == 1
-          artifacts = Path("artifacts/validation").resolve()
-          (artifacts / "declared.bazelrc").write_text(configuration)
-          (artifacts / "effective.bazelrc").write_text(configuration)
-          (artifacts / "registry-inputs.json").write_text(json.dumps({
-              "declared_registry": main, "registry": main,
-              "observed_revision": revision, "draft_validation": False,
-          }, indent=2) + "\n")
-          PYTHON
+      - name: Record the immutable review registry and preserve local caches
+        run: python3 bazel/ci/prepare_review.py --output artifacts/validation
 
-      - name: Test registry provenance verification
-        run: python3 -B -m unittest discover -s bazel/ci -p test_verify_packages.py
+      - name: Test registry provenance and review selection
+        run: python3 -B -m unittest discover -s bazel/ci -p 'test_*.py'
 
       - name: Check Bazel formatting
         run: >-
@@ -110,6 +93,21 @@ jobs:
           --jobs=4 --lockfile_mode=update
           @buildifier_prebuilt//:buildifier --
           -mode=check -r "$GITHUB_WORKSPACE"
+
+      - name: Reject DEB-producing actions before source execution
+        run: |
+          targets="$(python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          value = json.loads(Path('bazel/ci/required-targets.json').read_text())
+          print(' '.join(value['raw_build'] + value['package_build'] + value['service_free_tests'] + ['//:runtime_packages.json']))
+          PYTHON
+          )"
+          bazel aquery ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update \
+            --output=jsonproto --include_artifacts --include_commandline \
+            "deps(set($targets))" > "$RUNNER_TEMP/sairedis-actions.json"
+          python3 bazel/ci/codeql/check.py audit "$RUNNER_TEMP/sairedis-actions.json" \
+            --output artifacts/validation/no-deb-actions.json
 
       # Omit the YANG flag to exercise the dependency's current default.
       # verify_packages.py must confirm that the selected value is true.
@@ -165,7 +163,9 @@ jobs:
           //pyext:pysairedis_pkg.debug_symbols
 
       - name: Retain generated package metadata
-        run: cp bazel-bin/runtime_packages.json artifacts/validation/runtime_packages.json
+        run: |
+          cp bazel-bin/runtime_packages.json artifacts/validation/runtime_packages.json
+          cp bazel-bin/library_runtime_packages.json artifacts/validation/library_runtime_packages.json
 
       - name: Verify package and debug artifacts
         run: |
@@ -175,7 +175,7 @@ jobs:
             --image '${{ matrix.image }}' \
             --targets bazel/ci/required-targets.json \
             --contract bazel/ci/package-contract.json \
-            --registry-config .bazelrc \
+            --registry-config artifacts/validation/effective.bazelrc \
             --output-dir artifacts
 
       - name: Retain available dependency resolution on failure

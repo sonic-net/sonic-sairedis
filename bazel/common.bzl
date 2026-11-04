@@ -227,46 +227,97 @@ def multiarch_mtree(name, contents, data):
     return select(choices, no_match_error = "sairedis Bazel packages currently support x86_64 and aarch64 targets")
 
 def _working_directory_test_impl(ctx):
-    runfiles = ctx.runfiles(files = [ctx.executable.program] + ctx.files.data)
+    runtime_inputs = [ctx.file._runtime_runner, ctx.file.runtime, ctx.executable._patchelf]
+    runfiles = ctx.runfiles(files = [ctx.executable.program] + ctx.files.data + runtime_inputs + ctx.files.runtime_child + ctx.files.child_fixtures)
     runfiles = runfiles.merge(ctx.attr.program[DefaultInfo].default_runfiles)
+    runfiles = runfiles.merge(ctx.attr._patchelf[DefaultInfo].default_runfiles)
     for target in ctx.attr.data:
         runfiles = runfiles.merge(target[DefaultInfo].default_runfiles)
 
-    # Imported DSOs retain paths relative to their original build location, and
-    # ELF RUNPATH is not transitive. Use this test's declared runtime closure
-    # for both direct and indirect dependencies, independent of host packages.
-    library_dirs = sorted(depset([
-        file.short_path.rsplit("/", 1)[0]
-        for file in runfiles.files.to_list()
-        if file.basename.endswith(".so") or ".so." in file.basename
-    ]).to_list())
-
-    # short_path is rooted at the main runfiles directory, while the requested
-    # working directory belongs to the repository that declares this test.
     repository_prefix = "../" + ctx.label.repo_name + "/" if ctx.label.repo_name else ""
+    runtime_command = '/usr/bin/python3 "${runfiles_root}/%s" "${runfiles_root}/%s" "${runfiles_root}/%s" - %s' % (
+        ctx.file._runtime_runner.short_path,
+        ctx.executable._patchelf.short_path,
+        ctx.file.runtime.short_path,
+        ctx.attr.yang_mode,
+    )
+    environment = "unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT PYTHONPATH"
+    command = '%s "${runfiles_root}/%s" "$@"' % (runtime_command, ctx.executable.program.short_path)
+    if ctx.executable.runtime_child:
+        # Keep the original shell fixture byte-for-byte. Its existing argv
+        # interface selects this declared ELF launcher and the original dumps.
+        # Each invocation needs separate scratch because Common stages a private
+        # interpreter/executable; the fixture invokes both positive and negative cases.
+        child = ctx.actions.declare_file(ctx.label.name + ".child.sh")
+        ctx.actions.write(
+            output = child,
+            content = """#!/bin/bash
+set -euo pipefail
+runfiles_root="${TEST_SRCDIR}/${TEST_WORKSPACE}"
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT PYTHONPATH
+runtime_tmp="$(mktemp -d "${TEST_TMPDIR}/sairedis-child.XXXXXX")"
+trap 'rm -rf -- "$runtime_tmp"' EXIT
+export TEST_TMPDIR="$runtime_tmp"
+%s "${runfiles_root}/%s" "$@"
+""" % (runtime_command, ctx.executable.runtime_child.short_path),
+            is_executable = True,
+        )
+        runfiles = runfiles.merge(ctx.runfiles(files = [child]))
+        runfiles = runfiles.merge(ctx.attr.runtime_child[DefaultInfo].default_runfiles)
+        child_args = " ".join(['"${TEST_WORKSPACE}/%s"' % file.short_path for file in [child] + ctx.files.child_fixtures])
+        command = '"${runfiles_root}/%s" %s "$@"' % (ctx.executable.program.short_path, child_args)
+    elif not ctx.attr.declared_runtime:
+        # Preserve the separate, manual Perl/Redis integration path. Its service
+        # orchestration remains outside the seven service-free native tests.
+        library_dirs = sorted(depset([
+            file.short_path.rsplit("/", 1)[0]
+            for file in runfiles.files.to_list()
+            if file.basename.endswith(".so") or ".so." in file.basename
+        ]).to_list())
+        environment = 'export LD_LIBRARY_PATH="%s"' % ":".join(["${runfiles_root}/" + path for path in library_dirs])
+        command = '"${runfiles_root}/%s" "$@"' % ctx.executable.program.short_path
+
     script = ctx.actions.declare_file(ctx.label.name + ".sh")
     ctx.actions.write(
         output = script,
         content = """#!/bin/bash
 set -euo pipefail
 runfiles_root="${TEST_SRCDIR}/${TEST_WORKSPACE}"
-export LD_LIBRARY_PATH="%s"
+%s
 cd "${runfiles_root}/%s"
-exec "${runfiles_root}/%s" "$@"
-""" % (":".join(["${runfiles_root}/" + path for path in library_dirs]), repository_prefix + ctx.attr.working_directory, ctx.executable.program.short_path),
+exec %s
+""" % (environment, repository_prefix + ctx.attr.working_directory, command),
         is_executable = True,
     )
     return [DefaultInfo(executable = script, runfiles = runfiles)]
 
-working_directory_test = rule(
+_working_directory_test = rule(
     implementation = _working_directory_test_impl,
     attrs = {
         "program": attr.label(mandatory = True, executable = True, allow_files = True, cfg = "target"),
         "data": attr.label_list(allow_files = True),
         "working_directory": attr.string(mandatory = True),
+        "declared_runtime": attr.bool(default = True),
+        "runtime_child": attr.label(executable = True, cfg = "target"),
+        "child_fixtures": attr.label_list(allow_files = True),
+        "yang_mode": attr.string(mandatory = True, values = ["enabled", "disabled"]),
+        "_runtime_runner": attr.label(default = Label("@sonic_swss_common//tools/bazel/runtime:run_with_runtime.py"), allow_single_file = True),
+        "runtime": attr.label(default = Label("@sonic_swss_common//tools/bazel/runtime:test_runtime"), allow_single_file = True),
+        "_patchelf": attr.label(default = Label("@patchelf//:patchelf"), executable = True, cfg = "exec"),
     },
     test = True,
 )
+
+def working_directory_test(name, **kwargs):
+    """Run original component tests with Common's declared loader and runtime."""
+    _working_directory_test(
+        name = name,
+        yang_mode = select({
+            "@sonic_swss_common//tools/bazel:yang_modules_enabled": "enabled",
+            "//conditions:default": "disabled",
+        }),
+        **kwargs
+    )
 
 def _sairedis_swig_impl(ctx):
     staged_source = ctx.actions.declare_file(ctx.label.name + "_stage/pyext/pysairedis.i")

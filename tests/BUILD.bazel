@@ -1,5 +1,6 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_distroless//distroless:defs.bzl", "flatten")
 load("//bazel:common.bzl", "CODE_COVERAGE_LINKOPTS", "GTEST_DEPS", "PRODUCTION_COPTS", "RPC_DEPS", "TEST_COPTS", "working_directory_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -107,9 +108,23 @@ cc_test(
     deps = TEST_RUNTIME_DEPS + GTEST_DEPS,
 )
 
+# The original test binary dynamically links the owner libraries. Keep those
+# exact package payloads in its declared runtime so their transitive SONAMEs
+# resolve with Common's selected loader, independently of host library paths.
+flatten(
+    name = "tests_runtime",
+    testonly = True,
+    tars = [
+        "@sonic_swss_common//tools/bazel/runtime:test_runtime",
+        "//lib:libsairedis_pkg",
+        "//meta:libsaimetadata_pkg",
+    ],
+)
+
 working_directory_test(
     name = "tests_test",
     program = ":tests",
+    runtime = ":tests_runtime",
     tags = ["exclusive"],
     working_directory = "tests",
 )
@@ -145,6 +160,7 @@ MODEL_DATA = glob([
     working_directory_test(
         name = model,
         data = MODEL_DATA,
+        declared_runtime = False,
         program = model + ".pl",
         tags = [
             "exclusive",
