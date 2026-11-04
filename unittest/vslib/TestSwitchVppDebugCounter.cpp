@@ -5,6 +5,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 using namespace saivs;
 using namespace saivs_test;
@@ -27,6 +28,8 @@ class SwitchVppDebugCounterTest : public SwitchVppTest
             SWSS_LOG_ENTER();
 
             SwitchVppTest::SetUp();
+
+            vppMock().enabledFeatures.insert("drop-reason-stats");
 
             m_port0 = addPort("bobm0", PORT0_IDX);
             m_port1 = addPort("bobm1", PORT1_IDX);
@@ -182,6 +185,25 @@ TEST_F(SwitchVppDebugCounterTest, advertisesOnlyReasonsVppCounts)
 
     // No egress reasons, so orchagent publishes no egress counter types.
     EXPECT_TRUE(enumCapability(SAI_DEBUG_COUNTER_ATTR_OUT_DROP_REASON_LIST).empty());
+}
+
+/*
+ * sonicExtFeatureEnabled() keeps VPP's first answer for the rest of the
+ * process, so the "off" case runs in a process of its own.
+ */
+TEST_F(SwitchVppDebugCounterTest, advertisesNothingWhenVppFeatureIsOff)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+
+    ASSERT_EXIT({
+        vppMock().enabledFeatures.erase("drop-reason-stats");
+
+        bool none = enumCapability(SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST).empty() &&
+            enumCapability(SAI_DEBUG_COUNTER_ATTR_OUT_DROP_REASON_LIST).empty() &&
+            enumCapability(SAI_DEBUG_COUNTER_ATTR_TYPE).empty();
+
+        _exit(none && vppMock().queriedFeature == "drop-reason-stats" ? 0 : 1);
+    }, ::testing::ExitedWithCode(0), "");
 }
 
 TEST_F(SwitchVppDebugCounterTest, portStatsCapabilityListsDebugCounterStats)

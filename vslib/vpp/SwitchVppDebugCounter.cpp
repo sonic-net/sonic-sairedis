@@ -1,4 +1,5 @@
 #include "SwitchVpp.h"
+#include "SwitchVppUtils.h"
 
 #include "meta/sai_serialize.h"
 #include "swss/logger.h"
@@ -64,15 +65,23 @@ sai_status_t SwitchVpp::queryDebugCounterCapability(
 {
     SWSS_LOG_ENTER();
 
+    // VPP counts nothing while the feature is off in startup.conf (or when it
+    // predates the feature), so advertise nothing rather than counters stuck
+    // at 0.
+    bool counted = sonicExtFeatureEnabled("drop-reason-stats");
+
     std::vector<int32_t> values;
 
     switch (attr_id)
     {
         case SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST:
 
-            for (auto &kvp: g_vppInDropReasons)
+            if (counted)
             {
-                values.push_back(kvp.first);
+                for (auto &kvp: g_vppInDropReasons)
+                {
+                    values.push_back(kvp.first);
+                }
             }
 
             return fillEnumValuesCapability(values, enum_values_capability);
@@ -84,9 +93,14 @@ sai_status_t SwitchVpp::queryDebugCounterCapability(
 
         case SAI_DEBUG_COUNTER_ATTR_TYPE:
 
-            return fillEnumValuesCapability({
+            if (counted)
+            {
+                values = {
                     SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS,
-                    SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS }, enum_values_capability);
+                    SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS };
+            }
+
+            return fillEnumValuesCapability(values, enum_values_capability);
 
         default:
             return SAI_STATUS_NOT_SUPPORTED;
