@@ -1240,10 +1240,20 @@ namespace saivs
             bool m_dhcp_trap_active = false;
             bool m_dhcp_trap_copy = false;
             // IPv4 tables whose limited-broadcast local route was confirmed
-            // installed.  Keep this separate from the desired trap state:
-            // failed adds/deletes then remain visible and an unchanged-state
-            // reconciliation retries them instead of returning early.
+            // installed, and tables where an attempted update has no reliable
+            // reply.  Keep both separate from the desired trap state: an RPC
+            // can take effect in VPP and still time out, so equality between
+            // confirmed and desired state does not make an uncertain table
+            // reconciled.
             std::set<uint32_t> m_dhcp_route_vrfs;
+            std::set<uint32_t> m_dhcp_route_uncertain_vrfs;
+
+            // Applies one table's desired route state transactionally.  A
+            // failed call leaves the table uncertain; only a successful,
+            // idempotent add/delete advances confirmed state.
+            int vpp_reconcile_dhcp_route(
+                    _In_ uint32_t vrf_id,
+                    _In_ bool receive);
 
             // Re-derives active/COPY state from m_trap_map and reconciles it,
             // including any previously failed per-VRF route operation.

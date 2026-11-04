@@ -132,13 +132,26 @@ int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
 
     auto key = std::make_pair(route->vrf_id, prefix);
 
+    int result = 0;
+
     if (is_add)
     {
         g_ip4Routes[key] = route->nexthop[0].type;
-        return 0;
+    }
+    else
+    {
+        // SaiVppXlate normalizes VPP's NO_SUCH_ENTRY on delete, making a
+        // retry after an applied-but-timed-out delete a successful commit.
+        g_ip4Routes.erase(key);
     }
 
-    return g_ip4Routes.erase(key) == 1 ? 0 : -1;
+    if (vppMock().ipRouteFailAfterApplyOnCalls.count(
+                vppMock().ipRouteCalls) != 0)
+    {
+        result = -1;
+    }
+
+    return result;
 }
 
 int __wrap_vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add)
@@ -4136,6 +4149,153 @@ TEST_F(SwitchVppDhcpTrap, FailedInactiveRouteTransitionIsRetriedWithoutAStateCha
     ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
 
     EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, AmbiguousAddIsCleanedUpWhenTheFinalTrapIsRemoved)
+{
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    ASSERT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // VPP installs the route, but the reply is lost.  Confirmed state still
+    // says absent while the dataplane is now active.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
+
+    ASSERT_EQ(1u, vppMock().ipRouteCalls);
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // The final removal must use uncertain state, not confirmed==desired, to
+    // discover and remove the route that the timed-out add left behind.
+    removeTrap(trap);
+
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // Successful cleanup commits absent state and clears uncertainty.
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, AmbiguousDeleteIsRetriedWhenConfirmedAlreadyMatchesDesired)
+{
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    // First make the add ambiguous, so confirmed state remains absent.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // Cleanup also takes effect but times out.  Confirmed and desired state
+    // are both absent now, but this second uncertain operation still needs a
+    // retry before it can be considered committed.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(2);
+    removeTrap(trap);
+
+    ASSERT_EQ(2u, vppMock().ipRouteCalls);
+    ASSERT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, MultiVrfReconcilePreservesPerTablePartialSuccess)
+{
+    auto first = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+    auto second = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(first, VRF_TABLE));
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(second, VRF_TABLE + 1));
+
+    // The first table becomes uncertain, but reconciliation must continue and
+    // commit the independent second table rather than rolling it back.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
+    createTrap(SAI_PACKET_ACTION_TRAP);
+
+    ASSERT_EQ(2u, vppMock().ipRouteCalls);
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE + 1));
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(second, VRF_TABLE + 1));
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(first, VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(first, VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, AmbiguousTableZeroVrfSetupIsCleanedUpAndRetryable)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    // A new table-0 owner has no table create/rollback around its route RPC.
+    // Its IpVrfInfo is not published when the add reply times out, so only
+    // uncertain-route tracking can retain the attempted table ID.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
+    EXPECT_NE(0, m_sw->vpp_add_ip_vrf(vrf, 0));
+
+    EXPECT_EQ(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    ASSERT_TRUE(receivesLimitedBroadcast(0));
+    ASSERT_EQ(1u, vppMock().ipRouteCalls);
+
+    removeTrap(trap);
+
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+
+    // Retry can now publish the VRF owner without reprogramming a route while
+    // DHCP is inactive; the successful cleanup cleared uncertainty.
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, 0));
+    EXPECT_NE(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, AmbiguousNewTableVrfSetupRetainsItsIdAcrossRollback)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    // The route takes effect before its reply is lost.  vpp_add_ip_vrf rolls
+    // back the newly created table and does not publish an IpVrfInfo, but must
+    // retain the attempted table ID as uncertain.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
+    EXPECT_NE(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_EQ(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(0u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // Final trap removal discovers the otherwise ownerless table ID.  The
+    // table is absent, so cleanup remains uncertain and retryable.
+    removeTrap(trap);
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+
+    // Recreating the table gives the retained cleanup a place to complete;
+    // only then is the VRF owner published and uncertainty cleared.
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_NE(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(1u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
     EXPECT_EQ(3u, vppMock().ipRouteCalls);
 }
 

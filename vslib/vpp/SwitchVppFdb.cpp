@@ -972,12 +972,13 @@ void SwitchVpp::vpp_set_dhcp_trap_state(
     }
 
     /*
-     * Reconcile confirmed per-table route state even when the semantic state
-     * did not change.  A failed VPP add/delete leaves the old confirmed state
-     * in m_dhcp_route_vrfs, so the next create/set/remove reconciliation can
-     * retry it.  Include installed tables when disabling: table 0 deliberately
-     * outlives its VRF object and still needs cleanup when the final DHCP trap
-     * disappears.
+     * Reconcile confirmed and uncertain per-table route state even when the
+     * semantic state did not change.  A failed VPP add/delete may already have
+     * taken effect, so it remains uncertain and must be programmed again even
+     * when the old confirmed state happens to equal the new desired state.
+     * Include confirmed and uncertain tables when disabling: table 0 and a
+     * table attempted by a failed VRF setup may have no vrf_objMap owner but
+     * still need cleanup when the final DHCP trap disappears.
      */
     std::set<uint32_t> vrfs;
 
@@ -989,6 +990,9 @@ void SwitchVpp::vpp_set_dhcp_trap_state(
         }
     }
 
+    vrfs.insert(m_dhcp_route_uncertain_vrfs.begin(),
+            m_dhcp_route_uncertain_vrfs.end());
+
     if (!active)
     {
         vrfs.insert(m_dhcp_route_vrfs.begin(), m_dhcp_route_vrfs.end());
@@ -996,23 +1000,9 @@ void SwitchVpp::vpp_set_dhcp_trap_state(
 
     for (uint32_t vrf_id : vrfs)
     {
-        bool installed = m_dhcp_route_vrfs.count(vrf_id) != 0;
-        if (installed == active)
-        {
-            continue;
-        }
-
-        if (vpp_ip4_limited_broadcast_receive(vrf_id, active) == 0)
-        {
-            if (active)
-            {
-                m_dhcp_route_vrfs.insert(vrf_id);
-            }
-            else
-            {
-                m_dhcp_route_vrfs.erase(vrf_id);
-            }
-        }
+        // Preserve partial success across VRFs: one timeout must not prevent
+        // later tables from reaching the desired state.
+        vpp_reconcile_dhcp_route(vrf_id, active);
     }
 }
 

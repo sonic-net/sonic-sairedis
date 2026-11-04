@@ -1718,18 +1718,9 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
         if (sw != nullptr) {
             SWSS_LOG_NOTICE("VRF(%s) with id %u already exists",
                     sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
-            bool route_installed =
-                m_dhcp_route_vrfs.count(sw->m_vrf_id) != 0;
-            if (route_installed != m_dhcp_trap_active) {
-                if (vpp_ip4_limited_broadcast_receive(
-                            sw->m_vrf_id, m_dhcp_trap_active) != 0) {
-                    return -1;
-                }
-                if (m_dhcp_trap_active) {
-                    m_dhcp_route_vrfs.insert(sw->m_vrf_id);
-                } else {
-                    m_dhcp_route_vrfs.erase(sw->m_vrf_id);
-                }
+            if (vpp_reconcile_dhcp_route(
+                        sw->m_vrf_id, m_dhcp_trap_active) != 0) {
+                return -1;
             }
         } else {
             SWSS_LOG_ERROR("VRF(%s) object with null data", sai_serialize_object_id(objectId).c_str());
@@ -1752,9 +1743,14 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
                        vrf_id, sai_serialize_object_id(objectId).c_str());
         return -1;
     }
-    if (m_dhcp_trap_active && m_dhcp_route_vrfs.count(vrf_id) == 0 &&
-        vpp_ip4_limited_broadcast_receive(vrf_id, true) != 0) {
-        SWSS_LOG_ERROR("Failed to install the DHCP limited-broadcast route "
+    /*
+     * Reconcile even while inactive: vrf_id may identify an uncertain route
+     * from an earlier table-0 or new-table setup that failed before publishing
+     * its IpVrfInfo.  The uncertainty set deliberately retains that attempted
+     * table ID across rollback, making both cleanup and setup retryable.
+     */
+    if (vpp_reconcile_dhcp_route(vrf_id, m_dhcp_trap_active) != 0) {
+        SWSS_LOG_ERROR("Failed to reconcile the DHCP limited-broadcast route "
                        "in IPv4 VRF table %u", vrf_id);
         if (!has_vrf_table && vrf_id &&
             ip_vrf_del(vrf_id, vrf_name.c_str(), false) != 0) {
@@ -1762,9 +1758,6 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
                            "the limited-broadcast route failure", vrf_id);
         }
         return -1;
-    }
-    if (m_dhcp_trap_active) {
-        m_dhcp_route_vrfs.insert(vrf_id);
     }
 
     if (!has_vrf_table) {
@@ -1804,15 +1797,12 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
                     sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
             // Table 0 outlives every VRF object, and other router interfaces
             // may still use it.
-            if (m_dhcp_route_vrfs.count(sw->m_vrf_id) != 0 &&
-                sw->m_vrf_id != 0) {
-                if (vpp_ip4_limited_broadcast_receive(
-                            sw->m_vrf_id, false) != 0) {
+            if (sw->m_vrf_id != 0) {
+                if (vpp_reconcile_dhcp_route(sw->m_vrf_id, false) != 0) {
                     // Keep the table and cache entry so public remove can fail
                     // cleanly and retry the mandatory route cleanup.
                     return -1;
                 }
-                m_dhcp_route_vrfs.erase(sw->m_vrf_id);
             }
             ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(),
                     sw->m_is_ipv6);
@@ -1888,6 +1878,48 @@ int SwitchVpp::vpp_ip4_limited_broadcast_receive(
     }
 
     return ret;
+}
+
+int SwitchVpp::vpp_reconcile_dhcp_route(
+        _In_ uint32_t vrf_id,
+        _In_ bool receive)
+{
+    SWSS_LOG_ENTER();
+
+    const bool confirmed = m_dhcp_route_vrfs.count(vrf_id) != 0;
+    const bool uncertain =
+        m_dhcp_route_uncertain_vrfs.count(vrf_id) != 0;
+
+    if (!uncertain && confirmed == receive)
+    {
+        return 0;
+    }
+
+    /*
+     * Mark before issuing the RPC.  Any non-success reply is ambiguous: VPP
+     * may have completed the operation before the client timed out.  Add and
+     * delete are normalized as idempotent by SaiVppXlate, so a later success
+     * is the commit point for both confirmed state and uncertainty.
+     */
+    m_dhcp_route_uncertain_vrfs.insert(vrf_id);
+
+    int ret = vpp_ip4_limited_broadcast_receive(vrf_id, receive);
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    if (receive)
+    {
+        m_dhcp_route_vrfs.insert(vrf_id);
+    }
+    else
+    {
+        m_dhcp_route_vrfs.erase(vrf_id);
+    }
+    m_dhcp_route_uncertain_vrfs.erase(vrf_id);
+
+    return 0;
 }
 
 std::shared_ptr<IpVrfInfo> SwitchVpp::vpp_get_ip_vrf (_In_ sai_object_id_t objectId)
