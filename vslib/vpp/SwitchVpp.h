@@ -1568,6 +1568,16 @@ namespace saivs
             sai_status_t sflowSamplingRateSet(
                     _In_ uint32_t rate);
 
+            sai_status_t sflowDropMonitoringSet(
+                    _In_ bool enable);
+
+            // Enum values capability provider for sFlow drop monitoring, see
+            // queryAttrEnumValuesCapability().
+            static bool getSflowEnumValuesCapability(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Inout_ std::vector<sai_int32_t> &values);
+
             sai_status_t sflowHostifTrapSamplePacketCreate(
                      _In_ sai_object_id_t object_id,
                      _In_ sai_object_id_t switch_id,

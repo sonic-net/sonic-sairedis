@@ -96,6 +96,61 @@ sai_status_t SwitchVpp::sflowSamplingRateSet(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchVpp::sflowDropMonitoringSet(
+    _In_ bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    // Drop monitoring is a global flag in the VPP sflow plugin. The plugin
+    // derives the per-interface state as (sflow_enabled && drop_monitoring),
+    // and re-evaluates every interface when the global flag changes, so this
+    // may be called before or after the per-port sFlow enables.
+
+    int ret = vpp_sflow_drop_monitoring_set(enable);
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("sflow drop_monitoring_set failed, status %d", ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("sflow drop monitoring %s", enable ? "enabled" : "disabled");
+
+    return SAI_STATUS_SUCCESS;
+}
+
+bool SwitchVpp::getSflowEnumValuesCapability(
+    _In_ sai_object_type_t object_type,
+    _In_ sai_attr_id_t attr_id,
+    _Inout_ std::vector<sai_int32_t> &values)
+{
+    SWSS_LOG_ENTER();
+
+    // SwitchOrch::querySwitchMirrorOnDropCapability() probes these two enums to
+    // decide whether to advertise MIRROR_ON_DROP_CAPABLE in STATE_DB, which in
+    // turn gates "config sflow drop-monitor-limit". The SAI TAM object graph
+    // SflowOrch then builds is bookkeeping here - the VPP sflow plugin delivers
+    // drops to hsflowd over NET_DM directly - so each probe is answered with
+    // exactly the value it looks for and nothing else.
+
+    if (object_type == SAI_OBJECT_TYPE_TAM_EVENT &&
+            attr_id == SAI_TAM_EVENT_ATTR_TYPE)
+    {
+        values.push_back((sai_int32_t) SAI_TAM_EVENT_TYPE_PACKET_DROP);
+
+        return true;
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_USER_DEFINED_TRAP &&
+            attr_id == SAI_HOSTIF_USER_DEFINED_TRAP_ATTR_TYPE)
+    {
+        values.push_back((sai_int32_t) SAI_HOSTIF_USER_DEFINED_TRAP_TYPE_TAM);
+
+        return true;
+    }
+
+    return false;
+}
+
 sai_status_t SwitchVpp::sflowHostifTrapSamplePacketCreate(
     _In_ sai_object_id_t object_id,
     _In_ sai_object_id_t switch_id,
