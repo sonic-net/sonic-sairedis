@@ -55,6 +55,11 @@ cc_binary(
 
 working_directory_test(
     name = "tests",
+    child_fixtures = [
+        "dump1.json",
+        "dump2.json",
+        "dump3.json",
+    ],
     data = [
         "dump1.json",
         "dump2.json",
@@ -62,5 +67,6 @@ working_directory_test(
         ":saiasiccmp",
     ],
     program = "test.sh",
+    runtime_child = ":saiasiccmp",
     working_directory = "saiasiccmp",
 )
