@@ -708,6 +708,36 @@ do {                                                            \
     }                                                           \
 } while(0);
 
+/* Route updates also need isolated completion: a late reply from any other
+ * synchronous API must not confirm a route journal transition. */
+#define WR_ROUTE(ret)                                           \
+do {                                                            \
+    f64 start_time = vat_time_now (vam);                        \
+    f64 hard_deadline = start_time + 10.0;                      \
+    f64 idle_deadline = start_time + 1.0;                       \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    int _wr_rv;                                                 \
+    ret = -99;                                                  \
+    while (1) {                                                 \
+        f64 now = vat_time_now (vam);                           \
+        if (now >= hard_deadline || now >= idle_deadline)       \
+            break;                                              \
+        if (scm && scm->socket_enable) {                        \
+            _wr_rv = vl_socket_client_read (1);                 \
+            if (_wr_rv == 0) {                                  \
+                idle_deadline = vat_time_now (vam) + 1.0;       \
+                if (idle_deadline > hard_deadline)              \
+                    idle_deadline = hard_deadline;              \
+            }                                                   \
+        }                                                       \
+        if (route_result_ready == 1) {                          \
+            ret = route_retval;                                 \
+            break;                                              \
+        }                                                       \
+        vat_suspend (vam->vlib_main, 1e-5);                     \
+    }                                                           \
+} while(0);
+
 /*
  * Event-connection variants of M / S / PING / WR.
  *
@@ -1196,6 +1226,44 @@ static void set_copp_reply_status(uint32_t context, int retval)
     }
 }
 
+/* Every route request, including deletes that do not return statistics, owns
+ * a generation-tagged context and dedicated completion state. */
+static uint32_t route_expected_context = VPP_INVALID_CTX_INDEX;
+static int route_result_ready;
+static int route_retval;
+
+static uint32_t begin_route_request(
+        uint32_t *stats_index,
+        uint32_t *ignored_stats_index)
+{
+    uint32_t *reply_stats_index = stats_index ? stats_index : ignored_stats_index;
+    *reply_stats_index = UINT32_MAX;
+
+    uint32_t context = store_ptr(reply_stats_index);
+    if (context == VPP_INVALID_CTX_INDEX)
+    {
+        return context;
+    }
+
+    route_expected_context = context;
+    route_result_ready = 0;
+    route_retval = -99;
+    return context;
+}
+
+static void end_route_request(uint32_t context)
+{
+    if (route_expected_context == context)
+    {
+        route_expected_context = VPP_INVALID_CTX_INDEX;
+    }
+    if (context != VPP_INVALID_CTX_INDEX &&
+            get_index_ptr(context) != (uintptr_t) NULL)
+    {
+        release_index(context);
+    }
+}
+
 static void set_reply_sw_if_index (vl_api_interface_index_t sw_if_index)
 {
     vat_main_t *vam = cur_vam();
@@ -1470,19 +1538,25 @@ vl_api_ip_route_add_del_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
 
-    if (msg->context) {
-        uint32_t *stats_index = (uint32_t *) get_index_ptr(msg->context);
-        if (!stats_index) {
-            return;
-        }
-        set_reply_status(retval);
-        if (stats_index && retval == 0) {
-            *stats_index = ntohl(msg->stats_index);
-        }
-        release_index(msg->context);
-    } else {
-        set_reply_status(retval);
+    if (route_expected_context == VPP_INVALID_CTX_INDEX ||
+            msg->context != route_expected_context)
+    {
+        return;
     }
+
+    uint32_t *stats_index = (uint32_t *) get_index_ptr(msg->context);
+    if (!stats_index)
+    {
+        return;
+    }
+
+    route_retval = retval;
+    if (retval == 0)
+    {
+        *stats_index = ntohl(msg->stats_index);
+    }
+    route_result_ready = 1;
+    release_index(msg->context);
 }
 
 static void
@@ -3903,13 +3977,10 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
     vl_api_ip_route_t *ip_route;
     vl_api_address_t *api_addr;
     vl_api_ip_route_add_del_t *mp;
+    uint32_t ignored_stats_index;
     int ret;
 
     VPP_LOCK();
-
-    if (stats_index) {
-        *stats_index = UINT32_MAX;
-    }
 
     path_count = prefix->nexthop_cnt;
 
@@ -3927,13 +3998,10 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
         }
     }
 
-    uint32_t context = VPP_INVALID_CTX_INDEX;
-    if (stats_index) {
-        context = store_ptr(stats_index);
-        if (context == VPP_INVALID_CTX_INDEX) {
-            VPP_UNLOCK();
-            return -ENOMEM;
-        }
+    uint32_t context = begin_route_request(stats_index, &ignored_stats_index);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
     }
 
     __plugin_msg_base = ip_msg_id_base;
@@ -4016,17 +4084,13 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
 
     mp->is_add = is_add;
     mp->is_multipath = prefix->is_multipath;
-    if (context) {
-        mp->context = context;
-    }
+    mp->context = context;
 
     S (mp);
 
-    WR (ret);
+    WR_ROUTE (ret);
 
-    if (context && get_index_ptr(context) != (uintptr_t) NULL) {
-        release_index(context);
-    }
+    end_route_request(context);
 
     ret = vpp_normalize_ret(ret, !is_add, __func__);
 
@@ -4040,16 +4104,8 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
 
 int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
 {
-    /*
-     * Use the stats-index context slot even when the caller does not need the
-     * returned index. A context-zero route reply shares vat_main's generic
-     * completion flag, so a late reply from a timed-out route request could
-     * otherwise satisfy a later route wait. The context map rejects that
-     * stale reply after timeout and correlates the current reply to this
-     * synchronous request.
-     */
-    uint32_t ignored_stats_index;
-    return ip_route_add_del_get_stats(prefix, is_add, &ignored_stats_index);
+    // The shared helper allocates a correlated context even without stats.
+    return ip_route_add_del_get_stats(prefix, is_add, NULL);
 }
 
 static unsigned int ipv4_mask_len (uint32_t mask)

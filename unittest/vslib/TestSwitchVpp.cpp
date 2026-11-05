@@ -1867,6 +1867,75 @@ TEST_F(SwitchVppNeighborMissTrap, FailedSharedArpRebindRestoresEffectiveOwner)
             m_sw->m_trap_binding_map.begin()->second.policer_oid);
 }
 
+TEST_F(SwitchVppNeighborMissTrap, FailedFinalBgpRemovalRestoresSurvivingPolicer)
+{
+    const sai_object_id_t groupV4 = 0x1200000001;
+    const sai_object_id_t groupV6 = 0x1200000002;
+    const sai_object_id_t policerV4 = 0x1200000003;
+    const sai_object_id_t policerV6 = 0x1200000004;
+    const sai_object_id_t trapV4 = 0x1200000005;
+    const sai_object_id_t trapV6 = 0x1200000006;
+
+    auto createGroup = [&](sai_object_id_t groupOid,
+            sai_object_id_t policerOid, uint32_t index)
+    {
+        sai_attribute_t attr{};
+        attr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+        attr.value.oid = policerOid;
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+                groupOid, m_switchId, 1, &attr));
+        vpp_policer_entry_t policer{};
+        policer.vpp_policer_index = index;
+        m_sw->m_policer_map[policerOid] = policer;
+    };
+    createGroup(groupV4, policerV4, 7);
+    createGroup(groupV6, policerV6, 8);
+
+    auto createBgpTrap = [&](sai_object_id_t trapOid,
+            sai_hostif_trap_type_t trapType, sai_object_id_t groupOid)
+    {
+        sai_attribute_t attrs[3]{};
+        attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+        attrs[0].value.s32 = trapType;
+        attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+        attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+        attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+        attrs[2].value.oid = groupOid;
+        return m_sw->createHostifTrap(trapOid, m_switchId, 3, attrs);
+    };
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createBgpTrap(
+            trapV4, SAI_HOSTIF_TRAP_TYPE_BGP, groupV4));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createBgpTrap(
+            trapV6, SAI_HOSTIF_TRAP_TYPE_BGPV6, groupV6));
+    ASSERT_EQ(policerV6,
+            m_sw->m_trap_binding_map.at(0x10001).policer_oid);
+
+    // Removing a non-owner must not overwrite the policer-only row with its
+    // synthetic DROP action. Otherwise the final owner's failed SAI removal
+    // can mistake an absent row for the old effective state during rollback.
+    vppMock().coppIp2meBindCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeHostifTrap(
+            sai_serialize_object_id(trapV4)));
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls.empty());
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP,
+            m_sw->m_trap_binding_map.at(0x10001).packet_action);
+
+    m_sw->removeInternalResult = SAI_STATUS_FAILURE;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeHostifTrap(
+            sai_serialize_object_id(trapV6)));
+
+    ASSERT_EQ(2u, vppMock().coppIp2meBindCalls.size());
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[1].conditional);
+    EXPECT_EQ("copp-policer-0x1200000004",
+            vppMock().coppIp2meBindCalls[1].policerName);
+    ASSERT_EQ(1u, m_sw->m_trap_map.count(trapV6));
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.count(0x10001));
+    EXPECT_EQ(policerV6,
+            m_sw->m_trap_binding_map.at(0x10001).policer_oid);
+}
+
 TEST_F(SwitchVppNeighborMissTrap, MixedBgpFailureRemovesNewNameBinding)
 {
     const sai_object_id_t groupOid = 0x1200000001;

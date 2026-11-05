@@ -538,16 +538,26 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
     // represents a policed row even if the local index journal is missing.
     bool have_policer = policer_oid != SAI_NULL_OBJECT_ID;
 
+    // DHCP and neighbor-miss rows carry semantic packet action independently
+    // of their policer. BGP/IP2ME/ethertype rows are policer-only: their
+    // synthetic DROP action during removal must neither make a surviving row
+    // look different nor make an unpoliced row look present.
+    const bool action_controls_binding = isDhcpTrap(trap.trap_type) ||
+        isNeighborMissTrap(trap.trap_type);
+    const bool desired_binding_present = action_controls_binding ?
+        semantic_active : have_policer;
+
     // Reprogramming a confirmed, identical physical row is not harmless:
     // VPP may recreate its policer attachment and reset counters. Shared-row
     // owner removal commonly resolves right back to the journaled owner, so
     // skip that ordinary no-op. Never skip an uncertain row; a timed-out RPC
     // may have changed VPP without advancing this journal and must be retried.
     if (have_binding_key && !current_binding_uncertain &&
-            current_binding_present == semantic_active &&
-            (!semantic_active ||
+            current_binding_present == desired_binding_present &&
+            (!desired_binding_present ||
              (current_policer_oid == policer_oid &&
-              current_packet_action == effective_action)))
+              (!action_controls_binding ||
+               current_packet_action == effective_action))))
     {
         return SAI_STATUS_SUCCESS;
     }
