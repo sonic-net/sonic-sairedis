@@ -11,7 +11,7 @@ RedisNotificationProducer::RedisNotificationProducer(
 {
     SWSS_LOG_ENTER();
 
-    m_db = std::make_shared<swss::DBConnector>(dbName, 0);
+    m_db = std::make_shared<swss::DBConnector>(dbName, 0, false, "", true);
 
     m_notificationProducer = std::make_shared<swss::NotificationProducer>(m_db.get(), REDIS_TABLE_NOTIFICATIONS_PER_DB(dbName));
 }
