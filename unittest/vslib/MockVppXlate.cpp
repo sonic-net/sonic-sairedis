@@ -224,6 +224,15 @@ extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabl
     return vppMock().featureResult;
 }
 
+// recorded with api "<arc>/<feature>" and flag = enable
+extern "C" int __wrap_sw_interface_feature_enable_disable(const char *name, const char *arc,
+        const char *feature, bool enable)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({std::string(arc) + "/" + feature, name, 0, 0, enable});
+    return vppMock().featureEnableResult;
+}
+
 /*
  * PBH. The indices are handed out by VPP, so the mock allocates them the same
  * way: an in-index of ~0 asks for a new one, anything else names an existing
