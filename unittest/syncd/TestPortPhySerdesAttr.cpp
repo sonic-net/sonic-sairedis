@@ -9,12 +9,17 @@
  */
 
 #include "FlexCounter.h"
+#include "VirtualOidTranslator.h"
+#include "DisabledRedisClient.h"
+#include "lib/RedisVidIndexGenerator.h"
+#include "lib/sairediscommon.h"
 #include "sai_serialize.h"
 #include "MockableSaiInterface.h"
 #include "MockHelper.h"
 #include "swss/table.h"
 #include "swss/schema.h"
 #include "syncd/SaiSwitch.h"
+#include <atomic>
 #include <string>
 #include <gtest/gtest.h>
 #include <memory>
@@ -51,7 +56,20 @@ protected:
             return 0x21000000000000;
         };
 
-        flexCounter = std::make_shared<FlexCounter>("TEST_PORT_SERDES_ATTR", sai, "COUNTERS_DB");
+        // syncd resolves the port of a port serdes with its VirtualOidTranslator.
+        // DisabledRedisClient keeps the VID to RID mapping in memory only, so
+        // the tests do not depend on VIDTORID entries in ASIC_DB.
+        auto dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+        auto switchConfigContainer = std::make_shared<sairedis::SwitchConfigContainer>();
+        auto redisVidIndexGenerator = std::make_shared<sairedis::RedisVidIndexGenerator>(dbAsic, REDIS_KEY_VIDCOUNTER);
+        auto virtualObjectIdManager = std::make_shared<sairedis::VirtualObjectIdManager>(0, switchConfigContainer, redisVidIndexGenerator);
+
+        translator = std::make_shared<VirtualOidTranslator>(
+                std::make_shared<DisabledRedisClient>(),
+                virtualObjectIdManager,
+                sai);
+
+        flexCounter = std::make_shared<FlexCounter>("TEST_PORT_SERDES_ATTR", sai, "COUNTERS_DB", false, translator);
 
         // Setup test port serdes OID and port OID
         // PORT_SERDES object type = 87 (0x57), so OID is 0x57000000000001
@@ -64,15 +82,143 @@ protected:
     void TearDown() override
     {
         flexCounter.reset();
+        translator.reset();
         sai.reset();
+
+        swss::DBConnector db("COUNTERS_DB", 0);
+        swss::Table portSerdesIdToPortIdTable(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
+        swss::Table portPhyAttrTable(&db, PORT_PHY_ATTR_TABLE);
+
+        for (const auto &ids : mappedSerdesPorts)
+        {
+            portSerdesIdToPortIdTable.hdel("", toOid(ids.first));
+            portPhyAttrTable.del(toOid(ids.second));
+        }
+    }
+
+    // Map the port serdes VID to its port VID in COUNTERS_DB, as orchagent
+    // does. Remove data that is left for the port, so that each test starts
+    // from a clean state. TearDown() removes both entries.
+    void mapSerdesToPort(sai_object_id_t serdesVid, sai_object_id_t portVid)
+    {
+        SWSS_LOG_ENTER();
+
+        swss::DBConnector db("COUNTERS_DB", 0);
+        swss::Table portSerdesIdToPortIdTable(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
+        swss::Table portPhyAttrTable(&db, PORT_PHY_ATTR_TABLE);
+
+        portPhyAttrTable.del(toOid(portVid));
+        portSerdesIdToPortIdTable.hset("", toOid(serdesVid), toOid(portVid));
+
+        mappedSerdesPorts.emplace_back(serdesVid, portVid);
+    }
+
+    // Vendor SAI for the RX_VGA tests. Only portRid has a hardware lane list.
+    // SAI_PORT_SERDES_ATTR_PORT_ID fails with SAI_STATUS_OBJECT_IN_USE (-17),
+    // the error that the SDK returned while the port came up.
+    void mockVendorSai(sai_object_id_t portRid)
+    {
+        SWSS_LOG_ENTER();
+
+        sai->mock_get = [this, portRid](sai_object_type_t object_type,
+                                        sai_object_id_t object_id,
+                                        uint32_t attr_count,
+                                        sai_attribute_t *attr_list) -> sai_status_t
+        {
+            if (object_type == SAI_OBJECT_TYPE_PORT)
+            {
+                if (attr_count != 1 || attr_list[0].id != SAI_PORT_ATTR_HW_LANE_LIST)
+                {
+                    return SAI_STATUS_NOT_SUPPORTED;
+                }
+
+                laneListQueries++;
+
+                if (object_id != portRid)
+                {
+                    return SAI_STATUS_INVALID_OBJECT_ID;
+                }
+
+                attr_list[0].value.u32list.count = TEST_LANE_COUNT;
+                return SAI_STATUS_BUFFER_OVERFLOW;
+            }
+
+            if (object_type != SAI_OBJECT_TYPE_PORT_SERDES)
+            {
+                return SAI_STATUS_INVALID_PARAMETER;
+            }
+
+            for (uint32_t i = 0; i < attr_count; i++)
+            {
+                switch (attr_list[i].id)
+                {
+                    case SAI_PORT_SERDES_ATTR_PORT_ID:
+                        portIdQueries++;
+                        return SAI_STATUS_OBJECT_IN_USE;
+
+                    case SAI_PORT_SERDES_ATTR_TX_FIR_COUNT:
+                        attr_list[i].value.u32 = TEST_TAP_COUNT;
+                        break;
+
+                    case SAI_PORT_SERDES_ATTR_RX_VGA:
+                        for (uint32_t lane = 0; lane < attr_list[i].value.u32list.count; lane++)
+                        {
+                            attr_list[i].value.u32list.list[lane] = 100 + lane;
+                        }
+                        break;
+
+                    default:
+                        return SAI_STATUS_NOT_SUPPORTED;
+                }
+            }
+
+            return SAI_STATUS_SUCCESS;
+        };
+    }
+
+    // Enroll the port serdes for RX_VGA, enable polling and wait for one poll.
+    void pollRxVga(
+            std::shared_ptr<FlexCounter> fc,
+            sai_object_id_t serdesVid,
+            sai_object_id_t serdesRid)
+    {
+        SWSS_LOG_ENTER();
+
+        vector<swss::FieldValueTuple> portSerdesAttrValues;
+        portSerdesAttrValues.emplace_back(PORT_PHY_SERDES_ATTR_ID_LIST, "SAI_PORT_SERDES_ATTR_RX_VGA");
+
+        test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT_SERDES);
+        fc->addCounter(serdesVid, serdesRid, portSerdesAttrValues);
+
+        vector<swss::FieldValueTuple> pluginValues;
+        pluginValues.emplace_back(POLL_INTERVAL_FIELD, "1000");
+        pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+        pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+        fc->addCounterPlugin(pluginValues);
+
+        usleep(1000 * 1050); // 1.05 seconds - one poll cycle
+    }
+
+    bool getRxVga(sai_object_id_t portVid, std::string &value)
+    {
+        SWSS_LOG_ENTER();
+
+        swss::DBConnector db("COUNTERS_DB", 0);
+        swss::Table portPhyAttrTable(&db, PORT_PHY_ATTR_TABLE);
+
+        return portPhyAttrTable.hget(toOid(portVid), "rx_vga", value);
     }
 
     std::shared_ptr<MockableSaiInterface> sai;
+    std::shared_ptr<VirtualOidTranslator> translator;
     std::shared_ptr<FlexCounter> flexCounter;
     sai_object_id_t testPortSerdesOid;
     sai_object_id_t testPortSerdesRid;
     sai_object_id_t testPortOid;
     sai_object_id_t testPortRid;
+    std::vector<std::pair<sai_object_id_t, sai_object_id_t>> mappedSerdesPorts;
+    std::atomic<uint32_t> portIdQueries{0};
+    std::atomic<uint32_t> laneListQueries{0};
 };
 
 TEST_F(TestPortPhySerdesAttr, SerializePortSerdesAttr)
@@ -120,7 +266,7 @@ TEST_F(TestPortPhySerdesAttr, DeserializePortSerdesAttr)
 TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
 {
     // Setup mock for PORT_SERDES attributes with realistic data
-    sai->mock_get = [](sai_object_type_t object_type,
+    sai->mock_get = [this](sai_object_type_t object_type,
                       sai_object_id_t object_id,
                       uint32_t attr_count,
                       sai_attribute_t *attr_list) -> sai_status_t
@@ -129,9 +275,10 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
             for (uint32_t i = 0; i < attr_count; i++) {
                 switch (attr_list[i].id) {
                     case SAI_PORT_SERDES_ATTR_PORT_ID:
-                        // Return the associated port OID
-                        attr_list[i].value.oid = 0x1000000000001;
-                        break;
+                        // The port comes from the translator. Fail the vendor
+                        // query as the SDK did (-17), to detect any use of it.
+                        portIdQueries++;
+                        return SAI_STATUS_OBJECT_IN_USE;
 
                     case SAI_PORT_SERDES_ATTR_TX_FIR_COUNT:
                         // Return tap count
@@ -207,10 +354,12 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
         return SAI_STATUS_INVALID_PARAMETER;
     };
 
-    // Setup COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP in COUNTERS_DB
+    // Map the port serdes to its port: port serdes VID -> port VID in
+    // COUNTERS_DB, and port VID -> port RID in the translator
+    translator->insertRidAndVid(testPortRid, testPortOid);
+    mapSerdesToPort(testPortSerdesOid, testPortOid);
+
     swss::DBConnector db("COUNTERS_DB", 0);
-    swss::Table portSerdesIdToPortIdTable(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
-    portSerdesIdToPortIdTable.hset("", toOid(testPortSerdesOid), toOid(testPortOid));
 
     vector<swss::FieldValueTuple> portSerdesAttrValues;
 
@@ -353,6 +502,9 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
         }
     }
 
+    EXPECT_EQ(portIdQueries.load(), 0u)
+        << "SAI_PORT_SERDES_ATTR_PORT_ID must not be queried from the vendor SAI";
+
     flexCounter->removeCounter(testPortSerdesOid);
 }
 
@@ -373,8 +525,9 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
     sai_object_id_t partialSerdesOid = 0x57000000000002;
     sai_object_id_t partialSerdesRid = 0x57000000000002;
     sai_object_id_t partialPortOid   = 0x1000000000002;
+    sai_object_id_t partialPortRid   = 0x1000000000002;
 
-    sai->mock_get = [](sai_object_type_t object_type,
+    sai->mock_get = [this](sai_object_type_t object_type,
                       sai_object_id_t /*object_id*/,
                       uint32_t attr_count,
                       sai_attribute_t *attr_list) -> sai_status_t
@@ -386,8 +539,10 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
                 switch (attr_list[i].id)
                 {
                     case SAI_PORT_SERDES_ATTR_PORT_ID:
-                        attr_list[i].value.oid = 0x1000000000002;
-                        break;
+                        // The port comes from the translator. Fail the vendor
+                        // query as the SDK did (-17), to detect any use of it.
+                        portIdQueries++;
+                        return SAI_STATUS_OBJECT_IN_USE;
 
                     case SAI_PORT_SERDES_ATTR_TX_FIR_COUNT:
                         // Simulate SDK busy / not ready: fail the count query
@@ -445,12 +600,12 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
         return SAI_STATUS_INVALID_PARAMETER;
     };
 
-    // Register the serdes→port VID mapping in COUNTERS_DB
+    // Map the port serdes to its port: port serdes VID -> port VID in
+    // COUNTERS_DB, and port VID -> port RID in the translator
+    translator->insertRidAndVid(partialPortRid, partialPortOid);
+    mapSerdesToPort(partialSerdesOid, partialPortOid);
+
     swss::DBConnector db("COUNTERS_DB", 0);
-    swss::Table portSerdesIdToPortIdTable(
-        &db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
-    portSerdesIdToPortIdTable.hset(
-        "", toOid(partialSerdesOid), toOid(partialPortOid));
 
     vector<swss::FieldValueTuple> portSerdesAttrValues;
     std::string attrIds =
@@ -508,6 +663,127 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
         }
     }
 
+    EXPECT_EQ(portIdQueries.load(), 0u)
+        << "SAI_PORT_SERDES_ATTR_PORT_ID must not be queried from the vendor SAI";
+
     flexCounter->removeCounter(partialSerdesOid);
+}
+
+/**
+ * Test that the port of a port serdes is resolved without the vendor SAI.
+ *
+ * COUNTERS_DB maps the port serdes VID to the port VID, and the translator
+ * maps the port VID to the port RID. The vendor SAI fails
+ * SAI_PORT_SERDES_ATTR_PORT_ID with SAI_STATUS_OBJECT_IN_USE (-17), as the
+ * SDK did while the port came up.
+ *
+ * Expected behaviour:
+ *   - SAI_PORT_SERDES_ATTR_PORT_ID is not queried
+ *   - the hardware lane count is read from the translated port RID
+ *   - rx_vga is written to PORT_PHY_ATTR_TABLE with the port VID as key
+ */
+TEST_F(TestPortPhySerdesAttr, ResolvePortWithTranslatorNotVendorSai)
+{
+    const sai_object_id_t serdesVid = 0x57000000000003;
+    const sai_object_id_t serdesRid = 0x57000000000103;
+    const sai_object_id_t portVid   = 0x1000000000003;
+    const sai_object_id_t portRid   = 0x1000000000103;
+
+    translator->insertRidAndVid(portRid, portVid);
+    mapSerdesToPort(serdesVid, portVid);
+    mockVendorSai(portRid);
+
+    pollRxVga(flexCounter, serdesVid, serdesRid);
+
+    EXPECT_EQ(portIdQueries.load(), 0u)
+        << "SAI_PORT_SERDES_ATTR_PORT_ID must not be queried from the vendor SAI";
+    EXPECT_EQ(laneListQueries.load(), 1u)
+        << "The lane count must be read once, from the translated port RID";
+
+    std::string rxVgaValue;
+    ASSERT_TRUE(getRxVga(portVid, rxVgaValue))
+        << "rx_vga must be in COUNTERS_DB for the port VID";
+
+    json rxVgaJson;
+    ASSERT_NO_THROW(rxVgaJson = json::parse(rxVgaValue))
+        << "rx_vga is not valid JSON: " << rxVgaValue;
+    ASSERT_EQ(rxVgaJson.size(), TEST_LANE_COUNT);
+
+    for (uint32_t lane = 0; lane < TEST_LANE_COUNT; lane++)
+    {
+        EXPECT_EQ(rxVgaJson[std::to_string(lane)].get<uint32_t>(), 100 + lane)
+            << "Lane " << lane << " VGA mismatch";
+    }
+
+    std::string unexpected;
+    EXPECT_FALSE(getRxVga(portRid, unexpected))
+        << "rx_vga must not use the port RID as key";
+
+    flexCounter->removeCounter(serdesVid);
+}
+
+/**
+ * Test that a port serdes is not collected when the translator has no RID
+ * for its port.
+ *
+ * Expected behaviour:
+ *   - SAI_PORT_SERDES_ATTR_PORT_ID is not queried as a fallback
+ *   - the hardware lane count is not queried
+ *   - rx_vga is not written to PORT_PHY_ATTR_TABLE for the port
+ */
+TEST_F(TestPortPhySerdesAttr, UnresolvedPortIsNotCollected)
+{
+    const sai_object_id_t serdesVid = 0x57000000000004;
+    const sai_object_id_t serdesRid = 0x57000000000104;
+    const sai_object_id_t portVid   = 0x1000000000004;
+    const sai_object_id_t portRid   = 0x1000000000104;
+
+    // The translator has no RID for portVid
+    mapSerdesToPort(serdesVid, portVid);
+    mockVendorSai(portRid);
+
+    pollRxVga(flexCounter, serdesVid, serdesRid);
+
+    EXPECT_EQ(portIdQueries.load(), 0u)
+        << "SAI_PORT_SERDES_ATTR_PORT_ID must not be queried from the vendor SAI";
+    EXPECT_EQ(laneListQueries.load(), 0u)
+        << "The lane count must not be read for an unresolved port";
+
+    std::string rxVgaValue;
+    EXPECT_FALSE(getRxVga(portVid, rxVgaValue))
+        << "rx_vga must not be in COUNTERS_DB for an unresolved port";
+
+    flexCounter->removeCounter(serdesVid);
+}
+
+/**
+ * Test that a FlexCounter without a translator does not resolve the port of
+ * a port serdes, and does not query the vendor SAI for it.
+ */
+TEST_F(TestPortPhySerdesAttr, NoTranslatorDoesNotResolvePort)
+{
+    const sai_object_id_t serdesVid = 0x57000000000005;
+    const sai_object_id_t serdesRid = 0x57000000000105;
+    const sai_object_id_t portVid   = 0x1000000000005;
+    const sai_object_id_t portRid   = 0x1000000000105;
+
+    translator->insertRidAndVid(portRid, portVid);
+    mapSerdesToPort(serdesVid, portVid);
+    mockVendorSai(portRid);
+
+    auto fc = std::make_shared<FlexCounter>("TEST_PORT_SERDES_ATTR_NO_TRANSLATOR", sai, "COUNTERS_DB");
+
+    pollRxVga(fc, serdesVid, serdesRid);
+
+    EXPECT_EQ(portIdQueries.load(), 0u)
+        << "SAI_PORT_SERDES_ATTR_PORT_ID must not be queried from the vendor SAI";
+    EXPECT_EQ(laneListQueries.load(), 0u)
+        << "The lane count must not be read for an unresolved port";
+
+    std::string rxVgaValue;
+    EXPECT_FALSE(getRxVga(portVid, rxVgaValue))
+        << "rx_vga must not be in COUNTERS_DB without a translator";
+
+    fc->removeCounter(serdesVid);
 }
 
