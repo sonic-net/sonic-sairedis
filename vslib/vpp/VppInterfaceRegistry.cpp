@@ -836,6 +836,30 @@ std::string VppInterfaceRegistry::resolveHwIfByRifOid(
     return it == m_byRifOid.end() ? std::string() : it->second->getHwifName();
 }
 
+std::vector<std::string> VppInterfaceRegistry::resolveAclInterfaces(
+        _In_ sai_object_id_t oid) const
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    auto parent = findByOid(oid);
+    if (!parent)
+    {
+        return {};
+    }
+
+    std::vector<std::string> interfaces = {parent->getHwifName()};
+    for (const auto& name : collectChildren(parent))
+    {
+        auto child = findByHwif(name);
+        if (child && child->hasBdId() && !child->hasRifOid())
+        {
+            interfaces.push_back(name);
+        }
+    }
+    return interfaces;
+}
+
 /*
  * sonic_vpp_ifmap.ini maps the host OS interface name ("osif") to the VPP
  * hardware interface name, e.g. "Ethernet0" -> "TenGigabitEthernet0/0/0". The

@@ -109,68 +109,6 @@ static sai_status_t acl_ip_field_to_vpp_acl(
     return SAI_STATUS_SUCCESS;
 }
 
-static void set_ipv4any_addr_mask (vpp_ip_addr_t *ip_addr)
-{
-    SWSS_LOG_ENTER();
-
-    struct sockaddr_in *sin =  &ip_addr->addr.ip4;
-
-    ip_addr->sa_family = AF_INET;
-    sin->sin_addr.s_addr = (uint32_t) 0;
-}
-
-static void set_ipv6any_addr_mask (vpp_ip_addr_t *ip_addr)
-{
-    SWSS_LOG_ENTER();
-
-    struct sockaddr_in6 *sin6 =  &ip_addr->addr.ip6;
-
-    ip_addr->sa_family = AF_INET6;
-
-    unsigned long long v6_mask = (unsigned long long) 0;
-
-    memcpy(sin6->sin6_addr.s6_addr, &v6_mask, 8);
-    memcpy(&sin6->sin6_addr.s6_addr[8], &v6_mask, 8);
-}
-
-static bool vpp_ip_addr_family_is_set (const vpp_ip_addr_t *ip_addr)
-{
-    SWSS_LOG_ENTER();
-
-    return ip_addr->sa_family == AF_INET || ip_addr->sa_family == AF_INET6;
-}
-
-/*
- * VPP's acl_add_list rejects a rule whose src and dst prefixes disagree on
- * address family (VNET_API_ERROR_INVALID_SRC_ADDRESS), and vpp_acl_add_replace
- * serializes a prefix with no family as IPv4 any. A rule matching on only one
- * of SRC/DST IPv6 would therefore be rejected, and since the ACL is pushed with
- * is_replace it takes every other rule in the table down with it.
- */
-static void normalize_rule_ip_family (vpp_acl_rule_t *rule)
-{
-    SWSS_LOG_ENTER();
-
-    bool src_set = vpp_ip_addr_family_is_set(&rule->src_prefix);
-    bool dst_set = vpp_ip_addr_family_is_set(&rule->dst_prefix);
-
-    if (src_set == dst_set) {
-        return;
-    }
-
-    int            family = src_set ? rule->src_prefix.sa_family : rule->dst_prefix.sa_family;
-    vpp_ip_addr_t *addr   = src_set ? &rule->dst_prefix : &rule->src_prefix;
-    vpp_ip_addr_t *mask   = src_set ? &rule->dst_prefix_mask : &rule->src_prefix_mask;
-
-    if (family == AF_INET6) {
-        set_ipv6any_addr_mask(addr);
-        set_ipv6any_addr_mask(mask);
-    } else {
-        set_ipv4any_addr_mask(addr);
-        set_ipv4any_addr_mask(mask);
-    }
-}
-
 static sai_status_t acl_ip_type_field_to_vpp_acl_rule(
     _In_ sai_acl_entry_attr_t         attr_id,
     _In_ const sai_attribute_value_t *value,
@@ -199,20 +137,10 @@ static sai_status_t acl_ip_type_field_to_vpp_acl_rule(
         break;
 
     case SAI_ACL_IP_TYPE_IPV4ANY:
-        set_ipv4any_addr_mask(&rule->src_prefix);
-        set_ipv4any_addr_mask(&rule->dst_prefix);
-        set_ipv4any_addr_mask(&rule->src_prefix_mask);
-        set_ipv4any_addr_mask(&rule->dst_prefix_mask);
-
-        break;
+        return setAclRuleIpFamilyWildcard(*rule, AF_INET);
 
     case SAI_ACL_IP_TYPE_IPV6ANY:
-        set_ipv6any_addr_mask(&rule->src_prefix);
-        set_ipv6any_addr_mask(&rule->dst_prefix);
-        set_ipv6any_addr_mask(&rule->src_prefix_mask);
-        set_ipv6any_addr_mask(&rule->dst_prefix_mask);
-
-        break;
+        return setAclRuleIpFamilyWildcard(*rule, AF_INET6);
 
     default:
         SWSS_LOG_INFO("Unsupported ip type (%d)\n", ip_type);
@@ -416,6 +344,12 @@ sai_status_t SwitchVpp::acl_rule_field_update(
     assert(NULL != value);
     status = SAI_STATUS_SUCCESS;
 
+    // Disabled qualifiers must not constrain the protocol or inferred family.
+    if (attr_id >= SAI_ACL_ENTRY_ATTR_FIELD_START &&
+        attr_id <= SAI_ACL_ENTRY_ATTR_FIELD_END && !value->aclfield.enable) {
+        return SAI_STATUS_SUCCESS;
+    }
+
     switch (attr_id) {
     case SAI_ACL_ENTRY_ATTR_FIELD_SRC_IP:
     case SAI_ACL_ENTRY_ATTR_FIELD_DST_IP:
@@ -430,6 +364,10 @@ sai_status_t SwitchVpp::acl_rule_field_update(
 
     case SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE:
         status = acl_ip_type_field_to_vpp_acl_rule(attr_id, value, rule);
+        break;
+
+    case SAI_ACL_ENTRY_ATTR_FIELD_OUTER_VLAN_ID:
+        status = acl_rule_set_outer_vlan(value, rule);
         break;
 
     case SAI_ACL_ENTRY_ATTR_FIELD_ICMP_CODE:
@@ -1100,6 +1038,14 @@ sai_status_t SwitchVpp::fill_acl_rules(
             // Process regular ACL rule(s)
             vpp_acl_rule_t rule = {};
             uint8_t port_proto = 0;  // Track if port-related fields were set
+            int rule_family = AF_UNSPEC;
+
+            status = getAclRuleIpFamily(*p_ace, rule_family);
+            if (status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("ACL entry %s has conflicting IPv4 and IPv6 qualifiers",
+                               sai_serialize_object_id(ace.ace_oid).c_str());
+                return status;
+            }
 
             // Record the base index for this ACE
             ace.vpp_rule_base_index = acl_rule_index;
@@ -1168,72 +1114,16 @@ sai_status_t SwitchVpp::fill_acl_rules(
                 }
             }
 
-            normalize_rule_ip_family(&rule);
-
-            // VPP classifies a rule's family from its prefix, so an address-less
-            // rule (e.g. an Everflow mirror rule matching only on L4 protocol)
-            // would default to IPv4 and never match IPv6. Fall back to the parent
-            // table's declared family instead.
-            bool rule_has_ip_family =
-                (rule.src_prefix.sa_family == AF_INET  || rule.dst_prefix.sa_family == AF_INET ||
-                 rule.src_prefix.sa_family == AF_INET6 || rule.dst_prefix.sa_family == AF_INET6);
-
-            // IPv4 and IPv6 mirroring live in separate tables (MIRROR / MIRRORV6),
-            // so emitting both families here would duplicate the rule and mirror
-            // twice. Only a mirror table declaring NEITHER family is ambiguous.
-            bool is_mirror_rule = (rule.action == VPP_ACL_ACTION_PERMIT_MIRROR);
-            bool want_v4 = table_has_v4;
-            bool want_v6 = table_has_v6;
-            if (is_mirror_rule && !table_has_v4 && !table_has_v6) {
-                want_v4 = true;
-                want_v6 = true;
+            std::vector<vpp_acl_rule_t> variants;
+            status = expandAclRuleVariants(rule, rule_family, table_has_v4, table_has_v6,
+                                           port_proto != 0, variants);
+            if (status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("ACL entry %s has incompatible family or protocol qualifiers",
+                               sai_serialize_object_id(ace.ace_oid).c_str());
+                return status;
             }
-
-            std::vector<vpp_acl_rule_t> family_variants;
-            if (!rule_has_ip_family && (want_v4 || want_v6)) {
-                if (want_v4) {
-                    // Zero/unspec address is emitted as IPv4 any by vpp_acl_add_replace.
-                    family_variants.push_back(rule);
-                }
-                if (want_v6) {
-                    vpp_acl_rule_t v6_rule = rule;
-                    set_ipv6any_addr_mask(&v6_rule.src_prefix);
-                    set_ipv6any_addr_mask(&v6_rule.dst_prefix);
-                    set_ipv6any_addr_mask(&v6_rule.src_prefix_mask);
-                    set_ipv6any_addr_mask(&v6_rule.dst_prefix_mask);
-                    family_variants.push_back(v6_rule);
-                    SWSS_LOG_INFO("Address-less ACL rule (ace index %u): emitting IPv6 variant "
-                                  "(proto=%d, action=%d, is_mirror=%d, table_has_v4=%d, table_has_v6=%d)",
-                                  ace.index, v6_rule.proto, v6_rule.action,
-                                  is_mirror_rule, table_has_v4, table_has_v6);
-                }
-            } else {
-                family_variants.push_back(rule);
-            }
-
-            // If port/port_range is set but protocol is not set, create 2 rules
-            // (UDP and TCP) per family variant.
-            for (auto &fr : family_variants) {
-                if (port_proto && fr.proto == 0) {
-                    // Create UDP rule
-                    vpp_acl_rule_t udp_rule = fr;
-                    udp_rule.proto = IPPROTO_UDP;
-                    acl_rules.push_back(udp_rule);
-                    rules_added++;
-                    SWSS_LOG_INFO("Added UDP rule for port-based ACL entry");
-
-                    // Create TCP rule
-                    vpp_acl_rule_t tcp_rule = fr;
-                    tcp_rule.proto = IPPROTO_TCP;
-                    acl_rules.push_back(tcp_rule);
-                    rules_added++;
-                    SWSS_LOG_INFO("Added TCP rule for port-based ACL entry");
-                } else {
-                    // Add the single rule
-                    acl_rules.push_back(fr);
-                    rules_added++;
-                }
-            }
+            acl_rules.insert(acl_rules.end(), variants.begin(), variants.end());
+            rules_added = (uint32_t) variants.size();
 
             /*
              * SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS restricts the entry to the
@@ -2283,53 +2173,63 @@ sai_status_t SwitchVpp::addRemoveAclGrpMbr(
         return SAI_STATUS_FAILURE;
     }
 
-    // Step 1: Unbind existing ACLs from all ports
-    // Make a copy of ports list since aclBindUnbindPort modifies m_acl_tbl_grp_ports_map
+    // Keep the original membership and desired ports until every attachment
+    // has been updated. Per-interface bookkeeping continues to describe only
+    // successful VPP operations, including when recovery also fails.
+    auto mbr_it = m_acl_tbl_grp_mbr_map.find(tbl_grp_oid);
+    const bool had_members = mbr_it != m_acl_tbl_grp_mbr_map.end();
+    const std::list<sai_object_id_t> old_members = had_members ?
+        mbr_it->second : std::list<sai_object_id_t>{};
+    if (!is_add && std::find(old_members.begin(), old_members.end(), member_oid) == old_members.end()) {
+        SWSS_LOG_ERROR("ACL group member %s not found in tbl group %s",
+                       sai_serialize_object_id(member_oid).c_str(),
+                       sai_serialize_object_id(tbl_grp_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
     std::list<sai_object_id_t> ports_copy;
     auto ports_it = m_acl_tbl_grp_ports_map.find(tbl_grp_oid);
     if (ports_it != m_acl_tbl_grp_ports_map.end()) {
         ports_copy = ports_it->second;
+    }
+
+    auto restore_old = [&]() {
+        if (had_members) {
+            m_acl_tbl_grp_mbr_map[tbl_grp_oid] = old_members;
+        } else {
+            m_acl_tbl_grp_mbr_map.erase(tbl_grp_oid);
+        }
+        // Include ports already updated before the failure, and all bridged
+        // children of the failing port. Retain associations even if VPP keeps
+        // rejecting recovery, so the next member update can retry them.
+        m_acl_tbl_grp_ports_map[tbl_grp_oid] = ports_copy;
         for (auto port_oid : ports_copy) {
-            sai_status_t status = aclBindUnbindPort(port_oid, tbl_grp_oid, is_input, false);
-            if (status != SAI_STATUS_SUCCESS) {
-                SWSS_LOG_ERROR("Failed to unbind ACL group %s from port %s",
+            if (aclBindUnbindPort(port_oid, tbl_grp_oid, is_input, true) != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to restore ACL group %s on port %s",
                                sai_serialize_object_id(tbl_grp_oid).c_str(),
                                sai_serialize_object_id(port_oid).c_str());
-                return status;
             }
         }
-    }
+    };
 
-    // Step 2: Update m_acl_tbl_grp_mbr_map with add or remove group member
-    auto mbr_it = m_acl_tbl_grp_mbr_map.find(tbl_grp_oid);
-
-    if (mbr_it == m_acl_tbl_grp_mbr_map.end()) {
-        if (!is_add) {
-            SWSS_LOG_ERROR("ACL group member %s not found in tbl group %s",
-                           sai_serialize_object_id(member_oid).c_str(),
-                           sai_serialize_object_id(tbl_grp_oid).c_str());
-            return SAI_STATUS_FAILURE;
-        }
-
-        std::list<sai_object_id_t> member_list = { member_oid };
-        m_acl_tbl_grp_mbr_map[tbl_grp_oid] = member_list;
-    } else {
-        std::list<sai_object_id_t>& member_list = mbr_it->second;
-
-        if (is_add) {
+    // Tentatively change membership, then replace each complete policy directly.
+    auto &member_list = m_acl_tbl_grp_mbr_map[tbl_grp_oid];
+    if (is_add) {
+        if (std::find(member_list.begin(), member_list.end(), member_oid) == member_list.end()) {
             member_list.push_back(member_oid);
-        } else {
-            member_list.remove(member_oid);
         }
+    } else {
+        member_list.remove(member_oid);
     }
 
-    // Step 3: Rebind ACLs to all ports with updated member list
+    // Each target receives its complete new ordered list, with the permit last.
     for (auto port_oid : ports_copy) {
         sai_status_t status = aclBindUnbindPort(port_oid, tbl_grp_oid, is_input, true);
         if (status != SAI_STATUS_SUCCESS) {
             SWSS_LOG_ERROR("Failed to bind ACL group %s to port %s",
                            sai_serialize_object_id(tbl_grp_oid).c_str(),
                            sai_serialize_object_id(port_oid).c_str());
+            restore_old();
             return status;
         }
     }
@@ -2357,11 +2257,15 @@ sai_status_t SwitchVpp::createAclGrpMbr(
     sai_object_id_t tbl_grp_oid;
 
     if (getAclTableGroupId(object_id, &tbl_grp_oid) != SAI_STATUS_SUCCESS) {
+        remove_internal(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, sid);
         return SAI_STATUS_FAILURE;
     }
     sai_status_t status;
 
     status = addRemoveAclGrpMbr(object_id, tbl_grp_oid, true);
+    if (status != SAI_STATUS_SUCCESS) {
+        remove_internal(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, sid);
+    }
 
     return status;
 }
@@ -2388,9 +2292,10 @@ sai_status_t SwitchVpp::removeAclGrpMbr(
     SWSS_LOG_NOTICE("Remove Acl grp member %s status %d",
                     serializedObjectId.c_str(), status);
 
-    remove_internal(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, serializedObjectId);
-
-    return status;
+    if (status != SAI_STATUS_SUCCESS) {
+        return status;
+    }
+    return remove_internal(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, serializedObjectId);
 }
 
 sai_status_t SwitchVpp::setAclGrpMbr(
@@ -2477,7 +2382,9 @@ sai_status_t SwitchVpp::addRemovePortTblGrp(
     } else {
         std::list<sai_object_id_t>& ports_list = it->second;
         if (is_add) {
-            ports_list.push_back(port_oid);
+            if (std::find(ports_list.begin(), ports_list.end(), port_oid) == ports_list.end()) {
+                ports_list.push_back(port_oid);
+            }
         } else {
             ports_list.remove(port_oid);
         }
@@ -2505,12 +2412,12 @@ void SwitchVpp::updatePortAclTableBinding(
 
     if (is_bind) {
         auto &tables = m_port_acl_tables[hwif_name];
-        (is_input ? tables.ingress : tables.egress).insert(tbl_oid);
+        tables.updateTable(tbl_oid, is_input, true);
     } else {
         auto pit = m_port_acl_tables.find(hwif_name);
         if (pit != m_port_acl_tables.end()) {
-            (is_input ? pit->second.ingress : pit->second.egress).erase(tbl_oid);
-            if (pit->second.ingress.empty() && pit->second.egress.empty()) {
+            pit->second.updateTable(tbl_oid, is_input, false);
+            if (pit->second.empty()) {
                 m_port_acl_tables.erase(pit);
             }
         }
@@ -2618,6 +2525,467 @@ void SwitchVpp::ip2meUpdateDropTable(
     }
 }
 
+void SwitchVpp::aclRecordInterfacePolicy(
+        _In_ const std::string &hwif_name,
+        _In_ const PortAclTables &policy)
+{
+    auto it = m_port_acl_tables.find(hwif_name);
+    const auto previous = it == m_port_acl_tables.end() ? PortAclTables{} : it->second;
+    for (bool is_input : {true, false}) {
+        const auto &old_tables = is_input ? previous.ingress : previous.egress;
+        const auto &new_tables = is_input ? policy.ingress : policy.egress;
+        for (auto table : old_tables) {
+            if (!new_tables.count(table)) {
+                m_acl_tunterm_pending[std::make_tuple(hwif_name, table, is_input)] = false;
+            }
+        }
+        for (auto table : new_tables) {
+            if (!old_tables.count(table)) {
+                m_acl_tunterm_pending[std::make_tuple(hwif_name, table, is_input)] = true;
+            }
+        }
+    }
+    std::set<sai_object_id_t> tables = previous.ingress;
+    tables.insert(previous.egress.begin(), previous.egress.end());
+    tables.insert(policy.ingress.begin(), policy.ingress.end());
+    tables.insert(policy.egress.begin(), policy.egress.end());
+    for (auto table : tables) {
+        auto &ports = m_acl_tbl_hw_ports_map[table];
+        if (policy.ingress.count(table) || policy.egress.count(table)) {
+            if (std::find(ports.begin(), ports.end(), hwif_name) == ports.end()) {
+                ports.push_back(hwif_name);
+            }
+        } else {
+            ports.remove(hwif_name);
+        }
+    }
+    if (policy.empty()) {
+        m_port_acl_tables.erase(hwif_name);
+    } else {
+        m_port_acl_tables[hwif_name] = policy;
+    }
+    ip2meRefreshPort(hwif_name);
+}
+
+sai_status_t SwitchVpp::aclReadInterfacePolicy(
+        _In_ const std::string &hwif_name)
+{
+    uint32_t input[255] = {}, output[255] = {};
+    uint32_t input_count = 0, output_count = 0;
+    m_acl_interface_state_unknown.insert(hwif_name);
+    if (vpp_acl_interface_get_acl_list(hwif_name.c_str(), input, &input_count,
+                                     output, &output_count) != 0 ||
+        input_count > 255 || output_count > 255 - input_count) {
+        SWSS_LOG_ERROR("Cannot read ACL lists on %s; installed state remains unverified", hwif_name.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+    PortAclTables actual;
+    for (bool is_input : {true, false}) {
+        const uint32_t *indices = is_input ? input : output;
+        const auto count = is_input ? input_count : output_count;
+        std::set<uint32_t> seen;
+        for (uint32_t i = 0; i < count; ++i) {
+            if (!seen.insert(indices[i]).second) {
+                return SAI_STATUS_FAILURE;
+            }
+            if (m_acl_default_created && indices[i] == m_acl_default_swindex) {
+                // Backend-owned default permits always finish their direction.
+                if (i + 1 != count) {
+                    return SAI_STATUS_FAILURE;
+                }
+                (is_input ? actual.ingressDefault : actual.egressDefault) = true;
+                continue;
+            }
+            auto table = std::find_if(m_acl_swindex_map.begin(), m_acl_swindex_map.end(),
+                [indices, i](const std::pair<const sai_object_id_t, uint32_t> &entry) {
+                    return entry.second == indices[i];
+                });
+            if (table == m_acl_swindex_map.end()) {
+                SWSS_LOG_ERROR("Unknown ACL index %u on %s", indices[i], hwif_name.c_str());
+                return SAI_STATUS_FAILURE;
+            }
+            actual.updateTable(table->first, is_input, true);
+        }
+    }
+    aclRecordInterfacePolicy(hwif_name, actual);
+    m_acl_interface_state_unknown.erase(hwif_name);
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::aclApplyInterfacePolicy(
+        _In_ const std::string &hwif_name,
+        _In_ const PortAclTables &desired,
+        _In_ bool change_input,
+        _In_ bool change_output)
+{
+    SWSS_LOG_ENTER();
+    if ((!change_input || !change_output) && m_acl_interface_state_unknown.count(hwif_name)) {
+        CHECK_STATUS(aclReadInterfacePolicy(hwif_name));
+    }
+    auto it = m_port_acl_tables.find(hwif_name);
+    const auto previous = it == m_port_acl_tables.end() ? PortAclTables{} : it->second;
+    PortAclTables wanted = previous;
+    for (bool is_input : {true, false}) {
+        if (!(is_input ? change_input : change_output)) {
+            continue;
+        }
+        auto &order = is_input ? wanted.ingressOrder : wanted.egressOrder;
+        auto &tables = is_input ? wanted.ingress : wanted.egress;
+        order.clear();
+        tables.clear();
+        const auto &requested = is_input ? desired.ingressOrder : desired.egressOrder;
+        for (auto table : requested) {
+            if (tables.insert(table).second) {
+                order.push_back(table);
+            }
+        }
+        (is_input ? wanted.ingressDefault : wanted.egressDefault) = is_input ?
+            (desired.ingressDefault || desired.ingressDefaultPending) :
+            (desired.egressDefault || desired.egressDefaultPending);
+        (is_input ? wanted.ingressDefaultPending : wanted.egressDefaultPending) = false;
+    }
+    const size_t count = wanted.ingressOrder.size() + wanted.egressOrder.size() +
+        (wanted.ingressDefault ? 1u : 0u) + (wanted.egressDefault ? 1u : 0u);
+    if (count > 255) {
+        SWSS_LOG_ERROR("ACL lists on %s exceed the VPP limit of 255 total indices", hwif_name.c_str());
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+    if (wanted.ingressDefault || wanted.egressDefault) {
+        CHECK_STATUS(aclDefaultCreate());
+    }
+    std::vector<uint32_t> input, output;
+    for (bool is_input : {true, false}) {
+        auto &indices = is_input ? input : output;
+        const auto &order = is_input ? wanted.ingressOrder : wanted.egressOrder;
+        std::set<uint32_t> seen;
+        for (auto table : order) {
+            auto index = m_acl_swindex_map.find(table);
+            if (index == m_acl_swindex_map.end() || !seen.insert(index->second).second) {
+                return SAI_STATUS_INVALID_PARAMETER;
+            }
+            indices.push_back(index->second);
+        }
+        if (is_input ? wanted.ingressDefault : wanted.egressDefault) {
+            if (!seen.insert(m_acl_default_swindex).second) {
+                return SAI_STATUS_INVALID_PARAMETER;
+            }
+            indices.push_back(m_acl_default_swindex);
+        }
+    }
+    const bool changed = wanted.ingressOrder != previous.ingressOrder ||
+        wanted.egressOrder != previous.egressOrder ||
+        wanted.ingressDefault != previous.ingressDefault ||
+        wanted.egressDefault != previous.egressDefault;
+    if (changed || m_acl_interface_state_unknown.count(hwif_name)) {
+        if (vpp_acl_interface_set_acl_list(hwif_name.c_str(), input.data(),
+                static_cast<uint32_t>(input.size()), output.data(),
+                static_cast<uint32_t>(output.size())) != 0) {
+            // VPP replaces output then input. A failed reply (or timeout) does
+            // not establish which direction committed; record a verified dump.
+            aclReadInterfacePolicy(hwif_name);
+            SWSS_LOG_ERROR("ACL list replacement failed on %s", hwif_name.c_str());
+            return SAI_STATUS_FAILURE;
+        }
+        aclRecordInterfacePolicy(hwif_name, wanted);
+        m_acl_interface_state_unknown.erase(hwif_name);
+    } else {
+        // A prior best-effort ip2me feature update may still need retrying.
+        ip2meRefreshPort(hwif_name);
+    }
+    // The regular lists are now known. Ancillary programming has its own API
+    // and can fail independently; keep that work until a later policy retry.
+    const auto pending = m_acl_tunterm_pending;
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    for (const auto &entry : pending) {
+        const bool is_input = std::get<2>(entry.first);
+        if (std::get<0>(entry.first) != hwif_name ||
+            !(is_input ? change_input : change_output)) {
+            continue;
+        }
+        const auto table = std::get<1>(entry.first);
+        // Tunnel-termination bindings have no direction: retain them while
+        // either regular direction still uses this table.
+        const bool is_bind = wanted.ingress.count(table) || wanted.egress.count(table);
+        if (tunterm_acl_bindunbind(table, is_bind, hwif_name) == SAI_STATUS_SUCCESS) {
+            m_acl_tunterm_pending.erase(entry.first);
+        } else {
+            m_acl_tunterm_pending[entry.first] = is_bind;
+            status = SAI_STATUS_FAILURE;
+        }
+    }
+    return status;
+}
+
+sai_status_t SwitchVpp::aclBindInterfaceDefault(
+        _In_ const std::string &hwif_name,
+        _In_ bool is_input,
+        _In_ bool is_bind)
+{
+    if (m_acl_interface_state_unknown.count(hwif_name)) {
+        CHECK_STATUS(aclReadInterfacePolicy(hwif_name));
+    }
+    auto it = m_port_acl_tables.find(hwif_name);
+    auto desired = it == m_port_acl_tables.end() ? PortAclTables{} : it->second;
+    (is_input ? desired.ingressDefault : desired.egressDefault) = is_bind;
+    (is_input ? desired.ingressDefaultPending : desired.egressDefaultPending) = false;
+    return aclApplyInterfacePolicy(hwif_name, desired, is_input, !is_input);
+}
+
+sai_status_t SwitchVpp::aclBindInterfaceTable(
+        _In_ const std::string &hwif_name,
+        _In_ sai_object_id_t tbl_oid,
+        _In_ bool is_input,
+        _In_ bool is_bind)
+{
+    if (m_acl_interface_state_unknown.count(hwif_name)) {
+        CHECK_STATUS(aclReadInterfacePolicy(hwif_name));
+    }
+    auto it = m_port_acl_tables.find(hwif_name);
+    auto desired = it == m_port_acl_tables.end() ? PortAclTables{} : it->second;
+    desired.updateTable(tbl_oid, is_input, is_bind);
+    (is_input ? desired.ingressDefault : desired.egressDefault) =
+        !(is_input ? desired.ingressOrder : desired.egressOrder).empty();
+    (is_input ? desired.ingressDefaultPending : desired.egressDefaultPending) = false;
+    return aclApplyInterfacePolicy(hwif_name, desired, is_input, !is_input);
+}
+
+sai_status_t SwitchVpp::aclInheritInterfacePolicy(
+        _In_ const std::string &parent_hwif,
+        _In_ const std::string &child_hwif)
+{
+    SWSS_LOG_ENTER();
+    if (m_acl_interface_state_unknown.count(parent_hwif)) {
+        CHECK_STATUS(aclReadInterfacePolicy(parent_hwif));
+    }
+    auto it = m_port_acl_tables.find(parent_hwif);
+    const auto desired = it == m_port_acl_tables.end() ? PortAclTables{} : it->second;
+    if (aclApplyInterfacePolicy(child_hwif, desired) != SAI_STATUS_SUCCESS) {
+        aclRemoveInterfacePolicy(child_hwif);
+        return SAI_STATUS_FAILURE;
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::aclRemoveInterfacePolicy(
+        _In_ const std::string &hwif_name)
+{
+    return aclApplyInterfacePolicy(hwif_name, PortAclTables{});
+}
+
+void SwitchVpp::aclForgetInterfacePolicy(
+        _In_ const std::string &hwif_name)
+{
+    SWSS_LOG_ENTER();
+    m_port_acl_tables.erase(hwif_name);
+    m_acl_interface_state_unknown.erase(hwif_name);
+    m_ip2me_enabled_ports.erase(hwif_name);
+    for (auto &entry : m_acl_tbl_hw_ports_map) {
+        entry.second.remove(hwif_name);
+    }
+    for (auto it = m_acl_tunterm_pending.begin(); it != m_acl_tunterm_pending.end();) {
+        if (std::get<0>(it->first) == hwif_name) {
+            it = m_acl_tunterm_pending.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+sai_status_t SwitchVpp::aclReconcileGroupPbh(
+        _In_ sai_object_id_t port_oid,
+        _In_ sai_object_id_t group_oid,
+        _In_ const std::set<sai_object_id_t> &desired)
+{
+    const auto key = std::make_pair(port_oid, group_oid);
+    auto found = m_acl_group_pbh_tables.find(key);
+    if (found == m_acl_group_pbh_tables.end() && desired.empty()) {
+        return SAI_STATUS_SUCCESS;
+    }
+    const auto hwif = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
+    if (hwif.empty()) {
+        return SAI_STATUS_FAILURE;
+    }
+    auto &actual = m_acl_group_pbh_tables[key];
+    const auto previous = actual;
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    for (auto table : previous) {
+        if (desired.count(table)) {
+            continue;
+        }
+        // A table shared by another logical group remains attached there.
+        const bool shared = std::any_of(m_acl_group_pbh_tables.begin(), m_acl_group_pbh_tables.end(),
+            [port_oid, group_oid, table](const std::pair<const std::pair<sai_object_id_t, sai_object_id_t>,
+                                             std::set<sai_object_id_t>> &entry) {
+                return entry.first.first == port_oid && entry.first.second != group_oid &&
+                    entry.second.count(table);
+            });
+        if (shared || m_pbh.bindUnbindPort(hwif, table, false) == SAI_STATUS_SUCCESS) {
+            actual.erase(table);
+        } else {
+            status = SAI_STATUS_FAILURE;
+        }
+    }
+    for (auto table : desired) {
+        if (actual.count(table)) {
+            continue;
+        }
+        if (m_pbh.bindUnbindPort(hwif, table, true) == SAI_STATUS_SUCCESS) {
+            actual.insert(table);
+        } else {
+            status = SAI_STATUS_FAILURE;
+        }
+    }
+    if (actual.empty()) {
+        m_acl_group_pbh_tables.erase(key);
+    }
+    return status;
+}
+
+sai_status_t SwitchVpp::aclRestorePbhRegularPolicy(
+        _In_ sai_object_id_t port_oid,
+        _In_ sai_object_id_t group_oid,
+        _In_ bool is_input)
+{
+    const auto key = std::make_tuple(port_oid, group_oid, is_input);
+    auto pending = m_acl_pbh_regular_restore.find(key);
+    if (pending == m_acl_pbh_regular_restore.end()) {
+        return SAI_STATUS_SUCCESS;
+    }
+    const auto parent = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
+    const auto parent_policy = pending->second.find(parent);
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    for (const auto &hwif : m_ifaceRegistry.resolveAclInterfaces(port_oid)) {
+        auto policy = pending->second.find(hwif);
+        if (policy == pending->second.end()) {
+            // A child created during incomplete recovery inherits the original
+            // parent's required policy when the accepted group is retried.
+            policy = parent_policy;
+        }
+        if (policy == pending->second.end() ||
+            aclApplyInterfacePolicy(hwif, policy->second, is_input, !is_input) != SAI_STATUS_SUCCESS) {
+            status = SAI_STATUS_FAILURE;
+        }
+    }
+    if (status == SAI_STATUS_SUCCESS) {
+        m_acl_pbh_regular_restore.erase(pending);
+    }
+    return status;
+}
+
+sai_status_t SwitchVpp::aclSetPortTableGroup(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t port_oid,
+        _In_ sai_attr_id_t attr_id,
+        _In_ sai_object_id_t group_oid,
+        _In_ bool is_input)
+{
+    SWSS_LOG_ENTER();
+
+    // get() reports ITEM_NOT_FOUND for both an absent object and an omitted
+    // attribute. Only an existing PORT/LAG may use the null ACL default.
+    const auto &objects = m_objectHash.at(object_type);
+    if (objects.find(sai_serialize_object_id(port_oid)) == objects.end()) {
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    sai_attribute_t old_attr = {};
+    old_attr.id = attr_id;
+    sai_status_t status = get(object_type, port_oid, 1, &old_attr);
+    if (status != SAI_STATUS_SUCCESS && status != SAI_STATUS_ITEM_NOT_FOUND &&
+        status != SAI_STATUS_NOT_IMPLEMENTED) {
+        return status;
+    }
+    // PORT/LAG ACL attributes have the SAI null ACL default when omitted.
+    sai_object_id_t old_group = status == SAI_STATUS_SUCCESS ? old_attr.value.oid : SAI_NULL_OBJECT_ID;
+    if (old_group == group_oid) {
+        return aclBindUnbindPort(port_oid, group_oid, is_input, group_oid != SAI_NULL_OBJECT_ID);
+    }
+
+    auto is_pbh_only = [&](sai_object_id_t group) {
+        auto members = m_acl_tbl_grp_mbr_map.find(group);
+        if (members == m_acl_tbl_grp_mbr_map.end() || members->second.empty()) {
+            return false;
+        }
+        for (auto member : members->second) {
+            sai_attribute_t table = {};
+            table.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID;
+            if (get(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member, 1, &table) != SAI_STATUS_SUCCESS ||
+                !m_pbh.isPbhTable(table.value.oid)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    const bool old_pbh_only = is_pbh_only(old_group);
+    const bool new_pbh_only = is_pbh_only(group_oid);
+    const auto restore_key = std::make_tuple(port_oid, old_group, is_input);
+    std::map<std::string, PortAclTables> old_regular;
+    if (old_pbh_only) {
+        auto pending = m_acl_pbh_regular_restore.find(restore_key);
+        if (pending != m_acl_pbh_regular_restore.end()) {
+            old_regular = pending->second;
+        } else {
+            for (const auto &hwif : m_ifaceRegistry.resolveAclInterfaces(port_oid)) {
+                if (m_acl_interface_state_unknown.count(hwif)) {
+                    CHECK_STATUS(aclReadInterfacePolicy(hwif));
+                }
+                auto policy = m_port_acl_tables.find(hwif);
+                old_regular[hwif] = policy == m_port_acl_tables.end() ? PortAclTables{} : policy->second;
+            }
+        }
+    }
+    auto restore_old = [&]() {
+        if (aclBindUnbindPort(port_oid, old_group, is_input,
+                             old_group != SAI_NULL_OBJECT_ID) != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to restore ACL group %s on port %s after a failed update",
+                           sai_serialize_object_id(old_group).c_str(), sai_serialize_object_id(port_oid).c_str());
+        }
+        // This desired snapshot must outlive the failed operation if VPP
+        // also rejects restoring the independent regular policy.
+        if (old_pbh_only) {
+            m_acl_pbh_regular_restore[restore_key] = old_regular;
+            if (aclRestorePbhRegularPolicy(port_oid, old_group, is_input) != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Regular ACL restoration remains pending for PBH group %s",
+                               sai_serialize_object_id(old_group).c_str());
+            }
+        }
+    };
+
+    // PBH is programmed outside the ACL plugin. Replacing a group must also
+    // remove its old PBH contribution; regular lists never detach first.
+    status = aclReconcileGroupPbh(port_oid, old_group, {});
+    if (status == SAI_STATUS_SUCCESS && new_pbh_only && !old_pbh_only && old_group != SAI_NULL_OBJECT_ID) {
+        for (const auto &hwif : m_ifaceRegistry.resolveAclInterfaces(port_oid)) {
+            if (aclApplyInterfacePolicy(hwif, PortAclTables{}, is_input, !is_input) != SAI_STATUS_SUCCESS) {
+                status = SAI_STATUS_FAILURE;
+            }
+        }
+    }
+    if (status == SAI_STATUS_SUCCESS) {
+        status = aclBindUnbindPort(port_oid, group_oid != SAI_NULL_OBJECT_ID ? group_oid : old_group,
+                                  is_input, group_oid != SAI_NULL_OBJECT_ID);
+    }
+    if (status != SAI_STATUS_SUCCESS) {
+        if (group_oid != SAI_NULL_OBJECT_ID &&
+            aclReconcileGroupPbh(port_oid, group_oid, {}) != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("PBH cleanup remains pending for rejected ACL group %s",
+                           sai_serialize_object_id(group_oid).c_str());
+        }
+        restore_old();
+        if (group_oid != SAI_NULL_OBJECT_ID) {
+            // Rejected owners cannot take the port back through later member
+            // updates. Failed PBH cleanup stays in successful-attachment state.
+            addRemovePortTblGrp(port_oid, group_oid, false);
+        }
+        return status;
+    }
+    m_acl_pbh_regular_restore.erase(restore_key);
+    if (old_group != SAI_NULL_OBJECT_ID && old_group != group_oid) {
+        addRemovePortTblGrp(port_oid, old_group, false);
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::aclBindUnbindPort(
         _In_ sai_object_id_t port_oid,
         _In_ sai_object_id_t tbl_grp_oid,
@@ -2626,7 +2994,9 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
 {
     SWSS_LOG_ENTER();
 
-    addRemovePortTblGrp(port_oid, tbl_grp_oid, is_bind);
+    if (is_bind) {
+        addRemovePortTblGrp(port_oid, tbl_grp_oid, true);
+    }
 
     auto it = m_acl_tbl_grp_mbr_map.find(tbl_grp_oid);
 
@@ -2637,26 +3007,22 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
          * The tbl group is not created until a group member is added. The bind port
          * will be called later when a group member is added.
          */
-        return SAI_STATUS_SUCCESS;
     }
 
-    std::list<sai_object_id_t>& member_list = it->second;
+    const std::list<sai_object_id_t> member_list = it != m_acl_tbl_grp_mbr_map.end() ?
+        it->second : std::list<sai_object_id_t>{};
 
-    // If member_list is empty, do nothing
-    if (member_list.empty()) {
-        SWSS_LOG_INFO("ACL tbl group %s has no members", sai_serialize_object_id(tbl_grp_oid).c_str());
-        return SAI_STATUS_SUCCESS;
-    }
+    auto interfaces = m_ifaceRegistry.resolveAclInterfaces(port_oid);
 
-    std::string hwif_name = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
-
-    if (hwif_name.empty()) {
+    if (interfaces.empty() && !member_list.empty()) {
         SWSS_LOG_WARN("VS hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
         return SAI_STATUS_FAILURE;
     }
 
     // Build a vector of (priority, acl_swindex, tbl_oid) for sorting
     std::vector<std::tuple<uint32_t, uint32_t, sai_object_id_t>> sorted_members;
+    std::vector<sai_object_id_t> pbh_tables;
+    bool has_acl_members = false;
 
     for (auto member_oid: member_list) {
         sai_attribute_t attr;
@@ -2677,7 +3043,12 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
          * feature arc after the ACL hook, not as another ACL in the chain.
          */
         if (m_pbh.isPbhTable(tbl_oid)) {
-            CHECK_STATUS(m_pbh.bindUnbindPort(hwif_name, tbl_oid, is_bind));
+            pbh_tables.push_back(tbl_oid);
+            continue;
+        }
+
+        has_acl_members = true;
+        if (!is_bind) {
             continue;
         }
 
@@ -2700,6 +3071,36 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
         sorted_members.push_back({priority, acl_swindex, tbl_oid});
     }
 
+    sai_status_t pbh_status = aclRestorePbhRegularPolicy(port_oid, tbl_grp_oid, is_input);
+    const auto pbh_snapshot = m_acl_group_pbh_tables;
+    for (const auto &entry : pbh_snapshot) {
+        if (entry.first.first != port_oid || entry.first.second == tbl_grp_oid) {
+            continue;
+        }
+        auto owners = m_acl_tbl_grp_ports_map.find(entry.first.second);
+        if (owners == m_acl_tbl_grp_ports_map.end() ||
+            std::find(owners->second.begin(), owners->second.end(), port_oid) == owners->second.end()) {
+            if (aclReconcileGroupPbh(port_oid, entry.first.second, {}) != SAI_STATUS_SUCCESS) {
+                pbh_status = SAI_STATUS_FAILURE;
+            }
+        }
+    }
+    const auto pbh_key = std::make_pair(port_oid, tbl_grp_oid);
+    const bool had_pbh = m_acl_group_pbh_tables.count(pbh_key) != 0;
+    const std::set<sai_object_id_t> wanted_pbh = is_bind ?
+        std::set<sai_object_id_t>(pbh_tables.begin(), pbh_tables.end()) : std::set<sai_object_id_t>{};
+    if (aclReconcileGroupPbh(port_oid, tbl_grp_oid, wanted_pbh) != SAI_STATUS_SUCCESS) {
+        pbh_status = SAI_STATUS_FAILURE;
+    }
+    // PBH-only groups never replace another group's regular ACL chain.
+    // A last PBH member removal likewise only removes that PBH contribution.
+    if (!has_acl_members && (!pbh_tables.empty() || had_pbh)) {
+        if (!is_bind && pbh_status == SAI_STATUS_SUCCESS) {
+            addRemovePortTblGrp(port_oid, tbl_grp_oid, false);
+        }
+        return pbh_status;
+    }
+
     // Sort by priority in descending order (higher priority first)
     std::sort(sorted_members.begin(), sorted_members.end(),
               [](const std::tuple<uint32_t, uint32_t, sai_object_id_t>& a,
@@ -2707,72 +3108,21 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
                   return std::get<0>(a) > std::get<0>(b);
               });
 
-    // Bind/unbind each ACL in sorted order
-    for (const auto& member : sorted_members) {
-        uint32_t priority = std::get<0>(member);
-        uint32_t acl_swindex = std::get<1>(member);
-        sai_object_id_t tbl_oid = std::get<2>(member);
-        int ret;
-
-        if (is_bind)
-            ret = vpp_acl_interface_bind(hwif_name.c_str(), acl_swindex, is_input);
-        else
-            ret = vpp_acl_interface_unbind(hwif_name.c_str(), acl_swindex, is_input);
-
-        if (ret != 0) {
-            SWSS_LOG_ERROR("VS Acl swindex %u %s failed for port %s", acl_swindex,
-                           is_bind ? "bind" : "unbind", hwif_name.c_str());
-            return SAI_STATUS_FAILURE;
-        }
-        SWSS_LOG_NOTICE("ACL swindex %u %s to port %s (priority %u)", acl_swindex,
-                        is_bind ? "bound" : "unbound", hwif_name.c_str(), priority);
-
-        // Only now that the (un)bind actually succeeded in VPP do we record
-        // this (interface, table, direction) binding and refresh the ip2me
-        // feature, so the tracked state matches what VPP is enforcing.
-        updatePortAclTableBinding(hwif_name, tbl_oid, is_input, is_bind);
-        ip2meRefreshPort(hwif_name);
+    PortAclTables desired;
+    for (const auto &member : sorted_members) {
+        desired.updateTable(std::get<2>(member), is_input, true);
     }
-
-    /*
-     * The shared default ACL only exists to terminate the ACL chain, so a
-     * group holding nothing but PBH tables must not touch it. Unbinding it on
-     * behalf of a PBH-only group would strip the terminator from a port that
-     * still has ACLs bound through another group.
-     */
-    if (sorted_members.empty()) {
-        return SAI_STATUS_SUCCESS;
-    }
-
-    // Handle the shared default ACL
-    if (is_bind) {
-        // Create default ACL if not already created
-        CHECK_STATUS(aclDefaultCreate());
-
-        // Bind default ACL
-        int ret = vpp_acl_interface_bind(hwif_name.c_str(), m_acl_default_swindex, is_input);
-        if (ret != 0) {
-            SWSS_LOG_ERROR("Default ACL swindex %u bind failed for port %s",
-                           m_acl_default_swindex, hwif_name.c_str());
-            return SAI_STATUS_FAILURE;
-        }
-        SWSS_LOG_NOTICE("Default ACL swindex %u bound to port %s",
-                        m_acl_default_swindex, hwif_name.c_str());
-    } else {
-        // Unbind default ACL (if it was created)
-        if (m_acl_default_created) {
-            int ret = vpp_acl_interface_unbind(hwif_name.c_str(), m_acl_default_swindex, is_input);
-            if (ret != 0) {
-                SWSS_LOG_ERROR("Default ACL swindex %u unbind failed for port %s",
-                               m_acl_default_swindex, hwif_name.c_str());
-                return SAI_STATUS_FAILURE;
-            }
-            SWSS_LOG_NOTICE("Default ACL swindex %u unbound from port %s",
-                            m_acl_default_swindex, hwif_name.c_str());
+    (is_input ? desired.ingressDefault : desired.egressDefault) = !sorted_members.empty();
+    sai_status_t status = pbh_status;
+    for (const auto &hwif_name : interfaces) {
+        if (aclApplyInterfacePolicy(hwif_name, desired, is_input, !is_input) != SAI_STATUS_SUCCESS) {
+            status = SAI_STATUS_FAILURE;
         }
     }
-
-    return SAI_STATUS_SUCCESS;
+    if (!is_bind && status == SAI_STATUS_SUCCESS) {
+        addRemovePortTblGrp(port_oid, tbl_grp_oid, false);
+    }
+    return status;
 }
 
 sai_status_t SwitchVpp::aclBindUnbindPorts(
@@ -2825,54 +3175,22 @@ sai_status_t SwitchVpp::aclBindUnbindPorts(
         SWSS_LOG_INFO("VS swindex for ACL table oid %s not found", sid.c_str());
         return SAI_STATUS_FAILURE;
     }
-    auto acl_swindex = vpp_idx_it->second;
-
-    std::list<sai_object_id_t>& member_list = it->second;
-    std::string hwif_name;
-    int ret;
-
-    for (auto port_oid: member_list) {
-
-        hwif_name = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
-
-        if (hwif_name.empty()) {
+    const auto member_list = it->second;
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    for (auto port_oid : member_list) {
+        auto interfaces = m_ifaceRegistry.resolveAclInterfaces(port_oid);
+        if (interfaces.empty()) {
             SWSS_LOG_WARN("VS hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
+            status = SAI_STATUS_FAILURE;
             continue;
         }
-
-        if (is_bind) {
-            ret = vpp_acl_interface_bind(hwif_name.c_str(), acl_swindex, is_input);
-            if (ret == 0) {
-                ret = tunterm_acl_bindunbind(tbl_oid, true, hwif_name);
-                if(ret == 0) {
-                    m_acl_tbl_hw_ports_map[tbl_oid].push_back(hwif_name);
-                }
-            }
-        } else {
-            ret = vpp_acl_interface_unbind(hwif_name.c_str(), acl_swindex, is_input);
-            if (ret == 0) {
-                ret = tunterm_acl_bindunbind(tbl_oid, false, hwif_name);
-                if(ret == 0) {
-                    m_acl_tbl_hw_ports_map[tbl_oid].remove(hwif_name);
-                }
+        for (const auto &hwif_name : interfaces) {
+            if (aclBindInterfaceTable(hwif_name, tbl_oid, is_input, is_bind) != SAI_STATUS_SUCCESS) {
+                status = SAI_STATUS_FAILURE;
             }
         }
-        if (ret != 0) {
-            auto sid = sai_serialize_object_id(tbl_oid);
-            SWSS_LOG_ERROR("VS Acl tbl %s (swindex %u) %s failed status %d",
-                           sid.c_str(), acl_swindex,
-                           is_bind ? "bind": "unbind", ret);
-            continue;
-        }
-        SWSS_LOG_NOTICE("ACL table %s %s port %s", sai_serialize_object_id(tbl_oid).c_str(),
-                        is_bind ? "bound to": "unbound from", hwif_name.c_str());
-
-        // Record this (interface, table, direction) binding and keep the ip2me
-        // feature in sync for it.
-        updatePortAclTableBinding(hwif_name, tbl_oid, is_input, is_bind);
-        ip2meRefreshPort(hwif_name);
     }
-    return SAI_STATUS_SUCCESS;
+    return status;
 }
 
 sai_status_t SwitchVpp::getAclEntryStats(

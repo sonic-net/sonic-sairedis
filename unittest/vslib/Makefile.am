@@ -59,10 +59,11 @@ tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry
 				TestSwitchVppPbh.cpp \
 				TestSwitchVppTrim.cpp \
 				MockVppXlate.cpp MockVppXlate.h \
+				TestSwitchVppAclRules.cpp TestVppAclInheritance.cpp \
 				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
-				create_sub_interface delete_sub_interface configure_lcp_interface \
+				create_sub_interface create_vlan_sub_interface delete_sub_interface configure_lcp_interface \
 				l2fib_add_del l2fib_flush_all l2fib_flush_int l2fib_flush_bd \
 				l2fib_add_del_by_index vpp_vxlan_tunnel_add_del \
 				set_sw_interface_l2_bridge_by_index set_sw_interface_l2_bridge_shg_by_index \
@@ -83,6 +84,7 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_sonic_ext_trim_dscp_map_set \
 				vpp_pbh_profile_add_del vpp_pbh_table_add_replace vpp_pbh_table_del \
 				vpp_pbh_interface_attach_detach vpp_rule_stats_query \
+				vpp_acl_interface_set_acl_list vpp_acl_interface_get_acl_list \
 				vpp_nat44_ed_supported vpp_nat44_ed_enable_disable \
 				vpp_nat44_forwarding_enable_disable vpp_nat44_ed_output_interface_add_del \
 				vpp_nat44_static_mapping_add_del vpp_nat44_user_sessions_dump
@@ -101,6 +103,25 @@ tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscomm
 			  -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 TESTS = tests
+
 if USE_VPP
+# Exercise the real SwitchVpp object store and setters without a VPP daemon.
+# Keep these boundary mocks in a separate executable from the other VS tests.
+bin_PROGRAMS += vpp_acl_binding_tests
+vpp_acl_binding_tests_SOURCES = main.cpp TestSwitchVppAclBinding.cpp
+vpp_acl_binding_tests_CXXFLAGS = $(tests_CXXFLAGS)
+vpp_acl_binding_tests_LDADD = $(tests_LDADD)
+vpp_acl_binding_tests_LDFLAGS = \
+	-Wl,--wrap=_ZN5saivs9SwitchVpp17vpp_dp_initializeEv \
+	-Wl,--wrap=vpp_set_mac_event_cb \
+	-Wl,--wrap=vpp_acl_add_replace \
+	-Wl,--wrap=vpp_acl_interface_bind \
+	-Wl,--wrap=vpp_acl_interface_unbind \
+	-Wl,--wrap=vpp_acl_interface_set_acl_list \
+	-Wl,--wrap=vpp_acl_interface_get_acl_list \
+	-Wl,--wrap=vpp_tunterm_acl_interface_add_del \
+	-Wl,--wrap=vpp_pbh_interface_attach_detach \
+	-Wl,--wrap=vpp_sonic_ext_feature_get
+TESTS += vpp_acl_binding_tests
 TESTS += sai_vpp_xlate_tests
 endif

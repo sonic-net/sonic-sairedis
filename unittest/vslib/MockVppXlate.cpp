@@ -93,6 +93,34 @@ void VppMock::reset()
     *this = VppMock{};
 }
 
+extern "C" int __wrap_vpp_acl_interface_set_acl_list(const char *name,
+        const uint32_t *ingress, uint32_t ingressCount,
+        const uint32_t *egress, uint32_t egressCount)
+{
+    SWSS_LOG_ENTER();
+    VppAclListCall call{name, {}, {}};
+    if (ingressCount) call.ingress.assign(ingress, ingress + ingressCount);
+    if (egressCount) call.egress.assign(egress, egress + egressCount);
+    vppMock().aclListCalls.push_back(call);
+    if (ingressCount + egressCount > 255) return -1;
+    if (vppMock().aclListResult != 0) return vppMock().aclListResult;
+    vppMock().aclLists[name] = call;
+    return 0;
+}
+
+extern "C" int __wrap_vpp_acl_interface_get_acl_list(const char *name,
+        uint32_t *ingress, uint32_t *ingressCount, uint32_t *egress, uint32_t *egressCount)
+{
+    SWSS_LOG_ENTER();
+    if (vppMock().aclListReadResult != 0) return vppMock().aclListReadResult;
+    const auto &call = vppMock().aclLists[name];
+    std::copy(call.ingress.begin(), call.ingress.end(), ingress);
+    std::copy(call.egress.begin(), call.egress.end(), egress);
+    *ingressCount = static_cast<uint32_t>(call.ingress.size());
+    *egressCount = static_cast<uint32_t>(call.egress.size());
+    return 0;
+}
+
 bool VppMock::isAdminUp(const std::string& hwif) const
 {
     SWSS_LOG_ENTER();
@@ -391,6 +419,11 @@ extern "C" int __wrap_create_sub_interface(const char *parent, uint32_t id, uint
     ++vppMock().interfaceCreates;
     vppMock().calls.push_back({"create_sub_interface", parent, vlan, id, true});
     return vppMock().interfaces.insert(std::string(parent) + "." + std::to_string(id)).second ? 0 : -1;
+}
+
+extern "C" int __wrap_create_vlan_sub_interface(const char *parent, uint32_t id, uint16_t vlan)
+{
+    return __wrap_create_sub_interface(parent, id, vlan);
 }
 
 extern "C" int __wrap_delete_sub_interface(const char *parent, uint32_t id)

@@ -64,6 +64,13 @@ struct VppRuleStatsCall
     uint32_t rule_index;
 };
 
+struct VppAclListCall
+{
+    std::string hwif_name;
+    std::vector<uint32_t> ingress;
+    std::vector<uint32_t> egress;
+};
+
 /**
  * @brief One vpp_classify_session_add() call: the node a frame the session
  * matches goes to, and its match, which tells what it is for.
@@ -135,6 +142,10 @@ struct VppMock
     std::vector<uint32_t> pbhTableDels;
     std::vector<VppPbhAttachCall> pbhAttachCalls;
     std::vector<VppRuleStatsCall> ruleStatsCalls;
+    int aclListResult = 0;
+    int aclListReadResult = 0;
+    std::vector<VppAclListCall> aclListCalls;
+    std::map<std::string, VppAclListCall> aclLists;
 
     std::map<std::string, uint32_t> interfaceVrfs;
     std::set<uint32_t> vrfTables;
