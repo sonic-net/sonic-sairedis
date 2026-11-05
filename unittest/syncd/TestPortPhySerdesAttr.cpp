@@ -9,6 +9,8 @@
  */
 
 #include "FlexCounter.h"
+#include "DisabledRedisClient.h"
+#include "VirtualOidTranslator.h"
 #include "sai_serialize.h"
 #include "MockableSaiInterface.h"
 #include "MockHelper.h"
@@ -51,7 +53,11 @@ protected:
             return 0x21000000000000;
         };
 
-        flexCounter = std::make_shared<FlexCounter>("TEST_PORT_SERDES_ATTR", sai, "COUNTERS_DB");
+        // No VID allocation is needed: these tests insert known mappings.
+        translator = std::make_shared<VirtualOidTranslator>(
+                std::make_shared<DisabledRedisClient>(), nullptr, sai);
+        flexCounter = std::make_shared<FlexCounter>(
+                "TEST_PORT_SERDES_ATTR", sai, "COUNTERS_DB", false, translator);
 
         // Setup test port serdes OID and port OID
         // PORT_SERDES object type = 87 (0x57), so OID is 0x57000000000001
@@ -64,9 +70,21 @@ protected:
     void TearDown() override
     {
         flexCounter.reset();
+        translator.reset();
         sai.reset();
     }
 
+    void populatePortVidToRid(sai_object_id_t portVid, sai_object_id_t portRid)
+    {
+        SWSS_LOG_ENTER();
+        // Keep the Redis entry absent so a direct VIDTORID lookup cannot pass.
+        swss::DBConnector asicDb("ASIC_DB", 0);
+        asicDb.hdel("VIDTORID", toOid(portVid));
+        translator->insertRidAndVid(portRid, portVid);
+        ASSERT_EQ(asicDb.hget("VIDTORID", toOid(portVid)), nullptr);
+    }
+
+    std::shared_ptr<VirtualOidTranslator> translator;
     std::shared_ptr<MockableSaiInterface> sai;
     std::shared_ptr<FlexCounter> flexCounter;
     sai_object_id_t testPortSerdesOid;
@@ -129,9 +147,8 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
             for (uint32_t i = 0; i < attr_count; i++) {
                 switch (attr_list[i].id) {
                     case SAI_PORT_SERDES_ATTR_PORT_ID:
-                        // Return the associated port OID
-                        attr_list[i].value.oid = 0x1000000000001;
-                        break;
+                        ADD_FAILURE() << "Unexpected PORT_SERDES PORT_ID GET";
+                        return SAI_STATUS_FAILURE;
 
                     case SAI_PORT_SERDES_ATTR_TX_FIR_COUNT:
                         // Return tap count
@@ -206,6 +223,8 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
         }
         return SAI_STATUS_INVALID_PARAMETER;
     };
+
+    populatePortVidToRid(testPortOid, testPortRid);
 
     // Setup COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP in COUNTERS_DB
     swss::DBConnector db("COUNTERS_DB", 0);
@@ -386,8 +405,8 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
                 switch (attr_list[i].id)
                 {
                     case SAI_PORT_SERDES_ATTR_PORT_ID:
-                        attr_list[i].value.oid = 0x1000000000002;
-                        break;
+                        ADD_FAILURE() << "Unexpected PORT_SERDES PORT_ID GET";
+                        return SAI_STATUS_FAILURE;
 
                     case SAI_PORT_SERDES_ATTR_TX_FIR_COUNT:
                         // Simulate SDK busy / not ready: fail the count query
@@ -444,6 +463,8 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
         }
         return SAI_STATUS_INVALID_PARAMETER;
     };
+
+    populatePortVidToRid(partialPortOid, partialPortOid);
 
     // Register the serdes→port VID mapping in COUNTERS_DB
     swss::DBConnector db("COUNTERS_DB", 0);
@@ -511,3 +532,151 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
     flexCounter->removeCounter(partialSerdesOid);
 }
 
+/**
+ * Initialization makes one attempt to query each count. Polling refreshes
+ * unavailable counts until collection can succeed
+ *
+ */
+TEST_F(TestPortPhySerdesAttr, CollectDataAfterDeferredCountRefresh)
+{
+    int portIdCalls = 0;
+    int hwLaneListCalls = 0;
+    int txFirCountCalls = 0;
+    const int FAIL_COUNT = 2;
+
+    sai->mock_get = [&](sai_object_type_t object_type,
+                        sai_object_id_t object_id,
+                        uint32_t attr_count,
+                        sai_attribute_t *attr_list) -> sai_status_t
+    {
+        if (object_type == SAI_OBJECT_TYPE_PORT_SERDES) {
+            for (uint32_t i = 0; i < attr_count; i++) {
+                switch (attr_list[i].id) {
+                    case SAI_PORT_SERDES_ATTR_PORT_ID:
+                        portIdCalls++;
+                        ADD_FAILURE() << "Unexpected PORT_SERDES PORT_ID GET";
+                        return SAI_STATUS_FAILURE;
+
+                    case SAI_PORT_SERDES_ATTR_TX_FIR_COUNT:
+                        txFirCountCalls++;
+                        if (txFirCountCalls <= FAIL_COUNT)
+                            return SAI_STATUS_OBJECT_IN_USE;
+                        attr_list[i].value.u32 = TEST_TAP_COUNT;
+                        break;
+
+                    case SAI_PORT_SERDES_ATTR_RX_VGA:
+                        if (attr_list[i].value.u32list.list == nullptr) {
+                            attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                            return SAI_STATUS_BUFFER_OVERFLOW;
+                        } else {
+                            uint32_t count = attr_list[i].value.u32list.count;
+                            for (uint32_t lane = 0; lane < count && lane < TEST_LANE_COUNT; lane++) {
+                                attr_list[i].value.u32list.list[lane] = 177 + lane;
+                            }
+                            attr_list[i].value.u32list.count = std::min(count, TEST_LANE_COUNT);
+                        }
+                        break;
+
+                    case SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST:
+                        if (attr_list[i].value.portserdestaps.list == nullptr) {
+                            attr_list[i].value.portserdestaps.count = TEST_TAP_COUNT;
+                            return SAI_STATUS_BUFFER_OVERFLOW;
+                        } else {
+                            uint32_t tap_count = attr_list[i].value.portserdestaps.count;
+                            for (uint32_t tap_idx = 0; tap_idx < tap_count && tap_idx < TEST_TAP_COUNT; tap_idx++) {
+                                if (attr_list[i].value.portserdestaps.list[tap_idx].list == nullptr) {
+                                    attr_list[i].value.portserdestaps.list[tap_idx].count = TEST_LANE_COUNT;
+                                } else {
+                                    uint32_t lane_count = attr_list[i].value.portserdestaps.list[tap_idx].count;
+                                    for (uint32_t lane = 0; lane < lane_count && lane < TEST_LANE_COUNT; lane++) {
+                                        int32_t base_value = -23 + (tap_idx * 10);
+                                        attr_list[i].value.portserdestaps.list[tap_idx].list[lane] = base_value + lane;
+                                    }
+                                    attr_list[i].value.portserdestaps.list[tap_idx].count = std::min(lane_count, TEST_LANE_COUNT);
+                                }
+                            }
+                            attr_list[i].value.portserdestaps.count = std::min(tap_count, TEST_TAP_COUNT);
+                        }
+                        break;
+
+                    default:
+                        return SAI_STATUS_NOT_SUPPORTED;
+                }
+            }
+            return SAI_STATUS_SUCCESS;
+        } else if (object_type == SAI_OBJECT_TYPE_PORT) {
+            EXPECT_EQ(object_id, testPortRid);
+            for (uint32_t i = 0; i < attr_count; i++) {
+                if (attr_list[i].id == SAI_PORT_ATTR_HW_LANE_LIST) {
+                    hwLaneListCalls++;
+                    if (hwLaneListCalls <= FAIL_COUNT)
+                        return SAI_STATUS_OBJECT_IN_USE;
+                    if (attr_list[i].value.u32list.list == nullptr) {
+                        attr_list[i].value.u32list.count = TEST_LANE_COUNT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    } else {
+                        uint32_t count = attr_list[i].value.u32list.count;
+                        for (uint32_t lane = 0; lane < count && lane < TEST_LANE_COUNT; lane++) {
+                            attr_list[i].value.u32list.list[lane] = lane;
+                        }
+                        attr_list[i].value.u32list.count = std::min(count, TEST_LANE_COUNT);
+                        return SAI_STATUS_SUCCESS;
+                    }
+                }
+            }
+        }
+        return SAI_STATUS_INVALID_PARAMETER;
+    };
+
+    testPortRid = 0x1000000000099;
+    populatePortVidToRid(testPortOid, testPortRid);
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table portSerdesIdToPortIdTable(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
+    portSerdesIdToPortIdTable.hset("", toOid(testPortSerdesOid), toOid(testPortOid));
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT_SERDES);
+
+    vector<swss::FieldValueTuple> portSerdesAttrValues;
+    portSerdesAttrValues.emplace_back(PORT_PHY_SERDES_ATTR_ID_LIST,
+        "SAI_PORT_SERDES_ATTR_RX_VGA,SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST");
+
+    flexCounter->addCounter(testPortSerdesOid, testPortSerdesRid, portSerdesAttrValues);
+
+    EXPECT_EQ(portIdCalls, 0);
+    EXPECT_EQ(hwLaneListCalls, 1);
+    EXPECT_EQ(txFirCountCalls, 1);
+
+    swss::Table portPhyAttrTable(&db, PORT_PHY_ATTR_TABLE);
+    std::string expectedKey = toOid(testPortOid);
+    portPhyAttrTable.del(expectedKey);
+
+    vector<swss::FieldValueTuple> pluginValues;
+    pluginValues.emplace_back(POLL_INTERVAL_FIELD, "50");
+    pluginValues.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    pluginValues.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    flexCounter->addCounterPlugin(pluginValues);
+
+    std::string rxVgaValue;
+    std::string txFirTapsValue;
+    bool foundRxVga = false;
+    bool foundTxFirTaps = false;
+    for (int attempt = 0; attempt < 60; ++attempt)
+    {
+        foundRxVga = portPhyAttrTable.hget(expectedKey, "rx_vga", rxVgaValue);
+        foundTxFirTaps = portPhyAttrTable.hget(
+            expectedKey, "tx_fir_taps_list", txFirTapsValue);
+        if (foundRxVga && foundTxFirTaps)
+            break;
+        usleep(1000 * 50);
+    }
+
+    // Synchronize with the polling thread before reading call counts
+    flexCounter->removeCounter(testPortSerdesOid);
+    EXPECT_EQ(portIdCalls, 0);
+    EXPECT_GT(hwLaneListCalls, FAIL_COUNT);
+    EXPECT_GT(txFirCountCalls, FAIL_COUNT);
+    EXPECT_TRUE(foundRxVga) << "RX_VGA should recover after the lane count becomes available";
+    EXPECT_TRUE(foundTxFirTaps) << "TX FIR taps should recover after both counts become available";
+    portPhyAttrTable.del(expectedKey);
+}
