@@ -870,16 +870,16 @@ void vpp_event_mutex_unlock ()
  * Leaf lock protecting the shared interface lookup tables
  * (vat_main.sw_if_index_by_interface_name, interface_name_by_sw_index and
  * link_speed_by_sw_index). These tables are read and written from both the
- * synchronous command path (under VPP_LOCK) and the asynchronous event
- * handler (under EVENT_LOCK), so neither connection lock on its own provides
- * mutual exclusion over them; a concurrent read during a write/rehash/free
- * corrupts the hash and crashes syncd.
+ * synchronous command path and the asynchronous event handler. All mutations,
+ * including sub-interface cache updates after API replies, must hold VPP_LOCK
+ * and this lock. Some lookups run outside the connection lock, so VPP_LOCK
+ * alone is not sufficient to protect a concurrent write/rehash/free.
  *
  * Lock ordering: this is a leaf lock. It may be acquired while holding
  * VPP_LOCK or EVENT_LOCK, but code holding it must never acquire VPP_LOCK,
  * EVENT_LOCK, or re-acquire this lock (keep the critical sections to the raw
- * hash operations only). This keeps the EVENT_LOCK-never-acquires-VPP_LOCK
- * ordering rule above intact. Statically initialized so it is valid before
+ * hash operations only). Do not hold it while dispatching VPP replies, whose
+ * handlers acquire it. Statically initialized so it is valid before
  * any thread (including the background event thread) starts.
  */
 static pthread_mutex_t vpp_intf_table_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -3383,6 +3383,8 @@ int create_sub_interface (const char *hwif_name, u32 sub_id, u16 vlan_id)
     int rc;
     vat_main_t *vam = &vat_main;
 
+    VPP_LOCK();
+
     idx = get_swif_idx(vam, hwif_name);
     SAIVPP_INFO("swif index of interface %s is %u\n", hwif_name, idx);
 
@@ -3395,12 +3397,15 @@ int create_sub_interface (const char *hwif_name, u32 sub_id, u16 vlan_id)
         char subif_name[64];
         u8 *s;
 
+        INTF_TABLE_LOCK();
         snprintf(subif_name, sizeof(subif_name), "%s.%u", hwif_name, sub_id);
         s = format(0, "%s%c", subif_name, 0);
         hash_set_mem(vam->sw_if_index_by_interface_name, s, new_sw_if_index);
         hash_set(interface_name_by_sw_index, new_sw_if_index, s);
+        INTF_TABLE_UNLOCK();
     }
 
+    VPP_UNLOCK();
     return rc;
 }
 
@@ -3411,6 +3416,8 @@ int delete_sub_interface (const char *hwif_name, u32 sub_id)
     vat_main_t *vam = &vat_main;
     char tmpbuf[64];
 
+    VPP_LOCK();
+
     snprintf(tmpbuf, sizeof(tmpbuf), "%s.%u", hwif_name, sub_id);
     idx = get_swif_idx(vam, tmpbuf);
     SAIVPP_INFO("swif index of interface %s is %u\n", tmpbuf, idx);
@@ -3420,6 +3427,8 @@ int delete_sub_interface (const char *hwif_name, u32 sub_id)
     if (rc == 0 && idx != (u32) ~0) {
         hash_pair_t *p;
         u8 *key_to_free = NULL;
+
+        INTF_TABLE_LOCK();
         hash_foreach_pair (p, vam->sw_if_index_by_interface_name, ({
                     if (strcmp((char *) p->key, tmpbuf) == 0) {
                         key_to_free = (u8 *) p->key;
@@ -3430,7 +3439,9 @@ int delete_sub_interface (const char *hwif_name, u32 sub_id)
             vec_free(key_to_free);
         }
         hash_unset(interface_name_by_sw_index, idx);
+        INTF_TABLE_UNLOCK();
     }
+    VPP_UNLOCK();
     return rc;
 }
 
