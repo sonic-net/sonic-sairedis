@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <map>
+#include <set>
 #include <vector>
 #include <string>
 #include <mutex>
@@ -3152,8 +3153,9 @@ public:
 
         laneCount = attr.value.u32list.count;
 
-        // Keep the largest count observed so the buffers remain large enough
-        // if the port changes mode after the SerDes object is initialized.
+        // Defensive high-water mark; the lane count is CREATE_ONLY and
+        // should not change, but retain the largest value observed in
+        // case of an unexpected query result.
         auto &cachedLaneCount = m_portSerdesIdToLaneCountMap[port_serdes_rid];
         cachedLaneCount = std::max(cachedLaneCount, laneCount);
         SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Stored lane count for port_serdes_rid:0x%" PRIx64 " = %u lanes",
@@ -3347,6 +3349,8 @@ public:
                 SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Removing port_serdes RID:0x%" PRIx64 " from m_portSerdesTapsCountMap", port_serdes_rid);
                 m_portSerdesTapsCountMap.erase(count_it);
             }
+
+            m_fallbackExhausted.erase(port_serdes_rid);
         }
 
         // Call base class to remove from m_objectIdsMap
@@ -3383,21 +3387,30 @@ public:
     {
         SWSS_LOG_ENTER();
 
+        constexpr uint32_t maxSaneLaneCount = 64;
+        constexpr uint32_t maxSaneTapCount = 64;
+
         const uint32_t oldLaneCount = getCachedLaneCount(rid);
         const uint32_t oldTapCount = getCachedTapCount(rid);
         uint32_t requiredLaneCount = oldLaneCount;
         uint32_t requiredTapCount = oldTapCount;
+
+        bool hasLaneAttr = false;
+        bool hasTapAttr = false;
 
         for (const auto &attr : attrs)
         {
             switch (attr.id)
             {
                 case SAI_PORT_SERDES_ATTR_RX_VGA:
+                    hasLaneAttr = true;
                     // SAI returns the required size when the list is too small.
                     requiredLaneCount = std::max(requiredLaneCount, attr.value.u32list.count);
                     break;
 
                 case SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST:
+                    hasLaneAttr = true;
+                    hasTapAttr = true;
                     // The outer count is the required number of taps.
                     requiredTapCount = std::max(requiredTapCount, attr.value.portserdestaps.count);
 
@@ -3415,6 +3428,20 @@ public:
             }
         }
 
+        if (requiredLaneCount > maxSaneLaneCount || requiredTapCount > maxSaneTapCount)
+        {
+            SWSS_LOG_ERROR(
+                "PORT_PHY_SERDES_ATTR: Refusing BUFFER_OVERFLOW resize for "
+                "VID 0x%" PRIx64 ", RID:0x%" PRIx64
+                ": requested lanes %u (max %u), taps %u (max %u) from "
+                "BUFFER_OVERFLOW list counts exceeds sanity limit; "
+                "will not retry",
+                vid, rid,
+                requiredLaneCount, maxSaneLaneCount,
+                requiredTapCount, maxSaneTapCount);
+            return false;
+        }
+
         if (requiredLaneCount > oldLaneCount)
         {
             m_portSerdesIdToLaneCountMap[rid] = requiredLaneCount;
@@ -3426,45 +3453,65 @@ public:
         }
 
         bool requirementsUpdated =
-                requiredLaneCount > oldLaneCount ||
-                requiredTapCount > oldTapCount;
+                (hasLaneAttr && requiredLaneCount > oldLaneCount) ||
+                (hasTapAttr && requiredTapCount > oldTapCount);
         const char *sizeSource = "BUFFER_OVERFLOW list counts";
 
-        if (!requirementsUpdated)
+        if (!requirementsUpdated && m_fallbackExhausted.count(rid) == 0)
         {
             SWSS_LOG_NOTICE(
                 "PORT_PHY_SERDES_ATTR: BUFFER_OVERFLOW did not report larger "
                 "list counts for VID 0x%" PRIx64 ", RID:0x%" PRIx64
-                "; querying current lane and tap counts",
+                "; querying current tap count",
                 vid, rid);
 
             // Compatibility fallback for a vendor implementation that returns
             // BUFFER_OVERFLOW without updating the required list counts.
-            updatePortSerdesIdToLaneCountMap(rid);
-            updatePortSerdesTapsCountMap(rid);
-            requiredLaneCount = getCachedLaneCount(rid);
+            // Only query tap count - HW_LANE_LIST is CREATE_ONLY and cannot
+            // change after port creation.
+            if (hasTapAttr)
+                updatePortSerdesTapsCountMap(rid);
             requiredTapCount = getCachedTapCount(rid);
+
+            if (requiredTapCount > maxSaneTapCount)
+            {
+                SWSS_LOG_ERROR(
+                    "PORT_PHY_SERDES_ATTR: Refusing BUFFER_OVERFLOW resize for "
+                    "VID 0x%" PRIx64 ", RID:0x%" PRIx64
+                    ": explicit count queries returned taps %u (max %u); "
+                    "exceeds sanity limit; will not retry",
+                    vid, rid,
+                    requiredTapCount, maxSaneTapCount);
+                m_portSerdesTapsCountMap[rid][SAI_PORT_SERDES_ATTR_TX_FIR_COUNT] = oldTapCount;
+                return false;
+            }
+
             requirementsUpdated =
-                    requiredLaneCount > oldLaneCount ||
-                    requiredTapCount > oldTapCount;
+                    (hasTapAttr && requiredTapCount > oldTapCount);
             sizeSource = "explicit count queries";
         }
 
         if (!requirementsUpdated)
         {
-            SWSS_LOG_ERROR(
-                "PORT_PHY_SERDES_ATTR: SAI returned BUFFER_OVERFLOW for VID 0x%" PRIx64
-                ", RID:0x%" PRIx64 " but neither the returned list counts nor "
-                "explicit count queries reported larger buffer requirements",
-                vid, rid);
+            if (m_fallbackExhausted.insert(rid).second)
+            {
+                SWSS_LOG_ERROR(
+                    "PORT_PHY_SERDES_ATTR: SAI returned BUFFER_OVERFLOW for VID 0x%" PRIx64
+                    ", RID:0x%" PRIx64 " but neither the returned list counts nor "
+                    "explicit count queries reported larger buffer requirements; "
+                    "suppressing further fallback queries until a poll succeeds",
+                    vid, rid);
+            }
             return false;
         }
+
+        m_fallbackExhausted.erase(rid);
 
         SWSS_LOG_NOTICE(
             "PORT_PHY_SERDES_ATTR: Updated cached buffer requirements for "
             "VID 0x%" PRIx64 ", RID:0x%" PRIx64
             ": lanes %u->%u, taps %u->%u using %s; buffers will be rebuilt "
-            "before retry",
+            "before the next GET",
             vid, rid,
             oldLaneCount, requiredLaneCount,
             oldTapCount, requiredTapCount,
@@ -3585,6 +3632,8 @@ public:
                 continue;
             }
 
+            m_fallbackExhausted.erase(rid);
+
             // Get port_vid from the map using port_serdes_rid
             auto port_it = m_portSerdesIdToPortIdMap.find(rid);
             if (port_it == m_portSerdesIdToPortIdMap.end())
@@ -3646,6 +3695,7 @@ private:
     std::map<sai_object_id_t, PortIdInfo> m_portSerdesIdToPortIdMap;
     std::map<sai_object_id_t, uint32_t> m_portSerdesIdToLaneCountMap;
     std::map<sai_object_id_t, std::map<sai_port_serdes_attr_t, uint32_t>> m_portSerdesTapsCountMap;
+    std::set<sai_object_id_t> m_fallbackExhausted;
 };
 
 const std::unordered_map<sai_port_serdes_attr_t, std::string> PortPhySerdesAttrContext::m_attrAliases = {

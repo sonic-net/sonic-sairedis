@@ -512,6 +512,7 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
     flexCounter->removeCounter(partialSerdesOid);
 }
 
+
 // Exercise individual polls without enabling the background collector.
 class TestPortPhySerdesAttrResize : public TestPortPhySerdesAttr
 {
@@ -633,6 +634,8 @@ protected:
                 ASSERT_EQ(SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST, attrs[i].id);
                 auto &list = attrs[i].value.portserdestaps;
                 ASSERT_EQ(taps, list.count);
+                if (taps == 0)
+                    continue;
                 ASSERT_NE(nullptr, list.list);
                 for (uint32_t tap = 0; tap < list.count; ++tap)
                 {
@@ -890,9 +893,7 @@ struct SerdesFallbackCounts
 {
     uint32_t initialLanes;
     uint32_t initialTaps;
-    uint32_t reportedLanes;
     uint32_t reportedTaps;
-    uint32_t expectedLaneCapacity;
     uint32_t expectedTapCapacity;
 };
 
@@ -901,42 +902,52 @@ class TestPortPhySerdesAttrFallback : public TestPortPhySerdesAttrResize,
 {
 };
 
-TEST_P(TestPortPhySerdesAttrFallback, QueriesGrowBuffersWithoutShrinkingOtherDimension)
+TEST_P(TestPortPhySerdesAttrFallback, QueriesGrowTapBuffersOnly)
 {
     const auto sizes = GetParam();
     queriedLanes = sizes.initialLanes;
     queriedTaps = sizes.initialTaps;
     registerCounter();
-    queriedLanes = sizes.reportedLanes;
+    // Lanes stay the same - HW_LANE_LIST is CREATE_ONLY.
     queriedTaps = sizes.reportedTaps;
     onCollect = [this, sizes](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
     {
         expectCapacity(count, attrs,
-                collectionGets == 1 ? sizes.initialLanes : sizes.expectedLaneCapacity,
+                sizes.initialLanes,
                 collectionGets == 1 ? sizes.initialTaps : sizes.expectedTapCapacity);
         if (collectionGets == 1)
             return SAI_STATUS_BUFFER_OVERFLOW; // Vendor leaves all counts unchanged.
-        return completeGet(count, attrs, sizes.reportedLanes, sizes.reportedTaps);
+        return completeGet(count, attrs, sizes.initialLanes, sizes.reportedTaps);
     };
 
-    poll();
-    ASSERT_EQ(2u, collectionGets);
-    expectPublished(sizes.reportedLanes, sizes.reportedTaps);
-    EXPECT_EQ(2u, laneQueries);
-    EXPECT_EQ(2u, tapQueries);
-    poll();
-    EXPECT_EQ(3u, collectionGets);
-    EXPECT_EQ(2u, laneQueries);
-    EXPECT_EQ(2u, tapQueries);
+    if (sizes.reportedTaps > sizes.initialTaps)
+    {
+        poll();
+        ASSERT_EQ(2u, collectionGets);
+        expectPublished(sizes.initialLanes, sizes.reportedTaps);
+        EXPECT_EQ(1u, laneQueries);   // registration only, no fallback lane query
+        EXPECT_EQ(2u, tapQueries);    // registration + fallback
+        poll();
+        EXPECT_EQ(3u, collectionGets);
+        EXPECT_EQ(1u, laneQueries);
+        EXPECT_EQ(2u, tapQueries);
+    }
+    else
+    {
+        // Taps unchanged - fallback should NOT retry.
+        poll();
+        EXPECT_EQ(1u, collectionGets);
+        EXPECT_EQ(1u, laneQueries);
+        EXPECT_EQ(2u, tapQueries);
+        expectUnchanged();
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(CountChanges, TestPortPhySerdesAttrFallback,
         ::testing::Values(
-            SerdesFallbackCounts{2, 3, 4, 3, 4, 3},
-            SerdesFallbackCounts{2, 3, 2, 6, 2, 6},
-            SerdesFallbackCounts{2, 3, 4, 6, 4, 6},
-            SerdesFallbackCounts{4, 6, 2, 8, 4, 8},
-            SerdesFallbackCounts{4, 6, 8, 3, 8, 6}));
+            SerdesFallbackCounts{2, 3, 6, 6},
+            SerdesFallbackCounts{4, 6, 8, 8},
+            SerdesFallbackCounts{2, 3, 3, 3}));
 
 TEST_F(TestPortPhySerdesAttrResize, OverflowWithoutLargerCountsStops)
 {
@@ -949,7 +960,14 @@ TEST_F(TestPortPhySerdesAttrResize, OverflowWithoutLargerCountsStops)
 
     poll();
     EXPECT_EQ(1u, collectionGets);
-    EXPECT_EQ(2u, laneQueries);
+    EXPECT_EQ(1u, laneQueries);   // registration only, no fallback lane query
+    EXPECT_EQ(2u, tapQueries);    // registration + fallback
+    expectUnchanged();
+
+    // Second poll: fallback exhausted, no extra queries, no repeated logging.
+    poll();
+    EXPECT_EQ(2u, collectionGets);
+    EXPECT_EQ(1u, laneQueries);
     EXPECT_EQ(2u, tapQueries);
     expectUnchanged();
 }
@@ -957,10 +975,8 @@ TEST_F(TestPortPhySerdesAttrResize, OverflowWithoutLargerCountsStops)
 TEST_F(TestPortPhySerdesAttrResize, FailedCountQueriesStopWithoutRetry)
 {
     registerCounter();
-    laneQueryStatus = SAI_STATUS_FAILURE;
     tapQueryStatus = SAI_STATUS_FAILURE;
     // Failed queries must not corrupt cached capacities, even if they write data.
-    queriedLanes = 9;
     queriedTaps = 9;
     onCollect = [](uint32_t, sai_attribute_t *) -> sai_status_t
     {
@@ -969,8 +985,8 @@ TEST_F(TestPortPhySerdesAttrResize, FailedCountQueriesStopWithoutRetry)
 
     poll();
     ASSERT_EQ(1u, collectionGets);
-    EXPECT_EQ(2u, laneQueries);
-    EXPECT_EQ(2u, tapQueries);
+    EXPECT_EQ(1u, laneQueries);   // registration only
+    EXPECT_EQ(2u, tapQueries);    // registration + fallback (failed)
     expectUnchanged();
     onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
     {
@@ -1147,4 +1163,42 @@ TEST_F(TestPortPhySerdesAttrResize, FailedObjectDoesNotBlockOtherObjects)
     std::string value;
     ASSERT_TRUE(phyTable->hget(toOid(secondPortOid), "rx_vga", value));
     EXPECT_EQ((json{{"0", 100}, {"1", 101}}), json::parse(value));
+}
+
+TEST_F(TestPortPhySerdesAttrResize, ZeroTapCountAtRegistrationRecoversOnFirstPoll)
+{
+    // Simulate a vendor that reports TX_FIR_COUNT = 0 at registration
+    // (e.g., port is down or SerDes is not yet configured). The first poll
+    // should recover via BUFFER_OVERFLOW with the actual tap count.
+    queriedTaps = 0;
+    registerCounter(false, true);
+
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        EXPECT_EQ(1u, count);
+        if (collectionGets == 1)
+        {
+            // First GET: buffer was allocated with 0 taps.
+            expectCapacity(count, attrs, 2, 0);
+            // SAI reports the actual required count.
+            attrs[0].value.portserdestaps.count = 6;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        // Retry: buffer rebuilt with 6 taps.
+        expectCapacity(count, attrs, 2, 6);
+        return completeGet(count, attrs, 2, 6);
+    };
+
+    poll();
+    ASSERT_EQ(2u, collectionGets);
+    expectPublished(2, 6, false, true);
+
+    // Subsequent polls use the cached size directly - no further overflow.
+    poll();
+    EXPECT_EQ(3u, collectionGets);
+    expectPublished(2, 6, false, true);
+
+    // No fallback queries needed - overflow response provided the count.
+    EXPECT_EQ(1u, laneQueries);   // registration only
+    EXPECT_EQ(1u, tapQueries);    // registration only
 }
