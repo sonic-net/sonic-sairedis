@@ -56,8 +56,6 @@ namespace syncd
         struct ObjectRegistration
         {
             uint64_t epoch;
-
-            sai_object_id_t rid;
         };
 
         using ObjectRegistrationMap = std::map<std::pair<std::string, sai_object_id_t>, ObjectRegistration>;
@@ -72,15 +70,6 @@ namespace syncd
 
             sai_stats_mode_t statsMode = SAI_STATS_MODE_READ;
         };
-
-        struct ObjectRid
-        {
-            sai_object_id_t rid;
-
-            bool consistent;
-        };
-
-        using ObjectRidMap = std::map<sai_object_id_t, ObjectRid>;
 
         BaseCounterContext(
                 _In_ const std::string& name,
@@ -143,13 +132,10 @@ namespace syncd
 
         virtual bool hasObject() const = 0;
 
-        // Report actual enrolled SDK keys, including all scalar/bulk fragments.
-        // Missing VIDs are omitted. Called only while the group mutex is held.
-        virtual ObjectRidMap getObjectRids(
+        // Report actual membership, including all scalar/bulk fragments.
+        // Called only while the group mutex is held; RID validity is unchanged.
+        virtual std::set<sai_object_id_t> getObjectVids(
                 _In_ const std::vector<sai_object_id_t>& vids) const = 0;
-
-        // Only ordinary single-object stats enrollment removes/replaces old keys.
-        virtual bool supportsRidReplacement() const;
 
     protected:
         bool isPollRegistrationCurrent(
@@ -247,14 +233,12 @@ namespace syncd
                     _In_ const std::string &ratePrefix);
 
         private:
-            bool hasSameRidRegistration(
-                    _In_ sai_object_id_t vid,
-                    _In_ sai_object_id_t rid) const;
+            bool hasRegistration(
+                    _In_ sai_object_id_t vid) const;
 
             void recordRegistration(
                     _In_ const std::string& name,
-                    _In_ sai_object_id_t vid,
-                    _In_ sai_object_id_t rid);
+                    _In_ sai_object_id_t vid);
 
             void enrollCounterObjects(
                     _In_ const std::string& name,

@@ -154,13 +154,6 @@ BaseCounterContext::BaseCounterContext(
     }
 }
 
-bool BaseCounterContext::supportsRidReplacement() const
-{
-    SWSS_LOG_ENTER();
-
-    return false;
-}
-
 void BaseCounterContext::clearSamples(
         _In_ sai_stats_mode_t statsMode)
 {
@@ -709,7 +702,11 @@ public:
 
         std::vector<sai_object_key_t> object_keys;
 
+        std::vector<sai_status_t> object_statuses;
+
         std::vector<StatType> counter_ids;
+
+        std::shared_ptr<BulkContextType> result_context;
 
         std::string name;
 
@@ -729,27 +726,17 @@ public:
         SWSS_LOG_ENTER();
     }
 
-    ObjectRidMap getObjectRids(
+    std::set<sai_object_id_t> getObjectVids(
             _In_ const std::vector<sai_object_id_t>& vids) const override
     {
         SWSS_LOG_ENTER();
 
-        ObjectRidMap result;
+        std::set<sai_object_id_t> result;
 
         if (vids.empty())
         {
             return result;
         }
-
-        auto record = [&](sai_object_id_t vid, sai_object_id_t rid)
-        {
-            const auto inserted = result.emplace(vid, ObjectRid{rid, true});
-
-            if (!inserted.second && inserted.first->second.rid != rid)
-            {
-                inserted.first->second.consistent = false;
-            }
-        };
 
         const std::set<sai_object_id_t> requested(vids.begin(), vids.end());
 
@@ -759,7 +746,7 @@ public:
 
             if (object != m_objectIdsMap.end())
             {
-                record(vid, object->second->rid);
+                result.insert(vid);
             }
         }
 
@@ -772,19 +759,12 @@ public:
             {
                 if (requested.count(ctx.object_vids[i]))
                 {
-                    record(ctx.object_vids[i], ctx.object_keys[i].key.object_id);
+                    result.insert(ctx.object_vids[i]);
                 }
             }
         }
 
         return result;
-    }
-
-    bool supportsRidReplacement() const override
-    {
-        SWSS_LOG_ENTER();
-
-        return true;
     }
 
     virtual void addObjectWithCounterGroups(
@@ -1793,10 +1773,12 @@ public:
 
             BulkPollPlan plan;
             plan.counter_ids = ctx.counter_ids;
+            plan.result_context = context.second;
             plan.name = ctx.name;
             plan.default_bulk_chunk_size = ctx.default_bulk_chunk_size;
             plan.object_vids.reserve(ctx.object_vids.size());
             plan.object_keys.reserve(ctx.object_keys.size());
+            plan.object_statuses.reserve(ctx.object_statuses.size());
 
             for (size_t i = 0; i < ctx.object_vids.size(); ++i)
             {
@@ -1804,6 +1786,7 @@ public:
                 {
                     plan.object_vids.push_back(ctx.object_vids[i]);
                     plan.object_keys.push_back(ctx.object_keys[i]);
+                    plan.object_statuses.push_back(ctx.object_statuses[i]);
                 }
             }
 
@@ -2086,88 +2069,126 @@ private:
         }
 
         uint32_t current = 0;
+        std::unordered_map<sai_object_id_t, std::pair<sai_object_id_t, sai_status_t>> completedStatuses;
+        completedStatuses.reserve(size);
 
-        SWSS_LOG_INFO("Before getting bulk %s %s %s size %u bulk chunk size %u current %u", m_instanceId.c_str(), m_name.c_str(), name.c_str(), size, bulk_chunk_size, current);
-
-        while (current < size)
+        // Baseline status slots survive polling passes. Preserve that behavior
+        // without retaining references into vectors that updates can resize.
+        const auto saveStatuses = [&]
         {
-            if (!checkpoint(countersTable))
+            const auto live = m_bulkContexts.find(counterIds);
+
+            if (live == m_bulkContexts.end() || live->second != ctx.result_context)
             {
                 return;
             }
 
-            const auto count = std::min(bulk_chunk_size, size - current);
-            std::vector<sai_object_id_t> vids;
-            std::vector<sai_object_key_t> keys;
-            vids.reserve(count);
-            keys.reserve(count);
+            auto& destination = *live->second;
 
-            for (uint32_t i = current; i < current + count; ++i)
+            for (size_t i = 0; i < destination.object_vids.size(); ++i)
             {
-                if (isPollRegistrationCurrent(objectVids[i]))
+                const auto vid = destination.object_vids[i];
+                const auto result = completedStatuses.find(vid);
+
+                if (result != completedStatuses.end() && isPollRegistrationCurrent(vid) &&
+                        result->second.first == destination.object_keys[i].key.object_id)
                 {
-                    vids.push_back(objectVids[i]);
-                    keys.push_back(objectKeys[i]);
+                    destination.object_statuses[i] = result->second.second;
                 }
             }
+        };
 
-            current += count;
+        SWSS_LOG_INFO("Before getting bulk %s %s %s size %u bulk chunk size %u current %u", m_instanceId.c_str(), m_name.c_str(), name.c_str(), size, bulk_chunk_size, current);
 
-            if (keys.empty())
+        try
+        {
+            while (current < size)
             {
-                continue;
-            }
-
-            std::vector<sai_status_t> statuses(keys.size(), SAI_STATUS_NOT_EXECUTED);
-            std::vector<uint64_t> counters(keys.size() * counterIds.size());
-            const auto statsMode = m_pollStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
-            sai_status_t status = m_vendorSai->bulkGetStats(
-                SAI_NULL_OBJECT_ID,
-                m_objectType,
-                static_cast<uint32_t>(keys.size()),
-                keys.data(),
-                static_cast<uint32_t>(counterIds.size()),
-                reinterpret_cast<const sai_stat_id_t *>(counterIds.data()),
-                statsMode,
-                statuses.data(),
-                counters.data());
-
-            if (SAI_STATUS_SUCCESS != status)
-            {
-                SWSS_LOG_WARN("Failed to bulk get stats for %s %s %s %s starting object %u bulk chunk size %u: %d",
-                              m_instanceId.c_str(), m_name.c_str(), name.c_str(), sai_serialize_object_type(m_objectType).c_str(), current - count, count, status);
-            }
-
-            // Publish each completed chunk before the next checkpoint. In
-            // READ_AND_CLEAR mode these samples must not be lost or overwritten
-            // while waiting updates run; plugins still run once after the sweep.
-            for (size_t i = 0; i < keys.size(); ++i)
-            {
-                // SAI defines per-object statuses only for an overall failure.
-                // On success the SDK may leave every status slot untouched.
-                if (status != SAI_STATUS_SUCCESS && statuses[i] != SAI_STATUS_SUCCESS)
+                if (!checkpoint(countersTable))
                 {
-                    // An untouched slot is covered by the chunk's warning;
-                    // it is not an object failure reported by the SDK.
-                    if (statuses[i] != SAI_STATUS_NOT_EXECUTED)
-                    {
-                        SWSS_LOG_ERROR("Failed to get stats of %s 0x%" PRIx64 " 0x%" PRIx64 ": %d", m_name.c_str(), vids[i], keys[i].key.object_id, statuses[i]);
-                    }
+                    saveStatuses();
+                    return;
+                }
 
+                const auto count = std::min(bulk_chunk_size, size - current);
+                std::vector<sai_object_id_t> vids;
+                std::vector<sai_object_key_t> keys;
+                std::vector<sai_status_t> statuses;
+                vids.reserve(count);
+                keys.reserve(count);
+                statuses.reserve(count);
+
+                for (uint32_t i = current; i < current + count; ++i)
+                {
+                    if (isPollRegistrationCurrent(objectVids[i]))
+                    {
+                        vids.push_back(objectVids[i]);
+                        keys.push_back(objectKeys[i]);
+                        statuses.push_back(ctx.object_statuses[i]);
+                    }
+                }
+
+                current += count;
+
+                if (keys.empty())
+                {
                     continue;
                 }
 
-                std::vector<swss::FieldValueTuple> values;
+                std::vector<uint64_t> counters(keys.size() * counterIds.size());
+                const auto statsMode = m_pollStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+                sai_status_t status = m_vendorSai->bulkGetStats(
+                    SAI_NULL_OBJECT_ID,
+                    m_objectType,
+                    static_cast<uint32_t>(keys.size()),
+                    keys.data(),
+                    static_cast<uint32_t>(counterIds.size()),
+                    reinterpret_cast<const sai_stat_id_t *>(counterIds.data()),
+                    statsMode,
+                    statuses.data(),
+                    counters.data());
 
-                for (size_t j = 0; j < counterIds.size(); ++j)
+                if (SAI_STATUS_SUCCESS != status)
                 {
-                    values.emplace_back(serializeStat(counterIds[j]), std::to_string(counters[i * counterIds.size() + j]));
+                    SWSS_LOG_WARN("Failed to bulk get stats for %s %s %s %s starting object %u bulk chunk size %u: %d",
+                                  m_instanceId.c_str(), m_name.c_str(), name.c_str(), sai_serialize_object_type(m_objectType).c_str(), current - count, count, status);
                 }
 
-                countersTable.set(sai_serialize_object_id(vids[i]), values, "");
-                markSampled(vids[i]);
+                for (size_t i = 0; i < keys.size(); ++i)
+                {
+                    completedStatuses[vids[i]] = {keys[i].key.object_id, statuses[i]};
+                }
+
+                // Publish each completed chunk before the next checkpoint. In
+                // READ_AND_CLEAR mode these samples must not be lost or overwritten
+                // while waiting updates run; plugins still run once after the sweep.
+                for (size_t i = 0; i < keys.size(); ++i)
+                {
+                    if (statuses[i] != SAI_STATUS_SUCCESS)
+                    {
+                        SWSS_LOG_ERROR("Failed to get stats of %s 0x%" PRIx64 " 0x%" PRIx64 ": %d", m_name.c_str(), vids[i], keys[i].key.object_id, statuses[i]);
+                        continue;
+                    }
+
+                    std::vector<swss::FieldValueTuple> values;
+
+                    for (size_t j = 0; j < counterIds.size(); ++j)
+                    {
+                        values.emplace_back(serializeStat(counterIds[j]), std::to_string(counters[i * counterIds.size() + j]));
+                    }
+
+                    countersTable.set(sai_serialize_object_id(vids[i]), values, "");
+                    markSampled(vids[i]);
+                }
             }
         }
+        catch (...)
+        {
+            saveStatuses();
+            throw;
+        }
+
+        saveStatuses();
 
         SWSS_LOG_INFO("After getting bulk %s %s %s total %u objects", m_instanceId.c_str(), m_name.c_str(), name.c_str(), size);
 
@@ -2588,13 +2609,6 @@ template <typename AttrType, typename AttrDataType = NoAttrData>
 class AttrContext : public CounterContext<AttrType>
 {
 public:
-    bool supportsRidReplacement() const override
-    {
-        SWSS_LOG_ENTER();
-
-        return false;
-    }
-
     using PollCheckpoint = BaseCounterContext::PollCheckpoint;
 
     typedef CounterIds<AttrType> AttrIdsType;
@@ -2728,7 +2742,7 @@ public:
                 continue;
             }
 
-            publishAttrs(countersTable, vid, attrs);
+            publishAttrs(countersTable, vid, attrIds, attrs.data());
         }
     }
 
@@ -2742,22 +2756,23 @@ private:
     void publishAttrs(
             _In_ swss::Table &countersTable,
             _In_ sai_object_id_t vid,
-            _In_ const std::vector<sai_attribute_t>& attrs)
+            _In_ const std::vector<AttrType>& attrIds,
+            _In_ const sai_attribute_t* attrs)
     {
         SWSS_LOG_ENTER();
 
         std::vector<swss::FieldValueTuple> values;
 
-        for (const auto& attr : attrs)
+        for (size_t i = 0; i < attrIds.size(); ++i)
         {
-            auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attr.id);
+            auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
 
             if (!meta)
             {
                 SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
             }
 
-            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attr));
+            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
         }
 
         countersTable.set(sai_serialize_object_id(vid), values, "");
@@ -2787,11 +2802,13 @@ private:
         std::vector<sai_object_id_t> vids;
         std::vector<sai_object_id_t> rids;
         std::vector<uint32_t> attrCounts;
+        std::vector<std::vector<AttrType>> attrIdStorage;
         std::vector<std::vector<sai_attribute_t>> attrStorage;
 
         vids.reserve(capacity);
         rids.reserve(capacity);
         attrCounts.reserve(capacity);
+        attrIdStorage.reserve(capacity);
         attrStorage.reserve(capacity);
 
         for (const auto &kv : Base::m_objectIdsMap)
@@ -2814,6 +2831,7 @@ private:
             vids.push_back(kv.first);
             rids.push_back(kv.second->rid);
             attrCounts.push_back(static_cast<uint32_t>(attrIds.size()));
+            attrIdStorage.push_back(attrIds);
             attrStorage.push_back(std::move(attrs));
         }
 
@@ -2872,7 +2890,7 @@ private:
                 continue;
             }
 
-            publishAttrs(countersTable, vids[n], attrStorage[n]);
+            publishAttrs(countersTable, vids[n], attrIdStorage[n], attrStorage[n].data());
         }
 
         return true;
@@ -3803,12 +3821,12 @@ const std::unordered_map<sai_port_serdes_attr_t, std::string> PortPhySerdesAttrC
 class DashMeterCounterContext : public BaseCounterContext
 {
 public:
-    ObjectRidMap getObjectRids(
+    std::set<sai_object_id_t> getObjectVids(
             _In_ const std::vector<sai_object_id_t>& vids) const override
     {
         SWSS_LOG_ENTER();
 
-        ObjectRidMap result;
+        std::set<sai_object_id_t> result;
 
         for (const auto vid : vids)
         {
@@ -3819,10 +3837,7 @@ public:
                 continue;
             }
 
-            const auto rid = object->second.object_keys.front().key.meter_bucket_entry.eni_id;
-            const auto consistent = std::all_of(object->second.object_keys.begin(), object->second.object_keys.end(),
-                    [&](const sai_object_key_t& key) { return key.key.meter_bucket_entry.eni_id == rid; });
-            result.emplace(vid, ObjectRid{rid, consistent});
+            result.insert(vid);
         }
 
         return result;
@@ -4718,9 +4733,8 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     return nullptr;
 }
 
-bool FlexCounter::hasSameRidRegistration(
-        _In_ sai_object_id_t vid,
-        _In_ sai_object_id_t rid) const
+bool FlexCounter::hasRegistration(
+        _In_ sai_object_id_t vid) const
 {
     SWSS_LOG_ENTER();
 
@@ -4728,7 +4742,7 @@ bool FlexCounter::hasSameRidRegistration(
     {
         const auto registration = m_pollingState->registrations.find({context.first, vid});
 
-        if (registration != m_pollingState->registrations.end() && registration->second.rid == rid)
+        if (registration != m_pollingState->registrations.end())
         {
             return true;
         }
@@ -4739,21 +4753,21 @@ bool FlexCounter::hasSameRidRegistration(
 
 void FlexCounter::recordRegistration(
         _In_ const std::string& name,
-        _In_ sai_object_id_t vid,
-        _In_ sai_object_id_t rid)
+        _In_ sai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
 
     const auto key = std::make_pair(name, vid);
     const auto existing = m_pollingState->registrations.find(key);
 
-    // Same-RID refreshes wait for the old sweep and plugins before enrollment,
-    // so one registration epoch is sufficient for admission and sample validity.
-    // Removal erases the record: even same-RID re-enrollment must receive a
-    // new epoch and cannot consume the previous registration's sample.
-    const auto epoch = existing != m_pollingState->registrations.end() && existing->second.rid == rid ?
-        existing->second.epoch : ++m_nextObjectEpoch;
-    m_pollingState->registrations[key] = {epoch, rid};
+    // Existing-VID refreshes wait for the old pass and plugins. Epochs track
+    // logical membership; each polling plan keeps its actual SDK keys.
+    // Explicit removal erases the record, so re-enrollment gets a new epoch.
+    if (existing == m_pollingState->registrations.end())
+    {
+        m_pollingState->registrations.emplace(key,
+                BaseCounterContext::ObjectRegistration{++m_nextObjectEpoch});
+    }
 }
 
 void FlexCounter::enrollCounterObjects(
@@ -4773,92 +4787,20 @@ void FlexCounter::enrollCounterObjects(
     }
 
     auto context = getCounterContext(name);
-    const auto previous = context->getObjectRids(vids);
-    std::vector<sai_object_id_t> acceptedVids;
-    std::vector<sai_object_id_t> acceptedRids;
-    std::vector<std::pair<sai_object_id_t, sai_object_id_t>> ridReplacements;
-    acceptedVids.reserve(vids.size());
-    acceptedRids.reserve(rids.size());
-    std::set<sai_object_id_t> seenVids;
-    const bool canReplaceRid = !perPortDiscovery && context->supportsRidReplacement();
-
-    for (size_t i = 0; i < vids.size(); ++i)
-    {
-        if (!seenVids.insert(vids[i]).second)
-        {
-            continue;
-        }
-
-        const auto old = previous.find(vids[i]);
-
-        if (old != previous.end() && !old->second.consistent)
-        {
-            SWSS_LOG_ERROR("%s VID %s has conflicting SDK keys; removing all fragments and dropping registration",
-                    name.c_str(), sai_serialize_object_id(vids[i]).c_str());
-            context->removeObject(vids[i]);
-            m_pollingState->registrations.erase({name, vids[i]});
-            continue;
-        }
-
-        if (old != previous.end() && old->second.rid != rids[i] && !canReplaceRid)
-        {
-            // These paths retain duplicate keys instead of replacing them.
-            // Reject before any support probe or auxiliary metadata mutation.
-            SWSS_LOG_ERROR("%s VID %s retains RID %s; this registration path cannot replace it with RID %s",
-                    name.c_str(), sai_serialize_object_id(vids[i]).c_str(),
-                    sai_serialize_object_id(old->second.rid).c_str(), sai_serialize_object_id(rids[i]).c_str());
-            continue;
-        }
-
-        if (bulk && old != previous.end() && old->second.rid != rids[i])
-        {
-            // Orchagent uses bulk enrollment even for one VID. Bulk fragments
-            // can retain duplicate SDK keys, whereas the supported per-object
-            // path validates counters before removing and replacing the old RID.
-            ridReplacements.emplace_back(vids[i], rids[i]);
-            continue;
-        }
-
-        acceptedVids.push_back(vids[i]);
-        acceptedRids.push_back(rids[i]);
-    }
-
-    if (acceptedVids.empty() && ridReplacements.empty())
-    {
-        return;
-    }
 
     auto reconcile = [&]
     {
-        const auto actual = context->getObjectRids(acceptedVids);
+        const auto actual = context->getObjectVids(vids);
 
-        for (size_t i = 0; i < acceptedVids.size(); ++i)
+        for (const auto vid : vids)
         {
-            const auto vid = acceptedVids[i];
-            const auto object = actual.find(vid);
-
-            if (object == actual.end())
+            if (actual.count(vid))
             {
-                m_pollingState->registrations.erase({name, vid});
-            }
-            else if (!object->second.consistent)
-            {
-                SWSS_LOG_ERROR("%s VID %s acquired conflicting SDK keys; removing all fragments",
-                        name.c_str(), sai_serialize_object_id(vid).c_str());
-                context->removeObject(vid);
-                m_pollingState->registrations.erase({name, vid});
+                recordRegistration(name, vid);
             }
             else
             {
-                const auto registration = m_pollingState->registrations.find({name, vid});
-
-                // A rejected replacement can leave the old object enrolled.
-                // Preserve its registration epoch and any cleared sample.
-                if (object->second.rid == acceptedRids[i] || registration == m_pollingState->registrations.end() ||
-                        registration->second.rid != object->second.rid)
-                {
-                    recordRegistration(name, vid, object->second.rid);
-                }
+                m_pollingState->registrations.erase({name, vid});
             }
         }
     };
@@ -4867,35 +4809,22 @@ void FlexCounter::enrollCounterObjects(
     {
         if (bulk)
         {
-            if (!acceptedVids.empty())
+            if (perPortDiscovery)
             {
-                if (perPortDiscovery)
-                {
-                    context->bulkAddObjectWithCounterGroups(acceptedVids, acceptedRids, idStrings, statsMode);
-                }
-                else
-                {
-                    context->bulkAddObject(acceptedVids, acceptedRids, idStrings, statsMode);
-                }
+                context->bulkAddObjectWithCounterGroups(vids, rids, idStrings, statsMode);
             }
-
-            for (const auto& replacement : ridReplacements)
+            else
             {
-                // Include the member before invoking an enrollment that may
-                // reject or throw after changing storage. Later replacements
-                // that have not been invoked are left out of reconciliation.
-                acceptedVids.push_back(replacement.first);
-                acceptedRids.push_back(replacement.second);
-                context->addObject(replacement.first, replacement.second, idStrings, statsMode);
+                context->bulkAddObject(vids, rids, idStrings, statsMode);
             }
         }
         else if (perPortDiscovery)
         {
-            context->addObjectWithCounterGroups(acceptedVids.front(), acceptedRids.front(), idStrings, statsMode);
+            context->addObjectWithCounterGroups(vids.front(), rids.front(), idStrings, statsMode);
         }
         else
         {
-            context->addObject(acceptedVids.front(), acceptedRids.front(), idStrings, statsMode);
+            context->addObject(vids.front(), rids.front(), idStrings, statsMode);
         }
     }
     catch (...)
@@ -5513,7 +5442,7 @@ void FlexCounter::addCounter(
 
     UPDATE_LOCK;
 
-    if (hasSameRidRegistration(vid, rid))
+    if (hasRegistration(vid))
     {
         _lock.waitForPollEnd(m_runFlexCounterThread);
     }
@@ -5585,22 +5514,9 @@ void FlexCounter::bulkAddCounter(
         return;
     }
 
-    std::map<sai_object_id_t, sai_object_id_t> requestedRids;
-
     for (size_t i = 0; i < vids.size(); ++i)
     {
-        const auto inserted = requestedRids.emplace(vids[i], rids[i]);
-
-        if (!inserted.second && inserted.first->second != rids[i])
-        {
-            SWSS_LOG_ERROR("Bulk counter VID %s has conflicting RIDs", sai_serialize_object_id(vids[i]).c_str());
-            return;
-        }
-    }
-
-    for (size_t i = 0; i < vids.size(); ++i)
-    {
-        if (hasSameRidRegistration(vids[i], rids[i]))
+        if (hasRegistration(vids[i]))
         {
             _lock.waitForPollEnd(m_runFlexCounterThread);
             break;

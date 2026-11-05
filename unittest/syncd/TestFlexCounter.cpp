@@ -3503,165 +3503,6 @@ TEST(FlexCounter, queueAttrBulkGetFailureFallsBack)
 
 namespace
 {
-    void testQueueAttributeVectors(bool bulkFailure)
-    {
-        SWSS_LOG_ENTER();
-
-        auto vendor = std::make_shared<MockableSaiInterface>();
-        const auto objects = generateOids(6, SAI_OBJECT_TYPE_QUEUE);
-        const std::vector<sai_object_id_t> vids(objects.begin(), objects.begin() + 3);
-        const std::vector<sai_object_id_t> rids(objects.begin() + 3, objects.end());
-        uint32_t bulkCalls = 0;
-        std::atomic<uint32_t> completedScalarReads{0};
-        std::vector<sai_object_id_t> scalarReads;
-        std::vector<sai_object_id_t> observedRids;
-        std::vector<uint32_t> observedCounts;
-        std::vector<std::vector<sai_attr_id_t>> observedAttributes;
-        const auto fillAttributes = [&](sai_object_id_t rid, uint32_t count, sai_attribute_t* attrs)
-        {
-            for (uint32_t i = 0; i < count; ++i)
-            {
-                if (attrs[i].id == SAI_QUEUE_ATTR_PAUSE_STATUS)
-                {
-                    attrs[i].value.booldata = rid == rids[0];
-                }
-                else if (attrs[i].id == SAI_QUEUE_ATTR_INDEX)
-                {
-                    // INDEX metadata specifies sai_uint8_t, not u32.
-                    attrs[i].value.u8 = rid == rids[0] ? 7 : 9;
-                }
-            }
-        };
-        vendor->mock_bulkGet = [&](sai_object_type_t type, uint32_t count,
-                const sai_object_id_t* objectIds, const uint32_t* attrCounts,
-                sai_attribute_t** attrs, sai_bulk_op_error_mode_t mode, sai_status_t* statuses)
-        {
-            EXPECT_EQ(type, SAI_OBJECT_TYPE_QUEUE);
-            EXPECT_EQ(mode, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR);
-            ++bulkCalls;
-            observedRids.assign(objectIds, objectIds + count);
-            observedCounts.assign(attrCounts, attrCounts + count);
-            observedAttributes.clear();
-            for (uint32_t i = 0; i < count; ++i)
-            {
-                std::vector<sai_attr_id_t> ids;
-                for (uint32_t j = 0; j < attrCounts[i]; ++j)
-                {
-                    ids.push_back(attrs[i][j].id);
-                }
-                observedAttributes.push_back(std::move(ids));
-                fillAttributes(objectIds[i], attrCounts[i], attrs[i]);
-                statuses[i] = bulkFailure && objectIds[i] == rids[2] ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
-            }
-            // SAI bulk attributes require overall failure if any member fails.
-            return bulkFailure ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
-        };
-        vendor->mock_get = [&](sai_object_type_t type, sai_object_id_t rid,
-                uint32_t count, sai_attribute_t* attrs)
-        {
-            EXPECT_EQ(type, SAI_OBJECT_TYPE_QUEUE);
-            scalarReads.push_back(rid);
-            fillAttributes(rid, count, attrs);
-            ++completedScalarReads;
-            return bulkFailure && rid == rids[2] ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
-        };
-
-        test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_QUEUE);
-        FlexCounter fc("mixed_queue_attributes", vendor, "COUNTERS_DB");
-        fc.addCounterPlugin({{POLL_INTERVAL_FIELD, "60000"},
-                {FLEX_COUNTER_STATUS_FIELD, "disable"}, {STATS_MODE_FIELD, STATS_MODE_READ}});
-        fc.addCounter(vids[0], rids[0], {{QUEUE_ATTR_ID_LIST,
-                "SAI_QUEUE_ATTR_PAUSE_STATUS,SAI_QUEUE_ATTR_INDEX"}});
-        fc.addCounter(vids[1], rids[1], {{QUEUE_ATTR_ID_LIST, "SAI_QUEUE_ATTR_PAUSE_STATUS"}});
-        fc.addCounter(vids[2], rids[2], {{QUEUE_ATTR_ID_LIST, "SAI_QUEUE_ATTR_INDEX"}});
-        ASSERT_EQ(fc.m_counterContext.size(), 1u);
-        ASSERT_EQ(fc.m_pollingState->registrations.size(), 3u);
-        const auto context = fc.m_counterContext.at("Queue Attribute");
-        swss::DBConnector db("COUNTERS_DB", 0);
-        swss::Table table(&db, COUNTERS_TABLE);
-        for (const auto vid : vids)
-        {
-            table.del(toOid(vid));
-        }
-
-        fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
-        waitForCounterValues(table, toOid(vids[1]), {"SAI_QUEUE_ATTR_PAUSE_STATUS"}, {"false"});
-        if (bulkFailure)
-        {
-            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-            while (completedScalarReads.load() < rids.size() && std::chrono::steady_clock::now() < deadline)
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-            EXPECT_EQ(completedScalarReads.load(), 3u);
-        }
-        else
-        {
-            waitForCounterValues(table, toOid(vids[2]), {"SAI_QUEUE_ATTR_INDEX"}, {"9"});
-        }
-        fc.endFlexCounterThread();
-        // SDK-owned capture vectors are inspected only after the polling thread joins.
-        EXPECT_EQ(bulkCalls, 1u);
-        EXPECT_EQ(scalarReads, bulkFailure ? rids : std::vector<sai_object_id_t>{});
-        EXPECT_EQ(observedRids, rids);
-        EXPECT_EQ(observedCounts, (std::vector<uint32_t>{2, 1, 1}));
-        const std::vector<std::vector<sai_attr_id_t>> expectedAttributes = {
-            {SAI_QUEUE_ATTR_PAUSE_STATUS, SAI_QUEUE_ATTR_INDEX},
-            {SAI_QUEUE_ATTR_PAUSE_STATUS},
-            {SAI_QUEUE_ATTR_INDEX},
-        };
-        EXPECT_EQ(observedAttributes, expectedAttributes);
-
-        std::vector<std::map<std::string, std::string>> expectedFields = {
-            {{"SAI_QUEUE_ATTR_PAUSE_STATUS", "true"}, {"SAI_QUEUE_ATTR_INDEX", "7"}},
-            {{"SAI_QUEUE_ATTR_PAUSE_STATUS", "false"}},
-        };
-        if (!bulkFailure)
-        {
-            expectedFields.push_back({{"SAI_QUEUE_ATTR_INDEX", "9"}});
-        }
-        for (size_t i = 0; i < expectedFields.size(); ++i)
-        {
-            std::vector<swss::FieldValueTuple> fields;
-            EXPECT_TRUE(table.get(toOid(vids[i]), fields));
-            const std::map<std::string, std::string> actual(fields.begin(), fields.end());
-            EXPECT_EQ(actual, expectedFields[i]);
-            const auto sample = context->m_sampledEpochs.find(vids[i]);
-            EXPECT_NE(sample, context->m_sampledEpochs.end());
-            if (sample != context->m_sampledEpochs.end())
-            {
-                EXPECT_EQ(sample->second,
-                        fc.m_pollingState->registrations.at({context->m_name, vids[i]}).epoch);
-            }
-        }
-        EXPECT_EQ(context->m_sampledEpochs.size(), expectedFields.size());
-        if (bulkFailure)
-        {
-            std::vector<swss::FieldValueTuple> failedFields;
-            EXPECT_FALSE(table.get(toOid(vids[2]), failedFields));
-            EXPECT_EQ(context->m_sampledEpochs.count(vids[2]), 0u);
-        }
-
-        for (const auto vid : vids)
-        {
-            fc.removeCounter(vid);
-            table.del(toOid(vid));
-        }
-    }
-}
-
-TEST(FlexCounter, queueAttrBulkGetPublishesPerObjectAttributeVectors)
-{
-    testQueueAttributeVectors(false);
-}
-
-TEST(FlexCounter, queueAttrBulkFailureFallsBackWithPerObjectAttributeVectors)
-{
-    testQueueAttributeVectors(true);
-}
-
-namespace
-{
     // The first SDK call represents a read already in progress when a registry
     // update arrives. Every following call has a separate gate: a full-sweep
     // mutex would prevent the updater from finishing until that gate is opened.
@@ -3803,9 +3644,11 @@ namespace
     enum class FlexCounterBulkResult
     {
         SuccessWithoutObjectStatuses,
+        SuccessWithObjectFailure,
         FailureWithoutObjectStatuses,
         PartialFailure,
         PartialFailureWithUntouchedObject,
+        FailureThenSuccessWithUntouchedStatuses,
     };
 
     void testBulkResultContract(FlexCounterBulkResult result)
@@ -3839,7 +3682,7 @@ namespace
                 const sai_stat_id_t*, sai_stats_mode_t mode,
                 sai_status_t* statuses, uint64_t* values)
         {
-            ++runtimeCalls;
+            const auto call = ++runtimeCalls;
             EXPECT_EQ(count, objects.size());
             EXPECT_EQ(statCount, 1u);
             EXPECT_EQ(mode, SAI_STATS_MODE_BULK_READ_AND_CLEAR);
@@ -3847,8 +3690,15 @@ namespace
             for (uint32_t i = 0; i < count; ++i)
             {
                 const auto index = std::find(objects.begin(), objects.end(), keys[i].key.object_id) - objects.begin();
-                values[i] = 111 * (index + 1);
-                if (result == FlexCounterBulkResult::PartialFailure)
+                const bool repeat = result == FlexCounterBulkResult::FailureThenSuccessWithUntouchedStatuses;
+                values[i] = 111 * (index + 1) * (repeat ? call : 1);
+                if (repeat && call == 2)
+                {
+                    EXPECT_EQ(statuses[i], index == 1 ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS)
+                        << "A successful call must receive the previous pass's object status";
+                }
+                else if (result == FlexCounterBulkResult::PartialFailure ||
+                        result == FlexCounterBulkResult::SuccessWithObjectFailure || repeat)
                 {
                     statuses[i] = keys[i].key.object_id == objects[1] ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
                 }
@@ -3856,11 +3706,12 @@ namespace
                 {
                     statuses[i] = index == 0 ? SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
                 }
-                // SAI allows a successful overall result without touching the
-                // per-object statuses. On overall failure untouched statuses
-                // must not turn initialized or stale buffer contents into data.
+                // Preserve baseline per-object eligibility independently of the
+                // overall result, including slots left untouched by the SDK.
             }
-            return result == FlexCounterBulkResult::SuccessWithoutObjectStatuses ?
+            return result == FlexCounterBulkResult::SuccessWithoutObjectStatuses ||
+                result == FlexCounterBulkResult::SuccessWithObjectFailure ||
+                (result == FlexCounterBulkResult::FailureThenSuccessWithUntouchedStatuses && call == 2) ?
                 SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
         };
         test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
@@ -3880,27 +3731,38 @@ namespace
             table.del(toOid(objects[i]));
             table.set(toOid(objects[i]), {{name, std::to_string(1001 + i)}});
         }
-        gate.arm();
-        fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
-        if (!gate.waitForFirst())
+        const bool repeat = result == FlexCounterBulkResult::FailureThenSuccessWithUntouchedStatuses;
+        if (repeat)
         {
-            gate.releaseAll();
-            ADD_FAILURE() << "The runtime bulk call did not start";
-            return;
+            // Drive two complete collection passes while the worker is disabled
+            // so status carry-forward is independent of timer scheduling.
+            std::unique_lock<std::mutex> lock(fc.m_syncState.mutex);
+            fc.collectCounters(table, lock);
+            fc.collectCounters(table, lock);
         }
-        gate.releaseAll();
+        else
+        {
+            gate.arm();
+            fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
+            if (!gate.waitForFirst())
+            {
+                gate.releaseAll();
+                ADD_FAILURE() << "The runtime bulk call did not start";
+                return;
+            }
+            gate.releaseAll();
+        }
         // Joining also verifies completed READ_AND_CLEAR values were flushed
         // before a shutdown checkpoint, rather than only left in a pipeline.
         fc.endFlexCounterThread();
-        EXPECT_EQ(runtimeCalls.load(), 1u);
+        EXPECT_EQ(runtimeCalls.load(), repeat ? 2u : 1u);
         for (size_t i = 0; i < objects.size(); ++i)
         {
             const bool published = result == FlexCounterBulkResult::SuccessWithoutObjectStatuses ||
-                (result == FlexCounterBulkResult::PartialFailure && i != 1) ||
-                (result == FlexCounterBulkResult::PartialFailureWithUntouchedObject && i == 0);
+                result == FlexCounterBulkResult::FailureWithoutObjectStatuses || i != 1;
             std::string value;
             EXPECT_TRUE(table.hget(toOid(objects[i]), name, value));
-            EXPECT_EQ(value, std::to_string(published ? 111 * (i + 1) : 1001 + i));
+            EXPECT_EQ(value, std::to_string(published ? 111 * (i + 1) * (repeat ? 2 : 1) : 1001 + i));
             fc.removeCounter(objects[i]);
             table.del(toOid(objects[i]));
         }
@@ -3951,7 +3813,7 @@ namespace
             update == FlexCounterPendingUpdate::RefreshHybrid || failedHybrid;
         bool refresh = update == FlexCounterPendingUpdate::Refresh;
         bool deferredRefresh = refresh || queueAttributeUpdate || failedHybrid ||
-            update == FlexCounterPendingUpdate::RefreshHybrid;
+            update == FlexCounterPendingUpdate::RefreshHybrid || update == FlexCounterPendingUpdate::Reenroll;
         auto objectType = queueAttributeUpdate ? SAI_OBJECT_TYPE_QUEUE : SAI_OBJECT_TYPE_PORT;
         auto statId = queueAttributeUpdate ? static_cast<sai_stat_id_t>(SAI_QUEUE_STAT_PACKETS) :
             static_cast<sai_stat_id_t>(SAI_PORT_STAT_IF_IN_OCTETS);
@@ -4328,19 +4190,15 @@ namespace
             {
                 continue;
             }
-            if ((update == FlexCounterPendingUpdate::Reenroll ||
-                 update == FlexCounterPendingUpdate::RemoveAndReadd) && vid == objects.front())
+            if (update == FlexCounterPendingUpdate::RemoveAndReadd && vid == objects.front())
             {
                 EXPECT_NE(current->second.epoch, initial.second.epoch)
-                    << "Replacement or remove/re-add retained the old polling epoch";
-                EXPECT_EQ(current->second.rid,
-                        update == FlexCounterPendingUpdate::Reenroll ? addedObject : vid);
+                    << "Remove/re-add retained the old polling epoch";
             }
             else
             {
                 EXPECT_EQ(current->second.epoch, initial.second.epoch)
                     << "An unchanged or deferred same-RID registration changed its polling epoch";
-                EXPECT_EQ(current->second.rid, initial.second.rid);
             }
         }
 
@@ -4414,8 +4272,7 @@ namespace
             // and preserve the first object's cleared sample until it is used.
             waitForCounterValues(countersTable, pluginKey,
                     {"invocations", toOid(objects[1])}, {"1", pluginValue});
-            if (update == FlexCounterPendingUpdate::Reenroll ||
-                    update == FlexCounterPendingUpdate::RemoveAndReadd ||
+            if (update == FlexCounterPendingUpdate::RemoveAndReadd ||
                     update == FlexCounterPendingUpdate::RemoveCurrent ||
                     (failedScalar && failedBulk))
             {
@@ -4595,7 +4452,8 @@ namespace
     void testDestructiveRefreshPreservesSamples(bool bulk, bool hybrid,
             bool removeDuringRefresh = false, FlexCounterRefreshEnd ending = FlexCounterRefreshEnd::Complete,
             bool mixedBatch = false, bool perPortDiscovery = false,
-            FlexCounterRejectedReplacement replacement = FlexCounterRejectedReplacement::None)
+            FlexCounterRejectedReplacement replacement = FlexCounterRejectedReplacement::None,
+            bool changedRid = false, bool bulkRefresh = false)
     {
         SWSS_LOG_ENTER();
         auto vendor = std::make_shared<MockableSaiInterface>();
@@ -4615,7 +4473,13 @@ namespace
         const bool throwsReplacement = replacement == FlexCounterRejectedReplacement::ThrowingScalar ||
             replacement == FlexCounterRejectedReplacement::ThrowingPartialBulk;
         const auto originalCount = removeDuringRefresh || mixedBatch ? 3u : 2u;
-        auto objects = generateOids(originalCount + (rejectReplacement ? partialReplacement ? 2 : 1 : 0), objectType);
+        auto objects = generateOids(originalCount + (rejectReplacement ? partialReplacement ? 2 : 1 : 0) +
+                (changedRid ? 1 : 0), objectType);
+        const auto refreshRid = changedRid ? objects.back() : SAI_NULL_OBJECT_ID;
+        if (changedRid)
+        {
+            objects.pop_back();
+        }
         const auto rejectedRid = rejectReplacement ? objects.back() : SAI_NULL_OBJECT_ID;
         if (rejectReplacement)
         {
@@ -4827,8 +4691,6 @@ namespace
                 if (registration.first.second == target)
                 {
                     retained = true;
-                    EXPECT_EQ(registration.second.rid, target)
-                        << "Rejected replacement must not overwrite the retained live physical identity";
                     const auto previous = initialRegistrations.find(registration.first);
                     EXPECT_NE(previous, initialRegistrations.end());
                     if (previous != initialRegistrations.end())
@@ -4840,8 +4702,6 @@ namespace
                 if (partialReplacement && registration.first.second == acceptedRid)
                 {
                     accepted = true;
-                    EXPECT_EQ(registration.second.rid, acceptedRid)
-                        << "A later rejection must not roll back an already accepted batch member";
                 }
             }
             EXPECT_TRUE(retained);
@@ -4912,18 +4772,20 @@ namespace
                 }
                 std::vector<swss::FieldValueTuple> refreshed = {{field,
                         counterName + "," + extraName}};
-                if (hybrid || mixedBatch)
+                if (hybrid || mixedBatch || bulkRefresh)
                 {
                     std::vector<sai_object_id_t> refreshedObjects = {target};
+                    std::vector<sai_object_id_t> refreshedRids = {changedRid ? refreshRid : target};
                     if (mixedBatch)
                     {
                         refreshedObjects.push_back(addedObject);
+                        refreshedRids.push_back(addedObject);
                     }
-                    fc.bulkAddCounter(objectType, refreshedObjects, refreshedObjects, refreshed);
+                    fc.bulkAddCounter(objectType, refreshedObjects, refreshedRids, refreshed);
                 }
                 else
                 {
-                    fc.addCounter(target, target, refreshed);
+                    fc.addCounter(target, changedRid ? refreshRid : target, refreshed);
                 }
             }
             catch (const std::exception&)
@@ -4998,7 +4860,6 @@ namespace
             EXPECT_NE(current, updatedRegistrations.end());
             if (current != updatedRegistrations.end())
             {
-                EXPECT_EQ(current->second.rid, initial.second.rid);
                 EXPECT_EQ(current->second.epoch, initial.second.epoch)
                     << "Deferred refresh changed an existing registration's lifecycle epoch";
             }
@@ -5108,6 +4969,10 @@ namespace
                 vendor->mock_getStats = [this](sai_object_type_t, sai_object_id_t rid,
                         uint32_t count, const sai_stat_id_t*, uint64_t* counterValues)
                 {
+                    if (m_collecting && count != 0)
+                    {
+                        m_polledRids.push_back(rid);
+                    }
                     gate.read(rid, 1, counter && counter->m_syncState.pendingUpdates.load() != 0);
                     if (probeFailure.load() != ProbeFailure::None && rid == failingRid.load())
                     {
@@ -5152,6 +5017,10 @@ namespace
                     {
                         return SAI_STATUS_NOT_SUPPORTED;
                     }
+                    if (m_collecting && statCount != 0)
+                    {
+                        m_polledRids.insert(m_polledRids.end(), rids.begin(), rids.end());
+                    }
                     gate.read(keys[0].key.object_id, count, counter && counter->m_syncState.pendingUpdates.load() != 0);
                     std::lock_guard<std::mutex> lock(m_hardwareMutex);
                     for (uint32_t i = 0; i < count; ++i)
@@ -5190,11 +5059,32 @@ namespace
                 table.del("TIME_STAMP");
             }
 
-            BaseCounterContext::ObjectRidMap actual(const std::vector<sai_object_id_t>& vids)
+            std::set<sai_object_id_t> actual(const std::vector<sai_object_id_t>& vids)
             {
                 SWSS_LOG_ENTER();
                 std::lock_guard<std::mutex> lock(counter->m_syncState.mutex);
-                return counter->m_counterContext.begin()->second->getObjectRids(vids);
+                return counter->m_counterContext.begin()->second->getObjectVids(vids);
+            }
+
+            std::vector<sai_object_id_t> pollRids()
+            {
+                SWSS_LOG_ENTER();
+                std::lock_guard<std::mutex> lock(counter->m_syncState.mutex);
+                m_polledRids.clear();
+                auto context = counter->m_counterContext.begin()->second;
+                context->clearSamples(counter->m_pollingState->statsMode);
+                m_collecting = true;
+                try
+                {
+                    context->collectData(table, [](swss::Table&) { return true; });
+                }
+                catch (...)
+                {
+                    m_collecting = false;
+                    throw;
+                }
+                m_collecting = false;
+                return m_polledRids;
             }
 
             BaseCounterContext::ObjectRegistration registration(sai_object_id_t vid)
@@ -5235,6 +5125,8 @@ namespace
             const bool m_supportsBulk;
             std::mutex m_hardwareMutex;
             std::map<sai_object_id_t, uint64_t> m_hardware;
+            bool m_collecting = false;
+            std::vector<sai_object_id_t> m_polledRids;
     };
 
     void testRejectedBulkReplacementPreservesDelta(bool throws)
@@ -5257,9 +5149,9 @@ namespace
             EXPECT_NO_THROW(fixture.enroll({b}, {rejected}));
         }
         EXPECT_GT(fixture.failedProbeCalls.load(), 0u) << "The changed RID was silently rejected before its actual probe";
-        ASSERT_EQ(fixture.actual({b}).at(b).rid, b);
+        ASSERT_EQ(fixture.actual({b}).count(b), 1u);
+        EXPECT_EQ(fixture.pollRids(), (std::vector<sai_object_id_t>{a, b}));
         const auto retained = fixture.registration(b);
-        EXPECT_EQ(retained.rid, b);
         EXPECT_EQ(retained.epoch, original.epoch);
 
         const std::string script = "redis.call('SELECT',ARGV[1]); local result=ARGV[2]..':" + fixture.pluginKey +
@@ -5316,7 +5208,8 @@ namespace
         DashMeter,
     };
 
-    void testSpecializedReplacementRequiresRemoval(FlexCounterSpecializedContext kind)
+    void testSpecializedReplacementPreservesBaseline(
+            FlexCounterSpecializedContext kind, bool bulkEnrollment = false)
     {
         SWSS_LOG_ENTER();
         auto vendor = std::make_shared<MockableSaiInterface>();
@@ -5328,9 +5221,21 @@ namespace
         const bool dash = kind == FlexCounterSpecializedContext::DashMeter;
         const auto type = attribute ? SAI_OBJECT_TYPE_QUEUE : serdes ? SAI_OBJECT_TYPE_PORT_SERDES :
             dash ? static_cast<sai_object_type_t>(SAI_OBJECT_TYPE_ENI) : SAI_OBJECT_TYPE_PORT;
-        const auto objects = generateOids(2, type);
+        const auto objects = generateOids(3, type);
         const auto vid = objects.front();
+        const auto otherVid = objects[1];
         const auto replacementRid = objects.back();
+        bool collecting = false;
+        std::vector<sai_object_id_t> polledRids;
+        std::atomic<uint32_t> updatedAttributeReads{0};
+        auto recordRead = [&](sai_object_id_t rid)
+        {
+            if (collecting)
+            {
+                polledRids.push_back(rid);
+            }
+            gate.read(rid, 1, false);
+        };
         const auto portRid = static_cast<sai_object_id_t>(0x10000000000f);
         std::atomic<uint32_t> replacementCalls{0};
         vendor->mock_queryStatsCapability = [=](sai_object_id_t, sai_object_type_t,
@@ -5354,7 +5259,7 @@ namespace
                 uint32_t count, const sai_stat_id_t*, uint64_t* values)
         {
             replacementCalls += rid == replacementRid;
-            gate.read(rid, 1, false);
+            recordRead(rid);
             std::fill(values, values + count, 7);
             return SAI_STATUS_SUCCESS;
         };
@@ -5373,7 +5278,7 @@ namespace
             {
                 return SAI_STATUS_NOT_SUPPORTED;
             }
-            gate.read(rid, count, false);
+            recordRead(rid);
             std::fill(statuses, statuses + count, SAI_STATUS_SUCCESS);
             std::fill(values, values + count * statCount, 7);
             return SAI_STATUS_SUCCESS;
@@ -5410,7 +5315,7 @@ namespace
                 attrs[0].value.portsnrlist.count = 1;
                 return SAI_STATUS_BUFFER_OVERFLOW;
             }
-            gate.read(rid, 1, false);
+            recordRead(rid);
             for (uint32_t i = 0; i < count; ++i)
             {
                 if (phy)
@@ -5424,6 +5329,10 @@ namespace
                 }
                 else
                 {
+                    if (attrs[i].id == SAI_QUEUE_ATTR_INDEX)
+                    {
+                        ++updatedAttributeReads;
+                    }
                     attrs[i].value.booldata = true;
                 }
             }
@@ -5441,7 +5350,7 @@ namespace
         swss::Table mapping(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
         if (serdes)
         {
-            mapping.set("", {{toOid(vid), toOid(portRid)}});
+            mapping.set("", {{toOid(vid), toOid(portRid)}, {toOid(otherVid), toOid(portRid)}});
         }
         test_syncd::mockVidManagerObjectTypeQuery(type);
         FlexCounter fc("specialized_replacement", vendor, "COUNTERS_DB");
@@ -5454,47 +5363,89 @@ namespace
                 serdes ? "SAI_PORT_SERDES_ATTR_RX_VGA" : dash ? "SAI_METER_BUCKET_ENTRY_STAT_INBOUND_BYTES" :
                 "SAI_PORT_STAT_IF_IN_OCTETS",
         }};
-        auto enroll = [&](sai_object_id_t rid)
+        auto enroll = [&](sai_object_id_t objectVid, sai_object_id_t rid, bool refresh = false)
         {
-            fc.addCounter(vid, rid, values);
+            auto configured = values;
+            if (attribute && refresh)
+            {
+                configured.front().second = "SAI_QUEUE_ATTR_INDEX";
+            }
+            if (bulkEnrollment)
+            {
+                fc.bulkAddCounter(type, {objectVid}, {rid}, configured);
+            }
+            else
+            {
+                fc.addCounter(objectVid, rid, configured);
+            }
         };
-        enroll(vid);
+        enroll(vid, vid);
+        enroll(otherVid, otherVid);
         ASSERT_FALSE(fc.isEmpty());
-        ASSERT_EQ(fc.m_pollingState->registrations.size(), 1u);
-        const auto originalRegistration = fc.m_pollingState->registrations.begin()->second;
-        enroll(replacementRid);
-        EXPECT_EQ(replacementCalls.load(), 0u)
-            << "Unsupported physical replacement must be rejected before probing the new SDK object";
-        ASSERT_EQ(fc.m_pollingState->registrations.size(), 1u);
-        EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.rid, vid);
-        EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.epoch, originalRegistration.epoch);
-        table.del(toOid(vid));
-        if (serdes)
-        {
-            // Serdes samples are stored under the associated parent-port VID.
-            table.del(toOid(portRid));
-        }
+        const auto context = fc.m_counterContext.begin()->second;
+        const auto originalEpoch = fc.m_pollingState->registrations.at({context->m_name, vid}).epoch;
         gate.arm();
         fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
-        const bool firstEntered = gate.waitForFirst();
+        if (!gate.waitForFirst())
+        {
+            gate.releaseAll();
+            ADD_FAILURE() << "The specialized-context polling pass did not start";
+            return;
+        }
+        auto updater = std::async(std::launch::async, [&] { enroll(vid, replacementRid, true); });
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (fc.m_syncState.pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        EXPECT_NE(fc.m_syncState.pendingUpdates.load(), 0u);
+        gate.releaseFirst();
+        EXPECT_TRUE(gate.waitForReadCount(2));
+        EXPECT_EQ(updater.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout)
+            << "Changed-RID refresh modified a specialized context during its old pass";
+        EXPECT_EQ(replacementCalls.load(), 0u);
         gate.releaseAll();
-        EXPECT_TRUE(firstEntered);
-        fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "disable"}});
-        const auto originalReads = gate.reads();
-        ASSERT_FALSE(originalReads.empty());
-        EXPECT_EQ(originalReads.front(), vid) << "Rejected replacement changed the live polling RID";
-        fc.removeCounter(vid);
-        enroll(replacementRid);
-        ASSERT_EQ(fc.m_pollingState->registrations.size(), 1u);
-        EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.rid, replacementRid);
-        fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
-        EXPECT_TRUE(gate.waitForReadCount(originalReads.size() + 1));
+        const bool finished = updater.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+        if (!finished)
+        {
+            fc.endFlexCounterThread();
+        }
+        updater.get();
+        EXPECT_TRUE(finished);
         fc.endFlexCounterThread();
-        const auto replacementReads = gate.reads();
-        ASSERT_GT(replacementReads.size(), originalReads.size());
-        EXPECT_EQ(replacementReads.back(), replacementRid)
-            << "Explicit removal and re-enrollment did not admit the new physical object";
+        EXPECT_EQ(fc.m_pollingState->registrations.at({context->m_name, vid}).epoch, originalEpoch);
+        if (phy || serdes || perPort)
+        {
+            EXPECT_GT(replacementCalls.load(), 0u)
+                << "The baseline enrollment path must receive the requested physical RID";
+        }
+        auto poll = [&]
+        {
+            std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
+            context->clearSamples(fc.m_pollingState->statsMode);
+            polledRids.clear();
+            collecting = true;
+            context->collectData(table, [](swss::Table&) { return true; });
+            collecting = false;
+            return polledRids;
+        };
+        const auto retainedReads = poll();
+        const auto expectedRid = perPort && bulkEnrollment ? replacementRid : vid;
+        EXPECT_NE(std::find(retainedReads.begin(), retainedReads.end(), expectedRid), retainedReads.end());
+        EXPECT_EQ(std::find(retainedReads.begin(), retainedReads.end(),
+                    expectedRid == vid ? replacementRid : vid), retainedReads.end());
+        if (attribute)
+        {
+            EXPECT_GT(updatedAttributeReads.load(), 0u)
+                << "Baseline attribute refresh changes the attribute list while retaining its RID";
+        }
         fc.removeCounter(vid);
+        enroll(vid, replacementRid);
+        const auto reenrolledReads = poll();
+        EXPECT_NE(std::find(reenrolledReads.begin(), reenrolledReads.end(), replacementRid), reenrolledReads.end());
+        EXPECT_GT(fc.m_pollingState->registrations.at({context->m_name, vid}).epoch, originalEpoch);
+        fc.removeCounter(vid);
+        fc.removeCounter(otherVid);
         table.del(toOid(vid));
         table.del("TIME_STAMP");
         if (serdes)
@@ -5844,7 +5795,7 @@ TEST(FlexCounter, contextOwnsPollingStateBeyondCounterLifetime)
         weakState = context->m_pollingState;
 
         std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
-        fc.m_pollingState->registrations[{context->m_name, vid}] = {17, vid};
+        fc.m_pollingState->registrations[{context->m_name, vid}] = {17};
         fc.m_pollingState->yielded = true;
         fc.m_pollingState->statsMode = SAI_STATS_MODE_READ_AND_CLEAR;
         context->clearSamples(fc.m_pollingState->statsMode);
@@ -5961,11 +5912,10 @@ TEST(FlexCounter, replacementExceptionAfterRemovalErasesObsoleteRegistration)
     fc.addCounter(vid, replacementRid, values);
     EXPECT_FALSE(fc.isEmpty());
     ASSERT_EQ(fc.m_pollingState->registrations.size(), 1u);
-    EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.rid, replacementRid);
     fc.removeCounter(vid);
 }
 
-TEST(FlexCounter, invalidBulkEnrollmentDoesNotProbeOrMutateLiveRegistrations)
+TEST(FlexCounter, mismatchedBulkEnrollmentDoesNotProbeOrMutateMembership)
 {
     auto vendor = std::make_shared<MockableSaiInterface>();
     const auto objects = generateOids(2, SAI_OBJECT_TYPE_PORT);
@@ -6015,14 +5965,12 @@ TEST(FlexCounter, invalidBulkEnrollmentDoesNotProbeOrMutateLiveRegistrations)
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {}, {}, values);
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, objects, {objects.front()}, values);
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {objects.front()}, objects, values);
-    fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {objects.front(), objects.front()}, objects, values);
     EXPECT_EQ(calls, 0u);
     ASSERT_EQ(fc.m_pollingState->registrations.size(), initial.size());
     for (const auto& registration : initial)
     {
         const auto current = fc.m_pollingState->registrations.find(registration.first);
         ASSERT_NE(current, fc.m_pollingState->registrations.end());
-        EXPECT_EQ(current->second.rid, registration.second.rid);
         EXPECT_EQ(current->second.epoch, registration.second.epoch);
     }
     fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {objects.front(), objects.front()},
@@ -6030,7 +5978,7 @@ TEST(FlexCounter, invalidBulkEnrollmentDoesNotProbeOrMutateLiveRegistrations)
     EXPECT_FALSE(bulkCounts.empty());
     for (const auto count : bulkCounts)
     {
-        EXPECT_EQ(count, 1u) << "Exact duplicate bulk inputs must be deduplicated before SDK calls";
+        EXPECT_EQ(count, 1u) << "Baseline bulk contexts deduplicate repeated VID inputs";
     }
     for (const auto oid : objects)
     {
@@ -6038,12 +5986,13 @@ TEST(FlexCounter, invalidBulkEnrollmentDoesNotProbeOrMutateLiveRegistrations)
     }
 }
 
-TEST(FlexCounter, conflictingPhysicalFragmentsAreQuarantinedTogether)
+TEST(FlexCounter, mixedPhysicalFragmentsPreserveBaselineMembership)
 {
     auto vendor = std::make_shared<MockableSaiInterface>();
     const auto objects = generateOids(2, SAI_OBJECT_TYPE_PORT);
     const auto vid = objects.front();
     uint32_t calls = 0;
+    std::vector<sai_object_id_t> polledRids;
     vendor->mock_queryStatsCapability = [&](sai_object_id_t, sai_object_type_t,
             sai_stat_capability_list_t* capability)
     {
@@ -6062,10 +6011,14 @@ TEST(FlexCounter, conflictingPhysicalFragmentsAreQuarantinedTogether)
         return SAI_STATUS_SUCCESS;
     };
     vendor->mock_bulkGetStats = [&](sai_object_id_t, sai_object_type_t,
-            uint32_t count, const sai_object_key_t*, uint32_t statCount,
+            uint32_t count, const sai_object_key_t* keys, uint32_t statCount,
             const sai_stat_id_t*, sai_stats_mode_t, sai_status_t* statuses, uint64_t* values)
     {
         ++calls;
+        for (uint32_t i = 0; i < count && statCount != 0; ++i)
+        {
+            polledRids.push_back(keys[i].key.object_id);
+        }
         std::fill(statuses, statuses + count, SAI_STATUS_SUCCESS);
         std::fill(values, values + count * statCount, 7);
         return SAI_STATUS_SUCCESS;
@@ -6077,27 +6030,35 @@ TEST(FlexCounter, conflictingPhysicalFragmentsAreQuarantinedTogether)
     fc.addCounter(vid, vid, original);
     ASSERT_EQ(fc.m_counterContext.size(), 1u);
     const auto context = fc.m_counterContext.begin()->second;
-    // Inject inherited malformed state directly at the context API: ordinary
-    // dispatch rejects this replacement, so it cannot create the bad state.
+    // Baseline bulk enrollment can retain separate counter fragments with
+    // different RIDs for the same VID. Membership tracks that logical VID,
+    // without introducing an independent physical-identity cleanup policy.
     {
         std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
         context->bulkAddObject({vid}, {objects.back()}, {"SAI_PORT_STAT_IF_IN_UCAST_PKTS"}, "");
     }
-    const auto conflict = context->getObjectRids({vid});
-    ASSERT_EQ(conflict.size(), 1u);
-    EXPECT_FALSE(conflict.begin()->second.consistent);
-    const auto previousCalls = calls;
-    fc.addCounter(vid, vid, original);
-    EXPECT_EQ(calls, previousCalls) << "Quarantine must run before further support probes";
-    EXPECT_TRUE(fc.isEmpty()) << "All scalar and bulk fragments must be removed, not only the first match";
-    EXPECT_TRUE(context->getObjectRids({vid}).empty());
-    EXPECT_TRUE(fc.m_pollingState->registrations.empty());
-    // Once the malformed registration is gone, a normal fresh enrollment works.
-    fc.addCounter(vid, vid, original);
+    const auto originalEpoch = fc.m_pollingState->registrations.begin()->second.epoch;
+    fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, {vid}, {vid}, original);
     EXPECT_FALSE(fc.isEmpty());
+    EXPECT_EQ(context->getObjectVids({vid}), std::set<sai_object_id_t>{vid});
     ASSERT_EQ(fc.m_pollingState->registrations.size(), 1u);
-    EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.rid, vid);
+    EXPECT_EQ(fc.m_pollingState->registrations.begin()->second.epoch, originalEpoch);
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table table(&db, COUNTERS_TABLE);
+    {
+        std::lock_guard<std::mutex> lock(fc.m_syncState.mutex);
+        context->clearSamples(fc.m_pollingState->statsMode);
+        polledRids.clear();
+        context->collectData(table, [](swss::Table&) { return true; });
+    }
+    EXPECT_NE(std::find(polledRids.begin(), polledRids.end(), vid), polledRids.end());
+    EXPECT_NE(std::find(polledRids.begin(), polledRids.end(), objects.back()), polledRids.end());
     fc.removeCounter(vid);
+    EXPECT_TRUE(fc.isEmpty());
+    EXPECT_TRUE(context->getObjectVids({vid}).empty());
+    EXPECT_TRUE(fc.m_pollingState->registrations.empty());
+    table.del(toOid(vid));
+    table.del("TIME_STAMP");
 }
 
 TEST(FlexCounter, pendingModeChangeWakesNextSweepWithoutIntervalUpdate)
@@ -6237,19 +6198,29 @@ TEST(FlexCounter, bulkOverallSuccessDoesNotRequireObjectStatuses)
     testBulkResultContract(FlexCounterBulkResult::SuccessWithoutObjectStatuses);
 }
 
-TEST(FlexCounter, bulkOverallFailureWithoutObjectStatusesPreservesPreviousValues)
+TEST(FlexCounter, bulkOverallFailureUsesInitializedObjectStatuses)
 {
     testBulkResultContract(FlexCounterBulkResult::FailureWithoutObjectStatuses);
 }
 
-TEST(FlexCounter, bulkOverallFailurePublishesOnlySuccessfulObjects)
+TEST(FlexCounter, bulkOverallFailureHonorsObjectStatuses)
 {
     testBulkResultContract(FlexCounterBulkResult::PartialFailure);
 }
 
-TEST(FlexCounter, bulkPartialFailureSkipsUntouchedObjectStatus)
+TEST(FlexCounter, bulkFailureRetainsUntouchedSuccessfulObjectStatus)
 {
     testBulkResultContract(FlexCounterBulkResult::PartialFailureWithUntouchedObject);
+}
+
+TEST(FlexCounter, bulkOverallSuccessHonorsObjectStatuses)
+{
+    testBulkResultContract(FlexCounterBulkResult::SuccessWithObjectFailure);
+}
+
+TEST(FlexCounter, bulkObjectFailureStatusSurvivesUntouchedSuccessfulPass)
+{
+    testBulkResultContract(FlexCounterBulkResult::FailureThenSuccessWithUntouchedStatuses);
 }
 
 TEST(FlexCounter, pendingRemovalPreservesBulkReadAndClearSample)
@@ -6262,7 +6233,7 @@ TEST(FlexCounter, pendingEnrollmentExcludesUnsampledPluginKey)
     testPendingUpdatePreemptsSweep(false, true, FlexCounterPendingUpdate::Add);
 }
 
-TEST(FlexCounter, pendingReenrollmentInvalidatesClearedPluginSample)
+TEST(FlexCounter, pendingChangedRidRefreshPreservesClearedPluginSample)
 {
     testPendingUpdatePreemptsSweep(false, true, FlexCounterPendingUpdate::Reenroll);
 }
@@ -6272,7 +6243,7 @@ TEST(FlexCounter, pendingBulkEnrollmentExcludesUnsampledPluginKey)
     testPendingUpdatePreemptsSweep(true, true, FlexCounterPendingUpdate::Add);
 }
 
-TEST(FlexCounter, pendingBulkReenrollmentInvalidatesClearedPluginSample)
+TEST(FlexCounter, pendingBulkChangedRidRefreshPreservesClearedPluginSample)
 {
     testPendingUpdatePreemptsSweep(true, true, FlexCounterPendingUpdate::Reenroll);
 }
@@ -6466,24 +6437,24 @@ TEST(FlexCounter, pendingPluginArgumentsKeepSixPositionsAndFrozenCycleConfigurat
     table.del("TIME_STAMP");
 }
 
-TEST(FlexCounter, attributeRidReplacementRequiresExplicitRemoval)
+TEST(FlexCounter, attributeRidRefreshPreservesBaselineAfterPass)
 {
-    testSpecializedReplacementRequiresRemoval(FlexCounterSpecializedContext::Attribute);
+    testSpecializedReplacementPreservesBaseline(FlexCounterSpecializedContext::Attribute);
 }
 
-TEST(FlexCounter, phyRidReplacementRequiresExplicitRemoval)
+TEST(FlexCounter, phyRidRefreshPreservesBaselineAfterPass)
 {
-    testSpecializedReplacementRequiresRemoval(FlexCounterSpecializedContext::Phy);
+    testSpecializedReplacementPreservesBaseline(FlexCounterSpecializedContext::Phy);
 }
 
-TEST(FlexCounter, serdesRidReplacementRequiresExplicitRemoval)
+TEST(FlexCounter, serdesRidRefreshPreservesBaselineAfterPass)
 {
-    testSpecializedReplacementRequiresRemoval(FlexCounterSpecializedContext::Serdes);
+    testSpecializedReplacementPreservesBaseline(FlexCounterSpecializedContext::Serdes);
 }
 
-TEST(FlexCounter, perPortDiscoveryRidReplacementRequiresExplicitRemoval)
+TEST(FlexCounter, perPortDiscoveryScalarRefreshPreservesBaselineAfterPass)
 {
-    testSpecializedReplacementRequiresRemoval(FlexCounterSpecializedContext::PerPortDiscovery);
+    testSpecializedReplacementPreservesBaseline(FlexCounterSpecializedContext::PerPortDiscovery);
 }
 
 TEST(FlexCounter, sameRidRefreshRetainsEpochUntilExplicitRemoval)
@@ -6518,7 +6489,6 @@ TEST(FlexCounter, sameRidRefreshRetainsEpochUntilExplicitRemoval)
     fixture.enroll({vid}, {vid});
     EXPECT_EQ(fixture.registration(vid).epoch, initial.epoch)
         << "Bulk same-RID refresh created a new registration lifetime";
-    EXPECT_EQ(fixture.registration(vid).rid, vid);
     expectSampleState(true, true);
 
     fixture.counter->removeCounter(vid);
@@ -6527,7 +6497,6 @@ TEST(FlexCounter, sameRidRefreshRetainsEpochUntilExplicitRemoval)
     expectSampleState(false, false);
     fixture.enroll({vid}, {vid});
     const auto reenrolled = fixture.registration(vid);
-    EXPECT_EQ(reenrolled.rid, vid);
     EXPECT_GT(reenrolled.epoch, initial.epoch)
         << "Same-RID re-enrollment reused the deleted registration's epoch";
     expectSampleState(false, false);
@@ -6543,20 +6512,16 @@ TEST(FlexCounter, sameRidRefreshRetainsEpochUntilExplicitRemoval)
     expectSampleState(true, true);
 }
 
-TEST(FlexCounter, bulkRidReplacementUsesScalarFallbackEnrollment)
+TEST(FlexCounter, bulkRidReplacementUsesBaselineScalarFallback)
 {
     FlexCounterBulkReplacementFixture fixture;
     const auto vid = fixture.objects[0], replacement = fixture.objects[1];
     fixture.enroll({vid}, {vid});
     const auto original = fixture.registration(vid);
     fixture.enroll({vid}, {replacement});
-    const auto actual = fixture.actual({vid});
-    ASSERT_EQ(actual.size(), 1u);
-    EXPECT_TRUE(actual.at(vid).consistent);
-    EXPECT_EQ(actual.at(vid).rid, replacement);
-    const auto replaced = fixture.registration(vid);
-    EXPECT_EQ(replaced.rid, replacement);
-    EXPECT_NE(replaced.epoch, original.epoch);
+    EXPECT_EQ(fixture.actual({vid}), std::set<sai_object_id_t>{vid});
+    EXPECT_EQ(fixture.registration(vid).epoch, original.epoch);
+    EXPECT_EQ(fixture.pollRids(), std::vector<sai_object_id_t>{replacement});
     fixture.setHardware(replacement, 333);
     fixture.gate.arm();
     fixture.counter->addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
@@ -6568,20 +6533,18 @@ TEST(FlexCounter, bulkRidReplacementUsesScalarFallbackEnrollment)
     EXPECT_EQ(fixture.gate.reads(), std::vector<sai_object_id_t>{replacement});
 }
 
-TEST(FlexCounter, bulkRidReplacementRetiresExistingBulkFragment)
+TEST(FlexCounter, bulkRidRefreshPreservesBaselineDuplicateFragment)
 {
     FlexCounterBulkReplacementFixture fixture(true);
     const auto vid = fixture.objects[0], replacement = fixture.objects[1];
     fixture.enroll({vid}, {vid});
     const auto original = fixture.registration(vid);
     fixture.enroll({vid}, {replacement});
-    const auto actual = fixture.actual({vid});
-    ASSERT_EQ(actual.size(), 1u);
-    EXPECT_TRUE(actual.at(vid).consistent) << "Old and new physical RID fragments coexist";
-    EXPECT_EQ(actual.at(vid).rid, replacement);
-    EXPECT_EQ(fixture.registration(vid).rid, replacement);
-    EXPECT_NE(fixture.registration(vid).epoch, original.epoch);
-    fixture.setHardware(replacement, 444);
+    EXPECT_EQ(fixture.actual({vid}), std::set<sai_object_id_t>{vid});
+    EXPECT_EQ(fixture.registration(vid).epoch, original.epoch);
+    EXPECT_EQ(fixture.pollRids(), std::vector<sai_object_id_t>{vid})
+        << "Baseline bulk duplicate handling keeps the existing physical fragment";
+    fixture.setHardware(vid, 444);
     fixture.gate.arm();
     fixture.counter->addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
     const bool started = fixture.gate.waitForFirst();
@@ -6589,38 +6552,38 @@ TEST(FlexCounter, bulkRidReplacementRetiresExistingBulkFragment)
     EXPECT_TRUE(started);
     waitForCounterValues(fixture.table, toOid(vid), {"SAI_QUEUE_STAT_PACKETS"}, {"444"});
     fixture.counter->endFlexCounterThread();
-    EXPECT_EQ(fixture.gate.reads(), std::vector<sai_object_id_t>{replacement});
+    EXPECT_EQ(fixture.gate.reads(), std::vector<sai_object_id_t>{vid});
 }
 
-TEST(FlexCounter, rejectedBulkRidReplacementPreservesLiveIdentityAndPendingDelta)
+TEST(FlexCounter, rejectedBulkRidReplacementPreservesMembershipAndPendingDelta)
 {
     testRejectedBulkReplacementPreservesDelta(false);
 }
 
-TEST(FlexCounter, throwingBulkRidReplacementPreservesLiveIdentityAndPendingDelta)
+TEST(FlexCounter, throwingBulkRidReplacementPreservesMembershipAndPendingDelta)
 {
     testRejectedBulkReplacementPreservesDelta(true);
 }
 
-TEST(FlexCounter, bulkRidReplacementExceptionAfterRemovalErasesObsoleteRegistration)
+TEST(FlexCounter, bulkRidProbeExceptionPreservesExistingMembership)
 {
     FlexCounterBulkReplacementFixture fixture(true);
     const auto vid = fixture.objects[0], replacement = fixture.objects[1];
     fixture.enroll({vid}, {vid});
+    const auto original = fixture.registration(vid);
     fixture.throwAfterRemovalRid = replacement;
     EXPECT_THROW(fixture.enroll({vid}, {replacement}), std::runtime_error);
-    EXPECT_TRUE(fixture.actual({vid}).empty());
-    EXPECT_TRUE(fixture.counter->m_pollingState->registrations.empty());
-    EXPECT_TRUE(fixture.counter->isEmpty());
+    EXPECT_EQ(fixture.actual({vid}), std::set<sai_object_id_t>{vid});
+    EXPECT_EQ(fixture.registration(vid).epoch, original.epoch);
     EXPECT_EQ(fixture.counter->m_syncState.pendingUpdates.load(), 0u);
     EXPECT_EQ(fixture.counter->m_syncState.deferredUpdates, 0u);
     fixture.throwAfterRemovalRid = SAI_NULL_OBJECT_ID;
+    EXPECT_EQ(fixture.pollRids(), std::vector<sai_object_id_t>{vid});
     fixture.enroll({vid}, {replacement});
-    EXPECT_EQ(fixture.actual({vid}).at(vid).rid, replacement);
-    EXPECT_EQ(fixture.registration(vid).rid, replacement);
+    EXPECT_EQ(fixture.pollRids(), std::vector<sai_object_id_t>{vid});
 }
 
-TEST(FlexCounter, mixedBulkRidReplacementKeepsFreshAndSameRidMembersBatched)
+TEST(FlexCounter, mixedBulkRidRefreshKeepsBaselineBatchAndDuplicateHandling)
 {
     FlexCounterBulkReplacementFixture fixture(true);
     const auto changed = fixture.objects[0], same = fixture.objects[1];
@@ -6629,86 +6592,104 @@ TEST(FlexCounter, mixedBulkRidReplacementKeepsFreshAndSameRidMembersBatched)
     const auto changedBefore = fixture.registration(changed), sameBefore = fixture.registration(same);
     fixture.bulkCalls.clear();
     fixture.enroll({fresh, same, changed}, {fresh, same, replacement});
-    const auto actual = fixture.actual({fresh, same, changed});
-    ASSERT_EQ(actual.size(), 3u);
-    for (const auto& object : actual)
-    {
-        EXPECT_TRUE(object.second.consistent);
-        EXPECT_EQ(fixture.registration(object.first).rid, object.second.rid);
-    }
-    EXPECT_EQ(actual.at(changed).rid, replacement);
-    EXPECT_EQ(actual.at(same).rid, same);
-    EXPECT_EQ(actual.at(fresh).rid, fresh);
-    EXPECT_NE(fixture.registration(changed).epoch, changedBefore.epoch);
+    const std::set<sai_object_id_t> expected = {fresh, same, changed};
+    EXPECT_EQ(fixture.actual({fresh, same, changed}), expected);
+    EXPECT_EQ(fixture.registration(changed).epoch, changedBefore.epoch);
     EXPECT_EQ(fixture.registration(same).epoch, sameBefore.epoch);
     EXPECT_NE(std::find(fixture.bulkCalls.begin(), fixture.bulkCalls.end(),
-                std::vector<sai_object_id_t>{fresh, same}), fixture.bulkCalls.end())
-        << "Fresh and same-RID members were unnecessarily converted to per-object enrollment";
-    EXPECT_EQ(std::find(fixture.bulkCalls.begin(), fixture.bulkCalls.end(),
                 std::vector<sai_object_id_t>{fresh, same, replacement}), fixture.bulkCalls.end())
-        << "The changed-RID member reached the old duplicate-retaining bulk path";
+        << "Changed-RID members must still reach the baseline bulk enrollment method";
+    const auto polled = fixture.pollRids();
+    EXPECT_EQ(std::set<sai_object_id_t>(polled.begin(), polled.end()), expected);
 }
 
-TEST(FlexCounter, mixedBulkRidReplacementExceptionReconcilesAttemptedMembersOnly)
+TEST(FlexCounter, mixedBulkRidProbeExceptionReconcilesPartialMembership)
 {
     FlexCounterBulkReplacementFixture fixture;
-    const auto changed = fixture.objects[0], removed = fixture.objects[1], same = fixture.objects[2];
+    const auto changed = fixture.objects[0], retained = fixture.objects[1], same = fixture.objects[2];
     const auto fresh = fixture.objects[3], replacement = fixture.objects[4], throwing = fixture.objects[5];
     const auto unattempted = fixture.objects[6], laterReplacement = fixture.objects[7];
-    fixture.enroll({changed, removed, same, unattempted}, {changed, removed, same, unattempted});
-    const auto changedBefore = fixture.registration(changed), sameBefore = fixture.registration(same);
-    const auto untouchedBefore = fixture.registration(unattempted);
-    fixture.throwAfterRemovalRid = throwing;
-    EXPECT_THROW(fixture.enroll({fresh, same, changed, removed, unattempted},
+    fixture.enroll({changed, retained, same, unattempted}, {changed, retained, same, unattempted});
+    const auto initial = fixture.counter->m_pollingState->registrations;
+    fixture.failingRid = throwing;
+    fixture.probeFailure = FlexCounterBulkReplacementFixture::ProbeFailure::Throw;
+    EXPECT_THROW(fixture.enroll({fresh, same, changed, retained, unattempted},
                 {fresh, same, replacement, throwing, laterReplacement}), std::runtime_error);
-    const auto actual = fixture.actual({fresh, same, changed, removed, unattempted});
-    ASSERT_EQ(actual.size(), 4u);
-    EXPECT_EQ(actual.count(removed), 0u);
-    EXPECT_EQ(actual.at(changed).rid, replacement);
-    EXPECT_EQ(actual.at(fresh).rid, fresh);
-    EXPECT_EQ(actual.at(same).rid, same);
-    EXPECT_EQ(actual.at(unattempted).rid, unattempted);
-    ASSERT_EQ(fixture.counter->m_pollingState->registrations.size(), actual.size());
-    for (const auto& object : actual)
+    const std::set<sai_object_id_t> expected = {fresh, same, changed, retained, unattempted};
+    EXPECT_EQ(fixture.actual({fresh, same, changed, retained, unattempted}), expected);
+    ASSERT_EQ(fixture.counter->m_pollingState->registrations.size(), expected.size());
+    for (const auto& registration : initial)
     {
-        EXPECT_TRUE(object.second.consistent);
-        EXPECT_EQ(fixture.registration(object.first).rid, object.second.rid);
+        EXPECT_EQ(fixture.counter->m_pollingState->registrations.at(registration.first).epoch,
+                registration.second.epoch);
     }
-    EXPECT_NE(fixture.registration(changed).epoch, changedBefore.epoch);
-    EXPECT_EQ(fixture.registration(same).epoch, sameBefore.epoch);
-    const auto untouchedAfter = fixture.registration(unattempted);
-    EXPECT_EQ(untouchedAfter.rid, untouchedBefore.rid);
-    EXPECT_EQ(untouchedAfter.epoch, untouchedBefore.epoch);
+    fixture.probeFailure = FlexCounterBulkReplacementFixture::ProbeFailure::None;
+    const auto polled = fixture.pollRids();
+    const std::set<sai_object_id_t> physical = {fresh, same, replacement, retained, unattempted};
+    EXPECT_EQ(std::set<sai_object_id_t>(polled.begin(), polled.end()), physical)
+        << "Only successful baseline fallback members may change physical enrollment";
     EXPECT_EQ(fixture.counter->m_syncState.pendingUpdates.load(), 0u);
     EXPECT_EQ(fixture.counter->m_syncState.deferredUpdates, 0u);
 }
 
-TEST(FlexCounter, bulkRidReplacementRepairsAcceptedNullPhysicalRid)
+TEST(FlexCounter, bulkRidFallbackRepairsAcceptedNullPhysicalRid)
 {
     FlexCounterBulkReplacementFixture fixture;
     const auto vid = fixture.objects[0], replacement = fixture.objects[1];
     fixture.counter->addCounter(vid, SAI_NULL_OBJECT_ID, fixture.values);
-    const auto actualBefore = fixture.actual({vid});
-    ASSERT_EQ(actualBefore.size(), 1u) << "The fixture must actually enroll the initial null SDK key";
-    ASSERT_EQ(actualBefore.at(vid).rid, SAI_NULL_OBJECT_ID);
+    ASSERT_EQ(fixture.actual({vid}), std::set<sai_object_id_t>{vid});
+    EXPECT_EQ(fixture.pollRids(), std::vector<sai_object_id_t>{SAI_NULL_OBJECT_ID});
     const auto original = fixture.registration(vid);
     fixture.enroll({vid}, {replacement});
-    const auto actual = fixture.actual({vid});
-    ASSERT_EQ(actual.size(), 1u);
-    EXPECT_TRUE(actual.at(vid).consistent);
-    EXPECT_EQ(actual.at(vid).rid, replacement);
-    EXPECT_EQ(fixture.registration(vid).rid, replacement);
-    EXPECT_NE(fixture.registration(vid).epoch, original.epoch);
+    EXPECT_EQ(fixture.actual({vid}), std::set<sai_object_id_t>{vid});
+    EXPECT_EQ(fixture.pollRids(), std::vector<sai_object_id_t>{replacement});
+    EXPECT_EQ(fixture.registration(vid).epoch, original.epoch);
 }
 
-TEST(FlexCounter, dashMeterRidReplacementRequiresExplicitRemoval)
+TEST(FlexCounter, duplicateBulkVidPreservesBaselineScalarFallback)
 {
-    testSpecializedReplacementRequiresRemoval(FlexCounterSpecializedContext::DashMeter);
+    FlexCounterBulkReplacementFixture fixture;
+    const auto vid = fixture.objects[0], first = fixture.objects[1], last = fixture.objects[2];
+    fixture.enroll({vid, vid}, {first, last});
+    EXPECT_EQ(fixture.actual({vid}), std::set<sai_object_id_t>{vid});
+    EXPECT_EQ(fixture.pollRids(), std::vector<sai_object_id_t>{last});
+    const auto initial = fixture.registration(vid);
+    fixture.enroll({vid, vid}, {last, first});
+    EXPECT_EQ(fixture.pollRids(), std::vector<sai_object_id_t>{first});
+    EXPECT_EQ(fixture.registration(vid).epoch, initial.epoch);
+}
+
+TEST(FlexCounter, perPortDiscoveryBulkFallbackPreservesRidReplacementAfterPass)
+{
+    testSpecializedReplacementPreservesBaseline(FlexCounterSpecializedContext::PerPortDiscovery, true);
+}
+
+TEST(FlexCounter, dashMeterRidRefreshPreservesBaselineAfterPass)
+{
+    testSpecializedReplacementPreservesBaseline(FlexCounterSpecializedContext::DashMeter);
 }
 
 TEST(FlexCounter, pendingScalarRefreshPreservesDeltaBeforeDestructiveProbe)
 {
     testDestructiveRefreshPreservesSamples(false, false);
+}
+
+TEST(FlexCounter, pendingChangedRidScalarRefreshPreservesDeltaBeforeDestructiveProbe)
+{
+    testDestructiveRefreshPreservesSamples(false, false, false, FlexCounterRefreshEnd::Complete,
+            false, false, FlexCounterRejectedReplacement::None, true);
+}
+
+TEST(FlexCounter, pendingChangedRidBulkFallbackPreservesDeltaBeforeDestructiveProbe)
+{
+    testDestructiveRefreshPreservesSamples(false, false, false, FlexCounterRefreshEnd::Complete,
+            false, false, FlexCounterRejectedReplacement::None, true, true);
+}
+
+TEST(FlexCounter, pendingChangedRidDiscoveryFallbackPreservesDeltaBeforeDestructiveProbe)
+{
+    testDestructiveRefreshPreservesSamples(false, false, false, FlexCounterRefreshEnd::Complete,
+            false, true, FlexCounterRejectedReplacement::None, true, true);
 }
 
 TEST(FlexCounter, rejectedReplacementPreservesLiveIdentityAndPendingDelta)
