@@ -35,9 +35,7 @@ namespace
     }
 
     /*
-     * Size orchagent uses for its enum capability buffer: it allocates
-     * enummetadata->valuescount entries before calling
-     * sai_query_attribute_enum_values_capability(). See
+     * Size orchagent uses for its enum capability. See
      * SwitchOrch::querySwitchMirrorOnDropCapability().
      */
     uint32_t metadataValuesCount(
@@ -177,7 +175,7 @@ TEST_F(SwitchVppSflowTest, queryAttrEnumValuesCapabilityReportsRequiredSize)
 
 /*
  * The dispatcher walks every provider and only then falls back on
- * SwitchStateBase, so registering the sFlow provider must not shadow the
+ * SwitchStateBase, so registering the provider must not shadow the
  * ones already there.
  */
 TEST_F(SwitchVppSflowTest, queryAttrEnumValuesCapabilityChainsProviders)
