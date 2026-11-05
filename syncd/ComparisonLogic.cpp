@@ -13,6 +13,9 @@
 
 #include <inttypes.h>
 
+#include <algorithm>
+#include <map>
+
 using namespace syncd;
 using namespace saimeta;
 
@@ -1166,6 +1169,109 @@ void ComparisonLogic::updateObjectStatus(
     }
 }
 
+std::vector<std::shared_ptr<SaiAttr>> ComparisonLogic::orderConditionSourcesFirst(
+        _In_ const std::shared_ptr<const SaiObj> obj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Depth of each attribute in the object type's valid only graph: 0 for
+     * an attribute that is not valid only, otherwise one more than its
+     * deepest condition source (mirror session VLAN_ID depends on
+     * VLAN_HEADER_VALID, which depends on TYPE).
+     */
+
+    std::map<sai_attr_id_t, size_t> depth;
+
+    auto info = sai_metadata_get_object_type_info(obj->getObjectType());
+
+    if (info != nullptr)
+    {
+        for (size_t pass = 0; pass < info->attrmetadatalength; pass++)
+        {
+            bool changed = false;
+
+            for (size_t i = 0; i < info->attrmetadatalength; i++)
+            {
+                auto md = info->attrmetadata[i];
+
+                for (size_t j = 0; j < md->validonlylength; j++)
+                {
+                    if (md->validonly[j]->type != SAI_ATTR_CONDITION_TYPE_NONE)
+                    {
+                        continue; // operator entry of a mixed condition, not an attribute
+                    }
+
+                    size_t d = depth[md->validonly[j]->attrid] + 1;
+
+                    if (d > depth[md->attrid])
+                    {
+                        depth[md->attrid] = d;
+                        changed = true;
+                    }
+                }
+            }
+
+            if (!changed)
+            {
+                break;
+            }
+        }
+    }
+
+    std::vector<std::shared_ptr<SaiAttr>> ordered;
+
+    for (auto &at: obj->getAllAttributes())
+    {
+        ordered.push_back(at.second);
+    }
+
+    std::sort(ordered.begin(), ordered.end(),
+            [&depth](const std::shared_ptr<SaiAttr> &a, const std::shared_ptr<SaiAttr> &b)
+            {
+                auto ida = a->getSaiAttr()->id;
+                auto idb = b->getSaiAttr()->id;
+                auto da = depth.count(ida) ? depth.at(ida) : 0;
+                auto db = depth.count(idb) ? depth.at(idb) : 0;
+
+                return (da != db) ? (da < db) : (ida < idb);
+            });
+
+    return ordered;
+}
+
+bool ComparisonLogic::isValidOnlyConditionUnmet(
+        _In_ const std::vector<sai_attribute_t> &attrs,
+        _In_ const sai_attr_metadata_t *meta)
+{
+    SWSS_LOG_ENTER();
+
+    if (meta == nullptr || !meta->isvalidonly)
+    {
+        return false;
+    }
+
+    return !sai_metadata_is_validonly_met(meta, (uint32_t)attrs.size(), attrs.data());
+}
+
+bool ComparisonLogic::isSetSkippedForUnmetValidOnly(
+        _In_ const std::vector<sai_attribute_t> &attrs,
+        _In_ const sai_attr_metadata_t *meta)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * OID attributes keep the existing path: a VID from the current view can
+     * point at an object the transition removes, and setAttr does not
+     * update the temporary view's reference counts.
+     */
+
+    return meta != nullptr
+        && SAI_HAS_FLAG_CREATE_AND_SET(meta->flags)
+        && !meta->isoidattribute
+        && isValidOnlyConditionUnmet(attrs, meta);
+}
+
 bool ComparisonLogic::performObjectSetTransition(
         _In_ AsicView &currentView,
         _In_ AsicView &temporaryView,
@@ -1212,10 +1318,34 @@ bool ComparisonLogic::performObjectSetTransition(
      * function must return true, just skip all create only attributes.
      */
 
-    for (auto &at: temporaryObj->getAllAttributes())
-    {
-        auto &temporaryAttr = at.second;
+    /*
+     * Valid only conditions are evaluated on the temporary object as it was
+     * created, before any attribute is carried over onto it below, so the
+     * result does not depend on the order attributes are processed in.
+     */
 
+    const auto temporarySnapshot = temporaryObj->getAllAttributes();
+
+    std::vector<sai_attribute_t> temporaryAttrs;
+
+    for (auto &at: temporarySnapshot)
+    {
+        temporaryAttrs.push_back(*at.second->getSaiAttr());
+    }
+
+    /*
+     * Each condition source of a valid only attribute goes before the
+     * attributes that depend on it (for WRED the colour enables and the ECN
+     * mark mode before the thresholds), so that a SET which makes a
+     * condition true is generated, and later executed, before the SET of an
+     * attribute that depends on it; a vendor SAI that enforces the condition
+     * would otherwise reject the dependent SET.
+     */
+
+    auto orderedTemporaryAttributes = orderConditionSourcesFirst(temporaryObj);
+
+    for (auto &temporaryAttr: orderedTemporaryAttributes)
+    {
         SWSS_LOG_INFO("first pass (temp): attr %s", temporaryAttr->getStrAttrId().c_str());
 
         const auto meta = temporaryAttr->getAttrMetadata();
@@ -1258,6 +1388,31 @@ bool ComparisonLogic::performObjectSetTransition(
              * attribute is CREATE_AND_SET that means we can update attribute
              * value on current best match object.
              */
+
+            if (isSetSkippedForUnmetValidOnly(temporaryAttrs, meta))
+            {
+                /*
+                 * The attribute is not valid on the temporary object (for
+                 * example a WRED colour threshold while that colour is
+                 * disabled), so the vendor SAI may reject a SET and the value
+                 * has no effect until the condition holds.  Keep the current
+                 * value on the temporary object instead; the next SET that
+                 * makes the condition hold brings the attribute along.
+                 */
+
+                if (performTransition)
+                {
+                    SWSS_LOG_NOTICE("Attr %s on %s is not valid only on temporary object, keeping current value %s instead of %s",
+                            meta->attridname,
+                            temporaryObj->m_str_object_id.c_str(),
+                            currentAttr->getStrAttrValue().c_str(),
+                            temporaryAttr->getStrAttrValue().c_str());
+
+                    temporaryObj->setAttr(std::make_shared<SaiAttr>(currentAttr->getStrAttrId(), currentAttr->getStrAttrValue()));
+                }
+
+                continue;
+            }
 
             if (SAI_HAS_FLAG_CREATE_AND_SET(meta->flags))
             {
@@ -1343,6 +1498,28 @@ bool ComparisonLogic::performObjectSetTransition(
          * still perform update on this attribute because it was passed during
          * creation.
          */
+
+        if (SAI_HAS_FLAG_CREATE_AND_SET(meta->flags) && !conditional && isSetSkippedForUnmetValidOnly(temporaryAttrs, meta))
+        {
+            /*
+             * Only the temporary object carries this attribute and it is not
+             * valid there, so the vendor SAI may reject a SET and the value
+             * has no effect until the condition holds.  No SET; the
+             * attribute stays on the temporary object, so ASIC_DB records a
+             * value the ASIC does not hold, inert until the condition holds
+             * and orchagent sets the attribute again.
+             */
+
+            if (performTransition)
+            {
+                SWSS_LOG_NOTICE("Missing current attr %s is not valid only on temporary object %s, not setting %s",
+                        meta->attridname,
+                        temporaryObj->m_str_object_id.c_str(),
+                        temporaryAttr->getStrAttrValue().c_str());
+            }
+
+            continue;
+        }
 
         if (SAI_HAS_FLAG_CREATE_AND_SET(meta->flags) && !conditional)
         {
@@ -1455,6 +1632,29 @@ bool ComparisonLogic::performObjectSetTransition(
         }
 
         SWSS_LOG_INFO("first pass (curr): attr %s", currentAttr->getStrAttrId().c_str());
+
+        if (isSetSkippedForUnmetValidOnly(temporaryAttrs, meta))
+        {
+            /*
+             * The temporary object does not carry this attribute and its
+             * valid only condition does not hold there, so there is nothing
+             * to bring to default: the vendor SAI may reject the SET and the
+             * value is not in effect.  Transfer the current value so the
+             * temporary object keeps what the ASIC holds.
+             */
+
+            if (performTransition)
+            {
+                SWSS_LOG_NOTICE("Present current attr %s:%s is not valid only on temporary object %s, transferring instead of bringing to default",
+                        meta->attridname,
+                        currentAttr->getStrAttrValue().c_str(),
+                        temporaryObj->m_str_object_id.c_str());
+
+                temporaryObj->setAttr(std::make_shared<SaiAttr>(currentAttr->getStrAttrId(), currentAttr->getStrAttrValue()));
+            }
+
+            continue;
+        }
 
         /*
          * Check if we are bringing one of the default created objects to
