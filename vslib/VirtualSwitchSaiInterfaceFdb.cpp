@@ -207,6 +207,8 @@ sai_status_t VirtualSwitchSaiInterface::flushFdbEntries(
                 SWSS_LOG_INFO("fdb entry is not tracked for aging: %s", it->first.c_str());
             }
 
+            ss->m_es_peer_fdb_learns.erase(it->first);
+
             /*
              * Since we are using &on fdbs then this will also clear local
              * data base.

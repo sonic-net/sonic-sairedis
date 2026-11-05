@@ -168,6 +168,10 @@ void SwitchStateBase::learnFdbInfo(
             m_fdb_info_set.erase(fi);
             m_fdb_info_set.insert(fi);
         }
+        else if (allowMacMove && isEsLagBridgePort(bridgePortId))
+        {
+            reportEsPeerFdbEntryHit(fi, sid);
+        }
 
         return;
     }
@@ -189,6 +193,106 @@ void SwitchStateBase::learnFdbInfo(
     m_fdb_info_set.insert(fi);
 
     processFdbInfo(fi, SAI_FDB_EVENT_MOVE);
+}
+
+bool SwitchStateBase::isEsLagBridgePort(
+        _In_ sai_object_id_t bridgePortId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+
+    if (get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridgePortId, 1, &attr) != SAI_STATUS_SUCCESS ||
+            objectTypeQuery(attr.value.oid) != SAI_OBJECT_TYPE_LAG)
+    {
+        return false;
+    }
+
+    attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_PORT_PROTECTION_NEXT_HOP_GROUP_ID;
+
+    if (get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridgePortId, 1, &attr) != SAI_STATUS_SUCCESS ||
+            attr.value.oid == SAI_NULL_OBJECT_ID)
+    {
+        return false;
+    }
+
+    // switched over, the ES's entries forward to its peers, not to the lag
+    attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_PORT_SET_SWITCHOVER;
+
+    return get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridgePortId, 1, &attr) != SAI_STATUS_SUCCESS ||
+        !attr.value.booldata;
+}
+
+// a learn the user did not act on is sent again on traffic after this long, a few times at most
+#define ES_PEER_FDB_LEARN_RETRY_S 60
+#define ES_PEER_FDB_LEARN_MAX 3
+
+void SwitchStateBase::reportEsPeerFdbEntryHit(
+        _In_ const FdbInfo &fi,
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * The user installs an EVPN ES peer's MAC on the local ES lag. A frame
+     * from the host on that lag is not a move, so without this learn the user
+     * never sees the host turn local; converting the entry is left to the user.
+     */
+
+    uint32_t now = (uint32_t)time(NULL);
+
+    auto it = m_es_peer_fdb_learns.find(serializedObjectId);
+
+    if (it == m_es_peer_fdb_learns.end())
+    {
+        it = m_es_peer_fdb_learns.emplace(serializedObjectId, EsPeerFdbLearn{0, 0, false}).first;
+    }
+    else if ((now - it->second.lastReport) < ES_PEER_FDB_LEARN_RETRY_S)
+    {
+        return;
+    }
+    else if (it->second.count >= ES_PEER_FDB_LEARN_MAX)
+    {
+        if (!it->second.warned)
+        {
+            it->second.warned = true;
+
+            SWSS_LOG_WARN("ES peer fdb entry %s is still static after %u learns on its bridge port, no more are sent",
+                    serializedObjectId.c_str(),
+                    it->second.count);
+        }
+
+        return;
+    }
+
+    it->second.count++;
+    it->second.lastReport = now;
+
+    SWSS_LOG_NOTICE("ES peer fdb entry %s hit by local traffic, reporting it learned on bridge port %s (%u of %u)",
+            serializedObjectId.c_str(),
+            sai_serialize_object_id(fi.getBridgePortId()).c_str(),
+            it->second.count,
+            ES_PEER_FDB_LEARN_MAX);
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = fi.getBridgePortId();
+
+    sai_fdb_event_notification_data_t data;
+
+    data.event_type = SAI_FDB_EVENT_LEARNED;
+    data.fdb_entry = fi.getFdbEntry();
+    data.attr_count = 2;
+    data.attr = attrs;
+
+    // the local DB keeps the static entry until the user changes it
+    send_fdb_event_notification(data);
 }
 
 void SwitchStateBase::updateFdbInfoOnSet(

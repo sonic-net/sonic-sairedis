@@ -444,6 +444,11 @@ sai_status_t SwitchStateBase::remove(
         return removeHostif(objectId);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_FDB_ENTRY)
+    {
+        m_es_peer_fdb_learns.erase(serializedObjectId);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
     {
         sai_object_id_t objectId;
@@ -623,6 +628,12 @@ sai_status_t SwitchStateBase::set(
         CHECK_STATUS(set_internal(objectType, serializedObjectId, attr));
 
         updateFdbInfoOnSet(serializedObjectId);
+
+        if (attr->id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
+        {
+            // an entry installed again on a bridge port is reported again
+            m_es_peer_fdb_learns.erase(serializedObjectId);
+        }
 
         return SAI_STATUS_SUCCESS;
     }

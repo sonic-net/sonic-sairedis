@@ -437,6 +437,22 @@ namespace saivs
             void updateFdbInfoOnSet(
                     _In_ const std::string &serializedObjectId);
 
+            /**
+             * @brief Tells whether a bridge port is an EVPN Ethernet segment (ES):
+             * a lag bridge port with a protection next hop group, not switched over.
+             */
+            bool isEsLagBridgePort(
+                    _In_ sai_object_id_t bridgePortId);
+
+            /**
+             * @brief Reports local traffic that reaches an ES peer's static FDB
+             * entry (static, allowing MAC move, on an ES lag bridge port) as
+             * learned on that bridge port. The entry is left as it is.
+             */
+            void reportEsPeerFdbEntryHit(
+                    _In_ const FdbInfo &fi,
+                    _In_ const std::string &serializedObjectId);
+
         protected:
 
             bool getLagFromPort(
@@ -871,6 +887,21 @@ namespace saivs
         public: // TODO private
 
             std::set<FdbInfo> m_fdb_info_set;
+
+            /**
+             * @brief Learns reported for traffic on ES peer FDB entries, by
+             * serialized FDB entry: how many, and when the last one was sent.
+             */
+            struct EsPeerFdbLearn
+            {
+                uint32_t count;
+
+                uint32_t lastReport;
+
+                bool warned;
+            };
+
+            std::map<std::string, EsPeerFdbLearn> m_es_peer_fdb_learns;
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 

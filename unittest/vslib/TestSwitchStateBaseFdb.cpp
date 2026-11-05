@@ -312,6 +312,160 @@ class SwitchStateBaseFdbTest : public ::testing::Test
             return events;
         }
 
+        struct FdbEvent
+        {
+            sai_fdb_event_t type;
+
+            sai_object_id_t bridgePortId;
+        };
+
+        // fdb events sent since the last call, with the bridge port they name
+        std::vector<FdbEvent> fdbEventsWithBridgePort()
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<FdbEvent> events;
+
+            while (m_eventQueue->size())
+            {
+                auto event = m_eventQueue->dequeue();
+
+                auto payload = std::dynamic_pointer_cast<EventPayloadNotification>(event->getPayload());
+
+                if (!payload || payload->getNotification()->getNotificationType() != SAI_SWITCH_NOTIFICATION_TYPE_FDB_EVENT)
+                {
+                    continue;
+                }
+
+                uint32_t count;
+                sai_fdb_event_notification_data_t* data = nullptr;
+
+                sai_deserialize_fdb_event_ntf(payload->getNotification()->getSerializedNotification(), count, &data);
+
+                for (uint32_t i = 0; i < count; i++)
+                {
+                    FdbEvent e = { data[i].event_type, SAI_NULL_OBJECT_ID };
+
+                    for (uint32_t a = 0; a < data[i].attr_count; a++)
+                    {
+                        if (data[i].attr[a].id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
+                        {
+                            e.bridgePortId = data[i].attr[a].value.oid;
+                        }
+                    }
+
+                    events.push_back(e);
+                }
+
+                sai_deserialize_free_fdb_event_ntf(count, data);
+            }
+
+            return events;
+        }
+
+        // a lag on the given member port with a bridge port, which is an EVPN Ethernet segment (ES) when it has a protection group
+        sai_object_id_t createLagBridgePort(
+                _In_ sai_object_id_t port,
+                _In_ bool withProtectionGroup)
+        {
+            SWSS_LOG_ENTER();
+
+            EXPECT_EQ(m_sw->remove(SAI_OBJECT_TYPE_BRIDGE_PORT, portBridgePort(port)), SAI_STATUS_SUCCESS);
+
+            sai_object_id_t lag = SAI_NULL_OBJECT_ID;
+
+            EXPECT_EQ(m_sw->create(SAI_OBJECT_TYPE_LAG, &lag, m_switchId, 0, nullptr), SAI_STATUS_SUCCESS);
+
+            sai_attribute_t attrs[2];
+
+            attrs[0].id = SAI_LAG_MEMBER_ATTR_LAG_ID;
+            attrs[0].value.oid = lag;
+            attrs[1].id = SAI_LAG_MEMBER_ATTR_PORT_ID;
+            attrs[1].value.oid = port;
+
+            sai_object_id_t member = SAI_NULL_OBJECT_ID;
+
+            EXPECT_EQ(m_sw->create(SAI_OBJECT_TYPE_LAG_MEMBER, &member, m_switchId, 2, attrs), SAI_STATUS_SUCCESS);
+
+            auto bp = createBridgePort(lag);
+
+            if (withProtectionGroup)
+            {
+                sai_attribute_t attr;
+
+                attr.id = SAI_NEXT_HOP_GROUP_ATTR_TYPE;
+                attr.value.s32 = SAI_NEXT_HOP_GROUP_TYPE_BRIDGE_PORT;
+
+                sai_object_id_t nhg = SAI_NULL_OBJECT_ID;
+
+                EXPECT_EQ(m_sw->create(SAI_OBJECT_TYPE_NEXT_HOP_GROUP, &nhg, m_switchId, 1, &attr), SAI_STATUS_SUCCESS);
+
+                attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_PORT_PROTECTION_NEXT_HOP_GROUP_ID;
+                attr.value.oid = nhg;
+
+                EXPECT_EQ(m_sw->set(SAI_OBJECT_TYPE_BRIDGE_PORT, bp, &attr), SAI_STATUS_SUCCESS);
+            }
+
+            return bp;
+        }
+
+        // the entry an ES peer's MAC gets on the local ES: static, allowing MAC move
+        void createStaticEntry(
+                _In_ const sai_fdb_entry_t& fe,
+                _In_ sai_object_id_t bridgePortId,
+                _In_ bool allowMacMove)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attrs[3];
+
+            attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+            attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+            attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+            attrs[1].value.oid = bridgePortId;
+            attrs[2].id = SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE;
+            attrs[2].value.booldata = allowMacMove;
+
+            ASSERT_EQ(m_sw->create(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe), m_switchId, 3, attrs), SAI_STATUS_SUCCESS);
+        }
+
+        void setFdbAttr(
+                _In_ const sai_fdb_entry_t& fe,
+                _In_ sai_attr_id_t id,
+                _In_ int32_t value)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = id;
+
+            if (id == SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE)
+            {
+                attr.value.booldata = value != 0;
+            }
+            else
+            {
+                attr.value.s32 = value;
+            }
+
+            ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe), &attr), SAI_STATUS_SUCCESS);
+        }
+
+        // moves the last learn reported for an ES peer entry into the past
+        void backdateEsPeerLearn(
+                _In_ const sai_fdb_entry_t& fe,
+                _In_ uint32_t seconds)
+        {
+            SWSS_LOG_ENTER();
+
+            auto it = m_sw->m_es_peer_fdb_learns.find(sai_serialize_fdb_entry(fe));
+
+            ASSERT_NE(it, m_sw->m_es_peer_fdb_learns.end());
+
+            it->second.lastReport -= seconds;
+        }
+
     protected:
 
         const sai_object_id_t m_switchId = 0x2100000000;
@@ -633,4 +787,188 @@ TEST_F(SwitchStateBaseFdbTest, entryChangedByUserToDynamicIsTracked)
     ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, sid, &attr), SAI_STATUS_SUCCESS);
 
     EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+}
+
+TEST_F(SwitchStateBaseFdbTest, esPeerEntryHitByLocalTrafficIsReportedLearned)
+{
+    auto port = m_sw->m_port_list.at(0);
+
+    auto esBridgePort = createLagBridgePort(port, true);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x0a };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+
+    ASSERT_NO_FATAL_FAILURE(createStaticEntry(fe, esBridgePort, true));
+
+    // the host's frame on the ES lag is reported as a learn on the ES bridge port
+    sendFrame(port, mac);
+
+    auto events = fdbEventsWithBridgePort();
+
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].type, SAI_FDB_EVENT_LEARNED);
+    EXPECT_EQ(events[0].bridgePortId, esBridgePort);
+
+    // the entry is left as it is, and not aged
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_TYPE).value.s32, SAI_FDB_ENTRY_TYPE_STATIC);
+    EXPECT_TRUE(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE).value.booldata);
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID).value.oid, esBridgePort);
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+
+    // more frames right after it raise nothing
+    sendFrame(port, mac);
+
+    EXPECT_TRUE(fdbEvents().empty());
+
+    // the user makes it a local dynamic entry: traffic refreshes it and it ages
+    ASSERT_NO_FATAL_FAILURE(setFdbAttr(fe, SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE, false));
+    ASSERT_NO_FATAL_FAILURE(setFdbAttr(fe, SAI_FDB_ENTRY_ATTR_TYPE, SAI_FDB_ENTRY_TYPE_DYNAMIC));
+
+    ASSERT_NO_FATAL_FAILURE(backdateEsPeerLearn(fe, 100));
+
+    sendFrame(port, mac);
+
+    EXPECT_TRUE(fdbEvents().empty());
+    ASSERT_EQ(m_sw->m_fdb_info_set.size(), 1u);
+    EXPECT_EQ(m_sw->m_fdb_info_set.begin()->getBridgePortId(), esBridgePort);
+
+    ASSERT_NO_FATAL_FAILURE(setAgingTime(60));
+    ASSERT_NO_FATAL_FAILURE(backdate(mac, 1, 100));
+
+    m_sw->processFdbEntriesForAging();
+
+    EXPECT_FALSE(fdbEntryExists(fe));
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_AGED });
+    EXPECT_TRUE(m_sw->m_es_peer_fdb_learns.empty());
+}
+
+TEST_F(SwitchStateBaseFdbTest, esPeerEntryLearnIsSentAgainAFewTimes)
+{
+    auto port = m_sw->m_port_list.at(0);
+
+    auto esBridgePort = createLagBridgePort(port, true);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x0b };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+
+    ASSERT_NO_FATAL_FAILURE(createStaticEntry(fe, esBridgePort, true));
+
+    // the user drops the learn and keeps the static entry: traffic a minute later raises it again, 3 times in all
+    for (int i = 0; i < 3; i++)
+    {
+        sendFrame(port, mac);
+
+        EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED }) << "learn " << i + 1;
+
+        sendFrame(port, mac);
+
+        EXPECT_TRUE(fdbEvents().empty()) << "learn " << i + 1;
+
+        ASSERT_NO_FATAL_FAILURE(backdateEsPeerLearn(fe, 60));
+    }
+
+    sendFrame(port, mac);
+
+    EXPECT_TRUE(fdbEvents().empty());
+    EXPECT_TRUE(m_sw->m_es_peer_fdb_learns.at(sai_serialize_fdb_entry(fe)).warned);
+
+    // the entry installed again on its bridge port is reported again
+    sai_attribute_t attr;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attr.value.oid = esBridgePort;
+
+    ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe), &attr), SAI_STATUS_SUCCESS);
+
+    sendFrame(port, mac);
+
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
+
+    // so is a static entry made again
+    ASSERT_EQ(m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe)), SAI_STATUS_SUCCESS);
+    EXPECT_TRUE(m_sw->m_es_peer_fdb_learns.empty());
+
+    ASSERT_NO_FATAL_FAILURE(createStaticEntry(fe, esBridgePort, true));
+
+    sendFrame(port, mac);
+
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
+}
+
+TEST_F(SwitchStateBaseFdbTest, staticEntryOutsideAnEsIsNotReportedOnTraffic)
+{
+    auto port0 = m_sw->m_port_list.at(0);
+    auto port1 = m_sw->m_port_list.at(1);
+    auto port2 = m_sw->m_port_list.at(2);
+
+    auto esBridgePort = createLagBridgePort(port0, true);
+    auto lagBridgePort = createLagBridgePort(port1, false);
+
+    sai_mac_t esMac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x0c };
+    sai_mac_t lagMac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x0d };
+    sai_mac_t portMac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x0e };
+
+    // a static entry not allowing MAC move on the ES, one allowing it on a lag that is no ES, and one on a port
+    ASSERT_NO_FATAL_FAILURE(createStaticEntry(fdbEntry(esMac, m_vlan1), esBridgePort, false));
+    ASSERT_NO_FATAL_FAILURE(createStaticEntry(fdbEntry(lagMac, m_vlan1), lagBridgePort, true));
+    ASSERT_NO_FATAL_FAILURE(createStaticEntry(fdbEntry(portMac, m_vlan1), portBridgePort(port2), true));
+
+    sendFrame(port0, esMac);
+    sendFrame(port1, lagMac);
+    sendFrame(port2, portMac);
+
+    EXPECT_TRUE(fdbEvents().empty());
+    EXPECT_TRUE(m_sw->m_es_peer_fdb_learns.empty());
+    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
+
+    // each of these bridge ports learns a new MAC, so the frames above did reach learning
+    uint8_t last = 0x10;
+
+    for (auto& pb: std::vector<std::pair<sai_object_id_t, sai_object_id_t>>{
+            { port0, esBridgePort }, { port1, lagBridgePort }, { port2, portBridgePort(port2) } })
+    {
+        sai_mac_t newMac = { 0x00, 0x11, 0x22, 0x33, 0x44, last++ };
+
+        sendFrame(pb.first, newMac);
+
+        auto events = fdbEventsWithBridgePort();
+
+        ASSERT_EQ(events.size(), 1u);
+        EXPECT_EQ(events[0].type, SAI_FDB_EVENT_LEARNED);
+        EXPECT_EQ(events[0].bridgePortId, pb.second);
+    }
+}
+
+TEST_F(SwitchStateBaseFdbTest, esPeerEntryIsNotReportedWhileTheEsIsSwitchedOver)
+{
+    auto port = m_sw->m_port_list.at(0);
+
+    auto esBridgePort = createLagBridgePort(port, true);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x0f };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+
+    ASSERT_NO_FATAL_FAILURE(createStaticEntry(fe, esBridgePort, true));
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_PORT_SET_SWITCHOVER;
+    attr.value.booldata = true;
+
+    ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_BRIDGE_PORT, esBridgePort, &attr), SAI_STATUS_SUCCESS);
+
+    sendFrame(port, mac);
+
+    EXPECT_TRUE(fdbEvents().empty());
+
+    attr.value.booldata = false;
+
+    ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_BRIDGE_PORT, esBridgePort, &attr), SAI_STATUS_SUCCESS);
+
+    sendFrame(port, mac);
+
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
 }
