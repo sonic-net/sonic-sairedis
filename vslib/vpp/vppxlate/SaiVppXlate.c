@@ -4040,7 +4040,16 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
 
 int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
 {
-    return ip_route_add_del_get_stats(prefix, is_add, NULL);
+    /*
+     * Use the stats-index context slot even when the caller does not need the
+     * returned index. A context-zero route reply shares vat_main's generic
+     * completion flag, so a late reply from a timed-out route request could
+     * otherwise satisfy a later route wait. The context map rejects that
+     * stale reply after timeout and correlates the current reply to this
+     * synchronous request.
+     */
+    uint32_t ignored_stats_index;
+    return ip_route_add_del_get_stats(prefix, is_add, &ignored_stats_index);
 }
 
 static unsigned int ipv4_mask_len (uint32_t mask)

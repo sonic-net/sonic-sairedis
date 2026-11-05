@@ -85,5 +85,34 @@ int main(void)
     vl_api_sonic_ext_trim_global_set_reply_t_handler(&global);
     vl_api_sonic_ext_trim_dscp_map_set_reply_t_handler(&map);
     vl_api_sonic_ext_trim_queue_set_reply_t_handler(&queue);
-    return vat_main.result_ready ? 9 : 0;
+    if (vat_main.result_ready)
+        return 9;
+
+    /* Route replies must also be request-correlated. A released context
+     * models a late reply from a timed-out route request and must not satisfy
+     * the current generic wait; the live context completes exactly once. */
+    uint32_t route_stats = UINT32_MAX;
+    old_context = store_ptr(&route_stats);
+    release_index(old_context);
+    current_context = store_ptr(&route_stats);
+    vl_api_ip_route_add_del_reply_t route = {0};
+    route.context = old_context;
+    route.retval = 0;
+    route.stats_index = htonl(41);
+    vat_main.retval = 123;
+    vat_main.result_ready = 0;
+    vl_api_ip_route_add_del_reply_t_handler(&route);
+    if (vat_main.result_ready || vat_main.retval != 123 ||
+        route_stats != UINT32_MAX ||
+        get_index_ptr(current_context) != (uintptr_t)&route_stats)
+        return 10;
+
+    route.context = current_context;
+    route.stats_index = htonl(42);
+    vl_api_ip_route_add_del_reply_t_handler(&route);
+    if (!vat_main.result_ready || vat_main.retval || route_stats != 42 ||
+        get_index_ptr(current_context))
+        return 11;
+
+    return 0;
 }

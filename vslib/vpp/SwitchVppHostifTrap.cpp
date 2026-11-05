@@ -469,6 +469,14 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
 
                 semantic_active = true;
                 policer_oid = current_policer_oid;
+                if (isNeighborMissTrap(trap.trap_type))
+                {
+                    // The inactive request used by removal carries a
+                    // synthetic DROP action. When another unpoliced owner
+                    // keeps the shared row active, journal that surviving
+                    // owner's real action instead of the removal sentinel.
+                    effective_action = kv.second.packet_action;
+                }
                 auto pit = m_policer_map.find(policer_oid);
                 if (pit != m_policer_map.end())
                 {
@@ -492,6 +500,13 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
                 }
 
                 semantic_active = true;
+
+                if (isNeighborMissTrap(trap.trap_type))
+                {
+                    // DHCP computed its aggregate action above; neighbor
+                    // miss has one effective surviving owner here.
+                    effective_action = kv.second.packet_action;
+                }
 
                 auto git = m_trap_group_map.find(kv.second.trap_group_oid);
                 if (git == m_trap_group_map.end())

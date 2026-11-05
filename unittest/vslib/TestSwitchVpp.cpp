@@ -1445,6 +1445,88 @@ TEST_F(SwitchVppNeighborMissTrap, NullTrapGroupPolicerKeepsActiveNeighborMissUnp
     EXPECT_EQ(SAI_NULL_OBJECT_ID, readAttr.value.oid);
 }
 
+TEST_F(SwitchVppNeighborMissTrap, RemovingUnpolicedOwnerJournalsSurvivorAction)
+{
+    const sai_object_id_t trapGroupA = 0x1200000005;
+    const sai_object_id_t trapGroupB = 0x1200000006;
+    const sai_object_id_t trapA = 0x1200000007;
+    const sai_object_id_t trapB = 0x1200000008;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = SAI_NULL_OBJECT_ID;
+    m_sw->m_trap_group_map[trapGroupA] = group;
+    m_sw->m_trap_group_map[trapGroupB] = group;
+
+    vpp_trap_entry_t survivor{};
+    survivor.trap_type = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    survivor.packet_action = SAI_PACKET_ACTION_TRAP;
+    survivor.trap_group_oid = trapGroupA;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapA, survivor, ~0u));
+    survivor.classify_installed = true;
+    m_sw->m_trap_map[trapA] = survivor;
+
+    vpp_trap_entry_t removed = survivor;
+    removed.packet_action = SAI_PACKET_ACTION_COPY;
+    removed.trap_group_oid = trapGroupB;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapB, removed, ~0u));
+    removed.classify_installed = true;
+    m_sw->m_trap_map[trapB] = removed;
+
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_binding_map.begin()->second.packet_action);
+
+    vppMock().coppNeighborMissBindCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->uninstallTrapClassifyNow(trapB, removed));
+
+    ASSERT_EQ(1u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].policerName.empty());
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID,
+            m_sw->m_trap_binding_map.begin()->second.policer_oid);
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP,
+            m_sw->m_trap_binding_map.begin()->second.packet_action);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, MissingJournalUsesUnpolicedSurvivorAction)
+{
+    const sai_object_id_t trapGroup = 0x1200000009;
+    const sai_object_id_t survivorOid = 0x120000000a;
+    const sai_object_id_t removedOid = 0x120000000b;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = SAI_NULL_OBJECT_ID;
+    m_sw->m_trap_group_map[trapGroup] = group;
+
+    vpp_trap_entry_t survivor{};
+    survivor.trap_type = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    survivor.packet_action = SAI_PACKET_ACTION_COPY;
+    survivor.trap_group_oid = trapGroup;
+    survivor.classify_installed = true;
+    m_sw->m_trap_map[survivorOid] = survivor;
+
+    vpp_trap_entry_t removed = survivor;
+    removed.packet_action = SAI_PACKET_ACTION_TRAP;
+    m_sw->m_trap_map[removedOid] = removed;
+
+    ASSERT_TRUE(m_sw->m_trap_binding_map.empty());
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->uninstallTrapClassifyNow(removedOid, removed));
+
+    ASSERT_EQ(1u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].policerName.empty());
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_binding_map.begin()->second.packet_action);
+}
+
 TEST_F(SwitchVppNeighborMissTrap, CreateBindFailureRollsBackSaiObjectAndAllowsRetry)
 {
     const sai_object_id_t trapGroupOid = 0x1200000001;
@@ -2647,6 +2729,13 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
 
             if (u16(0) == 0x3333)
             {
+                const bool dhcp6 = tagged ?
+                    (u16(16) == 0x86dd && u16(58) == 546 && u16(60) == 547) :
+                    (u16(12) == 0x86dd && u16(54) == 546 && u16(56) == 547);
+                if (dhcp6)
+                {
+                    return member + "DHCPv6";
+                }
                 return member + "IPv6 multicast";
             }
 
@@ -2755,9 +2844,11 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
         // IPv6 multicast has a session in each of its two tables
         const Nexts NEXTS_WITHOUT_TRAP_LEARN = {
             {"untagged DHCPv4", {PUNT}},
+            {"untagged DHCPv6", {PUNT}},
             {"untagged ARP", {PUNT}},
             {"untagged IPv6 multicast", {PUNT}},
             {"tagged DHCPv4", {TRAP_FIXUP}},
+            {"tagged DHCPv6", {TRAP_FIXUP}},
             {"tagged ARP", {TRAP_FIXUP}},
             {"tagged IPv6 multicast", {TRAP_FIXUP, TRAP_FIXUP}},
             {"LLDP", {PUNT}},
@@ -2769,9 +2860,11 @@ TEST_F(SwitchVppL2TrapLearn, TrapsGoToTrapLearnWhenItIsOn)
 {
     expectPuntNexts(FEATURES, NODES, {
         {"untagged DHCPv4", {TRAP_LEARN}},
+        {"untagged DHCPv6", {TRAP_LEARN}},
         {"untagged ARP", {TRAP_LEARN}},
         {"untagged IPv6 multicast", {TRAP_LEARN}},
         {"tagged DHCPv4", {TRAP_LEARN}},
+        {"tagged DHCPv6", {TRAP_LEARN}},
         {"tagged ARP", {TRAP_LEARN}},
         {"tagged IPv6 multicast", {TRAP_LEARN, TRAP_LEARN}},
         {"LLDP", {PUNT}},
@@ -2804,6 +2897,7 @@ TEST_F(SwitchVppL2TrapLearn, TrapsDoNotGoToTrapLearnWithoutTrapFixup)
 {
     expectPuntNexts({"l2-trap-learn", "l2-vlan-filter"}, NODES, {
         {"untagged DHCPv4", {PUNT}},
+        {"untagged DHCPv6", {PUNT}},
         {"untagged ARP", {PUNT}},
         {"untagged IPv6 multicast", {PUNT}},
         {"LLDP", {PUNT}},
