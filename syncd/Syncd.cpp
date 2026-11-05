@@ -52,6 +52,35 @@ using namespace saimeta;
 using namespace sairediscommon;
 using namespace std::placeholders;
 
+namespace
+{
+    void clearPointerAttributes(
+            _In_ sai_object_type_t objectType,
+            _In_ uint32_t attrCount,
+            _Inout_ sai_attribute_t *attrList)
+    {
+        SWSS_LOG_ENTER();
+
+        for (uint32_t index = 0; index < attrCount; ++index)
+        {
+            const auto meta = sai_metadata_get_attr_metadata(objectType, attrList[index].id);
+
+            if (meta == nullptr)
+            {
+                SWSS_LOG_THROW("failed to find metadata for %s attr %d",
+                        sai_serialize_object_type(objectType).c_str(),
+                        attrList[index].id);
+            }
+
+            if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER && attrList[index].value.ptr != nullptr)
+            {
+                SWSS_LOG_INFO("clearing process-local pointer value for %s", meta->attridname);
+                attrList[index].value.ptr = nullptr;
+            }
+        }
+    }
+}
+
 #ifdef ASAN_ENABLED
 #define WD_DELAY_FACTOR 2
 #else
@@ -4959,6 +4988,11 @@ void Syncd::sendGetResponse(
 
     std::vector<swss::FieldValueTuple> entry;
 
+    if (status == SAI_STATUS_SUCCESS || status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        clearPointerAttributes(objectType, attr_count, attr_list);
+    }
+
     if (status == SAI_STATUS_SUCCESS)
     {
         m_translator->translateRidToVid(objectType, switchVid, attr_count, attr_list);
@@ -5040,6 +5074,14 @@ void Syncd::sendBulkGetResponse(
     {
         const auto objectStatus = statuses[idx];
         const auto objectStatusStr = sai_serialize_status(statuses[idx]);
+
+        if (objectStatus == SAI_STATUS_SUCCESS || objectStatus == SAI_STATUS_BUFFER_OVERFLOW)
+        {
+            clearPointerAttributes(
+                    objectType,
+                    attributes[idx]->get_attr_count(),
+                    attributes[idx]->get_attr_list());
+        }
 
         if (objectStatus == SAI_STATUS_SUCCESS)
         {

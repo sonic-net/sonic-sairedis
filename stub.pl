@@ -104,8 +104,8 @@ sub GetData
 
 sub SanitizeData
 {
-    $DATA =~ s/SAI_OBJECT_TYPE_\w*(START|END|NULL|MAX)//gms;
-    $DATA =~ s/SAI_API_\w*(START|END|UNSPECIFIED|MAX|EXTENSIONS_RANGE_BASE|CUSTOM_RANGE_BASE)//gms;
+    $DATA =~ s/\bSAI_OBJECT_TYPE_\w*(START|END|NULL|MAX)\b//gms;
+    $DATA =~ s/\bSAI_API_\w*(START|END|UNSPECIFIED|MAX|EXTENSIONS_RANGE_BASE|CUSTOM_RANGE_BASE)\b//gms;
 }
 
 sub ExtractData
@@ -253,7 +253,7 @@ sub CreateApiStricts()
             Write "    SWSS_LOG_ENTER();";
             Write "";
 
-            if ($fname =~ /(clearPortAllStats|removeAllNeighborEntries|recvHostifPacket|sendHostifPacket|allocateHostifPacket|freeHostifPacket)/)
+            if ($fname =~ /^(clearPortAllStats|removeAllNeighborEntries|recvHostifPacket|sendHostifPacket|allocateHostifPacket|freeHostifPacket|executePonAction)$/)
             {
                 Write "    SWSS_LOG_ERROR(\"FIXME, no implementation for $fname!\");";
                 Write "    return SAI_STATUS_NOT_IMPLEMENTED;";

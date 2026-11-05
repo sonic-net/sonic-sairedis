@@ -1,5 +1,6 @@
 #include "SwitchVpp.h"
 #include "SwitchVppUtils.h"
+#include "EventPayloadVppEvent.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/NotificationPortStateChange.h"
@@ -27,6 +28,7 @@
 #include <fstream>
 #include <algorithm>
 #include <set>
+#include <thread>
 
 using namespace saivs;
 
@@ -551,17 +553,18 @@ void SwitchVpp::resyncPortOperStatus()
             continue;
         }
 
-        auto prev_it = m_last_oper_up.find(tapname);
-        bool have_prev = (prev_it != m_last_oper_up.end());
+        auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
 
-        if (have_prev && prev_it->second == link_up)
+        // Compare with what SONiC was last told, which link events update too:
+        // a stale event may have been applied since an earlier resync
+        sai_attribute_t attr;
+        attr.id = SAI_PORT_ATTR_OPER_STATUS;
+
+        if (get(SAI_OBJECT_TYPE_PORT, info->m_portId, 1, &attr) == SAI_STATUS_SUCCESS &&
+            static_cast<sai_port_oper_status_t>(attr.value.s32) == state)
         {
             continue;
         }
-
-        m_last_oper_up[tapname] = link_up;
-
-        auto state = link_up ? SAI_PORT_OPER_STATUS_UP : SAI_PORT_OPER_STATUS_DOWN;
 
         send_port_oper_status_notification(info->m_portId, state, false);
 
@@ -575,9 +578,12 @@ void SwitchVpp::vppProcessEvents ()
 {
     SWSS_LOG_ENTER();
 
-    const struct timespec req = {2, 0};
+    // The thread wakes as soon as VPP pushes an event (MAC learn/age/move,
+    // link state, BFD); this only bounds the wait between liveness/reconnect
+    // pings when nothing arrives.
+    const int event_sync_interval_ms = 2000;
     vpp_event_info_t *evp;
-    int ret;
+    int ret = 0;
 
     // One-shot level oper-status resync at startup: recover the current link
     // state of any interface whose state was set before we subscribed to
@@ -585,49 +591,102 @@ void SwitchVpp::vppProcessEvents ()
     m_operResyncDue.store(true, std::memory_order_relaxed);
 
     while(m_run_vpp_events_thread) {
-        nanosleep(&req, NULL);
+        int ready = 0;
 
-        ret = vpp_sync_for_events();
-        SWSS_LOG_NOTICE("Checking for any VS events status %d", ret);
         if (ret < 0)
         {
-            SWSS_LOG_WARN("vpp_sync_for_events failed (%d); event socket reconnect attempted", ret);
-            // The read failure triggers an event-socket reconnect inside
-            // vpp_sync_for_events. VPP only re-delivers *future* edges after
-            // re-subscribe, so schedule a one-shot level resync to recover any
-            // edge missed during the outage (e.g. reboot/config-reload) - the
-            // exact case resyncPortOperStatus was added for. This is event-driven
-            // (not a periodic poll), so it does not exhaust the VPP client clib heap.
-            m_operResyncDue.store(true, std::memory_order_relaxed);
+            // The event socket failed in the last pass, and its reconnect may
+            // have failed too: try again an interval later, not right away
+            std::this_thread::sleep_for(std::chrono::milliseconds(event_sync_interval_ms));
+        }
+        else
+        {
+            ready = vpp_wait_for_events(event_sync_interval_ms);
+        }
+
+        // Read what VPP has sent. Only a quiet interval is checked with a ping,
+        // which also reconnects the event socket if it is down.
+        ret = ready > 0 ? vpp_drain_events() : vpp_sync_for_events();
+        // Runs once per event batch now, so keep it at DEBUG; failures log below
+        SWSS_LOG_DEBUG("Checking for any VS events status %d", ret);
+        if (ret < 0)
+        {
+            // The failure triggers an event-socket reconnect inside
+            // vpp_drain_events or vpp_sync_for_events. VPP only re-delivers
+            // *future* edges after re-subscribe, so a successful reconnect also
+            // queues a VPP_INTF_LINK_RESYNC event, behind the link events read
+            // before the failure: syncOnPlatformEvent applies those first, then
+            // re-reads the link state of every port (resyncPortOperStatus).
+            SWSS_LOG_WARN("vpp event socket failed (%d); reconnect attempted", ret);
         }
         while ((evp = vpp_ev_dequeue())) {
-            if (evp->type == VPP_INTF_LINK_STATUS) {
-                if (evp->data.intf_status.link_up) {
-                    /* Refresh cached link speed from VPP on link-up.
-                     * The initial sw_interface_dump may have cached speed=0
-                     * if the link was down at startup. */
-                    vpp_refresh_interface_speed(evp->data.intf_status.hwif_name);
-                }
-                asyncIntfStateUpdate(evp->data.intf_status.hwif_name,
-                                     evp->data.intf_status.link_up);
-                SWSS_LOG_NOTICE("Received port link event for %s state %s",
-                                evp->data.intf_status.hwif_name,
-                                evp->data.intf_status.link_up ? "UP" : "DOWN");
-            } else if (evp->type == VPP_BFD_STATE_CHANGE) {
-                SWSS_LOG_NOTICE("Received bfd state change event, multihop:%d, "
-                                "sw_idx:%d, state %d",
-                                evp->data.bfd_notif.multihop,
-                                evp->data.bfd_notif.sw_if_index,
-                                evp->data.bfd_notif.state);
-                asyncBfdStateUpdate(&evp->data.bfd_notif);
+            if (evp->type == VPP_INTF_LINK_STATUS && evp->data.intf_status.link_up) {
+                /* Refresh cached link speed from VPP on link-up.
+                 * The initial sw_interface_dump may have cached speed=0
+                 * if the link was down at startup. */
+                vpp_refresh_interface_speed(evp->data.intf_status.hwif_name);
             }
+            /* Applying a link or BFD state change updates Meta and the switch
+             * state, which this thread must not touch without m_apimutex: the
+             * vslib event queue thread applies it under that lock
+             * (syncOnPlatformEvent). */
+            auto payload = std::make_shared<EventPayloadVppEvent>(m_switch_id, *evp);
             vpp_ev_free(evp);
+            m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_PLATFORM_EVENT, payload));
         }
         // No periodic resync here. resyncPortOperStatus() issues per-interface
         // SW_INTERFACE_DUMPs; doing that every cycle exhausted VPP's client clib
         // heap (os_panic in clib_mem_heap_realloc_aligned). Resync is instead
-        // requested only at startup and after a reconnect (above), and executed
-        // on the command thread via serviceDeferredOperStatusResync().
+        // requested only at startup (serviceDeferredOperStatusResync()) and after
+        // a reconnect (VPP_INTF_LINK_RESYNC), and runs under m_apimutex.
+    }
+}
+
+void SwitchVpp::syncOnPlatformEvent(
+        _In_ std::shared_ptr<EventPayloadPlatformEvent> payload)
+{
+    SWSS_LOG_ENTER();
+
+    auto vppPayload = std::dynamic_pointer_cast<EventPayloadVppEvent>(payload);
+
+    if (!vppPayload)
+    {
+        SWSS_LOG_ERROR("platform event is not a VPP event, ignored");
+        return;
+    }
+
+    const vpp_event_info_t &ev = vppPayload->getEvent();
+
+    if (ev.type == VPP_INTF_LINK_STATUS)
+    {
+        asyncIntfStateUpdate(ev.data.intf_status.hwif_name, ev.data.intf_status.link_up);
+        SWSS_LOG_NOTICE("Received port link event for %s state %s",
+                        ev.data.intf_status.hwif_name,
+                        ev.data.intf_status.link_up ? "UP" : "DOWN");
+    }
+    else if (ev.type == VPP_BFD_STATE_CHANGE)
+    {
+        SWSS_LOG_NOTICE("Received bfd state change event, multihop:%d, "
+                        "sw_idx:%d, state %d",
+                        ev.data.bfd_notif.multihop,
+                        ev.data.bfd_notif.sw_if_index,
+                        ev.data.bfd_notif.state);
+        vpp_bfd_state_notif_t bfd_notif = ev.data.bfd_notif;
+        asyncBfdStateUpdate(&bfd_notif);
+    }
+    else if (ev.type == VPP_INTF_LINK_RESYNC)
+    {
+        // Link events were lost while the event socket was down. The ones read
+        // before that were queued ahead of this request, so they are applied by
+        // now and the resync gets the last word.
+        SWSS_LOG_NOTICE("Received link state resync request after an event socket reconnect");
+        resyncPortOperStatus();
+    }
+    else if (ev.type == VPP_BFD_RESYNC)
+    {
+        // Same for BFD events
+        SWSS_LOG_NOTICE("Received BFD state resync request after an event socket reconnect");
+        resyncBfdSessionState();
     }
 }
 
@@ -635,15 +694,37 @@ void SwitchVpp::serviceDeferredOperStatusResync()
 {
     SWSS_LOG_ENTER();
 
-    // Runs on the command thread (from the create/set/remove entry points).
-    // resyncPortOperStatus() issues VPP binary-API SW_INTERFACE_DUMPs; the event
-    // thread only *requests* a resync (m_operResyncDue) on startup and after an
-    // event-socket reconnect - never on a periodic timer - so this performs at
-    // most a handful of level reads over the switch lifetime, avoiding the VPP
+    // Runs under m_apimutex: on the command thread (from the create/set/remove
+    // entry points), or on the vslib event queue thread, which applies link and
+    // BFD state events (their notifications call set()).
+    // It services the one-shot resync the event thread requests when it starts;
+    // after a reconnect the request travels as a VPP_INTF_LINK_RESYNC event
+    // instead, so that it follows the link events queued before it.
+    // resyncPortOperStatus() issues VPP binary-API SW_INTERFACE_DUMPs, so it only
+    // runs on these requests - never on a periodic timer - avoiding the VPP
     // client clib-heap exhaustion that a continuous poll caused.
     if (m_operResyncDue.exchange(false, std::memory_order_relaxed))
     {
         resyncPortOperStatus();
+    }
+}
+
+sai_bfd_session_state_t SwitchVpp::saiBfdSessionState(
+        _In_ vpp_api_bfd_state_e state)
+{
+    SWSS_LOG_ENTER();
+
+    switch(state) {
+    case VPP_API_BFD_STATE_ADMIN_DOWN:
+        return SAI_BFD_SESSION_STATE_ADMIN_DOWN;
+    case VPP_API_BFD_STATE_DOWN:
+        return SAI_BFD_SESSION_STATE_DOWN;
+    case VPP_API_BFD_STATE_INIT:
+        return SAI_BFD_SESSION_STATE_INIT;
+    case VPP_API_BFD_STATE_UP:
+        return SAI_BFD_SESSION_STATE_UP;
+    default:
+        return SAI_BFD_SESSION_STATE_DOWN;
     }
 }
 
@@ -656,23 +737,7 @@ sai_status_t SwitchVpp::asyncBfdStateUpdate(vpp_bfd_state_notif_t *bfd_notif)
     memset(&bfd_info, 0, sizeof(bfd_info));
 
     // Convert vpp state to sai state
-    switch(bfd_notif->state) {
-    case VPP_API_BFD_STATE_ADMIN_DOWN:
-        sai_state = SAI_BFD_SESSION_STATE_ADMIN_DOWN;
-        break;
-    case VPP_API_BFD_STATE_DOWN:
-        sai_state = SAI_BFD_SESSION_STATE_DOWN;
-        break;
-    case VPP_API_BFD_STATE_INIT:
-        sai_state = SAI_BFD_SESSION_STATE_INIT;
-        break;
-    case VPP_API_BFD_STATE_UP:
-        sai_state = SAI_BFD_SESSION_STATE_UP;
-        break;
-    default:
-        sai_state = SAI_BFD_SESSION_STATE_DOWN;
-        break;
-    }
+    sai_state = saiBfdSessionState(bfd_notif->state);
 
     bfd_info.multihop = bfd_notif->multihop;
     vpp_ip_addr_t_to_sai_ip_address_t(bfd_notif->local_addr, bfd_info.local_addr);
@@ -698,6 +763,80 @@ sai_status_t SwitchVpp::asyncBfdStateUpdate(vpp_bfd_state_notif_t *bfd_notif)
     return SAI_STATUS_SUCCESS;
 }
 
+void SwitchVpp::resyncBfdSessionState()
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<vpp_bfd_state_notif_t> sessions;
+
+    // Pending until the dump succeeds
+    m_bfdResyncDue = true;
+
+    if (vpp_bfd_session_dump([](const vpp_bfd_state_notif_t *s, void *ctx)
+                             { static_cast<std::vector<vpp_bfd_state_notif_t> *>(ctx)->push_back(*s); }, &sessions) != 0)
+    {
+        SWSS_LOG_ERROR("BFD session dump failed, BFD state resync with VPP will be retried");
+        return;
+    }
+
+    m_bfdResyncDue = false;
+
+    size_t changed = 0;
+
+    for (auto& session: sessions)
+    {
+        if (bfdSessionStateChanged(session))
+        {
+            asyncBfdStateUpdate(&session);
+            changed++;
+        }
+    }
+
+    SWSS_LOG_NOTICE("resynced the state of %zu BFD sessions with VPP: %zu changed",
+                    sessions.size(), changed);
+}
+
+bool SwitchVpp::bfdSessionStateChanged(
+        _In_ vpp_bfd_state_notif_t& session)
+{
+    SWSS_LOG_ENTER();
+
+    vpp_bfd_info_t bfd_info;
+    memset(&bfd_info, 0, sizeof(bfd_info));
+
+    bfd_info.multihop = session.multihop;
+    vpp_ip_addr_t_to_sai_ip_address_t(session.local_addr, bfd_info.local_addr);
+    vpp_ip_addr_t_to_sai_ip_address_t(session.peer_addr, bfd_info.peer_addr);
+
+    sai_object_id_t bfd_oid;
+
+    {
+        BFD_MUTEX;
+
+        auto it = m_bfd_info_map.find(bfd_info);
+
+        if (it == m_bfd_info_map.end())
+        {
+            return false;
+        }
+
+        bfd_oid = it->second;
+    }
+
+    // A session without a state change yet has no cached state: SONiC takes it to be DOWN
+    sai_attribute_t attr;
+    attr.id = SAI_BFD_SESSION_ATTR_STATE;
+
+    auto known = SAI_BFD_SESSION_STATE_DOWN;
+
+    if (get(SAI_OBJECT_TYPE_BFD_SESSION, bfd_oid, 1, &attr) == SAI_STATUS_SUCCESS)
+    {
+        known = static_cast<sai_bfd_session_state_t>(attr.value.s32);
+    }
+
+    return known != saiBfdSessionState(session.state);
+}
+
 sai_status_t SwitchVpp::vpp_dp_initialize()
 {
     SWSS_LOG_ENTER();
@@ -717,11 +856,11 @@ sai_status_t SwitchVpp::asyncIntfStateUpdate(const char *hwif_name, bool link_up
     SWSS_LOG_ENTER();
 
     /*
-     * Runs on the VPP event thread, which holds neither m_apimutex nor any VPP
-     * lock at this point. The registry is internally synchronized, but a record
-     * handed back by findBy*() would be read after that lock is dropped, so ask
-     * for the oid as a value instead: the port type test and the oid read both
-     * happen inside the registry lock.
+     * Runs on the vslib event queue thread with m_apimutex held
+     * (syncOnPlatformEvent()). The registry is internally synchronized, but a
+     * record handed back by findBy*() would be read after that lock is dropped,
+     * so ask for the oid as a value instead: the port type test and the oid
+     * read both happen inside the registry lock.
      *
      * A null oid means the hwif is not a front panel port (BondEthernet, bvi, a
      * sub-interface) or has no oid yet. Only physical ports carry SAI port oper
@@ -1584,6 +1723,14 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
         return 0;
     }
 
+    bool has_vrf_table = false;
+    for (const auto &kv : vrf_objMap) {
+        if (kv.second != nullptr && kv.second->m_vrf_id == vrf_id) {
+            has_vrf_table = true;
+            break;
+        }
+    }
+
     std::string vrf_name = "vrf_" + std::to_string(vrf_id);
 
     if (vrf_id && ip_vrf_add(vrf_id, vrf_name.c_str(), false) != 0) {
@@ -1593,6 +1740,16 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
     }
     SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
     vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
+
+    if (!has_vrf_table) {
+        if (vpp_sonic_ext_copp_ip2me_addr_add_del(htonl(INADDR_BROADCAST), true) != 0) {
+            SWSS_LOG_ERROR("Failed to add 255.255.255.255 to the CoPP IP2ME addresses, "
+                           "so limited broadcasts reach the CPU unpoliced");
+        }
+        if (m_dhcp_trap_copy) {
+            vpp_ip4_limited_broadcast_receive(vrf_id, true);
+        }
+    }
 
     uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
         VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
@@ -1618,11 +1775,85 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
         auto sw = it->second;
         if (sw != nullptr) {
                  SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
+           // table 0 outlives every VRF object, and other router interfaces may still use it
+           if (m_dhcp_trap_copy && sw->m_vrf_id != 0)
+           {
+               vpp_ip4_limited_broadcast_receive(sw->m_vrf_id, false);
+           }
            ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), sw->m_is_ipv6);
            vrf_objMap.erase(it);
         }
     }
     return 0;
+}
+
+/*
+ * Makes the IPv4 limited broadcast address, 255.255.255.255, a local receive
+ * in table vrf_id. VPP installs it in every IPv4 table as a drop, but at the
+ * lowest FIB source priority so that it can be overridden ("drop, but we'll
+ * allow it to be usurped by the likes of DHCP"), and ip4-local accepts a
+ * packet to it from a source it has no route to, such as a DHCP client's
+ * 0.0.0.0. A limited broadcast is link-local (RFC 1812 says a router must
+ * not forward it), so receiving it rather than dropping it is what a router
+ * does with it.
+ *
+ * With the route a limited broadcast that reaches an L3 interface goes to
+ * ip4-local and from there to the kernel, through linux-cp's punt redirect
+ * to the interface's host tap. For a VLAN that is the BVI's copy of a
+ * flooded broadcast, and it is how a DHCPv4 client broadcast reaches the
+ * DHCP relay when the SAI_HOSTIF_TRAP_TYPE_DHCP action is COPY (see
+ * SwitchVppFdb.cpp). Under TRAP (or when no DHCP trap is configured) the
+ * client broadcast is punted at the VLAN member and never reaches the BVI,
+ * while routed ports keep VPP's default drop on 255.255.255.255/32 so a
+ * switch without a COPY DHCP trap (such as a T1 spine) does not punt limited
+ * broadcasts to the CPU.
+ *
+ * While COPY is active a limited broadcast is to-me traffic, and
+ * vpp_add_ip_vrf() adds 255.255.255.255 to sonic-ext-copp-ip2me's address set
+ * with the switch's own addresses so the IP2ME trap group's policer meters
+ * limited broadcasts on the punt path regardless of trap mode.
+ */
+int SwitchVpp::vpp_ip4_limited_broadcast_receive(
+        _In_ uint32_t vrf_id,
+        _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    vpp_ip_route_t *route = (vpp_ip_route_t *)
+        calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
+
+    if (!route)
+    {
+        SWSS_LOG_ERROR("Failed to allocate the limited broadcast route for VRF %u", vrf_id);
+        return -1;
+    }
+
+    route->vrf_id = vrf_id;
+    route->is_multipath = false;
+    route->nexthop_cnt = 1;
+    route->prefix_len = 32;
+    route->prefix_addr.sa_family = AF_INET;
+    route->prefix_addr.addr.ip4.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    route->nexthop[0].addr.sa_family = AF_INET;
+    route->nexthop[0].type = VPP_NEXTHOP_LOCAL;
+    route->nexthop[0].sw_if_index = (uint32_t)~0;
+
+    int ret = ip_route_add_del(route, is_add);
+
+    free(route);
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("Failed to %s the 255.255.255.255/32 local receive in VRF %u (ret %d)",
+                is_add ? "add" : "remove", vrf_id, ret);
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("%s the 255.255.255.255/32 local receive in VRF %u",
+                is_add ? "Added" : "Removed", vrf_id);
+    }
+
+    return ret;
 }
 
 std::shared_ptr<IpVrfInfo> SwitchVpp::vpp_get_ip_vrf (_In_ sai_object_id_t objectId)
@@ -1777,7 +2008,8 @@ sai_status_t SwitchVpp::vpp_apply_loopback_action(
     CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", enabled));
     if (!enabled)
     {
-        return SAI_STATUS_SUCCESS;
+        return packet_action == SAI_PACKET_ACTION_FORWARD ?
+            SAI_STATUS_SUCCESS : SAI_STATUS_NOT_SUPPORTED;
     }
 
     int action = (packet_action == SAI_PACKET_ACTION_DROP) ? 1 : 0;
@@ -1940,7 +2172,7 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     /*
      * Three names are needed below and each has exactly one source:
      *   osif_name   SONiC netdev, for `ip link` / VRF enslavement lookups;
-     *               gains the ".<vlan>" suffix for a sub-port
+     *               uses the existing short or long spelling for a sub-port
      *   parent_hwif VPP interface, for the VPP API calls
      *   tap_name    linux-cp tap, only for the SUB_PORT LCP pair
      * They differ for a LAG (PortChannel<id> / BondEthernet<id> / be<id>) and
@@ -1967,10 +2199,24 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     if (attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
         const std::string suffix = "." + std::to_string(vlan_id);
+        const std::string short_osif = VppSubInterface::osIfFor(osif_name, vlan_id);
+        osif_name += suffix;
+
+        // Both PortChannel<N>.<vlan> and Po<N>.<vlan> are valid SONiC names.
+        if (ot == SAI_OBJECT_TYPE_LAG)
+        {
+            std::string output;
+            if (exec(std::string(IP_CMD) + " link show dev " + osif_name, output) != 0)
+            {
+                SWSS_LOG_DEBUG("Sub-interface %s not found; checking %s",
+                        osif_name.c_str(), short_osif.c_str());
+                osif_name = short_osif;
+            }
+        }
 
         /*
          * For a port-channel sub-port the LCP host tap must be be<id>.<vlan>
-         * (a VLAN netdev on the be<id> bond tap), NOT PortChannel<id>.<vlan>:
+         * (a VLAN netdev on the be<id> bond tap), NOT Po<id>.<vlan>:
          * that name collides with the kernel 8021q netdev owned by the Linux
          * bond/team stack. linux-cp-punt-xc lands on be<id>.<vlan> and the
          * sonic_ext aggr-tap-redirect steers the punted copy to the
@@ -2023,13 +2269,13 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
             if (parent_rec)
             {
                 auto sub_rec = m_ifaceRegistry.addSubInterface(parent_rec, vlan_id,
-                        static_cast<uint16_t>(vlan_id));
+                        static_cast<uint16_t>(vlan_id), osif_name);
 
                 if (sub_rec)
                 {
                     /*
                      * For a bond parent this is "be<id>.<vlan>", which is NOT
-                     * the SONiC name "PortChannel<id>.<vlan>" -- the tap has to
+                     * the SONiC sub-interface name -- the tap has to
                      * be recorded, it cannot be derived from the SONiC name.
                      */
                     m_ifaceRegistry.setTapName(sub_hwif, subif_tap);
@@ -2055,7 +2301,6 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         /* Get new list of physical interfaces from VS */
         refresh_interfaces_list();
 
-        osif_name += suffix;
     }
 
     sai_object_id_t vrf_obj_id = 0;
@@ -2537,9 +2782,28 @@ sai_status_t SwitchVpp::createRouterif(
     bool new_binding = m_ifaceRegistry.resolveHwIfByRifOid(object_id).empty();
     RifCreateState state;
     sai_status_t status = SAI_STATUS_SUCCESS;
+    std::vector<sai_attribute_t> effective_attrs;
 
     if (m_switchConfig->m_useTapDevice == true)
     {
+        auto attr_loopback = sai_metadata_get_attr_by_id(
+                SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+        if (attr_loopback != nullptr && attr_loopback->value.s32 == SAI_PACKET_ACTION_DROP)
+        {
+            bool enabled = false;
+            CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", enabled));
+            if (!enabled)
+            {
+                // Use the same effective CREATE attributes for programming and persistence.
+                effective_attrs.assign(attr_list, attr_list + attr_count);
+                effective_attrs.erase(effective_attrs.begin() + (attr_loopback - attr_list));
+                attr_count = static_cast<uint32_t>(effective_attrs.size());
+                attr_list = effective_attrs.data();
+                SWSS_LOG_WARN("RIF %s: iface-loopback disabled; CREATE DROP omitted, using FORWARD",
+                        sai_serialize_object_id(object_id).c_str());
+            }
+        }
+
         sai_attribute_t tattr;
 
         tattr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
@@ -2572,6 +2836,16 @@ sai_status_t SwitchVpp::createRouterif(
         vpp_resync_sub_interface_admin_state(state.hwif);
     }
 
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        auto attr_zone = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_NAT_ZONE_ID, attr_count, attr_list);
+
+        if (attr_zone != NULL)
+        {
+            m_nat.setRouterInterfaceZone(object_id, attr_zone->value.u32);
+        }
+    }
+
     if (status != SAI_STATUS_SUCCESS)
     {
         if (new_binding)
@@ -2592,6 +2866,9 @@ sai_status_t SwitchVpp::removeRouterif(
         _In_ sai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
+
+    // the outside feature goes before the interface does
+    m_nat.removeRouterInterface(objectId);
 
     if (m_switchConfig->m_useTapDevice == true)
     {

@@ -16,6 +16,7 @@ AsicView
 AttrHash
 BCM
 BFD
+BVI
 Bool
 CHARDATA
 COLDVIDS
@@ -25,6 +26,7 @@ CSIG
 CSP
 CreateObject
 DEI
+DHCP
 Decrement
 Destructor
 DPU
@@ -67,6 +69,7 @@ MTU
 Mellanox
 NHG
 NPU
+NUL
 OA
 OIDs
 OTN
@@ -113,6 +116,7 @@ VIDTORID
 VIDs
 VLANS
 VOQ
+VRF
 VXLAN
 WRED
 Werror
@@ -462,5 +466,24 @@ desync
 rebuildable
 jitter
 jittered
+BondEthernet
+PortChannel
 VPP
+EVPN
+VNI
+VTEP
+anycast
 ARGV
+vppxlate
+PBH
+pbh
+subtree
+iface
+loopback
+resync
+DHCPv
+LLDP
+cp
+ethertype
+fixup
+nexts

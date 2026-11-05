@@ -4,6 +4,30 @@
 
 using namespace saivs;
 
+TEST(VppInterfaceRegistry, lagSubinterfaceResolvesSonicAndTapNamesSeparately)
+{
+    VppInterfaceRegistry registry;
+    EXPECT_EQ("BondEthernet54.54", registry.resolveHwIfByOsIf("Po54.54"));
+    EXPECT_TRUE(registry.resolveHwIfByOsIf("Po54").empty());
+    EXPECT_TRUE(registry.resolveHwIfByOsIf("be54.54").empty());
+    EXPECT_TRUE(registry.resolveHwIfByOsIf("Po54x.54").empty());
+    EXPECT_TRUE(registry.resolveHwIfByOsIf("Po54.54x").empty());
+
+    auto lag = registry.addLag(54, 140, 2);
+    ASSERT_NE(nullptr, lag);
+    ASSERT_TRUE(registry.setTapName("BondEthernet54", "be54"));
+    auto sub = registry.addSubInterface(lag, 54, 54);
+    ASSERT_NE(nullptr, sub);
+    ASSERT_TRUE(registry.setTapName("BondEthernet54.54", sub->deriveTapName()));
+    EXPECT_EQ(sub, registry.findByOsIf("Po54.54"));
+    EXPECT_EQ(sub, registry.findByTap("be54.54"));
+    EXPECT_EQ("Po54.54", registry.resolveOsIfByHwif("BondEthernet54.54"));
+    EXPECT_EQ("PortChannel54", registry.resolveOsIf(2));
+    EXPECT_EQ(1u, registry.remove("BondEthernet54.54"));
+    EXPECT_EQ(nullptr, registry.findByOsIf("Po54.54"));
+    EXPECT_EQ(lag, registry.findByOid(2));
+}
+
 TEST(VppInterfaceRegistry, rifLookupUsesSeparateIndexForEveryInterfaceType)
 {
     VppInterfaceRegistry registry;
@@ -85,4 +109,3 @@ TEST(VppInterfaceRegistry, clearingRegistryDoesNotRetainRecycledRifOid)
     ASSERT_TRUE(registry.setRifOid("bvi200", 100));
     EXPECT_EQ("bvi200", registry.resolveHwIfByRifOid(100));
 }
-

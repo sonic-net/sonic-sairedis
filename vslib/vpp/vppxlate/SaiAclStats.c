@@ -17,6 +17,8 @@
  *------------------------------------------------------------------
  */
 
+#include <errno.h>
+
 #include <vlib/vlib.h>
 
 #include "SaiVppStats.h"
@@ -33,14 +35,31 @@ static void handle_stat_two (const char *stat_name, uint32_t ace_index,
     }
 }
 
-int vpp_acl_ace_stats_query (uint32_t acl_index, uint32_t ace_index, vpp_ace_stats_t *stats)
+/*
+ * The prefix is passed as a %s argument rather than held as a table of format
+ * strings: vslib builds with -Wformat-nonliteral and -Werror, so indexing an
+ * array of format strings would not compile.  const char *const because
+ * -Wwrite-strings is on in the same set.
+ */
+static const char *const rule_stats_prefix[VPP_RULE_STATS_MAX] = {
+    [VPP_RULE_STATS_ACL] = "/acl",
+    [VPP_RULE_STATS_PBH] = "/sonic-ext/pbh",
+};
+
+int vpp_rule_stats_query (vpp_rule_stats_type_t type, uint32_t table_index,
+			  uint32_t rule_index, vpp_ace_stats_t *stats)
 {
     char pathbuf[256];
 
-    snprintf(pathbuf, sizeof(pathbuf), "/acl/%u/matches", acl_index);
+    if (type >= VPP_RULE_STATS_MAX) {
+        return -EINVAL;
+    }
+
+    snprintf(pathbuf, sizeof(pathbuf), "%s/%u/matches",
+             rule_stats_prefix[type], table_index);
 
     memset(stats, 0, sizeof(*stats));
-    stats->ace_index = ace_index;
+    stats->ace_index = rule_index;
 
     return vpp_stats_dump(pathbuf, NULL, handle_stat_two, stats);
 }

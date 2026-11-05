@@ -7,6 +7,13 @@
 
 using namespace syncd;
 
+static void onSwitchStateChange(
+        sai_object_id_t switchId,
+        sai_switch_oper_status_t switchOperStatus)
+{
+    SWSS_LOG_ENTER();
+}
+
 static std::string natData =
 "[{\"nat_entry\":\"{\\\"nat_data\\\":{\\\"key\\\":{\\\"dst_ip\\\":\\\"10.10.10.10\\\",\\\"l4_dst_port\\\":\\\"20006\\\",\\\"l4_src_port\\\":\\\"0\\\",\\\"proto\\\":\\\"6\\\",\\\"src_ip\\\":\\\"0.0.0.0\\\"},\\\"mask\\\":{\\\"dst_ip\\\":\\\"255.255.255.255\\\",\\\"l4_dst_port\\\":\\\"65535\\\",\\\"l4_src_port\\\":\\\"0\\\",\\\"proto\\\":\\\"255\\\",\\\"src_ip\\\":\\\"0.0.0.0\\\"}},\\\"nat_type\\\":\\\"SAI_NAT_TYPE_DESTINATION_NAT\\\",\\\"switch_id\\\":\\\"oid:0x21000000000000\\\",\\\"vr\\\":\\\"oid:0x3000000000048\\\"}\",\"nat_event\":\"SAI_NAT_EVENT_AGED\"}]";
 static std::string icmp_echo_sesion_state_str = "[{\"icmp_echo_session_id\":\"oid:0x100000000003a\",\"session_state\":\"SAI_ICMP_ECHO_SESSION_STATE_DOWN\"}]";
@@ -93,6 +100,27 @@ TEST(NotificationHandler, setApiVersion)
     nh->setApiVersion(SAI_VERSION(1,15,0));
 
     EXPECT_EQ(SAI_VERSION(1,15,0), nh->getApiVersion());
+}
+
+TEST(NotificationHandler, updateNotificationsPointersClearsUnmappedPointer)
+{
+    auto np = std::make_shared<NotificationProcessor>(nullptr, nullptr, nullptr);
+    auto nh = std::make_shared<NotificationHandler>(np);
+
+    sai_switch_notifications_t notifications{};
+    notifications.on_switch_state_change = onSwitchStateChange;
+    nh->setSwitchNotifications(notifications);
+
+    sai_attribute_t attrs[2]{};
+    attrs[0].id = SAI_SWITCH_ATTR_REGISTER_READ;
+    attrs[0].value.ptr = reinterpret_cast<void *>(0x1234);
+    attrs[1].id = SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY;
+    attrs[1].value.ptr = reinterpret_cast<void *>(0x5678);
+
+    nh->updateNotificationsPointers(2, attrs);
+
+    EXPECT_EQ(nullptr, attrs[0].value.ptr);
+    EXPECT_EQ(reinterpret_cast<void *>(onSwitchStateChange), attrs[1].value.ptr);
 }
 
 TEST(NotificationHandler, NotificationMacsecPostStatusTest)
