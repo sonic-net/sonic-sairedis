@@ -30,7 +30,7 @@ import sys
 hostname, port, socket_path, destination = sys.argv[1:]
 if int(port) == 0:
     from swsscommon.swsscommon import exportRedisRdb
-    exportRedisRdb(socket_path, destination, 60000)
+    exportRedisRdb(socket_path, destination, 60000, True)
 else:
     command = ['redis-cli', '-h', hostname, '-p', port, '--rdb', destination]
     subprocess.run(command, stdout=subprocess.DEVNULL,

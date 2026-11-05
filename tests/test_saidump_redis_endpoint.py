@@ -22,7 +22,7 @@ def test_export_uses_native_socket_or_explicit_legacy_tcp(monkeypatch, port):
     monkeypatch.setattr(subprocess, 'run', execute)
     exec(compile(program, str(source), 'exec'), {})
     if port == '0':
-        native.exportRedisRdb.assert_called_once_with('/run/redis/socket with spaces', '/tmp/export file.rdb', 60000)
+        native.exportRedisRdb.assert_called_once_with('/run/redis/socket with spaces', '/tmp/export file.rdb', 60000, True)
         execute.assert_not_called()
     else:
         native.exportRedisRdb.assert_not_called()
