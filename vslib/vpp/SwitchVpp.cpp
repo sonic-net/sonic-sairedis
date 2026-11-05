@@ -1251,7 +1251,54 @@ sai_status_t SwitchVpp::queryAttrEnumValuesCapability(
 {
     SWSS_LOG_ENTER();
 
-    return m_trim.queryAttrEnumValuesCapability(
+    // A provider answers "do I own this (object_type, attr_id), and which enum
+    // values do I advertise for it?". Returning false means "not mine" and lets
+    // the next provider - ultimately SwitchStateBase - answer.
+    //
+    // Providers append to a vector and never see the sai_s32_list_t buffer
+    // protocol, which is handled once below, so adding a component means
+    // writing one predicate and adding one entry to this table.
+    using Provider = bool (*)(
+            sai_object_type_t object_type,
+            sai_attr_id_t attr_id,
+            std::vector<sai_int32_t> &values);
+
+    static const Provider providers[] =
+    {
+        &SwitchVppTrim::getTrimEnumValuesCapability,
+        &SwitchVpp::getSflowEnumValuesCapability,
+    };
+
+    std::vector<sai_int32_t> values;
+
+    for (auto provider: providers)
+    {
+        values.clear();
+
+        if (!provider(object_type, attr_id, values))
+        {
+            continue;
+        }
+
+        auto count = static_cast<uint32_t>(values.size());
+
+        if (enum_values_capability->count < count)
+        {
+            enum_values_capability->count = count;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        enum_values_capability->count = count;
+
+        for (uint32_t idx = 0; idx < count; idx++)
+        {
+            enum_values_capability->list[idx] = values[idx];
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    return SwitchStateBase::queryAttrEnumValuesCapability(
             switch_id, object_type, attr_id, enum_values_capability);
 }
 
@@ -2644,6 +2691,20 @@ sai_status_t SwitchVpp::set(
                         return SAI_STATUS_FAILURE;
                     }
                     SWSS_LOG_NOTICE("VPP set ECMP default hash seed=%u", seed);
+                    break;
+                }
+            case SAI_SWITCH_ATTR_TAM_OBJECT_ID:
+                {
+                    // SflowOrch arms sFlow drop monitoring by binding its TAM
+                    // object to the switch, and disarms it by clearing the
+                    // list. The TAM object graph itself has no VPP counterpart
+                    // (the sflow plugin reports drops to hsflowd over NET_DM),
+                    // so only the global plugin flag is driven from here. Fall
+                    // through to set_internal() below so the attribute is also
+                    // cached.
+                    bool enable = attr->value.objlist.count > 0;
+
+                    CHECK_STATUS(sflowDropMonitoringSet(enable));
                     break;
                 }
         }

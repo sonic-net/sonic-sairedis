@@ -58,6 +58,7 @@ if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
 				TestSwitchVppPbh.cpp \
 				TestSwitchVppTrim.cpp \
+				TestSwitchVppSflow.cpp \
 				MockVppXlate.cpp MockVppXlate.h \
 				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
@@ -85,7 +86,8 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_pbh_interface_attach_detach vpp_rule_stats_query \
 				vpp_nat44_ed_supported vpp_nat44_ed_enable_disable \
 				vpp_nat44_forwarding_enable_disable vpp_nat44_ed_output_interface_add_del \
-				vpp_nat44_static_mapping_add_del vpp_nat44_user_sessions_dump
+				vpp_nat44_static_mapping_add_del vpp_nat44_user_sessions_dump \
+				vpp_sflow_drop_monitoring_set
 tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 
 check_PROGRAMS = sai_vpp_xlate_tests

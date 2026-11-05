@@ -85,5 +85,24 @@ int main(void)
     vl_api_sonic_ext_trim_global_set_reply_t_handler(&global);
     vl_api_sonic_ext_trim_dscp_map_set_reply_t_handler(&map);
     vl_api_sonic_ext_trim_queue_set_reply_t_handler(&queue);
-    return vat_main.result_ready ? 9 : 0;
+    if (vat_main.result_ready)
+        return 9;
+
+    /*
+     * sflow drop monitoring: the reply carries only a status, which must reach
+     * the waiting caller byte-swapped and sign-extended so that
+     * SwitchVpp::sflowDropMonitoringSet() can tell success from failure.
+     */
+    vl_api_sflow_drop_monitoring_set_reply_t drop = {0};
+    vat_main.retval = 123;
+    vat_main.result_ready = 0;
+    drop.retval = htonl((uint32_t)-11);
+    vl_api_sflow_drop_monitoring_set_reply_t_handler(&drop);
+    if (!vat_main.result_ready || vat_main.retval != -11)
+        return 10;
+
+    vat_main.result_ready = 0;
+    drop.retval = 0;
+    vl_api_sflow_drop_monitoring_set_reply_t_handler(&drop);
+    return (!vat_main.result_ready || vat_main.retval) ? 11 : 0;
 }

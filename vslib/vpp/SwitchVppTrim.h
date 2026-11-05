@@ -29,13 +29,7 @@ namespace saivs
             static bool getTrimEnumValuesCapability(
                     _In_ sai_object_type_t object_type,
                     _In_ sai_attr_id_t attr_id,
-                    _Out_ sai_int32_t *value);
-
-            sai_status_t queryAttrEnumValuesCapability(
-                    _In_ sai_object_id_t switch_id,
-                    _In_ sai_object_type_t object_type,
-                    _In_ sai_attr_id_t attr_id,
-                    _Inout_ sai_s32_list_t *enum_values_capability);
+                    _Inout_ std::vector<sai_int32_t> &values);
 
             sai_status_t queryStatsCapability(
                     _In_ sai_object_id_t switch_id,
