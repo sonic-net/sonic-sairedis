@@ -1480,6 +1480,18 @@ sai_status_t SwitchStateBase::create_ports()
         attr.value.booldata = true;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        // LLR operational TX/RX status default to OFF; overridable via the
+        // SAI vs unittest SET path for status testing/demo.
+        attr.id = SAI_PORT_ATTR_LLR_TX_STATUS;
+        attr.value.s32 = SAI_PORT_LLR_TX_STATUS_OFF;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_LLR_RX_STATUS;
+        attr.value.s32 = SAI_PORT_LLR_RX_STATUS_OFF;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
     }
 
     return SAI_STATUS_SUCCESS;
@@ -2079,6 +2091,18 @@ sai_status_t SwitchStateBase::create_port_dependencies(
 
     attr.id = SAI_PORT_ATTR_AUTO_NEG_MODE;
     attr.value.booldata = true;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    // LLR operational TX/RX status default to OFF; overridable via the
+    // SAI vs unittest SET path for status testing/demo.
+    attr.id = SAI_PORT_ATTR_LLR_TX_STATUS;
+    attr.value.s32 = SAI_PORT_LLR_TX_STATUS_OFF;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    attr.id = SAI_PORT_ATTR_LLR_RX_STATUS;
+    attr.value.s32 = SAI_PORT_LLR_RX_STATUS_OFF;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
@@ -2851,6 +2875,17 @@ sai_status_t SwitchStateBase::refresh_read_only(
 
             case SAI_PORT_ATTR_OPER_SPEED:
                 return refresh_port_oper_speed(object_id);
+
+                /*
+                 * LLR operational TX/RX status: read-only enum attributes seeded
+                 * at port create (default OFF) and overridable via the vs
+                 * unittest SET path; return the stored value rather than
+                 * recalculating.
+                 */
+
+            case SAI_PORT_ATTR_LLR_TX_STATUS:
+            case SAI_PORT_ATTR_LLR_RX_STATUS:
+                return SAI_STATUS_SUCCESS;
         }
     }
 
