@@ -920,6 +920,40 @@ void AsicView::asicRemoveObject(
     dumpRef("remove");
 }
 
+void AsicView::asicKeepRemoveAfterLastOperation(
+        _In_ sai_object_id_t vid)
+{
+    SWSS_LOG_ENTER();
+
+    m_vidRemoveAfterAsicOperationId[vid] = m_asicOperationId;
+}
+
+size_t AsicView::getRemoveAfterIndex(
+        _In_ const std::vector<AsicOperation>& ops,
+        _In_ sai_object_id_t vid) const
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_vidRemoveAfterAsicOperationId.find(vid);
+
+    if (it == m_vidRemoveAfterAsicOperationId.end())
+    {
+        return 0;
+    }
+
+    int opId = it->second;
+
+    auto itr = std::find_if(ops.begin(), ops.end(), [opId] (const AsicOperation& ao) { return ao.m_opId == opId; });
+
+    if (itr == ops.end())
+    {
+        SWSS_LOG_THROW("operation %d to keep remove of %s after is not on list",
+                opId, sai_serialize_object_id(vid).c_str());
+    }
+
+    return (size_t)(itr - ops.begin()) + 1;
+}
+
 std::vector<AsicOperation> AsicView::asicGetWithOptimizedRemoveOperations() const
 {
     SWSS_LOG_ENTER();
@@ -1000,16 +1034,21 @@ std::vector<AsicOperation> AsicView::asicGetWithOptimizedRemoveOperations() cons
              * This can be NHG member, vlan member etc.
              */
 
-            v.insert(v.begin() + index, op);
+            size_t at = std::max(index, getRemoveAfterIndex(v, op.m_vid));
+
+            v.insert(v.begin() + at, op);
 
             auto ot = VidManager::objectTypeQuery(op.m_vid);
 
             SWSS_LOG_INFO("move %s all way up (not in map): %s to index: %zu",
                     sai_serialize_object_id(op.m_vid).c_str(),
                     sai_serialize_object_type(ot).c_str(),
-                    index);
+                    at);
 
-            index++;
+            if (at == index)
+            {
+                index++;
+            }
 
             moved++;
 
@@ -1065,6 +1104,8 @@ std::vector<AsicOperation> AsicView::asicGetWithOptimizedRemoveOperations() cons
          */
 
         size_t lastOpIdDecRefIndex = itr - v.begin() + 1;
+
+        lastOpIdDecRefIndex = std::max(lastOpIdDecRefIndex, getRemoveAfterIndex(v, op.m_vid));
 
         if (lastOpIdDecRefIndex > index)
         {
