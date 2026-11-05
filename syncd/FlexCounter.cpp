@@ -4417,10 +4417,11 @@ void FlexCounter::addCounterPlugin(
 
     for (const auto& value : values)
     {
-        if (m_plugIn2CounterType.count(fvField(value)) != 0)
+        if (m_plugIn2CounterType.count(fvField(value)) != 0 ||
+                fvField(value) == BULK_CHUNK_SIZE_PER_PREFIX_FIELD)
         {
-            // Plugin changes apply after the complete old sweep. Pure polling
-            // settings still take effect promptly at object checkpoints.
+            // Plugins and repartitioning must preserve the completed pass's
+            // samples and status slots. Other polling settings remain prompt.
             _lock.waitForPollEnd(m_runFlexCounterThread);
             break;
         }
@@ -5254,6 +5255,37 @@ void FlexCounter::removeCounter(
 
     UPDATE_LOCK;
 
+    try
+    {
+        removeCounterObjects(vid);
+    }
+    catch (...)
+    {
+        // Cleanup can throw after removing only some contexts. An old polling
+        // plan must no longer admit those registrations, while untouched ones
+        // retain their epochs and continue polling.
+        for (const auto& context : m_counterContext)
+        {
+            if (context.second->getObjectVids({vid}).empty())
+            {
+                m_pollingState->registrations.erase({context.first, vid});
+            }
+        }
+
+        throw;
+    }
+
+    for (const auto& context : m_counterContext)
+    {
+        m_pollingState->registrations.erase({context.first, vid});
+    }
+}
+
+void FlexCounter::removeCounterObjects(
+        _In_ sai_object_id_t vid)
+{
+    SWSS_LOG_ENTER();
+
     auto objectType = VidManager::objectTypeQuery(vid);
 
     if (objectType == SAI_OBJECT_TYPE_PORT)
@@ -5427,10 +5459,6 @@ void FlexCounter::removeCounter(
                 sai_serialize_object_type(objectType).c_str());
     }
 
-    for (const auto& context : m_counterContext)
-    {
-        m_pollingState->registrations.erase({context.first, vid});
-    }
 }
 
 void FlexCounter::addCounter(

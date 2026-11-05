@@ -228,6 +228,9 @@ namespace syncd
             bool allPluginsEmpty() const;
 
         private: // remove counter
+            void removeCounterObjects(
+                    _In_ sai_object_id_t vid);
+
             void removeDataFromCountersDB(
                     _In_ sai_object_id_t vid,
                     _In_ const std::string &ratePrefix);

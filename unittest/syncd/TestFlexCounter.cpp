@@ -6765,3 +6765,335 @@ TEST(FlexCounter, pendingPerPortDiscoveryRefreshPreservesDeltaBeforeDestructiveP
 {
     testDestructiveRefreshPreservesSamples(false, false, false, FlexCounterRefreshEnd::Complete, false, true);
 }
+
+TEST(FlexCounter, prefixRepartitionWaitsForPassAndPreservesDefaultFailureStatus)
+{
+    auto vendor = std::make_shared<MockableSaiInterface>();
+    FlexCounterSdkGate gate;
+    const auto objects = generateOids(2, SAI_OBJECT_TYPE_PORT);
+    const std::string octets = "SAI_PORT_STAT_IF_IN_OCTETS";
+    const std::string packets = "SAI_PORT_STAT_IF_IN_UCAST_PKTS";
+    std::atomic<bool> secondPass{false};
+    std::atomic<bool> oldPluginCompleted{false};
+    std::atomic<uint32_t> oldCalls{0};
+    vendor->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t,
+            sai_stat_capability_list_t* capability)
+    {
+        if (capability->count < 2)
+        {
+            capability->count = 2;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        capability->list[0].stat_enum = SAI_PORT_STAT_IF_IN_OCTETS;
+        capability->list[1].stat_enum = SAI_PORT_STAT_IF_IN_UCAST_PKTS;
+        for (uint32_t i = 0; i < 2; ++i)
+        {
+            capability->list[i].stat_modes = SAI_STATS_MODE_READ | SAI_STATS_MODE_BULK_READ;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+    vendor->mock_getStats = [](sai_object_type_t, sai_object_id_t,
+            uint32_t count, const sai_stat_id_t*, uint64_t* values)
+    {
+        std::fill(values, values + count, 7);
+        return SAI_STATUS_SUCCESS;
+    };
+    vendor->mock_bulkGetStats = [&](sai_object_id_t, sai_object_type_t,
+            uint32_t count, const sai_object_key_t* keys, uint32_t statCount,
+            const sai_stat_id_t* ids, sai_stats_mode_t, sai_status_t* statuses, uint64_t* values)
+    {
+        if (!secondPass)
+        {
+            ++oldCalls;
+            EXPECT_EQ(count, 1u);
+            EXPECT_EQ(statCount, 2u);
+            gate.read(keys[0].key.object_id, count, false);
+            statuses[0] = keys[0].key.object_id == objects.front() ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
+            std::fill(values, values + count * statCount, 111);
+            return statuses[0];
+        }
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const bool failedDefault = statCount == 1 && ids[0] == SAI_PORT_STAT_IF_IN_UCAST_PKTS &&
+                keys[i].key.object_id == objects.front();
+            EXPECT_EQ(statuses[i], failedDefault ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS)
+                << "Prefix splitting lost the original default partition's completed object status";
+        }
+        std::fill(values, values + count * statCount, 222);
+        // A successful call may leave the per-object slots untouched. Their
+        // inherited eligibility still decides which counter values are published.
+        return SAI_STATUS_SUCCESS;
+    };
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table table(&db, COUNTERS_TABLE);
+    const std::string pluginKey = "prefix_repartition_old_pass";
+    table.del(pluginKey);
+    const auto script = swss::loadRedisScript(&db,
+            "redis.call('SELECT',ARGV[1]); redis.call('HINCRBY',ARGV[2]..':" + pluginKey +
+            "','invocations',1); return {}");
+    FlexCounter fc("prefix_repartition_status", vendor, "COUNTERS_DB", true);
+    auto cleanup = [&]
+    {
+        fc.endFlexCounterThread();
+        for (const auto oid : objects)
+        {
+            fc.removeCounter(oid);
+            table.del(toOid(oid));
+        }
+        table.del(pluginKey);
+        table.del("TIME_STAMP");
+    };
+    fc.addCounterPlugin({{POLL_INTERVAL_FIELD, "60000"}, {STATS_MODE_FIELD, STATS_MODE_READ},
+            {FLEX_COUNTER_STATUS_FIELD, "disable"}, {PORT_PLUGIN_FIELD, script}, {BULK_CHUNK_SIZE_FIELD, "1"}});
+    for (const auto oid : objects)
+    {
+        fc.addCounter(oid, oid, {{PORT_COUNTER_ID_LIST, octets + "," + packets}});
+        table.set(toOid(oid), {{octets, "1001"}, {packets, "1001"}});
+    }
+    gate.arm();
+    fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
+    if (!gate.waitForFirst())
+    {
+        gate.releaseAll();
+        ADD_FAILURE() << "The original unified bulk pass did not start";
+        cleanup();
+        return;
+    }
+    auto updater = std::async(std::launch::async, [&]
+    {
+        fc.addCounterPlugin({{BULK_CHUNK_SIZE_PER_PREFIX_FIELD, octets + ":1"}});
+        std::string invocations;
+        oldPluginCompleted = table.hget(pluginKey, "invocations", invocations) && invocations == "1";
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (fc.m_syncState.pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_NE(fc.m_syncState.pendingUpdates.load(), 0u);
+    gate.releaseFirst();
+    EXPECT_TRUE(gate.waitForReadCount(2));
+    EXPECT_EQ(updater.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout)
+        << "Prefix repartition ran before the old pass's remaining chunk and status writeback";
+    gate.releaseAll();
+    const bool finished = updater.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+    if (!finished)
+    {
+        fc.endFlexCounterThread();
+    }
+    updater.get();
+    EXPECT_TRUE(finished);
+    EXPECT_TRUE(oldPluginCompleted.load());
+    EXPECT_EQ(oldCalls.load(), 2u);
+    fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "disable"}});
+    if (finished)
+    {
+        std::unique_lock<std::mutex> lock(fc.m_syncState.mutex);
+        secondPass = true;
+        fc.collectCounters(table, lock);
+    }
+    fc.endFlexCounterThread();
+    waitForCounterValues(table, toOid(objects.front()), {octets, packets}, {"222", "1001"});
+    waitForCounterValues(table, toOid(objects.back()), {octets, packets}, {"222", "222"});
+    cleanup();
+}
+
+namespace
+{
+    void testRemovalExceptionReconcilesActualMembership(bool partialRemoval)
+    {
+        SWSS_LOG_ENTER();
+        auto vendor = std::make_shared<MockableSaiInterface>();
+        FlexCounterSdkGate gate;
+        const auto type = partialRemoval ? SAI_OBJECT_TYPE_COUNTER : SAI_OBJECT_TYPE_ROUTER_INTERFACE;
+        const auto objects = generateOids(3, type);
+        const auto target = objects.back();
+        std::atomic<bool> runtime{false};
+        std::atomic<bool> retainedTargetRead{false};
+        std::vector<sai_object_id_t> primaryReads;
+        std::vector<sai_object_id_t> secondaryReads;
+        std::mutex readsMutex;
+        auto observe = [&](sai_object_id_t rid, bool primary)
+        {
+            if (!runtime)
+            {
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lock(readsMutex);
+                (primary ? primaryReads : secondaryReads).push_back(rid);
+            }
+            if (rid == target && (!partialRemoval || !primary))
+            {
+                retainedTargetRead = true;
+            }
+            gate.read(rid, 1, false);
+        };
+        vendor->mock_queryStatsCapability = [=](sai_object_id_t, sai_object_type_t,
+                sai_stat_capability_list_t* capability)
+        {
+            const uint32_t required = partialRemoval ? 2 : 1;
+            if (capability->count < required)
+            {
+                capability->count = required;
+                return SAI_STATUS_BUFFER_OVERFLOW;
+            }
+            capability->list[0].stat_enum = partialRemoval ? static_cast<sai_stat_id_t>(SAI_COUNTER_STAT_PACKETS) :
+                static_cast<sai_stat_id_t>(SAI_ROUTER_INTERFACE_STAT_IN_OCTETS);
+            capability->list[0].stat_modes = SAI_STATS_MODE_READ;
+            if (partialRemoval)
+            {
+                capability->list[1].stat_enum = SAI_COUNTER_STAT_BYTES;
+                capability->list[1].stat_modes = SAI_STATS_MODE_READ;
+            }
+            return SAI_STATUS_SUCCESS;
+        };
+        vendor->mock_getStats = [&](sai_object_type_t, sai_object_id_t rid,
+                uint32_t count, const sai_stat_id_t*, uint64_t* values)
+        {
+            observe(rid, !partialRemoval);
+            std::fill(values, values + count, 22);
+            return SAI_STATUS_SUCCESS;
+        };
+        vendor->mock_getStatsExt = [&](sai_object_type_t, sai_object_id_t rid,
+                uint32_t count, const sai_stat_id_t*, sai_stats_mode_t, uint64_t* values)
+        {
+            observe(rid, true);
+            std::fill(values, values + count, 11);
+            return SAI_STATUS_SUCCESS;
+        };
+        vendor->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t,
+                const sai_object_key_t*, uint32_t, const sai_stat_id_t*, sai_stats_mode_t, sai_status_t*, uint64_t*)
+        {
+            return SAI_STATUS_NOT_SUPPORTED;
+        };
+        test_syncd::mockVidManagerObjectTypeQuery(type);
+        FlexCounter fc("removal_exception_membership", vendor, "COUNTERS_DB");
+        swss::DBConnector db("COUNTERS_DB", 0);
+        swss::Table table(&db, COUNTERS_TABLE);
+        auto cleanup = [&]
+        {
+            fc.endFlexCounterThread();
+            for (const auto oid : objects)
+            {
+                fc.removeCounter(oid);
+                table.del(toOid(oid));
+            }
+            table.del("TIME_STAMP");
+        };
+        fc.addCounterPlugin({{POLL_INTERVAL_FIELD, "60000"}, {STATS_MODE_FIELD, STATS_MODE_READ},
+                {FLEX_COUNTER_STATUS_FIELD, "disable"}});
+        for (const auto oid : objects)
+        {
+            fc.addCounter(oid, oid, {{partialRemoval ? FLOW_COUNTER_ID_LIST : RIF_COUNTER_ID_LIST,
+                    partialRemoval ? "SAI_COUNTER_STAT_PACKETS" : "SAI_ROUTER_INTERFACE_STAT_IN_OCTETS"}});
+            if (partialRemoval)
+            {
+                fc.addCounter(oid, oid, {{SRV6_COUNTER_ID_LIST, "SAI_COUNTER_STAT_BYTES"}});
+            }
+        }
+        const std::string primaryName = partialRemoval ? "Flow Counter" : "Rif Counter";
+        const auto primaryKey = std::make_pair(primaryName, target);
+        const auto secondaryKey = std::make_pair(std::string("SRv6 Counter"), target);
+        const auto initial = fc.m_pollingState->registrations;
+        const auto validDb = fc.m_dbCounters;
+        runtime = true;
+        gate.arm();
+        fc.addCounterPlugin({{FLEX_COUNTER_STATUS_FIELD, "enable"}});
+        if (!gate.waitForFirst())
+        {
+            gate.releaseAll();
+            ADD_FAILURE() << "The removal-exception regression did not enter its first SDK call";
+            cleanup();
+            return;
+        }
+        auto remover = std::async(std::launch::async, [&]
+        {
+            // The worker already owns a valid connection. Fail only this
+            // counter's new cleanup connection without changing global DB config.
+            fc.m_dbCounters = "PR2130_MISSING_COUNTERS_DB";
+            bool threw = false;
+            try
+            {
+                fc.removeCounter(target);
+            }
+            catch (...)
+            {
+                threw = true;
+            }
+            fc.m_dbCounters = validDb;
+            return threw;
+        });
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (fc.m_syncState.pendingUpdates.load() == 0 && std::chrono::steady_clock::now() < deadline)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        EXPECT_NE(fc.m_syncState.pendingUpdates.load(), 0u);
+        gate.releaseFirst();
+        const bool finished = remover.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+        if (!finished)
+        {
+            gate.releaseAll();
+        }
+        const bool threw = remover.get();
+        EXPECT_TRUE(finished) << "Removal was delayed behind the remaining old polling plan";
+        EXPECT_TRUE(threw) << "The private cleanup connection did not fail as intended";
+        // The writer has joined. The still-gated worker only reads these maps.
+        const auto current = fc.m_pollingState->registrations;
+        if (partialRemoval)
+        {
+            EXPECT_EQ(current.count(primaryKey), 0u)
+                << "A physically removed FLOW registration retained its stale polling epoch";
+            EXPECT_EQ(fc.m_counterContext.at(primaryName)->getObjectVids({target}).count(target), 0u);
+            const auto retained = current.find(secondaryKey);
+            EXPECT_NE(retained, current.end());
+            if (retained != current.end())
+            {
+                EXPECT_EQ(retained->second.epoch, initial.at(secondaryKey).epoch);
+            }
+        }
+        else
+        {
+            const auto retained = current.find(primaryKey);
+            EXPECT_NE(retained, current.end());
+            if (retained != current.end())
+            {
+                EXPECT_EQ(retained->second.epoch, initial.at(primaryKey).epoch);
+            }
+        }
+        gate.releaseAll();
+        const auto resumedDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!retainedTargetRead && std::chrono::steady_clock::now() < resumedDeadline)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        EXPECT_TRUE(retainedTargetRead.load()) << "An untouched registration stopped polling after another context threw";
+        fc.endFlexCounterThread();
+        {
+            std::lock_guard<std::mutex> lock(readsMutex);
+            const auto removedReads = std::count(primaryReads.begin(), primaryReads.end(), target);
+            EXPECT_EQ(removedReads, partialRemoval ? 0 : 1)
+                << "The old immutable plan queried a removed context or skipped an untouched one";
+            if (partialRemoval)
+            {
+                EXPECT_EQ(std::count(secondaryReads.begin(), secondaryReads.end(), target), 1);
+            }
+        }
+        EXPECT_EQ(fc.m_syncState.pendingUpdates.load(), 0u);
+        EXPECT_EQ(fc.m_syncState.deferredUpdates, 0u);
+        EXPECT_EQ(fc.m_dbCounters, validDb);
+        cleanup();
+    }
+}
+
+TEST(FlexCounter, partialRemovalExceptionErasesOnlyAbsentContextEpochs)
+{
+    testRemovalExceptionReconcilesActualMembership(true);
+}
+
+TEST(FlexCounter, cleanupExceptionBeforeRemovalPreservesLiveContextEpoch)
+{
+    testRemovalExceptionReconcilesActualMembership(false);
+}
