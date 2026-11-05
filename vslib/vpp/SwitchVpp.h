@@ -1235,8 +1235,9 @@ namespace saivs
         protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCP packet action
 
             // A DHCPv4 trap makes routed limited broadcasts local receives.
-            // COPY additionally floods VLAN client broadcasts; TRAP keeps the
-            // terminal VLAN-member classifiers. See SwitchVppFdb.cpp.
+            // VLAN-member TRAP/COPY behavior is read from the live semantic
+            // provider row; fixed classifiers are not used. See
+            // SwitchVppFdb.cpp.
             bool m_dhcp_trap_active = false;
             bool m_dhcp_trap_copy = false;
             // IPv4 tables whose limited-broadcast local route was confirmed

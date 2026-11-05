@@ -685,10 +685,9 @@ TEST_F(SwitchVppNeighborMissTrap, RemovingNonOwnerPreservesJournaledDhcpOwner)
     ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeHostifTrap(
             sai_serialize_object_id(nonOwnerTrap)));
 
-    ASSERT_EQ(1u, vppMock().coppDhcpBindCalls.size());
-    EXPECT_EQ("copp-policer-0x120000006f",
-            vppMock().coppDhcpBindCalls[0].policerName);
-    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    // Removing a non-owner resolves to the already confirmed physical row;
+    // do not recreate the same provider attachment and reset its counters.
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls.empty());
     EXPECT_EQ(policer3,
             m_sw->m_trap_binding_map.at(0x10003).policer_oid);
     EXPECT_EQ(1u, m_sw->m_trap_map.count(journaledOwnerTrap));
@@ -725,15 +724,16 @@ TEST_F(SwitchVppNeighborMissTrap, DhcpSharedOwnersKeepTrapUntilAllAreCopy)
     copy.classify_installed = true;
     m_sw->m_trap_map[copyOid] = copy;
 
-    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    // Adding COPY beside an existing TRAP leaves the effective physical row
+    // unchanged and must not recreate its provider attachment.
+    ASSERT_EQ(1u, vppMock().coppDhcpBindCalls.size());
     EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isCopy);
-    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isCopy);
 
     ASSERT_EQ(SAI_STATUS_SUCCESS,
             m_sw->uninstallTrapClassifyNow(trapOid, trap));
-    ASSERT_EQ(3u, vppMock().coppDhcpBindCalls.size());
-    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isBind);
-    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isCopy);
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isCopy);
     EXPECT_EQ(SAI_PACKET_ACTION_COPY,
             m_sw->m_trap_binding_map.at(0x10004).packet_action);
 }
@@ -787,7 +787,7 @@ TEST_F(SwitchVppNeighborMissTrap, DhcpQueueUpdateDoesNotStealSharedPolicer)
     sai_attribute_t adminAttr{};
     adminAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE;
     adminAttr.value.booldata = false;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->setHostifTrapGroup(
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->setHostifTrapGroup(
             sai_serialize_object_id(oldGroup), &adminAttr));
 
     groupAttr.value.oid = oldPolicer;
@@ -798,7 +798,25 @@ TEST_F(SwitchVppNeighborMissTrap, DhcpQueueUpdateDoesNotStealSharedPolicer)
     EXPECT_EQ(newPolicer,
             m_sw->m_trap_binding_map.at(0x10003).policer_oid);
     EXPECT_EQ(7u, m_sw->m_trap_group_map.at(oldGroup).queue);
-    EXPECT_FALSE(m_sw->m_trap_group_map.at(oldGroup).admin_state);
+    EXPECT_TRUE(m_sw->m_trap_group_map.at(oldGroup).admin_state);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, RejectsDisabledTrapGroupInsteadOfLeavingRowsActive)
+{
+    const sai_object_id_t groupOid = 0x1200000073;
+    sai_attribute_t adminAttr{};
+    adminAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE;
+    adminAttr.value.booldata = false;
+
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 1, &adminAttr));
+    EXPECT_EQ(0u, m_sw->m_trap_group_map.count(groupOid));
+
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE;
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP,
+            sai_serialize_object_id(groupOid), 1, &readAttr));
 }
 
 TEST_F(SwitchVppNeighborMissTrap, DhcpActionOnlyUpdatePreservesSharedPolicerOwner)
@@ -1206,26 +1224,18 @@ class SwitchVppDhcpVlanPunt : public ::testing::Test
 
 constexpr uint16_t SwitchVppDhcpVlanPunt::VLAN_ID;
 
-TEST_F(SwitchVppDhcpVlanPunt, ClassifiesCanonicalDhcpV6AndLeavesExtensionsForProvider)
+TEST_F(SwitchVppDhcpVlanPunt, LeavesDhcpCandidatesOnProviderSemanticPath)
 {
     addMember("bobm0", false);
     addMember("bobm1", true);
 
-    uint32_t puntNext = vppMock().nodeNext(
-            "l2-input-classify", "linux-cp-punt");
-    uint32_t fixupNext = vppMock().nodeNext(
-            "l2-input-classify", "sonic-ext-l2-trap-fixup");
-    ASSERT_NE(~0u, puntNext);
-    ASSERT_NE(~0u, fixupNext);
-
-    // Preserve the VLAN DHCPv6 classifiers for canonical client packets.
-    EXPECT_EQ(puntNext, vppMock().classifyFrame(
+    // DHCP interception is no longer a terminal fixed-offset classifier.
+    // The sonic-ext DHCP L2 feature parses the admitted packet and applies
+    // TRAP/COPY from the live binding, so absent traps preserve forwarding.
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
             "bobm0", 1, dhcp6(false)));
-    EXPECT_EQ(fixupNext, vppMock().classifyFrame(
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
             "bobm1.100", 2, dhcp6(true)));
-
-    // Fixed-offset classify deliberately misses extension headers; the
-    // provider's semantic parser can handle these after VLAN admission.
     EXPECT_EQ(~0u, vppMock().classifyFrame(
             "bobm0", 1, dhcp6(false, 547, true)));
     EXPECT_EQ(~0u, vppMock().classifyFrame(
@@ -2729,13 +2739,6 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
 
             if (u16(0) == 0x3333)
             {
-                const bool dhcp6 = tagged ?
-                    (u16(16) == 0x86dd && u16(58) == 546 && u16(60) == 547) :
-                    (u16(12) == 0x86dd && u16(54) == 546 && u16(56) == 547);
-                if (dhcp6)
-                {
-                    return member + "DHCPv6";
-                }
                 return member + "IPv6 multicast";
             }
 
@@ -2843,12 +2846,8 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
         // the nexts without sonic-ext-l2-trap-learn, as before it; tagged
         // IPv6 multicast has a session in each of its two tables
         const Nexts NEXTS_WITHOUT_TRAP_LEARN = {
-            {"untagged DHCPv4", {PUNT}},
-            {"untagged DHCPv6", {PUNT}},
             {"untagged ARP", {PUNT}},
             {"untagged IPv6 multicast", {PUNT}},
-            {"tagged DHCPv4", {TRAP_FIXUP}},
-            {"tagged DHCPv6", {TRAP_FIXUP}},
             {"tagged ARP", {TRAP_FIXUP}},
             {"tagged IPv6 multicast", {TRAP_FIXUP, TRAP_FIXUP}},
             {"LLDP", {PUNT}},
@@ -2859,12 +2858,8 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
 TEST_F(SwitchVppL2TrapLearn, TrapsGoToTrapLearnWhenItIsOn)
 {
     expectPuntNexts(FEATURES, NODES, {
-        {"untagged DHCPv4", {TRAP_LEARN}},
-        {"untagged DHCPv6", {TRAP_LEARN}},
         {"untagged ARP", {TRAP_LEARN}},
         {"untagged IPv6 multicast", {TRAP_LEARN}},
-        {"tagged DHCPv4", {TRAP_LEARN}},
-        {"tagged DHCPv6", {TRAP_LEARN}},
         {"tagged ARP", {TRAP_LEARN}},
         {"tagged IPv6 multicast", {TRAP_LEARN, TRAP_LEARN}},
         {"LLDP", {PUNT}},
@@ -2896,8 +2891,6 @@ TEST_F(SwitchVppL2TrapLearn, TrapsKeepTheirNextsWhenVppHasNoTrapLearnNode)
 TEST_F(SwitchVppL2TrapLearn, TrapsDoNotGoToTrapLearnWithoutTrapFixup)
 {
     expectPuntNexts({"l2-trap-learn", "l2-vlan-filter"}, NODES, {
-        {"untagged DHCPv4", {PUNT}},
-        {"untagged DHCPv6", {PUNT}},
         {"untagged ARP", {PUNT}},
         {"untagged IPv6 multicast", {PUNT}},
         {"LLDP", {PUNT}},
@@ -3965,29 +3958,35 @@ class SwitchVppDhcpTrap : public ::testing::Test
             return TRAP_FIXUP;
         }
 
-        // TRAP: terminal on VLAN members (no flood), while routed limited
-        // broadcasts are local receives for delivery to the DHCP relay.
+        // The fixed-offset classify path must never intercept DHCP. The
+        // provider's admitted-packet feature reads this live TRAP row and
+        // consumes the original; routed limited broadcasts also need receive.
         void expectTrap()
         {
             SWSS_LOG_ENTER();
 
-            EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcpOnWire(false)));
-            EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcpOnWire(true)));
+            EXPECT_EQ(MISS, onMember("bobm0", false, dhcpOnWire(false)));
+            EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcpOnWire(true)));
             EXPECT_TRUE(receivesLimitedBroadcast(0));
+            ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
+            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
+            EXPECT_FALSE(vppMock().coppDhcpBindCalls.back().isCopy);
         }
 
-        // With no SAI DHCP trap, retain the conservative member behavior but
-        // do not punt routed limited broadcasts to the CPU.
+        // With no SAI DHCP trap, member traffic remains on the ordinary L2
+        // path and routed limited broadcasts keep VPP's default drop route.
         void expectNoTrap()
         {
             SWSS_LOG_ENTER();
 
-            EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcpOnWire(false)));
-            EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcpOnWire(true)));
+            EXPECT_EQ(MISS, onMember("bobm0", false, dhcpOnWire(false)));
+            EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcpOnWire(true)));
             EXPECT_FALSE(receivesLimitedBroadcast(0));
+            EXPECT_EQ(0u, m_sw->m_trap_binding_map.count(0x10003));
         }
 
-        // COPY: flooded on both members, and the BVI's copy received, under the IP2ME policer
+        // COPY is also classifier-independent: the provider sends one CPU
+        // clone and preserves the original member forwarding path.
         void expectCopy()
         {
             SWSS_LOG_ENTER();
@@ -3996,6 +3995,9 @@ class SwitchVppDhcpTrap : public ::testing::Test
             EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcpOnWire(true)));
             EXPECT_TRUE(receivesLimitedBroadcast(0));
             EXPECT_TRUE(policesLimitedBroadcast());
+            ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
+            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
+            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isCopy);
         }
 
         static constexpr uint16_t VLAN_ID = 100;
@@ -4028,7 +4030,7 @@ TEST_F(SwitchVppDhcpTrap, CopyBeforeAnyMemberFloodsAndTheBviCopyIsReceived)
     expectCopy();
 }
 
-TEST_F(SwitchVppDhcpTrap, TrapPuntsOnTheMembers)
+TEST_F(SwitchVppDhcpTrap, TrapUsesTheLiveProviderPath)
 {
     createTrap(SAI_PACKET_ACTION_TRAP);
     addMembers();
@@ -4037,7 +4039,7 @@ TEST_F(SwitchVppDhcpTrap, TrapPuntsOnTheMembers)
     expectTrap();
 }
 
-TEST_F(SwitchVppDhcpTrap, NoDhcpTrapDefaultsToTrap)
+TEST_F(SwitchVppDhcpTrap, NoDhcpTrapPreservesMemberForwarding)
 {
     addMembers();
     createBvi();
@@ -4081,7 +4083,7 @@ TEST_F(SwitchVppDhcpTrap, UnsupportedOtherActionsLeaveCopyUnchanged)
     expectCopy();
 }
 
-TEST_F(SwitchVppDhcpTrap, RemovingTheCopyTrapRevertsToTrap)
+TEST_F(SwitchVppDhcpTrap, RemovingTheCopyTrapRestoresAbsentState)
 {
     auto trap = createTrap(SAI_PACKET_ACTION_COPY);
     addMembers();
@@ -4123,9 +4125,9 @@ TEST_F(SwitchVppDhcpTrap, CopyLeavesTheOtherPuntsAlone)
 
 /*
  * Both TRAP and COPY need the local 255.255.255.255/32 route for routed
- * DHCPv4 client broadcasts. TRAP still uses terminal VLAN-member classifiers,
- * so enabling the routed receive path does not flood the client VLAN. The
- * route is removed once the final DHCP trap disappears.
+ * DHCPv4 client broadcasts. VLAN-member action remains provider-driven, so
+ * enabling the routed receive path does not reintroduce fixed classifiers.
+ * The route is removed once the final DHCP trap disappears.
  */
 TEST_F(SwitchVppDhcpTrap, TrapReceivesRoutedBroadcastWithoutVlanFloodAndRemovalCleansRoute)
 {

@@ -356,7 +356,9 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
     uint32_t binding_key = 0;
     bool have_binding_key = trapBindingKey(trap.trap_type, binding_key);
     sai_object_id_t current_policer_oid = SAI_NULL_OBJECT_ID;
+    sai_packet_action_t current_packet_action = SAI_PACKET_ACTION_DROP;
     bool current_binding_present = false;
+    bool current_binding_uncertain = false;
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
         auto bit = have_binding_key ? m_trap_binding_map.find(binding_key) :
@@ -365,7 +367,10 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
         {
             current_binding_present = true;
             current_policer_oid = bit->second.policer_oid;
+            current_packet_action = bit->second.packet_action;
         }
+        current_binding_uncertain = have_binding_key &&
+            m_trap_binding_uncertain.count(binding_key) != 0;
     }
 
     auto record_binding = [&](sai_object_id_t programmed_policer_oid,
@@ -532,6 +537,20 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
     // while a nonempty name is unresolved. A configured OID therefore still
     // represents a policed row even if the local index journal is missing.
     bool have_policer = policer_oid != SAI_NULL_OBJECT_ID;
+
+    // Reprogramming a confirmed, identical physical row is not harmless:
+    // VPP may recreate its policer attachment and reset counters. Shared-row
+    // owner removal commonly resolves right back to the journaled owner, so
+    // skip that ordinary no-op. Never skip an uncertain row; a timed-out RPC
+    // may have changed VPP without advancing this journal and must be retried.
+    if (have_binding_key && !current_binding_uncertain &&
+            current_binding_present == semantic_active &&
+            (!semantic_active ||
+             (current_policer_oid == policer_oid &&
+              current_packet_action == effective_action)))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
 
     if (isNeighborMissTrap(trap.trap_type))
     {
@@ -824,6 +843,18 @@ sai_status_t SwitchVpp::createHostifTrapGroup(
 
     auto sid = sai_serialize_object_id(object_id);
 
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE &&
+                !attr_list[i].value.booldata)
+        {
+            // VPP does not yet implement transactional disable/enable of all
+            // shared semantic rows in a trap group. Failing explicitly is
+            // safer than reporting success while traffic remains trapped.
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+    }
+
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP, sid, switch_id, attr_count, attr_list));
 
     vpp_trap_group_entry_t entry;
@@ -889,11 +920,20 @@ sai_status_t SwitchVpp::setHostifTrapGroup(
     sai_object_id_t object_id;
     sai_deserialize_object_id(serializedObjectId, object_id);
 
-    // Queue and administrative-state changes are cache-only for the VPP
-    // classify path. Rebinding here is not merely redundant for shared DHCP
-    // rows: a trap group that no longer owns the physical row could overwrite
-    // the current owner's policer. Only a policer change needs to re-resolve
-    // and reprogram the affected bindings.
+    if (attr->id == SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE &&
+            !attr->value.booldata)
+    {
+        // Do not accept a disabled group while leaving its VPP rows active.
+        // A future implementation can replace this guard with transactional
+        // shared-owner reconciliation for disable and re-enable.
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    // Queue and enabled administrative-state changes are cache-only for the
+    // VPP classify path. Rebinding here is not merely redundant for shared
+    // DHCP rows: a trap group that no longer owns the physical row could
+    // overwrite the current owner's policer. Only a policer change needs to
+    // re-resolve and reprogram the affected bindings.
     if (attr->id != SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER)
     {
         sai_status_t status = set_internal(
