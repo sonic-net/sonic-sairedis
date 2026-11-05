@@ -4285,6 +4285,28 @@ sai_status_t SwitchStateBase::queryBufferProfilePacketAdmissionFailActionCapabil
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryMirrorSessionTypeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    constexpr uint32_t value_count = 4;
+
+    if (enum_values_capability->count < value_count)
+    {
+        enum_values_capability->count = value_count;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = value_count;
+    enum_values_capability->list[0] = SAI_MIRROR_SESSION_TYPE_LOCAL;
+    enum_values_capability->list[1] = SAI_MIRROR_SESSION_TYPE_REMOTE;
+    enum_values_capability->list[2] = SAI_MIRROR_SESSION_TYPE_ENHANCED_REMOTE;
+    enum_values_capability->list[3] = SAI_MIRROR_SESSION_TYPE_SFLOW;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryTamTransportTypeCapability(
                    _Inout_ sai_s32_list_t *enum_values_capability)
 {
@@ -4422,6 +4444,10 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
     else if (object_type == SAI_OBJECT_TYPE_ICMP_ECHO_SESSION && attr_id == SAI_ICMP_ECHO_SESSION_ATTR_STATS_COUNT_MODE)
     {
         return queryIcmpEchoSessionStatsCountModeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_MIRROR_SESSION && attr_id == SAI_MIRROR_SESSION_ATTR_TYPE)
+    {
+        return queryMirrorSessionTypeCapability(enum_values_capability);
     }
 
     return SAI_STATUS_NOT_SUPPORTED;
