@@ -40,22 +40,7 @@ ZeroMQChannel::ZeroMQChannel(
 
     m_buffer.resize(m_zmqResponseBufferSize);
 
-    // configure ZMQ for main communication
-
-    m_context = zmq_ctx_new();
-
-    m_socket = zmq_socket(m_context, ZMQ_REQ);
-
-    SWSS_LOG_NOTICE("opening zmq main endpoint: %s", endpoint.c_str());
-
-    int rc = zmq_connect(m_socket, endpoint.c_str());
-
-    if (rc != 0)
-    {
-        SWSS_LOG_THROW("failed to open zmq main endpoint %s, zmqerrno: %d",
-                endpoint.c_str(),
-                zmq_errno());
-    }
+    initRequestChannel();
 
     // configure ZMQ notification endpoint
 
@@ -65,7 +50,7 @@ ZeroMQChannel::ZeroMQChannel(
 
     SWSS_LOG_NOTICE("opening zmq ntf endpoint: %s", ntfEndpoint.c_str());
 
-    rc = zmq_bind(m_ntfSocket, ntfEndpoint.c_str());
+    int rc = zmq_bind(m_ntfSocket, ntfEndpoint.c_str());
 
     if (rc != 0)
     {
@@ -83,6 +68,48 @@ ZeroMQChannel::ZeroMQChannel(
     m_notificationThread = std::make_shared<std::thread>(&ZeroMQChannel::notificationThreadFunction, this);
 }
 
+ZeroMQChannel::ZeroMQChannel(
+        _In_ const std::string& endpoint,
+        _In_ long zmqResponseBufferSize):
+    Channel([](const std::string&, const std::string&, const std::vector<swss::FieldValueTuple>&) {}),
+    m_endpoint(endpoint),
+    m_context(nullptr),
+    m_socket(nullptr),
+    m_ntfContext(nullptr),
+    m_ntfSocket(nullptr),
+    m_zmqResponseBufferSize(zmqResponseBufferSize)
+{
+    SWSS_LOG_ENTER();
+
+    m_runNotificationThread = false;
+
+    m_buffer.resize(m_zmqResponseBufferSize);
+
+    initRequestChannel();
+
+    SWSS_LOG_NOTICE("request-only zmq channel, no notification endpoint");
+}
+
+void ZeroMQChannel::initRequestChannel()
+{
+    SWSS_LOG_ENTER();
+
+    m_context = zmq_ctx_new();
+
+    m_socket = zmq_socket(m_context, ZMQ_REQ);
+
+    SWSS_LOG_NOTICE("opening zmq main endpoint: %s", m_endpoint.c_str());
+
+    int rc = zmq_connect(m_socket, m_endpoint.c_str());
+
+    if (rc != 0)
+    {
+        SWSS_LOG_THROW("failed to open zmq main endpoint %s, zmqerrno: %d",
+                m_endpoint.c_str(),
+                zmq_errno());
+    }
+}
+
 ZeroMQChannel::~ZeroMQChannel()
 {
     SWSS_LOG_ENTER();
@@ -91,6 +118,13 @@ ZeroMQChannel::~ZeroMQChannel()
 
     zmq_close(m_socket);
     zmq_ctx_destroy(m_context);
+
+    if (!m_ntfSocket)
+    {
+        // request-only channel: no notification socket and no thread to unblock
+
+        return;
+    }
 
     // create new context, and perform send to break notification recv
 
