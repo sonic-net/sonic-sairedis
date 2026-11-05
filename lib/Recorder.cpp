@@ -691,7 +691,7 @@ void Recorder::recordBulkGenericGetResponse(
         joined += "||" + fvField(e) + "|" + fvValue(e);
     }
 
-    recordLine("G|" + sai_serialize_status(status) + "|" + joined);
+    recordLine("G|" + sai_serialize_status(status) + joined);
 }
 
 void Recorder::recordGenericGetStats(
@@ -1303,6 +1303,16 @@ void Recorder::recordNotifySyncd(
     SWSS_LOG_ENTER();
 
     recordNotifySyncd(sai_serialize(redisNotifySyncd));
+}
+
+void Recorder::recordSyncResponseTimeout(
+        _In_ uint64_t responseTimeout)
+{
+    SWSS_LOG_ENTER();
+
+    // 'T' stands for syncd Response Timeout set
+
+    recordLine("T|SYND_RESNPOSE_TIMEOUT=" + std::to_string(responseTimeout));
 }
 
 void Recorder::recordStats(

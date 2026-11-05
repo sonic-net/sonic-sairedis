@@ -234,6 +234,9 @@ namespace saiplayer
 
             void loadProfileMap();
 
+            void setSyndResponseTimeout(
+                    _In_ const std::string& line);
+
         private: // notification handlers
 
             void onFdbEvent(
