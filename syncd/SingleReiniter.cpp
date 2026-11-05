@@ -4,6 +4,7 @@
 #include "NotificationHandler.h"
 #include "Workaround.h"
 #include "BaseRedisClient.h"
+#include "ImplicitDependency.h"
 
 #include "swss/logger.h"
 
@@ -143,6 +144,31 @@ void SingleReiniter::prepareAsicState()
         }
 
         m_attributesLists[key] = redisGetAttributesFromAsicKey(key);
+    }
+
+    for (const auto& kv: m_oids)
+    {
+        auto objectType = getObjectTypeFromAsicKey(kv.second);
+
+        if (!ImplicitDependency::hasImplicitDependencies(objectType))
+        {
+            continue;
+        }
+
+        auto& list = m_attributesLists.at(kv.second);
+
+        auto providerKey = ImplicitDependency::getProviderKey(
+                objectType,
+                list->get_attr_count(),
+                list->get_attr_list());
+
+        if (!providerKey.empty())
+        {
+            sai_object_id_t vid;
+            sai_deserialize_object_id(kv.first, vid);
+
+            m_implicitProviders[providerKey].push_back(vid);
+        }
     }
 }
 
@@ -687,6 +713,8 @@ sai_object_id_t SingleReiniter::processSingleVid(
 
     uint32_t attrCount = list->get_attr_count();
 
+    processImplicitDependencies(vid, objectType, attrCount, attrList);
+
     processAttributesForOids(objectType, attrCount, attrList);
 
     bool createObject = true;
@@ -859,6 +887,53 @@ sai_object_id_t SingleReiniter::processSingleVid(
     m_translatedR2V[rid] = vid;
 
     return rid;
+}
+
+void SingleReiniter::processImplicitDependencies(
+        _In_ sai_object_id_t vid,
+        _In_ sai_object_type_t objectType,
+        _In_ uint32_t attrCount,
+        _In_ const sai_attribute_t* attrList)
+{
+    SWSS_LOG_ENTER();
+
+    auto dependantKey = ImplicitDependency::getDependantKey(objectType, attrCount, attrList);
+
+    if (dependantKey.empty())
+    {
+        return;
+    }
+
+    auto it = m_implicitProviders.find(dependantKey);
+
+    if (it == m_implicitProviders.end())
+    {
+        return;
+    }
+
+    if (!m_implicitInProgress.insert(vid).second)
+    {
+        SWSS_LOG_THROW("implicit dependency loop at %s (%s)",
+                sai_serialize_object_id(vid).c_str(),
+                dependantKey.c_str());
+    }
+
+    for (auto providerVid: it->second)
+    {
+        if (providerVid == vid)
+        {
+            continue;
+        }
+
+        SWSS_LOG_INFO("processing %s before %s (%s)",
+                sai_serialize_object_id(providerVid).c_str(),
+                sai_serialize_object_id(vid).c_str(),
+                dependantKey.c_str());
+
+        processSingleVid(providerVid);
+    }
+
+    m_implicitInProgress.erase(vid);
 }
 
 void SingleReiniter::processAttributesForOids(
