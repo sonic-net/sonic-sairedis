@@ -6803,7 +6803,7 @@ TEST(FlexCounter, prefixRepartitionWaitsForPassAndPreservesDefaultFailureStatus)
     };
     vendor->mock_bulkGetStats = [&](sai_object_id_t, sai_object_type_t,
             uint32_t count, const sai_object_key_t* keys, uint32_t statCount,
-            const sai_stat_id_t* ids, sai_stats_mode_t, sai_status_t* statuses, uint64_t* values)
+            const sai_stat_id_t* ids, sai_stats_mode_t, sai_status_t* statuses, uint64_t* values) -> sai_status_t
     {
         if (!secondPass)
         {
