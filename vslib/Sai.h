@@ -306,6 +306,9 @@ namespace saivs
             std::shared_ptr<Context> getContext(
                     _In_ uint32_t globalContext) const;
 
+            void flushLearnedOnBridgePort(
+                    _In_ sai_object_id_t bridgePortId);
+
         private:
 
             bool m_apiInitialized;
