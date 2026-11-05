@@ -88,8 +88,12 @@ check_PROGRAMS = sai_vpp_xlate_tests
 sai_vpp_xlate_tests_SOURCES = TestSaiVppXlate.c
 sai_vpp_xlate_tests_CFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I/usr/include/vpp_plugins \
 							-ffunction-sections -fdata-sections
-# Link only the callback/context paths exercised by the standalone test.
-sai_vpp_xlate_tests_LDFLAGS = -Wl,--gc-sections
+# Mock the API socket and inspect the locks at each real cache mutation.
+sai_vpp_xlate_tests_LDFLAGS = -Wl,--gc-sections \
+							-Wl,--wrap=_hash_set3 -Wl,--wrap=_hash_unset \
+							-Wl,--wrap=vl_socket_client_msg_alloc \
+							-Wl,--wrap=vl_socket_client_write -Wl,--wrap=vl_socket_client_read
+sai_vpp_xlate_tests_LDADD = $(VPP_LIBS) -lpthread
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
