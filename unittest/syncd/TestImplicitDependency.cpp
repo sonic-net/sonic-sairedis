@@ -509,6 +509,22 @@ namespace
                 return made(objectType, objectId, "P2MP " + srcIp);
             }
 
+            virtual sai_status_t remove(
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_object_id_t objectId) override
+            {
+                SWSS_LOG_ENTER();
+
+                sai_status_t status = saivs::Sai::remove(objectType, objectId);
+
+                if (status == SAI_STATUS_SUCCESS && objectType == SAI_OBJECT_TYPE_BRIDGE_PORT)
+                {
+                    m_removedBridgePorts.push_back(objectId);
+                }
+
+                return status;
+            }
+
         private:
 
             /*
@@ -538,6 +554,8 @@ namespace
             std::set<std::string> m_endpoints;
 
             std::vector<std::string> m_created;
+
+            std::vector<sai_object_id_t> m_removedBridgePorts;
     };
 
     /*
@@ -547,6 +565,8 @@ namespace
     struct Replay
     {
         std::shared_ptr<TunnelOrderSai> sai = std::make_shared<TunnelOrderSai>();
+        std::shared_ptr<RedisClient> client;
+        std::shared_ptr<VirtualOidTranslator> translator;
         std::shared_ptr<SingleReiniter> sr;
 
         Replay(
@@ -570,9 +590,9 @@ namespace
 
             sai->setOptions(VendorSaiOptions::OPTIONS_KEY, std::make_shared<VendorSaiOptions>());
 
-            auto client = std::make_shared<RedisClient>(db);
+            client = std::make_shared<RedisClient>(db);
 
-            auto translator = std::make_shared<VirtualOidTranslator>(
+            translator = std::make_shared<VirtualOidTranslator>(
                     client,
                     std::make_shared<sairedis::VirtualObjectIdManager>(
                         0,
@@ -680,4 +700,40 @@ TEST(ImplicitDependency, hard_reinit_replays_tunnels_of_two_source_ips)
 
     EXPECT_EQ(replay.sai->m_created.size(), objects.size());
     EXPECT_EQ(replay.sr->getTranslatedVid2Rid().size(), objects.size() + 1);
+}
+
+/*
+ * Hard reinit with a populated ASIC_DB gives the switch's default objects no
+ * VIDs, and removes the ones the view does not have, like the default bridge
+ * ports. A notification still carrying such a RID, like an FDB event learned
+ * on a default bridge port before the remove, must find it removed rather
+ * than unknown.
+ */
+TEST(SingleReiniter, hard_reinit_records_removed_default_objects)
+{
+    std::map<std::string, Attrs> objects;
+
+    // more objects than the switch saves its default objects to the view with
+    for (int i = 0; i < 40; i++)
+    {
+        objects["SAI_OBJECT_TYPE_VLAN:" + sai_serialize_object_id(0x26000000000100 + i)] = {
+            {"SAI_VLAN_ATTR_VLAN_ID", std::to_string(100 + i)},
+        };
+    }
+
+    Replay replay(objects);
+
+    EXPECT_NO_THROW(replay.sr->hardReinit());
+
+    replay.client->setVidAndRidMap(replay.sr->getTranslatedVid2Rid());
+
+    EXPECT_NO_THROW(replay.sr->postRemoveActions());
+
+    ASSERT_FALSE(replay.sai->m_removedBridgePorts.empty());
+
+    for (auto rid: replay.sai->m_removedBridgePorts)
+    {
+        EXPECT_TRUE(replay.translator->checkRidExists(rid, true)) << sai_serialize_object_id(rid);
+        EXPECT_FALSE(replay.translator->checkRidExists(rid, false)) << sai_serialize_object_id(rid);
+    }
 }

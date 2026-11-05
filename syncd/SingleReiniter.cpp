@@ -1186,7 +1186,21 @@ void SingleReiniter::postRemoveActions()
             if (ot == m_vendorSai->objectTypeQuery(rid) ||
                     ot == SAI_OBJECT_TYPE_NULL)
             {
+                /*
+                 * Hard reinit does not give discovered objects VIDs. Record
+                 * this one as removed, as a remove from the view does, so a
+                 * notification still carrying its RID (an FDB event learned
+                 * on a default bridge port before this remove) is translated
+                 * as for any removed object.
+                 */
+                sai_object_id_t removedVid = m_translator->translateRidToVid(rid, m_switch_vid);
+
                 m_sw->removeExistingObject(rid);
+
+                if (!m_sw->isDiscoveredRid(rid))
+                {
+                    m_translator->eraseRidAndVid(rid, removedVid);
+                }
 
                 /*
                  * If removing existing object, also make sure we remove it
