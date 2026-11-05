@@ -5348,6 +5348,8 @@ namespace
         swss::DBConnector db("COUNTERS_DB", 0);
         swss::Table table(&db, phy || serdes ? PORT_PHY_ATTR_TABLE : COUNTERS_TABLE);
         swss::Table mapping(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
+        table.del(toOid(vid));
+        table.del(toOid(otherVid));
         if (serdes)
         {
             mapping.set("", {{toOid(vid), toOid(portRid)}, {toOid(otherVid), toOid(portRid)}});
@@ -5447,6 +5449,7 @@ namespace
         fc.removeCounter(vid);
         fc.removeCounter(otherVid);
         table.del(toOid(vid));
+        table.del(toOid(otherVid));
         table.del("TIME_STAMP");
         if (serdes)
         {
