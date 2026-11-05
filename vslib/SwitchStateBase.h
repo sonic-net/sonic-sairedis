@@ -785,6 +785,14 @@ namespace saivs
             virtual sai_status_t queryNextHopGroupTypeCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
+            virtual sai_status_t queryDebugCounterCapability(
+                                      _In_ sai_attr_id_t attr_id,
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
+            static sai_status_t fillEnumValuesCapability(
+                                      _In_ const std::vector<int32_t> &values,
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
             virtual sai_status_t queryHashNativeHashFieldListCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 

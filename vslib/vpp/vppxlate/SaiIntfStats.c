@@ -141,6 +141,30 @@ int vpp_intf_stats_query (const char *intf_name, vpp_interface_stats_t *stats)
   return vpp_stats_dump(pathbuf, handle_stat_one, handle_stat_two, stats);
 }
 
+typedef struct vpp_drop_reason_stats_dump_ {
+  vpp_drop_reason_stats_cb cb;
+  void *data;
+} vpp_drop_reason_stats_dump_t;
+
+static void handle_drop_reason_one (const char *stat_name, uint32_t index,
+                                    uint64_t count, void *data)
+{
+  vpp_drop_reason_stats_dump_t *dump = data;
+
+  dump->cb(stat_name, index, count, dump->data);
+}
+
+int vpp_drop_reason_stats_dump (vpp_drop_reason_stats_cb cb, void *data)
+{
+  char pathbuf[] = "/sonic-ext/drop-reason/";
+  vpp_drop_reason_stats_dump_t dump;
+
+  dump.cb = cb;
+  dump.data = data;
+
+  return vpp_stats_dump(pathbuf, handle_drop_reason_one, NULL, &dump);
+}
+
 #ifdef MAIN
 void classify_get_trace_chain(void){};
 
