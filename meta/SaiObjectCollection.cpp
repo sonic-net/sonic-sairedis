@@ -30,8 +30,9 @@ void SaiObjectCollection::createObject(
 
     if (objectExists(metaKey))
     {
-        SWSS_LOG_THROW("FATAL: object %s already exists",
+        SWSS_LOG_ERROR("FATAL: object %s already exists",
                 sai_serialize_object_meta_key(metaKey).c_str());
+        return;
     }
 
     m_objects[metaKey] = obj;
@@ -44,8 +45,9 @@ void SaiObjectCollection::removeObject(
 
     if (!objectExists(metaKey))
     {
-        SWSS_LOG_THROW("FATAL: object %s doesn't exist",
+        SWSS_LOG_ERROR("FATAL: object %s doesn't exist",
                 sai_serialize_object_meta_key(metaKey).c_str());
+        return;
     }
 
     m_objects.erase(metaKey);
@@ -60,8 +62,9 @@ void SaiObjectCollection::setObjectAttr(
 
     if (!objectExists(metaKey))
     {
-        SWSS_LOG_THROW("FATAL: object %s doesn't exist",
+        SWSS_LOG_ERROR("FATAL: object %s doesn't exist",
                 sai_serialize_object_meta_key(metaKey).c_str());
+        return;
     }
 
     m_objects[metaKey]->setAttr(&md, attr);
@@ -115,8 +118,9 @@ std::shared_ptr<SaiObject> SaiObjectCollection::getObject(
 
     if (!objectExists(metaKey))
     {
-        SWSS_LOG_THROW("FATAL: object %s doesn't exist",
+        SWSS_LOG_ERROR("FATAL: object %s doesn't exist",
                 sai_serialize_object_meta_key(metaKey).c_str());
+        return nullptr;
     }
 
     return m_objects.at(metaKey);
