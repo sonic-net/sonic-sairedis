@@ -54,6 +54,31 @@ void SwitchStateBase::updateLocalDB(
 
             break;
 
+        case SAI_FDB_EVENT_MOVE:
+
+            {
+                // the moved entry is a learned entry: attributes the user set
+                // on it before (static only, like ALLOW_MAC_MOVE) are dropped,
+                // as syncd does for the entry in ASIC_DB
+
+                auto sid = sai_serialize_fdb_entry(data.fdb_entry);
+
+                status = remove(SAI_OBJECT_TYPE_FDB_ENTRY, sid);
+
+                if (status == SAI_STATUS_SUCCESS)
+                {
+                    status = create(SAI_OBJECT_TYPE_FDB_ENTRY, sid, m_switch_id, data.attr_count, data.attr);
+                }
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("failed to move fdb entry %s",
+                            sai_serialize_fdb_entry(data.fdb_entry).c_str());
+                }
+            }
+
+            break;
+
         default:
             SWSS_LOG_ERROR("unsupported fdb event: %d", fdb_event);
             break;
@@ -87,6 +112,135 @@ void SwitchStateBase::processFdbInfo(
     updateLocalDB(data, fdb_event); // TODO we could move to send_fdb_event_notification and support flush
 
     send_fdb_event_notification(data);
+}
+
+void SwitchStateBase::learnFdbInfo(
+        _In_ const FdbInfo &fi)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_fdb_entry(fi.getFdbEntry());
+
+    auto &fdbs = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+    if (fdbs.find(sid) == fdbs.end())
+    {
+        SWSS_LOG_INFO("inserting to fdb_info set: %s, vlan id: %d",
+                sid.c_str(),
+                fi.getVlanId());
+
+        // the set key is MAC and VLAN number, replace a record of another bridge
+
+        m_fdb_info_set.erase(fi);
+        m_fdb_info_set.insert(fi);
+
+        processFdbInfo(fi, SAI_FDB_EVENT_LEARNED);
+
+        return;
+    }
+
+    // the MAC is already in the FDB: created by the user, or learned on another bridge port
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+
+    bool isStatic = get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 1, &attr) == SAI_STATUS_SUCCESS &&
+        attr.value.s32 == SAI_FDB_ENTRY_TYPE_STATIC;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+
+    sai_object_id_t bridgePortId = (get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 1, &attr) == SAI_STATUS_SUCCESS)
+        ? attr.value.oid
+        : SAI_NULL_OBJECT_ID;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE;
+
+    bool allowMacMove = get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 1, &attr) == SAI_STATUS_SUCCESS &&
+        attr.value.booldata;
+
+    if (bridgePortId == fi.getBridgePortId())
+    {
+        if (!isStatic)
+        {
+            // a dynamic entry created by the user ages like a learned one
+
+            m_fdb_info_set.erase(fi);
+            m_fdb_info_set.insert(fi);
+        }
+
+        return;
+    }
+
+    if (isStatic && !allowMacMove)
+    {
+        SWSS_LOG_INFO("static fdb entry %s is not moved to bridge port %s",
+                sid.c_str(),
+                sai_serialize_object_id(fi.getBridgePortId()).c_str());
+
+        return;
+    }
+
+    SWSS_LOG_INFO("moving fdb entry %s to bridge port %s",
+            sid.c_str(),
+            sai_serialize_object_id(fi.getBridgePortId()).c_str());
+
+    m_fdb_info_set.erase(fi);
+    m_fdb_info_set.insert(fi);
+
+    processFdbInfo(fi, SAI_FDB_EVENT_MOVE);
+}
+
+void SwitchStateBase::updateFdbInfoOnSet(
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_fdb_entry_t fdbEntry;
+
+    sai_deserialize_fdb_entry(serializedObjectId, fdbEntry);
+
+    FdbInfo fi;
+
+    fi.setFdbEntry(fdbEntry);
+
+    sai_attribute_t attr;
+
+    if (objectTypeQuery(fdbEntry.bv_id) == SAI_OBJECT_TYPE_VLAN)
+    {
+        attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+        if (get(SAI_OBJECT_TYPE_VLAN, fdbEntry.bv_id, 1, &attr) == SAI_STATUS_SUCCESS)
+        {
+            fi.setVlanId(attr.value.u16);
+        }
+    }
+
+    m_fdb_info_set.erase(fi);
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+
+    if (get(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, 2, attrs) != SAI_STATUS_SUCCESS ||
+            attrs[0].value.s32 != SAI_FDB_ENTRY_TYPE_DYNAMIC ||
+            attrs[1].value.oid == SAI_NULL_OBJECT_ID)
+    {
+        return;
+    }
+
+    fi.setBridgePortId(attrs[1].value.oid);
+
+    attr.id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+
+    fi.setPortId((get(SAI_OBJECT_TYPE_BRIDGE_PORT, attrs[1].value.oid, 1, &attr) == SAI_STATUS_SUCCESS)
+            ? attr.value.oid
+            : SAI_NULL_OBJECT_ID);
+
+    fi.setTimestamp((uint32_t)time(NULL));
+
+    m_fdb_info_set.insert(fi);
 }
 
 void SwitchStateBase::findBridgeVlanForPortVlan(
@@ -268,6 +422,34 @@ void SwitchStateBase::findBridgeVlanForPortVlan(
     }
 }
 
+bool SwitchStateBase::isLearnedFdbEntryPresent(
+        _In_ const FdbInfo &fi)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_fdb_entry(fi.getFdbEntry());
+
+    auto &fdbs = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+    if (fdbs.find(sid) == fdbs.end())
+    {
+        return false;
+    }
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+
+    if (get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 2, attrs) != SAI_STATUS_SUCCESS)
+    {
+        return false;
+    }
+
+    return attrs[0].value.s32 == SAI_FDB_ENTRY_TYPE_DYNAMIC &&
+        attrs[1].value.oid == fi.getBridgePortId();
+}
+
 bool SwitchStateBase::getLagFromPort(
         _In_ sai_object_id_t port_id,
         _Inout_ sai_object_id_t& lag_id)
@@ -436,41 +618,28 @@ void SwitchStateBase::process_packet_for_fdb_event(
         }
     }
 
+    sai_object_id_t lag_id;
+
+    bool isLagMember = getLagFromPort(portId, lag_id);
+
     if (tagged == false)
     {
         // untagged ethernet frame
 
         sai_attribute_t attr;
 
-#ifdef SAI_LAG_ATTR_PORT_VLAN_ID
-
-        sai_object_id_t lag_id;
-
-        if (getLagFromPort(portid, lag_id))
+        if (isLagMember)
         {
-            // if port belongs to lag we need to get SAI_LAG_ATTR_PORT_VLAN_ID
+            // the port VLAN of a lag member is the one set on its lag
 
-            attr.id = SAI_LAG_ATTR_PORT_VLAN_ID
+            attr.id = SAI_LAG_ATTR_PORT_VLAN_ID;
 
-                sai_status_t status = get(SAI_OBJECT_TYPE_LAG, lag_id, 1, &attr);
+            sai_status_t status = get(SAI_OBJECT_TYPE_LAG, lag_id, 1, &attr);
 
-            if (status != SAI_STATUS_SUCCESS)
-            {
-                SWSS_LOG_WARN("failed to get lag vlan id from lag %s",
-                        sai_serialize_object_id(lag_id).c_str());
-                return;
-            }
-
-            vlan_id = attr.value.u16;
-
-            if (isLagOrPortRifBased(lag_id))
-            {
-                // this lag is router interface based, skip mac learning
-                return;
-            }
+            // attribute is not stored until it is set, the SAI default is 1
+            vlan_id = (status == SAI_STATUS_SUCCESS) ? attr.value.u16 : DEFAULT_VLAN_NUMBER;
         }
         else
-#endif
         {
             attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
 
@@ -488,8 +657,7 @@ void SwitchStateBase::process_packet_for_fdb_event(
         }
     }
 
-    sai_object_id_t lag_id;
-    if (getLagFromPort(portId, lag_id) && isLagOrPortRifBased(lag_id))
+    if (isLagMember && isLagOrPortRifBased(lag_id))
     {
         SWSS_LOG_DEBUG("lag %s is rif based, skip mac learning for port %s",
                 sai_serialize_object_id(lag_id).c_str(),
@@ -518,16 +686,32 @@ void SwitchStateBase::process_packet_for_fdb_event(
 
     if (it != m_fdb_info_set.end())
     {
-        // this key was found, update timestamp
-        // and since iterator is const we need to reinsert
+        bool present = isLearnedFdbEntryPresent(*it);
 
-        fi = *it;
+        if (present && it->getPortId() == fi.getPortId())
+        {
+            // the timestamp is not part of the set key, so insert() would
+            // keep the old element: replace it to refresh the entry age
 
-        fi.setTimestamp(frametime);
+            fi = *it;
 
-        m_fdb_info_set.insert(fi);
+            fi.setTimestamp(frametime);
 
-        return;
+            m_fdb_info_set.erase(it);
+
+            m_fdb_info_set.insert(fi);
+
+            return;
+        }
+
+        if (!present)
+        {
+            // the user removed or replaced the learned entry, learn it again
+
+            m_fdb_info_set.erase(it);
+        }
+
+        // otherwise the MAC arrived on another port, learnFdbInfo moves it
     }
 
     // key was not found, get additional information
@@ -557,13 +741,7 @@ void SwitchStateBase::process_packet_for_fdb_event(
     {
         if (attr.value.s32 == SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW)
         {
-            SWSS_LOG_INFO("inserting to fdb_info set: %s, vlan id: %d",
-                    sai_serialize_fdb_entry(fi.getFdbEntry()).c_str(),
-                    fi.getVlanId());
-
-            m_fdb_info_set.insert(fi);
-
-            processFdbInfo(fi, SAI_FDB_EVENT_LEARNED);
+            learnFdbInfo(fi);
         }
         else if (attr.value.s32 == SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE)
         {
