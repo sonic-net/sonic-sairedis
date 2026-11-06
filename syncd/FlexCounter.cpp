@@ -4420,7 +4420,7 @@ void FlexCounter::addCounterPlugin(
         if (m_plugIn2CounterType.count(fvField(value)) != 0 ||
                 fvField(value) == BULK_CHUNK_SIZE_PER_PREFIX_FIELD)
         {
-            // Plugins and repartitioning must preserve the completed pass's
+            // Plugins and changes to prefix partitions must preserve the completed pass's
             // samples and status slots. Other polling settings remain prompt.
             _lock.waitForPollEnd(m_runFlexCounterThread);
             break;
