@@ -191,8 +191,8 @@ Syncd::Syncd(
 
     // we need STATE_DB ASIC_DB and COUNTERS_DB
 
-    m_dbAsic = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
-    m_dbState = std::make_shared<swss::DBConnector>("STATE_DB", 0);
+    m_dbAsic = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0, false, "", true);
+    m_dbState = std::make_shared<swss::DBConnector>("STATE_DB", 0, false, "", true);
     m_dampingCounterTable = std::make_shared<swss::Table>(m_dbState.get(), "LINK_EVENT_DAMPING_STATS");
     m_mdioIpcServer = std::make_shared<MdioIpcServer>(m_vendorSai, m_commandLineOptions->m_globalContext);
 
@@ -279,7 +279,7 @@ Syncd::Syncd(
     m_restartQuery = std::make_shared<swss::NotificationConsumer>(m_dbAsic.get(), SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY_PER_DB(m_contextConfig->m_dbAsic));
 
     // TODO to be moved to ASIC_DB
-    m_dbFlexCounter = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbFlex, 0);
+    m_dbFlexCounter = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbFlex, 0, false, "", true);
     m_flexCounter = std::make_shared<swss::ConsumerTable>(m_dbFlexCounter.get(), FLEX_COUNTER_TABLE);
     m_flexCounterGroup = std::make_shared<swss::ConsumerTable>(m_dbFlexCounter.get(), FLEX_COUNTER_GROUP_TABLE);
     m_flexCounterTable = std::make_shared<swss::Table>(m_dbFlexCounter.get(), FLEX_COUNTER_TABLE);
