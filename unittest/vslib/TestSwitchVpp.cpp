@@ -17,9 +17,12 @@
 #include <arpa/inet.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <map>
 #include <memory>
 #include <string>
@@ -28,6 +31,350 @@
 #include <unistd.h>
 
 using namespace saivs;
+
+namespace
+{
+    /*
+     * The classify tables, sessions and interface bindings SwitchVpp creates,
+     * so a test can ask what VPP would do with a given frame.
+     */
+    struct ClassifyTable
+    {
+        uint32_t skip;
+        uint32_t match;
+        uint32_t next_table;
+        std::vector<uint8_t> mask;
+        std::map<std::vector<uint8_t>, uint32_t> sessions; // masked key -> hit next
+    };
+
+    std::map<uint32_t, ClassifyTable> g_tables;
+    uint32_t g_nextTableIndex = 0;
+
+    // interface -> l2 input tables {ip4, ip6, other}
+    std::map<std::string, std::array<uint32_t, 3>> g_l2Tables;
+
+    const uint32_t MISS = ~0u;
+
+    std::vector<uint8_t> maskedKey(
+            const ClassifyTable& t,
+            const uint8_t *data,
+            size_t len)
+    {
+        SWSS_LOG_ENTER();
+
+        std::vector<uint8_t> key(t.match * 16, 0);
+
+        for (size_t i = 0; i < key.size(); i++)
+        {
+            size_t off = t.skip * 16 + i;
+
+            key[i] = (uint8_t)((off < len ? data[off] : 0) & t.mask[i]);
+        }
+
+        return key;
+    }
+
+    // Walks a classify chain the way VPP does: the first hit's next index, or MISS.
+    uint32_t classify(
+            uint32_t table,
+            const std::vector<uint8_t>& frame)
+    {
+        SWSS_LOG_ENTER();
+
+        while (table != ~0u)
+        {
+            auto it = g_tables.find(table);
+
+            if (it == g_tables.end())
+            {
+                return MISS;
+            }
+
+            auto s = it->second.sessions.find(maskedKey(it->second, frame.data(), frame.size()));
+
+            if (s != it->second.sessions.end())
+            {
+                return s->second;
+            }
+
+            table = it->second.next_table;
+        }
+
+        return MISS;
+    }
+
+    // IPv4 API routes VPP holds: (table, prefix) -> next hop type
+    std::map<std::pair<uint32_t, std::string>, int> g_ip4Routes;
+
+    // the IP2ME address set: the destinations the IP2ME policer meters on the punt path
+    std::set<std::string> g_ip2meAddrs;
+
+    uint32_t g_nextSwIfIndex = 100;
+    int g_l2fibByIndexDelResult = 0;
+
+    // destination address of each VXLAN tunnel the stub created, by sw_if_index
+    std::map<uint32_t, std::string> g_vxlanTunnelDst;
+
+    std::string macStr(
+            const uint8_t *mac)
+    {
+        SWSS_LOG_ENTER();
+
+        char buf[18];
+
+        snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+        return buf;
+    }
+
+    // position of the first recorded call matching api and name, or -1
+    int vppCallIndex(
+            const std::string& api,
+            const std::string& name)
+    {
+        SWSS_LOG_ENTER();
+
+        for (size_t i = 0; i < vppMock().calls.size(); i++)
+        {
+            if (vppMock().calls[i].api == api && vppMock().calls[i].name == name)
+            {
+                return (int)i;
+            }
+        }
+
+        return -1;
+    }
+
+    std::vector<VppCall> vppCallsTo(
+            const std::string& api)
+    {
+        SWSS_LOG_ENTER();
+
+        std::vector<VppCall> calls;
+
+        for (auto& call: vppMock().calls)
+        {
+            if (call.api == api)
+            {
+                calls.push_back(call);
+            }
+        }
+
+        return calls;
+    }
+}
+
+extern "C" {
+
+int __wrap_vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
+                                     uint32_t skip_n_vectors, uint32_t match_n_vectors,
+                                     uint32_t next_table_index, uint32_t miss_next_index,
+                                     const uint8_t *mask, uint32_t mask_len,
+                                     uint32_t *new_table_index)
+{
+    SWSS_LOG_ENTER();
+
+    EXPECT_EQ(match_n_vectors * 16, mask_len);
+
+    ClassifyTable t;
+
+    t.skip = skip_n_vectors;
+    t.match = match_n_vectors;
+    t.next_table = next_table_index;
+    t.mask.assign(mask, mask + mask_len);
+
+    *new_table_index = g_nextTableIndex++;
+    g_tables[*new_table_index] = t;
+    return 0;
+}
+
+int __wrap_vpp_classify_table_delete(uint32_t table_index)
+{
+    SWSS_LOG_ENTER();
+
+    g_tables.erase(table_index);
+    return 0;
+}
+
+int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+                                    const uint8_t *match, uint32_t match_len,
+                                    uint32_t opaque_index, int32_t advance, uint8_t action)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().classifySessions.push_back({table_index, hit_next_index,
+            std::vector<uint8_t>(match, match + match_len)});
+
+    auto& t = g_tables.at(table_index);
+
+    t.sessions[maskedKey(t, match, match_len)] = hit_next_index;
+    return 0;
+}
+
+int __wrap_vpp_classify_session_del(uint32_t table_index, const uint8_t *match, uint32_t match_len)
+{
+    SWSS_LOG_ENTER();
+
+    auto& t = g_tables.at(table_index);
+
+    // VPP fails the delete of a session that is not there
+    return t.sessions.erase(maskedKey(t, match, match_len)) == 1 ? 0 : -1;
+}
+
+int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
+        uint32_t ip6_table_index, uint32_t other_table_index, bool is_input)
+{
+    SWSS_LOG_ENTER();
+
+    g_l2Tables[hwif_name] = {ip4_table_index, ip6_table_index, other_table_index};
+    return 0;
+}
+
+int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    if (route->prefix_addr.sa_family != AF_INET || route->nexthop_cnt < 1)
+    {
+        return 0;
+    }
+
+    char addr[INET_ADDRSTRLEN];
+
+    inet_ntop(AF_INET, &route->prefix_addr.addr.ip4.sin_addr, addr, sizeof(addr));
+
+    std::string prefix = std::string(addr) + "/" + std::to_string(route->prefix_len);
+
+    vppMock().calls.push_back({"ip_route_add_del", prefix, route->vrf_id, 0, is_add});
+
+    // VPP has no table to add the route to, or no route to delete (table 0 always exists)
+    if (route->vrf_id != 0 && vppMock().vrfTables.count(route->vrf_id) == 0)
+    {
+        return -1;
+    }
+
+    auto key = std::make_pair(route->vrf_id, prefix);
+
+    if (is_add)
+    {
+        g_ip4Routes[key] = route->nexthop[0].type;
+        return 0;
+    }
+
+    return g_ip4Routes.erase(key) == 1 ? 0 : -1;
+}
+
+int __wrap_vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    char text[INET_ADDRSTRLEN];
+
+    inet_ntop(AF_INET, &addr, text, sizeof(text));
+
+    // a set: adding an address twice or deleting a missing one is a no-op
+    if (is_add)
+    {
+        g_ip2meAddrs.insert(text);
+    }
+    else
+    {
+        g_ip2meAddrs.erase(text);
+    }
+
+    return 0;
+}
+
+int __wrap_l2fib_add_del(const char *hwif_name, const uint8_t *mac, uint32_t bd_id, bool is_add, bool is_static_mac)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"l2fib_add_del", std::string(hwif_name ? hwif_name : "") + " " + macStr(mac), bd_id, is_static_mac, is_add});
+    return 0;
+}
+
+int __wrap_l2fib_flush_all()
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"l2fib_flush_all", "", 0, 0, false});
+    return 0;
+}
+
+int __wrap_l2fib_flush_int(const char *hwif_name)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"l2fib_flush_int", hwif_name ? hwif_name : "", 0, 0, false});
+    return 0;
+}
+
+int __wrap_l2fib_flush_bd(uint32_t bd_id)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"l2fib_flush_bd", "", bd_id, 0, false});
+    return 0;
+}
+
+/*
+ * L2 VXLAN tunnels: name is the sw_if_index, id the bridge domain, sub_id the
+ * split horizon group, flag enable. vpp_vxlan_tunnel_add_del: id is the VNI,
+ * sub_id the sw_if_index a create hands out.
+ */
+int __wrap_vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, uint32_t *sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    if (is_add)
+    {
+        *sw_if_index = g_nextSwIfIndex++;
+
+        char dst[INET6_ADDRSTRLEN];
+
+        vpp_ip_addr_t_to_string(&tunnel->dst_address, dst, sizeof(dst));
+        g_vxlanTunnelDst[*sw_if_index] = dst;
+    }
+
+    vppMock().calls.push_back({"vpp_vxlan_tunnel_add_del", "", tunnel->vni, is_add ? *sw_if_index : 0, is_add});
+    return 0;
+}
+
+int __wrap_set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_enable, uint32_t port_type)
+{
+    SWSS_LOG_ENTER();
+
+    // split horizon group 0
+    vppMock().calls.push_back({"set_sw_interface_l2_bridge_shg_by_index", std::to_string(sw_if_index), bridge_id, 0, l2_enable});
+    return 0;
+}
+
+int __wrap_set_sw_interface_l2_bridge_shg_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_enable, uint32_t port_type, uint8_t shg)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"set_sw_interface_l2_bridge_shg_by_index", std::to_string(sw_if_index), bridge_id, shg, l2_enable});
+    return 0;
+}
+
+int __wrap_set_l2_interface_flags_by_index(uint32_t sw_if_index, vpp_bd_flags_t flags, bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"set_l2_interface_flags_by_index", std::to_string(sw_if_index), (uint32_t)flags, 0, enable});
+    return 0;
+}
+
+int __wrap_l2fib_add_del_by_index(uint32_t sw_if_index, const uint8_t *mac, uint32_t bd_id, bool is_add, bool is_static_mac)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"l2fib_add_del_by_index", std::to_string(sw_if_index) + " " + macStr(mac), bd_id, is_static_mac, is_add});
+    return is_add ? 0 : g_l2fibByIndexDelResult;
+}
+
+}
 
 TEST(SwitchVpp, getLagMemberEgressDisableAction)
 {
@@ -335,6 +682,206 @@ TEST_F(SwitchVppSubIfAdminState, SubPortSetDownBeforeThePortComesUpStaysDown)
 
     EXPECT_EQ(2u, vppMock().callsTo("interface_set_state", SUB_PORT_HWIF).size());
     EXPECT_FALSE(vppMock().isAdminUp(SUB_PORT_HWIF));
+}
+
+/*
+ * The L2 punt classify sessions trap DHCPv4, ARP and IPv6 multicast to the
+ * control plane. With sonic-ext's l2-trap-learn on, they send the frame to
+ * sonic-ext-l2-trap-learn, so that VPP learns its source MAC, as an ASIC does;
+ * LLDP's session never does. The first VLAN member sets up the sessions of
+ * untagged and tagged members alike, once per process, and
+ * sonicExtFeatureEnabled() keeps what VPP reports, so each case runs in a
+ * process of its own.
+ */
+class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
+{
+    protected:
+
+        // the next index of each node a punt session can send a frame to
+        enum : uint32_t
+        {
+            PUNT = 1,       // linux-cp-punt
+            TRAP_FIXUP,     // sonic-ext-l2-trap-fixup
+            VLAN_FILTER,    // sonic-ext-l2-vlan-filter
+            TRAP_LEARN,     // sonic-ext-l2-trap-learn
+        };
+
+        // the nexts of the punt sessions, by what they match
+        using Nexts = std::map<std::string, std::vector<uint32_t>>;
+
+        // What a punt session matches: the ethertype of a tagged frame
+        // follows its 802.1Q tag
+        static std::string matched(
+                const std::vector<uint8_t>& match)
+        {
+            SWSS_LOG_ENTER();
+
+            auto u16 = [&match](size_t at) {
+                return at + 1 < match.size() ? (match[at] << 8) | match[at + 1] : 0;
+            };
+
+            bool tagged = u16(16) != 0;
+            std::string member = tagged ? "tagged " : "untagged ";
+
+            if (u16(0) == 0x3333)
+            {
+                return member + "IPv6 multicast";
+            }
+
+            switch (tagged ? u16(16) : u16(12))
+            {
+                case 0x0800:
+                    return member + "DHCPv4";
+                case 0x0806:
+                    return member + "ARP";
+                case 0x88cc:
+                    return "LLDP";
+                case 0x8100:
+                    return "VLAN filter";
+                default:
+                    return "other";
+            }
+        }
+
+        static Nexts puntNexts()
+        {
+            SWSS_LOG_ENTER();
+
+            Nexts nexts;
+
+            for (const auto& session: vppMock().classifySessions)
+            {
+                nexts[matched(session.match)].push_back(session.hit_next_index);
+            }
+
+            return nexts;
+        }
+
+        // the nexts, by the name of each node
+        std::string str(
+                const Nexts& nexts) const
+        {
+            SWSS_LOG_ENTER();
+
+            std::map<uint32_t, std::string> names;
+
+            for (const auto& node: NODES)
+            {
+                names[node.second] = node.first;
+            }
+
+            std::string s;
+
+            for (const auto& kv: nexts)
+            {
+                s += "  " + kv.first + ":";
+
+                for (auto next: kv.second)
+                {
+                    s += " " + (names.count(next) ? names[next] : std::to_string(next));
+                }
+
+                s += "\n";
+            }
+
+            return s;
+        }
+
+        // The punt sessions the first VLAN member sets up have the nexts
+        // expected, with these sonic-ext features on and these nodes in VPP
+        void expectPuntNexts(
+                const std::set<std::string>& features,
+                const std::map<std::string, uint32_t>& nodes,
+                const Nexts& expected)
+        {
+            SWSS_LOG_ENTER();
+
+            ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+            ASSERT_EXIT({
+                vppMock().enabledFeatures = features;
+                vppMock().nodeNexts = nodes;
+
+                addTaggedMember(m_bridgePort);
+
+                auto nexts = puntNexts();
+
+                if (nexts != expected)
+                {
+                    fprintf(stderr, "punt session nexts:\n%sexpected:\n%s",
+                            str(nexts).c_str(), str(expected).c_str());
+                }
+
+                _exit(nexts == expected && !::testing::Test::HasFailure() ? 0 : 1);
+            }, ::testing::ExitedWithCode(0), "");
+        }
+
+        const std::set<std::string> FEATURES = {"l2-trap-fixup", "l2-trap-learn", "l2-vlan-filter"};
+
+        const std::map<std::string, uint32_t> NODES = {
+            {"linux-cp-punt", PUNT},
+            {"sonic-ext-l2-trap-fixup", TRAP_FIXUP},
+            {"sonic-ext-l2-vlan-filter", VLAN_FILTER},
+            {"sonic-ext-l2-trap-learn", TRAP_LEARN},
+        };
+
+        // the nexts without sonic-ext-l2-trap-learn, as before it; tagged
+        // IPv6 multicast has a session in each of its two tables
+        const Nexts NEXTS_WITHOUT_TRAP_LEARN = {
+            {"untagged DHCPv4", {PUNT}},
+            {"untagged ARP", {PUNT}},
+            {"untagged IPv6 multicast", {PUNT}},
+            {"tagged DHCPv4", {TRAP_FIXUP}},
+            {"tagged ARP", {TRAP_FIXUP}},
+            {"tagged IPv6 multicast", {TRAP_FIXUP, TRAP_FIXUP}},
+            {"LLDP", {PUNT}},
+            {"VLAN filter", {VLAN_FILTER}},
+        };
+};
+
+TEST_F(SwitchVppL2TrapLearn, TrapsGoToTrapLearnWhenItIsOn)
+{
+    expectPuntNexts(FEATURES, NODES, {
+        {"untagged DHCPv4", {TRAP_LEARN}},
+        {"untagged ARP", {TRAP_LEARN}},
+        {"untagged IPv6 multicast", {TRAP_LEARN}},
+        {"tagged DHCPv4", {TRAP_LEARN}},
+        {"tagged ARP", {TRAP_LEARN}},
+        {"tagged IPv6 multicast", {TRAP_LEARN, TRAP_LEARN}},
+        {"LLDP", {PUNT}},
+        {"VLAN filter", {VLAN_FILTER}},
+    });
+}
+
+TEST_F(SwitchVppL2TrapLearn, TrapsKeepTheirNextsWhenTrapLearnIsOff)
+{
+    expectPuntNexts({"l2-trap-fixup", "l2-vlan-filter"}, NODES, NEXTS_WITHOUT_TRAP_LEARN);
+}
+
+/*
+ * A sonic-ext plugin that reports l2-trap-learn on without having its node.
+ */
+TEST_F(SwitchVppL2TrapLearn, TrapsKeepTheirNextsWhenVppHasNoTrapLearnNode)
+{
+    auto nodes = NODES;
+
+    nodes.erase("sonic-ext-l2-trap-learn");
+
+    expectPuntNexts(FEATURES, nodes, NEXTS_WITHOUT_TRAP_LEARN);
+}
+
+/*
+ * sonic-ext-l2-trap-learn sends its copy of the frame to
+ * sonic-ext-l2-trap-fixup, so it is not used without it.
+ */
+TEST_F(SwitchVppL2TrapLearn, TrapsDoNotGoToTrapLearnWithoutTrapFixup)
+{
+    expectPuntNexts({"l2-trap-learn", "l2-vlan-filter"}, NODES, {
+        {"untagged DHCPv4", {PUNT}},
+        {"untagged ARP", {PUNT}},
+        {"untagged IPv6 multicast", {PUNT}},
+        {"LLDP", {PUNT}},
+        {"VLAN filter", {VLAN_FILTER}},
+    });
 }
 
 TEST(SwitchVpp, fdbResyncRetriesFailedL2fibDump)
@@ -1079,4 +1626,1419 @@ TEST(SwitchVpp, bfdResyncReportsStateChangesLostWithTheEventSocket)
 
     EXPECT_EQ(3u, vppMock().bfdDumpCalls);
     EXPECT_EQ(0u, sc->m_eventQueue->size());
+}
+
+/*
+ * SAI_HOSTIF_TRAP_TYPE_DHCP packet action on VLAN 100: an untagged member on
+ * one port, a tagged one on another, and the VLAN's BVI. Each test asks what
+ * VPP would do with a DHCPv4 client broadcast on a member (punted by the l2
+ * input classifier, or let through to the flood) and with the BVI's flood
+ * copy (received, if the BVI's table has 255.255.255.255/32 as a local
+ * route, or dropped by the route VPP installs there by default).
+ *
+ * The classify tables live in VPP, so they outlive a SwitchVpp instance just
+ * as the stubbed tables outlive a test. The tests only look at the end state.
+ *
+ * The unit tests are built with access control checking disabled, so the
+ * fixture reaches the protected SwitchVpp members directly.
+ */
+class SwitchVppDhcpTrap : public ::testing::Test
+{
+    protected:
+
+        enum : uint32_t
+        {
+            PUNT = 1,
+            TRAP_FIXUP = 2,
+            VLAN_FILTER = 3,
+        };
+
+        void SetUp() override
+        {
+            auto sc = std::make_shared<SwitchConfig>(0, "");
+
+            sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+            sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+            sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+            sc->m_useTapDevice = false;
+            sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+            sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+
+            auto scc = std::make_shared<SwitchConfigContainer>();
+
+            scc->insert(sc);
+
+            m_mgr = std::make_shared<RealObjectIdManager>(0, scc);
+            m_sw = std::make_shared<SwitchVpp>(m_switchId, m_mgr, sc);
+
+            m_vlan = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN, m_switchId);
+
+            sai_attribute_t vattrs[2];
+
+            vattrs[0].id = SAI_VLAN_ATTR_VLAN_ID;
+            vattrs[0].value.u16 = VLAN_ID;
+            // proxy ARP on the VLAN, so the members also punt broadcast ARP
+            vattrs[1].id = SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE;
+            vattrs[1].value.s32 = SAI_VLAN_FLOOD_CONTROL_TYPE_NONE;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(m_vlan), m_switchId, 2, vattrs));
+
+            // what switch initialization records, and the BVI path reads
+            m_defaultVr = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+            sai_attribute_t sattr;
+
+            sattr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+            sattr.value.oid = m_defaultVr;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), m_switchId, 1, &sattr));
+
+            vppMock().reset();
+            vppMock().enabledFeatures = {"l2-trap-fixup", "l2-vlan-filter"};
+            vppMock().nodeNexts = {
+                {"linux-cp-punt", PUNT},
+                {"sonic-ext-l2-trap-fixup", TRAP_FIXUP},
+                {"sonic-ext-l2-vlan-filter", VLAN_FILTER},
+            };
+            g_l2Tables.clear();
+            g_ip4Routes.clear();
+            g_ip2meAddrs.clear();
+        }
+
+        void TearDown() override
+        {
+            m_sw.reset();
+
+            vppMock().reset();
+        }
+
+        sai_object_id_t createTrap(
+                sai_packet_action_t action)
+        {
+            SWSS_LOG_ENTER();
+
+            auto oid = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_HOSTIF_TRAP, m_switchId);
+
+            sai_attribute_t attrs[2];
+
+            attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+            attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCP;
+            attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+            attrs[1].value.s32 = action;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(oid), m_switchId, 2, attrs));
+
+            return oid;
+        }
+
+        void setTrapAction(
+                sai_object_id_t trap,
+                sai_packet_action_t action)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+            attr.value.s32 = action;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap), &attr));
+        }
+
+        void removeTrap(
+                sai_object_id_t trap)
+        {
+            SWSS_LOG_ENTER();
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->remove(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
+        }
+
+        void addMember(
+                const char *hwif,
+                bool tagged)
+        {
+            SWSS_LOG_ENTER();
+
+            auto port = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_switchId);
+
+            ASSERT_NE(nullptr, m_sw->m_ifaceRegistry.addPhysicalPort(hwif, std::string("os_") + hwif, port));
+
+            auto bridgePort = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+
+            sai_attribute_t battrs[2];
+
+            battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+            battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+            battrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+            battrs[1].value.oid = port;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bridgePort), m_switchId, 2, battrs));
+
+            sai_attribute_t mattrs[3];
+
+            mattrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+            mattrs[0].value.oid = m_vlan;
+            mattrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
+            mattrs[1].value.oid = bridgePort;
+            mattrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
+            mattrs[2].value.s32 = tagged ? SAI_VLAN_TAGGING_MODE_TAGGED : SAI_VLAN_TAGGING_MODE_UNTAGGED;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_create_vlan_member(3, mattrs));
+        }
+
+        void addMembers()
+        {
+            SWSS_LOG_ENTER();
+
+            addMember("bobm0", false);
+            addMember("bobm1", true);
+        }
+
+        void createBvi()
+        {
+            SWSS_LOG_ENTER();
+
+            m_rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
+
+            sai_attribute_t attrs[4];
+
+            attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+            attrs[0].value.s32 = SAI_ROUTER_INTERFACE_TYPE_VLAN;
+            attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+            attrs[1].value.oid = m_vlan;
+            attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+            memcpy(attrs[2].value.mac, BVI_MAC, sizeof(sai_mac_t));
+            attrs[3].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+            attrs[3].value.oid = m_defaultVr;
+
+            SwitchVpp::RifCreateState state;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(m_rif), m_switchId, 4, attrs));
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_create_bvi_interface(4, attrs, state));
+        }
+
+        static std::vector<uint8_t> ip4Udp(
+                uint8_t dst_last_octet_or_bcast,
+                uint16_t dport)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<uint8_t> ip(28, 0);
+
+            ip[0] = 0x45;                                   // IPv4, header length 5
+            ip[9] = 17;                                     // UDP
+            ip[16] = ip[17] = ip[18] = 0xff;                // destination 255.255.255.x
+            ip[19] = dst_last_octet_or_bcast;
+            ip[20] = 0; ip[21] = 68;                        // sport 68
+            ip[22] = (uint8_t)(dport >> 8);
+            ip[23] = (uint8_t)(dport & 0xff);
+
+            return ip;
+        }
+
+        // a DHCPv4 client broadcast (DISCOVER or REQUEST) as it arrives on a member
+        static std::vector<uint8_t> dhcpOnWire(
+                bool tagged)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<uint8_t> f = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0, 0, 0, 0, 0x01};
+
+            if (tagged)
+            {
+                f.insert(f.end(), {0x81, 0x00, 0x00, (uint8_t)VLAN_ID});
+            }
+
+            f.insert(f.end(), {0x08, 0x00});
+
+            auto ip = ip4Udp(0xff, 67);
+
+            f.insert(f.end(), ip.begin(), ip.end());
+
+            return f;
+        }
+
+        // a broadcast ARP request as it arrives on a member
+        static std::vector<uint8_t> arpOnWire(
+                bool tagged)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<uint8_t> f = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0, 0, 0, 0, 0x01};
+
+            if (tagged)
+            {
+                f.insert(f.end(), {0x81, 0x00, 0x00, (uint8_t)VLAN_ID});
+            }
+
+            f.insert(f.end(), {0x08, 0x06});
+            f.resize(f.size() + 28, 0);
+
+            return f;
+        }
+
+        // l2-input-classify's verdict on a frame: the hit next, or MISS (bridged and flooded)
+        static uint32_t onMember(
+                const char *hwif,
+                bool tagged,
+                const std::vector<uint8_t>& frame)
+        {
+            SWSS_LOG_ENTER();
+
+            auto it = g_l2Tables.find(hwif);
+
+            if (it == g_l2Tables.end())
+            {
+                return MISS;
+            }
+
+            bool ip4 = !tagged && frame[12] == 0x08 && frame[13] == 0x00;
+
+            // an untagged IPv4 frame selects the ip4 slot, any tagged frame the other slot
+            return classify(ip4 ? it->second[0] : it->second[2], frame);
+        }
+
+        // whether table vrf_id receives a limited broadcast, rather than dropping it
+        static bool receivesLimitedBroadcast(
+                uint32_t vrf_id)
+        {
+            SWSS_LOG_ENTER();
+
+            if (vrf_id != 0 && vppMock().vrfTables.count(vrf_id) == 0)
+            {
+                return false;
+            }
+
+            auto it = g_ip4Routes.find({vrf_id, "255.255.255.255/32"});
+
+            return it != g_ip4Routes.end() && it->second == VPP_NEXTHOP_LOCAL;
+        }
+
+        // whether the IP2ME policer meters limited broadcasts punted to the CPU
+        static bool policesLimitedBroadcast()
+        {
+            SWSS_LOG_ENTER();
+
+            return g_ip2meAddrs.count("255.255.255.255") == 1;
+        }
+
+        static uint32_t memberPunt()
+        {
+            SWSS_LOG_ENTER();
+
+            return PUNT;
+        }
+
+        static uint32_t tagFixup()
+        {
+            SWSS_LOG_ENTER();
+
+            return TRAP_FIXUP;
+        }
+
+        // TRAP: punted on both members, so the BVI never sees it, and limited
+        // broadcasts on L3 tables stay at VPP's default drop
+        void expectTrap()
+        {
+            SWSS_LOG_ENTER();
+
+            EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcpOnWire(false)));
+            EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcpOnWire(true)));
+            EXPECT_FALSE(receivesLimitedBroadcast(0));
+        }
+
+        // COPY: flooded on both members, and the BVI's copy received, under the IP2ME policer
+        void expectCopy()
+        {
+            SWSS_LOG_ENTER();
+
+            EXPECT_EQ(MISS, onMember("bobm0", false, dhcpOnWire(false)));
+            EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcpOnWire(true)));
+            EXPECT_TRUE(receivesLimitedBroadcast(0));
+            EXPECT_TRUE(policesLimitedBroadcast());
+        }
+
+        static constexpr uint16_t VLAN_ID = 100;
+        static constexpr uint32_t VRF_TABLE = 1001;
+        static constexpr uint8_t BVI_MAC[6] = { 0x02, 0x00, 0x00, 0x00, 0x01, 0x00 };
+
+        const sai_object_id_t m_switchId = 0x2100000000;
+
+        std::shared_ptr<RealObjectIdManager> m_mgr;
+
+        std::shared_ptr<SwitchVpp> m_sw;
+
+        sai_object_id_t m_vlan = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_defaultVr = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_rif = SAI_NULL_OBJECT_ID;
+};
+
+constexpr uint16_t SwitchVppDhcpTrap::VLAN_ID;
+constexpr uint32_t SwitchVppDhcpTrap::VRF_TABLE;
+constexpr uint8_t SwitchVppDhcpTrap::BVI_MAC[6];
+
+// The first test to create classify tables, so it also covers a COPY trap that predates them.
+TEST_F(SwitchVppDhcpTrap, CopyBeforeAnyMemberFloodsAndTheBviCopyIsReceived)
+{
+    createTrap(SAI_PACKET_ACTION_COPY);
+    addMembers();
+    createBvi();
+
+    expectCopy();
+}
+
+TEST_F(SwitchVppDhcpTrap, TrapPuntsOnTheMembers)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP);
+    addMembers();
+    createBvi();
+
+    expectTrap();
+}
+
+TEST_F(SwitchVppDhcpTrap, NoDhcpTrapDefaultsToTrap)
+{
+    addMembers();
+    createBvi();
+
+    expectTrap();
+}
+
+TEST_F(SwitchVppDhcpTrap, SetAttributeSwitchesBetweenTrapAndCopyOnExistingMembersAndBvi)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
+    addMembers();
+    createBvi();
+    expectTrap();
+
+    setTrapAction(trap, SAI_PACKET_ACTION_COPY);
+    expectCopy();
+
+    setTrapAction(trap, SAI_PACKET_ACTION_TRAP);
+    expectTrap();
+
+    setTrapAction(trap, SAI_PACKET_ACTION_COPY);
+    expectCopy();
+}
+
+TEST_F(SwitchVppDhcpTrap, OtherActionsKeepTheTrapBehavior)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
+    addMembers();
+    createBvi();
+
+    setTrapAction(trap, SAI_PACKET_ACTION_FORWARD);
+    expectTrap();
+
+    setTrapAction(trap, SAI_PACKET_ACTION_DROP);
+    expectTrap();
+}
+
+TEST_F(SwitchVppDhcpTrap, RemovingTheCopyTrapRevertsToTrap)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
+    addMembers();
+    createBvi();
+    expectCopy();
+
+    removeTrap(trap);
+    expectTrap();
+}
+
+TEST_F(SwitchVppDhcpTrap, ReplacementCopyTrapWinsOnlyOnceTheOldTrapIsGone)
+{
+    auto oldTrap = createTrap(SAI_PACKET_ACTION_TRAP);
+    addMembers();
+    createBvi();
+
+    createTrap(SAI_PACKET_ACTION_COPY);
+    expectTrap();
+
+    removeTrap(oldTrap);
+    expectCopy();
+}
+
+TEST_F(SwitchVppDhcpTrap, CopyLeavesTheOtherPuntsAlone)
+{
+    createTrap(SAI_PACKET_ACTION_COPY);
+    addMembers();
+
+    // broadcast ARP is still punted on both members (proxy ARP VLAN), through the
+    // tagged member's chain that also holds the DHCP table
+    EXPECT_EQ(memberPunt(), onMember("bobm0", false, arpOnWire(false)));
+    EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, arpOnWire(true)));
+
+    // and LLDP on the untagged member
+    std::vector<uint8_t> lldp = {0x01, 0x80, 0xc2, 0, 0, 0x0e, 0x02, 0, 0, 0, 0, 0x01, 0x88, 0xcc};
+    lldp.resize(64, 0);
+    EXPECT_EQ(memberPunt(), onMember("bobm0", false, lldp));
+}
+
+/*
+ * The local 255.255.255.255/32 route is installed only while the DHCP trap
+ * action is COPY: under TRAP (or without a DHCP trap) a client broadcast is
+ * punted at the VLAN member and routed ports keep VPP's default drop on
+ * 255.255.255.255/32, while 255.255.255.255 stays in the IP2ME address set once
+ * any VRF table is set up.
+ */
+TEST_F(SwitchVppDhcpTrap, TheBviTableReceivesLimitedBroadcastsOnlyUnderCopy)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
+    addMembers();
+
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+    EXPECT_FALSE(policesLimitedBroadcast());
+
+    createBvi();
+
+    expectTrap();
+    EXPECT_TRUE(policesLimitedBroadcast());
+
+    setTrapAction(trap, SAI_PACKET_ACTION_COPY);
+    expectCopy();
+
+    // the route stays with the table, not the BVI, while COPY is active
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_delete_bvi_interface(m_rif));
+
+    EXPECT_TRUE(receivesLimitedBroadcast(0));
+    EXPECT_TRUE(policesLimitedBroadcast());
+
+    setTrapAction(trap, SAI_PACKET_ACTION_TRAP);
+
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+    EXPECT_TRUE(policesLimitedBroadcast());
+}
+
+TEST_F(SwitchVppDhcpTrap, AVrfTableReceivesLimitedBroadcastsUntilItIsRemoved)
+{
+    auto vrf = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    // without a COPY DHCP trap, a VRF table keeps VPP's default drop while
+    // 255.255.255.255 is registered in the IP2ME address set
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_TRUE(policesLimitedBroadcast());
+    ASSERT_EQ(0, m_sw->vpp_del_ip_vrf(vrf));
+
+    createTrap(SAI_PACKET_ACTION_COPY);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+    EXPECT_TRUE(policesLimitedBroadcast());
+
+    // a second router interface in the VRF finds it there and adds nothing
+    vppMock().calls.clear();
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_TRUE(vppMock().calls.empty());
+
+    // the route goes before the table
+    ASSERT_EQ(0, m_sw->vpp_del_ip_vrf(vrf));
+
+    ASSERT_EQ(2u, vppMock().calls.size());
+    EXPECT_EQ("ip_route_add_del", vppMock().calls[0].api);
+    EXPECT_EQ("255.255.255.255/32", vppMock().calls[0].name);
+    EXPECT_EQ(VRF_TABLE, vppMock().calls[0].id);
+    EXPECT_FALSE(vppMock().calls[0].flag);
+    EXPECT_EQ("ip_vrf_del", vppMock().calls[1].api);
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // the address set is switch-wide and stays once added
+    EXPECT_TRUE(policesLimitedBroadcast());
+}
+
+/*
+ * Table 0 outlives every VRF object, so removing one leaves its route in
+ * place while COPY is active.
+ */
+TEST_F(SwitchVppDhcpTrap, TheDefaultTableKeepsItsRouteWhenAVrfObjectGoesAway)
+{
+    createTrap(SAI_PACKET_ACTION_COPY);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(m_defaultVr, 0));
+
+    EXPECT_TRUE(receivesLimitedBroadcast(0));
+
+    ASSERT_EQ(0, m_sw->vpp_del_ip_vrf(m_defaultVr));
+
+    EXPECT_TRUE(receivesLimitedBroadcast(0));
+}
+
+/*
+ * A LAG in a VLAN: SONiC's PortChannel24 is VPP's BondEthernet24, an untagged
+ * member of bridge domain 905, behind a bridge port whose PORT_ID is the LAG.
+ * A MAC VPP learns on the bond reaches SAI through the L2 MAC event queue that
+ * processFdbEntriesForAging() drains.
+ *
+ * The unit tests are built with access control checking disabled, so the
+ * fixture reaches the protected and private SwitchVpp members directly.
+ */
+class SwitchVppLagFdb : public ::testing::Test
+{
+    protected:
+
+        void SetUp() override
+        {
+            auto sc = std::make_shared<SwitchConfig>(0, "");
+
+            sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+            sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+            sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+            vppMock().reset();
+            sc->m_useTapDevice = false;
+            sc->m_profileMap[SAI_KEY_VS_PORT_CONFIG_FILE] = "/dev/null";
+            sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+            sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+
+            auto scc = std::make_shared<SwitchConfigContainer>();
+
+            scc->insert(sc);
+
+            m_mgr = std::make_shared<RealObjectIdManager>(0, scc);
+            m_sw = std::make_shared<SwitchVpp>(m_switchId, m_mgr, sc);
+            sc->m_useTapDevice = true;
+
+            m_vlan = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN, m_switchId);
+
+            sai_attribute_t vattr;
+
+            vattr.id = SAI_VLAN_ATTR_VLAN_ID;
+            vattr.value.u16 = VLAN_ID;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(m_vlan), m_switchId, 1, &vattr));
+
+            m_lag = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_LAG, m_switchId);
+
+            sai_attribute_t lattr;
+
+            lattr.id = SAI_LAG_ATTR_PORT_VLAN_ID;
+            lattr.value.u16 = VLAN_ID;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_LAG, sai_serialize_object_id(m_lag), m_switchId, 1, &lattr));
+
+            // what vpp_create_lag() and vpp_create_vlan_member() record
+            ASSERT_NE(nullptr, m_sw->m_ifaceRegistry.addLag(BOND_ID, BOND_SW_IF_INDEX, m_lag));
+            ASSERT_TRUE(m_sw->m_ifaceRegistry.setBdId(BOND_HWIF, VLAN_ID));
+
+            m_bridgePort = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+
+            sai_attribute_t battrs[2];
+
+            battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+            battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+            battrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+            battrs[1].value.oid = m_lag;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(m_bridgePort), m_switchId, 2, battrs));
+
+            vppMock().calls.clear();
+        }
+
+        void TearDown() override
+        {
+            m_sw->m_switchConfig->m_useTapDevice = false;
+            m_sw.reset();
+        }
+
+        // VPP reports a MAC event on the bond, and the FDB aging thread drains it
+        void vppMacEvent(
+                uint8_t action)
+        {
+            SWSS_LOG_ENTER();
+
+            vpp_mac_event_t ev;
+
+            memcpy(ev.mac, MAC, sizeof(ev.mac));
+            ev.sw_if_index = BOND_SW_IF_INDEX;
+            ev.action = action;
+
+            SwitchVpp::staticMacEventCb(&ev, 1, m_sw.get());
+
+            m_sw->processFdbEntriesForAging();
+        }
+
+        // the SAI FDB entry of MAC in the VLAN, as ASIC_DB sees it, or null
+        std::shared_ptr<SaiAttrWrap> fdbBridgePort()
+        {
+            SWSS_LOG_ENTER();
+
+            auto& fdbs = m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+            for (auto& kv: fdbs)
+            {
+                sai_fdb_entry_t fdb;
+
+                sai_deserialize_fdb_entry(kv.first, fdb);
+
+                if (fdb.bv_id == m_vlan && memcmp(fdb.mac_address, MAC, sizeof(sai_mac_t)) == 0)
+                {
+                    return kv.second.at("SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
+                }
+            }
+
+            return nullptr;
+        }
+
+        /*
+         * What VirtualSwitchSaiInterface::flushFdbEntries() does around the VPP
+         * switch: drop the matching SAI entries and their m_fdb_info_set
+         * records (the FLUSHED notification then clears ASIC_DB and STATE_DB),
+         * and hand the flush to vpp_fdbentry_flush(). Its result is not
+         * checked there, so neither can a failure undo the SAI side.
+         */
+        sai_status_t flushBridgePort()
+        {
+            SWSS_LOG_ENTER();
+
+            m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).clear();
+            m_sw->m_fdb_info_set.clear();
+
+            sai_attribute_t attrs[2];
+
+            attrs[0].id = SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID;
+            attrs[0].value.oid = m_bridgePort;
+            attrs[1].id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+            attrs[1].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+
+            return m_sw->vpp_fdbentry_flush(m_switchId, 2, attrs);
+        }
+
+        std::string fdbSid()
+        {
+            SWSS_LOG_ENTER();
+
+            sai_fdb_entry_t fdb;
+
+            memset(&fdb, 0, sizeof(fdb));
+            fdb.switch_id = m_switchId;
+            fdb.bv_id = m_vlan;
+            memcpy(fdb.mac_address, MAC, sizeof(sai_mac_t));
+
+            return sai_serialize_fdb_entry(fdb);
+        }
+
+        static constexpr uint16_t VLAN_ID = 905;
+        static constexpr uint32_t BOND_ID = 24;
+        static constexpr uint32_t BOND_SW_IF_INDEX = 124;
+        static constexpr const char *BOND_HWIF = "BondEthernet24";
+        static constexpr uint8_t MAC[6] = { 0x00, 0x50, 0x56, 0xac, 0xb2, 0x02 };
+
+        const sai_object_id_t m_switchId = 0x2100000000;
+
+        std::shared_ptr<RealObjectIdManager> m_mgr;
+
+        std::shared_ptr<SwitchVpp> m_sw;
+
+        sai_object_id_t m_vlan = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_lag = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_bridgePort = SAI_NULL_OBJECT_ID;
+};
+
+constexpr uint16_t SwitchVppLagFdb::VLAN_ID;
+constexpr uint32_t SwitchVppLagFdb::BOND_ID;
+constexpr uint32_t SwitchVppLagFdb::BOND_SW_IF_INDEX;
+constexpr const char *SwitchVppLagFdb::BOND_HWIF;
+constexpr uint8_t SwitchVppLagFdb::MAC[6];
+
+/*
+ * EVPN on a VLAN: a P2P VXLAN tunnel to each remote VTEP that advertised the
+ * VLAN's VNI, created by orchagent, a tunnel bridge port for each,
+ * and the remote MAC addresses as FDB entries on those bridge ports. The
+ * fixture's LAG in the same VLAN is the local side.
+ */
+class SwitchVppEvpnRemoteMac : public SwitchVppLagFdb
+{
+    protected:
+
+        void SetUp() override
+        {
+            SwitchVppLagFdb::SetUp();
+
+            if (HasFatalFailure())
+            {
+                return;
+            }
+
+            m_mapper = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP, m_switchId);
+
+            sai_attribute_t mattr;
+
+            mattr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+            mattr.value.s32 = SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_TUNNEL_MAP, sai_serialize_object_id(m_mapper), m_switchId, 1, &mattr));
+
+            vppMock().calls.clear();
+            g_nextSwIfIndex = 100;
+            g_l2fibByIndexDelResult = 0;
+            g_vxlanTunnelDst.clear();
+        }
+
+        void addMapEntry()
+        {
+            SWSS_LOG_ENTER();
+
+            m_mapEntry = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, m_switchId);
+
+            sai_attribute_t eattrs[4];
+
+            eattrs[0].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE;
+            eattrs[0].value.s32 = SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID;
+            eattrs[1].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+            eattrs[1].value.oid = m_mapper;
+            eattrs[2].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+            eattrs[2].value.u32 = VNI;
+            eattrs[3].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE;
+            eattrs[3].value.u16 = VLAN_ID;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(m_mapEntry), m_switchId, 4, eattrs));
+        }
+
+        static sai_ip_address_t ipv4(
+                const char *addr)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_ip_address_t ip;
+
+            memset(&ip, 0, sizeof(ip));
+            ip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+
+            EXPECT_EQ(1, inet_pton(AF_INET, addr, &ip.addr.ip4));
+
+            return ip;
+        }
+
+        // orchagent's P2P tunnel to a remote VTEP, and its tunnel bridge port
+        sai_object_id_t addRemoteVtep(
+                const char *dst,
+                sai_object_id_t *bridgePort = nullptr)
+        {
+            SWSS_LOG_ENTER();
+
+            auto tunnel = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL, m_switchId);
+
+            sai_attribute_t tattrs[4];
+
+            tattrs[0].id = SAI_TUNNEL_ATTR_TYPE;
+            tattrs[0].value.s32 = SAI_TUNNEL_TYPE_VXLAN;
+            tattrs[1].id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+            tattrs[1].value.ipaddr = ipv4(LOCAL_VTEP);
+            tattrs[2].id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
+            tattrs[2].value.ipaddr = ipv4(dst);
+            tattrs[3].id = SAI_TUNNEL_ATTR_DECAP_MAPPERS;
+            tattrs[3].value.objlist.count = 1;
+            tattrs[3].value.objlist.list = &m_mapper;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnel), m_switchId, 4, tattrs));
+
+            auto bp = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+
+            sai_attribute_t battrs[2];
+
+            battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+            battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_TUNNEL;
+            battrs[1].id = SAI_BRIDGE_PORT_ATTR_TUNNEL_ID;
+            battrs[1].value.oid = tunnel;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bp), m_switchId, 2, battrs));
+
+            if (bridgePort)
+            {
+                *bridgePort = bp;
+            }
+
+            return tunnel;
+        }
+
+        // the sw_if_index of the VXLAN tunnel the stub created to a VTEP, or ~0
+        static uint32_t tunnelTo(
+                const char *dst)
+        {
+            SWSS_LOG_ENTER();
+
+            for (auto& kv: g_vxlanTunnelDst)
+            {
+                if (kv.second == dst)
+                {
+                    return kv.first;
+                }
+            }
+
+            return ~0u;
+        }
+
+        static std::string onTunnel(
+                uint32_t sw_if_index)
+        {
+            SWSS_LOG_ENTER();
+
+            return std::to_string(sw_if_index) + " " + macStr(REMOTE_MAC);
+        }
+
+        std::string remoteSid()
+        {
+            SWSS_LOG_ENTER();
+
+            sai_fdb_entry_t fdb;
+
+            memset(&fdb, 0, sizeof(fdb));
+            fdb.switch_id = m_switchId;
+            fdb.bv_id = m_vlan;
+            memcpy(fdb.mac_address, REMOTE_MAC, sizeof(sai_mac_t));
+
+            return sai_serialize_fdb_entry(fdb);
+        }
+
+        /*
+         * What orchagent creates for a type-2 route from a remote VTEP:
+         * STATIC, on the VTEP's tunnel bridge port, with the VTEP as the
+         * endpoint, and allowed to move unless the route was sticky.
+         */
+        sai_status_t addRemoteMac(
+                sai_object_id_t bridgePort,
+                const char *endpoint,
+                bool allowMove = true)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attrs[4];
+            uint32_t count = 3;
+
+            attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+            attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+            attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+            attrs[1].value.oid = bridgePort;
+            attrs[2].id = SAI_FDB_ENTRY_ATTR_ENDPOINT_IP;
+            attrs[2].value.ipaddr = ipv4(endpoint);
+
+            if (allowMove)
+            {
+                attrs[3].id = SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE;
+                attrs[3].value.booldata = true;
+                count = 4;
+            }
+
+            return m_sw->create(SAI_OBJECT_TYPE_FDB_ENTRY, remoteSid(), m_switchId, count, attrs);
+        }
+
+        sai_status_t setRemoteMac(
+                sai_attr_id_t id,
+                sai_object_id_t bridgePort,
+                const char *endpoint = nullptr)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            memset(&attr, 0, sizeof(attr));
+            attr.id = id;
+
+            if (id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
+            {
+                attr.value.oid = bridgePort;
+            }
+            else
+            {
+                attr.value.ipaddr = ipv4(endpoint);
+            }
+
+            return m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, remoteSid(), &attr);
+        }
+
+        static constexpr uint32_t VNI = 1905;
+        static constexpr const char *LOCAL_VTEP = "10.0.0.1";
+        static constexpr const char *VTEP_A = "10.0.0.2";
+        static constexpr const char *VTEP_B = "10.0.0.3";
+        static constexpr const char *VTEP_C = "10.0.0.4";
+        static constexpr uint8_t REMOTE_MAC[6] = { 0x00, 0x50, 0x56, 0xac, 0xb0, 0x02 };
+
+        sai_object_id_t m_mapper = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_mapEntry = SAI_NULL_OBJECT_ID;
+};
+
+constexpr uint32_t SwitchVppEvpnRemoteMac::VNI;
+constexpr const char *SwitchVppEvpnRemoteMac::LOCAL_VTEP;
+constexpr const char *SwitchVppEvpnRemoteMac::VTEP_A;
+constexpr const char *SwitchVppEvpnRemoteMac::VTEP_B;
+constexpr const char *SwitchVppEvpnRemoteMac::VTEP_C;
+constexpr uint8_t SwitchVppEvpnRemoteMac::REMOTE_MAC[6];
+
+/*
+ * VPP tells VXLAN tunnels apart by source, destination and VNI. Every remote
+ * VTEP of a VNI needs its own, or VPP drops what the others send and the
+ * switch can send to only one of them.
+ */
+TEST_F(SwitchVppEvpnRemoteMac, EveryRemoteVtepOfAVniGetsItsOwnTunnel)
+{
+    addMapEntry();
+    addRemoteVtep(VTEP_A);
+    addRemoteVtep(VTEP_B);
+    addRemoteVtep(VTEP_C);
+
+    auto adds = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(3u, adds.size());
+
+    for (auto& add: adds)
+    {
+        EXPECT_TRUE(add.flag);
+        EXPECT_EQ(VNI, add.id);
+    }
+
+    EXPECT_NE(~0u, tunnelTo(VTEP_A));
+    EXPECT_NE(~0u, tunnelTo(VTEP_B));
+    EXPECT_NE(~0u, tunnelTo(VTEP_C));
+}
+
+/*
+ * Each VTEP floods BUM traffic to all of its peers itself (head-end
+ * replication), so a frame from one tunnel must not go out the others: the
+ * tunnels share a split horizon group other than the local ports' 0. MAC
+ * addresses behind a tunnel come from EVPN, not from data-plane learning.
+ */
+TEST_F(SwitchVppEvpnRemoteMac, TunnelsJoinTheVlanInSplitHorizonGroupOneWithLearningOff)
+{
+    addMapEntry();
+    addRemoteVtep(VTEP_A);
+    addRemoteVtep(VTEP_B);
+
+    for (auto dst: {VTEP_A, VTEP_B})
+    {
+        auto swif = std::to_string(tunnelTo(dst));
+
+        int join = vppCallIndex("set_sw_interface_l2_bridge_shg_by_index", swif);
+
+        ASSERT_NE(-1, join) << dst;
+        EXPECT_EQ((uint32_t)VLAN_ID, vppMock().calls[join].id);
+        EXPECT_EQ(1u, vppMock().calls[join].sub_id) << "split horizon group of the tunnel to " << dst;
+        EXPECT_TRUE(vppMock().calls[join].flag);
+
+        int learn = vppCallIndex("set_l2_interface_flags_by_index", swif);
+
+        ASSERT_NE(-1, learn) << dst;
+        EXPECT_EQ((uint32_t)VPP_BD_FLAG_LEARN, vppMock().calls[learn].id);
+        EXPECT_FALSE(vppMock().calls[learn].flag);
+        // joining the bridge domain turns learning on, so it goes off after
+        EXPECT_LT(join, learn);
+    }
+}
+
+TEST_F(SwitchVppEvpnRemoteMac, RemoteMacIsProgrammedOnTheTunnelToItsVtep)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA, bpB;
+
+    addRemoteVtep(VTEP_A, &bpA);
+    addRemoteVtep(VTEP_B, &bpB);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpB, VTEP_B));
+
+    auto adds = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, adds.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_B)), adds[0].name);
+    EXPECT_EQ((uint32_t)VLAN_ID, adds[0].id);
+    EXPECT_TRUE(adds[0].flag);
+    // not static: a host that moves here is learned on the local port
+    EXPECT_EQ(0u, adds[0].sub_id);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, remoteSid()));
+
+    auto dels = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_B)), dels[0].name);
+    EXPECT_EQ((uint32_t)VLAN_ID, dels[0].id);
+    EXPECT_FALSE(dels[0].flag);
+}
+
+/* a sticky MAC address (no move allowed) stays static in VPP */
+TEST_F(SwitchVppEvpnRemoteMac, StickyRemoteMacIsStatic)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    addRemoteVtep(VTEP_A, &bpA);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A, false));
+
+    auto adds = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, adds.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_A)), adds[0].name);
+    EXPECT_EQ(1u, adds[0].sub_id);
+}
+
+/* SAI_FDB_ENTRY_ATTR_ENDPOINT_IP picks the VTEP, not the bridge port's tunnel */
+TEST_F(SwitchVppEvpnRemoteMac, EndpointIpPicksTheTunnel)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    addRemoteVtep(VTEP_A, &bpA);
+    addRemoteVtep(VTEP_B);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_B));
+
+    auto adds = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, adds.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_B)), adds[0].name);
+}
+
+/*
+ * Every VTEP with a gateway on the VLAN advertises the gateway MAC, an anycast
+ * one included. It stays on the local BVI: VPP routes a frame to it only
+ * through the BVI's L2FIB entry, which an entry on a tunnel would replace.
+ */
+TEST_F(SwitchVppEvpnRemoteMac, GatewayMacOfTheVlanIsNotPointedAtATunnel)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    addRemoteVtep(VTEP_A, &bpA);
+
+    auto rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
+
+    sai_attribute_t rattrs[4];
+
+    rattrs[0].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    rattrs[0].value.s32 = SAI_ROUTER_INTERFACE_TYPE_VLAN;
+    rattrs[1].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+    rattrs[1].value.oid = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+    rattrs[2].id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+    rattrs[2].value.oid = m_vlan;
+    rattrs[3].id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+    memcpy(rattrs[3].value.mac, REMOTE_MAC, sizeof(sai_mac_t));
+
+    // the SAI object is enough; creating it through create() would build the BVI
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(rif), m_switchId, 4, rattrs));
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A));
+
+    EXPECT_TRUE(vppCallsTo("l2fib_add_del_by_index").empty());
+}
+
+/*
+ * orchagent moves a remote MAC address to another VTEP by setting the bridge
+ * port, then the endpoint, one at a time. VPP has to end up with it on the
+ * new VTEP's tunnel, and replacing the entry in place leaves no gap in which
+ * VPP drops frames to it.
+ */
+TEST_F(SwitchVppEvpnRemoteMac, RemoteToRemoteMoveRepointsTheMac)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA, bpB;
+
+    addRemoteVtep(VTEP_A, &bpA);
+    addRemoteVtep(VTEP_B, &bpB);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A));
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setRemoteMac(SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID, bpB));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setRemoteMac(SAI_FDB_ENTRY_ATTR_ENDPOINT_IP, SAI_NULL_OBJECT_ID, VTEP_B));
+
+    auto calls = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, calls.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_B)), calls[0].name);
+    EXPECT_TRUE(calls[0].flag);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, remoteSid()));
+
+    auto dels = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_B)), dels[0].name);
+    EXPECT_FALSE(dels[0].flag);
+}
+
+/*
+ * A host that moves from a remote VTEP to a local port: VPP moves the entry
+ * itself, since it is not static, and reports the move. SONiC has the MAC
+ * address already, as a remote one, so that has to reach orchagent as a move
+ * to the local bridge port, which it turns into a local MAC.
+ */
+TEST_F(SwitchVppEvpnRemoteMac, RemoteMacThatMovesToALocalPortIsReportedThere)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    addRemoteVtep(VTEP_A, &bpA);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A));
+
+    vpp_mac_event_t ev;
+
+    memcpy(ev.mac, REMOTE_MAC, sizeof(ev.mac));
+    ev.sw_if_index = BOND_SW_IF_INDEX;
+    ev.action = VPP_MAC_ACTION_MOVE;
+
+    SwitchVpp::staticMacEventCb(&ev, 1, m_sw.get());
+
+    m_sw->processFdbEntriesForAging();
+
+    auto& entry = m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).at(remoteSid());
+
+    EXPECT_EQ(m_bridgePort, entry.at("SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID")->getAttr()->value.oid);
+    EXPECT_EQ(SAI_FDB_ENTRY_TYPE_DYNAMIC, entry.at("SAI_FDB_ENTRY_ATTR_TYPE")->getAttr()->value.s32);
+}
+
+/*
+ * orchagent removes a VTEP's P2P tunnel when the VTEP leaves. Its VPP
+ * tunnels go with it, and the tunnels to every other VTEP stay.
+ */
+TEST_F(SwitchVppEvpnRemoteMac, RemovingTheSaiTunnelRemovesItsL2Tunnels)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    auto tunnelA = addRemoteVtep(VTEP_A, &bpA);
+    addRemoteVtep(VTEP_B);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A));
+
+    uint32_t swifA = tunnelTo(VTEP_A);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnelA)));
+
+    auto dels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_FALSE(dels[0].flag);
+    EXPECT_EQ(VNI, dels[0].id);
+
+    int leave = vppCallIndex("set_sw_interface_l2_bridge_shg_by_index", std::to_string(swifA));
+
+    ASSERT_NE(-1, leave);
+    EXPECT_FALSE(vppMock().calls[leave].flag);
+
+    // VPP keeps a provisioned L2FIB entry after its interface is gone
+    auto macDels = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, macDels.size());
+    EXPECT_EQ(onTunnel(swifA), macDels[0].name);
+    EXPECT_FALSE(macDels[0].flag);
+}
+
+/*
+ * The VNI-to-VLAN map entry can come after the tunnels (and their remote MAC
+ * addresses). Every VTEP gets its tunnel then, and the MAC addresses waiting
+ * for one are programmed on it.
+ */
+TEST_F(SwitchVppEvpnRemoteMac, LateMapEntryCreatesEveryTunnelAndProgramsWaitingMacs)
+{
+    sai_object_id_t bpB;
+
+    addRemoteVtep(VTEP_A);
+    addRemoteVtep(VTEP_B, &bpB);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpB, VTEP_B));
+
+    EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
+    EXPECT_TRUE(vppCallsTo("l2fib_add_del_by_index").empty());
+
+    addMapEntry();
+
+    EXPECT_EQ(2u, vppCallsTo("vpp_vxlan_tunnel_add_del").size());
+
+    auto adds = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, adds.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_B)), adds[0].name);
+    EXPECT_TRUE(adds[0].flag);
+}
+
+TEST_F(SwitchVppEvpnRemoteMac, RemovingTheMapEntryRemovesTheTunnelsOfItsVni)
+{
+    addMapEntry();
+    addRemoteVtep(VTEP_A);
+    addRemoteVtep(VTEP_B);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(m_mapEntry)));
+
+    auto dels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(2u, dels.size());
+
+    for (auto& del: dels)
+    {
+        EXPECT_FALSE(del.flag);
+        EXPECT_EQ(VNI, del.id);
+    }
+}
+
+/*
+ * L2 tunnels do not learn, so a flush of a tunnel bridge port has nothing to
+ * take out of VPP. It must not flush the MAC addresses learned on local ports.
+ */
+TEST_F(SwitchVppEvpnRemoteMac, FlushOfATunnelBridgePortLeavesLocalMacsAlone)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    addRemoteVtep(VTEP_A, &bpA);
+
+    vppMacEvent(VPP_MAC_ACTION_ADD);
+
+    ASSERT_NE(nullptr, fdbBridgePort());
+
+    vppMock().calls.clear();
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID;
+    attrs[0].value.oid = bpA;
+    attrs[1].id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+    attrs[1].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_fdbentry_flush(m_switchId, 2, attrs));
+
+    EXPECT_TRUE(vppCallsTo("l2fib_flush_all").empty());
+    EXPECT_TRUE(vppCallsTo("l2fib_add_del").empty());
+    EXPECT_FALSE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+/* a flush that dropped a remote MAC address on the SAI side deletes it from VPP */
+TEST_F(SwitchVppEvpnRemoteMac, FlushedRemoteMacIsDeletedFromVpp)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    addRemoteVtep(VTEP_A, &bpA);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A));
+
+    // what VirtualSwitchSaiInterface::flushFdbEntries() does before calling in
+    m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).erase(remoteSid());
+
+    vppMock().calls.clear();
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID;
+    attrs[0].value.oid = bpA;
+    attrs[1].id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+    attrs[1].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_ALL;
+
+    m_sw->vpp_fdbentry_flush(m_switchId, 2, attrs);
+
+    auto dels = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_A)), dels[0].name);
+    EXPECT_FALSE(dels[0].flag);
+}
+
+TEST_F(SwitchVppEvpnRemoteMac, FailedRemoteMacDeleteKeepsTheEntryForRetry)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    addRemoteVtep(VTEP_A, &bpA);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A));
+
+    vppMock().calls.clear();
+    g_l2fibByIndexDelResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, remoteSid()));
+    EXPECT_EQ(1u, m_sw->m_remote_fdb.count(remoteSid()));
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(remoteSid()));
+
+    vppMock().calls.clear();
+    g_l2fibByIndexDelResult = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, remoteSid()));
+    EXPECT_EQ(0u, m_sw->m_remote_fdb.count(remoteSid()));
+
+    auto dels = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_A)), dels[0].name);
+    EXPECT_FALSE(dels[0].flag);
+}
+
+TEST_F(SwitchVppEvpnRemoteMac, FailedTunnelTeardownKeepsTheLastOwnerForRetry)
+{
+    addMapEntry();
+
+    sai_object_id_t bpA;
+
+    auto tunnelA = addRemoteVtep(VTEP_A, &bpA);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A));
+
+    uint32_t swifA = tunnelTo(VTEP_A);
+
+    vppMock().calls.clear();
+    g_l2fibByIndexDelResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnelA)));
+    EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_TUNNEL).count(sai_serialize_object_id(tunnelA)));
+
+    vppMock().calls.clear();
+    g_l2fibByIndexDelResult = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnelA)));
+
+    auto dels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_FALSE(dels[0].flag);
+    EXPECT_EQ(VNI, dels[0].id);
+
+    auto macDels = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, macDels.size());
+    EXPECT_EQ(onTunnel(swifA), macDels[0].name);
+    EXPECT_FALSE(macDels[0].flag);
 }

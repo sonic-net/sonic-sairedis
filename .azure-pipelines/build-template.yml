@@ -70,8 +70,9 @@ jobs:
   timeoutInMinutes: ${{ parameters.timeout }}
   variables:
     DIFF_COVER_CHECK_THRESHOLD: 80
-    ${{ if eq(parameters.run_unit_test, true) }}:
-      DIFF_COVER_ENABLE: 'true'
+    DIFF_COVER_ENABLE: 'false'
+    DIFF_COVER_DISABLE: 'true'
+    DIFF_COVER_REPORTS_READY: 'false'
 
   pool:
     ${{ if ne(parameters.pool, 'default') }}:
@@ -87,6 +88,21 @@ jobs:
   - checkout: ${{ parameters.repo }}
     clean: true
     submodules: true
+    ${{ if eq(parameters.run_unit_test, true) }}:
+      fetchDepth: 0
+
+  - ${{ if ne(parameters.vpp_run_id, '') }}:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        source: specific
+        project: build
+        pipeline: sonic-net.sonic-platform-vpp
+        artifact: vpp-${{ parameters.debian_version }}
+        path: $(Pipeline.Workspace)/staged/vpp
+        runVersion: specific
+        runId: ${{ parameters.vpp_run_id }}
+        allowPartiallySucceededBuilds: true
+      displayName: Stage requested VPP build
 
   # A consumer reusing this template can stage current-run upstream artifacts
   # under the names used by build-env/upstream-artifacts.yaml.
@@ -100,7 +116,7 @@ jobs:
   - script: |
       set -ex
       sudo apt-get update
-      sudo apt-get install -qq -y python3-yaml python3-requests git
+      sudo apt-get install -qq -y python3-yaml python3-requests python3-venv git
 
       clone_swss_common() {
         ref="$1"
@@ -135,6 +151,9 @@ jobs:
         | jq -r '.[] | .name' \
         | xargs -I{} echo --required-staged-upstream {} \
         | tr '\n' ' ')
+      if [ -n "$REQUESTED_VPP_RUN_ID" ]; then
+        REQ_ARGS="$REQ_ARGS --required-staged-upstream vpp"
+      fi
       PYTHONPATH=/tmp/sw-common/ci python3 -m buildenv_setup \
         --repo-dir $(Build.SourcesDirectory) \
         --scope build \
@@ -147,6 +166,7 @@ jobs:
     env:
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       STAGED_UPSTREAMS_JSON: ${{ convertToJson(parameters.staged_upstreams) }}
+      REQUESTED_VPP_RUN_ID: ${{ parameters.vpp_run_id }}
 
   - script: ASAN=${{ parameters.asan }} ./build-env/build.sh
     displayName: "Compile sonic sairedis with coverage enabled"
@@ -224,6 +244,17 @@ jobs:
             codeCoverageTool: Cobertura
             summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
         displayName: 'Publish test coverage'
+  - ${{ if eq(parameters.run_unit_test, true) }}:
+    - bash: bash .azure-pipelines/check-diff-coverage.sh
+      displayName: "Check PR diff coverage"
+      condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+      workingDirectory: $(Build.SourcesDirectory)
+    - task: PublishPipelineArtifact@1
+      displayName: "Publish PR diff coverage reports"
+      condition: and(succeededOrFailed(), eq(variables['Build.Reason'], 'PullRequest'), eq(variables['DIFF_COVER_REPORTS_READY'], 'true'))
+      inputs:
+        targetPath: $(Build.ArtifactStagingDirectory)/diff-coverage
+        artifact: diff-coverage-${{ parameters.artifact_name }}-$(System.JobAttempt)
   - script: |
       pwd
       sudo chmod a+r /var/log/syslog*

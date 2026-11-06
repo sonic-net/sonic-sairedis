@@ -11,6 +11,7 @@
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
 #include "SwitchVppPbh.h"
+#include "SwitchVppTrim.h"
 #include "SwitchVppPolicer.h"
 #include "SwitchVppHostifTrap.h"
 #include "SwitchVppNat.h"
@@ -274,6 +275,17 @@ namespace saivs
                     _In_ sai_object_type_t object_type,
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability) override;
+
+            virtual sai_status_t queryAttrEnumValuesCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Inout_ sai_s32_list_t *enum_values_capability) override;
+
+            virtual sai_status_t queryStatsCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_capability_list_t *stats_capability) override;
 
             virtual sai_status_t queryStatsStCapability(
                     _In_ sai_object_id_t switch_id,
@@ -644,6 +656,10 @@ namespace saivs
             sai_status_t vpp_fdbentry_del(
                     _In_ const std::string &serializedObjectId);
 
+            sai_status_t FdbEntryset(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
             sai_status_t vpp_fdbentry_flush(
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,
@@ -755,12 +771,15 @@ namespace saivs
 
             friend class TunnelManager;
             friend class SwitchVppPbh;
+            friend class SwitchVppTrim;
 
         private: // VPP
 
             SaiObjectDB m_object_db;
             TunnelManager m_tunnel_mgr;
             SwitchVppPbh m_pbh;
+
+            SwitchVppTrim m_trim;
 
         private: // VPP
 
@@ -1026,6 +1045,10 @@ namespace saivs
             int vpp_del_ip_vrf(
                     _In_ sai_object_id_t objectId);
 
+            int vpp_ip4_limited_broadcast_receive(
+                    _In_ uint32_t vrf_id,
+                    _In_ bool is_add);
+
             int vpp_get_vrf_id(
                     _In_ const char *linux_ifname,
                     _Out_ uint32_t *vrf_id);
@@ -1188,6 +1211,20 @@ namespace saivs
             sai_status_t uninstallTrapClassifyNow(
                     _In_ sai_object_id_t trap_oid,
                     _In_ const vpp_trap_entry_t &trap);
+
+        protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCP packet action
+
+            // True while every DHCP hostif trap has SAI_PACKET_ACTION_COPY
+            // (and there is at least one), which floods DHCPv4 client
+            // broadcasts in their VLAN and copies them to the CPU. Otherwise
+            // they are trapped, as before. See SwitchVppFdb.cpp.
+            bool m_dhcp_trap_copy = false;
+
+            // Re-derives m_dhcp_trap_copy from m_trap_map and applies it.
+            void vpp_update_dhcp_trap_action();
+
+            void vpp_set_dhcp_trap_copy(
+                    _In_ bool copy);
 
 
         protected: // VPP
@@ -1741,6 +1778,70 @@ namespace saivs
 
             bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
             bool generateFdbAgedEvent(const VppFdbKey &key);
+
+            /*
+             * EVPN remote MAC addresses: FDB entries on a tunnel bridge port,
+             * which orchagent creates from the remote VTEP's type-2 routes.
+             * Each is held in VPP's L2FIB on the L2 VXLAN tunnel to its
+             * remote VTEP (SAI_FDB_ENTRY_ATTR_ENDPOINT_IP, or the bridge
+             * port's tunnel destination) for its VLAN.
+             */
+            struct RemoteFdbTarget
+            {
+                uint32_t sw_if_index;
+                uint32_t bd_id;
+                bool is_static;
+
+                bool operator==(const RemoteFdbTarget& other) const
+                {
+                    return sw_if_index == other.sw_if_index &&
+                        bd_id == other.bd_id && is_static == other.is_static;
+                }
+            };
+
+            // FDB entry -> where VPP holds it now
+            std::map<std::string, RemoteFdbTarget> m_remote_fdb;
+
+            // Where VPP should hold an FDB entry as SAI has it now; false if
+            // it is not a remote MAC address, or its tunnel does not exist yet.
+            bool remote_fdb_target(
+                    _In_ const std::string &serializedObjectId,
+                    _Out_ RemoteFdbTarget& target);
+
+            // Bring VPP's L2FIB in line with one FDB entry: add, re-point or
+            // delete it. Idempotent.
+            void remote_fdb_sync(
+                    _In_ const std::string &serializedObjectId);
+
+            // Delete an FDB entry from VPP's L2FIB if it holds it as remote.
+            bool remote_fdb_forget(
+                    _In_ const std::string &serializedObjectId);
+
+            // Program the remote FDB entries of a VLAN that are not in VPP
+            // yet, after one of its L2 tunnels is created.
+            void remote_fdb_resync(
+                    _In_ uint16_t vlan_id);
+
+            // Delete the remote FDB entries on an L2 tunnel that is about to
+            // be removed. The SAI entries stay, and are programmed again if
+            // their tunnel comes back.
+            bool remote_fdb_drop_tunnel(
+                    _In_ uint32_t sw_if_index);
+
+            bool vlan_id_of_bv(
+                    _In_ sai_object_id_t bv_id,
+                    _Out_ uint16_t& vlan_id);
+
+            // Whether mac is the MAC of the VLAN's router interface (its BVI's).
+            bool is_vlan_router_mac(
+                    _In_ sai_object_id_t vlan_oid,
+                    _In_ const sai_mac_t mac);
+
+            // An attribute as SAI holds it, or null; logs nothing if absent.
+            const sai_attribute_t* stored_attr(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_attr_id_t attr_id);
 
             // Reconcile m_vpp_fdb_entries/FDB notifications with VPP's L2FIB
             // after MAC events were lost (VPP_MAC_ACTION_RESYNC). Returns
