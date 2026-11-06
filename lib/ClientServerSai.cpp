@@ -110,6 +110,16 @@ sai_status_t ClientServerSai::apiUninitialize(void)
     return SAI_STATUS_SUCCESS;
 }
 
+void ClientServerSai::shutdown()
+{
+    SWSS_LOG_ENTER();
+
+    if (m_sai)
+    {
+        m_sai->shutdown();
+    }
+}
+
 // QUAD OID
 
 sai_status_t ClientServerSai::create(
