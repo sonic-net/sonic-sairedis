@@ -606,6 +606,11 @@ config_syncd_clounix()
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
+config_syncd_grandtrans()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
+
 config_syncd()
 {
     check_warm_boot
@@ -643,6 +648,8 @@ config_syncd()
 	config_syncd_pensando
     elif [ "$SONIC_ASIC_TYPE" == "clounix" ]; then
         config_syncd_clounix
+    elif [ "$SONIC_ASIC_TYPE" == "grandtrans" ]; then
+        config_syncd_grandtrans
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
