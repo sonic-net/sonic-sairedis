@@ -1919,6 +1919,19 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
 
         auto &values = kfvFieldsValues(kco);
 
+        if (status != SAI_STATUS_SUCCESS && values.empty())
+        {
+            for (uint32_t idx = 0; idx < object_count; idx++)
+            {
+                object_statuses[idx] = status;
+            }
+            SWSS_LOG_ERROR("%s failed without object statuses, count %u, status %s",
+                    sai_serialize_common_api(api).c_str(), object_count,
+                    sai_serialize_status(status).c_str());
+            m_recorder->recordBulkGenericResponse(status, object_count, object_statuses);
+            return status;
+        }
+
         if (values.size () != object_count)
         {
             SWSS_LOG_THROW("wrong number of statuses, got %zu, expected %u", values.size(), object_count);
