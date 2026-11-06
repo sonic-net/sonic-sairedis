@@ -80,6 +80,10 @@
 #include <vnet/l2/l2.api_enum.h>
 #include <vnet/l2/l2.api_types.h>
 
+/* Raw L2 input feature bit used by l2_flags_set. Keep this value aligned with
+ * L2INPUT_FEAT_INPUT_FEAT_ARC in VPP's vnet/l2/l2_input.h. */
+#define SAIVPP_L2INPUT_FEAT_INPUT_FEAT_ARC (1u << 17)
+
 #include <vnet/bonding/bond.api_enum.h>
 #include <vnet/bonding/bond.api_types.h>
 
@@ -1635,6 +1639,13 @@ vl_api_l2_flags_reply_t_handler (vl_api_l2_flags_reply_t *msg)
 }
 
 static void
+vl_api_l2_flags_set_reply_t_handler (vl_api_l2_flags_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_l2fib_add_del_reply_t_handler (vl_api_l2fib_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2542,6 +2553,7 @@ static void vpp_base_vpe_init(void)
     _(L2_MSG_ID(BVI_DELETE_REPLY), bvi_delete_reply) \
     _(L2_MSG_ID(BRIDGE_FLAGS_REPLY), bridge_flags_reply) \
     _(L2_MSG_ID(L2_FLAGS_REPLY), l2_flags_reply) \
+    _(L2_MSG_ID(L2_FLAGS_SET_REPLY), l2_flags_set_reply) \
     _(BOND_MSG_ID(BOND_CREATE_REPLY), bond_create_reply) \
     _(BOND_MSG_ID(BOND_DELETE_REPLY), bond_delete_reply) \
     _(BOND_MSG_ID(BOND_ADD_MEMBER_REPLY), bond_add_member_reply) \
@@ -6673,6 +6685,43 @@ int set_l2_interface_flags_by_index(uint32_t sw_if_index,
                             __func__, ret, sw_if_index, (uint32_t)flags, enable); }
     else { SAIVPP_INFO("%s sw_if_index %u flags %#x enable %d", __func__,
                        sw_if_index, (uint32_t)flags, enable); }
+    VPP_UNLOCK();
+    return ret;
+}
+
+int set_l2_interface_input_feature_arc(const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2_flags_set_t *mp;
+    uint32_t sw_if_index;
+    int ret;
+
+    if (hwif_name == NULL) {
+        return -EINVAL;
+    }
+
+    sw_if_index = get_swif_idx(vam, hwif_name);
+    if (sw_if_index == (uint32_t)~0) {
+        SAIVPP_ERROR("Unable to get sw_index for %s", hwif_name);
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+    __plugin_msg_base = l2_msg_id_base;
+    M (L2_FLAGS_SET, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->is_set = enable;
+    mp->input_feature_bitmap = htonl(SAIVPP_L2INPUT_FEAT_INPUT_FEAT_ARC);
+    mp->output_feature_bitmap = 0;
+    S (mp);
+    WR (ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) hwif %s enable %d",
+                __func__, ret, hwif_name, enable);
+    } else {
+        SAIVPP_INFO("%s hwif %s enable %d", __func__, hwif_name, enable);
+    }
     VPP_UNLOCK();
     return ret;
 }

@@ -184,6 +184,30 @@ uint32_t VppMock::nodeNext(
     return it == nodeNexts.end() ? ~0u : it->second;
 }
 
+VppDhcpDelivery VppMock::dhcpIpv4Delivery(const std::string& hwif) const
+{
+    SWSS_LOG_ENTER();
+
+    if (bridgePorts.count(hwif) == 0)
+    {
+        return {false, false};
+    }
+
+    auto registered = l2InputRegisteredFeatures.find(hwif);
+    bool dhcpRegistered = registered != l2InputRegisteredFeatures.end() &&
+        registered->second.count("sonic-ext-dhcp-ip4") != 0;
+
+    if (coppDhcpIpv4Active && dhcpRegistered &&
+            l2InputFeatureArc.count(hwif) != 0)
+    {
+        return {true, coppDhcpIpv4Copy};
+    }
+
+    // Without feature-arc dispatch, the broadcast still reaches the CPU
+    // through the BVI flood copy but also leaks to peer VLAN members.
+    return {true, true};
+}
+
 sai_status_t TestableSwitchVpp::remove_internal(
         sai_object_type_t object_type,
         const std::string& serializedObjectId)
@@ -361,7 +385,13 @@ extern "C" int __wrap_vpp_sonic_ext_copp_dhcp_bind(
         return -1;
     }
 
-    return vppMock().coppDhcpBindResult;
+    int result = vppMock().coppDhcpBindResult;
+    if (result == 0 && !is_ipv6)
+    {
+        vppMock().coppDhcpIpv4Active = is_bind;
+        vppMock().coppDhcpIpv4Copy = is_copy;
+    }
+    return result;
 }
 
 extern "C" int __wrap_vpp_sonic_ext_copp_ifout_bind(
@@ -650,6 +680,30 @@ extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t, boo
     else
     {
         vppMock().bridgePorts.erase(name);
+        // VPP's MODE_L3 transition replaces the input bitmap with DROP while
+        // retaining the registered l2-input-ip4/ip6 feature configuration.
+        vppMock().l2InputFeatureArc.erase(name);
+    }
+    return 0;
+}
+
+extern "C" int __wrap_set_l2_interface_input_feature_arc(
+        const char *name,
+        bool enable)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"set_l2_interface_input_feature_arc", name, 0, 0, enable});
+    if (vppMock().bridgePorts.count(name) == 0)
+    {
+        return -1;
+    }
+    if (enable)
+    {
+        vppMock().l2InputFeatureArc.insert(name);
+    }
+    else
+    {
+        vppMock().l2InputFeatureArc.erase(name);
     }
     return 0;
 }

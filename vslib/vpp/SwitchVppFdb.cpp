@@ -918,6 +918,17 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
 
         swif_bdid_track(hw_ifname, bridge_id);
 
+        /* Leaving L2 mode resets VPP's per-interface L2 input bitmap, but the
+         * l2-input-ip4/ip6 feature registrations survive. Restore the feature
+         * arc dispatcher when an untagged parent is added back so every
+         * registered feature, including the live DHCP TRAP/COPY handlers, runs
+         * again. Tagged members are newly created subinterfaces, whose add
+         * callback installs the dispatcher with their feature registrations. */
+        if (set_l2_interface_input_feature_arc(hw_ifname, true) != 0) {
+            SWSS_LOG_WARN("Failed to restore L2 input feature arc on untagged member %s",
+                          hw_ifname);
+        }
+
         // Untagged BD member: do NOT install an input tag-rewrite on
         // the phy. The wire frame is untagged and must remain untagged
         // through l2-input/BD/BVI; otherwise ip4-dvr-reinject will

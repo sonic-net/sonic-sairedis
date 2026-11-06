@@ -387,7 +387,7 @@ TEST_F(SwitchVppNeighborMissTrap, DhcpBindFailureCleansTheAttemptedOwner)
     EXPECT_EQ("copp-policer-0x1200000021",
             vppMock().coppDhcpBindCalls[1].policerName);
     // The physical snapshot was absent, not present+NULL. Reconcile that
-    // tri-state explicitly after the owner-qualified timeout cleanup.
+    // three-state result explicitly after the owner-qualified timeout cleanup.
     EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].policerName.empty());
     EXPECT_FALSE(vppMock().coppDhcpBindCalls[2].isBind);
 }
@@ -3851,25 +3851,54 @@ class SwitchVppDhcpTrap : public ::testing::Test
 
         void addMember(
                 const char *hwif,
-                bool tagged)
+                bool tagged,
+                sai_object_id_t *memberOut = nullptr)
         {
             SWSS_LOG_ENTER();
 
-            auto port = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_switchId);
+            sai_object_id_t port;
+            sai_object_id_t bridgePort;
+            auto existing = m_memberPorts.find(hwif);
 
-            ASSERT_NE(nullptr, m_sw->m_ifaceRegistry.addPhysicalPort(hwif, std::string("os_") + hwif, port));
+            if (existing == m_memberPorts.end())
+            {
+                port = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_switchId);
 
-            auto bridgePort = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+                ASSERT_NE(nullptr, m_sw->m_ifaceRegistry.addPhysicalPort(
+                        hwif, std::string("os_") + hwif, port));
 
-            sai_attribute_t battrs[2];
+                // The sonic-ext LCP callback registers its L2 input features
+                // before the port first enters bridge mode. The bridge add
+                // preserves this bit; only the later remove resets it.
+                vppMock().l2InputRegisteredFeatures[hwif] = {
+                    "sonic-ext-dhcp-ip4",
+                    "sonic-ext-ip2me-ip4",
+                };
+                vppMock().l2InputFeatureArc.insert(hwif);
 
-            battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
-            battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
-            battrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
-            battrs[1].value.oid = port;
+                bridgePort = m_mgr->allocateNewObjectId(
+                        SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
 
-            ASSERT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bridgePort), m_switchId, 2, battrs));
+                sai_attribute_t battrs[2];
+
+                battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+                battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+                battrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+                battrs[1].value.oid = port;
+
+                ASSERT_EQ(SAI_STATUS_SUCCESS,
+                        m_sw->create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT,
+                            sai_serialize_object_id(bridgePort), m_switchId, 2, battrs));
+                m_memberPorts[hwif] = {port, bridgePort};
+            }
+            else
+            {
+                port = existing->second.first;
+                bridgePort = existing->second.second;
+            }
+
+            auto member = m_mgr->allocateNewObjectId(
+                    SAI_OBJECT_TYPE_VLAN_MEMBER, m_switchId);
 
             sai_attribute_t mattrs[3];
 
@@ -3880,7 +3909,17 @@ class SwitchVppDhcpTrap : public ::testing::Test
             mattrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
             mattrs[2].value.s32 = tagged ? SAI_VLAN_TAGGING_MODE_TAGGED : SAI_VLAN_TAGGING_MODE_UNTAGGED;
 
-            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_create_vlan_member(3, mattrs));
+            if (memberOut != nullptr)
+            {
+                ASSERT_EQ(SAI_STATUS_SUCCESS,
+                        m_sw->createVlanMember(member, m_switchId, 3, mattrs));
+                *memberOut = member;
+            }
+            else
+            {
+                ASSERT_EQ(SAI_STATUS_SUCCESS,
+                        m_sw->vpp_create_vlan_member(3, mattrs));
+            }
         }
 
         void addMembers()
@@ -4083,6 +4122,7 @@ class SwitchVppDhcpTrap : public ::testing::Test
         sai_object_id_t m_defaultVr = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_rif = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_trapGroup = SAI_NULL_OBJECT_ID;
+        std::map<std::string, std::pair<sai_object_id_t, sai_object_id_t>> m_memberPorts;
 };
 
 constexpr uint16_t SwitchVppDhcpTrap::VLAN_ID;
@@ -4106,6 +4146,42 @@ TEST_F(SwitchVppDhcpTrap, TrapUsesTheLiveProviderPath)
     createBvi();
 
     expectTrap();
+}
+
+TEST_F(SwitchVppDhcpTrap, UntaggedMemberReaddRestoresDhcpTrapDispatch)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP);
+
+    sai_object_id_t member;
+    addMember("bobm0", false, &member);
+    addMember("bobm1", true);
+    createBvi();
+
+    auto registrations = vppMock().l2InputRegisteredFeatures.at("bobm0");
+    ASSERT_EQ(2u, registrations.size());
+    auto bindCalls = vppMock().coppDhcpBindCalls.size();
+    auto restoreCalls = vppMock().callsTo(
+            "set_l2_interface_input_feature_arc", "bobm0").size();
+
+    auto delivery = vppMock().dhcpIpv4Delivery("bobm0");
+    EXPECT_TRUE(delivery.cpu);
+    EXPECT_FALSE(delivery.peer);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeVlanMember(member));
+    EXPECT_EQ(0u, vppMock().l2InputFeatureArc.count("bobm0"));
+    EXPECT_EQ(registrations, vppMock().l2InputRegisteredFeatures.at("bobm0"));
+
+    sai_object_id_t replacement;
+    addMember("bobm0", false, &replacement);
+    EXPECT_NE(member, replacement);
+
+    delivery = vppMock().dhcpIpv4Delivery("bobm0");
+    EXPECT_TRUE(delivery.cpu);
+    EXPECT_FALSE(delivery.peer);
+    EXPECT_EQ(registrations, vppMock().l2InputRegisteredFeatures.at("bobm0"));
+    EXPECT_EQ(bindCalls, vppMock().coppDhcpBindCalls.size());
+    EXPECT_EQ(restoreCalls + 1u, vppMock().callsTo(
+            "set_l2_interface_input_feature_arc", "bobm0").size());
 }
 
 TEST_F(SwitchVppDhcpTrap, NoDhcpTrapPreservesMemberForwarding)
@@ -4447,8 +4523,8 @@ TEST_F(SwitchVppDhcpTrap, AmbiguousNewTableVrfSetupRetainsItsIdAcrossRollback)
     EXPECT_EQ(0u, vppMock().vrfTables.count(VRF_TABLE));
     EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
 
-    // Final trap removal discovers the otherwise ownerless table ID.  The
-    // table is absent, so cleanup remains uncertain and retryable.
+    // Final trap removal discovers the table ID that otherwise has no owner.
+    // The table is absent, so cleanup remains uncertain and can be retried.
     removeTrap(trap);
     EXPECT_EQ(2u, vppMock().ipRouteCalls);
 

@@ -1747,7 +1747,7 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
      * Reconcile even while inactive: vrf_id may identify an uncertain route
      * from an earlier table-0 or new-table setup that failed before publishing
      * its IpVrfInfo.  The uncertainty set deliberately retains that attempted
-     * table ID across rollback, making both cleanup and setup retryable.
+     * table ID across rollback, allowing both cleanup and setup to be retried.
      */
     if (vpp_reconcile_dhcp_route(vrf_id, m_dhcp_trap_active) != 0) {
         SWSS_LOG_ERROR("Failed to reconcile the DHCP limited-broadcast route "

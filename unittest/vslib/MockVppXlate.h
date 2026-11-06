@@ -90,6 +90,12 @@ struct VppCoppDhcpBindCall
     bool isBind;
 };
 
+struct VppDhcpDelivery
+{
+    bool cpu;
+    bool peer;
+};
+
 struct VppCoppIfoutBindCall
 {
     uint16_t ethertype;
@@ -179,6 +185,8 @@ struct VppMock
     unsigned int coppDhcpBindFailOnCall = 0;
     std::set<unsigned int> coppDhcpBindFailOnCalls;
     std::vector<VppCoppDhcpBindCall> coppDhcpBindCalls;
+    bool coppDhcpIpv4Active = false;
+    bool coppDhcpIpv4Copy = false;
 
     // CoPP interface-output and TTL punt bindings.
     int coppIfoutBindResult = 0;
@@ -213,6 +221,8 @@ struct VppMock
     std::set<std::string> interfaces;
     std::set<std::string> lcpPairs;
     std::set<std::string> bridgePorts;
+    std::map<std::string, std::set<std::string>> l2InputRegisteredFeatures;
+    std::set<std::string> l2InputFeatureArc;
     std::vector<VppCall> calls;
     std::map<std::string, bool> adminUp;
     std::map<std::string, std::array<uint32_t, 4>> mtus;
@@ -245,6 +255,7 @@ struct VppMock
     uint32_t nodeNext(
             const std::string& node,
             const std::string& next) const;
+    VppDhcpDelivery dhcpIpv4Delivery(const std::string& hwif) const;
 };
 
 VppMock& vppMock();

@@ -487,3 +487,9 @@ cp
 ethertype
 fixup
 nexts
+BGP
+CoPP
+copp
+dataplane
+ifout
+LCP
