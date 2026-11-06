@@ -85,5 +85,51 @@ int main(void)
     vl_api_sonic_ext_trim_global_set_reply_t_handler(&global);
     vl_api_sonic_ext_trim_dscp_map_set_reply_t_handler(&map);
     vl_api_sonic_ext_trim_queue_set_reply_t_handler(&queue);
-    return vat_main.result_ready ? 9 : 0;
+    if (vat_main.result_ready)
+        return 9;
+
+    /* Route replies must also be request-correlated. A released context
+     * models a late reply from a timed-out route request. The NULL stats path
+     * still gets a live context, and unrelated generic completion cannot
+     * satisfy the dedicated route wait. */
+    uint32_t route_stats = UINT32_MAX;
+    old_context = store_ptr(&route_stats);
+    release_index(old_context);
+    current_context = begin_route_request(NULL, &route_stats);
+    if (current_context == VPP_INVALID_CTX_INDEX ||
+        get_index_ptr(current_context) != (uintptr_t)&route_stats)
+        return 10;
+
+    vl_api_ip_route_add_del_reply_t route = {0};
+    route.context = old_context;
+    route.retval = 0;
+    route.stats_index = htonl(41);
+    vat_main.retval = 123;
+    vat_main.result_ready = 0;
+    vl_api_ip_route_add_del_reply_t_handler(&route);
+    if (route_result_ready || vat_main.result_ready || vat_main.retval != 123 ||
+        route_stats != UINT32_MAX ||
+        get_index_ptr(current_context) != (uintptr_t)&route_stats)
+        return 11;
+
+    set_reply_status(-17);
+    if (route_result_ready || !vat_main.result_ready || vat_main.retval != -17)
+        return 12;
+
+    route.context = 0;
+    vl_api_ip_route_add_del_reply_t_handler(&route);
+    if (route_result_ready || route_stats != UINT32_MAX)
+        return 13;
+
+    route.context = current_context;
+    route.stats_index = htonl(42);
+    vl_api_ip_route_add_del_reply_t_handler(&route);
+    if (!route_result_ready || route_retval || route_stats != 42 ||
+        get_index_ptr(current_context))
+        return 14;
+    end_route_request(current_context);
+    if (route_expected_context != VPP_INVALID_CTX_INDEX)
+        return 15;
+
+    return 0;
 }

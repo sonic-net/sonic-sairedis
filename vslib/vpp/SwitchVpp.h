@@ -1162,6 +1162,14 @@ namespace saivs
 
             std::map<sai_object_id_t, vpp_trap_group_entry_t> m_trap_group_map;
             std::map<sai_object_id_t, vpp_trap_entry_t> m_trap_map;
+            // Physical VPP binding key -> exact currently programmed row.
+            // Shared SAI traps can overwrite one physical row, so rollback
+            // must restore its presence, policer, and effective packet action
+            // rather than one arbitrary trap owner's configuration.
+            std::map<uint32_t, vpp_trap_binding_entry_t> m_trap_binding_map;
+            // Keys whose last multi-step RPC result is not authoritative.
+            // Rollback must retry these even when the OID journal is unchanged.
+            std::set<uint32_t> m_trap_binding_uncertain;
 
             sai_status_t createHostifTrapGroup(
                     _In_ sai_object_id_t object_id,
@@ -1199,6 +1207,23 @@ namespace saivs
                     _In_ const vpp_trap_entry_t &trap,
                     _In_ uint32_t vpp_policer_index);
 
+            sai_status_t installTrapClassifyNow(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap,
+                    _In_ uint32_t vpp_policer_index,
+                    _In_ sai_object_id_t policer_oid,
+                    _In_ sai_object_id_t excluded_trap_group_oid = SAI_NULL_OBJECT_ID,
+                    _In_ bool select_alternate_owner = true);
+
+            sai_status_t programTrapClassifyNow(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap,
+                    _In_ uint32_t vpp_policer_index,
+                    _In_ sai_object_id_t policer_oid,
+                    _In_ sai_object_id_t excluded_trap_group_oid,
+                    _In_ bool reconcile_shared_owners = true,
+                    _In_ bool select_alternate_owner = true);
+
             sai_status_t uninstallTrapClassify(
                     _In_ sai_object_id_t trap_oid,
                     _In_ const vpp_trap_entry_t &trap);
@@ -1209,16 +1234,34 @@ namespace saivs
 
         protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCP packet action
 
-            // True while every DHCP hostif trap has SAI_PACKET_ACTION_COPY
-            // (and there is at least one), which floods DHCPv4 client
-            // broadcasts in their VLAN and copies them to the CPU. Otherwise
-            // they are trapped, as before. See SwitchVppFdb.cpp.
+            // A DHCPv4 trap makes routed limited broadcasts local receives.
+            // VLAN-member TRAP/COPY behavior is read from the live semantic
+            // provider row; fixed classifiers are not used. See
+            // SwitchVppFdb.cpp.
+            bool m_dhcp_trap_active = false;
             bool m_dhcp_trap_copy = false;
+            // IPv4 tables whose limited-broadcast local route was confirmed
+            // installed, and tables where an attempted update has no reliable
+            // reply.  Keep both separate from the desired trap state: an RPC
+            // can take effect in VPP and still time out, so equality between
+            // confirmed and desired state does not make an uncertain table
+            // reconciled.
+            std::set<uint32_t> m_dhcp_route_vrfs;
+            std::set<uint32_t> m_dhcp_route_uncertain_vrfs;
 
-            // Re-derives m_dhcp_trap_copy from m_trap_map and applies it.
+            // Applies one table's desired route state transactionally.  A
+            // failed call leaves the table uncertain; only a successful,
+            // idempotent add/delete advances confirmed state.
+            int vpp_reconcile_dhcp_route(
+                    _In_ uint32_t vrf_id,
+                    _In_ bool receive);
+
+            // Re-derives active/COPY state from m_trap_map and reconciles it,
+            // including any previously failed per-VRF route operation.
             void vpp_update_dhcp_trap_action();
 
-            void vpp_set_dhcp_trap_copy(
+            void vpp_set_dhcp_trap_state(
+                    _In_ bool active,
                     _In_ bool copy);
 
 

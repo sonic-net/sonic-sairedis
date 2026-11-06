@@ -68,6 +68,8 @@
 
 #include <vpp_plugins/sonic_ext/sonic_ext.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api_enum.h>
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api_types.h>
 
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api_types.h>
@@ -77,6 +79,10 @@
 
 #include <vnet/l2/l2.api_enum.h>
 #include <vnet/l2/l2.api_types.h>
+
+/* Raw L2 input feature bit used by l2_flags_set. Keep this value aligned with
+ * L2INPUT_FEAT_INPUT_FEAT_ARC in VPP's vnet/l2/l2_input.h. */
+#define SAIVPP_L2INPUT_FEAT_INPUT_FEAT_ARC (1u << 17)
 
 #include <vnet/bonding/bond.api_enum.h>
 #include <vnet/bonding/bond.api_types.h>
@@ -220,6 +226,24 @@
 
 #define vl_api_version(n, v) static u32 sonic_ext_trim_api_version = v;
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api.h>
+#undef vl_api_version
+
+/* compatibility-isolated sonic_ext CoPP API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_copp_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
 #undef vl_api_version
 
 /* interface API inclusion */
@@ -656,6 +680,66 @@ do {                                                            \
         }                                                       \
         vat_suspend (vam->vlib_main, 1e-5);                     \
     }                                                            \
+} while(0);
+
+/* CoPP requests use their own completion state so a late reply from any
+ * unrelated synchronous API cannot satisfy a CoPP wait. */
+#define WR_COPP(ret)                                            \
+do {                                                            \
+    f64 start_time = vat_time_now (vam);                        \
+    f64 hard_deadline = start_time + 10.0;                      \
+    f64 idle_deadline = start_time + 1.0;                       \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    int _wr_rv;                                                 \
+    ret = -99;                                                  \
+    while (1) {                                                 \
+        f64 now = vat_time_now (vam);                           \
+        if (now >= hard_deadline || now >= idle_deadline)       \
+            break;                                              \
+        if (scm && scm->socket_enable) {                        \
+            _wr_rv = vl_socket_client_read (1);                 \
+            if (_wr_rv == 0) {                                  \
+                idle_deadline = vat_time_now (vam) + 1.0;       \
+                if (idle_deadline > hard_deadline)              \
+                    idle_deadline = hard_deadline;              \
+            }                                                   \
+        }                                                       \
+        if (copp_result_ready == 1) {                           \
+            ret = copp_retval;                                  \
+            break;                                              \
+        }                                                       \
+        vat_suspend (vam->vlib_main, 1e-5);                     \
+    }                                                           \
+} while(0);
+
+/* Route updates also need isolated completion: a late reply from any other
+ * synchronous API must not confirm a route journal transition. */
+#define WR_ROUTE(ret)                                           \
+do {                                                            \
+    f64 start_time = vat_time_now (vam);                        \
+    f64 hard_deadline = start_time + 10.0;                      \
+    f64 idle_deadline = start_time + 1.0;                       \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    int _wr_rv;                                                 \
+    ret = -99;                                                  \
+    while (1) {                                                 \
+        f64 now = vat_time_now (vam);                           \
+        if (now >= hard_deadline || now >= idle_deadline)       \
+            break;                                              \
+        if (scm && scm->socket_enable) {                        \
+            _wr_rv = vl_socket_client_read (1);                 \
+            if (_wr_rv == 0) {                                  \
+                idle_deadline = vat_time_now (vam) + 1.0;       \
+                if (idle_deadline > hard_deadline)              \
+                    idle_deadline = hard_deadline;              \
+            }                                                   \
+        }                                                       \
+        if (route_result_ready == 1) {                          \
+            ret = route_retval;                                 \
+            break;                                              \
+        }                                                       \
+        vat_suspend (vam->vlib_main, 1e-5);                     \
+    }                                                           \
 } while(0);
 
 /*
@@ -1112,6 +1196,78 @@ static void set_reply_status (int retval)
     }
 }
 
+/* CoPP rollback can issue a second synchronous RPC after the first timed out.
+ * Tag every CoPP request so a late reply from the timed-out operation cannot
+ * satisfy the rollback wait. VPP_LOCK serializes this command path. */
+static uint32_t copp_next_context = 1;
+static uint32_t copp_expected_context;
+static int copp_result_ready;
+static int copp_retval;
+
+static uint32_t begin_copp_request(void)
+{
+    if (++copp_next_context == 0)
+    {
+        ++copp_next_context;
+    }
+    copp_expected_context = copp_next_context;
+    copp_result_ready = 0;
+    copp_retval = -99;
+    return copp_expected_context;
+}
+
+static void end_copp_request(void)
+{
+    copp_expected_context = 0;
+}
+
+static void set_copp_reply_status(uint32_t context, int retval)
+{
+    if (copp_expected_context != 0 && context == copp_expected_context)
+    {
+        copp_retval = retval;
+        copp_result_ready = 1;
+    }
+}
+
+/* Every route request, including deletes that do not return statistics, owns
+ * a generation-tagged context and dedicated completion state. */
+static uint32_t route_expected_context = VPP_INVALID_CTX_INDEX;
+static int route_result_ready;
+static int route_retval;
+
+static uint32_t begin_route_request(
+        uint32_t *stats_index,
+        uint32_t *ignored_stats_index)
+{
+    uint32_t *reply_stats_index = stats_index ? stats_index : ignored_stats_index;
+    *reply_stats_index = UINT32_MAX;
+
+    uint32_t context = store_ptr(reply_stats_index);
+    if (context == VPP_INVALID_CTX_INDEX)
+    {
+        return context;
+    }
+
+    route_expected_context = context;
+    route_result_ready = 0;
+    route_retval = -99;
+    return context;
+}
+
+static void end_route_request(uint32_t context)
+{
+    if (route_expected_context == context)
+    {
+        route_expected_context = VPP_INVALID_CTX_INDEX;
+    }
+    if (context != VPP_INVALID_CTX_INDEX &&
+            get_index_ptr(context) != (uintptr_t) NULL)
+    {
+        release_index(context);
+    }
+}
+
 static void set_reply_sw_if_index (vl_api_interface_index_t sw_if_index)
 {
     vat_main_t *vam = cur_vam();
@@ -1386,19 +1542,25 @@ vl_api_ip_route_add_del_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
 
-    if (msg->context) {
-        uint32_t *stats_index = (uint32_t *) get_index_ptr(msg->context);
-        if (!stats_index) {
-            return;
-        }
-        set_reply_status(retval);
-        if (stats_index && retval == 0) {
-            *stats_index = ntohl(msg->stats_index);
-        }
-        release_index(msg->context);
-    } else {
-        set_reply_status(retval);
+    if (route_expected_context == VPP_INVALID_CTX_INDEX ||
+            msg->context != route_expected_context)
+    {
+        return;
     }
+
+    uint32_t *stats_index = (uint32_t *) get_index_ptr(msg->context);
+    if (!stats_index)
+    {
+        return;
+    }
+
+    route_retval = retval;
+    if (retval == 0)
+    {
+        *stats_index = ntohl(msg->stats_index);
+    }
+    route_result_ready = 1;
+    release_index(msg->context);
 }
 
 static void
@@ -1471,6 +1633,13 @@ vl_api_bridge_flags_reply_t_handler (vl_api_bridge_flags_reply_t *msg)
 
 static void
 vl_api_l2_flags_reply_t_handler (vl_api_l2_flags_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_l2_flags_set_reply_t_handler (vl_api_l2_flags_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
@@ -1957,35 +2126,51 @@ static void
 vl_api_sonic_ext_copp_ifout_bind_reply_t_handler(vl_api_sonic_ext_copp_ifout_bind_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
+}
+
+static void
+vl_api_sonic_ext_copp_neighbor_miss_bind_reply_t_handler(
+        vl_api_sonic_ext_copp_neighbor_miss_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_copp_reply_status(msg->context, retval);
+}
+
+static void
+vl_api_sonic_ext_copp_dhcp_bind_reply_t_handler(
+        vl_api_sonic_ext_copp_dhcp_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_copp_ip2me_addr_add_del_reply_t_handler(vl_api_sonic_ext_copp_ip2me_addr_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_copp_ip2me_bind_reply_t_handler(vl_api_sonic_ext_copp_ip2me_bind_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_copp_ip2me_bind_condition_reply_t_handler(vl_api_sonic_ext_copp_ip2me_bind_condition_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_copp_ttl_punt_bind_reply_t_handler(vl_api_sonic_ext_copp_ttl_punt_bind_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    set_copp_reply_status(msg->context, retval);
 }
 
 static void
@@ -2368,6 +2553,7 @@ static void vpp_base_vpe_init(void)
     _(L2_MSG_ID(BVI_DELETE_REPLY), bvi_delete_reply) \
     _(L2_MSG_ID(BRIDGE_FLAGS_REPLY), bridge_flags_reply) \
     _(L2_MSG_ID(L2_FLAGS_REPLY), l2_flags_reply) \
+    _(L2_MSG_ID(L2_FLAGS_SET_REPLY), l2_flags_set_reply) \
     _(BOND_MSG_ID(BOND_CREATE_REPLY), bond_create_reply) \
     _(BOND_MSG_ID(BOND_DELETE_REPLY), bond_delete_reply) \
     _(BOND_MSG_ID(BOND_ADD_MEMBER_REPLY), bond_add_member_reply) \
@@ -2405,6 +2591,7 @@ static u16 sflow_msg_id_base;
  */
 static u16 nat44_ed_msg_id_base = (u16) ~0;
 static u16 sonic_ext_msg_id_base;
+static u16 sonic_ext_copp_msg_id_base;
 static u16 policer_msg_id_base;
 
 static void vpp_ext_vpe_init(void)
@@ -2581,6 +2768,9 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
 #define SONIC_EXT_MSG_ID(id) \
     (VL_API_##id + sonic_ext_msg_id_base)
 
+#define SONIC_EXT_COPP_MSG_ID(id) \
+    (VL_API_##id + sonic_ext_copp_msg_id_base)
+
 #define foreach_vpe_plugin_api_reply_msg                                \
     _(LCP_MSG_ID(LCP_ITF_PAIR_ADD_DEL_REPLY), lcp_itf_pair_add_del_reply) \
     _(LCP_MSG_ID(LCP_ETHERTYPE_ENABLE_REPLY), lcp_ethertype_enable_reply) \
@@ -2595,6 +2785,8 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(SONIC_EXT_MSG_ID(SONIC_EXT_EGRESS_MIRROR_ENABLE_DISABLE_REPLY), sonic_ext_egress_mirror_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_MIRROR_ENCAP_FIXUP_ENABLE_DISABLE_REPLY), sonic_ext_mirror_encap_fixup_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IFOUT_BIND_REPLY), sonic_ext_copp_ifout_bind_reply) \
+    _(SONIC_EXT_COPP_MSG_ID(SONIC_EXT_COPP_NEIGHBOR_MISS_BIND_REPLY), sonic_ext_copp_neighbor_miss_bind_reply) \
+    _(SONIC_EXT_COPP_MSG_ID(SONIC_EXT_COPP_DHCP_BIND_REPLY), sonic_ext_copp_dhcp_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_ADDR_ADD_DEL_REPLY), sonic_ext_copp_ip2me_addr_add_del_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_REPLY), sonic_ext_copp_ip2me_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_CONDITION_REPLY), sonic_ext_copp_ip2me_bind_condition_reply) \
@@ -2763,6 +2955,10 @@ static void get_base_msg_id()
     if (nat44_ed_msg_id_base == (u16) ~0) {
         SAIVPP_WARN("VPP has no nat44_ed API (nat_plugin.so not loaded): NAT is not supported");
     }
+
+    msg_base_lookup_name = format (0, "sonic_ext_copp_%08x%c", sonic_ext_copp_api_version, 0);
+    sonic_ext_copp_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(sonic_ext_copp_msg_id_base != (u16) ~0);
 }
 
 #define API_SOCKET_FILE "/run/vpp/api.sock"
@@ -3793,13 +3989,10 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
     vl_api_ip_route_t *ip_route;
     vl_api_address_t *api_addr;
     vl_api_ip_route_add_del_t *mp;
+    uint32_t ignored_stats_index;
     int ret;
 
     VPP_LOCK();
-
-    if (stats_index) {
-        *stats_index = UINT32_MAX;
-    }
 
     path_count = prefix->nexthop_cnt;
 
@@ -3817,13 +4010,10 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
         }
     }
 
-    uint32_t context = VPP_INVALID_CTX_INDEX;
-    if (stats_index) {
-        context = store_ptr(stats_index);
-        if (context == VPP_INVALID_CTX_INDEX) {
-            VPP_UNLOCK();
-            return -ENOMEM;
-        }
+    uint32_t context = begin_route_request(stats_index, &ignored_stats_index);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
     }
 
     __plugin_msg_base = ip_msg_id_base;
@@ -3906,17 +4096,13 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
 
     mp->is_add = is_add;
     mp->is_multipath = prefix->is_multipath;
-    if (context) {
-        mp->context = context;
-    }
+    mp->context = context;
 
     S (mp);
 
-    WR (ret);
+    WR_ROUTE (ret);
 
-    if (context && get_index_ptr(context) != (uintptr_t) NULL) {
-        release_index(context);
-    }
+    end_route_request(context);
 
     ret = vpp_normalize_ret(ret, !is_add, __func__);
 
@@ -3930,6 +4116,7 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
 
 int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
 {
+    // The shared helper allocates a correlated context even without stats.
     return ip_route_add_del_get_stats(prefix, is_add, NULL);
 }
 
@@ -4432,6 +4619,7 @@ int vpp_sonic_ext_copp_ifout_bind(
     __plugin_msg_base = sonic_ext_msg_id_base;
 
     M (SONIC_EXT_COPP_IFOUT_BIND, mp);
+    mp->context = begin_copp_request();
 
     mp->ethertype = htons(ethertype);
     snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
@@ -4439,7 +4627,8 @@ int vpp_sonic_ext_copp_ifout_bind(
     mp->match_ip4_ttl_expiring = match_ip4_ttl_expiring;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
+    end_copp_request();
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) ethertype 0x%04x policer_name %s is_bind %d", __func__, ret, ethertype, policer_name ? policer_name : "", is_bind); }
     else { SAIVPP_INFO("%s ethertype 0x%04x policer_name %s is_bind %d", __func__, ethertype, policer_name ? policer_name : "", is_bind); }
@@ -4450,7 +4639,84 @@ int vpp_sonic_ext_copp_ifout_bind(
 }
 
 /*
+ * Dedicated semantic NEIGHBOR_MISS -> policer binding. This must not use
+ * vpp_sonic_ext_copp_ifout_bind(): the reason is carried in sonic_ext's
+ * per-buffer side-band and is not a wire ethertype.
+ */
+int vpp_sonic_ext_copp_neighbor_miss_bind(
+        const char *policer_name,
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_neighbor_miss_bind_t *mp;
+    int ret;
 
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_copp_msg_id_base;
+
+    M (SONIC_EXT_COPP_NEIGHBOR_MISS_BIND, mp);
+    mp->context = begin_copp_request();
+
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s",
+            policer_name ? policer_name : "");
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR_COPP (ret);
+    end_copp_request();
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer_name %s is_bind %d", __func__, ret, policer_name ? policer_name : "", is_bind); }
+    else { SAIVPP_INFO("%s policer_name %s is_bind %d", __func__, policer_name ? policer_name : "", is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/* Dedicated DHCPv4/DHCPv6 trap-group policer binding. The sonic_ext plugin
+ * owns the fixed packet predicates; sairedis selects only the address family
+ * and the policer attached to the SAI trap group. */
+int vpp_sonic_ext_copp_dhcp_bind(
+        const char *policer_name,
+        bool is_ipv6,
+        bool is_copy,
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_dhcp_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_copp_msg_id_base;
+
+    M (SONIC_EXT_COPP_DHCP_BIND, mp);
+    mp->context = begin_copp_request();
+
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s",
+            policer_name ? policer_name : "");
+    mp->is_ipv6 = is_ipv6;
+    mp->is_copy = is_copy;
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR_COPP (ret);
+    end_copp_request();
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer_name %s is_ipv6 %d is_copy %d is_bind %d", __func__, ret, policer_name ? policer_name : "", is_ipv6, is_copy, is_bind); }
+    else { SAIVPP_INFO("%s policer_name %s is_ipv6 %d is_copy %d is_bind %d", __func__, policer_name ? policer_name : "", is_ipv6, is_copy, is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/*
  * ip4-punt-arc IP2ME address set + shared policer binding, part of
  * sonic_ext (formerly the standalone copp_ip2me_policer plugin).
  */
@@ -4469,12 +4735,14 @@ int vpp_sonic_ext_copp_ip2me_addr_add_del(
     __plugin_msg_base = sonic_ext_msg_id_base;
 
     M (SONIC_EXT_COPP_IP2ME_ADDR_ADD_DEL, mp);
+    mp->context = begin_copp_request();
 
     mp->addr = addr;
     mp->is_add = is_add;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
+    end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
 
@@ -4500,12 +4768,14 @@ int vpp_sonic_ext_copp_ip2me_bind(
     __plugin_msg_base = sonic_ext_msg_id_base;
 
     M (SONIC_EXT_COPP_IP2ME_BIND, mp);
+    mp->context = begin_copp_request();
 
     snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
     mp->is_bind = is_bind;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
+    end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
 
@@ -4532,13 +4802,15 @@ int vpp_sonic_ext_copp_ip2me_bind_condition(
     __plugin_msg_base = sonic_ext_msg_id_base;
 
     M (SONIC_EXT_COPP_IP2ME_BIND_CONDITION, mp);
+    mp->context = begin_copp_request();
 
     snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
     mp->tcp_port = htons(tcp_port);
     mp->is_bind = is_bind;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
+    end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
 
@@ -4563,11 +4835,13 @@ int vpp_sonic_ext_copp_ttl_punt_bind(
     __plugin_msg_base = sonic_ext_msg_id_base;
 
     M (SONIC_EXT_COPP_TTL_PUNT_BIND, mp);
+    mp->context = begin_copp_request();
 
     mp->is_bind = is_bind;
 
     S (mp);
-    WR (ret);
+    WR_COPP (ret);
+    end_copp_request();
 
     ret = vpp_normalize_ret(ret, false, __func__);
 
@@ -6411,6 +6685,43 @@ int set_l2_interface_flags_by_index(uint32_t sw_if_index,
                             __func__, ret, sw_if_index, (uint32_t)flags, enable); }
     else { SAIVPP_INFO("%s sw_if_index %u flags %#x enable %d", __func__,
                        sw_if_index, (uint32_t)flags, enable); }
+    VPP_UNLOCK();
+    return ret;
+}
+
+int set_l2_interface_input_feature_arc(const char *hwif_name, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2_flags_set_t *mp;
+    uint32_t sw_if_index;
+    int ret;
+
+    if (hwif_name == NULL) {
+        return -EINVAL;
+    }
+
+    sw_if_index = get_swif_idx(vam, hwif_name);
+    if (sw_if_index == (uint32_t)~0) {
+        SAIVPP_ERROR("Unable to get sw_index for %s", hwif_name);
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+    __plugin_msg_base = l2_msg_id_base;
+    M (L2_FLAGS_SET, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->is_set = enable;
+    mp->input_feature_bitmap = htonl(SAIVPP_L2INPUT_FEAT_INPUT_FEAT_ARC);
+    mp->output_feature_bitmap = 0;
+    S (mp);
+    WR (ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) hwif %s enable %d",
+                __func__, ret, hwif_name, enable);
+    } else {
+        SAIVPP_INFO("%s hwif %s enable %d", __func__, hwif_name, enable);
+    }
     VPP_UNLOCK();
     return ret;
 }

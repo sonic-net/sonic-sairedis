@@ -27,6 +27,15 @@ typedef struct _vpp_trap_entry_ {
     bool classify_installed;
 } vpp_trap_entry_t;
 
+typedef struct _vpp_trap_binding_entry_ {
+    // Exact state of one physical VPP binding. Map presence means that the
+    // row exists; policer_oid may still be NULL for an intentionally
+    // unpoliced semantic row. packet_action is part of the physical state
+    // for rows such as DHCP where TRAP and COPY have different datapaths.
+    sai_object_id_t policer_oid;
+    sai_packet_action_t packet_action;
+} vpp_trap_binding_entry_t;
+
 #ifdef __cplusplus
 }
 #endif

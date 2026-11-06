@@ -1716,7 +1716,12 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
     if (it != vrf_objMap.end()) {
         auto sw = it->second;
         if (sw != nullptr) {
-                 SWSS_LOG_NOTICE("VRF(%s) with id %u already exists", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
+            SWSS_LOG_NOTICE("VRF(%s) with id %u already exists",
+                    sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
+            if (vpp_reconcile_dhcp_route(
+                        sw->m_vrf_id, m_dhcp_trap_active) != 0) {
+                return -1;
+            }
         } else {
             SWSS_LOG_ERROR("VRF(%s) object with null data", sai_serialize_object_id(objectId).c_str());
         }
@@ -1738,18 +1743,32 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
                        vrf_id, sai_serialize_object_id(objectId).c_str());
         return -1;
     }
-    SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
-    vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
+    /*
+     * Reconcile even while inactive: vrf_id may identify an uncertain route
+     * from an earlier table-0 or new-table setup that failed before publishing
+     * its IpVrfInfo.  The uncertainty set deliberately retains that attempted
+     * table ID across rollback, allowing both cleanup and setup to be retried.
+     */
+    if (vpp_reconcile_dhcp_route(vrf_id, m_dhcp_trap_active) != 0) {
+        SWSS_LOG_ERROR("Failed to reconcile the DHCP limited-broadcast route "
+                       "in IPv4 VRF table %u", vrf_id);
+        if (!has_vrf_table && vrf_id &&
+            ip_vrf_del(vrf_id, vrf_name.c_str(), false) != 0) {
+            SWSS_LOG_ERROR("Failed to roll back IPv4 VRF table %u after "
+                           "the limited-broadcast route failure", vrf_id);
+        }
+        return -1;
+    }
 
     if (!has_vrf_table) {
         if (vpp_sonic_ext_copp_ip2me_addr_add_del(htonl(INADDR_BROADCAST), true) != 0) {
             SWSS_LOG_ERROR("Failed to add 255.255.255.255 to the CoPP IP2ME addresses, "
                            "so limited broadcasts reach the CPU unpoliced");
         }
-        if (m_dhcp_trap_copy) {
-            vpp_ip4_limited_broadcast_receive(vrf_id, true);
-        }
     }
+
+    SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
+    vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
 
     uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
         VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
@@ -1774,14 +1793,20 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
     if (it != vrf_objMap.end()) {
         auto sw = it->second;
         if (sw != nullptr) {
-                 SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
-           // table 0 outlives every VRF object, and other router interfaces may still use it
-           if (m_dhcp_trap_copy && sw->m_vrf_id != 0)
-           {
-               vpp_ip4_limited_broadcast_receive(sw->m_vrf_id, false);
-           }
-           ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), sw->m_is_ipv6);
-           vrf_objMap.erase(it);
+            SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u",
+                    sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
+            // Table 0 outlives every VRF object, and other router interfaces
+            // may still use it.
+            if (sw->m_vrf_id != 0) {
+                if (vpp_reconcile_dhcp_route(sw->m_vrf_id, false) != 0) {
+                    // Keep the table and cache entry so public remove can fail
+                    // cleanly and retry the mandatory route cleanup.
+                    return -1;
+                }
+            }
+            ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(),
+                    sw->m_is_ipv6);
+            vrf_objMap.erase(it);
         }
     }
     return 0;
@@ -1802,13 +1827,12 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
  * to the interface's host tap. For a VLAN that is the BVI's copy of a
  * flooded broadcast, and it is how a DHCPv4 client broadcast reaches the
  * DHCP relay when the SAI_HOSTIF_TRAP_TYPE_DHCP action is COPY (see
- * SwitchVppFdb.cpp). Under TRAP (or when no DHCP trap is configured) the
- * client broadcast is punted at the VLAN member and never reaches the BVI,
- * while routed ports keep VPP's default drop on 255.255.255.255/32 so a
- * switch without a COPY DHCP trap (such as a T1 spine) does not punt limited
- * broadcasts to the CPU.
+ * SwitchVppFdb.cpp). Under TRAP the VLAN-member classifier prevents flooding,
+ * while a limited broadcast arriving on a routed interface still needs this
+ * local route. With no DHCP trap, routed ports keep VPP's default drop so a
+ * switch that does not configure DHCP interception does not punt them.
  *
- * While COPY is active a limited broadcast is to-me traffic, and
+ * While a DHCP trap is active a limited broadcast is to-me traffic, and
  * vpp_add_ip_vrf() adds 255.255.255.255 to sonic-ext-copp-ip2me's address set
  * with the switch's own addresses so the IP2ME trap group's policer meters
  * limited broadcasts on the punt path regardless of trap mode.
@@ -1854,6 +1878,48 @@ int SwitchVpp::vpp_ip4_limited_broadcast_receive(
     }
 
     return ret;
+}
+
+int SwitchVpp::vpp_reconcile_dhcp_route(
+        _In_ uint32_t vrf_id,
+        _In_ bool receive)
+{
+    SWSS_LOG_ENTER();
+
+    const bool confirmed = m_dhcp_route_vrfs.count(vrf_id) != 0;
+    const bool uncertain =
+        m_dhcp_route_uncertain_vrfs.count(vrf_id) != 0;
+
+    if (!uncertain && confirmed == receive)
+    {
+        return 0;
+    }
+
+    /*
+     * Mark before issuing the RPC.  Any non-success reply is ambiguous: VPP
+     * may have completed the operation before the client timed out.  Add and
+     * delete are normalized as idempotent by SaiVppXlate, so a later success
+     * is the commit point for both confirmed state and uncertainty.
+     */
+    m_dhcp_route_uncertain_vrfs.insert(vrf_id);
+
+    int ret = vpp_ip4_limited_broadcast_receive(vrf_id, receive);
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    if (receive)
+    {
+        m_dhcp_route_vrfs.insert(vrf_id);
+    }
+    else
+    {
+        m_dhcp_route_vrfs.erase(vrf_id);
+    }
+    m_dhcp_route_uncertain_vrfs.erase(vrf_id);
+
+    return 0;
 }
 
 std::shared_ptr<IpVrfInfo> SwitchVpp::vpp_get_ip_vrf (_In_ sai_object_id_t objectId)
@@ -2892,7 +2958,10 @@ sai_status_t SwitchVpp::removeVrf(
 
     if (m_switchConfig->m_useTapDevice == true)
     {
-        vpp_del_ip_vrf(objectId);
+        if (vpp_del_ip_vrf(objectId) != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
     }
 
     auto sid = sai_serialize_object_id(objectId);

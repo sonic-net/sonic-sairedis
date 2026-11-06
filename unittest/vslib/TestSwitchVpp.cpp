@@ -34,74 +34,7 @@ using namespace saivs;
 
 namespace
 {
-    /*
-     * The classify tables, sessions and interface bindings SwitchVpp creates,
-     * so a test can ask what VPP would do with a given frame.
-     */
-    struct ClassifyTable
-    {
-        uint32_t skip;
-        uint32_t match;
-        uint32_t next_table;
-        std::vector<uint8_t> mask;
-        std::map<std::vector<uint8_t>, uint32_t> sessions; // masked key -> hit next
-    };
-
-    std::map<uint32_t, ClassifyTable> g_tables;
-    uint32_t g_nextTableIndex = 0;
-
-    // interface -> l2 input tables {ip4, ip6, other}
-    std::map<std::string, std::array<uint32_t, 3>> g_l2Tables;
-
     const uint32_t MISS = ~0u;
-
-    std::vector<uint8_t> maskedKey(
-            const ClassifyTable& t,
-            const uint8_t *data,
-            size_t len)
-    {
-        SWSS_LOG_ENTER();
-
-        std::vector<uint8_t> key(t.match * 16, 0);
-
-        for (size_t i = 0; i < key.size(); i++)
-        {
-            size_t off = t.skip * 16 + i;
-
-            key[i] = (uint8_t)((off < len ? data[off] : 0) & t.mask[i]);
-        }
-
-        return key;
-    }
-
-    // Walks a classify chain the way VPP does: the first hit's next index, or MISS.
-    uint32_t classify(
-            uint32_t table,
-            const std::vector<uint8_t>& frame)
-    {
-        SWSS_LOG_ENTER();
-
-        while (table != ~0u)
-        {
-            auto it = g_tables.find(table);
-
-            if (it == g_tables.end())
-            {
-                return MISS;
-            }
-
-            auto s = it->second.sessions.find(maskedKey(it->second, frame.data(), frame.size()));
-
-            if (s != it->second.sessions.end())
-            {
-                return s->second;
-            }
-
-            table = it->second.next_table;
-        }
-
-        return MISS;
-    }
 
     // IPv4 API routes VPP holds: (table, prefix) -> next hop type
     std::map<std::pair<uint32_t, std::string>, int> g_ip4Routes;
@@ -167,73 +100,11 @@ namespace
 
 extern "C" {
 
-int __wrap_vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
-                                     uint32_t skip_n_vectors, uint32_t match_n_vectors,
-                                     uint32_t next_table_index, uint32_t miss_next_index,
-                                     const uint8_t *mask, uint32_t mask_len,
-                                     uint32_t *new_table_index)
-{
-    SWSS_LOG_ENTER();
-
-    EXPECT_EQ(match_n_vectors * 16, mask_len);
-
-    ClassifyTable t;
-
-    t.skip = skip_n_vectors;
-    t.match = match_n_vectors;
-    t.next_table = next_table_index;
-    t.mask.assign(mask, mask + mask_len);
-
-    *new_table_index = g_nextTableIndex++;
-    g_tables[*new_table_index] = t;
-    return 0;
-}
-
-int __wrap_vpp_classify_table_delete(uint32_t table_index)
-{
-    SWSS_LOG_ENTER();
-
-    g_tables.erase(table_index);
-    return 0;
-}
-
-int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
-                                    const uint8_t *match, uint32_t match_len,
-                                    uint32_t opaque_index, int32_t advance, uint8_t action)
-{
-    SWSS_LOG_ENTER();
-
-    vppMock().classifySessions.push_back({table_index, hit_next_index,
-            std::vector<uint8_t>(match, match + match_len)});
-
-    auto& t = g_tables.at(table_index);
-
-    t.sessions[maskedKey(t, match, match_len)] = hit_next_index;
-    return 0;
-}
-
-int __wrap_vpp_classify_session_del(uint32_t table_index, const uint8_t *match, uint32_t match_len)
-{
-    SWSS_LOG_ENTER();
-
-    auto& t = g_tables.at(table_index);
-
-    // VPP fails the delete of a session that is not there
-    return t.sessions.erase(maskedKey(t, match, match_len)) == 1 ? 0 : -1;
-}
-
-int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
-        uint32_t ip6_table_index, uint32_t other_table_index, bool is_input)
-{
-    SWSS_LOG_ENTER();
-
-    g_l2Tables[hwif_name] = {ip4_table_index, ip6_table_index, other_table_index};
-    return 0;
-}
-
 int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
 {
     SWSS_LOG_ENTER();
+
+    vppMock().ipRouteCalls++;
 
     if (route->prefix_addr.sa_family != AF_INET || route->nexthop_cnt < 1)
     {
@@ -248,6 +119,11 @@ int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
 
     vppMock().calls.push_back({"ip_route_add_del", prefix, route->vrf_id, 0, is_add});
 
+    if (vppMock().ipRouteResult != 0)
+    {
+        return vppMock().ipRouteResult;
+    }
+
     // VPP has no table to add the route to, or no route to delete (table 0 always exists)
     if (route->vrf_id != 0 && vppMock().vrfTables.count(route->vrf_id) == 0)
     {
@@ -256,13 +132,26 @@ int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
 
     auto key = std::make_pair(route->vrf_id, prefix);
 
+    int result = 0;
+
     if (is_add)
     {
         g_ip4Routes[key] = route->nexthop[0].type;
-        return 0;
+    }
+    else
+    {
+        // SaiVppXlate normalizes VPP's NO_SUCH_ENTRY on delete, making a
+        // retry after an applied-but-timed-out delete a successful commit.
+        g_ip4Routes.erase(key);
     }
 
-    return g_ip4Routes.erase(key) == 1 ? 0 : -1;
+    if (vppMock().ipRouteFailAfterApplyOnCalls.count(
+                vppMock().ipRouteCalls) != 0)
+    {
+        result = -1;
+    }
+
+    return result;
 }
 
 int __wrap_vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add)
@@ -386,6 +275,2200 @@ TEST(SwitchVpp, getLagMemberEgressDisableAction)
     EXPECT_EQ(Action::NONE, SwitchVpp::getLagMemberEgressDisableAction(true, true, true));
     EXPECT_EQ(Action::NONE, SwitchVpp::getLagMemberEgressDisableAction(false, false, false));
     EXPECT_EQ(Action::DISABLE, SwitchVpp::getLagMemberEgressDisableAction(true, false, false));
+}
+
+TEST(VppMock, MissingNodeNextFailsWithoutCreatingGraphEdge)
+{
+    vppMock().reset();
+    vppMock().classifyAvailable = true;
+
+    uint32_t next = 123;
+    EXPECT_NE(0, vpp_add_node_next(
+            "l2-input-classify", "missing-node", &next));
+    EXPECT_EQ(123u, next);
+    EXPECT_TRUE(vppMock().nodeNexts.empty());
+}
+
+class SwitchVppNeighborMissTrap : public ::testing::Test
+{
+    protected:
+
+        void SetUp() override
+        {
+            vppMock().reset();
+            auto sc = std::make_shared<SwitchConfig>(0, "");
+
+            sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+            sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+            sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+            sc->m_useTapDevice = false;
+            sc->m_profileMap[SAI_KEY_VS_PORT_CONFIG_FILE] = "/dev/null";
+            sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+            sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+
+            auto scc = std::make_shared<SwitchConfigContainer>();
+            scc->insert(sc);
+
+            m_mgr = std::make_shared<RealObjectIdManager>(0, scc);
+            m_sw = std::make_shared<TestableSwitchVpp>(m_switchId, m_mgr, sc);
+        }
+
+        const sai_object_id_t m_switchId = 0x2100000000;
+        std::shared_ptr<RealObjectIdManager> m_mgr;
+        std::shared_ptr<TestableSwitchVpp> m_sw;
+};
+
+TEST_F(SwitchVppNeighborMissTrap, BindsDhcpFamiliesToTheirConfiguredPolicers)
+{
+    const sai_object_id_t v4Group = 0x1200000010;
+    const sai_object_id_t v6Group = 0x1200000011;
+    const sai_object_id_t v4Policer = 0x1200000012;
+    const sai_object_id_t v6Policer = 0x1200000013;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = v4Policer;
+    m_sw->m_trap_group_map[v4Group] = group;
+    group.policer_oid = v6Policer;
+    m_sw->m_trap_group_map[v6Group] = group;
+
+    vpp_trap_entry_t v4{};
+    v4.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    v4.packet_action = SAI_PACKET_ACTION_TRAP;
+    v4.trap_group_oid = v4Group;
+    vpp_trap_entry_t v6 = v4;
+    v6.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    v6.trap_group_oid = v6Group;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(0x1200000014, v4, 12));
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(0x1200000015, v6, 13));
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+
+    EXPECT_EQ("copp-policer-0x1200000012",
+            vppMock().coppDhcpBindCalls[0].policerName);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isIpv6);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_EQ("copp-policer-0x1200000013",
+            vppMock().coppDhcpBindCalls[1].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isIpv6);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isCopy);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isBind);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->uninstallTrapClassifyNow(0x1200000014, v4));
+    ASSERT_EQ(3u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[2].isIpv6);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[2].isBind);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpBindFailureCleansTheAttemptedOwner)
+{
+    const sai_object_id_t groupOid = 0x1200000020;
+    const sai_object_id_t policerOid = 0x1200000021;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = policerOid;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = groupOid;
+
+    vppMock().coppDhcpBindFailOnCall = 1;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->installTrapClassifyNow(0x1200000022, trap, 21));
+    ASSERT_EQ(3u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_EQ("copp-policer-0x1200000021",
+            vppMock().coppDhcpBindCalls[1].policerName);
+    // The physical snapshot was absent, not present+NULL. Reconcile that
+    // three-state result explicitly after the owner-qualified timeout cleanup.
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].policerName.empty());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[2].isBind);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpNullPolicerKeepsTheTrapActiveUnpoliced)
+{
+    const sai_object_id_t groupOid = 0x1200000023;
+    const sai_object_id_t trapOid = 0x1200000024;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = SAI_NULL_OBJECT_ID;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = groupOid;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, (uint32_t)~0));
+    ASSERT_EQ(1u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].policerName.empty());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isIpv6);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isCopy);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->uninstallTrapClassifyNow(trapOid, trap));
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].policerName.empty());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpFailedReplacementRestoresUnpolicedState)
+{
+    const sai_object_id_t groupOid = 0x1200000025;
+    const sai_object_id_t policerOid = 0x1200000026;
+    const sai_object_id_t trapOid = 0x1200000027;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = SAI_NULL_OBJECT_ID;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    trap.packet_action = SAI_PACKET_ACTION_COPY;
+    trap.trap_group_oid = groupOid;
+    trap.classify_installed = true;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, (uint32_t)~0));
+    m_sw->m_trap_map[trapOid] = trap;
+    vppMock().coppDhcpBindCalls.clear();
+
+    group.policer_oid = policerOid;
+    m_sw->m_trap_group_map[groupOid] = group;
+    vppMock().coppDhcpBindFailOnCall = 1;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->installTrapClassifyNow(trapOid, trap, 26, policerOid));
+
+    ASSERT_EQ(3u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000026",
+            vppMock().coppDhcpBindCalls[0].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isCopy);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].policerName.empty());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isIpv6);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isCopy);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpRemoveFailureRestoresPhysicalAndMapState)
+{
+    const sai_object_id_t groupOid = 0x1200000028;
+    const sai_object_id_t policerOid = 0x1200000029;
+    const sai_object_id_t trapOid = 0x120000002a;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = policerOid;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 29;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = groupOid;
+    trap.classify_installed = true;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, 29, policerOid));
+    m_sw->m_trap_map[trapOid] = trap;
+    vppMock().coppDhcpBindCalls.clear();
+
+    m_sw->removeInternalResult = SAI_STATUS_FAILURE;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->removeHostifTrap(sai_serialize_object_id(trapOid)));
+
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_EQ("copp-policer-0x1200000029",
+            vppMock().coppDhcpBindCalls[1].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_EQ(1u, m_sw->m_trap_map.count(trapOid));
+    EXPECT_EQ(policerOid, m_sw->m_trap_binding_map.at(0x10003).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpFailedReplacementRestoresOldOwner)
+{
+    const sai_object_id_t groupOid = 0x1200000030;
+    const sai_object_id_t oldPolicer = 0x1200000031;
+    const sai_object_id_t newPolicer = 0x1200000032;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = oldPolicer;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_policer_entry_t oldEntry{};
+    oldEntry.vpp_policer_index = 31;
+    m_sw->m_policer_map[oldPolicer] = oldEntry;
+    vpp_policer_entry_t newEntry{};
+    newEntry.vpp_policer_index = 32;
+    m_sw->m_policer_map[newPolicer] = newEntry;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = groupOid;
+    const sai_object_id_t trapOid = 0x1200000033;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, 31));
+    vppMock().coppDhcpBindCalls.clear();
+
+    group.policer_oid = newPolicer;
+    m_sw->m_trap_group_map[groupOid] = group;
+    vppMock().coppDhcpBindFailOnCall = 1;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->installTrapClassifyNow(trapOid, trap, 32));
+
+    ASSERT_EQ(3u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000032",
+            vppMock().coppDhcpBindCalls[0].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_EQ("copp-policer-0x1200000031",
+            vppMock().coppDhcpBindCalls[2].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[2].isIpv6);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpUnresolvedRequestedPolicerDoesNotUseAnotherOwner)
+{
+    const sai_object_id_t oldGroup = 0x1200000040;
+    const sai_object_id_t oldPolicer = 0x1200000041;
+    const sai_object_id_t oldTrapOid = 0x1200000042;
+    const sai_object_id_t newGroup = 0x1200000043;
+    const sai_object_id_t unresolvedPolicer = 0x1200000044;
+    const sai_object_id_t newTrapOid = 0x1200000045;
+
+    vpp_trap_group_entry_t group{};
+    group.policer_oid = oldPolicer;
+    m_sw->m_trap_group_map[oldGroup] = group;
+    group.policer_oid = unresolvedPolicer;
+    m_sw->m_trap_group_map[newGroup] = group;
+
+    vpp_policer_entry_t installed{};
+    installed.vpp_policer_index = 41;
+    m_sw->m_policer_map[oldPolicer] = installed;
+
+    vpp_trap_entry_t oldTrap{};
+    oldTrap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    oldTrap.packet_action = SAI_PACKET_ACTION_TRAP;
+    oldTrap.trap_group_oid = oldGroup;
+    oldTrap.classify_installed = true;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->installTrapClassifyNow(
+            oldTrapOid, oldTrap, 41, oldPolicer));
+    m_sw->m_trap_map[oldTrapOid] = oldTrap;
+
+    vpp_trap_entry_t newTrap = oldTrap;
+    newTrap.trap_group_oid = newGroup;
+    newTrap.classify_installed = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->installTrapClassifyNow(
+            newTrapOid, newTrap, (uint32_t)~0, unresolvedPolicer));
+
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000044",
+            vppMock().coppDhcpBindCalls[1].policerName);
+    EXPECT_EQ(unresolvedPolicer,
+            m_sw->m_trap_binding_map.at(0x10003).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpActiveUnpolicedReplacementOverridesOldPolicer)
+{
+    const sai_object_id_t policedGroup = 0x1200000046;
+    const sai_object_id_t unpolicedGroup = 0x1200000047;
+    const sai_object_id_t policerOid = 0x1200000048;
+    const sai_object_id_t oldTrapOid = 0x1200000049;
+    const sai_object_id_t replacementTrapOid = 0x120000004a;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            policedGroup, m_switchId, 1, &groupAttr));
+    groupAttr.value.oid = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            unpolicedGroup, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 48;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = policedGroup;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            oldTrapOid, m_switchId, 3, trapAttrs));
+
+    trapAttrs[2].value.oid = unpolicedGroup;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            replacementTrapOid, m_switchId, 3, trapAttrs));
+
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000048",
+            vppMock().coppDhcpBindCalls[0].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].policerName.empty());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_EQ(SAI_NULL_OBJECT_ID,
+            m_sw->m_trap_binding_map.at(0x10003).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, RemovingNonOwnerPreservesJournaledDhcpOwner)
+{
+    const sai_object_id_t group1 = 0x120000004b;
+    const sai_object_id_t group2 = 0x120000004c;
+    const sai_object_id_t group3 = 0x120000004d;
+    const sai_object_id_t policer1 = 0x120000004e;
+    const sai_object_id_t policer2 = 0x120000004f;
+    const sai_object_id_t policer3 = 0x120000006f;
+    const sai_object_id_t trap1 = 0x1200000070;
+    const sai_object_id_t nonOwnerTrap = 0x1200000071;
+    const sai_object_id_t journaledOwnerTrap = 0x1200000072;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policer1;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            group1, m_switchId, 1, &groupAttr));
+    groupAttr.value.oid = policer2;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            group2, m_switchId, 1, &groupAttr));
+    groupAttr.value.oid = policer3;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            group3, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 49;
+    m_sw->m_policer_map[policer1] = policer;
+    policer.vpp_policer_index = 50;
+    m_sw->m_policer_map[policer2] = policer;
+    policer.vpp_policer_index = 51;
+    m_sw->m_policer_map[policer3] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = group1;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trap1, m_switchId, 3, trapAttrs));
+    trapAttrs[2].value.oid = group2;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            nonOwnerTrap, m_switchId, 3, trapAttrs));
+    trapAttrs[2].value.oid = group3;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            journaledOwnerTrap, m_switchId, 3, trapAttrs));
+    ASSERT_EQ(policer3,
+            m_sw->m_trap_binding_map.at(0x10003).policer_oid);
+    vppMock().coppDhcpBindCalls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeHostifTrap(
+            sai_serialize_object_id(nonOwnerTrap)));
+
+    // Removing a non-owner resolves to the already confirmed physical row;
+    // do not recreate the same provider attachment and reset its counters.
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls.empty());
+    EXPECT_EQ(policer3,
+            m_sw->m_trap_binding_map.at(0x10003).policer_oid);
+    EXPECT_EQ(1u, m_sw->m_trap_map.count(journaledOwnerTrap));
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpSharedOwnersKeepTrapUntilAllAreCopy)
+{
+    const sai_object_id_t groupOid = 0x1200000050;
+    const sai_object_id_t policerOid = 0x1200000051;
+    const sai_object_id_t trapOid = 0x1200000052;
+    const sai_object_id_t copyOid = 0x1200000053;
+
+    vpp_trap_group_entry_t group{};
+    group.policer_oid = policerOid;
+    m_sw->m_trap_group_map[groupOid] = group;
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 51;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = groupOid;
+    trap.classify_installed = true;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->installTrapClassifyNow(
+            trapOid, trap, 51, policerOid));
+    m_sw->m_trap_map[trapOid] = trap;
+
+    vpp_trap_entry_t copy = trap;
+    copy.packet_action = SAI_PACKET_ACTION_COPY;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->installTrapClassifyNow(
+            copyOid, copy, 51, policerOid));
+    copy.classify_installed = true;
+    m_sw->m_trap_map[copyOid] = copy;
+
+    // Adding COPY beside an existing TRAP leaves the effective physical row
+    // unchanged and must not recreate its provider attachment.
+    ASSERT_EQ(1u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isCopy);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->uninstallTrapClassifyNow(trapOid, trap));
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isCopy);
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_binding_map.at(0x10004).packet_action);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpQueueUpdateDoesNotStealSharedPolicer)
+{
+    const sai_object_id_t oldGroup = 0x1200000054;
+    const sai_object_id_t newGroup = 0x1200000055;
+    const sai_object_id_t oldPolicer = 0x1200000056;
+    const sai_object_id_t newPolicer = 0x1200000057;
+    const sai_object_id_t oldTrapOid = 0x1200000058;
+    const sai_object_id_t newTrapOid = 0x1200000059;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = oldPolicer;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            oldGroup, m_switchId, 1, &groupAttr));
+    groupAttr.value.oid = newPolicer;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            newGroup, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 56;
+    m_sw->m_policer_map[oldPolicer] = policer;
+    policer.vpp_policer_index = 57;
+    m_sw->m_policer_map[newPolicer] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = oldGroup;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            oldTrapOid, m_switchId, 3, trapAttrs));
+    trapAttrs[2].value.oid = newGroup;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            newTrapOid, m_switchId, 3, trapAttrs));
+    ASSERT_EQ(newPolicer,
+            m_sw->m_trap_binding_map.at(0x10003).policer_oid);
+    vppMock().coppDhcpBindCalls.clear();
+
+    sai_attribute_t queueAttr{};
+    queueAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE;
+    queueAttr.value.u32 = 7;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(oldGroup), &queueAttr));
+
+    sai_attribute_t adminAttr{};
+    adminAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE;
+    adminAttr.value.booldata = false;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(oldGroup), &adminAttr));
+
+    groupAttr.value.oid = oldPolicer;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(oldGroup), &groupAttr));
+
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls.empty());
+    EXPECT_EQ(newPolicer,
+            m_sw->m_trap_binding_map.at(0x10003).policer_oid);
+    EXPECT_EQ(7u, m_sw->m_trap_group_map.at(oldGroup).queue);
+    EXPECT_TRUE(m_sw->m_trap_group_map.at(oldGroup).admin_state);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, RejectsDisabledTrapGroupInsteadOfLeavingRowsActive)
+{
+    const sai_object_id_t groupOid = 0x1200000073;
+    sai_attribute_t adminAttr{};
+    adminAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE;
+    adminAttr.value.booldata = false;
+
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 1, &adminAttr));
+    EXPECT_EQ(0u, m_sw->m_trap_group_map.count(groupOid));
+
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE;
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP,
+            sai_serialize_object_id(groupOid), 1, &readAttr));
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpActionOnlyUpdatePreservesSharedPolicerOwner)
+{
+    const sai_object_id_t oldGroup = 0x120000005a;
+    const sai_object_id_t newGroup = 0x120000005b;
+    const sai_object_id_t oldPolicer = 0x120000005c;
+    const sai_object_id_t newPolicer = 0x120000005d;
+    const sai_object_id_t oldTrapOid = 0x120000005e;
+    const sai_object_id_t newTrapOid = 0x120000005f;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = oldPolicer;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            oldGroup, m_switchId, 1, &groupAttr));
+    groupAttr.value.oid = newPolicer;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            newGroup, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 60;
+    m_sw->m_policer_map[oldPolicer] = policer;
+    policer.vpp_policer_index = 61;
+    m_sw->m_policer_map[newPolicer] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = oldGroup;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            oldTrapOid, m_switchId, 3, trapAttrs));
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_COPY;
+    trapAttrs[2].value.oid = newGroup;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            newTrapOid, m_switchId, 3, trapAttrs));
+    ASSERT_EQ(newPolicer,
+            m_sw->m_trap_binding_map.at(0x10004).policer_oid);
+    vppMock().coppDhcpBindCalls.clear();
+
+    sai_attribute_t actionAttr{};
+    actionAttr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    actionAttr.value.s32 = SAI_PACKET_ACTION_COPY;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->setHostifTrap(
+            sai_serialize_object_id(oldTrapOid), &actionAttr));
+
+    ASSERT_EQ(1u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_EQ("copp-policer-0x120000005d",
+            vppMock().coppDhcpBindCalls[0].policerName);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isCopy);
+    EXPECT_EQ(newPolicer,
+            m_sw->m_trap_binding_map.at(0x10004).policer_oid);
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_binding_map.at(0x10004).packet_action);
+
+    vppMock().coppDhcpBindCalls.clear();
+    actionAttr.value.s32 = SAI_PACKET_ACTION_TRAP;
+    m_sw->setInternalResult = SAI_STATUS_FAILURE;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrap(
+            sai_serialize_object_id(oldTrapOid), &actionAttr));
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_EQ("copp-policer-0x120000005d",
+            vppMock().coppDhcpBindCalls[0].policerName);
+    EXPECT_EQ("copp-policer-0x120000005d",
+            vppMock().coppDhcpBindCalls[1].policerName);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isCopy);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isCopy);
+    EXPECT_EQ(newPolicer,
+            m_sw->m_trap_binding_map.at(0x10004).policer_oid);
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_binding_map.at(0x10004).packet_action);
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_map.at(oldTrapOid).packet_action);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpActionOnlyUpdatePreservesUnpolicedOwner)
+{
+    const sai_object_id_t policedGroup = 0x120000006a;
+    const sai_object_id_t unpolicedGroup = 0x120000006b;
+    const sai_object_id_t policerOid = 0x120000006c;
+    const sai_object_id_t policedTrapOid = 0x120000006d;
+    const sai_object_id_t unpolicedTrapOid = 0x120000006e;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            policedGroup, m_switchId, 1, &groupAttr));
+    groupAttr.value.oid = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            unpolicedGroup, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 62;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_COPY;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = policedGroup;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            policedTrapOid, m_switchId, 3, trapAttrs));
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].value.oid = unpolicedGroup;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            unpolicedTrapOid, m_switchId, 3, trapAttrs));
+
+    // Model an authoritative present+NULL journal (for example after replay
+    // restoration). An action-only update must not reinterpret NULL as a
+    // request to select the other owner's P1.
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->installTrapClassifyNow(
+            unpolicedTrapOid, m_sw->m_trap_map.at(unpolicedTrapOid),
+            (uint32_t)~0, SAI_NULL_OBJECT_ID,
+            SAI_NULL_OBJECT_ID, false));
+    ASSERT_EQ(SAI_NULL_OBJECT_ID,
+            m_sw->m_trap_binding_map.at(0x10003).policer_oid);
+    vppMock().coppDhcpBindCalls.clear();
+
+    sai_attribute_t actionAttr{};
+    actionAttr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    actionAttr.value.s32 = SAI_PACKET_ACTION_COPY;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->setHostifTrap(
+            sai_serialize_object_id(unpolicedTrapOid), &actionAttr));
+
+    ASSERT_EQ(1u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].policerName.empty());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[0].isCopy);
+    EXPECT_EQ(SAI_NULL_OBJECT_ID,
+            m_sw->m_trap_binding_map.at(0x10003).policer_oid);
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_binding_map.at(0x10003).packet_action);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpRejectsDropOnCreateAndSet)
+{
+    const sai_object_id_t groupOid = 0x1200000060;
+    const sai_object_id_t trapOid = 0x1200000061;
+    const sai_object_id_t rejectedOid = 0x1200000062;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 0, nullptr));
+
+    sai_attribute_t attrs[3]{};
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_DROP;
+    attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    attrs[2].value.oid = groupOid;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->createHostifTrap(
+            rejectedOid, m_switchId, 3, attrs));
+
+    attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, attrs));
+    vppMock().coppDhcpBindCalls.clear();
+
+    sai_attribute_t setAttr{};
+    setAttr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    setAttr.value.s32 = SAI_PACKET_ACTION_DROP;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->setHostifTrap(
+            sai_serialize_object_id(trapOid), &setAttr));
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls.empty());
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP,
+            m_sw->m_trap_map.at(trapOid).packet_action);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpActionSetReprogramsAndRollbackRestoresAction)
+{
+    const sai_object_id_t groupOid = 0x1200000070;
+    const sai_object_id_t trapOid = 0x1200000071;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 0, nullptr));
+
+    sai_attribute_t attrs[3]{};
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_COPY;
+    attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    attrs[2].value.oid = groupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, attrs));
+    vppMock().coppDhcpBindCalls.clear();
+
+    sai_attribute_t setAttr{};
+    setAttr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    setAttr.value.s32 = SAI_PACKET_ACTION_TRAP;
+    m_sw->setInternalResult = SAI_STATUS_FAILURE;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrap(
+            sai_serialize_object_id(trapOid), &setAttr));
+
+    ASSERT_EQ(2u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isCopy);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls[1].isCopy);
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_binding_map.at(0x10004).packet_action);
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_map.at(trapOid).packet_action);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DhcpGroupRollbackRestoresEffectiveSharedAction)
+{
+    const sai_object_id_t trapGroup = 0x1200000080;
+    const sai_object_id_t copyGroup = 0x1200000081;
+    const sai_object_id_t trapPolicer = 0x1200000082;
+    const sai_object_id_t copyPolicer = 0x1200000083;
+    const sai_object_id_t newPolicer = 0x1200000084;
+    const sai_object_id_t trapOid = 0x1200000085;
+    const sai_object_id_t copyOid = 0x1200000086;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = trapPolicer;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroup, m_switchId, 1, &groupAttr));
+    groupAttr.value.oid = copyPolicer;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            copyGroup, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 82;
+    m_sw->m_policer_map[trapPolicer] = policer;
+    policer.vpp_policer_index = 83;
+    m_sw->m_policer_map[copyPolicer] = policer;
+    policer.vpp_policer_index = 84;
+    m_sw->m_policer_map[newPolicer] = policer;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = trapGroup;
+    trap.classify_installed = true;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->installTrapClassifyNow(
+            trapOid, trap, 82, trapPolicer));
+    m_sw->m_trap_map[trapOid] = trap;
+
+    vpp_trap_entry_t copy = trap;
+    copy.packet_action = SAI_PACKET_ACTION_COPY;
+    copy.trap_group_oid = copyGroup;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->installTrapClassifyNow(
+            copyOid, copy, 83, copyPolicer));
+    m_sw->m_trap_map[copyOid] = copy;
+    vppMock().coppDhcpBindCalls.clear();
+
+    vppMock().coppDhcpBindFailOnCall = 1;
+    groupAttr.value.oid = newPolicer;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(copyGroup), &groupAttr));
+
+    ASSERT_EQ(3u, vppMock().coppDhcpBindCalls.size());
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[0].isCopy);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[1].isBind);
+    EXPECT_FALSE(vppMock().coppDhcpBindCalls[2].isCopy);
+    EXPECT_EQ("copp-policer-0x1200000083",
+            vppMock().coppDhcpBindCalls[2].policerName);
+    EXPECT_EQ(copyPolicer,
+            m_sw->m_trap_binding_map.at(0x10003).policer_oid);
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP,
+            m_sw->m_trap_binding_map.at(0x10003).packet_action);
+}
+
+class SwitchVppDhcpVlanPunt : public ::testing::Test
+{
+    protected:
+
+        void SetUp() override
+        {
+            vppMock().reset();
+            vppMock().classifyAvailable = true;
+            vppMock().nodeNexts = {
+                {{"l2-input-classify", "linux-cp-punt"}, 1},
+                {{"l2-input-classify", "sonic-ext-l2-trap-fixup"}, 2},
+                {{"l2-input-classify", "sonic-ext-l2-vlan-filter"}, 3},
+            };
+            vppMock().enabledFeatures.insert("l2-trap-fixup");
+            vppMock().enabledFeatures.insert("l2-vlan-filter");
+
+            auto sc = std::make_shared<SwitchConfig>(0, "");
+            sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+            sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+            sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+            sc->m_useTapDevice = false;
+            sc->m_profileMap[SAI_KEY_VS_PORT_CONFIG_FILE] = "/dev/null";
+            sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+            sc->m_eventQueue = std::make_shared<EventQueue>(
+                    std::make_shared<Signal>());
+
+            auto scc = std::make_shared<SwitchConfigContainer>();
+            scc->insert(sc);
+            m_mgr = std::make_shared<RealObjectIdManager>(0, scc);
+            m_sw = std::make_shared<TestableSwitchVpp>(m_switchId, m_mgr, sc);
+            sc->m_useTapDevice = true;
+
+            m_vlan = m_mgr->allocateNewObjectId(
+                    SAI_OBJECT_TYPE_VLAN, m_switchId);
+            sai_attribute_t vattr{};
+            vattr.id = SAI_VLAN_ATTR_VLAN_ID;
+            vattr.value.u16 = VLAN_ID;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+                    SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(m_vlan),
+                    m_switchId, 1, &vattr));
+        }
+
+        void TearDown() override
+        {
+            m_sw->m_switchConfig->m_useTapDevice = false;
+            m_sw.reset();
+        }
+
+        void addMember(const char *hwif, bool tagged)
+        {
+            SWSS_LOG_ENTER();
+
+            auto port = m_mgr->allocateNewObjectId(
+                    SAI_OBJECT_TYPE_PORT, m_switchId);
+            sai_attribute_t pattr{};
+            pattr.id = SAI_PORT_ATTR_ADMIN_STATE;
+            pattr.value.booldata = false;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+                    SAI_OBJECT_TYPE_PORT, sai_serialize_object_id(port),
+                    m_switchId, 1, &pattr));
+            ASSERT_NE(nullptr, m_sw->m_ifaceRegistry.addPhysicalPort(
+                    hwif, std::string("os_") + hwif, port));
+
+            auto bridgePort = m_mgr->allocateNewObjectId(
+                    SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+            sai_attribute_t battrs[2]{};
+            battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+            battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+            battrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+            battrs[1].value.oid = port;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+                    SAI_OBJECT_TYPE_BRIDGE_PORT,
+                    sai_serialize_object_id(bridgePort), m_switchId,
+                    2, battrs));
+
+            sai_attribute_t mattrs[3]{};
+            mattrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+            mattrs[0].value.oid = m_vlan;
+            mattrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
+            mattrs[1].value.oid = bridgePort;
+            mattrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
+            mattrs[2].value.s32 = tagged ? SAI_VLAN_TAGGING_MODE_TAGGED :
+                SAI_VLAN_TAGGING_MODE_UNTAGGED;
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->vpp_create_vlan_member(3, mattrs));
+        }
+
+        static std::vector<uint8_t> dhcp6(
+                bool tagged, uint16_t dport = 547, bool extension = false)
+        {
+            std::vector<uint8_t> frame = {
+                0x33, 0x33, 0x00, 0x01, 0x00, 0x02,
+                0x02, 0x00, 0x00, 0x00, 0x00, 0x01
+            };
+            if (tagged)
+            {
+                frame.insert(frame.end(), {
+                    0x81, 0x00, 0x00, (uint8_t)VLAN_ID
+                });
+            }
+            frame.insert(frame.end(), {0x86, 0xdd});
+
+            std::vector<uint8_t> ip6(extension ? 56 : 48, 0);
+            ip6[0] = 0x60;
+            ip6[4] = 0; ip6[5] = extension ? 16 : 8;
+            ip6[6] = extension ? 0 : 17;
+            ip6[7] = 64;
+            ip6[8 + 15] = 1; // source ::1
+            const uint8_t dst[16] = {
+                0xff, 0x02, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 1, 0, 2
+            };
+            memcpy(&ip6[24], dst, sizeof(dst));
+            size_t udp = extension ? 48 : 40;
+            if (extension)
+            {
+                ip6[40] = 17; // Hop-by-Hop next header is UDP
+                ip6[41] = 0;  // 8-byte extension header
+            }
+            ip6[udp] = (uint8_t)(546 >> 8);
+            ip6[udp + 1] = (uint8_t)(546 & 0xff);
+            ip6[udp + 2] = (uint8_t)(dport >> 8);
+            ip6[udp + 3] = (uint8_t)(dport & 0xff);
+            ip6[udp + 4] = 0; ip6[udp + 5] = 8;
+            frame.insert(frame.end(), ip6.begin(), ip6.end());
+            return frame;
+        }
+
+        static constexpr uint16_t VLAN_ID = 100;
+        const sai_object_id_t m_switchId = 0x2100000000;
+        sai_object_id_t m_vlan = SAI_NULL_OBJECT_ID;
+        std::shared_ptr<RealObjectIdManager> m_mgr;
+        std::shared_ptr<TestableSwitchVpp> m_sw;
+};
+
+constexpr uint16_t SwitchVppDhcpVlanPunt::VLAN_ID;
+
+TEST_F(SwitchVppDhcpVlanPunt, LeavesDhcpCandidatesOnProviderSemanticPath)
+{
+    addMember("bobm0", false);
+    addMember("bobm1", true);
+
+    // DHCP interception is no longer a terminal fixed-offset classifier.
+    // The sonic-ext DHCP L2 feature parses the admitted packet and applies
+    // TRAP/COPY from the live binding, so absent traps preserve forwarding.
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
+            "bobm0", 1, dhcp6(false)));
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
+            "bobm1.100", 2, dhcp6(true)));
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
+            "bobm0", 1, dhcp6(false, 547, true)));
+    EXPECT_EQ(~0u, vppMock().classifyFrame(
+            "bobm1.100", 2, dhcp6(true, 547, true)));
+}
+
+TEST_F(SwitchVppDhcpVlanPunt, MulticastFloodNoneKeepsDhcpV6InTerminalFloodPolicy)
+{
+    sai_attribute_t floodAttr{};
+    floodAttr.id = SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE;
+    floodAttr.value.s32 = SAI_VLAN_FLOOD_CONTROL_TYPE_NONE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(
+            SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(m_vlan),
+            &floodAttr));
+
+    addMember("bobm4", false);
+    addMember("bobm5", true);
+
+    uint32_t puntNext = vppMock().nodeNext(
+            "l2-input-classify", "linux-cp-punt");
+    uint32_t fixupNext = vppMock().nodeNext(
+            "l2-input-classify", "sonic-ext-l2-trap-fixup");
+    ASSERT_NE(~0u, puntNext);
+    ASSERT_NE(~0u, fixupNext);
+
+    // COPY preserves normal forwarding eligibility; it does not override an
+    // explicit flood-NONE policy. These terminal paths still traverse
+    // copp-ifout on the member host tap, where the live DHCPv6 row is metered.
+    EXPECT_EQ(puntNext, vppMock().classifyFrame(
+            "bobm4", 1, dhcp6(false, 547, true)));
+    EXPECT_EQ(fixupNext, vppMock().classifyFrame(
+            "bobm5.100", 2, dhcp6(true, 547, true)));
+}
+
+TEST_F(SwitchVppDhcpVlanPunt, RebuildsClassifierAfterMockReset)
+{
+    addMember("bobm2", false);
+    uint32_t puntNext = vppMock().nodeNext(
+            "l2-input-classify", "linux-cp-punt");
+    ASSERT_NE(~0u, puntNext);
+
+    std::vector<uint8_t> lldp(16, 0);
+    lldp[12] = 0x88;
+    lldp[13] = 0xcc;
+    EXPECT_EQ(puntNext, vppMock().classifyFrame("bobm2", 2, lldp));
+}
+
+TEST_F(SwitchVppNeighborMissTrap, BindsAndUnbindsTheNeighborMissPolicer)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = policerOid;
+    m_sw->m_trap_group_map[trapGroupOid] = group;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = trapGroupOid;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, 7));
+    ASSERT_EQ(1u, vppMock().coppNeighborMissBindCalls.size());
+
+    const auto& bind = vppMock().coppNeighborMissBindCalls[0];
+    EXPECT_EQ("copp-policer-0x1200000002", bind.policerName);
+    EXPECT_TRUE(bind.isBind);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->uninstallTrapClassifyNow(trapOid, trap));
+    ASSERT_EQ(2u, vppMock().coppNeighborMissBindCalls.size());
+
+    const auto& unbind = vppMock().coppNeighborMissBindCalls[1];
+    EXPECT_TRUE(unbind.policerName.empty());
+    EXPECT_FALSE(unbind.isBind);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, PropagatesNeighborMissBindFailure)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = 0x1200000002;
+    m_sw->m_trap_group_map[trapGroupOid] = group;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    trap.packet_action = SAI_PACKET_ACTION_TRAP;
+    trap.trap_group_oid = trapGroupOid;
+
+    vppMock().coppNeighborMissBindResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->installTrapClassifyNow(0x1200000003, trap, 7));
+}
+
+TEST_F(SwitchVppNeighborMissTrap, ReplacesTheSingletonBindingOnPolicerChange)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = 0x1200000002;
+    m_sw->m_trap_group_map[trapGroupOid] = group;
+
+    vpp_trap_entry_t trap{};
+    trap.trap_type = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    trap.packet_action = SAI_PACKET_ACTION_COPY;
+    trap.trap_group_oid = trapGroupOid;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, 7));
+
+    m_sw->m_trap_group_map[trapGroupOid].policer_oid = 0x1200000004;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapOid, trap, 8));
+
+    ASSERT_EQ(2u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppNeighborMissBindCalls[0].policerName);
+    EXPECT_EQ("copp-policer-0x1200000004",
+            vppMock().coppNeighborMissBindCalls[1].policerName);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].isBind);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, RejectsUnsupportedNeighborMissDropAction)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_DROP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = trapGroupOid;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+    EXPECT_EQ(0u, m_sw->m_trap_map.count(trapOid));
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls.empty());
+
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+    sai_attribute_t setAttr{};
+    setAttr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    setAttr.value.s32 = SAI_PACKET_ACTION_DROP;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->setHostifTrap(
+            sai_serialize_object_id(trapOid), &setAttr));
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP,
+            m_sw->m_trap_map.at(trapOid).packet_action);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, NullTrapGroupPolicerKeepsActiveNeighborMissUnpoliced)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = trapGroupOid;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+    ASSERT_EQ(1u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+
+    groupAttr.value.oid = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(trapGroupOid), &groupAttr));
+
+    ASSERT_EQ(2u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].policerName.empty());
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, m_sw->m_trap_binding_map.begin()->second.policer_oid);
+    EXPECT_EQ(SAI_NULL_OBJECT_ID,
+            m_sw->m_trap_group_map.at(trapGroupOid).policer_oid);
+
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP,
+            sai_serialize_object_id(trapGroupOid), 1, &readAttr));
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, readAttr.value.oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, RemovingUnpolicedOwnerJournalsSurvivorAction)
+{
+    const sai_object_id_t trapGroupA = 0x1200000005;
+    const sai_object_id_t trapGroupB = 0x1200000006;
+    const sai_object_id_t trapA = 0x1200000007;
+    const sai_object_id_t trapB = 0x1200000008;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = SAI_NULL_OBJECT_ID;
+    m_sw->m_trap_group_map[trapGroupA] = group;
+    m_sw->m_trap_group_map[trapGroupB] = group;
+
+    vpp_trap_entry_t survivor{};
+    survivor.trap_type = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    survivor.packet_action = SAI_PACKET_ACTION_TRAP;
+    survivor.trap_group_oid = trapGroupA;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapA, survivor, ~0u));
+    survivor.classify_installed = true;
+    m_sw->m_trap_map[trapA] = survivor;
+
+    vpp_trap_entry_t removed = survivor;
+    removed.packet_action = SAI_PACKET_ACTION_COPY;
+    removed.trap_group_oid = trapGroupB;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->installTrapClassifyNow(trapB, removed, ~0u));
+    removed.classify_installed = true;
+    m_sw->m_trap_map[trapB] = removed;
+
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_binding_map.begin()->second.packet_action);
+
+    vppMock().coppNeighborMissBindCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->uninstallTrapClassifyNow(trapB, removed));
+
+    ASSERT_EQ(1u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].policerName.empty());
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID,
+            m_sw->m_trap_binding_map.begin()->second.policer_oid);
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP,
+            m_sw->m_trap_binding_map.begin()->second.packet_action);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, MissingJournalUsesUnpolicedSurvivorAction)
+{
+    const sai_object_id_t trapGroup = 0x1200000009;
+    const sai_object_id_t survivorOid = 0x120000000a;
+    const sai_object_id_t removedOid = 0x120000000b;
+
+    vpp_trap_group_entry_t group{};
+    group.admin_state = true;
+    group.policer_oid = SAI_NULL_OBJECT_ID;
+    m_sw->m_trap_group_map[trapGroup] = group;
+
+    vpp_trap_entry_t survivor{};
+    survivor.trap_type = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    survivor.packet_action = SAI_PACKET_ACTION_COPY;
+    survivor.trap_group_oid = trapGroup;
+    survivor.classify_installed = true;
+    m_sw->m_trap_map[survivorOid] = survivor;
+
+    vpp_trap_entry_t removed = survivor;
+    removed.packet_action = SAI_PACKET_ACTION_TRAP;
+    m_sw->m_trap_map[removedOid] = removed;
+
+    ASSERT_TRUE(m_sw->m_trap_binding_map.empty());
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->uninstallTrapClassifyNow(removedOid, removed));
+
+    ASSERT_EQ(1u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].policerName.empty());
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY,
+            m_sw->m_trap_binding_map.begin()->second.packet_action);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, CreateBindFailureRollsBackSaiObjectAndAllowsRetry)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = trapGroupOid;
+
+    vppMock().coppNeighborMissBindResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+    EXPECT_EQ(0u, m_sw->m_trap_map.count(trapOid));
+
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trapOid),
+            1, &readAttr));
+
+    vppMock().coppNeighborMissBindResult = 0;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+    EXPECT_EQ(1u, m_sw->m_trap_map.count(trapOid));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trapOid),
+            1, &readAttr));
+}
+
+TEST_F(SwitchVppNeighborMissTrap, TrapGroupBindFailureKeepsOldCachedState)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t oldPolicerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+    const sai_object_id_t newPolicerOid = 0x1200000004;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = oldPolicerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t oldPolicer{};
+    oldPolicer.vpp_policer_index = 7;
+    m_sw->m_policer_map[oldPolicerOid] = oldPolicer;
+    vpp_policer_entry_t newPolicer{};
+    newPolicer.vpp_policer_index = 8;
+    m_sw->m_policer_map[newPolicerOid] = newPolicer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = trapGroupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+
+    vppMock().coppNeighborMissBindCalls.clear();
+    vppMock().coppNeighborMissBindFailOnCall = 1;
+    groupAttr.value.oid = newPolicerOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(trapGroupOid), &groupAttr));
+
+    EXPECT_EQ(oldPolicerOid,
+            m_sw->m_trap_group_map.at(trapGroupOid).policer_oid);
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP,
+            sai_serialize_object_id(trapGroupOid), 1, &readAttr));
+    EXPECT_EQ(oldPolicerOid, readAttr.value.oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, TrapGroupNullUnbindFailureKeepsOldCachedState)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = trapGroupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+
+    vppMock().coppNeighborMissBindCalls.clear();
+    vppMock().coppNeighborMissBindFailOnCall = 1;
+    groupAttr.value.oid = SAI_NULL_OBJECT_ID;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(trapGroupOid), &groupAttr));
+
+    ASSERT_EQ(2u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].policerName.empty());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].isBind);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppNeighborMissBindCalls[1].policerName);
+    EXPECT_EQ(policerOid,
+            m_sw->m_trap_group_map.at(trapGroupOid).policer_oid);
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP,
+            sai_serialize_object_id(trapGroupOid), 1, &readAttr));
+    EXPECT_EQ(policerOid, readAttr.value.oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, MixedTrapGroupFailureRestoresAbsentLldpBinding)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t lldpTrapOid = 0x1200000003;
+    const sai_object_id_t neighborTrapOid = 0x1200000004;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 0, nullptr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    auto createTrap = [&](sai_object_id_t trapOid,
+            sai_hostif_trap_type_t trapType)
+    {
+        sai_attribute_t attrs[3]{};
+        attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+        attrs[0].value.s32 = trapType;
+        attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+        attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+        attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+        attrs[2].value.oid = trapGroupOid;
+        return m_sw->createHostifTrap(trapOid, m_switchId, 3, attrs);
+    };
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            createTrap(lldpTrapOid, SAI_HOSTIF_TRAP_TYPE_LLDP));
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            createTrap(neighborTrapOid, SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS));
+
+    vppMock().coppIfoutBindCalls.clear();
+    vppMock().coppNeighborMissBindCalls.clear();
+    vppMock().coppNeighborMissBindFailOnCall = 1;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(trapGroupOid), &groupAttr));
+
+    ASSERT_EQ(2u, vppMock().coppIfoutBindCalls.size());
+    EXPECT_TRUE(vppMock().coppIfoutBindCalls[0].isBind);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIfoutBindCalls[0].policerName);
+    EXPECT_FALSE(vppMock().coppIfoutBindCalls[1].isBind);
+
+    ASSERT_EQ(2u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[1].policerName.empty());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID,
+            m_sw->m_trap_group_map.at(trapGroupOid).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, MixedTrapRollbackRestoresSharedLldpOwner)
+{
+    const sai_object_id_t updatingGroupOid = 0x1200000001;
+    const sai_object_id_t updatingPolicerOid = 0x1200000002;
+    const sai_object_id_t updatingLldpTrapOid = 0x1200000003;
+    const sai_object_id_t neighborTrapOid = 0x1200000004;
+    const sai_object_id_t fallbackGroupOid = 0x1200000005;
+    const sai_object_id_t fallbackPolicerOid = 0x1200000006;
+    const sai_object_id_t fallbackLldpTrapOid = 0x1200000007;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            updatingGroupOid, m_switchId, 0, nullptr));
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = fallbackPolicerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            fallbackGroupOid, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t updatingPolicer{};
+    updatingPolicer.vpp_policer_index = 7;
+    m_sw->m_policer_map[updatingPolicerOid] = updatingPolicer;
+    vpp_policer_entry_t fallbackPolicer{};
+    fallbackPolicer.vpp_policer_index = 8;
+    m_sw->m_policer_map[fallbackPolicerOid] = fallbackPolicer;
+
+    auto createTrap = [&](sai_object_id_t trapOid,
+            sai_hostif_trap_type_t trapType, sai_object_id_t groupOid)
+    {
+        sai_attribute_t attrs[3]{};
+        attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+        attrs[0].value.s32 = trapType;
+        attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+        attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+        attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+        attrs[2].value.oid = groupOid;
+        return m_sw->createHostifTrap(trapOid, m_switchId, 3, attrs);
+    };
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createTrap(
+            fallbackLldpTrapOid, SAI_HOSTIF_TRAP_TYPE_LLDP,
+            fallbackGroupOid));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createTrap(
+            updatingLldpTrapOid, SAI_HOSTIF_TRAP_TYPE_LLDP,
+            updatingGroupOid));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createTrap(
+            neighborTrapOid, SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS,
+            updatingGroupOid));
+
+    vppMock().coppIfoutBindCalls.clear();
+    vppMock().coppNeighborMissBindCalls.clear();
+    vppMock().coppNeighborMissBindFailOnCall = 1;
+    groupAttr.value.oid = updatingPolicerOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(updatingGroupOid), &groupAttr));
+
+    ASSERT_EQ(2u, vppMock().coppIfoutBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIfoutBindCalls[0].policerName);
+    EXPECT_EQ("copp-policer-0x1200000006",
+            vppMock().coppIfoutBindCalls[1].policerName);
+    EXPECT_TRUE(vppMock().coppIfoutBindCalls[1].isBind);
+    EXPECT_EQ(SAI_NULL_OBJECT_ID,
+            m_sw->m_trap_group_map.at(updatingGroupOid).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, FailedSharedArpRebindRestoresEffectiveOwner)
+{
+    const sai_object_id_t requestGroupOid = 0x1200000001;
+    const sai_object_id_t requestPolicerOid = 0x1200000002;
+    const sai_object_id_t requestTrapOid = 0x1200000003;
+    const sai_object_id_t responseGroupOid = 0x1200000004;
+    const sai_object_id_t responsePolicerOid = 0x1200000005;
+    const sai_object_id_t responseTrapOid = 0x1200000006;
+    const sai_object_id_t newGroupOid = 0x1200000007;
+    const sai_object_id_t newPolicerOid = 0x1200000008;
+
+    auto createGroup = [&](sai_object_id_t groupOid,
+            sai_object_id_t policerOid, uint32_t index)
+    {
+        sai_attribute_t attr{};
+        attr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+        attr.value.oid = policerOid;
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+                groupOid, m_switchId, 1, &attr));
+        vpp_policer_entry_t policer{};
+        policer.vpp_policer_index = index;
+        m_sw->m_policer_map[policerOid] = policer;
+    };
+    createGroup(requestGroupOid, requestPolicerOid, 7);
+    createGroup(responseGroupOid, responsePolicerOid, 8);
+    createGroup(newGroupOid, newPolicerOid, 9);
+
+    auto createArpTrap = [&](sai_object_id_t trapOid,
+            sai_hostif_trap_type_t trapType, sai_object_id_t groupOid)
+    {
+        sai_attribute_t attrs[3]{};
+        attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+        attrs[0].value.s32 = trapType;
+        attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+        attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+        attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+        attrs[2].value.oid = groupOid;
+        return m_sw->createHostifTrap(trapOid, m_switchId, 3, attrs);
+    };
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createArpTrap(requestTrapOid,
+            SAI_HOSTIF_TRAP_TYPE_ARP_REQUEST, requestGroupOid));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createArpTrap(responseTrapOid,
+            SAI_HOSTIF_TRAP_TYPE_ARP_RESPONSE, responseGroupOid));
+
+    vppMock().coppIfoutBindCalls.clear();
+    vppMock().coppIfoutBindFailOnCall = 1;
+    sai_attribute_t setAttr{};
+    setAttr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    setAttr.value.oid = newGroupOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrap(
+            sai_serialize_object_id(requestTrapOid), &setAttr));
+
+    ASSERT_EQ(2u, vppMock().coppIfoutBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000008",
+            vppMock().coppIfoutBindCalls[0].policerName);
+    EXPECT_EQ("copp-policer-0x1200000005",
+            vppMock().coppIfoutBindCalls[1].policerName);
+    EXPECT_EQ(requestGroupOid,
+            m_sw->m_trap_map.at(requestTrapOid).trap_group_oid);
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP,
+            sai_serialize_object_id(requestTrapOid), 1, &readAttr));
+    EXPECT_EQ(requestGroupOid, readAttr.value.oid);
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(responsePolicerOid,
+            m_sw->m_trap_binding_map.begin()->second.policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, FailedFinalBgpRemovalRestoresSurvivingPolicer)
+{
+    const sai_object_id_t groupV4 = 0x1200000001;
+    const sai_object_id_t groupV6 = 0x1200000002;
+    const sai_object_id_t policerV4 = 0x1200000003;
+    const sai_object_id_t policerV6 = 0x1200000004;
+    const sai_object_id_t trapV4 = 0x1200000005;
+    const sai_object_id_t trapV6 = 0x1200000006;
+
+    auto createGroup = [&](sai_object_id_t groupOid,
+            sai_object_id_t policerOid, uint32_t index)
+    {
+        sai_attribute_t attr{};
+        attr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+        attr.value.oid = policerOid;
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+                groupOid, m_switchId, 1, &attr));
+        vpp_policer_entry_t policer{};
+        policer.vpp_policer_index = index;
+        m_sw->m_policer_map[policerOid] = policer;
+    };
+    createGroup(groupV4, policerV4, 7);
+    createGroup(groupV6, policerV6, 8);
+
+    auto createBgpTrap = [&](sai_object_id_t trapOid,
+            sai_hostif_trap_type_t trapType, sai_object_id_t groupOid)
+    {
+        sai_attribute_t attrs[3]{};
+        attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+        attrs[0].value.s32 = trapType;
+        attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+        attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+        attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+        attrs[2].value.oid = groupOid;
+        return m_sw->createHostifTrap(trapOid, m_switchId, 3, attrs);
+    };
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createBgpTrap(
+            trapV4, SAI_HOSTIF_TRAP_TYPE_BGP, groupV4));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createBgpTrap(
+            trapV6, SAI_HOSTIF_TRAP_TYPE_BGPV6, groupV6));
+    ASSERT_EQ(policerV6,
+            m_sw->m_trap_binding_map.at(0x10001).policer_oid);
+
+    // Removing a non-owner must not overwrite the policer-only row with its
+    // synthetic DROP action. Otherwise the final owner's failed SAI removal
+    // can mistake an absent row for the old effective state during rollback.
+    vppMock().coppIp2meBindCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeHostifTrap(
+            sai_serialize_object_id(trapV4)));
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls.empty());
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP,
+            m_sw->m_trap_binding_map.at(0x10001).packet_action);
+
+    m_sw->removeInternalResult = SAI_STATUS_FAILURE;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeHostifTrap(
+            sai_serialize_object_id(trapV6)));
+
+    ASSERT_EQ(2u, vppMock().coppIp2meBindCalls.size());
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[1].conditional);
+    EXPECT_EQ("copp-policer-0x1200000004",
+            vppMock().coppIp2meBindCalls[1].policerName);
+    ASSERT_EQ(1u, m_sw->m_trap_map.count(trapV6));
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.count(0x10001));
+    EXPECT_EQ(policerV6,
+            m_sw->m_trap_binding_map.at(0x10001).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, MixedBgpFailureRemovesNewNameBinding)
+{
+    const sai_object_id_t groupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t bgpTrapOid = 0x1200000003;
+    const sai_object_id_t neighborTrapOid = 0x1200000004;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 0, nullptr));
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    auto createTrap = [&](sai_object_id_t trapOid,
+            sai_hostif_trap_type_t trapType)
+    {
+        sai_attribute_t attrs[3]{};
+        attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+        attrs[0].value.s32 = trapType;
+        attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+        attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+        attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+        attrs[2].value.oid = groupOid;
+        return m_sw->createHostifTrap(trapOid, m_switchId, 3, attrs);
+    };
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            createTrap(bgpTrapOid, SAI_HOSTIF_TRAP_TYPE_BGP));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createTrap(
+            neighborTrapOid, SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS));
+
+    vppMock().coppIp2meBindCalls.clear();
+    vppMock().coppNeighborMissBindCalls.clear();
+    vppMock().coppNeighborMissBindFailOnCall = 1;
+    sai_attribute_t attr{};
+    attr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    attr.value.oid = policerOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(groupOid), &attr));
+
+    ASSERT_EQ(2u, vppMock().coppIp2meBindCalls.size());
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[0].conditional);
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[1].isBind);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIp2meBindCalls[1].policerName);
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, m_sw->m_trap_binding_map.begin()->second.policer_oid);
+    EXPECT_EQ(SAI_NULL_OBJECT_ID,
+            m_sw->m_trap_group_map.at(groupOid).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, MixedIp2meFailureRemovesNewNameBinding)
+{
+    const sai_object_id_t groupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t ip2meTrapOid = 0x1200000003;
+    const sai_object_id_t neighborTrapOid = 0x1200000004;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 0, nullptr));
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    auto createTrap = [&](sai_object_id_t trapOid,
+            sai_hostif_trap_type_t trapType)
+    {
+        sai_attribute_t attrs[3]{};
+        attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+        attrs[0].value.s32 = trapType;
+        attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+        attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+        attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+        attrs[2].value.oid = groupOid;
+        return m_sw->createHostifTrap(trapOid, m_switchId, 3, attrs);
+    };
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            createTrap(ip2meTrapOid, SAI_HOSTIF_TRAP_TYPE_IP2ME));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createTrap(
+            neighborTrapOid, SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS));
+
+    vppMock().coppIp2meBindCalls.clear();
+    vppMock().coppNeighborMissBindCalls.clear();
+    vppMock().coppNeighborMissBindFailOnCall = 1;
+    sai_attribute_t attr{};
+    attr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    attr.value.oid = policerOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(groupOid), &attr));
+
+    ASSERT_EQ(2u, vppMock().coppIp2meBindCalls.size());
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[0].conditional);
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[1].isBind);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIp2meBindCalls[1].policerName);
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, m_sw->m_trap_binding_map.begin()->second.policer_oid);
+    EXPECT_EQ(SAI_NULL_OBJECT_ID,
+            m_sw->m_trap_group_map.at(groupOid).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, FailedBgpBindReconcilesAttemptedName)
+{
+    const sai_object_id_t groupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 1, &groupAttr));
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t attrs[3]{};
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_BGP;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    attrs[2].value.oid = groupOid;
+
+    vppMock().coppIp2meBindFailOnCall = 1;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, attrs));
+    ASSERT_EQ(2u, vppMock().coppIp2meBindCalls.size());
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[1].isBind);
+    EXPECT_EQ(vppMock().coppIp2meBindCalls[0].policerName,
+            vppMock().coppIp2meBindCalls[1].policerName);
+    EXPECT_EQ(0u, m_sw->m_trap_map.count(trapOid));
+}
+
+TEST_F(SwitchVppNeighborMissTrap, CleanupFailureStillRestoresPreviousBgpOwner)
+{
+    const sai_object_id_t groupOid = 0x1200000001;
+    const sai_object_id_t oldPolicerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+    const sai_object_id_t newPolicerOid = 0x1200000004;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = oldPolicerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 1, &groupAttr));
+    vpp_policer_entry_t oldPolicer{};
+    oldPolicer.vpp_policer_index = 7;
+    m_sw->m_policer_map[oldPolicerOid] = oldPolicer;
+    vpp_policer_entry_t newPolicer{};
+    newPolicer.vpp_policer_index = 8;
+    m_sw->m_policer_map[newPolicerOid] = newPolicer;
+
+    sai_attribute_t attrs[3]{};
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_BGP;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    attrs[2].value.oid = groupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, attrs));
+
+    vppMock().coppIp2meBindCalls.clear();
+    vppMock().coppIp2meBindFailOnCalls = {1, 2};
+    groupAttr.value.oid = newPolicerOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(groupOid), &groupAttr));
+
+    ASSERT_EQ(3u, vppMock().coppIp2meBindCalls.size());
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[1].isBind);
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[2].isBind);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIp2meBindCalls[2].policerName);
+    EXPECT_EQ(oldPolicerOid,
+            m_sw->m_trap_group_map.at(groupOid).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, CleanupFailureRetriesOriginallyAbsentBgpOwner)
+{
+    const sai_object_id_t groupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 1, &groupAttr));
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t attrs[3]{};
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_BGP;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    attrs[2].value.oid = groupOid;
+
+    // The bind and first cleanup both time out. The originally empty
+    // effective-state journal must not suppress a final owner-qualified
+    // unbind during restoration.
+    vppMock().coppIp2meBindFailOnCalls = {1, 2};
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, attrs));
+
+    ASSERT_EQ(3u, vppMock().coppIp2meBindCalls.size());
+    EXPECT_TRUE(vppMock().coppIp2meBindCalls[0].isBind);
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[1].isBind);
+    EXPECT_FALSE(vppMock().coppIp2meBindCalls[2].isBind);
+    EXPECT_EQ(vppMock().coppIp2meBindCalls[0].policerName,
+            vppMock().coppIp2meBindCalls[2].policerName);
+    EXPECT_TRUE(m_sw->m_trap_binding_map.empty());
+    EXPECT_EQ(0u, m_sw->m_trap_map.count(trapOid));
+}
+
+TEST_F(SwitchVppNeighborMissTrap, OmittedDefaultNullGroupInstallsUnpolicedRow)
+{
+    const sai_object_id_t groupOid = 0x1200000001;
+    const sai_object_id_t trapOid = 0x1200000002;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 0, nullptr));
+    sai_attribute_t defaultGroup{};
+    defaultGroup.id = SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP;
+    defaultGroup.value.oid = groupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(
+            SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId),
+            &defaultGroup));
+
+    sai_attribute_t attrs[2]{};
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_COPY;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 2, attrs));
+
+    ASSERT_EQ(1u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls[0].policerName.empty());
+    ASSERT_EQ(1u, m_sw->m_trap_binding_map.size());
+    EXPECT_EQ(SAI_NULL_OBJECT_ID, m_sw->m_trap_binding_map.begin()->second.policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, UsesDefaultGroupWhenTrapGroupIsOmitted)
+{
+    const sai_object_id_t groupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            groupOid, m_switchId, 1, &groupAttr));
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t defaultGroup{};
+    defaultGroup.id = SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP;
+    defaultGroup.value.oid = groupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(
+            SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId),
+            &defaultGroup));
+
+    sai_attribute_t attrs[2]{};
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 2, attrs));
+
+    EXPECT_EQ(groupOid, m_sw->m_trap_map.at(trapOid).trap_group_oid);
+    ASSERT_EQ(1u, vppMock().coppNeighborMissBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppNeighborMissBindCalls[0].policerName);
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP,
+            sai_serialize_object_id(trapOid), 1, &readAttr));
+    EXPECT_EQ(groupOid, readAttr.value.oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, TtlInstallFailureRestoresOldPolicer)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t oldPolicerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+    const sai_object_id_t newPolicerOid = 0x1200000004;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = oldPolicerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t oldPolicer{};
+    oldPolicer.vpp_policer_index = 7;
+    m_sw->m_policer_map[oldPolicerOid] = oldPolicer;
+    vpp_policer_entry_t newPolicer{};
+    newPolicer.vpp_policer_index = 8;
+    m_sw->m_policer_map[newPolicerOid] = newPolicer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_TTL_ERROR;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = trapGroupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+
+    vppMock().coppIfoutBindCalls.clear();
+    vppMock().coppTtlPuntBindCalls.clear();
+    vppMock().coppTtlPuntBindFailOnCall = 1;
+    groupAttr.value.oid = newPolicerOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(trapGroupOid), &groupAttr));
+
+    ASSERT_EQ(2u, vppMock().coppIfoutBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000004",
+            vppMock().coppIfoutBindCalls[0].policerName);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIfoutBindCalls[1].policerName);
+    ASSERT_EQ(2u, vppMock().coppTtlPuntBindCalls.size());
+    EXPECT_TRUE(vppMock().coppTtlPuntBindCalls[0]);
+    EXPECT_TRUE(vppMock().coppTtlPuntBindCalls[1]);
+    EXPECT_EQ(oldPolicerOid,
+            m_sw->m_trap_group_map.at(trapGroupOid).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, TtlFailedRestoreIsRetriedByGroupRollback)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t oldPolicerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+    const sai_object_id_t newPolicerOid = 0x1200000004;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = oldPolicerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 1, &groupAttr));
+    vpp_policer_entry_t oldPolicer{};
+    oldPolicer.vpp_policer_index = 7;
+    m_sw->m_policer_map[oldPolicerOid] = oldPolicer;
+    vpp_policer_entry_t newPolicer{};
+    newPolicer.vpp_policer_index = 8;
+    m_sw->m_policer_map[newPolicerOid] = newPolicer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_TTL_ERROR;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = trapGroupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+
+    vppMock().coppIfoutBindCalls.clear();
+    vppMock().coppTtlPuntBindCalls.clear();
+    vppMock().coppTtlPuntBindFailOnCall = 1;
+    vppMock().coppIfoutBindFailOnCall = 2;
+    groupAttr.value.oid = newPolicerOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrapGroup(
+            sai_serialize_object_id(trapGroupOid), &groupAttr));
+
+    ASSERT_EQ(3u, vppMock().coppIfoutBindCalls.size());
+    EXPECT_EQ("copp-policer-0x1200000004",
+            vppMock().coppIfoutBindCalls[0].policerName);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIfoutBindCalls[1].policerName);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIfoutBindCalls[2].policerName);
+    EXPECT_EQ(0u, m_sw->m_trap_binding_uncertain.size());
+    EXPECT_EQ(oldPolicerOid,
+            m_sw->m_trap_group_map.at(trapGroupOid).policer_oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, TtlUninstallFailureRestoresActiveBinding)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_TTL_ERROR;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = trapGroupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+
+    vppMock().coppIfoutBindCalls.clear();
+    vppMock().coppTtlPuntBindCalls.clear();
+    vppMock().coppTtlPuntBindFailOnCall = 1;
+    sai_attribute_t setAttr{};
+    setAttr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    setAttr.value.s32 = SAI_PACKET_ACTION_DROP;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrap(
+            sai_serialize_object_id(trapOid), &setAttr));
+
+    ASSERT_EQ(2u, vppMock().coppIfoutBindCalls.size());
+    EXPECT_FALSE(vppMock().coppIfoutBindCalls[0].isBind);
+    EXPECT_TRUE(vppMock().coppIfoutBindCalls[1].isBind);
+    EXPECT_EQ("copp-policer-0x1200000002",
+            vppMock().coppIfoutBindCalls[1].policerName);
+    ASSERT_EQ(2u, vppMock().coppTtlPuntBindCalls.size());
+    EXPECT_FALSE(vppMock().coppTtlPuntBindCalls[0]);
+    EXPECT_TRUE(vppMock().coppTtlPuntBindCalls[1]);
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP,
+            m_sw->m_trap_map.at(trapOid).packet_action);
+    EXPECT_TRUE(m_sw->m_trap_map.at(trapOid).classify_installed);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, TrapSetBindFailureKeepsOldCachedState)
+{
+    const sai_object_id_t oldGroupOid = 0x1200000001;
+    const sai_object_id_t oldPolicerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+    const sai_object_id_t newGroupOid = 0x1200000004;
+    const sai_object_id_t newPolicerOid = 0x1200000005;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = oldPolicerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            oldGroupOid, m_switchId, 1, &groupAttr));
+    groupAttr.value.oid = newPolicerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            newGroupOid, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t oldPolicer{};
+    oldPolicer.vpp_policer_index = 7;
+    m_sw->m_policer_map[oldPolicerOid] = oldPolicer;
+    vpp_policer_entry_t newPolicer{};
+    newPolicer.vpp_policer_index = 8;
+    m_sw->m_policer_map[newPolicerOid] = newPolicer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = oldGroupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+
+    vppMock().coppNeighborMissBindCalls.clear();
+    vppMock().coppNeighborMissBindFailOnCall = 1;
+    sai_attribute_t setAttr{};
+    setAttr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    setAttr.value.oid = newGroupOid;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->setHostifTrap(
+            sai_serialize_object_id(trapOid), &setAttr));
+
+    EXPECT_EQ(oldGroupOid, m_sw->m_trap_map.at(trapOid).trap_group_oid);
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trapOid),
+            1, &readAttr));
+    EXPECT_EQ(oldGroupOid, readAttr.value.oid);
+}
+
+TEST_F(SwitchVppNeighborMissTrap, DropRejectionDoesNotTouchActiveBinding)
+{
+    const sai_object_id_t trapGroupOid = 0x1200000001;
+    const sai_object_id_t policerOid = 0x1200000002;
+    const sai_object_id_t trapOid = 0x1200000003;
+
+    sai_attribute_t groupAttr{};
+    groupAttr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    groupAttr.value.oid = policerOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+            trapGroupOid, m_switchId, 1, &groupAttr));
+
+    vpp_policer_entry_t policer{};
+    policer.vpp_policer_index = 7;
+    m_sw->m_policer_map[policerOid] = policer;
+
+    sai_attribute_t trapAttrs[3]{};
+    trapAttrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    trapAttrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    trapAttrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    trapAttrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+    trapAttrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+    trapAttrs[2].value.oid = trapGroupOid;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrap(
+            trapOid, m_switchId, 3, trapAttrs));
+
+    vppMock().coppNeighborMissBindCalls.clear();
+    vppMock().coppNeighborMissBindFailOnCall = 1;
+    sai_attribute_t setAttr{};
+    setAttr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    setAttr.value.s32 = SAI_PACKET_ACTION_DROP;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->setHostifTrap(
+            sai_serialize_object_id(trapOid), &setAttr));
+
+    EXPECT_TRUE(vppMock().coppNeighborMissBindCalls.empty());
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP,
+            m_sw->m_trap_map.at(trapOid).packet_action);
+    EXPECT_TRUE(m_sw->m_trap_map.at(trapOid).classify_installed);
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trapOid),
+            1, &readAttr));
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP, readAttr.value.s32);
 }
 
 /*
@@ -799,7 +2882,12 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
             ::testing::FLAGS_gtest_death_test_style = "threadsafe";
             ASSERT_EXIT({
                 vppMock().enabledFeatures = features;
-                vppMock().nodeNexts = nodes;
+                vppMock().classifyAvailable = true;
+                for (const auto& node: nodes)
+                {
+                    vppMock().nodeNexts[std::make_pair(
+                            std::string("l2-input-classify"), node.first)] = node.second;
+                }
 
                 addTaggedMember(m_bridgePort);
 
@@ -827,10 +2915,8 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
         // the nexts without sonic-ext-l2-trap-learn, as before it; tagged
         // IPv6 multicast has a session in each of its two tables
         const Nexts NEXTS_WITHOUT_TRAP_LEARN = {
-            {"untagged DHCPv4", {PUNT}},
             {"untagged ARP", {PUNT}},
             {"untagged IPv6 multicast", {PUNT}},
-            {"tagged DHCPv4", {TRAP_FIXUP}},
             {"tagged ARP", {TRAP_FIXUP}},
             {"tagged IPv6 multicast", {TRAP_FIXUP, TRAP_FIXUP}},
             {"LLDP", {PUNT}},
@@ -841,10 +2927,8 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
 TEST_F(SwitchVppL2TrapLearn, TrapsGoToTrapLearnWhenItIsOn)
 {
     expectPuntNexts(FEATURES, NODES, {
-        {"untagged DHCPv4", {TRAP_LEARN}},
         {"untagged ARP", {TRAP_LEARN}},
         {"untagged IPv6 multicast", {TRAP_LEARN}},
-        {"tagged DHCPv4", {TRAP_LEARN}},
         {"tagged ARP", {TRAP_LEARN}},
         {"tagged IPv6 multicast", {TRAP_LEARN, TRAP_LEARN}},
         {"LLDP", {PUNT}},
@@ -876,7 +2960,6 @@ TEST_F(SwitchVppL2TrapLearn, TrapsKeepTheirNextsWhenVppHasNoTrapLearnNode)
 TEST_F(SwitchVppL2TrapLearn, TrapsDoNotGoToTrapLearnWithoutTrapFixup)
 {
     expectPuntNexts({"l2-trap-learn", "l2-vlan-filter"}, NODES, {
-        {"untagged DHCPv4", {PUNT}},
         {"untagged ARP", {PUNT}},
         {"untagged IPv6 multicast", {PUNT}},
         {"LLDP", {PUNT}},
@@ -1695,14 +3778,20 @@ class SwitchVppDhcpTrap : public ::testing::Test
             ASSERT_EQ(SAI_STATUS_SUCCESS,
                     m_sw->create_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), m_switchId, 1, &sattr));
 
+            m_trapGroup = m_mgr->allocateNewObjectId(
+                    SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP, m_switchId);
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->createHostifTrapGroup(
+                    m_trapGroup, m_switchId, 0, nullptr));
+
             vppMock().reset();
             vppMock().enabledFeatures = {"l2-trap-fixup", "l2-vlan-filter"};
+            vppMock().classifyAvailable = true;
             vppMock().nodeNexts = {
-                {"linux-cp-punt", PUNT},
-                {"sonic-ext-l2-trap-fixup", TRAP_FIXUP},
-                {"sonic-ext-l2-vlan-filter", VLAN_FILTER},
+                {{"l2-input-classify", "linux-cp-punt"}, PUNT},
+                {{"l2-input-classify", "sonic-ext-l2-trap-fixup"}, TRAP_FIXUP},
+                {{"l2-input-classify", "sonic-ext-l2-vlan-filter"}, VLAN_FILTER},
             };
-            g_l2Tables.clear();
+            vppMock().l2ClassifyTables.clear();
             g_ip4Routes.clear();
             g_ip2meAddrs.clear();
         }
@@ -1721,15 +3810,17 @@ class SwitchVppDhcpTrap : public ::testing::Test
 
             auto oid = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_HOSTIF_TRAP, m_switchId);
 
-            sai_attribute_t attrs[2];
+            sai_attribute_t attrs[3];
 
             attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
             attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCP;
             attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
             attrs[1].value.s32 = action;
+            attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
+            attrs[2].value.oid = m_trapGroup;
 
             EXPECT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->create(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(oid), m_switchId, 2, attrs));
+                    m_sw->createHostifTrap(oid, m_switchId, 3, attrs));
 
             return oid;
         }
@@ -1746,7 +3837,7 @@ class SwitchVppDhcpTrap : public ::testing::Test
             attr.value.s32 = action;
 
             EXPECT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap), &attr));
+                    m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
         }
 
         void removeTrap(
@@ -1755,30 +3846,59 @@ class SwitchVppDhcpTrap : public ::testing::Test
             SWSS_LOG_ENTER();
 
             EXPECT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->remove(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
+                    m_sw->removeHostifTrap(sai_serialize_object_id(trap)));
         }
 
         void addMember(
                 const char *hwif,
-                bool tagged)
+                bool tagged,
+                sai_object_id_t *memberOut = nullptr)
         {
             SWSS_LOG_ENTER();
 
-            auto port = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_switchId);
+            sai_object_id_t port;
+            sai_object_id_t bridgePort;
+            auto existing = m_memberPorts.find(hwif);
 
-            ASSERT_NE(nullptr, m_sw->m_ifaceRegistry.addPhysicalPort(hwif, std::string("os_") + hwif, port));
+            if (existing == m_memberPorts.end())
+            {
+                port = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_switchId);
 
-            auto bridgePort = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+                ASSERT_NE(nullptr, m_sw->m_ifaceRegistry.addPhysicalPort(
+                        hwif, std::string("os_") + hwif, port));
 
-            sai_attribute_t battrs[2];
+                // The sonic-ext LCP callback registers its L2 input features
+                // before the port first enters bridge mode. The bridge add
+                // preserves this bit; only the later remove resets it.
+                vppMock().l2InputRegisteredFeatures[hwif] = {
+                    "sonic-ext-dhcp-ip4",
+                    "sonic-ext-ip2me-ip4",
+                };
+                vppMock().l2InputFeatureArc.insert(hwif);
 
-            battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
-            battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
-            battrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
-            battrs[1].value.oid = port;
+                bridgePort = m_mgr->allocateNewObjectId(
+                        SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
 
-            ASSERT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bridgePort), m_switchId, 2, battrs));
+                sai_attribute_t battrs[2];
+
+                battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+                battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+                battrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+                battrs[1].value.oid = port;
+
+                ASSERT_EQ(SAI_STATUS_SUCCESS,
+                        m_sw->create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT,
+                            sai_serialize_object_id(bridgePort), m_switchId, 2, battrs));
+                m_memberPorts[hwif] = {port, bridgePort};
+            }
+            else
+            {
+                port = existing->second.first;
+                bridgePort = existing->second.second;
+            }
+
+            auto member = m_mgr->allocateNewObjectId(
+                    SAI_OBJECT_TYPE_VLAN_MEMBER, m_switchId);
 
             sai_attribute_t mattrs[3];
 
@@ -1789,7 +3909,17 @@ class SwitchVppDhcpTrap : public ::testing::Test
             mattrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
             mattrs[2].value.s32 = tagged ? SAI_VLAN_TAGGING_MODE_TAGGED : SAI_VLAN_TAGGING_MODE_UNTAGGED;
 
-            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_create_vlan_member(3, mattrs));
+            if (memberOut != nullptr)
+            {
+                ASSERT_EQ(SAI_STATUS_SUCCESS,
+                        m_sw->createVlanMember(member, m_switchId, 3, mattrs));
+                *memberOut = member;
+            }
+            else
+            {
+                ASSERT_EQ(SAI_STATUS_SUCCESS,
+                        m_sw->vpp_create_vlan_member(3, mattrs));
+            }
         }
 
         void addMembers()
@@ -1892,17 +4022,10 @@ class SwitchVppDhcpTrap : public ::testing::Test
         {
             SWSS_LOG_ENTER();
 
-            auto it = g_l2Tables.find(hwif);
-
-            if (it == g_l2Tables.end())
-            {
-                return MISS;
-            }
-
             bool ip4 = !tagged && frame[12] == 0x08 && frame[13] == 0x00;
 
             // an untagged IPv4 frame selects the ip4 slot, any tagged frame the other slot
-            return classify(ip4 ? it->second[0] : it->second[2], frame);
+            return vppMock().classifyFrame(hwif, ip4 ? 0 : 2, frame);
         }
 
         // whether table vrf_id receives a limited broadcast, rather than dropping it
@@ -1943,18 +4066,35 @@ class SwitchVppDhcpTrap : public ::testing::Test
             return TRAP_FIXUP;
         }
 
-        // TRAP: punted on both members, so the BVI never sees it, and limited
-        // broadcasts on L3 tables stay at VPP's default drop
+        // The fixed-offset classify path must never intercept DHCP. The
+        // provider's admitted-packet feature reads this live TRAP row and
+        // consumes the original; routed limited broadcasts also need receive.
         void expectTrap()
         {
             SWSS_LOG_ENTER();
 
-            EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcpOnWire(false)));
-            EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcpOnWire(true)));
-            EXPECT_FALSE(receivesLimitedBroadcast(0));
+            EXPECT_EQ(MISS, onMember("bobm0", false, dhcpOnWire(false)));
+            EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcpOnWire(true)));
+            EXPECT_TRUE(receivesLimitedBroadcast(0));
+            ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
+            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
+            EXPECT_FALSE(vppMock().coppDhcpBindCalls.back().isCopy);
         }
 
-        // COPY: flooded on both members, and the BVI's copy received, under the IP2ME policer
+        // With no SAI DHCP trap, member traffic remains on the ordinary L2
+        // path and routed limited broadcasts keep VPP's default drop route.
+        void expectNoTrap()
+        {
+            SWSS_LOG_ENTER();
+
+            EXPECT_EQ(MISS, onMember("bobm0", false, dhcpOnWire(false)));
+            EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcpOnWire(true)));
+            EXPECT_FALSE(receivesLimitedBroadcast(0));
+            EXPECT_EQ(0u, m_sw->m_trap_binding_map.count(0x10003));
+        }
+
+        // COPY is also classifier-independent: the provider sends one CPU
+        // clone and preserves the original member forwarding path.
         void expectCopy()
         {
             SWSS_LOG_ENTER();
@@ -1963,6 +4103,9 @@ class SwitchVppDhcpTrap : public ::testing::Test
             EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcpOnWire(true)));
             EXPECT_TRUE(receivesLimitedBroadcast(0));
             EXPECT_TRUE(policesLimitedBroadcast());
+            ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
+            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
+            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isCopy);
         }
 
         static constexpr uint16_t VLAN_ID = 100;
@@ -1978,6 +4121,8 @@ class SwitchVppDhcpTrap : public ::testing::Test
         sai_object_id_t m_vlan = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_defaultVr = SAI_NULL_OBJECT_ID;
         sai_object_id_t m_rif = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_trapGroup = SAI_NULL_OBJECT_ID;
+        std::map<std::string, std::pair<sai_object_id_t, sai_object_id_t>> m_memberPorts;
 };
 
 constexpr uint16_t SwitchVppDhcpTrap::VLAN_ID;
@@ -1994,7 +4139,7 @@ TEST_F(SwitchVppDhcpTrap, CopyBeforeAnyMemberFloodsAndTheBviCopyIsReceived)
     expectCopy();
 }
 
-TEST_F(SwitchVppDhcpTrap, TrapPuntsOnTheMembers)
+TEST_F(SwitchVppDhcpTrap, TrapUsesTheLiveProviderPath)
 {
     createTrap(SAI_PACKET_ACTION_TRAP);
     addMembers();
@@ -2003,12 +4148,48 @@ TEST_F(SwitchVppDhcpTrap, TrapPuntsOnTheMembers)
     expectTrap();
 }
 
-TEST_F(SwitchVppDhcpTrap, NoDhcpTrapDefaultsToTrap)
+TEST_F(SwitchVppDhcpTrap, UntaggedMemberReaddRestoresDhcpTrapDispatch)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP);
+
+    sai_object_id_t member;
+    addMember("bobm0", false, &member);
+    addMember("bobm1", true);
+    createBvi();
+
+    auto registrations = vppMock().l2InputRegisteredFeatures.at("bobm0");
+    ASSERT_EQ(2u, registrations.size());
+    auto bindCalls = vppMock().coppDhcpBindCalls.size();
+    auto restoreCalls = vppMock().callsTo(
+            "set_l2_interface_input_feature_arc", "bobm0").size();
+
+    auto delivery = vppMock().dhcpIpv4Delivery("bobm0");
+    EXPECT_TRUE(delivery.cpu);
+    EXPECT_FALSE(delivery.peer);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeVlanMember(member));
+    EXPECT_EQ(0u, vppMock().l2InputFeatureArc.count("bobm0"));
+    EXPECT_EQ(registrations, vppMock().l2InputRegisteredFeatures.at("bobm0"));
+
+    sai_object_id_t replacement;
+    addMember("bobm0", false, &replacement);
+    EXPECT_NE(member, replacement);
+
+    delivery = vppMock().dhcpIpv4Delivery("bobm0");
+    EXPECT_TRUE(delivery.cpu);
+    EXPECT_FALSE(delivery.peer);
+    EXPECT_EQ(registrations, vppMock().l2InputRegisteredFeatures.at("bobm0"));
+    EXPECT_EQ(bindCalls, vppMock().coppDhcpBindCalls.size());
+    EXPECT_EQ(restoreCalls + 1u, vppMock().callsTo(
+            "set_l2_interface_input_feature_arc", "bobm0").size());
+}
+
+TEST_F(SwitchVppDhcpTrap, NoDhcpTrapPreservesMemberForwarding)
 {
     addMembers();
     createBvi();
 
-    expectTrap();
+    expectNoTrap();
 }
 
 TEST_F(SwitchVppDhcpTrap, SetAttributeSwitchesBetweenTrapAndCopyOnExistingMembersAndBvi)
@@ -2028,20 +4209,26 @@ TEST_F(SwitchVppDhcpTrap, SetAttributeSwitchesBetweenTrapAndCopyOnExistingMember
     expectCopy();
 }
 
-TEST_F(SwitchVppDhcpTrap, OtherActionsKeepTheTrapBehavior)
+TEST_F(SwitchVppDhcpTrap, UnsupportedOtherActionsLeaveCopyUnchanged)
 {
     auto trap = createTrap(SAI_PACKET_ACTION_COPY);
     addMembers();
     createBvi();
 
-    setTrapAction(trap, SAI_PACKET_ACTION_FORWARD);
-    expectTrap();
+    sai_attribute_t attr{};
+    attr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->setHostifTrap(
+            sai_serialize_object_id(trap), &attr));
+    expectCopy();
 
-    setTrapAction(trap, SAI_PACKET_ACTION_DROP);
-    expectTrap();
+    attr.value.s32 = SAI_PACKET_ACTION_DROP;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, m_sw->setHostifTrap(
+            sai_serialize_object_id(trap), &attr));
+    expectCopy();
 }
 
-TEST_F(SwitchVppDhcpTrap, RemovingTheCopyTrapRevertsToTrap)
+TEST_F(SwitchVppDhcpTrap, RemovingTheCopyTrapRestoresAbsentState)
 {
     auto trap = createTrap(SAI_PACKET_ACTION_COPY);
     addMembers();
@@ -2049,7 +4236,7 @@ TEST_F(SwitchVppDhcpTrap, RemovingTheCopyTrapRevertsToTrap)
     expectCopy();
 
     removeTrap(trap);
-    expectTrap();
+    expectNoTrap();
 }
 
 TEST_F(SwitchVppDhcpTrap, ReplacementCopyTrapWinsOnlyOnceTheOldTrapIsGone)
@@ -2082,13 +4269,12 @@ TEST_F(SwitchVppDhcpTrap, CopyLeavesTheOtherPuntsAlone)
 }
 
 /*
- * The local 255.255.255.255/32 route is installed only while the DHCP trap
- * action is COPY: under TRAP (or without a DHCP trap) a client broadcast is
- * punted at the VLAN member and routed ports keep VPP's default drop on
- * 255.255.255.255/32, while 255.255.255.255 stays in the IP2ME address set once
- * any VRF table is set up.
+ * Both TRAP and COPY need the local 255.255.255.255/32 route for routed
+ * DHCPv4 client broadcasts. VLAN-member action remains provider-driven, so
+ * enabling the routed receive path does not reintroduce fixed classifiers.
+ * The route is removed once the final DHCP trap disappears.
  */
-TEST_F(SwitchVppDhcpTrap, TheBviTableReceivesLimitedBroadcastsOnlyUnderCopy)
+TEST_F(SwitchVppDhcpTrap, TrapReceivesRoutedBroadcastWithoutVlanFloodAndRemovalCleansRoute)
 {
     auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
     addMembers();
@@ -2104,7 +4290,7 @@ TEST_F(SwitchVppDhcpTrap, TheBviTableReceivesLimitedBroadcastsOnlyUnderCopy)
     setTrapAction(trap, SAI_PACKET_ACTION_COPY);
     expectCopy();
 
-    // the route stays with the table, not the BVI, while COPY is active
+    // the route stays with the table, not the BVI, while the trap is active
     ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_delete_bvi_interface(m_rif));
 
     EXPECT_TRUE(receivesLimitedBroadcast(0));
@@ -2112,7 +4298,11 @@ TEST_F(SwitchVppDhcpTrap, TheBviTableReceivesLimitedBroadcastsOnlyUnderCopy)
 
     setTrapAction(trap, SAI_PACKET_ACTION_TRAP);
 
-    EXPECT_FALSE(receivesLimitedBroadcast(0));
+    expectTrap();
+    EXPECT_TRUE(policesLimitedBroadcast());
+
+    removeTrap(trap);
+    expectNoTrap();
     EXPECT_TRUE(policesLimitedBroadcast());
 }
 
@@ -2120,7 +4310,7 @@ TEST_F(SwitchVppDhcpTrap, AVrfTableReceivesLimitedBroadcastsUntilItIsRemoved)
 {
     auto vrf = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
 
-    // without a COPY DHCP trap, a VRF table keeps VPP's default drop while
+    // without a DHCP trap, a VRF table keeps VPP's default drop while
     // 255.255.255.255 is registered in the IP2ME address set
     ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
     EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
@@ -2157,9 +4347,251 @@ TEST_F(SwitchVppDhcpTrap, AVrfTableReceivesLimitedBroadcastsUntilItIsRemoved)
     EXPECT_TRUE(policesLimitedBroadcast());
 }
 
+TEST_F(SwitchVppDhcpTrap, FailedActiveRouteTransitionIsRetriedWithoutAStateChange)
+{
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    ASSERT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    vppMock().ipRouteResult = -1;
+    createTrap(SAI_PACKET_ACTION_TRAP);
+
+    // The trap's desired state is retained, but a failed add is not recorded
+    // as installed.
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    ASSERT_EQ(1u, vppMock().ipRouteCalls);
+
+    vppMock().ipRouteResult = 0;
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, FailedInactiveRouteTransitionIsRetriedWithoutAStateChange)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+
+    vppMock().ipRouteResult = -1;
+    removeTrap(trap);
+
+    // A failed delete remains confirmed installed and therefore pending.
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    ASSERT_EQ(2u, vppMock().ipRouteCalls);
+
+    vppMock().ipRouteResult = 0;
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, AmbiguousAddIsCleanedUpWhenTheFinalTrapIsRemoved)
+{
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    ASSERT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // VPP installs the route, but the reply is lost.  Confirmed state still
+    // says absent while the dataplane is now active.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
+
+    ASSERT_EQ(1u, vppMock().ipRouteCalls);
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // The final removal must use uncertain state, not confirmed==desired, to
+    // discover and remove the route that the timed-out add left behind.
+    removeTrap(trap);
+
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // Successful cleanup commits absent state and clears uncertainty.
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, AmbiguousDeleteIsRetriedWhenConfirmedAlreadyMatchesDesired)
+{
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    // First make the add ambiguous, so confirmed state remains absent.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // Cleanup also takes effect but times out.  Confirmed and desired state
+    // are both absent now, but this second uncertain operation still needs a
+    // retry before it can be considered committed.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(2);
+    removeTrap(trap);
+
+    ASSERT_EQ(2u, vppMock().ipRouteCalls);
+    ASSERT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, MultiVrfReconcilePreservesPerTablePartialSuccess)
+{
+    auto first = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+    auto second = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(first, VRF_TABLE));
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(second, VRF_TABLE + 1));
+
+    // The first table becomes uncertain, but reconciliation must continue and
+    // commit the independent second table rather than rolling it back.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
+    createTrap(SAI_PACKET_ACTION_TRAP);
+
+    ASSERT_EQ(2u, vppMock().ipRouteCalls);
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE + 1));
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(second, VRF_TABLE + 1));
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(first, VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(first, VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, AmbiguousTableZeroVrfSetupIsCleanedUpAndRetryable)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    // A new table-0 owner has no table create/rollback around its route RPC.
+    // Its IpVrfInfo is not published when the add reply times out, so only
+    // uncertain-route tracking can retain the attempted table ID.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
+    EXPECT_NE(0, m_sw->vpp_add_ip_vrf(vrf, 0));
+
+    EXPECT_EQ(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    ASSERT_TRUE(receivesLimitedBroadcast(0));
+    ASSERT_EQ(1u, vppMock().ipRouteCalls);
+
+    removeTrap(trap);
+
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+
+    // Retry can now publish the VRF owner without reprogramming a route while
+    // DHCP is inactive; the successful cleanup cleared uncertainty.
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, 0));
+    EXPECT_NE(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, AmbiguousNewTableVrfSetupRetainsItsIdAcrossRollback)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    // The route takes effect before its reply is lost.  vpp_add_ip_vrf rolls
+    // back the newly created table and does not publish an IpVrfInfo, but must
+    // retain the attempted table ID as uncertain.
+    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
+    EXPECT_NE(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_EQ(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(0u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    // Final trap removal discovers the table ID that otherwise has no owner.
+    // The table is absent, so cleanup remains uncertain and can be retried.
+    removeTrap(trap);
+    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+
+    // Recreating the table gives the retained cleanup a place to complete;
+    // only then is the VRF owner published and uncertainty cleared.
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_NE(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(1u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+}
+
+TEST_F(SwitchVppDhcpTrap, VrfAddRouteFailureRollsBackCacheAndRetrySucceeds)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP);
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    vppMock().ipRouteResult = -1;
+    EXPECT_NE(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_EQ(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(0u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    vppMock().ipRouteResult = 0;
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+
+    EXPECT_NE(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(1u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+}
+
+TEST_F(SwitchVppDhcpTrap, VrfRemoveRouteFailureIsPropagatedAndRetryable)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP);
+    auto vrf = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+    auto sid = sai_serialize_object_id(vrf);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, sid, m_switchId, 0, nullptr));
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    m_sw->m_switchConfig->m_useTapDevice = true;
+
+    vppMock().ipRouteResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVrf(vrf));
+
+    EXPECT_NE(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(1u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+
+    vppMock().ipRouteResult = 0;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeVrf(vrf));
+
+    EXPECT_EQ(nullptr, m_sw->vpp_get_ip_vrf(vrf));
+    EXPECT_EQ(0u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+}
+
 /*
  * Table 0 outlives every VRF object, so removing one leaves its route in
- * place while COPY is active.
+ * place while a DHCP trap is active.
  */
 TEST_F(SwitchVppDhcpTrap, TheDefaultTableKeepsItsRouteWhenAVrfObjectGoesAway)
 {
