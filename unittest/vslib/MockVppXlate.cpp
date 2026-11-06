@@ -12,6 +12,18 @@
 
 namespace
 {
+std::string macStr(const uint8_t *mac)
+{
+    SWSS_LOG_ENTER();
+    if (!mac)
+    {
+        return "";
+    }
+    char buf[18];
+    snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return buf;
+}
     std::atomic<int> g_vppEventWaits{0};
     std::mutex g_vppEventsMutex;
     std::deque<vpp_event_info_t *> g_vppEvents;
@@ -131,6 +143,10 @@ int TestableSwitchVpp::exec(const std::string& command, std::string& output)
 {
     SWSS_LOG_ENTER();
     vppMock().kernelCommands.push_back(command);
+    if (vppMock().execHook)
+    {
+        return vppMock().execHook(command, output);
+    }
     if (command.find(" -o link show") != std::string::npos)
     {
         output = vppMock().kernelLinkNames;
@@ -364,11 +380,16 @@ extern "C" int __wrap_vpp_intf_stats_query(const char *name, vpp_interface_stats
     return vppMock().statsResult;
 }
 
-extern "C" int __wrap_create_bvi_interface(uint8_t *, uint32_t instance)
+extern "C" int __wrap_create_bvi_interface(uint8_t *mac_address, uint32_t instance)
 {
     SWSS_LOG_ENTER();
     ++vppMock().interfaceCreates;
-    return vppMock().interfaces.insert("bvi" + std::to_string(instance)).second ? 0 : -1;
+    if (!vppMock().interfaces.insert("bvi" + std::to_string(instance)).second)
+    {
+        return -1;
+    }
+    vppMock().calls.push_back({"create_bvi_interface", macStr(mac_address), instance, 0, true});
+    return 0;
 }
 
 extern "C" int __wrap_delete_bvi_interface(const char *name)
@@ -382,7 +403,12 @@ extern "C" int __wrap_delete_bvi_interface(const char *name)
     vppMock().adminUp.erase(name);
     vppMock().mtus.erase(name);
     vppMock().mplsReferences.erase(name);
-    return vppMock().interfaces.erase(name) == 1 ? 0 : -1;
+    if (vppMock().interfaces.erase(name) != 1)
+    {
+        return -1;
+    }
+    vppMock().calls.push_back({"delete_bvi_interface", name ? name : "", 0, 0, false});
+    return 0;
 }
 
 extern "C" int __wrap_create_sub_interface(const char *parent, uint32_t id, uint16_t vlan)
@@ -400,7 +426,7 @@ extern "C" int __wrap_delete_sub_interface(const char *parent, uint32_t id)
     return __wrap_delete_bvi_interface((std::string(parent) + "." + std::to_string(id)).c_str());
 }
 
-extern "C" int __wrap_configure_lcp_interface(const char *name, const char *, bool add)
+extern "C" int __wrap_configure_lcp_interface(const char *name, const char *hostif_name, bool add)
 {
     SWSS_LOG_ENTER();
     if (add)
@@ -409,12 +435,24 @@ extern "C" int __wrap_configure_lcp_interface(const char *name, const char *, bo
         {
             return vppMock().lcpResult;
         }
-        return vppMock().lcpPairs.insert(name).second ? 0 : -1;
+        if (!vppMock().lcpPairs.insert(name).second)
+        {
+            return -1;
+        }
+        vppMock().calls.push_back({"configure_lcp_interface",
+                std::string(name ? name : "") + " " + (hostif_name ? hostif_name : ""), 0, 0, true});
+        return 0;
     }
-    return vppMock().lcpPairs.erase(name) == 1 ? 0 : -1;
+    if (vppMock().lcpPairs.erase(name) != 1)
+    {
+        return -1;
+    }
+    vppMock().calls.push_back({"configure_lcp_interface",
+            std::string(name ? name : "") + " " + (hostif_name ? hostif_name : ""), 0, 0, false});
+    return 0;
 }
 
-extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t, bool add, uint32_t)
+extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t bridge_id, bool add, uint32_t port_type)
 {
     SWSS_LOG_ENTER();
     if (add)
@@ -425,6 +463,7 @@ extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t, boo
     {
         vppMock().bridgePorts.erase(name);
     }
+    vppMock().calls.push_back({"set_sw_interface_l2_bridge", name ? name : "", bridge_id, port_type, add});
     return 0;
 }
 
@@ -461,11 +500,12 @@ extern "C" int __wrap_vpp_bfd_session_dump(vpp_bfd_session_cb_fn cb, void *ctx)
     }
     return vppMock().bfdDumpResult;
 }
-extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
+extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t vrf_id, uint32_t, int addr_family) {
     SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_ip_flow_hash_set", "", vrf_id, 0, addr_family == AF_INET6});
     return 0;
 }
-extern "C" int __wrap_set_interface_vrf(const char *name, uint32_t subId, uint32_t table, bool)
+extern "C" int __wrap_set_interface_vrf(const char *name, uint32_t subId, uint32_t table, bool is_ipv6)
 {
     SWSS_LOG_ENTER();
     ++vppMock().vrfSetCalls;
@@ -473,6 +513,7 @@ extern "C" int __wrap_set_interface_vrf(const char *name, uint32_t subId, uint32
     {
         const auto ifname = std::string(name) + (subId ? "." + std::to_string(subId) : "");
         vppMock().interfaceVrfs[ifname] = table;
+        vppMock().calls.push_back({"set_interface_vrf", name ? name : "", table, subId, is_ipv6});
     }
     return vppMock().setVrfResult;
 }
@@ -484,19 +525,19 @@ extern "C" int __wrap_get_interface_vrf(const char *name, bool, uint32_t *table)
     return vppMock().getVrfResult;
 }
 
-extern "C" int __wrap_ip_vrf_add(uint32_t table, const char *vrf_name, bool)
+extern "C" int __wrap_ip_vrf_add(uint32_t table, const char *vrf_name, bool is_ipv6)
 {
     SWSS_LOG_ENTER();
     vppMock().vrfTables.insert(table);
-    vppMock().calls.push_back({"ip_vrf_add", vrf_name ? vrf_name : "", table, 0, true});
+    vppMock().calls.push_back({"ip_vrf_add", vrf_name ? vrf_name : "", table, 0, is_ipv6});
     return 0;
 }
 
-extern "C" int __wrap_ip_vrf_del(uint32_t table, const char *vrf_name, bool)
+extern "C" int __wrap_ip_vrf_del(uint32_t table, const char *vrf_name, bool is_ipv6)
 {
     SWSS_LOG_ENTER();
-    vppMock().calls.push_back({"ip_vrf_del", vrf_name ? vrf_name : "", table, 0, false});
     vppMock().vrfTables.erase(table);
+    vppMock().calls.push_back({"ip_vrf_del", vrf_name ? vrf_name : "", table, 0, is_ipv6});
     return 0;
 }
 
