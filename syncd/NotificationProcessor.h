@@ -11,6 +11,7 @@
 #include <thread>
 #include <memory>
 #include <condition_variable>
+#include <mutex>
 #include <functional>
 
 namespace syncd
@@ -205,6 +206,12 @@ namespace syncd
             // that some notification arrived
 
             std::condition_variable m_cv;
+
+            // mutex paired with m_cv; guards the wait predicate so that a
+            // producer signal() cannot race with the consumer going to sleep
+            // and cause a lost wakeup (tail notification stuck in the queue)
+
+            std::mutex m_mtx;
 
             // determine whether notification thread is running
 
