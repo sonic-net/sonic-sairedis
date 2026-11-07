@@ -4114,6 +4114,7 @@ sai_status_t SwitchStateBase::queryTunnelPeerModeCapability(
 
     if (enum_values_capability->count < 2)
     {
+        enum_values_capability->count = 2;
         return SAI_STATUS_BUFFER_OVERFLOW;
     }
 
