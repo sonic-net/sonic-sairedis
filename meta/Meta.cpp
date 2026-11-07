@@ -2039,6 +2039,7 @@ void Meta::meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
+            case SAI_ATTR_VALUE_TYPE_TLV_LIST:
                 // no special action required
                 break;
 
@@ -3898,6 +3899,10 @@ sai_status_t Meta::meta_generic_validation_create(
                 VALIDATION_LIST(md, value.portserdestaps);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_TLV_LIST:
+                VALIDATION_LIST(md, value.tlvlist);
+                break;
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -4541,6 +4546,10 @@ sai_status_t Meta::meta_generic_validation_set(
 
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
             VALIDATION_LIST(md, value.portserdestaps);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_TLV_LIST:
+            VALIDATION_LIST(md, value.tlvlist);
             break;
 
         default:
@@ -5277,6 +5286,10 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
                 VALIDATION_LIST_GET(md, value.portserdestaps);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_TLV_LIST:
+                VALIDATION_LIST_GET(md, value.tlvlist);
                 break;
 
             default:
@@ -6416,6 +6429,7 @@ void Meta::meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
         case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
+        case SAI_ATTR_VALUE_TYPE_TLV_LIST:
         case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
         case SAI_ATTR_VALUE_TYPE_UINT64_RANGE_LIST:
         case SAI_ATTR_VALUE_TYPE_JSON:
