@@ -18,7 +18,7 @@ NotificationQueue::NotificationQueue(
 {
     SWSS_LOG_ENTER();
 
-    m_queue = std::make_shared<std::queue<NotificationItem>>();
+    m_queue = std::make_shared<std::queue<NotificationItem, std::list<NotificationItem>>>();
 }
 
 NotificationQueue::~NotificationQueue()
@@ -146,25 +146,14 @@ bool NotificationQueue::tryDequeue(
     if (m_queue->empty())
     {
         /*
-         * Since there could be burst of notifications, that allocated memory
-         * can be over 2GB, but when queue will be drained that memory will not
-         * be automatically released. Underlying deque container contains
-         * function shrink_to_fit but that is just a request, and usually this
-         * function does nothing.
-         *
-         * Make sure we will destroy queue and allocate new one. Assignment
-         * operator is not enough here, since internal deque container will not
-         * release memory under assignment. While making sure queue is deleted
-         * all memory will be released.
-         *
-         * Downside of this approach is that even if we will have steady stream
-         * of single notifications, each time we will allocate new queue.
-         * Partial solution for this could allocating new queue only when
-         * previous queue exceeded some size limit, for example 128 items.
+         * With std::list as the underlying container, memory is freed
+         * incrementally on each pop(), so the queue no longer retains
+         * memory from past bursts. Recreating the queue is kept as a
+         * safety measure to release any residual container overhead.
          */
         m_queue = nullptr;
 
-        m_queue = std::make_shared<std::queue<NotificationItem>>();
+        m_queue = std::make_shared<std::queue<NotificationItem, std::list<NotificationItem>>>();
     }
 
     return true;
