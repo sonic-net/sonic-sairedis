@@ -714,6 +714,39 @@ sai_status_t SaiPlayer::handle_route(
     }
 }
 
+sai_status_t SaiPlayer::handle_my_sid(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_my_sid_entry_t my_sid_entry;
+    sai_deserialize_my_sid_entry(str_object_id, my_sid_entry);
+
+    my_sid_entry.switch_id = translate_local_to_redis(my_sid_entry.switch_id);
+    my_sid_entry.vr_id = translate_local_to_redis(my_sid_entry.vr_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&my_sid_entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&my_sid_entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&my_sid_entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&my_sid_entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("my_sid other apis not implemented");
+    }
+}
+
 sai_status_t SaiPlayer::handle_inseg(
         _In_ const std::string &str_object_id,
         _In_ sai_common_api_t api,
@@ -3068,6 +3101,10 @@ int SaiPlayer::replay()
 
             case SAI_OBJECT_TYPE_INSEG_ENTRY:
                 status = handle_inseg(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+                status = handle_my_sid(str_object_id, api, attr_count, attr_list);
                 break;
 
             case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:

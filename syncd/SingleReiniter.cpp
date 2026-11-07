@@ -60,6 +60,7 @@ std::shared_ptr<SaiSwitch> SingleReiniter::hardReinit()
     processRoutes(false);
     processInsegs();
     processNatEntries();
+    processMySidEntries();
 
 #ifdef ENABLE_PERF
 
@@ -124,6 +125,10 @@ void SingleReiniter::prepareAsicState()
 
             case SAI_OBJECT_TYPE_NAT_ENTRY:
                 m_nats[strObjectId] = key;
+                break;
+
+            case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+                m_mySids[strObjectId] = key;
                 break;
 
             case SAI_OBJECT_TYPE_SWITCH:
@@ -558,6 +563,44 @@ void SingleReiniter::processNatEntries()
 
             SWSS_LOG_THROW("failed to create_nat_entry %s: %s",
                     strNatEntry.c_str(),
+                    sai_serialize_status(status).c_str());
+        }
+    }
+}
+
+void SingleReiniter::processMySidEntries()
+{
+    SWSS_LOG_ENTER();
+
+    for (auto &kv: m_mySids)
+    {
+        const std::string &strMySidEntry = kv.first;
+        const std::string &asicKey = kv.second;
+
+        sai_object_meta_key_t meta_key;
+
+        meta_key.objecttype = SAI_OBJECT_TYPE_MY_SID_ENTRY;
+
+        sai_deserialize_my_sid_entry(strMySidEntry, meta_key.objectkey.key.my_sid_entry);
+
+        processStructNonObjectIds(meta_key);
+
+        std::shared_ptr<SaiAttributeList> list = m_attributesLists[asicKey];
+
+        sai_attribute_t *attrList = list->get_attr_list();
+
+        uint32_t attrCount = list->get_attr_count();
+
+        processAttributesForOids(SAI_OBJECT_TYPE_MY_SID_ENTRY, attrCount, attrList);
+
+        sai_status_t status = m_vendorSai->create(&meta_key.objectkey.key.my_sid_entry, attrCount, attrList);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            listFailedAttributes(SAI_OBJECT_TYPE_MY_SID_ENTRY, attrCount, attrList);
+
+            SWSS_LOG_THROW("failed to create_my_sid_entry %s: %s",
+                    strMySidEntry.c_str(),
                     sai_serialize_status(status).c_str());
         }
     }

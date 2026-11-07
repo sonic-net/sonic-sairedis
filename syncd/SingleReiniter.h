@@ -65,6 +65,8 @@ namespace syncd
 
             void processNatEntries();
 
+            void processMySidEntries();
+
             void processInsegs();
 
             sai_object_id_t processSingleVid(
@@ -118,6 +120,8 @@ namespace syncd
             StringHash m_neighbors;
             StringHash m_nats;
             StringHash m_insegs;
+            StringHash m_mySids;
+
 
             std::vector<std::string> m_asicKeys;
 
