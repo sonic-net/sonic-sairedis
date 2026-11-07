@@ -405,6 +405,19 @@ namespace sairedis
                     _In_ const std::string &serializedNotification,
                     _In_ const std::vector<swss::FieldValueTuple> &values);
 
+            /**
+             * @brief Handle an operator meta FDB debug command.
+             *
+             * Invoked from the RedisChannel notification thread when a command
+             * is published to SAIREDIS_META_FDB_DEBUG_CHANNEL. Wraps the command
+             * in a synthetic NotificationMetaFdbDebug and routes it through the
+             * notification callback so it runs under the sairedis API mutex.
+             */
+            void handleMetaDebug(
+                    _In_ const std::string &op,
+                    _In_ const std::string &data,
+                    _In_ const std::vector<swss::FieldValueTuple> &values);
+
             sai_status_t setRedisExtensionAttribute(
                     _In_ sai_object_type_t objectType,
                     _In_ sai_object_id_t objectId,
