@@ -1,0 +1,3 @@
+#! /usr/bin/dh-exec
+/usr/lib/${DEB_HOST_MULTIARCH}/libsaimetadata.so.0 /usr/lib/${DEB_HOST_MULTIARCH}/libsaimetadata.so
+/usr/lib/${DEB_HOST_MULTIARCH}/libsaimeta.so.0 /usr/lib/${DEB_HOST_MULTIARCH}/libsaimeta.so

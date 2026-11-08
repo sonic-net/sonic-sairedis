@@ -1,0 +1,4 @@
+; comment
+# comment
+error line
+0:ifname:1,2

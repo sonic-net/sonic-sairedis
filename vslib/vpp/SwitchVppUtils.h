@@ -1,0 +1,79 @@
+#pragma once
+
+extern "C" {
+#include "sai.h"
+}
+
+#include "swss/ipaddress.h"
+#include "swss/ipprefix.h"
+
+#include "vppxlate/SaiVppXlate.h"
+
+#define IP_CMD "/sbin/ip"
+
+#define PORTCHANNEL_PREFIX "PortChannel"
+
+#define BONDETHERNET_PREFIX "BondEthernet"
+
+#define VLAN_PREFIX "Vlan"
+
+#define BVI_PREFIX "bvi"
+
+/*
+ * LCP host-interface (tap) name of a bond. Deliberately not PORTCHANNEL_PREFIX:
+ * "PortChannel<N>" is the kernel bond netdev owned by teamd, and naming the tap
+ * after it would collide with that device.
+ */
+#define BOND_TAP_PREFIX "be"
+
+/*
+ * Kernel-only IP-in-IP mux tunnel interface created by swss tunnelmgrd on
+ * dual-ToR devices (must match TUNIF in sonic-swss cfgmgr/tunnelmgr.cpp).
+ * tunnelmgrd mirrors the Loopback3 address onto this netdev, so a prefix
+ * lookup can resolve to it instead of the real SONiC interface. It has no
+ * VPP representation and must never be selected for VPP IP programming.
+ */
+#define DUALTOR_TUNNEL_IF "tun0"
+
+#define CHECK_STATUS_W_MSG(status, msg, ...) {                                  \
+    sai_status_t _status = (status);                            \
+    if (_status != SAI_STATUS_SUCCESS) { \
+        char buffer[512]; \
+        snprintf(buffer, 512, msg, ##__VA_ARGS__); \
+        SWSS_LOG_ERROR("%s: status %d", buffer, status); \
+        return _status; } }
+
+#define CHECK_STATUS_QUIET(status) {                                  \
+    sai_status_t _status = (status);                            \
+    if (_status != SAI_STATUS_SUCCESS) { return _status; } }
+
+namespace saivs
+{
+    sai_status_t find_attrib_in_list(
+            _In_ uint32_t                       attr_count,
+            _In_ const sai_attribute_t         *attr_list,
+            _In_ sai_attr_id_t                  attrib_id,
+            _Out_ const sai_attribute_value_t **attr_value,
+            _Out_ uint32_t                     *index);
+
+    int getPrefixLenFromAddrMask(const uint8_t *addr, int len);
+
+    swss::IpPrefix getIpPrefixFromSaiPrefix(const sai_ip_prefix_t& src);
+
+    sai_ip_prefix_t& subnet(sai_ip_prefix_t& dst, const sai_ip_prefix_t& src);
+
+    sai_ip_prefix_t& copy(sai_ip_prefix_t& dst, const swss::IpPrefix& src);
+
+    void sai_ip_address_t_to_vpp_ip_addr_t(sai_ip_address_t& src, vpp_ip_addr_t& dst);
+
+    /* Utility function for IP addr translation from VS to SAI */
+    void vpp_ip_addr_t_to_sai_ip_address_t(vpp_ip_addr_t& src, sai_ip_address_t& dst);
+
+    bool sai_ip_address_equal(const sai_ip_address_t &a, const sai_ip_address_t &b);
+
+    // Cache successful startup-state queries only; errors remain retryable.
+    sai_status_t sonicExtFeatureEnabled(const char *feature, bool& enabled);
+
+    // Legacy optional-feature callers treat query failures as disabled.
+    bool sonicExtFeatureEnabled(const char *feature);
+}

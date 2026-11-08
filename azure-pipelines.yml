@@ -1,0 +1,302 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+pr:
+- master
+- 202???
+- 201???
+
+trigger:
+  batch: true
+  branches:
+    include:
+    - master
+    - 202???
+    - 201???
+
+# this part need to be set in UI
+schedules:
+- cron: "0 0 * * 6"
+  displayName: Weekly build
+  branches:
+    include:
+    - master
+    - 202???
+    - 201???
+  always: true
+
+resources:
+  repositories:
+  - repository: sonic-swss
+    type: github
+    name: sonic-net/sonic-swss
+    endpoint: sonic-net
+    ref: refs/heads/master
+  - repository: sonic_swss_common
+    type: github
+    name: sonic-net/sonic-swss-common
+    endpoint: sonic-net
+    ref: refs/heads/master
+
+parameters:
+  - name: debian_version
+    type: string
+    default: bookworm
+  - name: vpp_run_id
+    type: string
+    default: ''
+  # Select containers/dependencies for manual PR-merge validation, not checkout.
+  - name: manual_target_branch
+    type: string
+    default: ''
+variables:
+  - name: BUILD_BRANCH
+    ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+      value: $(System.PullRequest.TargetBranch)
+    ${{ elseif ne(parameters.manual_target_branch, '') }}:
+      value: ${{ parameters.manual_target_branch }}
+    ${{ else }}:
+      value: $(Build.SourceBranchName)
+
+stages:
+- stage: Build
+
+  jobs:
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: amd64
+      pool: sonicso1ES-amd64
+      artifact_name: sonic-sairedis-${{ parameters.debian_version }}
+      syslog_artifact_name: sonic-sairedis.syslog
+      run_unit_test: true
+      archive_gcov: true
+      debian_version: ${{ parameters.debian_version }}
+      vpp_run_id: ${{ parameters.vpp_run_id }}
+
+- stage: BuildAsan
+  dependsOn: []
+  jobs:
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: amd64
+      pool: sonicso1ES-amd64
+      artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
+      syslog_artifact_name: sonic-sairedis-asan.syslog
+      asan: true
+      run_unit_test: true
+      archive_gcov: false
+      debian_version: ${{ parameters.debian_version }}
+      vpp_run_id: ${{ parameters.vpp_run_id }}
+
+- stage: BuildArm
+  dependsOn: []
+  jobs:
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: armhf
+      timeout: 180
+      pool: sonicso1ES-armhf
+      artifact_name: sonic-sairedis-${{ parameters.debian_version }}.armhf
+      syslog_artifact_name: sonic-sairedis.syslog.armhf
+      debian_version: ${{ parameters.debian_version }}
+
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: arm64
+      timeout: 180
+      pool: sonicso1ES-arm64
+      artifact_name: sonic-sairedis-${{ parameters.debian_version }}.arm64
+      syslog_artifact_name: sonic-sairedis.syslog.arm64
+      debian_version: ${{ parameters.debian_version }}
+
+- stage: BuildTrixie
+  dependsOn: []
+  jobs:
+  - job: ResolveVpp
+    displayName: Resolve VPP build
+    pool:
+      vmImage: 'ubuntu-22.04'
+    steps:
+    - ${{ if eq(parameters.vpp_run_id, '') }}:
+      - task: DownloadPipelineArtifact@2
+        name: downloadVpp
+        inputs:
+          source: specific
+          project: build
+          pipeline: sonic-net.sonic-platform-vpp
+          artifact: vpp-trixie
+          path: $(Build.ArtifactStagingDirectory)/vpp-resolution
+          runVersion: latestFromBranch
+          runBranch: refs/heads/$(BUILD_BRANCH)
+          allowPartiallySucceededBuilds: true
+        displayName: Resolve latest successful sonic platform-vpp build
+    - ${{ if ne(parameters.vpp_run_id, '') }}:
+      - task: DownloadPipelineArtifact@2
+        name: downloadVpp
+        inputs:
+          source: specific
+          project: build
+          pipeline: sonic-net.sonic-platform-vpp
+          artifact: vpp-trixie
+          path: $(Build.ArtifactStagingDirectory)/vpp-resolution
+          runVersion: specific
+          runId: ${{ parameters.vpp_run_id }}
+          allowPartiallySucceededBuilds: true
+        displayName: Download requested sonic platform-vpp build
+    - ${{ if eq(parameters.vpp_run_id, '') }}:
+      - script: |
+          set -euo pipefail
+          vpp_run_id="$(downloadVpp.BuildNumber)"
+          test -n "$vpp_run_id"
+          printf '%s\n' "$vpp_run_id" > "$(Build.ArtifactStagingDirectory)/vpp-resolution/vpp-source-build-id.txt"
+          echo "Resolved sonic platform-vpp run ID: $vpp_run_id"
+          echo "##vso[task.setvariable variable=VPP_RUN_ID;isOutput=true]$vpp_run_id"
+        name: resolveVppRun
+        displayName: Publish resolved VPP run ID
+    - ${{ if ne(parameters.vpp_run_id, '') }}:
+      - script: |
+          set -euo pipefail
+          vpp_run_id="${{ parameters.vpp_run_id }}"
+          test -n "$vpp_run_id"
+          printf '%s\n' "$vpp_run_id" > "$(Build.ArtifactStagingDirectory)/vpp-resolution/vpp-source-build-id.txt"
+          echo "Using requested sonic platform-vpp run ID: $vpp_run_id"
+          echo "##vso[task.setvariable variable=VPP_RUN_ID;isOutput=true]$vpp_run_id"
+        name: resolveVppRun
+        displayName: Publish requested VPP run ID
+    - publish: $(Build.ArtifactStagingDirectory)/vpp-resolution
+      artifact: vpp-resolved-trixie
+      displayName: Archive resolved VPP packages
+
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: amd64
+      pool: sonicso1ES-amd64
+      depends_on: ResolveVpp
+      staged_upstreams:
+      - artifact: vpp-resolved-trixie
+        name: vpp
+      artifact_name: sonic-sairedis-trixie
+      syslog_artifact_name: sonic-sairedis-trixie.syslog
+      run_unit_test: true
+      saithrift_v2: true
+      debian_version: trixie
+
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: armhf
+      timeout: 180
+      pool: sonicso1ES-armhf
+      artifact_name: sonic-sairedis-trixie.armhf
+      syslog_artifact_name: sonic-sairedis-trixie.syslog.armhf
+      debian_version: trixie
+
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: arm64
+      timeout: 180
+      pool: sonicso1ES-arm64
+      artifact_name: sonic-sairedis-trixie.arm64
+      syslog_artifact_name: sonic-sairedis-trixie.syslog.arm64
+      debian_version: trixie
+
+- stage: BuildSaiTestVpp
+  dependsOn: BuildTrixie
+  condition: succeeded('BuildTrixie')
+  variables:
+    VPP_RUN_ID: $[ stageDependencies.BuildTrixie.ResolveVpp.outputs['resolveVppRun.VPP_RUN_ID'] ]
+  jobs:
+  - template: .azure-pipelines/build-docker-sai-test-vpp-template.yml
+    parameters:
+      timeout: 90
+      sairedis_artifact_name: sonic-sairedis-trixie
+      swss_common_artifact_name: sonic-swss-common-trixie
+      vpp_artifact_name: vpp-resolved-trixie
+      artifact_name: docker-sai-test-vpp
+      vpp_run_id: $(VPP_RUN_ID)
+
+- stage: TestSaiVpp
+  dependsOn: BuildSaiTestVpp
+  condition: succeeded('BuildSaiTestVpp')
+  jobs:
+  - template: .azure-pipelines/test-sai-vpp-template.yml
+    parameters:
+      image_artifact_name: docker-sai-test-vpp
+      log_artifact_name: sai-vpp-test-results
+
+- stage: BuildSwss
+  dependsOn: Build
+  condition: succeeded('Build')
+  jobs:
+  - template: .azure-pipelines/build-template.yml@sonic-swss
+    parameters:
+      repo: sonic-swss
+      arch: amd64
+      timeout: 90
+      pool: sonicso1ES-amd64
+      artifact_name: sonic-swss-${{ parameters.debian_version }}
+      debian_version: ${{ parameters.debian_version }}
+      staged_upstreams:
+        - artifact: sonic-sairedis-${{ parameters.debian_version }}
+          name: sonic-sairedis
+
+- stage: BuildDocker
+  dependsOn: BuildSwss
+  condition: succeeded('BuildSwss')
+  jobs:
+  - template: .azure-pipelines/build-docker-sonic-vs-template.yml@sonic-swss
+    parameters:
+      repo: sonic-swss
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      sairedis_artifact_name: sonic-sairedis-${{ parameters.debian_version }}
+      sairedis_current_run: true
+      swss_artifact_name: sonic-swss-${{ parameters.debian_version }}
+      artifact_name: docker-sonic-vs
+      debug_pkg: libsairedis-dbgsym
+      include_gcov: false
+      include_vpp: true
+
+- stage: BuildDockerAsan
+  dependsOn:
+    - BuildAsan
+    - BuildSwss
+  condition: and(succeeded('BuildAsan'), succeeded('BuildSwss'))
+  jobs:
+  - template: .azure-pipelines/build-docker-sonic-vs-template.yml@sonic-swss
+    parameters:
+      repo: sonic-swss
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      sairedis_artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
+      sairedis_current_run: true
+      swss_artifact_name: sonic-swss-${{ parameters.debian_version }}
+      artifact_name: docker-sonic-vs-asan
+      debug_pkg: libsairedis-dbgsym
+      include_gcov: false
+      include_vpp: true
+      asan: true
+
+- stage: Test
+  dependsOn: BuildDocker
+  condition: succeeded('BuildDocker')
+  jobs:
+  - template: .azure-pipelines/test-docker-sonic-vs-template.yml@sonic-swss
+    parameters:
+      repo: sonic-swss
+      timeout: 360
+      log_artifact_name: log
+      debian_version: ${{ parameters.debian_version }}
+
+- stage: TestAsan
+  dependsOn: BuildDockerAsan
+  condition: succeeded('BuildDockerAsan')
+  jobs:
+  - template: .azure-pipelines/test-docker-sonic-vs-template.yml@sonic-swss
+    parameters:
+      repo: sonic-swss
+      timeout: 360
+      docker_sonic_vs_name: docker-sonic-vs-asan
+      log_artifact_name: log-asan
+      asan: true
+      continue_on_error: true
+      debian_version: ${{ parameters.debian_version }}

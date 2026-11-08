@@ -1,0 +1,819 @@
+/*
+ * Copyright (c) 2023 Cisco and/or its affiliates.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifndef __SAI_VPP_XLATE_H_
+#define __SAI_VPP_XLATE_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <netinet/in.h>
+#include <stdbool.h>
+#include <stdint.h>
+
+    typedef enum {
+	VPP_NEXTHOP_NORMAL = 1,
+    VPP_NEXTHOP_LOCAL = 2,
+    VPP_NEXTHOP_DROP = 3
+    } vpp_nexthop_type_e;
+
+    /* Maximum MPLS label stack depth carried on a single fib path (VPP API limit). */
+#define VPP_MPLS_MAX_LABELS 16
+    /*
+     * TTL used for an imposed label when the SAI next hop does not carry an
+     * explicit one, i.e. when SAI_NEXT_HOP_ATTR_OUTSEG_TTL_MODE is UNIFORM (the
+     * SAI default) and the TTL is therefore taken from the payload rather than
+     * from SAI_NEXT_HOP_ATTR_OUTSEG_TTL_VALUE.
+     */
+#define MPLS_DEFAULT_OUT_TTL 64
+
+typedef struct vpp_ip_addr_ {
+	int sa_family;
+	union {
+	    struct sockaddr_in ip4;
+	    struct sockaddr_in6 ip6;
+	} addr;
+    } vpp_ip_addr_t;
+
+    typedef struct vpp_ip_nexthop_ {
+	    vpp_ip_addr_t addr;
+        uint32_t      sw_if_index;
+        const char *hwif_name;
+	uint8_t weight;
+        uint8_t preference;
+	vpp_nexthop_type_e type;
+        uint32_t flags;
+        uint8_t n_labels;
+        /*
+         * Labels imposed on an IP route (ingress LER). SAI models the TTL and
+         * EXP treatment per next hop rather than per label
+         * (SAI_NEXT_HOP_ATTR_OUTSEG_{TTL,EXP}_{MODE,VALUE}), so the label
+         * values are carried here and the treatment below is applied to every
+         * label in the stack when the VPP fib path is built.
+         */
+        uint32_t label_stack[VPP_MPLS_MAX_LABELS];
+        uint8_t out_ttl;         /* TTL for imposed labels (PIPE mode uses the SAI value) */
+        uint8_t out_exp;         /* EXP for imposed labels */
+        uint8_t out_is_uniform;  /* 1 = UNIFORM (derive from payload), 0 = PIPE */
+    } vpp_ip_nexthop_t;
+
+    typedef struct vpp_ip_route_ {
+	vpp_ip_addr_t prefix_addr;
+	unsigned int prefix_len;
+        uint32_t vrf_id;
+        bool is_multipath;
+        unsigned int nexthop_cnt;
+        vpp_ip_nexthop_t nexthop[0];
+    } vpp_ip_route_t;
+
+    typedef enum  {
+        VPP_ACL_ACTION_API_DENY = 0,
+        VPP_ACL_ACTION_API_PERMIT = 1,
+        VPP_ACL_ACTION_API_PERMIT_STFULL = 2,
+        VPP_ACL_ACTION_PERMIT_MIRROR = 3,
+    } vpp_acl_action_e;
+
+/*
+ * Packed mirror action carried on a PERMIT_MIRROR rule: destination
+ * sw_if_index in bits 27:0, action flags in bits 31:28.
+ */
+#define VPP_ACL_MIRROR_SW_IF_INDEX_MASK 0x0fffffffU
+#define VPP_ACL_MIRROR_FLAGS_SHIFT 28
+#define VPP_ACL_MIRROR_F_DEFERRED (1U << 0)
+#define VPP_ACL_MIRROR_FLAGS_MASK 0xfU
+
+#ifdef __cplusplus
+static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
+               (VPP_ACL_MIRROR_FLAGS_MASK << VPP_ACL_MIRROR_FLAGS_SHIFT)) ==
+                  UINT32_MAX,
+              "packed ACL mirror action must cover exactly 32 bits");
+#else
+_Static_assert((VPP_ACL_MIRROR_SW_IF_INDEX_MASK |
+                (VPP_ACL_MIRROR_FLAGS_MASK << VPP_ACL_MIRROR_FLAGS_SHIFT)) ==
+                   UINT32_MAX,
+               "packed ACL mirror action must cover exactly 32 bits");
+#endif
+
+    typedef struct  _vpp_acl_rule {
+        vpp_acl_action_e action;
+        vpp_ip_addr_t src_prefix;
+        vpp_ip_addr_t src_prefix_mask;
+        vpp_ip_addr_t dst_prefix;
+        vpp_ip_addr_t dst_prefix_mask;
+        int proto;
+        uint16_t srcport_or_icmptype_first;
+        uint16_t srcport_or_icmptype_last;
+        uint16_t dstport_or_icmpcode_first;
+        uint16_t dstport_or_icmpcode_last;
+        uint8_t tcp_flags_mask;
+        uint8_t tcp_flags_value;
+        uint32_t mirror_action;
+        /*
+         * Match only packets received on this interface. Empty for any, which
+         * is what a rule with no SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS gets. The
+         * name is resolved to a VPP sw_if_index when the rule is programmed.
+         */
+        char in_hwif_name[64];
+    } vpp_acl_rule_t;
+
+    typedef struct _vpp_acl_ {
+        char *acl_name;
+        uint32_t count;
+        vpp_acl_rule_t rules[0];
+    } vpp_acl_t;
+
+    /*
+     * Policy Based Hashing.
+     *
+     * These mirror the sonic_ext plugin's sonic_ext_pbh_hash_field_t and
+     * sonic_ext_pbh_rule_t.  The values of the field and qualifier enums are
+     * part of the binary API contract and must stay in step with pbh.h in the
+     * plugin; they are spelled out here rather than pulled from the generated
+     * api_enum.h because the qualifier bitmap is built from an X-macro that
+     * vppapigen does not export.
+     */
+    typedef enum {
+        VPP_PBH_HF_INNER_IP_PROTOCOL = 0,
+        VPP_PBH_HF_INNER_L4_SRC_PORT,
+        VPP_PBH_HF_INNER_L4_DST_PORT,
+        VPP_PBH_HF_INNER_SRC_IPV4,
+        VPP_PBH_HF_INNER_DST_IPV4,
+        VPP_PBH_HF_INNER_SRC_IPV6,
+        VPP_PBH_HF_INNER_DST_IPV6,
+    } vpp_pbh_hash_field_e;
+
+    typedef enum {
+        VPP_PBH_Q_ETHER_TYPE       = (1 << 0),
+        VPP_PBH_Q_IP_PROTOCOL      = (1 << 1),
+        VPP_PBH_Q_IPV6_NEXT_HEADER = (1 << 2),
+        VPP_PBH_Q_L4_DST_PORT      = (1 << 3),
+        VPP_PBH_Q_GRE_KEY          = (1 << 4),
+        VPP_PBH_Q_INNER_ETHER_TYPE = (1 << 5),
+    } vpp_pbh_qualifier_e;
+
+    typedef struct _vpp_pbh_hash_field {
+        uint8_t field;          /* vpp_pbh_hash_field_e */
+        uint32_t sequence_id;   /* order; equal ids are XOR-folded together */
+        uint8_t mask[16];       /* wire order; ignored by non-IP fields */
+    } vpp_pbh_hash_field_t;
+
+    typedef struct _vpp_pbh_rule {
+        uint32_t rule_id;       /* caller's id, echoed by `show` */
+        uint32_t priority;      /* higher wins; first match stops the walk */
+        uint32_t qualifiers;    /* bitmap of vpp_pbh_qualifier_e */
+        uint16_t ether_type;
+        uint16_t inner_ether_type;
+        uint16_t l4_dst_port;
+        uint8_t ip_protocol;
+        uint8_t ipv6_next_header;
+        uint32_t gre_key;
+        uint32_t gre_key_mask;
+        uint32_t ecmp_profile;  /* profile index, ~0 for no action */
+        uint32_t lag_profile;   /* profile index, ~0 for no action */
+        bool flow_counter;
+    } vpp_pbh_rule_t;
+
+    typedef struct {
+        vpp_ip_addr_t dst_prefix;
+        vpp_ip_addr_t dst_prefix_mask;
+        char hwif_name[64];
+        uint8_t  ip_protocol;
+        vpp_ip_addr_t next_hop_ip;
+    } vpp_tunterm_acl_rule_t;
+
+    typedef struct _vpp_tunterm_acl_ {
+        char *acl_name;
+        uint32_t count;
+        vpp_tunterm_acl_rule_t rules[0];
+    } vpp_tunterm_acl_t;
+
+    /* CoPP: SAI POLICER -> VPP native policer (vnet/policer) */
+    typedef enum {
+        VPP_POLICER_RATE_KBPS = 0,
+        VPP_POLICER_RATE_PPS = 1,
+    } vpp_policer_rate_type_e;
+
+    typedef enum {
+        VPP_POLICER_ROUND_CLOSEST = 0,
+        VPP_POLICER_ROUND_UP = 1,
+        VPP_POLICER_ROUND_DOWN = 2,
+    } vpp_policer_round_type_e;
+
+    typedef enum {
+        VPP_POLICER_TYPE_1R2C = 0,
+        VPP_POLICER_TYPE_1R3C_RFC2697 = 1,
+        VPP_POLICER_TYPE_2R3C_RFC2698 = 2,
+        VPP_POLICER_TYPE_2R3C_RFC4115 = 3,
+        VPP_POLICER_TYPE_2R3C_MEF5CF1 = 4,
+    } vpp_policer_type_e;
+
+    typedef enum {
+        VPP_POLICER_ACTION_DROP = 0,
+        VPP_POLICER_ACTION_TRANSMIT = 1,
+        VPP_POLICER_ACTION_MARK_AND_TRANSMIT = 2,
+    } vpp_policer_action_e;
+
+    typedef struct _vpp_policer_ {
+        char name[64];
+        uint32_t cir;
+        uint32_t eir;
+        uint64_t cb;
+        uint64_t eb;
+        vpp_policer_rate_type_e rate_type;
+        vpp_policer_round_type_e round_type;
+        vpp_policer_type_e type;
+        bool color_aware;
+        vpp_policer_action_e conform_action;
+        vpp_policer_action_e exceed_action;
+        vpp_policer_action_e violate_action;
+    } vpp_policer_t;
+
+    typedef struct _vpp_policer_counters_ {
+        uint64_t green_packets;
+        uint64_t green_bytes;
+        uint64_t yellow_packets;
+        uint64_t yellow_bytes;
+        uint64_t red_packets;
+        uint64_t red_bytes;
+    } vpp_policer_counters_t;
+
+
+    typedef enum {
+        VPP_IP_API_FLOW_HASH_SRC_IP = 1,
+        VPP_IP_API_FLOW_HASH_DST_IP = 2,
+        VPP_IP_API_FLOW_HASH_SRC_PORT = 4,
+        VPP_IP_API_FLOW_HASH_DST_PORT = 8,
+        VPP_IP_API_FLOW_HASH_PROTO = 16,
+        VPP_IP_API_FLOW_HASH_REVERSE = 32,
+        VPP_IP_API_FLOW_HASH_SYMETRIC = 64,
+        VPP_IP_API_FLOW_HASH_FLOW_LABEL = 128,
+        VPP_IP_API_FLOW_HASH_GTPV1_TEID = 256,
+        VPP_IP_API_FLOW_HASH_PEEK_INNER = 512,
+    } vpp_ip_flow_hash_mask_e;
+
+    typedef enum {
+        VPP_API_BFD_STATE_ADMIN_DOWN = 0,
+        VPP_API_BFD_STATE_DOWN = 1,
+        VPP_API_BFD_STATE_INIT = 2,
+        VPP_API_BFD_STATE_UP = 3,
+    } vpp_api_bfd_state_e;
+
+    typedef struct vpp_intf_status_ {
+	char hwif_name[64];
+	bool link_up;
+    } vpp_intf_status_t;
+
+    typedef struct vpp_bfd_state_notif_ {
+        bool                multihop;
+        uint32_t            sw_if_index;
+        vpp_ip_addr_t       local_addr;
+        vpp_ip_addr_t       peer_addr;
+        vpp_api_bfd_state_e state;
+    } vpp_bfd_state_notif_t;
+
+    typedef enum {
+	VPP_INTF_LINK_STATUS = 1,
+        VPP_BFD_STATE_CHANGE,
+        /*
+         * No data. Link events VPP sent while the event connection was down
+         * are lost: the consumer re-reads the link state of every interface.
+         * Queued behind the events read before the connection failed.
+         */
+        VPP_INTF_LINK_RESYNC,
+        /*
+         * No data. Like VPP_INTF_LINK_RESYNC, for BFD events: the consumer
+         * re-reads the state of every BFD session (vpp_bfd_session_dump()).
+         */
+        VPP_BFD_RESYNC,
+    } vpp_event_type_e;
+
+    typedef union vpp_event_data_ {
+       vpp_intf_status_t     intf_status;
+       vpp_bfd_state_notif_t bfd_notif;
+    } vpp_event_data_t;
+
+    typedef struct vpp_my_sid_entry_ {
+        vpp_ip_addr_t localsid;
+        bool end_psp;
+        uint32_t behavior;
+        char hwif_name[64];
+        uint32_t vlan_index;
+        uint32_t fib_table;
+        vpp_ip_addr_t nh_addr;
+        uint8_t locator_block_len;
+        uint8_t locator_node_len;
+        uint8_t function_len;
+        uint8_t args_len;
+    } vpp_my_sid_entry_t;
+
+    typedef struct vpp_sid_list_ {
+        uint8_t num_sids;
+        vpp_ip_addr_t sids[16];
+    } vpp_sids_t;
+
+    typedef struct vpp_sidlist_ {
+        vpp_ip_addr_t bsid;
+        uint32_t weight;
+        bool is_encap;
+        uint8_t type;
+        uint32_t fib_table;
+        vpp_sids_t sids;
+        vpp_ip_addr_t encap_src;
+    } vpp_sidlist_t;
+
+    typedef struct vpp_prefix_ {
+        vpp_ip_addr_t address;
+        uint8_t prefix_len;
+    } vpp_prefix_t;
+
+    typedef struct vpp_sr_steer_ {
+        bool is_del;
+        vpp_ip_addr_t bsid;
+        uint32_t fib_table;
+        vpp_prefix_t prefix;
+    } vpp_sr_steer_t;
+
+    typedef struct vpp_mpls_label_ {
+        uint32_t label;
+        uint8_t  ttl;
+        uint8_t  exp;
+        uint8_t  is_uniform;
+    } vpp_mpls_label_t;
+
+    typedef struct vpp_mpls_nexthop_ {
+        vpp_ip_addr_t addr;
+        uint32_t      sw_if_index;
+        const char   *hwif_name;
+        uint8_t       weight;
+        uint8_t       preference;
+        vpp_nexthop_type_e type;
+        uint8_t       n_labels;
+        vpp_mpls_label_t label_stack[VPP_MPLS_MAX_LABELS];
+    } vpp_mpls_nexthop_t;
+
+    typedef struct vpp_mpls_route_ {
+        uint32_t      table_id;
+        uint32_t      label;
+        uint8_t       eos;
+        int           eos_proto_af;   /* AF_INET / AF_INET6 for post-pop lookup proto */
+        bool          is_multipath;
+        unsigned int  nexthop_cnt;
+        vpp_mpls_nexthop_t nexthop[0];
+    } vpp_mpls_route_t;
+
+
+    typedef struct vpp_event_info_ {
+	struct vpp_event_info_ *next;
+	vpp_event_type_e type;
+	vpp_event_data_t data;
+    } vpp_event_info_t;
+
+    typedef void (*vpp_event_free_fn)(vpp_event_info_t *);
+
+    typedef struct vpp_event_queue_ {
+	vpp_event_info_t *head;
+	vpp_event_info_t **tail;
+	vpp_event_free_fn free;
+    } vpp_event_queue_t;
+
+/* VTR config options for API support */
+typedef enum
+{
+  L2_VTR_DISABLED,
+  L2_VTR_PUSH_1,
+  L2_VTR_PUSH_2,
+  L2_VTR_POP_1,
+  L2_VTR_POP_2,
+  L2_VTR_TRANSLATE_1_1,
+  L2_VTR_TRANSLATE_1_2,
+  L2_VTR_TRANSLATE_2_1,
+  L2_VTR_TRANSLATE_2_2
+} vpp_l2_vtr_op_t;
+
+/*
+ * VLAN tagging type
+ */
+typedef enum
+{
+  VLAN_DOT1AD,
+  VLAN_DOT1Q
+} vpp_vlan_type_t;
+typedef enum {
+    VPP_API_PORT_TYPE_NORMAL = 0,
+    VPP_API_PORT_TYPE_BVI = 1,
+    VPP_API_PORT_TYPE_UU_FWD = 2,
+} vpp_l2_port_type_t;
+
+typedef enum {
+    VPP_BD_FLAG_NONE = 0,
+    VPP_BD_FLAG_LEARN = 1,
+    VPP_BD_FLAG_FWD = 2,
+    VPP_BD_FLAG_FLOOD = 4,
+    VPP_BD_FLAG_UU_FLOOD = 8,
+    VPP_BD_FLAG_ARP_TERM = 16,
+    VPP_BD_FLAG_ARP_UFWD = 32,
+} vpp_bd_flags_t;
+
+typedef enum {
+  VPP_BOND_API_MODE_ROUND_ROBIN = 1,
+  VPP_BOND_API_MODE_ACTIVE_BACKUP = 2,
+  VPP_BOND_API_MODE_XOR = 3,
+  VPP_BOND_API_MODE_BROADCAST = 4,
+  VPP_BOND_API_MODE_LACP = 5,
+}  vpp_bond_mode;
+
+
+typedef enum {
+  VPP_BOND_API_LB_ALGO_L2 = 0,
+  VPP_BOND_API_LB_ALGO_L34 = 1,
+  VPP_BOND_API_LB_ALGO_L23 = 2,
+  VPP_BOND_API_LB_ALGO_RR = 3,
+  VPP_BOND_API_LB_ALGO_BC = 4,
+  VPP_BOND_API_LB_ALGO_AB = 5,
+  /*
+   * VPP's inner-aware LAG hash algorithm (added in
+   * sonic-platform-vpp patch 0010-sonic-inner-aware-flow-hash).
+   * Mirrors BOND_API_LB_ALGO_L34_INNER in src/vnet/bonding/bond.api,
+   * which is annotated [backwards_compatible] so adding this value
+   * does not change the CRC of any bond_create* /
+   * sw_interface_bond_details / sw_bond_interface_details message.
+   */
+  VPP_BOND_API_LB_ALGO_L34_INNER = 6,
+}  vpp_bond_lb_algo;
+
+    /* SONiC VNET decap-any: high bit of the wire decap_next_index used to flag
+     * a source-independent decap term to the VPP vxlan patch. Must match
+     * VXLAN_DECAP_ANY_FLAG in the VPP 0017 patch (src/plugins/vxlan/vxlan.h).
+     * This encoding requires a VPP built with sonic-platform-vpp patch 0017:
+     * an older VPP without it reads decap_next_index = 0x80000001 as a raw next
+     * index (undefined behaviour) instead of failing cleanly, so saivpp and the
+     * VPP image must be built and version-locked together (see VPP_VERSION in
+     * sonic-platform-vpp rules/vpp.mk). */
+#define VPP_VXLAN_DECAP_ANY_FLAG (1u << 31)
+    /* Default decap next index (VXLAN_INPUT_NEXT_L2_INPUT) sent alongside the
+     * flag so the stripped low bits remain a valid next index. */
+#define VPP_VXLAN_DECAP_NEXT_L2_INPUT 1u
+
+    typedef struct  _vpp_vxlan_tunnel {
+        vpp_ip_addr_t src_address;
+        vpp_ip_addr_t dst_address;
+        uint16_t      src_port;
+        uint16_t      dst_port;
+        uint32_t      vni;
+        uint32_t      instance; /* If non-~0, specifies a custom dev instance */
+        uint32_t      mcast_sw_if_index;
+        uint32_t      encap_vrf_id;
+        uint32_t      decap_next_index;
+        bool          is_l3;
+        /* SONiC VNET decap-any: mark this as a secondary-VTEP source-independent
+         * decap term. Emitted to VPP in the high bit of the wire decap_next_index
+         * (VPP_VXLAN_DECAP_ANY_FLAG); the VPP patch decodes and strips it. */
+        bool          decap_any;
+     } vpp_vxlan_tunnel_t;
+
+    typedef struct _vpp_ipip_tunnel {
+        vpp_ip_addr_t src_address;
+        vpp_ip_addr_t dst_address;
+        uint32_t      table_id;         // underlay VRF
+        uint8_t       flags;            // tunnel_encap_decap_flags
+        uint8_t       mode;             // 0=P2P, 1=MP
+        uint8_t       dscp;             // fixed DSCP value
+        uint32_t      instance;         // ~0 for auto
+    } vpp_ipip_tunnel_t;
+
+    extern vpp_event_info_t * vpp_ev_dequeue();
+    extern void vpp_ev_free(vpp_event_info_t *evp);
+
+    extern int init_vpp_client();
+    extern int refresh_interfaces_list();
+    extern int configure_lcp_interface(const char *hwif_name, const char *hostif_name, bool is_add);
+    extern int create_loopback_instance(const char *hwif_name, uint32_t instance);
+    extern int delete_loopback(const char *hwif_name, uint32_t instance);
+    extern int get_sw_if_idx(const char *ifname);
+    extern int create_sub_interface(const char *hwif_name, uint32_t sub_id, uint16_t vlan_id);
+    extern int delete_sub_interface(const char *hwif_name, uint32_t sub_id);
+    extern int set_interface_vrf(const char *hwif_name, uint32_t sub_id, uint32_t vrf_id, bool is_ipv6);
+    extern int get_interface_vrf(const char *hwif_name, bool is_ipv6, uint32_t *vrf_id);
+    extern int interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add);
+    extern int interface_ip_address_del_all(const char *hwif_name);
+    extern int interface_set_state (const char *hwif_name, bool is_up);
+    typedef struct {
+        uint32_t mtu[4];
+        bool admin_up;
+        bool link_up;
+    } vpp_interface_state_t;
+    extern int get_interface_state(const char *hwif_name, vpp_interface_state_t *state);
+    extern int get_interface_mpls_enabled(const char *hwif_name, bool *enabled);
+    extern int interface_set_state_by_index (uint32_t sw_if_index, bool is_up);
+    extern int interface_set_promiscuous (const char *hwif_name, bool enable);
+    extern int hw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
+    extern int sw_interface_set_mtu(const char *hwif_name, uint32_t mtu);
+    extern int sw_interface_set_mtu_all(const char *hwif_name, const uint32_t mtu[4]);
+    extern int sw_interface_set_link_speed(const char *hwif_name, uint32_t link_speed);
+    extern int sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address);
+    extern int sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address);
+    extern int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable);
+    extern int ip_vrf_add(uint32_t vrf_id, const char *vrf_name, bool is_ipv6);
+    extern int ip_vrf_del(uint32_t vrf_id, const char *vrf_name, bool is_ipv6);
+
+    extern int ip4_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct sockaddr_in *addr,
+			       bool is_static, bool no_fib_entry, uint8_t *mac, bool is_add);
+    extern int ip6_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct sockaddr_in6 *addr,
+			       bool is_static, bool no_fib_entry, uint8_t *mac, bool is_add);
+    extern int ip_route_add_del(vpp_ip_route_t *prefix, bool is_add);
+    extern int ip_route_add_del_get_stats(vpp_ip_route_t *prefix, bool is_add, uint32_t *stats_index);
+    extern int vpp_ip_flow_hash_set(uint32_t vrf_id, uint32_t mask, int addr_family);
+    extern int vpp_ip_flow_hash_router_id_set(uint32_t router_id);
+
+    extern int vpp_acl_add_replace(vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace);
+    extern int vpp_acl_del(uint32_t acl_index);
+    extern int vpp_sonic_ext_egress_mirror_enable_disable(bool enable);
+    extern int vpp_sonic_ext_mirror_encap_fixup_enable_disable(uint32_t sw_if_index,
+				      uint16_t gre_protocol, uint8_t ttl, bool enable);
+
+    /* CoPP policer: create/replace, delete, and read counters for a VPP
+     * native policer backing a SAI_OBJECT_TYPE_POLICER. */
+    extern int vpp_policer_add_replace(vpp_policer_t *in_policer, uint32_t *policer_index, bool is_replace);
+    extern int vpp_policer_del(uint32_t policer_index);
+    extern int vpp_policer_get_counters(uint32_t policer_index, vpp_policer_counters_t *counters);
+
+    /* interface-output-arc ethertype -> policer binding */
+    extern int vpp_sonic_ext_copp_ifout_bind(uint16_t ethertype,
+            const char *policer_name, bool is_bind, bool match_ip4_ttl_expiring);
+    extern int vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add);
+    extern int vpp_sonic_ext_copp_ip2me_bind(const char *policer_name, bool is_bind);
+    extern int vpp_sonic_ext_copp_ip2me_bind_condition(const char *policer_name, uint16_t tcp_port, bool is_bind);
+    extern int vpp_sonic_ext_copp_ttl_punt_bind(bool is_bind);
+    extern int vpp_acl_interface_bind(const char *hwif_name, uint32_t acl_index,
+				      bool is_input);
+    extern int vpp_acl_interface_unbind(const char *hwif_name, uint32_t acl_index,
+					bool is_input);
+    /*
+     * PBH.  profile_index and table_index are allocated by VPP and returned;
+     * pass ~0 in *table_index to create a table rather than replace one.
+     * Counters are deliberately absent: they are read from the stats segment
+     * by vpp_rule_stats_query(), not over the binary API.
+     */
+    extern int vpp_pbh_profile_add_del(bool is_add,
+				       const vpp_pbh_hash_field_t *fields,
+				       uint32_t n_fields, uint32_t *profile_index);
+    extern int vpp_pbh_table_add_replace(const char *name,
+					 const vpp_pbh_rule_t *rules,
+					 uint32_t n_rules, uint32_t *table_index);
+    extern int vpp_pbh_table_del(uint32_t table_index);
+    extern int vpp_pbh_interface_attach_detach(const char *hwif_name,
+					       uint32_t table_index, bool attach);
+
+    extern int vpp_tunterm_acl_add_replace (uint32_t *tunterm_index, uint32_t count, vpp_tunterm_acl_t *acl);
+    extern int vpp_tunterm_acl_del (uint32_t tunterm_index);
+    extern int vpp_tunterm_acl_interface_add_del (uint32_t tunterm_index,
+                                           bool is_bind, const char *hwif_name);
+    extern int interface_get_state(const char *hwif_name, bool *link_is_up);
+    extern int vpp_refresh_interface_speed(const char *hwif_name);
+    extern int vpp_get_interface_speed(const char *hwif_name, uint32_t *speed);
+    extern int vpp_wait_for_events(int timeout_ms);
+    extern int vpp_drain_events();
+    extern int vpp_sync_for_events();
+    extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
+    extern int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
+    extern int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
+    /* shg: split horizon group; a frame is not flooded to members of the group it came from */
+    extern int set_sw_interface_l2_bridge_shg_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_enable, uint32_t port_type, uint8_t shg);
+    /* Per-interface ingress feature overrides. Uses the VPP_BD_FLAG_* bit
+     * values; ARP_UFWD is not supported by the VPP l2_flags API. */
+    extern int set_l2_interface_flags_by_index(uint32_t sw_if_index, vpp_bd_flags_t flags, bool enable);
+    extern int set_l2_interface_vlan_tag_rewrite(const char *hwif_name, uint32_t tag1, uint32_t tag2, uint32_t push_dot1q, uint32_t vtr_op);
+    extern int bridge_domain_get_member_count (uint32_t bd_id, uint32_t *member_count);
+    extern int create_bvi_interface(uint8_t *mac_address, uint32_t instance);
+    extern int delete_bvi_interface(const char *hwif_name);
+    extern int set_bridge_domain_flags(uint32_t bd_id, vpp_bd_flags_t flag, bool enable);
+    extern int create_bond_interface(uint32_t bond_id, uint32_t mode, uint32_t lb, uint32_t *swif_idx);
+    extern int delete_bond_interface(const char *hwif_name);
+    extern int create_bond_member(uint32_t bond_sw_if_index, const char *hwif_name, bool is_passive, bool is_long_timeout);
+    extern int delete_bond_member(const char * hwif_name);
+    extern const char * vpp_get_swif_name(const uint32_t swif_idx);
+    extern int l2fib_add_del(const char *hwif_name, const uint8_t *mac, uint32_t bd_id, bool is_add, bool is_static_mac);
+    extern int l2fib_add_del_by_index(uint32_t sw_if_index, const uint8_t *mac, uint32_t bd_id, bool is_add, bool is_static_mac);
+    extern int l2fib_flush_all();
+    extern int l2fib_flush_int(const char *hwif_name);
+    extern int l2fib_flush_bd(uint32_t bd_id);
+
+    /* MAC event action codes from VPP l2_macs_event */
+    typedef enum {
+        VPP_MAC_ACTION_ADD    = 0,  /* newly learned */
+        VPP_MAC_ACTION_DELETE = 1,  /* aged out */
+        VPP_MAC_ACTION_MOVE   = 2,  /* moved to a different port */
+        /* Not from VPP: the event connection was re-established and MAC events
+         * may have been lost. mac/sw_if_index are unused; the consumer should
+         * reconcile its FDB with vpp_l2fib_dump(). */
+        VPP_MAC_ACTION_RESYNC = 3,
+    } vpp_mac_action_t;
+
+    /* MAC event callback types for push-based FDB notification via WANT_L2_MACS_EVENTS2 */
+    typedef struct {
+        uint8_t  mac[6];
+        uint32_t sw_if_index;
+        uint8_t  action; /* vpp_mac_action_t */
+    } vpp_mac_event_t;
+
+    /* Batch callback: invoked once per l2_macs_event message with all entries,
+     * and with a single VPP_MAC_ACTION_RESYNC entry after the event connection
+     * is re-established.
+     * Called on the thread reading the VPP event socket (the vpp event thread),
+     * under EVENT_LOCK — must NOT acquire m_apimutex. */
+    typedef void (*vpp_mac_event_cb_fn)(const vpp_mac_event_t *evs, uint32_t n, void *ctx);
+
+    /* Set (cb != NULL) or clear (cb == NULL) the receiver of push-based MAC
+     * learn/age/move events. The VPP subscription itself is made by
+     * init_vpp_client() along with interface and BFD events; events arriving
+     * while no callback is set are dropped. Implementations MUST NOT acquire
+     * the saivpp main mutex (m_apimutex) directly; enqueue the event and
+     * process it from a thread that safely holds the mutex. */
+    extern void vpp_set_mac_event_cb(vpp_mac_event_cb_fn cb, void *ctx);
+
+    /* Set the L2 FIB scan delay (in units of 10ms, default=10 → 100ms).
+     * Reduces the interval between VPP scanning for aged/moved MACs. */
+    extern int vpp_l2fib_set_scan_delay(uint16_t delay_10ms);
+
+    /* One VPP L2FIB entry, as reported by vpp_l2fib_dump() */
+    typedef struct {
+        uint8_t  mac[6];
+        uint32_t bd_id;
+        uint32_t sw_if_index;
+        bool     is_static; /* static, BVI or filter entry */
+    } vpp_l2fib_entry_t;
+
+    typedef void (*vpp_l2fib_entry_cb_fn)(const vpp_l2fib_entry_t *entry, void *ctx);
+
+    /* Dump VPP's L2FIB (bd_id ~0u: all bridge domains) on the command
+     * connection; cb is called for each entry once the dump has completed,
+     * outside the VPP API lock. Returns 0 on success. */
+    extern int vpp_l2fib_dump(uint32_t bd_id, vpp_l2fib_entry_cb_fn cb, void *ctx);
+
+    /* Reverse-lookup: return the VPP sw_if_index for a given hw interface name,
+     * or ~0u if not found. */
+    extern uint32_t vpp_get_swif_idx_by_name(const char *hwif_name);
+
+    extern int bfd_udp_add(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
+                           vpp_ip_addr_t *peer_addr, uint8_t detect_mult,
+                           uint32_t desired_min_tx, uint32_t required_min_rx);
+    extern int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
+                           vpp_ip_addr_t *peer_addr);
+    extern int bfd_udp_set_tos(uint8_t tos);
+
+    typedef void (*vpp_bfd_session_cb_fn)(const vpp_bfd_state_notif_t *session, void *ctx);
+
+    /* Dump VPP's BFD UDP sessions, with their state, on the command
+     * connection; cb is called for each session once the dump has completed,
+     * outside the VPP API lock. Returns 0 on success. */
+    extern int vpp_bfd_session_dump(vpp_bfd_session_cb_fn cb, void *ctx);
+
+    extern int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add,  uint32_t *sw_if_index);
+    extern int vpp_ip_addr_t_to_string(vpp_ip_addr_t *ip_addr, char *buffer, size_t maxlen);
+    extern int vpp_my_sid_entry_add_del(vpp_my_sid_entry_t *my_sid, bool is_del);
+    extern int vpp_sidlist_add(vpp_sidlist_t *sidlist);
+    extern int vpp_sidlist_del(vpp_ip_addr_t *bsid);
+    extern int vpp_sr_steer_add_del(vpp_sr_steer_t *sr_steer, bool is_del);
+    extern int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src);
+
+    /* SPAN (port mirroring) */
+    extern int vpp_span_enable_disable(uint32_t sw_if_index_from,
+                                    uint32_t sw_if_index_to,
+                                    uint32_t state, /* 0 = disable */
+                                    bool is_l2);
+
+    extern int vpp_sflow_enable_disable(const char *hwif_name, bool enable);
+    extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
+
+    extern int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable);
+    extern int vpp_iface_loopback_set_action(const char *hwif_name, int action);
+    extern int vpp_sonic_ext_feature_get(const char *feature, bool *enabled);
+    extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
+    extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);
+    extern int sw_interface_set_unnumbered(uint32_t unnumbered_sw_if_index,
+                                           uint32_t ip_sw_if_index, bool is_add);
+    extern int vpp_sw_interface_find_by_ip(vpp_ip_addr_t *search_ip,
+                                           uint32_t vrf_id,
+                                           uint32_t *out_sw_if_index);
+    extern int vpp_sflow_interface_sampling_rate_set(const char *hwif_name, uint32_t sampling_n);
+    extern int vpp_sflow_interface_direction_set(const char *hwif_name, uint32_t direction);
+
+    /* VPP Classify API for L2 punt */
+    extern int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
+                                         uint32_t skip_n_vectors, uint32_t match_n_vectors,
+                                         uint32_t next_table_index, uint32_t miss_next_index,
+                                         const uint8_t *mask, uint32_t mask_len,
+                                         uint32_t *new_table_index);
+    extern int vpp_classify_table_delete(uint32_t table_index);
+    extern int vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
+                                        const uint8_t *match, uint32_t match_len,
+                                        uint32_t opaque_index, int32_t advance,
+                                        uint8_t action);
+    extern int vpp_classify_session_del(uint32_t table_index,
+                                        const uint8_t *match, uint32_t match_len);
+    extern int vpp_classify_set_interface_l2_tables(const char *hwif_name,
+                                                    uint32_t ip4_table_index,
+                                                    uint32_t ip6_table_index,
+                                                    uint32_t other_table_index,
+                                                    bool is_input);
+    extern int vpp_classify_set_interface_l2_tables_by_index(uint32_t sw_if_index,
+                                                             uint32_t ip4_table_index,
+                                                             uint32_t ip6_table_index,
+                                                             uint32_t other_table_index,
+                                                             bool is_input);
+    extern int vpp_add_node_next(const char *node_name, const char *next_name,
+                                       uint32_t *next_index);
+    extern int sw_interface_set_mpls_enable(const char *hwif_name, bool enable);
+    extern int mpls_table_add_del(uint32_t table_id, bool is_add);
+    extern int mpls_route_add_del(vpp_mpls_route_t *route, bool is_add);
+
+    /* GRE tunnel for mirror encap (stock TEB tunnel; the outer TTL and GRE
+     * ethertype override are applied by the sonic_ext mirror-encap-fixup node,
+     * not here). */
+    typedef struct _vpp_gre_tunnel {
+        vpp_ip_addr_t src;
+        vpp_ip_addr_t dst;
+        uint8_t type;           /* 0 = L3, 1 = TEB, 2 = ERSPAN */
+        uint32_t instance;
+        uint32_t outer_table_id;
+    } vpp_gre_tunnel_t;
+
+    extern int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, uint32_t *sw_if_index);
+    /*
+     * SONiC-VPP packet-trimming (SAI DROP_AND_TRIM) control API.
+     * SAI-VPP programs the global trim policy, the composed DSCP->queue
+     * table, and the per-(port,queue) software admission parameters, and
+     * reads back the trim counters for SAI switch/port/queue statistics.
+     */
+    typedef struct vpp_sonic_ext_trim_counters_ {
+        uint64_t trim_sent;
+        uint64_t trim_drop;
+        uint64_t trim_admit_fail;
+    } vpp_sonic_ext_trim_counters_t;
+
+    extern int vpp_sonic_ext_trim_global_set(bool is_enable, uint16_t trim_size,
+                                             uint8_t dscp_mode, uint8_t dscp_value,
+                                             uint8_t tc_value, uint8_t trim_queue);
+    extern int vpp_sonic_ext_trim_dscp_map_set(const uint8_t dscp_to_queue[64]);
+    extern int vpp_sonic_ext_trim_queue_set(const char *hwif_name, uint8_t queue,
+                                            bool eligible, uint64_t rate_bytes_per_sec,
+                                            uint64_t capacity_bytes);
+    extern int vpp_sonic_ext_trim_counters_get(vpp_sonic_ext_trim_counters_t *out);
+
+    /*
+     * NAT44 endpoint-dependent (nat_plugin.so). Addresses are in network
+     * order, ports in host order. A mapping with addr_only set translates the
+     * address for every protocol and port.
+     */
+    typedef struct vpp_nat44_static_mapping_ {
+        struct in_addr local;
+        struct in_addr external;
+        uint8_t protocol;
+        uint16_t local_port;
+        uint16_t external_port;
+        uint32_t vrf_id;
+        bool addr_only;
+    } vpp_nat44_static_mapping_t;
+
+    typedef struct vpp_nat44_session_ {
+        struct in_addr inside_addr;
+        uint16_t inside_port;
+        struct in_addr outside_addr;
+        uint16_t outside_port;
+        struct in_addr ext_host_addr;
+        uint16_t ext_host_port;
+        uint16_t protocol;
+        bool is_static;
+        uint64_t total_bytes;
+        uint32_t total_pkts;
+    } vpp_nat44_session_t;
+
+    typedef void (*vpp_nat44_session_cb_fn)(const vpp_nat44_session_t *session, void *ctx);
+
+    /* true when VPP runs the nat44-ed plugin, i.e. its API was found at connect */
+    extern bool vpp_nat44_ed_supported(void);
+    extern int vpp_nat44_ed_enable_disable(bool enable, uint32_t sessions);
+    extern int vpp_nat44_forwarding_enable_disable(bool enable);
+    extern int vpp_nat44_ed_output_interface_add_del(const char *hwif_name, bool is_add);
+    extern int vpp_nat44_static_mapping_add_del(const vpp_nat44_static_mapping_t *mapping, bool is_add);
+    /* calls cb for every session whose inside address is inside_addr */
+    extern int vpp_nat44_user_sessions_dump(struct in_addr inside_addr, uint32_t vrf_id,
+                                            vpp_nat44_session_cb_fn cb, void *ctx);
+#ifdef __cplusplus
+}
+#endif
+
+#endif

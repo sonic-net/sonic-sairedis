@@ -1,0 +1,34 @@
+# sonic-sairedis build dependencies (apt + pip).
+#
+# base.yaml CASCADES: repos downstream of sonic-sairedis (sonic-swss) that build
+# against libsairedis inherit everything declared here.
+#
+# Consumed by `buildenv_setup --scope build`. The buildenv_setup tool itself
+# lives in sonic-swss-common/ci/; sonic-sairedis is a consumer.
+
+packages:
+  # --- core C/C++ build + link dependencies (from build-template.yml) --------
+  - libdbus-glib-1-dev
+  - libpcsclite-dev
+  - libhiredis-dev
+  - swig
+  - libzmq3-dev
+  - autoconf-archive
+
+  # sonic-swss-common's cascaded base.yaml supplies the stock libnl-{3,genl,
+  # route,nf}-dev packages on every architecture. Preserve sairedis's existing
+  # split behavior: amd64 then replaces those with SONiC libnl DEBs from the
+  # direct common-libs upstream; arm builds keep stock apt libnl and additionally
+  # need the CLI headers that swss-common does not declare.
+  - { name: libnl-cli-3-dev, when: { arch: { not: amd64 } } }
+
+post_install:
+  # sonic-swss-common deliberately applies this hook only to its test scope
+  # because its Build stage needs Redis down during an early Rust test. Sairedis
+  # needs Redis configured before `make check`, so select the same canonical
+  # script for build + test here. The script body is NOT duplicated:
+  # post_install.resolve_script finds it in the cascaded swss-common build-env/.
+  - name: configure-redis-for-tests
+    source: configure-redis-for-tests.sh
+    requires: [redis-server]
+    scopes: [build, test]
