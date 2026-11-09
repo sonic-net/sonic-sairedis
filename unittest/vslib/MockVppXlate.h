@@ -82,6 +82,12 @@ struct VppClassifySession
     std::vector<uint8_t> match;
 };
 
+struct VppAclListResult
+{
+    int result;
+    bool commitOnError;
+};
+
 struct VppMock
 {
     bool loopbackEnabled = false;
@@ -144,7 +150,9 @@ struct VppMock
     std::vector<VppRuleStatsCall> ruleStatsCalls;
     int aclListResult = 0;
     int aclListReadResult = 0;
+    std::vector<VppAclListResult> aclListResults;
     std::vector<VppAclListCall> aclListCalls;
+    std::vector<bool> aclListAdminUp;
     std::map<std::string, VppAclListCall> aclLists;
 
     std::map<std::string, uint32_t> interfaceVrfs;

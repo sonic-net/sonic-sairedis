@@ -102,10 +102,19 @@ extern "C" int __wrap_vpp_acl_interface_set_acl_list(const char *name,
     if (ingressCount) call.ingress.assign(ingress, ingress + ingressCount);
     if (egressCount) call.egress.assign(egress, egress + egressCount);
     vppMock().aclListCalls.push_back(call);
+    vppMock().aclListAdminUp.push_back(vppMock().isAdminUp(name));
     if (ingressCount + egressCount > 255) return -1;
-    if (vppMock().aclListResult != 0) return vppMock().aclListResult;
-    vppMock().aclLists[name] = call;
-    return 0;
+    VppAclListResult response{vppMock().aclListResult, false};
+    if (!vppMock().aclListResults.empty())
+    {
+        response = vppMock().aclListResults.front();
+        vppMock().aclListResults.erase(vppMock().aclListResults.begin());
+    }
+    if (response.result == 0 || response.commitOnError)
+    {
+        vppMock().aclLists[name] = call;
+    }
+    return response.result;
 }
 
 extern "C" int __wrap_vpp_acl_interface_get_acl_list(const char *name,

@@ -116,12 +116,21 @@ sai_status_t saivs::getAclRuleIpFamily(
             break;
 
         case SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE:
-            if (attr.value.aclfield.enable && attr.value.aclfield.mask.u16 == 0xffff) {
-                if (attr.value.aclfield.data.u16 == 0x0800) {
-                    field_family = AF_INET;
-                } else if (attr.value.aclfield.data.u16 == 0x86dd) {
-                    field_family = AF_INET6;
-                }
+            if (!attr.value.aclfield.enable || attr.value.aclfield.mask.u16 == 0) {
+                break;
+            }
+            // The IP ACL API has no EtherType predicate. Only exact IPv4/IPv6
+            // matches can be represented by its address family; accepting any
+            // other constraint would discard it during wildcard expansion.
+            if (attr.value.aclfield.mask.u16 != 0xffff) {
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
+            if (attr.value.aclfield.data.u16 == 0x0800) {
+                field_family = AF_INET;
+            } else if (attr.value.aclfield.data.u16 == 0x86dd) {
+                field_family = AF_INET6;
+            } else {
+                return SAI_STATUS_NOT_SUPPORTED;
             }
             break;
 

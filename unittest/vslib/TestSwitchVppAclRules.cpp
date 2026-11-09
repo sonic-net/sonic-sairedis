@@ -212,6 +212,89 @@ TEST(SwitchVppAclRules, GenericIpTypesRemainFamilyNeutral)
     }
 }
 
+TEST(SwitchVppAclRules, ExactIpEtherTypesConstrainFamilyAndRejectConflicts)
+{
+    const uint16_t ether_types[] = {0x0800, 0x86dd};
+    for (uint16_t ether_type : ether_types) {
+        acl_tbl_entries_t ace = {};
+        ace.attrs[0] = enabledField(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE);
+        ace.attrs[0].value.aclfield.data.u16 = ether_type;
+        ace.attrs[0].value.aclfield.mask.u16 = 0xffff;
+        ace.attrs_count = 1;
+        const int expected_family = ether_type == 0x0800 ? AF_INET : AF_INET6;
+        int family;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, getAclRuleIpFamily(ace, family));
+        EXPECT_EQ(expected_family, family);
+        std::vector<vpp_acl_rule_t> variants;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, expandAclRuleVariants({}, family, true, true, false, variants));
+        EXPECT_EQ((PacketClasses{{expected_family, 0}}), packetClasses(variants));
+
+        ace.attrs[1] = enabledField(expected_family == AF_INET ?
+            SAI_ACL_ENTRY_ATTR_FIELD_SRC_IPV6 : SAI_ACL_ENTRY_ATTR_FIELD_SRC_IP);
+        ace.attrs_count = 2;
+        EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, getAclRuleIpFamily(ace, family));
+        std::swap(ace.attrs[0], ace.attrs[1]);
+        EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, getAclRuleIpFamily(ace, family));
+    }
+}
+
+TEST(SwitchVppAclRules, NonIpEtherTypesAreRejectedBeforeWildcardExpansion)
+{
+    const uint16_t ether_types[] = {0x0000, 0x0806, 0x8100, 0x8847, 0x88cc, 0xffff};
+    for (uint16_t ether_type : ether_types) {
+        acl_tbl_entries_t ace = {};
+        ace.attrs[0] = enabledField(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE);
+        ace.attrs[0].value.aclfield.data.u16 = ether_type;
+        ace.attrs[0].value.aclfield.mask.u16 = 0xffff;
+        ace.attrs_count = 1;
+        int family;
+        EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, getAclRuleIpFamily(ace, family));
+        // An earlier IP qualifier must not hide an unsupported EtherType.
+        ace.attrs[1] = ace.attrs[0];
+        ace.attrs[0] = enabledField(SAI_ACL_ENTRY_ATTR_FIELD_SRC_IP);
+        ace.attrs_count = 2;
+        EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, getAclRuleIpFamily(ace, family));
+    }
+}
+
+TEST(SwitchVppAclRules, PartialEtherTypeMasksAreRejected)
+{
+    const uint16_t ether_types[] = {0x0800, 0x86dd, 0x0806};
+    const uint16_t masks[] = {0x00ff, 0xff00, 0x0fff, 0xfffe};
+    for (uint16_t ether_type : ether_types) {
+        for (uint16_t mask : masks) {
+            acl_tbl_entries_t ace = {};
+            ace.attrs[0] = enabledField(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE);
+            ace.attrs[0].value.aclfield.data.u16 = ether_type;
+            ace.attrs[0].value.aclfield.mask.u16 = mask;
+            ace.attrs_count = 1;
+            int family;
+            EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, getAclRuleIpFamily(ace, family));
+        }
+    }
+}
+
+TEST(SwitchVppAclRules, DisabledAndZeroMaskEtherTypesRemainFamilyNeutral)
+{
+    const std::pair<bool, uint16_t> scenarios[] = {
+        {false, 0xffff}, {false, 0xff00}, {true, 0}
+    };
+    for (const auto &scenario : scenarios) {
+        acl_tbl_entries_t ace = {};
+        ace.attrs[0] = enabledField(SAI_ACL_ENTRY_ATTR_FIELD_ETHER_TYPE);
+        ace.attrs[0].value.aclfield.enable = scenario.first;
+        ace.attrs[0].value.aclfield.data.u16 = 0x0806;
+        ace.attrs[0].value.aclfield.mask.u16 = scenario.second;
+        ace.attrs_count = 1;
+        int family = AF_INET;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, getAclRuleIpFamily(ace, family));
+        EXPECT_EQ(AF_UNSPEC, family);
+        std::vector<vpp_acl_rule_t> variants;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, expandAclRuleVariants({}, family, false, false, false, variants));
+        EXPECT_EQ((PacketClasses{{AF_INET, 0}, {AF_INET6, 0}}), packetClasses(variants));
+    }
+}
+
 TEST(SwitchVppAclRules, FamilyConflictsRejectRegardlessOfAttributeOrder)
 {
     const sai_acl_entry_attr_t ipv6_fields[] = {

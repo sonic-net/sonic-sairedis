@@ -1547,6 +1547,12 @@ namespace saivs
                     _In_ sai_object_id_t group_oid,
                     _In_ const std::set<sai_object_id_t> &desired);
 
+            sai_status_t aclReconcileInterfacePbh(
+                    _In_ sai_object_id_t port_oid,
+                    _In_ sai_object_id_t group_oid,
+                    _In_ const std::string &hwif_name,
+                    _In_ const std::set<sai_object_id_t> &desired);
+
             sai_status_t aclRestorePbhRegularPolicy(
                     _In_ sai_object_id_t port_oid,
                     _In_ sai_object_id_t group_oid,
@@ -1566,6 +1572,9 @@ namespace saivs
                     _In_ const std::string &child_hwif);
 
             sai_status_t aclRemoveInterfacePolicy(
+                    _In_ const std::string &hwif_name);
+
+            sai_status_t aclRemoveInterfacePbh(
                     _In_ const std::string &hwif_name);
 
             // Called only after VPP has successfully deleted the interface.
@@ -2050,10 +2059,11 @@ namespace saivs
             // A failed list replacement can commit one direction. Do not use
             // an unverified opposite-direction snapshot until readback succeeds.
             std::set<std::string> m_acl_interface_state_unknown;
-            // Successful PBH attachments are independent of regular ACL lists.
+            // Successful PBH attachments, per owner and interface (including
+            // bridged VLAN children), are independent of regular ACL lists.
             // Retain rejected/partial updates here until cleanup succeeds.
             std::map<std::pair<sai_object_id_t, sai_object_id_t>,
-                std::set<sai_object_id_t>> m_acl_group_pbh_tables;
+                std::map<std::string, std::set<sai_object_id_t>>> m_acl_group_pbh_tables;
             // PBH-only groups leave independently installed regular policy
             // intact. Retain its rollback intent if restoration also fails.
             std::map<std::tuple<sai_object_id_t, sai_object_id_t, bool>,

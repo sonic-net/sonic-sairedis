@@ -1131,8 +1131,10 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         // Keep the member down until its forwarding and inherited ACL policy
         // are ready. A failed bind must not expose an unfiltered VLAN member.
         auto rollback_member = [&]() {
+            m_sub_if_admin_up_pending.erase(hw_ifname);
             interface_set_state(hw_ifname, false);
             aclRemoveInterfacePolicy(hw_ifname);
+            aclRemoveInterfacePbh(hw_ifname);
             set_sw_interface_l2_bridge(hw_ifname, bridge_id, false, VPP_API_PORT_TYPE_NORMAL);
             swif_bdid_untrack(hw_ifname);
             if (delete_sub_interface(hwifname, vlan_id) == 0)
@@ -1385,11 +1387,81 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         snprintf(host_subifname, sizeof(host_subifname), "%s.%u", hw_ifname, vlan_id);
         hw_ifname = host_subifname;
 
-        if (interface_set_state(hw_ifname, false) != 0 ||
-            aclRemoveInterfacePolicy(hw_ifname) != SAI_STATUS_SUCCESS)
+        auto quiesce_unverified_policy = [&]() {
+            m_sub_if_admin_up_pending.erase(hw_ifname);
+            if (interface_set_state(hw_ifname, false) != 0)
+            {
+                SWSS_LOG_ERROR("Failed to bring VLAN member %s down with unverified ACL policy",
+                        hw_ifname);
+            }
+        };
+        vpp_interface_state_t previous_state = {};
+        if (get_interface_state(hw_ifname, &previous_state) != 0)
         {
+            if (m_acl_interface_state_unknown.count(hw_ifname))
+            {
+                quiesce_unverified_policy();
+            }
+            SWSS_LOG_ERROR("Cannot read admin state of VLAN member %s before removal", hw_ifname);
             return SAI_STATUS_FAILURE;
         }
+        if (m_acl_interface_state_unknown.count(hw_ifname))
+        {
+            status = aclReadInterfacePolicy(hw_ifname);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                quiesce_unverified_policy();
+                return status;
+            }
+        }
+        auto policy_it = m_port_acl_tables.find(hw_ifname);
+        const auto previous_policy = policy_it == m_port_acl_tables.end() ?
+            PortAclTables{} : policy_it->second;
+        const bool previous_admin_up_pending = m_sub_if_admin_up_pending.count(hw_ifname) != 0;
+        auto restore_activation = [&]() {
+            if (previous_state.admin_up)
+            {
+                if (vpp_set_sub_interface_state(hw_ifname, true) != 0)
+                {
+                    SWSS_LOG_ERROR("Failed to restore admin up of VLAN member %s; activation remains deferred",
+                            hw_ifname);
+                }
+            }
+            else if (previous_admin_up_pending)
+            {
+                m_sub_if_admin_up_pending.insert(hw_ifname);
+            }
+        };
+
+        // Quiesce before removing filters, including activation deferred until
+        // the parent comes up. A failed teardown must not expose an unfiltered child.
+        m_sub_if_admin_up_pending.erase(hw_ifname);
+        if (interface_set_state(hw_ifname, false) != 0)
+        {
+            // No ACL operation has run; the previous policy still protects it.
+            restore_activation();
+            return SAI_STATUS_FAILURE;
+        }
+        status = aclRemoveInterfacePolicy(hw_ifname);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            // A failed list update may already have removed either direction.
+            // Restore the complete policy before restoring activation intent.
+            if (aclApplyInterfacePolicy(hw_ifname, previous_policy) == SAI_STATUS_SUCCESS)
+            {
+                restore_activation();
+            }
+            else
+            {
+                SWSS_LOG_ERROR("Failed to restore ACL policy of VLAN member %s; leaving it down for removal retry",
+                        hw_ifname);
+            }
+            return status;
+        }
+
+        // PBH owns separate attachments; release this child's contribution
+        // while it is still a bridge member and keep it down if cleanup fails.
+        CHECK_STATUS(aclRemoveInterfacePbh(hw_ifname));
 
         /* Disable L2 classify punt on subif before teardown */
         l2_punt_classify_remove(hw_ifname);

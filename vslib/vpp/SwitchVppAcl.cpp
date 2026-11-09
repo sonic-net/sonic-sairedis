@@ -1042,7 +1042,7 @@ sai_status_t SwitchVpp::fill_acl_rules(
 
             status = getAclRuleIpFamily(*p_ace, rule_family);
             if (status != SAI_STATUS_SUCCESS) {
-                SWSS_LOG_ERROR("ACL entry %s has conflicting IPv4 and IPv6 qualifiers",
+                SWSS_LOG_ERROR("ACL entry %s has unsupported or conflicting IP/EtherType qualifiers",
                                sai_serialize_object_id(ace.ace_oid).c_str());
                 return status;
             }
@@ -2763,13 +2763,49 @@ sai_status_t SwitchVpp::aclInheritInterfacePolicy(
         aclRemoveInterfacePolicy(child_hwif);
         return SAI_STATUS_FAILURE;
     }
-    return SAI_STATUS_SUCCESS;
+    // PBH runs on the IP/BVI arc. Keep its parent attachment for ingress
+    // admission and attach each bridged child to establish its BVI shadow.
+    const auto pbh_snapshot = m_acl_group_pbh_tables;
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    for (const auto &entry : pbh_snapshot) {
+        const auto parent = entry.second.find(parent_hwif);
+        if (parent == entry.second.end() && !entry.second.count(child_hwif)) {
+            continue;
+        }
+        const std::set<sai_object_id_t> tables = parent == entry.second.end() ?
+            std::set<sai_object_id_t>{} : parent->second;
+        if (aclReconcileInterfacePbh(entry.first.first, entry.first.second,
+                                    child_hwif, tables) != SAI_STATUS_SUCCESS) {
+            status = SAI_STATUS_FAILURE;
+        }
+    }
+    if (status != SAI_STATUS_SUCCESS) {
+        aclRemoveInterfacePbh(child_hwif);
+        aclRemoveInterfacePolicy(child_hwif);
+    }
+    return status;
 }
 
 sai_status_t SwitchVpp::aclRemoveInterfacePolicy(
         _In_ const std::string &hwif_name)
 {
     return aclApplyInterfacePolicy(hwif_name, PortAclTables{});
+}
+
+sai_status_t SwitchVpp::aclRemoveInterfacePbh(
+        _In_ const std::string &hwif_name)
+{
+    SWSS_LOG_ENTER();
+    const auto snapshot = m_acl_group_pbh_tables;
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    for (const auto &entry : snapshot) {
+        if (entry.second.count(hwif_name) &&
+            aclReconcileInterfacePbh(entry.first.first, entry.first.second,
+                                    hwif_name, {}) != SAI_STATUS_SUCCESS) {
+            status = SAI_STATUS_FAILURE;
+        }
+    }
+    return status;
 }
 
 void SwitchVpp::aclForgetInterfacePolicy(
@@ -2789,6 +2825,104 @@ void SwitchVpp::aclForgetInterfacePolicy(
             ++it;
         }
     }
+    for (auto it = m_acl_group_pbh_tables.begin(); it != m_acl_group_pbh_tables.end();) {
+        it->second.erase(hwif_name);
+        if (it->second.empty()) {
+            it = m_acl_group_pbh_tables.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto &entry : m_acl_pbh_regular_restore) {
+        entry.second.erase(hwif_name);
+    }
+}
+
+sai_status_t SwitchVpp::aclReconcileInterfacePbh(
+        _In_ sai_object_id_t port_oid,
+        _In_ sai_object_id_t group_oid,
+        _In_ const std::string &hwif_name,
+        _In_ const std::set<sai_object_id_t> &desired)
+{
+    SWSS_LOG_ENTER();
+    // The PBH plugin has one table slot per interface. Do not let a new
+    // contribution silently replace a different accepted owner's table.
+    if (desired.size() > 1) {
+        SWSS_LOG_ERROR("PBH interface %s supports one table, requested %zu",
+                       hwif_name.c_str(), desired.size());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+    const auto key = std::make_pair(port_oid, group_oid);
+    for (const auto &entry : m_acl_group_pbh_tables) {
+        if (entry.first == key) {
+            continue;
+        }
+        const auto interface = entry.second.find(hwif_name);
+        if (interface != entry.second.end() && !desired.empty() &&
+            std::any_of(interface->second.begin(), interface->second.end(),
+                [&desired](sai_object_id_t table) { return !desired.count(table); })) {
+            SWSS_LOG_ERROR("PBH interface %s already has a different table owned by group %s",
+                           hwif_name.c_str(), sai_serialize_object_id(entry.first.second).c_str());
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+    }
+    auto owner = m_acl_group_pbh_tables.find(key);
+    if (owner == m_acl_group_pbh_tables.end() && desired.empty()) {
+        return SAI_STATUS_SUCCESS;
+    }
+    std::set<sai_object_id_t> previous;
+    if (owner != m_acl_group_pbh_tables.end()) {
+        const auto interface = owner->second.find(hwif_name);
+        if (interface != owner->second.end()) {
+            previous = interface->second;
+        }
+    }
+    auto actual = previous;
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    for (auto table : previous) {
+        if (desired.count(table)) {
+            continue;
+        }
+        // Shared ownership is per interface, including the parent's children.
+        const bool shared = std::any_of(m_acl_group_pbh_tables.begin(), m_acl_group_pbh_tables.end(),
+            [&key, &hwif_name, table](const std::pair<const std::pair<sai_object_id_t, sai_object_id_t>,
+                    std::map<std::string, std::set<sai_object_id_t>>> &entry) {
+                const auto other = entry.second.find(hwif_name);
+                return entry.first != key && other != entry.second.end() && other->second.count(table);
+            });
+        if (shared || m_pbh.bindUnbindPort(hwif_name, table, false) == SAI_STATUS_SUCCESS) {
+            actual.erase(table);
+        } else {
+            status = SAI_STATUS_FAILURE;
+        }
+    }
+    for (auto table : desired) {
+        if (actual.count(table) || status != SAI_STATUS_SUCCESS) {
+            continue;
+        }
+        const bool shared = std::any_of(m_acl_group_pbh_tables.begin(), m_acl_group_pbh_tables.end(),
+            [&hwif_name, table](const std::pair<const std::pair<sai_object_id_t, sai_object_id_t>,
+                    std::map<std::string, std::set<sai_object_id_t>>> &entry) {
+                const auto other = entry.second.find(hwif_name);
+                return other != entry.second.end() && other->second.count(table);
+            });
+        if (shared || m_pbh.bindUnbindPort(hwif_name, table, true) == SAI_STATUS_SUCCESS) {
+            actual.insert(table);
+        } else {
+            status = SAI_STATUS_FAILURE;
+        }
+    }
+    if (actual.empty()) {
+        if (owner != m_acl_group_pbh_tables.end()) {
+            owner->second.erase(hwif_name);
+            if (owner->second.empty()) {
+                m_acl_group_pbh_tables.erase(owner);
+            }
+        }
+    } else {
+        m_acl_group_pbh_tables[key][hwif_name] = actual;
+    }
+    return status;
 }
 
 sai_status_t SwitchVpp::aclReconcileGroupPbh(
@@ -2796,47 +2930,26 @@ sai_status_t SwitchVpp::aclReconcileGroupPbh(
         _In_ sai_object_id_t group_oid,
         _In_ const std::set<sai_object_id_t> &desired)
 {
-    const auto key = std::make_pair(port_oid, group_oid);
-    auto found = m_acl_group_pbh_tables.find(key);
+    SWSS_LOG_ENTER();
+    const auto found = m_acl_group_pbh_tables.find(std::make_pair(port_oid, group_oid));
     if (found == m_acl_group_pbh_tables.end() && desired.empty()) {
         return SAI_STATUS_SUCCESS;
     }
-    const auto hwif = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
-    if (hwif.empty()) {
-        return SAI_STATUS_FAILURE;
-    }
-    auto &actual = m_acl_group_pbh_tables[key];
-    const auto previous = actual;
-    sai_status_t status = SAI_STATUS_SUCCESS;
-    for (auto table : previous) {
-        if (desired.count(table)) {
-            continue;
+    const auto interfaces = m_ifaceRegistry.resolveAclInterfaces(port_oid);
+    const std::set<std::string> current(interfaces.begin(), interfaces.end());
+    std::set<std::string> targets = current;
+    if (found != m_acl_group_pbh_tables.end()) {
+        for (const auto &entry : found->second) {
+            targets.insert(entry.first);
         }
-        // A table shared by another logical group remains attached there.
-        const bool shared = std::any_of(m_acl_group_pbh_tables.begin(), m_acl_group_pbh_tables.end(),
-            [port_oid, group_oid, table](const std::pair<const std::pair<sai_object_id_t, sai_object_id_t>,
-                                             std::set<sai_object_id_t>> &entry) {
-                return entry.first.first == port_oid && entry.first.second != group_oid &&
-                    entry.second.count(table);
-            });
-        if (shared || m_pbh.bindUnbindPort(hwif, table, false) == SAI_STATUS_SUCCESS) {
-            actual.erase(table);
-        } else {
+    }
+    sai_status_t status = current.empty() && !desired.empty() ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
+    const std::set<sai_object_id_t> empty;
+    for (const auto &hwif : targets) {
+        const auto &wanted = current.count(hwif) ? desired : empty;
+        if (aclReconcileInterfacePbh(port_oid, group_oid, hwif, wanted) != SAI_STATUS_SUCCESS) {
             status = SAI_STATUS_FAILURE;
         }
-    }
-    for (auto table : desired) {
-        if (actual.count(table)) {
-            continue;
-        }
-        if (m_pbh.bindUnbindPort(hwif, table, true) == SAI_STATUS_SUCCESS) {
-            actual.insert(table);
-        } else {
-            status = SAI_STATUS_FAILURE;
-        }
-    }
-    if (actual.empty()) {
-        m_acl_group_pbh_tables.erase(key);
     }
     return status;
 }

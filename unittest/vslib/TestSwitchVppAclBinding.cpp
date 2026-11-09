@@ -41,6 +41,7 @@ namespace
     std::vector<TuntermKey> tuntermCalls;
     std::map<std::string, std::set<uint32_t>> actualPbh;
     std::vector<TuntermKey> pbhCalls;
+    std::map<TuntermKey, unsigned int> pbhFailures;
     std::map<std::string, unsigned int> readFailures;
     std::vector<std::string> readCalls;
     const uint32_t defaultAclIndex = 900;
@@ -146,9 +147,19 @@ extern "C" int __wrap_vpp_tunterm_acl_interface_add_del(uint32_t index,
 extern "C" int __wrap_vpp_pbh_interface_attach_detach(const char *interface,
         uint32_t index, bool bind)
 {
-    pbhCalls.emplace_back(interface, index, bind);
-    if (bind) actualPbh[interface].insert(index);
-    else actualPbh[interface].erase(index);
+    const auto key = TuntermKey(interface, index, bind);
+    pbhCalls.push_back(key);
+    auto failure = pbhFailures.find(key);
+    if (failure != pbhFailures.end()) {
+        if (--failure->second == 0) pbhFailures.erase(failure);
+        return -1;
+    }
+    if (bind) {
+        // The real PBH plugin has one table slot: attaching replaces it.
+        actualPbh[interface] = {index};
+    } else if (!actualPbh[interface].erase(index)) {
+        return -1;
+    }
     return 0;
 }
 
@@ -179,6 +190,7 @@ protected:
         tuntermCalls.clear();
         actualPbh.clear();
         pbhCalls.clear();
+        pbhFailures.clear();
         readFailures.clear();
         readCalls.clear();
         m_type = std::get<0>(GetParam());
@@ -301,12 +313,13 @@ protected:
         return port;
     }
 
-    void addBridgedChild(const std::string &interface)
+    void addBridgedChild(const std::string &interface, uint32_t vlan = 100)
     {
         auto parent = m_switch->m_ifaceRegistry.findByHwif(interface);
         ASSERT_NE(nullptr, parent);
-        ASSERT_NE(nullptr, m_switch->m_ifaceRegistry.addSubInterface(parent, 100, 100));
-        ASSERT_TRUE(m_switch->m_ifaceRegistry.setBdId(interface + ".100", 100));
+        ASSERT_NE(nullptr, m_switch->m_ifaceRegistry.addSubInterface(parent, vlan,
+                    static_cast<uint16_t>(vlan)));
+        ASSERT_TRUE(m_switch->m_ifaceRegistry.setBdId(interface + "." + std::to_string(vlan), vlan));
     }
 
     void failList(const std::string &interface, const std::vector<uint32_t> &policy,
@@ -323,6 +336,11 @@ protected:
 
     void setOppositeGroup(sai_object_id_t group)
     {
+        ASSERT_EQ(SAI_STATUS_SUCCESS, setOppositeGroupStatus(group));
+    }
+
+    sai_status_t setOppositeGroupStatus(sai_object_id_t group)
+    {
         sai_attribute_t attr = {};
         if (m_type == SAI_OBJECT_TYPE_PORT) {
             attr.id = m_input ? SAI_PORT_ATTR_EGRESS_ACL : SAI_PORT_ATTR_INGRESS_ACL;
@@ -330,7 +348,7 @@ protected:
             attr.id = m_input ? SAI_LAG_ATTR_EGRESS_ACL : SAI_LAG_ATTR_INGRESS_ACL;
         }
         attr.value.oid = group;
-        ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->set(m_type, m_port, &attr));
+        return m_switch->set(m_type, m_port, &attr);
     }
 
     const std::vector<uint32_t> &policy(const BindingCall &call) const
@@ -947,6 +965,200 @@ TEST_P(SwitchVppAclBindingTest, PbhOnlyOwnerRetriesIndependentRegularSnapshot)
         expectAssociation(pbh.oid, !clear);
         EXPECT_EQ(!clear, actualPbh[m_interface].count(700) != 0);
     }
+}
+
+TEST_P(SwitchVppAclBindingTest, PbhGroupIncludesBridgedChildrenAndExcludesRoutedChildren)
+{
+    auto group = createGroup(700);
+    markPbh(group);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    addBridgedChild(m_interface);
+    addBridgedChild(m_interface, 200);
+    addBridgedChild(m_interface, 300);
+    const auto child = m_interface + ".100";
+    const auto second = m_interface + ".200";
+    const auto routed = m_interface + ".300";
+    ASSERT_TRUE(m_switch->m_ifaceRegistry.setRifOid(routed, 42));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    for (const auto &interface : {m_interface, child, second}) {
+        EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[interface]);
+    }
+    EXPECT_TRUE(actualPbh[routed].empty());
+    EXPECT_EQ(3u, pbhCalls.size());
+    const auto key = std::make_pair(m_port, group.oid);
+    EXPECT_EQ(3u, m_switch->m_acl_group_pbh_tables.at(key).size());
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    EXPECT_EQ(3u, pbhCalls.size());
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
+    for (const auto &interface : {m_interface, child, second}) {
+        EXPECT_TRUE(actualPbh[interface].empty());
+    }
+    EXPECT_TRUE(m_switch->m_acl_group_pbh_tables.empty());
+}
+
+TEST_P(SwitchVppAclBindingTest, NewChildInheritsPbhAndCleansFeaturesSeparately)
+{
+    auto group = createGroup(100);
+    auto pbh = createTableMember(group.oid, 700);
+    markPbh(pbh);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(pbh));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    addBridgedChild(m_interface);
+    const auto child = m_interface + ".100";
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->aclInheritInterfacePolicy(m_interface, child));
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[child]);
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[m_interface]);
+    expectPolicy(child, {100, defaultAclIndex});
+
+    // Regular ACL rollback must not unexpectedly detach independent PBH.
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->aclRemoveInterfacePolicy(child));
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[child]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->aclInheritInterfacePolicy(m_interface, child));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->aclRemoveInterfacePbh(child));
+    EXPECT_TRUE(actualPbh[child].empty());
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[m_interface]);
+    expectPolicy(child, {100, defaultAclIndex});
+
+    const auto key = std::make_pair(m_port, group.oid);
+    EXPECT_EQ(0u, m_switch->m_acl_group_pbh_tables.at(key).count(child));
+    EXPECT_EQ(1u, m_switch->m_acl_group_pbh_tables.at(key).count(m_interface));
+}
+
+TEST_P(SwitchVppAclBindingTest, PartialPbhFanoutAndChildDetachFailuresRemainRetryable)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
+    auto group = createGroup(700);
+    markPbh(group);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    addBridgedChild(m_interface);
+    const auto child = m_interface + ".100";
+    pbhFailures[TuntermKey(child, 700, true)] = 1;
+    // The parent attached successfully, but rollback also fails. Keep that
+    // exact attachment while the rejected owner loses its SAI association.
+    pbhFailures[TuntermKey(m_interface, 700, false)] = 100;
+    ASSERT_NE(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    expectStoredGroup(SAI_NULL_OBJECT_ID);
+    expectAssociation(group.oid, false);
+    const auto key = std::make_pair(m_port, group.oid);
+    ASSERT_EQ(1u, m_switch->m_acl_group_pbh_tables.count(key));
+    EXPECT_EQ(1u, m_switch->m_acl_group_pbh_tables.at(key).count(m_interface));
+    EXPECT_EQ(0u, m_switch->m_acl_group_pbh_tables.at(key).count(child));
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[m_interface]);
+    EXPECT_TRUE(actualPbh[child].empty());
+
+    pbhFailures.clear();
+    const auto calls_before = pbhCalls.size();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    ASSERT_EQ(calls_before + 1, pbhCalls.size());
+    EXPECT_EQ(TuntermKey(child, 700, true), pbhCalls.back());
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[child]);
+
+    pbhFailures[TuntermKey(child, 700, false)] = 1;
+    ASSERT_EQ(SAI_STATUS_FAILURE, m_switch->aclRemoveInterfacePbh(child));
+    EXPECT_EQ(1u, m_switch->m_acl_group_pbh_tables.at(key).count(child));
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[child]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->aclRemoveInterfacePbh(child));
+    EXPECT_EQ(0u, m_switch->m_acl_group_pbh_tables.at(key).count(child));
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[m_interface]);
+}
+
+TEST_P(SwitchVppAclBindingTest, PbhChildInheritanceFailureClearsPartialPolicy)
+{
+    auto group = createGroup(100);
+    auto pbh = createTableMember(group.oid, 700);
+    markPbh(pbh);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(pbh));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    addBridgedChild(m_interface);
+    const auto child = m_interface + ".100";
+    pbhFailures[TuntermKey(child, 700, true)] = 1;
+    ASSERT_EQ(SAI_STATUS_FAILURE, m_switch->aclInheritInterfacePolicy(m_interface, child));
+    expectPolicy(child, {});
+    EXPECT_TRUE(actualPbh[child].empty());
+    expectPolicy(m_interface, {100, defaultAclIndex});
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[m_interface]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->aclInheritInterfacePolicy(m_interface, child));
+    expectPolicy(child, {100, defaultAclIndex});
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[child]);
+}
+
+TEST_P(SwitchVppAclBindingTest, SharedPbhOwnershipIsScopedToEachInterface)
+{
+    auto group = createGroup(700);
+    markPbh(group);
+    auto opposite = createGroup(800, !m_input);
+    opposite.table = group.table;
+    opposite.index = group.index;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(opposite));
+    addBridgedChild(m_interface);
+    const auto child = m_interface + ".100";
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    auto excess = createTableMember(group.oid, 701);
+    markPbh(excess);
+    ASSERT_NE(SAI_STATUS_SUCCESS, addMember(excess));
+    expectMemberObject(excess, false);
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[m_interface]);
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[child]);
+    EXPECT_EQ(2u, pbhCalls.size());
+    setOppositeGroup(opposite.oid);
+    EXPECT_EQ(2u, pbhCalls.size());
+
+    // A different table cannot displace the still accepted other owner of
+    // the plugin's single PBH slot, even during a failed group replacement.
+    auto conflicting = createGroup(900, !m_input);
+    markPbh(conflicting);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(conflicting));
+    ASSERT_NE(SAI_STATUS_SUCCESS, setOppositeGroupStatus(conflicting.oid));
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[m_interface]);
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[child]);
+    const auto opposite_key = std::make_pair(m_port, opposite.oid);
+    EXPECT_EQ(2u, m_switch->m_acl_group_pbh_tables.at(opposite_key).size());
+    expectAssociation(conflicting.oid, false);
+
+    const auto calls_before = pbhCalls.size();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(SAI_NULL_OBJECT_ID));
+    EXPECT_EQ(calls_before, pbhCalls.size());
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[child]);
+    setOppositeGroup(SAI_NULL_OBJECT_ID);
+    EXPECT_TRUE(actualPbh[m_interface].empty());
+    EXPECT_TRUE(actualPbh[child].empty());
+    EXPECT_TRUE(m_switch->m_acl_group_pbh_tables.empty());
+}
+
+TEST_P(SwitchVppAclBindingTest, PbhReconcileRetiresFormerChildrenAndForgetsDeletedOnes)
+{
+    auto group = createGroup(700);
+    markPbh(group);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group));
+    addBridgedChild(m_interface);
+    const auto child = m_interface + ".100";
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    ASSERT_TRUE(m_switch->m_ifaceRegistry.clearBdId(child));
+    pbhFailures[TuntermKey(child, 700, false)] = 1;
+    ASSERT_EQ(SAI_STATUS_FAILURE, setGroup(group.oid));
+    const auto key = std::make_pair(m_port, group.oid);
+    EXPECT_EQ(1u, m_switch->m_acl_group_pbh_tables.at(key).count(child));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    EXPECT_TRUE(actualPbh[child].empty());
+    EXPECT_EQ(0u, m_switch->m_acl_group_pbh_tables.at(key).count(child));
+
+    ASSERT_TRUE(m_switch->m_ifaceRegistry.setBdId(child, 100));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    // VPP automatically drops PBH on successful interface deletion. Forget
+    // that child's bookkeeping without detaching the surviving parent.
+    actualPbh[child].clear();
+    m_switch->m_ifaceRegistry.remove(child);
+    m_switch->aclForgetInterfacePolicy(child);
+    const auto calls_before = pbhCalls.size();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
+    EXPECT_EQ(calls_before, pbhCalls.size());
+    EXPECT_EQ((std::set<uint32_t>{700}), actualPbh[m_interface]);
+    EXPECT_EQ(0u, m_switch->m_acl_group_pbh_tables.at(key).count(child));
 }
 
 TEST_P(SwitchVppAclBindingTest, TuntermRemainsWhileOtherDirectionUsesSameTable)
