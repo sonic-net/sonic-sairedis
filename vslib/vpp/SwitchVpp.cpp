@@ -1399,6 +1399,23 @@ void SwitchVpp::processFdbEntriesForAging()
         }
 
         /*
+         * An event queued again after a failed L2FIB dump is taken in the
+         * bridge domain it passed the gate below for, against VPP's L2FIB as
+         * it is now (reconcileFdbEntryWithVpp()). Its interface may have left
+         * the bridge domain since, and the gate would drop it, leaving the
+         * FDB entry of a MAC VPP aged.
+         */
+        if (ev.retry) {
+            VppFdbKey key;
+            memcpy(key.mac, ev.mac, 6);
+            key.bd_id = ev.bd_id;
+
+            reconcileFdbEntryWithVpp(key, ev);
+            events.pop();
+            continue;
+        }
+
+        /*
          * Bridge-domain membership is the drop gate: an event from an interface
          * that is not in a BD is not a bridged MAC and must not reach ASIC_DB.
          *
@@ -1426,6 +1443,22 @@ void SwitchVpp::processFdbEntriesForAging()
         memcpy(key.mac, ev.mac, 6);
         key.bd_id = bd_id;
 
+        /*
+         * An event that may be stale is taken against VPP's L2FIB as it is
+         * now instead (reconcileFdbEntryWithVpp()): a MOVE for a MAC saivpp
+         * doesn't track, and one for a MAC orchagent has a dynamic FDB entry
+         * for, which saivpp doesn't track.
+         */
+        bool tracked = m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end();
+        FdbInfo created;
+
+        if (!tracked && (ev.action == VPP_MAC_ACTION_MOVE ||
+                         findCreatedFdbEntry(key, ev.sw_if_index, created))) {
+            reconcileFdbEntryWithVpp(key, ev);
+            events.pop();
+            continue;
+        }
+
         switch (ev.action) {
         case VPP_MAC_ACTION_ADD:
             if (m_vpp_fdb_entries.find(key) == m_vpp_fdb_entries.end()) {
@@ -1440,7 +1473,7 @@ void SwitchVpp::processFdbEntriesForAging()
             break;
 
         case VPP_MAC_ACTION_DELETE:
-            if (m_vpp_fdb_entries.find(key) != m_vpp_fdb_entries.end()) {
+            if (tracked) {
                 if (generateFdbAgedEvent(key)) {
                     m_vpp_fdb_entries.erase(key);
                 }
@@ -2627,6 +2660,19 @@ sai_status_t SwitchVpp::set(
             case SAI_SWITCH_ATTR_NAT_ENABLE:
                 {
                     CHECK_STATUS(m_nat.setEnable(attr->value.booldata));
+                    break;
+                }
+            case SAI_SWITCH_ATTR_FDB_AGING_TIME:
+                {
+                    // VPP ages the MACs itself. set_internal() below caches
+                    // the attribute for the bridge domains created later, only
+                    // once VPP has set it on all of them.
+                    sai_status_t status = vpp_set_fdb_aging_time(attr->value.u32);
+
+                    if (status != SAI_STATUS_SUCCESS)
+                    {
+                        return status;
+                    }
                     break;
                 }
             case SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED:
