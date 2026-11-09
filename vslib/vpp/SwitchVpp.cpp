@@ -2689,12 +2689,26 @@ sai_status_t SwitchVpp::set(
                     // object to the switch, and disarms it by clearing the
                     // list. The TAM object graph itself has no VPP counterpart
                     // (the sflow plugin reports drops to hsflowd over NET_DM),
-                    // so only the global plugin flag is driven from here. Fall
-                    // through to set_internal() below so the attribute is also
-                    // cached.
+                    // so only the global plugin flag and the drop_monitor_limit
+                    // policer binding are driven from here. The policer goes in
+                    // first so no drop is reported unlimited. Fall through to
+                    // set_internal() below so the attribute is also cached.
                     bool enable = attr->value.objlist.count > 0;
 
-                    CHECK_STATUS(sflowDropMonitoringSet(enable));
+                    if (enable)
+                    {
+                        m_sflow_drop_tam = attr->value.objlist.list[0];
+                        m_sflow_drop_policer = sflowDropMonitorPolicer(m_sflow_drop_tam);
+                        CHECK_STATUS(sflowDropPolicerApply());
+                        CHECK_STATUS(sflowDropMonitoringSet(true));
+                    }
+                    else
+                    {
+                        CHECK_STATUS(sflowDropMonitoringSet(false));
+                        m_sflow_drop_tam = SAI_NULL_OBJECT_ID;
+                        m_sflow_drop_policer = SAI_NULL_OBJECT_ID;
+                        CHECK_STATUS(sflowDropPolicerApply());
+                    }
                     break;
                 }
         }
@@ -2778,12 +2792,23 @@ sai_status_t SwitchVpp::set(
 
     if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
     {
-        return setHostifTrapGroup(serializedObjectId, attr);
+        CHECK_STATUS(setHostifTrapGroup(serializedObjectId, attr));
+        return sflowDropMonitorChainSet(objectType, attr->id);
     }
 
     if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP)
     {
         return setHostifTrap(serializedObjectId, attr);
+    }
+
+    // Links of the sFlow drop monitor TAM -> POLICER chain, see
+    // sflowDropMonitorPolicer()
+    if (objectType == SAI_OBJECT_TYPE_TAM ||
+            objectType == SAI_OBJECT_TYPE_TAM_COLLECTOR ||
+            objectType == SAI_OBJECT_TYPE_HOSTIF_USER_DEFINED_TRAP)
+    {
+        CHECK_STATUS(set_internal(objectType, serializedObjectId, attr));
+        return sflowDropMonitorChainSet(objectType, attr->id);
     }
 
     return set_internal(objectType, serializedObjectId, attr);

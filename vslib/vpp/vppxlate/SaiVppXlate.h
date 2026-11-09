@@ -695,6 +695,7 @@ typedef enum {
     extern int vpp_sflow_enable_disable(const char *hwif_name, bool enable);
     extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
     extern int vpp_sflow_drop_monitoring_set(bool enable);
+    extern int vpp_sflow_drop_policer_set(const char *policer_name);
 
     extern int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable);
     extern int vpp_iface_loopback_set_action(const char *hwif_name, int action);
