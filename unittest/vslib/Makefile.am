@@ -56,20 +56,27 @@ tests_SOURCES = main.cpp \
 
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
+				TestSwitchVppRoute.cpp \
 				TestSwitchVppPbh.cpp \
 				TestSwitchVppTrim.cpp \
 				TestSwitchVppSflow.cpp \
+				TestSwitchVppFdb.cpp \
 				MockVppXlate.cpp MockVppXlate.h \
 				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
+				ip_route_add_del_get_stats \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
 				create_sub_interface delete_sub_interface configure_lcp_interface \
+				l2fib_add_del l2fib_flush_all l2fib_flush_int l2fib_flush_bd \
+				l2fib_add_del_by_index vpp_vxlan_tunnel_add_del \
+				set_sw_interface_l2_bridge_by_index set_sw_interface_l2_bridge_shg_by_index \
+				set_l2_interface_flags_by_index \
 				set_sw_interface_l2_bridge interface_set_state refresh_interfaces_list \
 				vpp_set_mac_event_cb vpp_l2fib_dump vpp_bfd_session_dump vpp_ip_flow_hash_set set_interface_vrf \
 				get_interface_vrf ip_vrf_add ip_vrf_del interface_ip_address_del_all \
 				init_vpp_client vpp_wait_for_events vpp_drain_events vpp_sync_for_events vpp_ev_dequeue \
 				interface_set_promiscuous set_l2_interface_vlan_tag_rewrite set_bridge_domain_flags \
-				bridge_domain_get_member_count vpp_bridge_domain_add_del \
+				bridge_domain_get_member_count vpp_bridge_domain_add_del vpp_bridge_domain_set_mac_age \
 				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
 				vpp_classify_table_create vpp_classify_table_delete \
 				vpp_classify_session_add vpp_classify_session_del \

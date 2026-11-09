@@ -1119,6 +1119,37 @@ static void set_reply_sw_if_index (vl_api_interface_index_t sw_if_index)
 }
 
 /*
+ * A request tagged with a store_ptr() context completes only on its own
+ * reply. A reply to an earlier request that timed out, whose context was
+ * released, completes nothing, so it can't end the WR() of the request now
+ * pending.
+ */
+static void complete_tagged_reply (uint32_t context, int retval)
+{
+    if (!get_index_ptr(context)) {
+        return;
+    }
+    release_index(context);
+    set_reply_status(retval);
+}
+
+/*
+ * The result of a request tagged with context, once WR() is done. If its own
+ * reply didn't complete it, WR() timed out or another request's reply ended
+ * it: release the context, so that its reply, should it come later, completes
+ * nothing, and fail the request.
+ */
+static int finish_tagged_request (uint32_t context, int ret)
+{
+    if (get_index_ptr(context)) {
+        release_index(context);
+        return ret ? ret : -EAGAIN;
+    }
+
+    return ret;
+}
+
+/*
  * Context of the last control ping reply read. Every read holds vpp_mutex, so
  * a request that tags its ping can tell the reply to it from one left over
  * from an earlier request that timed out (see vpp_l2fib_dump()).
@@ -1467,6 +1498,13 @@ vl_api_bridge_flags_reply_t_handler (vl_api_bridge_flags_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
+
+static void
+vl_api_bridge_domain_set_mac_age_reply_t_handler (vl_api_bridge_domain_set_mac_age_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    complete_tagged_reply(msg->context, retval);
 }
 
 static void
@@ -2014,34 +2052,24 @@ vl_api_sonic_ext_egress_mirror_enable_disable_reply_t_handler(
 }
 
 static void
-complete_trim_set_reply(uint32_t context, int retval)
-{
-    if (!get_index_ptr(context)) {
-        return;
-    }
-    release_index(context);
-    set_reply_status(retval);
-}
-
-static void
 vl_api_sonic_ext_trim_global_set_reply_t_handler(vl_api_sonic_ext_trim_global_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    complete_trim_set_reply(msg->context, retval);
+    complete_tagged_reply(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_trim_dscp_map_set_reply_t_handler(vl_api_sonic_ext_trim_dscp_map_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    complete_trim_set_reply(msg->context, retval);
+    complete_tagged_reply(msg->context, retval);
 }
 
 static void
 vl_api_sonic_ext_trim_queue_set_reply_t_handler(vl_api_sonic_ext_trim_queue_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    complete_trim_set_reply(msg->context, retval);
+    complete_tagged_reply(msg->context, retval);
 }
 
 static void
@@ -2381,6 +2409,7 @@ static void vpp_base_vpe_init(void)
     _(L2_MSG_ID(BVI_CREATE_REPLY), bvi_create_reply) \
     _(L2_MSG_ID(BVI_DELETE_REPLY), bvi_delete_reply) \
     _(L2_MSG_ID(BRIDGE_FLAGS_REPLY), bridge_flags_reply) \
+    _(L2_MSG_ID(BRIDGE_DOMAIN_SET_MAC_AGE_REPLY), bridge_domain_set_mac_age_reply) \
     _(L2_MSG_ID(L2_FLAGS_REPLY), l2_flags_reply) \
     _(BOND_MSG_ID(BOND_CREATE_REPLY), bond_create_reply) \
     _(BOND_MSG_ID(BOND_DELETE_REPLY), bond_delete_reply) \
@@ -6411,11 +6440,10 @@ int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add)
 
     return ret;
 }
-int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_mode, uint32_t port_type)
+int set_sw_interface_l2_bridge_shg_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_mode, uint32_t port_type, uint8_t shg)
 {
     vat_main_t *vam = &vat_main;
     vl_api_sw_interface_set_l2_bridge_t *mp;
-    u32 shg = 0;
     int ret;
 
     VPP_LOCK();
@@ -6441,12 +6469,17 @@ int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id
 
     WR (ret);
 
-    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u bd_id %u l2_mode %d", __func__, ret, sw_if_index, bridge_id, l2_mode); }
-    else { SAIVPP_INFO("%s sw_if_index %u bd_id %u l2_mode %d", __func__, sw_if_index, bridge_id, l2_mode); }
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u bd_id %u l2_mode %d shg %u", __func__, ret, sw_if_index, bridge_id, l2_mode, shg); }
+    else { SAIVPP_INFO("%s sw_if_index %u bd_id %u l2_mode %d shg %u", __func__, sw_if_index, bridge_id, l2_mode, shg); }
 
     VPP_UNLOCK();
 
     return ret;
+}
+
+int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_mode, uint32_t port_type)
+{
+    return set_sw_interface_l2_bridge_shg_by_index(sw_if_index, bridge_id, l2_mode, port_type, 0);
 }
 
 int set_l2_interface_flags_by_index(uint32_t sw_if_index,
@@ -6696,6 +6729,46 @@ int set_bridge_domain_flags(uint32_t bd_id, vpp_bd_flags_t flag, bool enable)
     return ret;
 }
 
+int vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_age)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_bridge_domain_set_mac_age_t *mp;
+    uint32_t context;
+    int ret;
+
+    VPP_LOCK();
+
+    /*
+     * Tagged, so that the reply to a request that timed out can't pass for
+     * this one's: a MAC age VPP rejected would be taken as set on all bridge
+     * domains, and not set again.
+     */
+    context = store_ptr(&ret);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M (BRIDGE_DOMAIN_SET_MAC_AGE, mp);
+
+    mp->context = context;
+    mp->bd_id = htonl(bd_id);
+    mp->mac_age = mac_age;
+    S (mp);
+
+    WR (ret);
+    ret = finish_tagged_request(context, ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) bd_id %u mac_age %u", __func__, ret, bd_id, mac_age); }
+    else { SAIVPP_INFO("%s bd_id %u mac_age %u", __func__, bd_id, mac_age); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
 int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, u32 *sw_if_index)
 {
     vat_main_t *vam = &vat_main;
@@ -6853,6 +6926,44 @@ int l2fib_add_del(const char *hwif_name, const uint8_t *mac, uint32_t bd_id, boo
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s bd_id %u is_add %d", __func__, ret, hwif_name, bd_id, is_add); }
     else { SAIVPP_INFO("%s %s bd_id %u is_add %d", __func__, hwif_name, bd_id, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int l2fib_add_del_by_index(uint32_t sw_if_index, const uint8_t *mac, uint32_t bd_id, bool is_add, bool is_static_mac)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2fib_add_del_t* mp;
+    int ret;
+
+    if (bd_id == 0 || bd_id == (uint32_t)~0)
+    {
+        SAIVPP_ERROR("Invalid bridge id for add/del\n");
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M (L2FIB_ADD_DEL, mp);
+
+    mp->sw_if_index = htonl(sw_if_index);
+    memcpy(mp->mac, mac, sizeof(mp->mac));
+    mp->bd_id = htonl(bd_id);
+    mp->is_add = is_add;
+    mp->static_mac = is_static_mac;
+
+    S (mp);
+
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u bd_id %u is_add %d", __func__, ret, sw_if_index, bd_id, is_add); }
+    else { SAIVPP_INFO("%s sw_if_index %u bd_id %u is_add %d", __func__, sw_if_index, bd_id, is_add); }
 
     VPP_UNLOCK();
 

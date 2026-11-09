@@ -89,6 +89,39 @@ int main(void)
         return 9;
 
     /*
+     * A MAC age request times out, and its reply, a success, arrives while
+     * the next request is pending: it completes nothing.
+     */
+    int mac_age_request = 0;
+    vl_api_bridge_domain_set_mac_age_reply_t mac_age = {0};
+
+    old_context = store_ptr(&mac_age_request);
+    if (finish_tagged_request(old_context, -99) != -99 || get_index_ptr(old_context))
+        return 10;
+
+    current_context = store_ptr(&mac_age_request);
+    mac_age.context = old_context;
+    vat_main.retval = 123;
+    vat_main.result_ready = 0;
+    vl_api_bridge_domain_set_mac_age_reply_t_handler(&mac_age);
+    if (vat_main.result_ready || vat_main.retval != 123 ||
+        get_index_ptr(current_context) != (uintptr_t)&mac_age_request)
+        return 11;
+
+    /* WR() ended on another request's reply: the pending request fails */
+    if (finish_tagged_request(current_context, 0) != -EAGAIN || get_index_ptr(current_context))
+        return 12;
+
+    /* The request's own reply completes it, with VPP's result */
+    current_context = store_ptr(&mac_age_request);
+    mac_age.context = current_context;
+    mac_age.retval = htonl((uint32_t)-3);
+    vl_api_bridge_domain_set_mac_age_reply_t_handler(&mac_age);
+    if (!vat_main.result_ready || vat_main.retval != -3 || get_index_ptr(current_context) ||
+        finish_tagged_request(current_context, vat_main.retval) != -3)
+        return 13;
+
+    /*
      * sflow drop monitoring: the reply carries only a status, which must reach
      * the waiting caller byte-swapped and sign-extended so that
      * SwitchVpp::sflowDropMonitoringSet() can tell success from failure.
@@ -99,10 +132,10 @@ int main(void)
     drop.retval = htonl((uint32_t)-11);
     vl_api_sflow_drop_monitoring_set_reply_t_handler(&drop);
     if (!vat_main.result_ready || vat_main.retval != -11)
-        return 10;
+        return 14;
 
     vat_main.result_ready = 0;
     drop.retval = 0;
     vl_api_sflow_drop_monitoring_set_reply_t_handler(&drop);
-    return (!vat_main.result_ready || vat_main.retval) ? 11 : 0;
+    return (!vat_main.result_ready || vat_main.retval) ? 15 : 0;
 }
