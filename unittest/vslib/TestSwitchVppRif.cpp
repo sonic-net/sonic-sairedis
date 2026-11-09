@@ -967,6 +967,31 @@ TEST_F(SwitchVppRifTest, lagRifProgramsBondMacBeforeEnablingIpv6)
     EXPECT_TRUE(vppMock().callsTo("sw_interface_set_mac", "port0").empty());
 }
 
+// Sub-interfaces share the bond MAC, so a sub-port RIF must not rewrite it
+// under the bond and its siblings, whether the create succeeds or fails.
+TEST_F(SwitchVppRifTest, lagSubPortLeavesBondMacUnchanged)
+{
+    vppMock().macs["BondEthernet2"] = "02:fe:00:00:00:aa";
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, lag);
+    attrs[3].value.mac[5] = 2;
+    const auto subRif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(subRif, attrs));
+    EXPECT_EQ("02:fe:00:00:00:aa", vppMock().macs.at("BondEthernet2"));
+
+    attrs[3].value.mac[5] = 3;
+    attrs[5].value.u16 = 20;
+    const auto siblingRif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    vppMock().statsResult = -1;
+    ASSERT_EQ(SAI_STATUS_FAILURE, create(siblingRif, attrs));
+    EXPECT_EQ("02:fe:00:00:00:aa", vppMock().macs.at("BondEthernet2"));
+    EXPECT_EQ(0u, vppMock().interfaces.count("BondEthernet2.20"));
+
+    vppMock().statsResult = 0;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(siblingRif, attrs));
+    EXPECT_EQ("02:fe:00:00:00:aa", vppMock().macs.at("BondEthernet2"));
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_set_mac", "BondEthernet2").empty());
+}
+
 TEST_F(SwitchVppRifTest, ipv6EnableToleratesAlreadyEnabledButNotOtherErrors)
 {
     // An interface something else enabled first answers VALUE_EXIST, and VPP

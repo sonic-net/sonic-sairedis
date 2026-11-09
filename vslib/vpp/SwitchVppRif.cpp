@@ -2517,12 +2517,16 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
      * BondEthernet<N> only inherits a MAC once its first member is enslaved,
      * which can happen after this RIF is created. Program the RIF source MAC
      * (the switch MAC, as orchagent sends it) onto the bond first so the
-     * link-local matches the kernel's PortChannel<N>. A sub-interface has no
-     * MAC of its own - vnet_get_sup_sw_interface() resolves it to the parent -
-     * so this covers both RIF types on a LAG. A physical port already had its
-     * MAC set by createHostif() before that enabled IPv6 on it.
+     * link-local matches the kernel's PortChannel<N>. A physical port already
+     * had its MAC set by createHostif() before that enabled IPv6 on it.
+     *
+     * A sub-interface has no MAC of its own - vnet_get_sup_sw_interface()
+     * resolves it to the parent - so a SUB_PORT RIF leaves the bond MAC alone:
+     * writing it would also change the MAC of the bond and of every sibling
+     * sub-interface.
      */
-    if (want_ip6 && ot == SAI_OBJECT_TYPE_LAG)
+    if (want_ip6 && ot == SAI_OBJECT_TYPE_LAG &&
+        attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_PORT)
     {
         sai_mac_t rif_mac;
 
