@@ -295,6 +295,8 @@ Syncd::Syncd(
     // TODO move to syncd object
     m_translator = std::make_shared<VirtualOidTranslator>(m_client, m_virtualObjectIdManager,  vendorSai);
 
+    // The m_translator object passed into FlexCounterManager will become stale if Syncd's translator gets changed
+    // TODO create an explicit to handle m_translator gracefully for Syncd, propagating through dependents
     m_manager = std::make_shared<FlexCounterManager>(
             m_vendorSai,
             m_contextConfig->m_dbCounters,

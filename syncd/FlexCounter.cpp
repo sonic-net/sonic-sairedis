@@ -3070,8 +3070,16 @@ public:
 
         try
         {
-            if (m_translator &&
-                m_translator->tryTranslateVidToRid(port_vid, port_rid))
+            if (!m_translator)
+            {
+                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: syncd translator is not set for PortPhySerdesAttrContext");
+                return false;
+            }
+            if (port_vid == SAI_NULL_OBJECT_ID)
+            {
+                SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: NULL VID mapping read attempted");
+            }
+            if (m_translator->tryTranslateVidToRid(port_vid, port_rid))
             {
                 return true;
             }
@@ -3236,21 +3244,11 @@ public:
             return false;
         }
 
-        // Look up lane count from m_portSerdesIdToLaneCountMap
-        // If the rid ref is not found, attempt an re-assignment of the value
-        // A missing ref may happen due to the SAI potentially being busy when the Port PHY Serdes object is
-        // being re-created as part of reconfiguration during syncd initialization.
-        // See: https://github.com/sonic-net/sonic-sairedis/issues/1946
         auto it = m_portSerdesIdToLaneCountMap.find(rid);
         if (it == m_portSerdesIdToLaneCountMap.end())
         {
-            updatePortSerdesIdToLaneCountMap(rid);
-            it = m_portSerdesIdToLaneCountMap.find(rid);
-            if (it == m_portSerdesIdToLaneCountMap.end())
-            {
-                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no lane count information", rid);
-                return false;
-            }
+            SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no lane count information", rid);
+            return false;
         }
 
         uint32_t laneCount = it->second;
@@ -3265,21 +3263,11 @@ public:
 
             case SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST:
             {
-                // Find the TX Fir TAPS count from the map
-                // If the rid ref is not found, attempt an re-assignment of the value
-                // A missing ref may happen due to the SAI potentially being busy when the Port PHY Serdes object is
-                // being re-created as part of reconfiguration during syncd initialization.
-                // See: https://github.com/sonic-net/sonic-sairedis/issues/1946
                 auto count_it = m_portSerdesTapsCountMap.find(rid);
                 if (count_it == m_portSerdesTapsCountMap.end())
                 {
-                    updatePortSerdesTapsCountMap(rid);
-                    count_it = m_portSerdesTapsCountMap.find(rid);
-                    if (count_it == m_portSerdesTapsCountMap.end())
-                    {
-                        SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no serdes count attribute information", rid);
-                        return false;
-                    }
+                 SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no serdes count attribute information", rid);
+                 return false;
                 }
 
                 auto& attrCountMap = count_it->second;
@@ -3416,6 +3404,32 @@ public:
                 "PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes "
                 "with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                 attrIds.size(), vid, rid);
+
+            // Refresh missing lane and map information once per object
+            // SAI may still be busy when the SerDes object is registered
+            // See: https://github.com/sonic-net/sonic-sairedis/issues/1946
+            // All supported attributes need a lane count. A missing tap count
+            // must only prevent TX FIR taps collection, allowing RX VGA to proceed
+            auto lane_it = m_portSerdesIdToLaneCountMap.find(rid);
+            if (lane_it == m_portSerdesIdToLaneCountMap.end())
+            {
+                updatePortSerdesIdToLaneCountMap(rid);
+                lane_it = m_portSerdesIdToLaneCountMap.find(rid);
+                if (lane_it == m_portSerdesIdToLaneCountMap.end())
+                {
+                    SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no lane count information, retry on next poll", rid);
+                    continue;
+                }
+            }
+            const bool needsTapCount = std::find(
+                    attrIds.begin(), attrIds.end(),
+                    SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST) != attrIds.end();
+            if (needsTapCount &&
+                m_portSerdesTapsCountMap.find(rid) == m_portSerdesTapsCountMap.end())
+            {
+                // If unavailable even after update, initAttrData() skips TX FIR taps only
+                updatePortSerdesTapsCountMap(rid);
+            }
 
             // Initialize attributes - only collect successfully initialized ones
             for (size_t i = 0; i < attrIds.size(); i++)
