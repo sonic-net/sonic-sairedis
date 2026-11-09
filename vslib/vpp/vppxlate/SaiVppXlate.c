@@ -69,6 +69,9 @@
 #include <vpp_plugins/sonic_ext/sonic_ext.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
 
+#include <vpp_plugins/sonic_ext/sonic_ext_trim.api_enum.h>
+#include <vpp_plugins/sonic_ext/sonic_ext_trim.api_types.h>
+
 #include <vlibmemory/vlib.api_types.h>
 #include <vlibmemory/memclnt.api_enum.h>
 
@@ -200,6 +203,23 @@
 
 #define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
 #include <vpp_plugins/sonic_ext/sonic_ext.api.h>
+#undef vl_api_version
+/* sonic_ext packet-trim API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext_trim.api.h>
+#undef vl_typedefs
+
+#define  vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext_trim.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext_trim.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_trim_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext_trim.api.h>
 #undef vl_api_version
 
 /* interface API inclusion */
@@ -1099,6 +1119,37 @@ static void set_reply_sw_if_index (vl_api_interface_index_t sw_if_index)
 }
 
 /*
+ * A request tagged with a store_ptr() context completes only on its own
+ * reply. A reply to an earlier request that timed out, whose context was
+ * released, completes nothing, so it can't end the WR() of the request now
+ * pending.
+ */
+static void complete_tagged_reply (uint32_t context, int retval)
+{
+    if (!get_index_ptr(context)) {
+        return;
+    }
+    release_index(context);
+    set_reply_status(retval);
+}
+
+/*
+ * The result of a request tagged with context, once WR() is done. If its own
+ * reply didn't complete it, WR() timed out or another request's reply ended
+ * it: release the context, so that its reply, should it come later, completes
+ * nothing, and fail the request.
+ */
+static int finish_tagged_request (uint32_t context, int ret)
+{
+    if (get_index_ptr(context)) {
+        release_index(context);
+        return ret ? ret : -EAGAIN;
+    }
+
+    return ret;
+}
+
+/*
  * Context of the last control ping reply read. Every read holds vpp_mutex, so
  * a request that tags its ping can tell the reply to it from one left over
  * from an earlier request that timed out (see vpp_l2fib_dump()).
@@ -1455,6 +1506,13 @@ vl_api_bridge_flags_reply_t_handler (vl_api_bridge_flags_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
+
+static void
+vl_api_bridge_domain_set_mac_age_reply_t_handler (vl_api_bridge_domain_set_mac_age_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    complete_tagged_reply(msg->context, retval);
 }
 
 static void
@@ -1988,6 +2046,47 @@ vl_api_sonic_ext_egress_mirror_enable_disable_reply_t_handler(
 }
 
 static void
+vl_api_sonic_ext_trim_global_set_reply_t_handler(vl_api_sonic_ext_trim_global_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    complete_tagged_reply(msg->context, retval);
+}
+
+static void
+vl_api_sonic_ext_trim_dscp_map_set_reply_t_handler(vl_api_sonic_ext_trim_dscp_map_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    complete_tagged_reply(msg->context, retval);
+}
+
+static void
+vl_api_sonic_ext_trim_queue_set_reply_t_handler(vl_api_sonic_ext_trim_queue_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    complete_tagged_reply(msg->context, retval);
+}
+
+static void
+vl_api_sonic_ext_trim_counters_get_reply_t_handler(vl_api_sonic_ext_trim_counters_get_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+
+    vpp_sonic_ext_trim_counters_t *out =
+        (vpp_sonic_ext_trim_counters_t *) get_index_ptr(msg->context);
+
+    if (!out) {
+        return;
+    }
+
+    out->trim_sent = be64toh(msg->trim_sent);
+    out->trim_drop = be64toh(msg->trim_drop);
+    out->trim_admit_fail = be64toh(msg->trim_admit_fail);
+
+    release_index(msg->context);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_bond_create_reply_t_handler (vl_api_bond_create_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2199,6 +2298,7 @@ static u16 interface_msg_id_base, memclnt_msg_id_base;
 static __thread u16 __plugin_msg_base;
 static u16 l2_msg_id_base, vxlan_msg_id_base, ipip_msg_id_base;
 static u16 tunterm_msg_id_base;
+static u16 sonic_ext_trim_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
 static u16 mpls_msg_id_base;
@@ -2304,6 +2404,7 @@ static void vpp_base_vpe_init(void)
     _(L2_MSG_ID(BVI_CREATE_REPLY), bvi_create_reply) \
     _(L2_MSG_ID(BVI_DELETE_REPLY), bvi_delete_reply) \
     _(L2_MSG_ID(BRIDGE_FLAGS_REPLY), bridge_flags_reply) \
+    _(L2_MSG_ID(BRIDGE_DOMAIN_SET_MAC_AGE_REPLY), bridge_domain_set_mac_age_reply) \
     _(L2_MSG_ID(L2_FLAGS_REPLY), l2_flags_reply) \
     _(BOND_MSG_ID(BOND_CREATE_REPLY), bond_create_reply) \
     _(BOND_MSG_ID(BOND_DELETE_REPLY), bond_delete_reply) \
@@ -2500,6 +2601,9 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
 #define TUNTERM_MSG_ID(id) \
     (VL_API_##id + tunterm_msg_id_base)
 
+#define SONIC_EXT_TRIM_MSG_ID(id) \
+    (VL_API_##id + sonic_ext_trim_msg_id_base)
+
 #define VXLAN_MSG_ID(id) \
     (VL_API_##id + vxlan_msg_id_base)
 
@@ -2556,7 +2660,11 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(MPLS_MSG_ID(MPLS_TABLE_ADD_DEL_REPLY), mpls_table_add_del_reply) \
     _(MPLS_MSG_ID(MPLS_ROUTE_ADD_DEL_REPLY), mpls_route_add_del_reply) \
     _(POLICER_MSG_ID(POLICER_ADD_REPLY), policer_add_reply) \
-    _(POLICER_MSG_ID(POLICER_DEL_REPLY), policer_del_reply)
+    _(POLICER_MSG_ID(POLICER_DEL_REPLY), policer_del_reply) \
+    _(SONIC_EXT_TRIM_MSG_ID(SONIC_EXT_TRIM_GLOBAL_SET_REPLY), sonic_ext_trim_global_set_reply) \
+    _(SONIC_EXT_TRIM_MSG_ID(SONIC_EXT_TRIM_DSCP_MAP_SET_REPLY), sonic_ext_trim_dscp_map_set_reply) \
+    _(SONIC_EXT_TRIM_MSG_ID(SONIC_EXT_TRIM_QUEUE_SET_REPLY), sonic_ext_trim_queue_set_reply) \
+    _(SONIC_EXT_TRIM_MSG_ID(SONIC_EXT_TRIM_COUNTERS_GET_REPLY), sonic_ext_trim_counters_get_reply)
 
 static void vpp_plugin_vpe_init(void)
 {
@@ -2668,6 +2776,9 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "gre_%08x%c", gre_api_version, 0);
     gre_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(gre_msg_id_base != (u16) ~0);
+    msg_base_lookup_name = format (0, "sonic_ext_trim_%08x%c", sonic_ext_trim_api_version, 0);
+    sonic_ext_trim_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(sonic_ext_trim_msg_id_base != (u16) ~0);
 
     msg_base_lookup_name = format (0, "classify_%08x%c", classify_api_version, 0);
     classify_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
@@ -4665,6 +4776,171 @@ int vpp_tunterm_acl_add_replace (uint32_t *tunterm_index, uint32_t count, vpp_tu
     return ret;
 }
 
+int vpp_sonic_ext_trim_global_set(bool is_enable, uint16_t trim_size,
+                                  uint8_t dscp_mode, uint8_t dscp_value,
+                                  uint8_t tc_value, uint8_t trim_queue)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_trim_global_set_t *mp;
+    uint32_t context;
+    int ret;
+
+    VPP_LOCK();
+
+    context = store_ptr(&ret);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    __plugin_msg_base = sonic_ext_trim_msg_id_base;
+    M (SONIC_EXT_TRIM_GLOBAL_SET, mp);
+    mp->context = context;
+
+    mp->is_enable = is_enable;
+    mp->trim_size = htons(trim_size);
+    mp->dscp_mode = dscp_mode;
+    mp->dscp_value = dscp_value;
+    mp->tc_value = tc_value;
+    mp->trim_queue = trim_queue;
+
+    S (mp);
+    WR (ret);
+    if (get_index_ptr(context)) {
+        release_index(context);
+    }
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) enable %d size %u queue %u", __func__, ret, is_enable, trim_size, trim_queue); }
+    else { SAIVPP_INFO("%s enable %d size %u dscp_mode %u dscp %u tc %u queue %u", __func__, is_enable, trim_size, dscp_mode, dscp_value, tc_value, trim_queue); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_trim_dscp_map_set(const uint8_t dscp_to_queue[64])
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_trim_dscp_map_set_t *mp;
+    uint32_t context;
+    int ret;
+
+    VPP_LOCK();
+
+    context = store_ptr(&ret);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    __plugin_msg_base = sonic_ext_trim_msg_id_base;
+    M (SONIC_EXT_TRIM_DSCP_MAP_SET, mp);
+    mp->context = context;
+
+    memcpy(mp->dscp_to_queue, dscp_to_queue, 64);
+
+    S (mp);
+    WR (ret);
+    if (get_index_ptr(context)) {
+        release_index(context);
+    }
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d)", __func__, ret); }
+    else { SAIVPP_INFO("%s ok", __func__); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_trim_queue_set(const char *hwif_name, uint8_t queue,
+                                 bool eligible, uint64_t rate_bytes_per_sec,
+                                 uint64_t capacity_bytes)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_trim_queue_set_t *mp;
+    uint32_t context;
+    u32 idx;
+    int ret;
+
+    if (!hwif_name) {
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    context = store_ptr(&ret);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    __plugin_msg_base = sonic_ext_trim_msg_id_base;
+    M (SONIC_EXT_TRIM_QUEUE_SET, mp);
+    mp->context = context;
+
+    mp->sw_if_index = htonl(idx);
+    mp->queue = queue;
+    mp->eligible = eligible;
+    mp->rate_bytes_per_sec = htobe64(rate_bytes_per_sec);
+    mp->capacity_bytes = htobe64(capacity_bytes);
+
+    S (mp);
+    WR (ret);
+    if (get_index_ptr(context)) {
+        release_index(context);
+    }
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s queue %u eligible %d rate %lu cap %lu", __func__, ret, hwif_name, queue, eligible, (unsigned long)rate_bytes_per_sec, (unsigned long)capacity_bytes); }
+    else { SAIVPP_INFO("%s hwif %s queue %u eligible %d rate %lu cap %lu", __func__, hwif_name, queue, eligible, (unsigned long)rate_bytes_per_sec, (unsigned long)capacity_bytes); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_trim_counters_get(vpp_sonic_ext_trim_counters_t *out)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_trim_counters_get_t *mp;
+    uint32_t context;
+    int ret;
+
+    if (!out) {
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_trim_msg_id_base;
+    M (SONIC_EXT_TRIM_COUNTERS_GET, mp);
+
+    context = store_ptr(out);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+    mp->context = context;
+
+    S (mp);
+    WR (ret);
+
+    if (get_index_ptr(context) != (uintptr_t) NULL) {
+        release_index(context);
+    }
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d)", __func__, ret); }
+    else { SAIVPP_INFO("%s sent %lu drop %lu admit_fail %lu", __func__, (unsigned long)out->trim_sent, (unsigned long)out->trim_drop, (unsigned long)out->trim_admit_fail); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
 static int vpp_acl_counters_enable_disable (bool enable)
 {
     vat_main_t *vam = &vat_main;
@@ -6138,11 +6414,10 @@ int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add)
 
     return ret;
 }
-int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_mode, uint32_t port_type)
+int set_sw_interface_l2_bridge_shg_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_mode, uint32_t port_type, uint8_t shg)
 {
     vat_main_t *vam = &vat_main;
     vl_api_sw_interface_set_l2_bridge_t *mp;
-    u32 shg = 0;
     int ret;
 
     VPP_LOCK();
@@ -6168,12 +6443,17 @@ int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id
 
     WR (ret);
 
-    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u bd_id %u l2_mode %d", __func__, ret, sw_if_index, bridge_id, l2_mode); }
-    else { SAIVPP_INFO("%s sw_if_index %u bd_id %u l2_mode %d", __func__, sw_if_index, bridge_id, l2_mode); }
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u bd_id %u l2_mode %d shg %u", __func__, ret, sw_if_index, bridge_id, l2_mode, shg); }
+    else { SAIVPP_INFO("%s sw_if_index %u bd_id %u l2_mode %d shg %u", __func__, sw_if_index, bridge_id, l2_mode, shg); }
 
     VPP_UNLOCK();
 
     return ret;
+}
+
+int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_mode, uint32_t port_type)
+{
+    return set_sw_interface_l2_bridge_shg_by_index(sw_if_index, bridge_id, l2_mode, port_type, 0);
 }
 
 int set_l2_interface_flags_by_index(uint32_t sw_if_index,
@@ -6423,6 +6703,46 @@ int set_bridge_domain_flags(uint32_t bd_id, vpp_bd_flags_t flag, bool enable)
     return ret;
 }
 
+int vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_age)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_bridge_domain_set_mac_age_t *mp;
+    uint32_t context;
+    int ret;
+
+    VPP_LOCK();
+
+    /*
+     * Tagged, so that the reply to a request that timed out can't pass for
+     * this one's: a MAC age VPP rejected would be taken as set on all bridge
+     * domains, and not set again.
+     */
+    context = store_ptr(&ret);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M (BRIDGE_DOMAIN_SET_MAC_AGE, mp);
+
+    mp->context = context;
+    mp->bd_id = htonl(bd_id);
+    mp->mac_age = mac_age;
+    S (mp);
+
+    WR (ret);
+    ret = finish_tagged_request(context, ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) bd_id %u mac_age %u", __func__, ret, bd_id, mac_age); }
+    else { SAIVPP_INFO("%s bd_id %u mac_age %u", __func__, bd_id, mac_age); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
 int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, u32 *sw_if_index)
 {
     vat_main_t *vam = &vat_main;
@@ -6580,6 +6900,44 @@ int l2fib_add_del(const char *hwif_name, const uint8_t *mac, uint32_t bd_id, boo
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s bd_id %u is_add %d", __func__, ret, hwif_name, bd_id, is_add); }
     else { SAIVPP_INFO("%s %s bd_id %u is_add %d", __func__, hwif_name, bd_id, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int l2fib_add_del_by_index(uint32_t sw_if_index, const uint8_t *mac, uint32_t bd_id, bool is_add, bool is_static_mac)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_l2fib_add_del_t* mp;
+    int ret;
+
+    if (bd_id == 0 || bd_id == (uint32_t)~0)
+    {
+        SAIVPP_ERROR("Invalid bridge id for add/del\n");
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    __plugin_msg_base = l2_msg_id_base;
+
+    M (L2FIB_ADD_DEL, mp);
+
+    mp->sw_if_index = htonl(sw_if_index);
+    memcpy(mp->mac, mac, sizeof(mp->mac));
+    mp->bd_id = htonl(bd_id);
+    mp->is_add = is_add;
+    mp->static_mac = is_static_mac;
+
+    S (mp);
+
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) sw_if_index %u bd_id %u is_add %d", __func__, ret, sw_if_index, bd_id, is_add); }
+    else { SAIVPP_INFO("%s sw_if_index %u bd_id %u is_add %d", __func__, sw_if_index, bd_id, is_add); }
 
     VPP_UNLOCK();
 

@@ -591,6 +591,8 @@ typedef enum {
     extern int vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add);
     extern int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
     extern int set_sw_interface_l2_bridge_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_enable, uint32_t port_type);
+    /* shg: split horizon group; a frame is not flooded to members of the group it came from */
+    extern int set_sw_interface_l2_bridge_shg_by_index(uint32_t sw_if_index, uint32_t bridge_id, bool l2_enable, uint32_t port_type, uint8_t shg);
     /* Per-interface ingress feature overrides. Uses the VPP_BD_FLAG_* bit
      * values; ARP_UFWD is not supported by the VPP l2_flags API. */
     extern int set_l2_interface_flags_by_index(uint32_t sw_if_index, vpp_bd_flags_t flags, bool enable);
@@ -599,12 +601,16 @@ typedef enum {
     extern int create_bvi_interface(uint8_t *mac_address, uint32_t instance);
     extern int delete_bvi_interface(const char *hwif_name);
     extern int set_bridge_domain_flags(uint32_t bd_id, vpp_bd_flags_t flag, bool enable);
+    /* Age out the learned MACs of bridge domain bd_id that send nothing for
+     * mac_age minutes (0: never). VPP reports each one as a DELETE MAC event. */
+    extern int vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_age);
     extern int create_bond_interface(uint32_t bond_id, uint32_t mode, uint32_t lb, uint32_t *swif_idx);
     extern int delete_bond_interface(const char *hwif_name);
     extern int create_bond_member(uint32_t bond_sw_if_index, const char *hwif_name, bool is_passive, bool is_long_timeout);
     extern int delete_bond_member(const char * hwif_name);
     extern const char * vpp_get_swif_name(const uint32_t swif_idx);
     extern int l2fib_add_del(const char *hwif_name, const uint8_t *mac, uint32_t bd_id, bool is_add, bool is_static_mac);
+    extern int l2fib_add_del_by_index(uint32_t sw_if_index, const uint8_t *mac, uint32_t bd_id, bool is_add, bool is_static_mac);
     extern int l2fib_flush_all();
     extern int l2fib_flush_int(const char *hwif_name);
     extern int l2fib_flush_bd(uint32_t bd_id);
@@ -750,6 +756,26 @@ typedef enum {
     } vpp_gre_tunnel_t;
 
     extern int vpp_gre_tunnel_add_del(vpp_gre_tunnel_t *tunnel, bool is_add, uint32_t *sw_if_index);
+    /*
+     * SONiC-VPP packet-trimming (SAI DROP_AND_TRIM) control API.
+     * SAI-VPP programs the global trim policy, the composed DSCP->queue
+     * table, and the per-(port,queue) software admission parameters, and
+     * reads back the trim counters for SAI switch/port/queue statistics.
+     */
+    typedef struct vpp_sonic_ext_trim_counters_ {
+        uint64_t trim_sent;
+        uint64_t trim_drop;
+        uint64_t trim_admit_fail;
+    } vpp_sonic_ext_trim_counters_t;
+
+    extern int vpp_sonic_ext_trim_global_set(bool is_enable, uint16_t trim_size,
+                                             uint8_t dscp_mode, uint8_t dscp_value,
+                                             uint8_t tc_value, uint8_t trim_queue);
+    extern int vpp_sonic_ext_trim_dscp_map_set(const uint8_t dscp_to_queue[64]);
+    extern int vpp_sonic_ext_trim_queue_set(const char *hwif_name, uint8_t queue,
+                                            bool eligible, uint64_t rate_bytes_per_sec,
+                                            uint64_t capacity_bytes);
+    extern int vpp_sonic_ext_trim_counters_get(vpp_sonic_ext_trim_counters_t *out);
 
     /*
      * NAT44 endpoint-dependent (nat_plugin.so). Addresses are in network

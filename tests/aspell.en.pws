@@ -16,6 +16,7 @@ AsicView
 AttrHash
 BCM
 BFD
+BVI
 Bool
 CHARDATA
 COLDVIDS
@@ -25,6 +26,7 @@ CSIG
 CSP
 CreateObject
 DEI
+DHCP
 Decrement
 Destructor
 DPU
@@ -114,6 +116,7 @@ VIDTORID
 VIDs
 VLANS
 VOQ
+VRF
 VXLAN
 WRED
 Werror
@@ -318,6 +321,7 @@ saiDiscovery
 sairedis
 saiswitch
 saivs
+saivpp
 sanitycheck
 sc
 scb
@@ -463,7 +467,13 @@ desync
 rebuildable
 jitter
 jittered
+BondEthernet
+PortChannel
 VPP
+EVPN
+VNI
+VTEP
+anycast
 ARGV
 vppxlate
 PBH
@@ -474,3 +484,9 @@ loopback
 resync
 BVI
 bvi
+DHCPv
+LLDP
+cp
+ethertype
+fixup
+nexts

@@ -10,6 +10,9 @@
 
 #include "SwitchVppUtils.h"
 
+#include <algorithm>
+#include <set>
+
 using namespace saivs;
 
 /* ======================================================================
@@ -30,7 +33,9 @@ using namespace saivs;
  *     SAI_PACKET_ACTION_TRAP for DHCP on VPP-VS: the L2-flood is
  *     skipped entirely, so no copies are flooded to other VLAN
  *     members (sonic-mgmt DHCPBroadcastNotFloodedTest depends on
- *     this).
+ *     this).  When the DHCP trap's action is SAI_PACKET_ACTION_COPY
+ *     the broadcast is flooded instead and the CPU gets the BVI's copy;
+ *     see s_dhcp_member_sessions.
  *
  * LLDP needs the classifier to work around a VPP behavior: link-local
  * multicast frames (DA in 01:80:c2:00:00:00..0F) are flooded by the BD
@@ -128,6 +133,14 @@ using namespace saivs;
  *     multicast (rewrites VLIB_RX from bridged sub-if to parent phys
  *     before handing to linux-cp-punt, because a bridged sub-if has no
  *     LCP pair).
+ *   - sonic-ext-l2-trap-learn: DHCPv4, ARP and IPv6 multicast, tagged and
+ *     untagged, in place of the two above when the l2-trap-learn feature
+ *     is on.  A trapped frame never reaches l2-learn, so its source MAC
+ *     is never learned, while an ASIC learns the source MAC of the frames
+ *     it traps.  The node sends a copy of the frame on to
+ *     sonic-ext-l2-trap-fixup -- which leaves an untagged frame's VLIB_RX
+ *     alone, as it is the parent phys already -- and the frame itself to
+ *     l2-learn, from where it is dropped.
  *   - sonic-ext-l2-vlan-filter: 802.1Q frames on an untagged (access)
  *     member.  Accepts frames whose VID equals the member's access
  *     VLAN (pops the tag and re-bridges) and drops any other VID, so
@@ -142,6 +155,7 @@ using namespace saivs;
 static bool     s_l2_punt_classify_inited = false;
 static uint32_t s_punt_next_index = ~0;       /* linux-cp-punt (untagged + LLDP) */
 static uint32_t s_trap_fixup_next_index = ~0; /* sonic-ext-l2-trap-fixup (tagged DHCP only) */
+static uint32_t s_trap_learn_next_index = ~0; /* sonic-ext-l2-trap-learn (DHCP/ARP/IPv6-mc, if on) */
 static uint32_t s_vlan_filter_next_index = ~0; /* sonic-ext-l2-vlan-filter (access-port ingress VLAN filter) */
 
 /* Untagged member tables: ip4 slot holds DHCPv4 broadcast,
@@ -189,6 +203,101 @@ static uint32_t s_tag_ip6mc_only_table = ~0;  /* IPv6 mcast over .1Q -> s_tag_dh
  */
 #define SAIVS_DHCP_BOOTPC 68
 #define SAIVS_DHCP_BOOTPS 67
+
+/*
+ * SAI_HOSTIF_TRAP_TYPE_DHCP packet action.
+ *
+ * The DHCPv4 sessions in s_untag_ip4_table and s_tag_dhcp_table emulate
+ * SAI_PACKET_ACTION_TRAP: the classify hit is terminal, so the broadcast
+ * reaches the CPU and is not flooded.  SAI_PACKET_ACTION_COPY asks for
+ * both, the flood to the other VLAN members and a copy to the CPU, and a
+ * single classify session cannot do both.  For COPY the member DHCPv4
+ * sessions are removed instead.  The tables stay bound and their
+ * miss-chains stay intact, they just miss, so the broadcast reaches
+ * l2-flood like any other broadcast, flood copy to the BVI included.
+ *
+ * The CPU gets the BVI's copy.  VPP installs 255.255.255.255/32 in every
+ * IPv4 table as a drop, but at the lowest priority so that it can be
+ * overridden, and while the DHCP trap action is COPY that entry is
+ * overridden with a local receive in each VRF table (see
+ * vpp_ip4_limited_broadcast_receive()).  So the copy goes to ip4-local,
+ * and from there to the BVI's host tap the way any punted packet for the
+ * BVI does: sonic-ext-aggr-tap-redirect moves it to the originating
+ * member's tap (re-adding the tag for a tagged member) and the kernel
+ * lifts it to the Vlan netdev, where the DHCP relay listens.
+ *
+ * Every other action, and no DHCP trap at all, keeps the TRAP behavior on
+ * VLAN members and leaves VPP's default drop on 255.255.255.255/32 in place
+ * so routed interfaces do not punt limited broadcasts when no COPY DHCP
+ * trap is configured.
+ */
+static bool     s_dhcp_member_sessions = false; /* DHCPv4 sessions present in the member tables */
+
+/* Untagged member: DHCPv4 client broadcast, see s_untag_ip4_table. */
+static void dhcp_untag_match(uint8_t m[48])
+{
+    memset(m, 0, 48);
+    m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
+    m[12] = 0x08; m[13] = 0x00;
+    m[23] = 0x11;                                /* IPPROTO_UDP */
+    m[36] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
+    m[37] =  SAIVS_DHCP_BOOTPS       & 0xFF;
+}
+
+/* Tagged member: the same over .1Q, see s_tag_dhcp_table. */
+static void dhcp_tag_match(uint8_t m[48])
+{
+    memset(m, 0, 48);
+    m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
+    m[16] = 0x08; m[17] = 0x00;
+    m[27] = 0x11;
+    m[40] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
+    m[41] =  SAIVS_DHCP_BOOTPS       & 0xFF;
+}
+
+/*
+ * Adds or removes the member DHCPv4 sessions so that they are present
+ * exactly when the DHCP trap action is not COPY.  Does nothing before the
+ * member tables exist: CoPP is usually programmed before the first VLAN
+ * member, so l2_punt_classify_apply() calls it again on every member once
+ * the tables are there.
+ */
+static void l2_punt_dhcp_sessions_set(bool present)
+{
+    SWSS_LOG_ENTER();
+
+    if (!s_l2_punt_classify_inited || present == s_dhcp_member_sessions)
+        return;
+
+    uint8_t m[48];
+
+    if (s_untag_ip4_table != ~0u) {
+        uint32_t untag_next = s_trap_learn_next_index != ~0u
+            ? s_trap_learn_next_index : s_punt_next_index;
+        dhcp_untag_match(m);
+        if (present)
+            vpp_classify_session_add(s_untag_ip4_table, untag_next,
+                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        else
+            vpp_classify_session_del(s_untag_ip4_table, m, 48);
+    }
+
+    if (s_tag_dhcp_table != ~0u) {
+        uint32_t tag_next = s_trap_learn_next_index != ~0u
+            ? s_trap_learn_next_index : s_trap_fixup_next_index;
+        dhcp_tag_match(m);
+        if (present)
+            vpp_classify_session_add(s_tag_dhcp_table, tag_next,
+                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        else
+            vpp_classify_session_del(s_tag_dhcp_table, m, 48);
+    }
+
+    s_dhcp_member_sessions = present;
+
+    SWSS_LOG_NOTICE("l2_punt_dhcp_sessions_set: DHCPv4 member sessions %s",
+                    present ? "installed (trap)" : "removed (copy)");
+}
 
 /* Called only from the single SAI processing thread; the s_* globals need no locking. */
 static int l2_punt_classify_init()
@@ -250,6 +359,33 @@ static int l2_punt_classify_init()
         s_vlan_filter_next_index = ~0;
     }
 
+    /* sonic-ext-l2-trap-learn next: hit-next of the DHCPv4, ARP and IPv6
+     * multicast trap sessions, tagged and untagged, so that the source MAC
+     * of a trapped frame is learned.  It sends its copy of the frame to
+     * sonic-ext-l2-trap-fixup, so it is only used along with that node.
+     * Not fatal if unavailable: those sessions then trap straight to
+     * linux-cp-punt (untagged) or sonic-ext-l2-trap-fixup (tagged), and
+     * the source MACs of trapped frames are not learned.  LLDP is not
+     * learned either way. */
+    uint32_t untag_trap_next_index = s_punt_next_index;
+    uint32_t tag_trap_next_index = s_trap_fixup_next_index;
+    if (s_trap_fixup_next_index == ~0u) {
+        s_trap_learn_next_index = ~0;
+    } else if (!sonicExtFeatureEnabled("l2-trap-learn")) {
+        SWSS_LOG_NOTICE("l2_punt_classify_init: sonic-ext-l2-trap-learn disabled; "
+                        "source MACs of trapped frames will not be learned");
+        s_trap_learn_next_index = ~0;
+    } else if (vpp_add_node_next("l2-input-classify", "sonic-ext-l2-trap-learn",
+                                &s_trap_learn_next_index) != 0) {
+        SWSS_LOG_WARN("l2_punt_classify_init: sonic-ext-l2-trap-learn not registered; "
+                      "source MACs of trapped frames will not be learned");
+        s_trap_learn_next_index = ~0;
+    } else {
+        untag_trap_next_index = tag_trap_next_index = s_trap_learn_next_index;
+        SWSS_LOG_NOTICE("l2_punt_classify_init: trap_learn_next_index=%u",
+                        s_trap_learn_next_index);
+    }
+
     SWSS_LOG_NOTICE("l2_punt_classify_init: punt_next_index=%u", s_punt_next_index);
 
     /* --- Untagged IP4-slot table (DHCPv4 broadcast) ---
@@ -267,10 +403,17 @@ static int l2_punt_classify_init()
      * Hit_next is linux-cp-punt directly: VLIB_RX is already the
      * parent phys (untagged BD member IS the parent phys; sub-if
      * dispatch never ran), so linux-cp-punt picks the correct LCP
-     * pair straight away.  No fixup node needed.
+     * pair straight away.  No fixup node needed.  With l2-trap-learn on
+     * it is sonic-ext-l2-trap-learn instead, as for every trap session
+     * except LLDP's.
      *
      * No chain on miss: non-DHCP IPv4 traffic should fall through to
      * the rest of the L2 feature arc unchanged.
+     *
+     * The session (dhcp_untag_match()) is added by
+     * l2_punt_dhcp_sessions_set(), which l2_punt_classify_apply() calls
+     * once the tables exist, and only while the DHCP trap action is not
+     * COPY.
      */
     {
         uint8_t mask[48] = {0};
@@ -286,15 +429,6 @@ static int l2_punt_classify_init()
                 mask, 48, &s_untag_ip4_table) != 0) {
             SWSS_LOG_ERROR("l2_punt_classify_init: untag_ip4 table create failed");
             s_untag_ip4_table = ~0;
-        } else {
-            uint8_t m[48] = {0};
-            m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
-            m[12] = 0x08; m[13] = 0x00;
-            m[23] = 0x11;                                /* IPPROTO_UDP */
-            m[36] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
-            m[37] =  SAIVS_DHCP_BOOTPS       & 0xFF;
-            vpp_classify_session_add(s_untag_ip4_table, s_punt_next_index,
-                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
 
@@ -341,7 +475,7 @@ static int l2_punt_classify_init()
      *
      * This table *is* the implementation of that attribute: a classify
      * hit is terminal (l2-input-classify dispatches straight to the
-     * session's next node and never re-enters the L2 feature arc), so
+     * session's next node, and the frame never reaches l2-flood), so
      * matching here both delivers the request to the control plane and
      * stops it reaching l2-flood.  That is exactly what the attribute
      * asks for, and it is why the BD's L2_FLOOD bit is left alone --
@@ -386,7 +520,7 @@ static int l2_punt_classify_init()
             uint8_t m[16] = {0};
             m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
             m[12] = 0x08; m[13] = 0x06;        /* ARP */
-            vpp_classify_session_add(s_untag_arp_table, s_punt_next_index,
+            vpp_classify_session_add(s_untag_arp_table, untag_trap_next_index,
                                      m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
@@ -434,7 +568,7 @@ static int l2_punt_classify_init()
         } else {
             uint8_t m[16] = {0};
             m[0] = 0x33; m[1] = 0x33;          /* IPv6 multicast DA prefix */
-            vpp_classify_session_add(s_untag_ip6mc_table, s_punt_next_index,
+            vpp_classify_session_add(s_untag_ip6mc_table, untag_trap_next_index,
                                      m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
@@ -455,6 +589,13 @@ static int l2_punt_classify_init()
      * the frame.  The fixup node rewrites VLIB_RX to the parent phys
      * (Ethernet0), which always has an LCP pair.  Skip table install
      * if the fixup node is not registered (untagged DHCP still works).
+     * With l2-trap-learn on, hit_next is sonic-ext-l2-trap-learn, which
+     * hands its copy of the frame to the fixup node -- here and for the
+     * tagged ARP and IPv6 multicast tables below.
+     *
+     * As for the untagged table, the session (dhcp_tag_match()) is added
+     * by l2_punt_dhcp_sessions_set().  The table itself is created either
+     * way, because the ARP and IPv6-multicast tables chain to it.
      */
     if (s_trap_fixup_next_index != ~0u) {
         uint8_t mask[48] = {0};
@@ -470,15 +611,6 @@ static int l2_punt_classify_init()
                 mask, 48, &s_tag_dhcp_table) != 0) {
             SWSS_LOG_ERROR("l2_punt_classify_init: tag_dhcp table create failed");
             s_tag_dhcp_table = ~0;
-        } else {
-            uint8_t m[48] = {0};
-            m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
-            m[16] = 0x08; m[17] = 0x00;
-            m[27] = 0x11;
-            m[40] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
-            m[41] =  SAIVS_DHCP_BOOTPS       & 0xFF;
-            vpp_classify_session_add(s_tag_dhcp_table, s_trap_fixup_next_index,
-                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
 
@@ -516,7 +648,7 @@ static int l2_punt_classify_init()
             uint8_t m[32] = {0};
             m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
             m[16] = 0x08; m[17] = 0x06;
-            vpp_classify_session_add(s_tag_arp_table, s_trap_fixup_next_index,
+            vpp_classify_session_add(s_tag_arp_table, tag_trap_next_index,
                                      m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
         }
     }
@@ -575,7 +707,7 @@ static int l2_punt_classify_init()
                 SWSS_LOG_ERROR("l2_punt_classify_init: %s table create failed", v.name);
                 *v.out = ~0;
             } else {
-                vpp_classify_session_add(*v.out, s_trap_fixup_next_index,
+                vpp_classify_session_add(*v.out, tag_trap_next_index,
                                          m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
             }
         }
@@ -585,12 +717,14 @@ static int l2_punt_classify_init()
     SWSS_LOG_NOTICE("L2 punt classify tables initialized: "
                     "untag_ip4=%u untag_other=%u untag_arp=%u untag_ip6mc=%u "
                     "tag_dhcp=%u tag_arp=%u tag_ip6mc=%u tag_ip6mc_only=%u "
-                    "punt_next=%u trap_fixup_next=%u vlan_filter_next=%u",
+                    "punt_next=%u trap_fixup_next=%u trap_learn_next=%u "
+                    "vlan_filter_next=%u",
                     s_untag_ip4_table, s_untag_other_table, s_untag_arp_table,
                     s_untag_ip6mc_table,
                     s_tag_dhcp_table, s_tag_arp_table, s_tag_ip6mc_table,
                     s_tag_ip6mc_only_table,
-                    s_punt_next_index, s_trap_fixup_next_index, s_vlan_filter_next_index);
+                    s_punt_next_index, s_trap_fixup_next_index, s_trap_learn_next_index,
+                    s_vlan_filter_next_index);
     return 0;
 }
 
@@ -602,20 +736,27 @@ static int l2_punt_classify_init()
  *   punt_ip6mc <- SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE == NONE
  *
  * A classify hit is terminal -- l2-input-classify dispatches straight to the
- * session's next node and never re-enters the L2 feature arc -- so each punt
+ * session's next node, and the frame never reaches l2-flood -- so each punt
  * suppresses flooding for its own traffic class without affecting the other,
  * and without touching the bridge domain's shared L2_FLOOD bit.  See the
  * s_untag_arp_table and s_untag_ip6mc_table comments in
  * l2_punt_classify_init().
+ *
+ * punt_dhcp is switch-wide rather than per VLAN: it is false while the
+ * SAI_HOSTIF_TRAP_TYPE_DHCP action is COPY.  It is applied to the shared
+ * DHCP tables, not by picking a table here, so every member's chain stays
+ * as it is.
  */
 static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
-                                  bool punt_arp, bool punt_ip6mc)
+                                  bool punt_arp, bool punt_ip6mc, bool punt_dhcp)
 {
     SWSS_LOG_ENTER();
     if (l2_punt_classify_init() != 0) {
         SWSS_LOG_ERROR("l2_punt_classify_apply: init failed for %s", hwif_name);
         return -1;
     }
+
+    l2_punt_dhcp_sessions_set(punt_dhcp);
 
     /* Tagged frames carry outer ethertype 0x8100, so they all land in the
      * OTHER slot and every tagged punt has to share one miss-chain.
@@ -696,6 +837,46 @@ static int l2_punt_classify_remove(const char *hwif_name)
     /* Detach all tables from the interface */
     return vpp_classify_set_interface_l2_tables(
         hwif_name, ~0, ~0, ~0, true /*is_input*/);
+}
+
+/*
+ * Switches DHCPv4 client broadcasts between TRAP (punt, no flood) and COPY
+ * (flood, and the CPU gets the BVI's copy).  See the s_dhcp_member_sessions
+ * comment.
+ */
+void SwitchVpp::vpp_set_dhcp_trap_copy(
+        _In_ bool copy)
+{
+    SWSS_LOG_ENTER();
+
+    if (copy == m_dhcp_trap_copy)
+    {
+        return;
+    }
+
+    m_dhcp_trap_copy = copy;
+
+    SWSS_LOG_NOTICE("DHCP hostif trap action %s: DHCPv4 client broadcasts are %s",
+            copy ? "COPY" : "TRAP",
+            copy ? "flooded in their VLAN and copied to the CPU"
+                 : "trapped to the CPU and not flooded");
+
+    l2_punt_dhcp_sessions_set(!copy);
+
+    std::set<uint32_t> vrfs;
+
+    for (const auto &kv : vrf_objMap)
+    {
+        if (kv.second)
+        {
+            vrfs.insert(kv.second->m_vrf_id);
+        }
+    }
+
+    for (uint32_t vrf_id : vrfs)
+    {
+        vpp_ip4_limited_broadcast_receive(vrf_id, copy);
+    }
 }
 
 /**
@@ -900,6 +1081,9 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
     const char *hw_ifname;
     char host_subifname[32];
 
+    /* Whether VPP has another member of the VLAN in its bridge domain already */
+    bool bd_has_member = m_ifaceRegistry.collectMemberBdIds().count(bridge_id) != 0;
+
     /* If this VLAN already has flood suppression configured, the new member
      * must join with the matching punting classify tables so its broadcast
      * ARP / IPv6 multicast is punted rather than flooded to the other
@@ -968,7 +1152,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * Treated as best-effort: on failure the member still comes
          * up, but control-plane punt on this member is not enabled.
          */
-        if (l2_punt_classify_apply(hw_ifname, true /*tagged*/, punt_arp, punt_ip6mc) != 0) {
+        if (l2_punt_classify_apply(hw_ifname, true /*tagged*/, punt_arp, punt_ip6mc,
+                                   !m_dhcp_trap_copy) != 0) {
             SWSS_LOG_WARN("l2_punt_classify_apply failed for tagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
         }
@@ -993,7 +1178,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          *
          * Treated as best-effort; see the tagged branch above.
          */
-        if (l2_punt_classify_apply(hw_ifname, false /*untagged*/, punt_arp, punt_ip6mc) != 0) {
+        if (l2_punt_classify_apply(hw_ifname, false /*untagged*/, punt_arp, punt_ip6mc,
+                                   !m_dhcp_trap_copy) != 0) {
             SWSS_LOG_WARN("l2_punt_classify_apply failed for untagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
         }
@@ -1017,6 +1203,12 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
     if (set_bridge_domain_flags(bridge_id, VPP_BD_FLAG_UU_FLOOD, false) != 0) {
         SWSS_LOG_WARN("Failed to disable UU flood on bridge domain %u", bridge_id);
     }
+
+    /* The bridge domain can have any MAC age when the first member joins:
+     * VPP keeps the one of a VLAN with a router interface, with its MAC age,
+     * when the last member leaves, and creates one in the slot of a deleted
+     * bridge domain without resetting its MAC age */
+    vpp_apply_fdb_aging_time(bridge_id, bd_has_member);
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1478,7 +1670,8 @@ sai_status_t SwitchVpp::vpp_set_vlan_attribute(
                 }
 
                 if (l2_punt_classify_apply(member_hwif.c_str(), member_tagged,
-                                           punt_arp, punt_ip6mc) != 0)
+                                           punt_arp, punt_ip6mc,
+                                           !m_dhcp_trap_copy) != 0)
                 {
                     SWSS_LOG_WARN("Failed to update punt classify tables on %s (vlan %u)",
                             member_hwif.c_str(), bridge_id);
@@ -2714,12 +2907,72 @@ sai_status_t SwitchVpp::FdbEntrydel(
 {
     SWSS_LOG_ENTER();
 
+    if (!remote_fdb_forget(serializedObjectId))
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
     vpp_fdbentry_del(serializedObjectId);
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId));
 
+    /*
+     * Forget the MAC if VPP learned it, or moved this entry
+     * (generateFdbLearnedOrMoveEvent()): there is nothing left to age, and its
+     * next learn has to be reported. Keyed by the entry's own VLAN, which is
+     * also the bridge domain.
+     */
+    sai_fdb_entry_t fdb_entry;
+    sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+
+    sai_attribute_t attr;
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+    if (objectTypeQuery(fdb_entry.bv_id) == SAI_OBJECT_TYPE_VLAN &&
+        get(SAI_OBJECT_TYPE_VLAN, fdb_entry.bv_id, 1, &attr) == SAI_STATUS_SUCCESS)
+    {
+        FdbInfo fi;
+        fi.setVlanId(attr.value.u16);
+        memcpy(fi.m_fdbEntry.mac_address, fdb_entry.mac_address, sizeof(sai_mac_t));
+        m_fdb_info_set.erase(fi);
+
+        VppFdbKey key = {};
+        memcpy(key.mac, fdb_entry.mac_address, sizeof(key.mac));
+        key.bd_id = attr.value.u16;
+        m_vpp_fdb_entries.erase(key);
+    }
+
     return SAI_STATUS_SUCCESS;
 
+}
+
+sai_status_t SwitchVpp::FdbEntryset(
+        _In_ const std::string &serializedObjectId,
+        _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, attr));
+
+    /*
+     * orchagent moves a remote MAC address to another remote VTEP, turns a
+     * learned MAC address into a remote one and back, by setting these one at
+     * a time. Each step leaves the entry consistent enough to program.
+     */
+    switch (attr->id)
+    {
+        case SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID:
+        case SAI_FDB_ENTRY_ATTR_ENDPOINT_IP:
+        case SAI_FDB_ENTRY_ATTR_TYPE:
+        case SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE:
+            remote_fdb_sync(serializedObjectId);
+            break;
+
+        default:
+            break;
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::vpp_fdbentry_add(
@@ -2772,12 +3025,10 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
         return SAI_STATUS_FAILURE;
     }
 
-    // Skip VPP FDB add for tunnel bridge ports -- L2 VXLAN FDB is handled
-    // separately via the EVPN remote-MAC path, not the per-port FDB path
+    // EVPN remote MAC address: held on the L2 tunnel to its remote VTEP
     if (is_tunnel_bridge_port(br_port_id))
     {
-        SWSS_LOG_NOTICE("Skipping FDB add for tunnel bridge port %s",
-                sai_serialize_object_id(br_port_id).c_str());
+        remote_fdb_sync(serializedObjectId);
         return SAI_STATUS_SUCCESS;
     }
 
@@ -2890,11 +3141,9 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
         return SAI_STATUS_FAILURE;
     }
 
-    // Skip VPP FDB delete for tunnel bridge ports
+    // a remote MAC address is deleted by remote_fdb_forget() in FdbEntrydel()
     if (is_tunnel_bridge_port(br_port_id))
     {
-        SWSS_LOG_NOTICE("Skipping FDB delete for tunnel bridge port %s",
-                sai_serialize_object_id(br_port_id).c_str());
         return SAI_STATUS_SUCCESS;
     }
 
@@ -2981,6 +3230,23 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
     uint8_t mode = 0;
     bool is_static_entry = false;
 
+    /*
+     * The flush has already dropped the SAI entries it covers, static ones
+     * included, without removing them one by one. Delete the remote MAC
+     * addresses among them from VPP.
+     */
+    for (auto it = m_remote_fdb.begin(); it != m_remote_fdb.end();)
+    {
+        auto next = std::next(it);
+
+        if (m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(it->first) == 0)
+        {
+            remote_fdb_forget(it->first);
+        }
+
+        it = next;
+    }
+
     for (uint32_t i = 0; i < attr_count; i++)
     {
         attribute = attr_list[i];
@@ -3040,14 +3306,15 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
         case FLUSH_BY_INTERFACE:
         case FLUSH_BY_INTERFACE | FLUSH_ALL:/*flush by interface*/
             {
-                // Tunnel bridge ports have no physical port -- fall back to flush all
+                /*
+                 * L2 tunnels do not learn: the MAC addresses on a tunnel
+                 * bridge port are the remote ones orchagent programs, and
+                 * those the flush removed are gone from VPP already, above.
+                 */
                 if (is_tunnel_bridge_port(br_port_id))
                 {
-                    SWSS_LOG_NOTICE("Tunnel bridge port %s: falling back to flush all",
+                    SWSS_LOG_NOTICE("Tunnel bridge port %s: no learned MACs to flush",
                             sai_serialize_object_id(br_port_id).c_str());
-                    auto ret = l2fib_flush_all();
-                    SWSS_LOG_NOTICE("Flush ALL (tunnel bridge port fallback) ret_val: %d", ret);
-                    vpp_fdb_entries_invalidate_all();
                     break;
                 }
 
@@ -3148,6 +3415,31 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
     std::set<FdbInfo>::iterator existing_it = m_fdb_info_set.end();
     FdbInfo fi;
 
+    fi.m_fdbEntry.switch_id = m_switch_id;
+    fi.m_fdbEntry.bv_id = bv_id;
+    memcpy(fi.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+
+    /*
+     * A MAC address SAI holds but VPP did not learn here, which VPP has just
+     * moved to a local port, since it was not static:
+     * - a remote one;
+     * - an FDB entry orchagent created, which VPP doesn't age until it moves
+     *   it, and from then on ages like a learned MAC.
+     * That is a move for orchagent too, and the only event that updates an
+     * existing entry (a LEARNED for it is ignored). The move tracks the MAC,
+     * so that its aging is reported.
+     */
+    bool sai_has_entry = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(
+            sai_serialize_fdb_entry(fi.m_fdbEntry)) != 0;
+
+    if (!is_move && sai_has_entry)
+    {
+        SWSS_LOG_NOTICE("FDB: MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u has a SAI entry already, reporting a move",
+                        key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+        is_move = true;
+        event_type = SAI_FDB_EVENT_MOVE;
+    }
+
     if (is_move)
     {
         FdbInfo fi_search;
@@ -3155,19 +3447,26 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
         memcpy(fi_search.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
 
         existing_it = m_fdb_info_set.find(fi_search);
-        if (existing_it == m_fdb_info_set.end())
+        if (existing_it != m_fdb_info_set.end())
+        {
+            fi = *existing_it;
+        }
+        else if (!sai_has_entry)
         {
             SWSS_LOG_WARN("FDB: entry not found in m_fdb_info_set for bd %u, treating as learn",
                           key.bd_id);
             return generateFdbLearnedOrMoveEvent(key, sw_if_index, SAI_FDB_EVENT_LEARNED);
         }
-        fi = *existing_it;
-    }
-    else
-    {
-        fi.m_fdbEntry.switch_id = m_switch_id;
-        fi.m_fdbEntry.bv_id = bv_id;
-        memcpy(fi.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+        else if (!vppMovesFdbEntry(sai_serialize_fdb_entry(fi.m_fdbEntry)))
+        {
+            /*
+             * VPP doesn't move a static entry: the event was sent before
+             * orchagent made the MAC's FDB entry static.
+             */
+            SWSS_LOG_INFO("FDB: MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u has a static FDB entry, not moved",
+                          key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+            return false;
+        }
     }
 
     fi.setBridgePortId(bridge_port_id);
@@ -3191,7 +3490,12 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
     sai_status_t status;
 
     if (is_move)
-        status = set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, sid, &attrs[1]);
+    {
+        status = set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, sid, &attrs[0]);
+
+        if (status == SAI_STATUS_SUCCESS)
+            status = set_internal(SAI_OBJECT_TYPE_FDB_ENTRY, sid, &attrs[1]);
+    }
     else
         status = create_internal(SAI_OBJECT_TYPE_FDB_ENTRY, sid, m_switch_id, 2, attrs);
 
@@ -3203,9 +3507,12 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
         return false;
     }
 
-    if (is_move)
+    if (is_move && existing_it != m_fdb_info_set.end())
         m_fdb_info_set.erase(existing_it);
     m_fdb_info_set.insert(fi);
+
+    // VPP moved it off its tunnel, so it is not held as remote any more
+    m_remote_fdb.erase(sid);
 
     send_fdb_event_notification(data);
 
@@ -3214,6 +3521,236 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
                     key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5],
                     key.bd_id, sw_if_index);
     return true;
+}
+
+/*
+ * The dynamic FDB entry orchagent created for a MAC VPP reports on
+ * sw_if_index, if any. VPP reports the deletion of such an entry only once
+ * traffic has moved it, as the move clears age-not (see
+ * vpp_set_fdb_aging_time()). saivpp tracks the entry from its move, but misses
+ * that if VPP moved it away and back while its events were lost: the resync
+ * then finds it on its own port.
+ */
+bool SwitchVpp::findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, FdbInfo &fi)
+{
+    SWSS_LOG_ENTER();
+
+    return findCreatedFdbEntryInBv(key, fdbBvIdOf(key, sw_if_index), fi);
+}
+
+sai_object_id_t SwitchVpp::fdbBvIdOf(const VppFdbKey &key, uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
+    sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
+
+    findBridgeVlanForPortVlan(m_ifaceRegistry.resolveIfOid(sw_if_index),
+                              (sai_vlan_id_t)key.bd_id, bv_id, bridge_port_id);
+
+    return bv_id;
+}
+
+// The same, in the VLAN or bridge bv_id the MAC was taken in
+bool SwitchVpp::findCreatedFdbEntryInBv(const VppFdbKey &key, sai_object_id_t bv_id, FdbInfo &fi)
+{
+    SWSS_LOG_ENTER();
+
+    if (bv_id == SAI_NULL_OBJECT_ID)
+    {
+        return false;
+    }
+
+    fi = FdbInfo();
+    fi.m_fdbEntry.switch_id = m_switch_id;
+    fi.m_fdbEntry.bv_id = bv_id;
+    memcpy(fi.m_fdbEntry.mac_address, key.mac, sizeof(sai_mac_t));
+
+    auto sid = sai_serialize_fdb_entry(fi.m_fdbEntry);
+    auto &fdbs = m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY);
+
+    if (fdbs.find(sid) == fdbs.end())
+    {
+        return false;
+    }
+
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+
+    // VPP doesn't age a static entry
+    if (get(SAI_OBJECT_TYPE_FDB_ENTRY, sid, 2, attrs) != SAI_STATUS_SUCCESS ||
+        attrs[0].value.s32 != SAI_FDB_ENTRY_TYPE_DYNAMIC)
+    {
+        return false;
+    }
+
+    fi.setBridgePortId(attrs[1].value.oid);
+    fi.setVlanId((sai_vlan_id_t)key.bd_id);
+    fi.setTimestamp((uint32_t)time(NULL));
+
+    return true;
+}
+
+/*
+ * Whether VPP holds an FDB entry SAI has as an L2FIB entry it can move: VPP
+ * doesn't move a static one. orchagent's static entries are static in VPP,
+ * except a remote one it allows to move (remote_fdb_target()).
+ */
+bool SwitchVpp::vppMovesFdbEntry(const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    auto type = stored_attr(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, SAI_FDB_ENTRY_ATTR_TYPE);
+
+    if (type == nullptr || type->value.s32 != SAI_FDB_ENTRY_TYPE_STATIC)
+    {
+        return true;
+    }
+
+    auto it = m_remote_fdb.find(serializedObjectId);
+
+    return it != m_remote_fdb.end() && !it->second.is_static;
+}
+
+/*
+ * Whether a VPP L2FIB row is from a bridge domain its interface is in, and so
+ * gated like MAC events. VPP keeps the row of an interface that left a bridge
+ * domain -- flushed then -- only until its aging scan deletes it.
+ */
+bool SwitchVpp::isCurrentL2fibRow(const vpp_l2fib_entry_t &e)
+{
+    SWSS_LOG_ENTER();
+
+    auto rec = m_ifaceRegistry.findBySwIfIndex(e.sw_if_index);
+
+    return rec && rec->hasBdId() && rec->getBdId() == e.bd_id;
+}
+
+// VPP's L2FIB entry for a MAC, if it has a current one
+SwitchVpp::L2fibLookup SwitchVpp::lookupL2fibMac(const VppFdbKey &key, vpp_l2fib_entry_t &entry)
+{
+    SWSS_LOG_ENTER();
+
+    struct Lookup
+    {
+        const VppFdbKey *key;
+        vpp_l2fib_entry_t *entry;
+        bool found;
+    } lookup = {&key, &entry, false};
+
+    if (vpp_l2fib_dump(key.bd_id, [](const vpp_l2fib_entry_t *e, void *ctx)
+                       {
+                           auto l = static_cast<Lookup *>(ctx);
+
+                           if (e->bd_id == l->key->bd_id && memcmp(e->mac, l->key->mac, sizeof(e->mac)) == 0)
+                           {
+                               *l->entry = *e;
+                               l->found = true;
+                           }
+                       }, &lookup) != 0)
+    {
+        return L2fibLookup::FAILED;
+    }
+
+    return lookup.found && isCurrentL2fibRow(entry) ? L2fibLookup::PRESENT : L2fibLookup::ABSENT;
+}
+
+/*
+ * Bring a MAC in line with VPP's L2FIB, for a MAC event that may be stale:
+ *
+ * - one for a MAC orchagent has a dynamic FDB entry for, which saivpp doesn't
+ *   track: it may have waited in the queue while orchagent removed the entry
+ *   and created it again;
+ * - a MOVE for a MAC saivpp doesn't track, which may have waited while
+ *   orchagent removed the entry;
+ * - an event queued again after a failed L2FIB dump, behind the events VPP
+ *   sent later.
+ *
+ * VPP's L2FIB as it is now decides, as in resyncFdbWithVpp(). A MAC VPP has
+ * on the port of orchagent's entry is left alone: VPP doesn't age an entry
+ * orchagent created, unless it moved it (vpp_set_fdb_aging_time()), and if it
+ * moved it away and back, its DELETE comes here. The event is queued again
+ * if the L2FIB can't be dumped, with the bridge domain and VLAN it is taken
+ * in: its interface may leave them before the retry, which takes it all the
+ * same.
+ */
+void SwitchVpp::reconcileFdbEntryWithVpp(const VppFdbKey &key, const VppMacEvent &ev)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t mac_bv_id = ev.retry ? ev.bv_id : fdbBvIdOf(key, ev.sw_if_index);
+
+    vpp_l2fib_entry_t entry = {};
+    L2fibLookup lookup = lookupL2fibMac(key, entry);
+
+    if (lookup == L2fibLookup::FAILED)
+    {
+        SWSS_LOG_WARN("FDB: L2FIB dump failed, MAC event for %02x:%02x:%02x:%02x:%02x:%02x bd %u will be retried",
+                      key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+
+        // The next aging pass retries it, as for a failed resync
+        VppMacEvent again = ev;
+        again.retry = true;
+        again.bd_id = key.bd_id;
+        again.bv_id = mac_bv_id;
+
+        std::lock_guard<std::mutex> lock(m_mac_event_queue_mutex);
+        m_mac_event_queue.push(again);
+        return;
+    }
+
+    bool present = lookup == L2fibLookup::PRESENT;
+    auto it = m_vpp_fdb_entries.find(key);
+
+    if (it != m_vpp_fdb_entries.end())
+    {
+        if (!present)
+        {
+            if (generateFdbAgedEvent(key))
+                m_vpp_fdb_entries.erase(it);
+        }
+        else if (entry.sw_if_index != it->second &&
+                 generateFdbLearnedOrMoveEvent(key, entry.sw_if_index, SAI_FDB_EVENT_MOVE))
+        {
+            it->second = entry.sw_if_index;
+        }
+        return;
+    }
+
+    FdbInfo created;
+
+    if (findCreatedFdbEntryInBv(key, mac_bv_id, created))
+    {
+        if (!present)
+        {
+            SWSS_LOG_NOTICE("FDB: VPP deleted MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u of an FDB entry orchagent created",
+                            key.mac[0], key.mac[1], key.mac[2], key.mac[3], key.mac[4], key.mac[5], key.bd_id);
+            m_fdb_info_set.insert(created);
+            generateFdbAgedEvent(key);
+            return;
+        }
+
+        sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
+        sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
+
+        findBridgeVlanForPortVlan(m_ifaceRegistry.resolveIfOid(entry.sw_if_index),
+                                  (sai_vlan_id_t)key.bd_id, bv_id, bridge_port_id);
+
+        if (!entry.is_static && bridge_port_id != created.getBridgePortId() &&
+            generateFdbLearnedOrMoveEvent(key, entry.sw_if_index, SAI_FDB_EVENT_MOVE))
+        {
+            m_vpp_fdb_entries[key] = entry.sw_if_index;
+        }
+        return;
+    }
+
+    // Neither tracked nor orchagent's dynamic entry: a MAC VPP learned
+    if (present && !entry.is_static &&
+        generateFdbLearnedOrMoveEvent(key, entry.sw_if_index, SAI_FDB_EVENT_LEARNED))
+    {
+        m_vpp_fdb_entries[key] = entry.sw_if_index;
+    }
 }
 
 bool SwitchVpp::generateFdbAgedEvent(const VppFdbKey &key)
@@ -3289,14 +3826,7 @@ bool SwitchVpp::resyncFdbWithVpp()
 
     for (const auto &e : dump)
     {
-        auto rec = m_ifaceRegistry.findBySwIfIndex(e.sw_if_index);
-
-        if (e.is_static || !rec || !rec->hasBdId())
-            continue;
-
-        // A row from a BD the interface has left: VPP flushed it then, and
-        // keeps it only until its aging scan deletes it
-        if (e.bd_id != rec->getBdId())
+        if (e.is_static || !isCurrentL2fibRow(e))
             continue;
 
         VppFdbKey key;
@@ -3332,7 +3862,7 @@ bool SwitchVpp::resyncFdbWithVpp()
 
         if (it == m_vpp_fdb_entries.end())
         {
-            // VPP also holds the FDB entries orchagent programs; leave those alone.
+            // VPP also holds the FDB entries orchagent programs: not learned MACs
             sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
             sai_object_id_t bridge_port_id = SAI_NULL_OBJECT_ID;
 
@@ -3345,7 +3875,27 @@ bool SwitchVpp::resyncFdbWithVpp()
             memcpy(fdb_entry.mac_address, m.first.mac, sizeof(sai_mac_t));
 
             if (fdb_objects.find(sai_serialize_fdb_entry(fdb_entry)) != fdb_objects.end())
+            {
+                /*
+                 * An FDB entry orchagent created: VPP doesn't age it, unless
+                 * it moved it to another port, as it may have while its MOVE
+                 * event was lost. Take that move, so the entry is tracked.
+                 */
+                FdbInfo created;
+
+                if (findCreatedFdbEntry(m.first, m.second, created) &&
+                    created.getBridgePortId() != bridge_port_id &&
+                    generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_MOVE))
+                {
+                    m_vpp_fdb_entries[m.first] = m.second;
+                    moved++;
+                    SWSS_LOG_INFO("FDB: resync moved MAC %02x:%02x:%02x:%02x:%02x:%02x bd %u to sw_if_index %u (FDB entry orchagent created)",
+                                  m.first.mac[0], m.first.mac[1], m.first.mac[2],
+                                  m.first.mac[3], m.first.mac[4], m.first.mac[5],
+                                  m.first.bd_id, m.second);
+                }
                 continue;
+            }
 
             if (generateFdbLearnedOrMoveEvent(m.first, m.second, SAI_FDB_EVENT_LEARNED))
             {
@@ -3418,6 +3968,143 @@ void SwitchVpp::swif_bdid_untrack(const char *hwif_name)
     m_ifaceRegistry.clearBdId(hwif_name);
 }
 
+/*
+ * VPP ages in whole minutes, so round up, which also keeps a short aging time
+ * from turning aging off. VPP keeps an entry's last-seen time to the minute
+ * and scans every 60 s, so an entry ages between mac_age - 1 and mac_age + 1
+ * minutes after the last frame from its MAC. mac_age is a u8: longer aging
+ * times age after 255 minutes.
+ */
+uint8_t SwitchVpp::fdb_aging_time_to_mac_age(uint32_t aging_time)
+{
+    SWSS_LOG_ENTER();
+
+    if (aging_time == 0)
+    {
+        return 0;
+    }
+
+    uint64_t minutes = ((uint64_t)aging_time + 59) / 60;
+
+    return (uint8_t)std::min<uint64_t>(minutes, UINT8_MAX);
+}
+
+uint32_t SwitchVpp::switch_fdb_aging_time()
+{
+    SWSS_LOG_ENTER();
+
+    // Read the stored attribute directly: get() logs every switch attribute read
+    auto &switches = m_objectHash.at(SAI_OBJECT_TYPE_SWITCH);
+    auto sw = switches.find(sai_serialize_object_id(m_switch_id));
+
+    if (sw == switches.end())
+    {
+        return 0;
+    }
+
+    auto md = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_FDB_AGING_TIME);
+    auto attr = sw->second.find(md->attridname);
+
+    return attr == sw->second.end() ? 0 : attr->second->getAttr()->value.u32;
+}
+
+std::set<uint32_t> SwitchVpp::vpp_vlan_bridge_domains()
+{
+    SWSS_LOG_ENTER();
+
+    // Not from the VLAN_MEMBER objects: the default VLAN's members, which
+    // SwitchStateBase creates with the switch, never reach VPP, so VPP has no
+    // bridge domain for them. Not a bridge domain with only a BVI either: VPP
+    // doesn't learn on a BVI, and the first member to join sets it.
+    return m_ifaceRegistry.collectMemberBdIds();
+}
+
+/*
+ * Only learned MACs age. VPP never ages an entry added over its API
+ * (l2fib_add_entry() marks it age-not), so an FDB entry SAI creates, even a
+ * dynamic one, stays until SAI removes it, and no DELETE event comes for it.
+ * If traffic moves it to another port, VPP reports the move and from then on
+ * ages it like a learned MAC; generateFdbLearnedOrMoveEvent() tracks it then,
+ * or, if its moves were missed, its DELETE finds it (findCreatedFdbEntry()).
+ */
+sai_status_t SwitchVpp::vpp_set_fdb_aging_time(uint32_t aging_time)
+{
+    SWSS_LOG_ENTER();
+
+    uint8_t mac_age = fdb_aging_time_to_mac_age(aging_time);
+
+    // set() runs before the attribute is stored: this compares with the
+    // previous aging time, which the bridge domains have unless VPP failed to
+    // set one since
+    if (m_fdb_mac_age_applied && mac_age == fdb_aging_time_to_mac_age(switch_fdb_aging_time()))
+    {
+        SWSS_LOG_INFO("FDB: aging time %u s keeps MAC age %u min", aging_time, mac_age);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (aging_time > UINT8_MAX * 60u)
+    {
+        SWSS_LOG_WARN("FDB: aging time %u s is longer than VPP supports, aging after %u minutes",
+                      aging_time, mac_age);
+    }
+
+    auto bd_ids = vpp_vlan_bridge_domains();
+    size_t failed = 0;
+
+    for (auto bd_id: bd_ids)
+    {
+        if (vpp_bridge_domain_set_mac_age(bd_id, mac_age) != 0)
+        {
+            SWSS_LOG_ERROR("FDB: failed to set MAC age %u min on bridge domain %u", mac_age, bd_id);
+            failed++;
+        }
+    }
+
+    // After a failure, the bridge domains don't all have the stored aging
+    // time anymore, so the next one is set on all of them
+    m_fdb_mac_age_applied = (failed == 0);
+
+    if (failed != 0)
+    {
+        SWSS_LOG_ERROR("FDB: aging time %u s not set: MAC age %u min failed on %zu of %zu VLAN bridge domains",
+                       aging_time, mac_age, failed, bd_ids.size());
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("FDB: aging time %u s: MAC age %u min on %zu VLAN bridge domains",
+                    aging_time, mac_age, bd_ids.size());
+
+    return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::vpp_apply_fdb_aging_time(uint32_t bd_id, bool bd_has_member)
+{
+    SWSS_LOG_ENTER();
+
+    // A bridge domain with a member has the MAC age of the stored aging time,
+    // unless VPP failed to set one since
+    if (bd_has_member && m_fdb_mac_age_applied)
+    {
+        return;
+    }
+
+    uint8_t mac_age = fdb_aging_time_to_mac_age(switch_fdb_aging_time());
+
+    /*
+     * Also 0: a bridge domain without a member can have any MAC age. VPP
+     * keeps the bridge domain of a VLAN with a router interface when its last
+     * member leaves, as the BVI is still in it, with its MAC age, which an
+     * aging time set since skipped. And VPP creates a bridge domain in the
+     * slot of a deleted one without resetting its MAC age.
+     */
+    if (vpp_bridge_domain_set_mac_age(bd_id, mac_age) != 0)
+    {
+        // The member still comes up; the next aging time set reaches this bridge domain
+        SWSS_LOG_ERROR("FDB: failed to set MAC age %u min on bridge domain %u", mac_age, bd_id);
+        m_fdb_mac_age_applied = false;
+    }
+}
+
 void SwitchVpp::vpp_fdb_entries_invalidate_all()
 {
     SWSS_LOG_ENTER();
@@ -3454,4 +4141,373 @@ void SwitchVpp::vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id)
     SWSS_LOG_INFO("FDB: invalidated by port_id=%s, removed %zu entries, %zu remain",
                   sai_serialize_object_id(port_id).c_str(),
                   before - m_vpp_fdb_entries.size(), m_vpp_fdb_entries.size());
+}
+
+const sai_attribute_t* SwitchVpp::stored_attr(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &serializedObjectId,
+        _In_ sai_attr_id_t attr_id)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(object_type, attr_id);
+
+    if (meta == NULL)
+    {
+        return nullptr;
+    }
+
+    auto &objects = m_objectHash.at(object_type);
+
+    auto oit = objects.find(serializedObjectId);
+
+    if (oit == objects.end())
+    {
+        return nullptr;
+    }
+
+    auto ait = oit->second.find(meta->attridname);
+
+    return ait == oit->second.end() ? nullptr : ait->second->getAttr();
+}
+
+bool SwitchVpp::vlan_id_of_bv(
+        _In_ sai_object_id_t bv_id,
+        _Out_ uint16_t& vlan_id)
+{
+    SWSS_LOG_ENTER();
+
+    vlan_id = 0;
+
+    if (objectTypeQuery(bv_id) != SAI_OBJECT_TYPE_VLAN)
+    {
+        return false;
+    }
+
+    auto attr = stored_attr(SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(bv_id), SAI_VLAN_ATTR_VLAN_ID);
+
+    if (attr == nullptr)
+    {
+        return false;
+    }
+
+    vlan_id = attr->value.u16;
+
+    return true;
+}
+
+bool SwitchVpp::is_vlan_router_mac(
+        _In_ sai_object_id_t vlan_oid,
+        _In_ const sai_mac_t mac)
+{
+    SWSS_LOG_ENTER();
+
+    for (auto& kv: m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE))
+    {
+        auto type = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first, SAI_ROUTER_INTERFACE_ATTR_TYPE);
+        auto vlan = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first, SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
+
+        if (type == nullptr || type->value.s32 != SAI_ROUTER_INTERFACE_TYPE_VLAN ||
+                vlan == nullptr || vlan->value.oid != vlan_oid)
+        {
+            continue;
+        }
+
+        // the BVI's MAC: the router interface's, else the switch's (see vpp_create_bvi_interface())
+        auto src_mac = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first, SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS);
+
+        if (src_mac == nullptr)
+        {
+            src_mac = stored_attr(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switch_id), SAI_SWITCH_ATTR_SRC_MAC_ADDRESS);
+        }
+
+        if (src_mac && memcmp(src_mac->value.mac, mac, sizeof(sai_mac_t)) == 0)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool is_zero_ip(
+        _In_ const sai_ip_address_t& ip)
+{
+    SWSS_LOG_ENTER();
+
+    if (ip.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        return ip.addr.ip4 == 0;
+    }
+
+    for (auto b: ip.addr.ip6)
+    {
+        if (b != 0)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool SwitchVpp::remote_fdb_target(
+        _In_ const std::string &serializedObjectId,
+        _Out_ RemoteFdbTarget& target)
+{
+    SWSS_LOG_ENTER();
+
+    auto bp = stored_attr(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID);
+
+    if (bp == nullptr || objectTypeQuery(bp->value.oid) != SAI_OBJECT_TYPE_BRIDGE_PORT ||
+            !is_tunnel_bridge_port(bp->value.oid))
+    {
+        return false;
+    }
+
+    auto tunnel = stored_attr(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bp->value.oid),
+            SAI_BRIDGE_PORT_ATTR_TUNNEL_ID);
+
+    if (tunnel == nullptr)
+    {
+        SWSS_LOG_ERROR("tunnel bridge port %s has no tunnel",
+                sai_serialize_object_id(bp->value.oid).c_str());
+        return false;
+    }
+
+    auto tunnel_sid = sai_serialize_object_id(tunnel->value.oid);
+
+    auto src = stored_attr(SAI_OBJECT_TYPE_TUNNEL, tunnel_sid, SAI_TUNNEL_ATTR_ENCAP_SRC_IP);
+
+    // the remote VTEP: the entry's endpoint, else the P2P tunnel's
+    auto dst = stored_attr(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, SAI_FDB_ENTRY_ATTR_ENDPOINT_IP);
+
+    if (dst == nullptr || is_zero_ip(dst->value.ipaddr))
+    {
+        dst = stored_attr(SAI_OBJECT_TYPE_TUNNEL, tunnel_sid, SAI_TUNNEL_ATTR_ENCAP_DST_IP);
+    }
+
+    if (src == nullptr || dst == nullptr)
+    {
+        SWSS_LOG_NOTICE("FDB entry %s: no remote VTEP on its entry or tunnel %s, not programmed",
+                serializedObjectId.c_str(), tunnel_sid.c_str());
+        return false;
+    }
+
+    sai_fdb_entry_t fdb_entry;
+    sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+
+    uint16_t vlan_id;
+
+    if (!vlan_id_of_bv(fdb_entry.bv_id, vlan_id))
+    {
+        SWSS_LOG_NOTICE("FDB entry %s: bv_id is not a VLAN, not programmed", serializedObjectId.c_str());
+        return false;
+    }
+
+    /*
+     * Every VTEP with a gateway on the VLAN advertises the gateway MAC (an
+     * anycast one is the same everywhere). VPP terminates frames to it with
+     * the BVI's own L2FIB entry, which an entry on a tunnel would replace.
+     */
+    if (is_vlan_router_mac(fdb_entry.bv_id, fdb_entry.mac_address))
+    {
+        SWSS_LOG_NOTICE("FDB entry %s: the MAC of the VLAN's router interface stays on its BVI, not programmed",
+                serializedObjectId.c_str());
+        return false;
+    }
+
+    uint32_t sw_if_index;
+
+    if (!m_tunnel_mgr.find_l2_vxlan_tunnel(src->value.ipaddr, dst->value.ipaddr, vlan_id, sw_if_index))
+    {
+        SWSS_LOG_NOTICE("FDB entry %s: no L2 tunnel to %s in VLAN %u yet, programmed when it is created",
+                serializedObjectId.c_str(), sai_serialize_ip_address(dst->value.ipaddr).c_str(), vlan_id);
+        return false;
+    }
+
+    /*
+     * orchagent programs every remote MAC address as STATIC, and allows a
+     * move unless the remote VTEP advertised it sticky. VPP does not move a
+     * static L2FIB entry: a frame from that MAC on a local port is dropped.
+     * A non-static one moves to the local port and VPP reports the move, so
+     * a host that moves here is learned. Neither ages or goes with a lazy
+     * flush, since VPP never ages a provisioned entry.
+     */
+    auto type = stored_attr(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, SAI_FDB_ENTRY_ATTR_TYPE);
+    auto allow_move = stored_attr(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE);
+
+    target.sw_if_index = sw_if_index;
+    target.bd_id = vlan_id;
+    target.is_static = type && type->value.s32 == SAI_FDB_ENTRY_TYPE_STATIC &&
+        !(allow_move && allow_move->value.booldata);
+
+    return true;
+}
+
+void SwitchVpp::remote_fdb_sync(
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    RemoteFdbTarget want;
+
+    bool wanted = remote_fdb_target(serializedObjectId, want);
+
+    auto it = m_remote_fdb.find(serializedObjectId);
+
+    if (!wanted)
+    {
+        remote_fdb_forget(serializedObjectId);
+        return;
+    }
+
+    if (it != m_remote_fdb.end() && it->second == want)
+    {
+        return;
+    }
+
+    sai_fdb_entry_t fdb_entry;
+    sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+
+    auto mac = sai_serialize_mac(fdb_entry.mac_address);
+
+    int ret = l2fib_add_del_by_index(want.sw_if_index, fdb_entry.mac_address, want.bd_id, true, want.is_static);
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("FDB: failed to add remote MAC %s bd %u on tunnel sw_if_index %u: %d",
+                mac.c_str(), want.bd_id, want.sw_if_index, ret);
+        return;
+    }
+
+    SWSS_LOG_NOTICE("FDB: remote MAC %s bd %u on tunnel sw_if_index %u%s%s",
+            mac.c_str(), want.bd_id, want.sw_if_index, want.is_static ? " (static)" : "",
+            it != m_remote_fdb.end() ? " (moved)" : "");
+
+    // the add replaced the entry in its bridge domain; one in another goes
+    if (it != m_remote_fdb.end() && it->second.bd_id != want.bd_id)
+    {
+        ret = l2fib_add_del_by_index(it->second.sw_if_index, fdb_entry.mac_address, it->second.bd_id, false, false);
+
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("FDB: failed to delete remote MAC %s from previous bd %u on tunnel sw_if_index %u: %d",
+                    mac.c_str(), it->second.bd_id, it->second.sw_if_index, ret);
+            return;
+        }
+    }
+
+    m_remote_fdb[serializedObjectId] = want;
+
+    /*
+     * VPP no longer holds a MAC address it learned here, so forget it was
+     * learned: a flush must not delete or report it, and if the host comes
+     * back, VPP reports the move.
+     */
+    VppFdbKey key;
+    memcpy(key.mac, fdb_entry.mac_address, sizeof(key.mac));
+    key.bd_id = want.bd_id;
+    m_vpp_fdb_entries.erase(key);
+
+    FdbInfo fi;
+    fi.setVlanId((sai_vlan_id_t)want.bd_id);
+    memcpy(fi.m_fdbEntry.mac_address, fdb_entry.mac_address, sizeof(sai_mac_t));
+    m_fdb_info_set.erase(fi);
+}
+
+bool SwitchVpp::remote_fdb_forget(
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_remote_fdb.find(serializedObjectId);
+
+    if (it == m_remote_fdb.end())
+    {
+        return true;
+    }
+
+    sai_fdb_entry_t fdb_entry;
+
+    try
+    {
+        sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+    }
+    catch (const std::exception& e)
+    {
+        SWSS_LOG_ERROR("FDB: failed to deserialize remote FDB entry %s: %s",
+                serializedObjectId.c_str(), e.what());
+        return false;
+    }
+
+    auto mac = sai_serialize_mac(fdb_entry.mac_address);
+
+    // VPP deletes it only while it is still on the tunnel, not after a move
+    int ret = l2fib_add_del_by_index(it->second.sw_if_index, fdb_entry.mac_address, it->second.bd_id, false, false);
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("FDB: failed to delete remote MAC %s bd %u on tunnel sw_if_index %u: %d",
+                mac.c_str(), it->second.bd_id, it->second.sw_if_index, ret);
+        return false;
+    }
+
+    SWSS_LOG_NOTICE("FDB: deleted remote MAC %s bd %u on tunnel sw_if_index %u: %d",
+            mac.c_str(), it->second.bd_id, it->second.sw_if_index, ret);
+
+    m_remote_fdb.erase(it);
+    return true;
+}
+
+void SwitchVpp::remote_fdb_resync(
+        _In_ uint16_t vlan_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> sids;
+
+    for (auto& kv: m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY))
+    {
+        sai_fdb_entry_t fdb_entry;
+        sai_deserialize_fdb_entry(kv.first, fdb_entry);
+
+        uint16_t entry_vlan_id;
+
+        if (vlan_id_of_bv(fdb_entry.bv_id, entry_vlan_id) && entry_vlan_id == vlan_id &&
+                m_remote_fdb.find(kv.first) == m_remote_fdb.end())
+        {
+            sids.push_back(kv.first);
+        }
+    }
+
+    for (auto& sid: sids)
+    {
+        remote_fdb_sync(sid);
+    }
+}
+
+bool SwitchVpp::remote_fdb_drop_tunnel(
+        _In_ uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    bool ok = true;
+
+    for (auto it = m_remote_fdb.begin(); it != m_remote_fdb.end();)
+    {
+        auto next = std::next(it);
+
+        if (it->second.sw_if_index == sw_if_index)
+        {
+            if (!remote_fdb_forget(it->first))
+            {
+                ok = false;
+            }
+        }
+
+        it = next;
+    }
+
+    return ok;
 }

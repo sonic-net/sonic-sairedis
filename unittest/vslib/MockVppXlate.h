@@ -21,6 +21,14 @@ struct VppCall
     bool flag;
 };
 
+struct VppRouteCall
+{
+    bool isAdd;
+    bool isMultipath;
+    uint32_t nextHopCount;
+    std::string nextHop;
+};
+
 /**
  * @brief One vpp_pbh_profile_add_del() call, carrying the field vector exactly
  * as the SAI translation produced it.
@@ -64,6 +72,17 @@ struct VppRuleStatsCall
     uint32_t rule_index;
 };
 
+/**
+ * @brief One vpp_classify_session_add() call: the node a frame the session
+ * matches goes to, and its match, which tells what it is for.
+ */
+struct VppClassifySession
+{
+    uint32_t table_index;
+    uint32_t hit_next_index;
+    std::vector<uint8_t> match;
+};
+
 struct VppMock
 {
     bool loopbackEnabled = false;
@@ -77,6 +96,7 @@ struct VppMock
     int lcpResult = 0;
     unsigned int statsCalls = 0;
     unsigned int interfaceCreates = 0;
+    unsigned int interfaceLookups = 0;
     uint32_t kernelVrfId = 0;
     int kernelVrfResult = 0;
     std::string kernelLinkNames;
@@ -98,10 +118,20 @@ struct VppMock
     // sw_interface_set_ip_directed_broadcast() result, for the ref-counted
     // directed-broadcast flag of the sub-net broadcast neighbors.
     int directedBcastResult = 0;
+    uint32_t routeStatsIndex = 42;
+    std::vector<int> routeResults;
+    std::vector<VppRouteCall> routeCalls;
 
     // sonic-ext features reported as enabled. "iface-loopback" keeps its own
     // flag because the loopback tests predate this set.
     std::set<std::string> enabledFeatures;
+
+    // The nodes vpp_add_node_next() adds as nexts, with the next index each
+    // gets; it fails for any other. None by default, so the one-time setup of
+    // the L2 punt classify tables fails, which the VLAN member path tolerates.
+    std::map<std::string, uint32_t> nodeNexts;
+    uint32_t nextClassifyTable = 0;
+    std::vector<VppClassifySession> classifySessions;
 
     // Policy Based Hashing.
     int pbhProfileResult = 0;
@@ -127,11 +157,20 @@ struct VppMock
     std::set<std::string> interfaces;
     std::set<std::string> lcpPairs;
     std::set<std::string> bridgePorts;
+    // VPP's bridge domains: the interfaces in each, a VLAN's bridge virtual
+    // interface included, and the MAC age set on each (none: 0, VPP's default).
+    // A bridge domain exists from its first interface until it is deleted.
+    std::map<uint32_t, std::set<std::string>> bdMembers;
+    std::map<uint32_t, uint8_t> bdMacAges;
+    // the bridge domains VPP fails to set the MAC age of
+    std::set<uint32_t> macAgeFailures;
     std::vector<VppCall> calls;
     std::map<std::string, bool> adminUp;
     std::map<std::string, std::array<uint32_t, 4>> mtus;
     std::map<std::string, unsigned int> mplsReferences;
     int l2fibDumpResult = 0;
+    // the next dumps that fail, before l2fibDumpResult applies
+    unsigned int l2fibDumpFailures = 0;
     unsigned int l2fibDumpCalls = 0;
     std::vector<vpp_l2fib_entry_t> l2fib;
     // Link state VPP reports, by interface name. Missing is down.
