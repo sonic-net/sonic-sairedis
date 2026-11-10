@@ -16,8 +16,6 @@ on:
 jobs:
   analyze:
     name: Analyze
-    # The source-metadata PR uses the audited native build below; other refs keep legacy CI.
-    if: ${{ (github.head_ref || github.ref_name) != 'bazel/runtime-package-metadata-20261028' }}
     runs-on: ubuntu-22.04
     permissions:
       actions: read
@@ -79,6 +77,8 @@ jobs:
         cd ..
         git clone https://github.com/sonic-net/sonic-swss-common
         pushd sonic-swss-common
+        git checkout --detach "$SWSSCOMMON_REVISION"
+        test "$(git rev-parse HEAD)" = "$SWSSCOMMON_REVISION"
         ./autogen.sh
         dpkg-buildpackage -rfakeroot -us -uc -b -Pnoyangmod,nopython2 -j$(nproc)
         popd
@@ -86,6 +86,7 @@ jobs:
         dpkg-deb -x libswsscommon-dev_${SWSSCOMMON_VER}_amd64.deb $(dirname $GITHUB_WORKSPACE)
       env:
         SWSSCOMMON_VER: "1.0.0"
+        SWSSCOMMON_REVISION: "1c90cc404aa1e75320771fc4984486bf3acfe5f5"
 
     - if: matrix.language == 'cpp'
       name: Build repository
@@ -101,11 +102,10 @@ jobs:
     - name: Perform CodeQL analysis
       uses: github/codeql-action/analyze@ec3cf9c605b848da5f1e41e8452719eb1ccfb9a6 # v2.1.29
       with:
-        category: "/language:${{matrix.language}}"
+        category: "/language:${{matrix.language}}/legacy"
 
   bazel-cpp:
     name: Analyze native source (cpp, AMD64)
-    if: ${{ (github.head_ref || github.ref_name) == 'bazel/runtime-package-metadata-20261028' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     container:
@@ -115,8 +115,6 @@ jobs:
       actions: read
       contents: read
       security-events: write
-    env:
-      SONIC_BAZEL_REGISTRY_REVISION: a6b4e2e529e2635e9419393e3dccb652408aba25
     defaults:
       run:
         shell: bash
@@ -124,7 +122,7 @@ jobs:
       - name: Install execution tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends binutils build-essential ca-certificates git python3 tar unzip xz-utils zstd
+          apt-get install -y --no-install-recommends binutils build-essential ca-certificates curl git python3 tar unzip xz-utils zstd
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -142,9 +140,12 @@ jobs:
           bazelisk-cache: true
           repository-cache: true
           cache-version: "8.5.1"
-      - name: Record the immutable review registry and preserve local caches
-        run: python3 bazel/ci/prepare_review.py --output artifacts/codeql/registry
-      - name: Test preparation and extracted-source guards
+      - name: Prepare verified GitHub inputs and public download mirrors
+        run: bash bazel/ci_downloader.sh
+
+      - name: Prepare the maintained registry and preserve local caches
+        run: python3 bazel/ci/prepare_registry.py --output artifacts/codeql/registry
+      - name: Test extracted-source guards
         run: python3 -B -m unittest discover -s bazel/ci/codeql -p 'test_*.py'
       - name: Prepare declared dependencies and generated sources before tracing
         run: |
@@ -165,7 +166,7 @@ jobs:
       - name: Analyze compiled C++
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
-          category: /language:cpp
+          category: /language:cpp/native-bazel
       - name: Require actual extracted compilations and exact source bytes
         id: coverage
         run: |

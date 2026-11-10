@@ -149,3 +149,4 @@ pyext/pysairedis.py
 #########
 bazel-*
 /MODULE.bazel.lock
+/artifacts/

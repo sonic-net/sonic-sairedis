@@ -5,6 +5,9 @@ common --noincompatible_disallow_empty_glob
 common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
 common --registry=https://bcr.bazel.build/
 
+# Verified public input defaults prepared by bazel/ci_downloader.sh.
+try-import %workspace%/artifacts/validation/sairedis-github-inputs.bazelrc
+
 # These toolchains are native and require matching Trixie execution userspace.
 # Select the pinned compiler for execution tools as well as target binaries.
 # Launch Bazel in Trixie; --host_platform declares that execution environment.

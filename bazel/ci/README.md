@@ -29,13 +29,32 @@ mutable inputs will resolve identically later. Confirm that the root
 `MODULE.bazel.lock` is ignored and untracked, and that generation leaves tracked
 files unchanged when validating changes to this workflow.
 
-CI uses the tracked `.bazelrc`, just like local builds, and records the observed
-registry `main` revision in `registry-inputs.json`. The retained
-`declared.bazelrc` and `effective.bazelrc` copies both match that tracked file;
-CI does not substitute a draft snapshot or wrap Bazel. The package verifier
-hashes and rechecks the selected configuration and requires each fetched module
-version and registry source hash to match the declarations and selected registry.
-Stale lock entries from other registries cannot satisfy that check.
+CI records the observed registry `main` revision in `registry-inputs.json`.
+`prepare_registry.py` keeps the tracked `main` and BCR endpoints in a controlled
+alternate rc file, adds only the existing cache and downloader settings, and
+launches Bazel with that file. It retains both `declared.bazelrc` and
+`effective.bazelrc`; the observed commit is evidence and is not substituted for
+the maintained endpoint. The package verifier hashes and rechecks the selected
+configuration and requires each fetched module version and registry source hash
+to match the declarations and selected registry. Stale lock entries from other
+registries cannot satisfy that check.
+
+Each native job also retains `sai-generator-actions.json` for the three
+`GenerateSaiStub` actions and `sai-generator-exec-dependencies.json` for the
+execution-configured `//bazel/sai:generate_stub` dependency graph. Together they
+show the action executable and the selected Python runtime inputs.
+
+## Verified GitHub build inputs
+
+Before local Bazel commands, run `bash bazel/ci_downloader.sh`. Native CI and
+native CodeQL run the same preparation. It verifies the landed shared GitHub
+reader, public downloader configuration, and Cosmos 4.0.2 manifest before
+exposing the five verified inputs through Bazel's `--distdir` setting. The
+generated `artifacts/validation/sairedis-github-inputs.bazelrc` is imported by
+the tracked `.bazelrc`; failed preparation leaves any prior configuration
+unchanged. The validation artifact retains the input receipt and bootstrap
+hashes. Explicit downloader settings retained by `prepare_registry.py` follow
+these public defaults and keep their precedence.
 
 ## Required targets
 

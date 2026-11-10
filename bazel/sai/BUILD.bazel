@@ -1,8 +1,15 @@
+load("@rules_python//python:defs.bzl", "py_binary")
 load(":defs.bzl", "sai_stub")
 
 package(default_visibility = ["//visibility:public"])
 
 exports_files(["generate_stub.py"])
+
+py_binary(
+    name = "generate_stub",
+    srcs = ["generate_stub.py"],
+    visibility = ["//visibility:private"],
+)
 
 # Reusable headers and generated metadata are owned by the SAI registry module.
 # Keep these aliases stable for the component build and package contracts.

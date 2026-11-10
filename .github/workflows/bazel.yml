@@ -10,10 +10,6 @@ on:
 permissions:
   contents: read
 
-# Accepted native dependency interfaces also used by the P4RT image.
-env:
-  SONIC_BAZEL_REGISTRY_REVISION: a6b4e2e529e2635e9419393e3dccb652408aba25
-
 jobs:
   component:
     name: Component (${{ matrix.arch }})
@@ -48,7 +44,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            binutils build-essential ca-certificates gdb git python3 tar
+            binutils build-essential ca-certificates curl gdb git python3 tar
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -81,10 +77,13 @@ jobs:
           git check-ignore --quiet MODULE.bazel.lock
           git diff --exit-code HEAD --
 
-      - name: Record the immutable review registry and preserve local caches
-        run: python3 bazel/ci/prepare_review.py --output artifacts/validation
+      - name: Prepare verified GitHub inputs and public download mirrors
+        run: bash bazel/ci_downloader.sh
 
-      - name: Test registry provenance and review selection
+      - name: Prepare the maintained registry and preserve local caches
+        run: python3 bazel/ci/prepare_registry.py --output artifacts/validation
+
+      - name: Test registry provenance and selection
         run: python3 -B -m unittest discover -s bazel/ci -p 'test_*.py'
 
       - name: Check Bazel formatting
@@ -108,6 +107,25 @@ jobs:
             "deps(set($targets))" > "$RUNNER_TEMP/sairedis-actions.json"
           python3 bazel/ci/codeql/check.py audit "$RUNNER_TEMP/sairedis-actions.json" \
             --output artifacts/validation/no-deb-actions.json
+
+      - name: Record SAI generator execution inputs
+        run: |
+          bazel aquery ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update \
+            --output=jsonproto --include_artifacts --include_commandline \
+            'mnemonic("GenerateSaiStub", deps(//:canonical_outputs))' \
+            > artifacts/validation/sai-generator-actions.json
+          bazel cquery ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update \
+            --universe_scope=//:canonical_outputs --output=jsonproto \
+            'deps(//bazel/sai:generate_stub)' \
+            > artifacts/validation/sai-generator-exec-dependencies.json
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          actions = json.loads(Path('artifacts/validation/sai-generator-actions.json').read_text())['actions']
+          assert len(actions) == 3 and all(action['mnemonic'] == 'GenerateSaiStub' for action in actions)
+          dependencies = json.loads(Path('artifacts/validation/sai-generator-exec-dependencies.json').read_text())
+          assert dependencies['results']
+          PYTHON
 
       # Omit the YANG flag to exercise the dependency's current default.
       # verify_packages.py must confirm that the selected value is true.

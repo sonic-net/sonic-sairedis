@@ -16,13 +16,9 @@ def _source_manifest(ctx, files, marker, suffix):
     return manifest
 
 def _sai_stub_impl(ctx):
-    python = ctx.toolchains["@rules_python//python:toolchain_type"].py3_runtime
-    if python == None or python.interpreter == None:
-        fail("sairedis entry stubs require a declared Python 3 interpreter")
     perl = ctx.toolchains[_PERL_TOOLCHAIN].perl_runtime
     manifest = _source_manifest(ctx, ctx.files.srcs, ctx.file.marker, "/inc/sai.h")
     args = ctx.actions.args()
-    args.add(ctx.file._generator)
     args.add("--manifest", manifest)
     args.add("--perl", perl.interpreter)
     args.add_all(perl.perlopt, before_each = "--perl-option")
@@ -31,10 +27,10 @@ def _sai_stub_impl(ctx):
     args.add("--namespace", ctx.attr.namespace)
     args.add("--out", ctx.outputs.out)
     ctx.actions.run(
-        executable = python.interpreter,
+        executable = ctx.attr._generator[DefaultInfo].files_to_run,
         arguments = [args],
         inputs = ctx.files.srcs + [ctx.file.stub, manifest],
-        tools = depset([python.interpreter, perl.interpreter, ctx.file._generator], transitive = [python.files, perl.runtime]),
+        tools = depset([perl.interpreter], transitive = [perl.runtime]),
         outputs = [ctx.outputs.out],
         env = {"LANG": "C", "LC_ALL": "C", "PYTHONHASHSEED": "0"},
         mnemonic = "GenerateSaiStub",
@@ -51,7 +47,7 @@ sai_stub = rule(
         "class_name": attr.string(mandatory = True),
         "namespace": attr.string(mandatory = True),
         "out": attr.output(mandatory = True),
-        "_generator": attr.label(default = Label("//bazel/sai:generate_stub.py"), allow_single_file = True, cfg = "exec"),
+        "_generator": attr.label(default = Label("//bazel/sai:generate_stub"), executable = True, cfg = "exec"),
     },
-    toolchains = [_PERL_TOOLCHAIN, "@rules_python//python:toolchain_type"],
+    toolchains = [_PERL_TOOLCHAIN],
 )
