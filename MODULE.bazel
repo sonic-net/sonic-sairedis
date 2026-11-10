@@ -1,7 +1,7 @@
 # Keep bazel_compatibility in sync with sonic-buildimage's .bazelversion.
 module(
     name = "sonic-sairedis",
-    version = "0.0.4",
+    version = "0.0.5",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -26,9 +26,16 @@ bazel_dep(name = "rules_rs", version = "0.1.0", dev_dependency = True)
 
 bazel_dep(name = "swig", version = "4.3.0.bcr.2")
 bazel_dep(name = "tar.bzl", version = "0.10.5-sonic.1")
-bazel_dep(name = "sonic-build-infra", version = "0.0.26-2cfc059c2cf1dc3b2f2b2ec1bcd70400b04ecb75", repo_name = "sonic_build_infra")
-bazel_dep(name = "sonic-swss-common", version = "0.0.8-43598143ef4a46431eae0859915cd7d951dad1ed", repo_name = "sonic_swss_common")
+bazel_dep(name = "sonic-build-infra", version = "0.0.25-3ee15ec9b4d99d7f8eae3e324cead79b203b451e", repo_name = "sonic_build_infra")
+bazel_dep(name = "sonic-swss-common", version = "0.0.9-334389eae54afd1f4f5ee69f89c3a7ad2062ee61", repo_name = "sonic_swss_common")
 bazel_dep(name = "sai", version = "1.18.0-sonic.1", repo_name = "sai_source")
+
+# Select one landed infrastructure version for this root and Common. It keeps
+# the existing snapshot-based Trixie inputs and required native interfaces.
+single_version_override(
+    module_name = "sonic-build-infra",
+    version = "0.0.25-3ee15ec9b4d99d7f8eae3e324cead79b203b451e",
+)
 
 gcc = use_extension("@sonic_build_infra//toolchains/gcc:extensions.bzl", "gcc")
 use_repo(gcc, "gcc_toolchains")
