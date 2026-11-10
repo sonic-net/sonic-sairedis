@@ -10,8 +10,11 @@
 #include "TunnelManager.h"
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
+#include "SwitchVppPbh.h"
+#include "SwitchVppTrim.h"
 #include "SwitchVppPolicer.h"
 #include "SwitchVppHostifTrap.h"
+#include "SwitchVppNat.h"
 #include "CRMTracker.h"
 #include "PortConfigMap.h"
 #include "VppInterfaceRegistry.h"
@@ -36,6 +39,24 @@
 
 namespace saivs
 {
+    /**
+     * @brief Value one stored attribute held before it was overwritten.
+     *
+     * Produced by SwitchVpp::backupAttr() and consumed by
+     * SwitchVpp::restoreAttr(). A null m_value means the attribute had no value
+     * at the time, in which case restoring removes it again.
+     */
+    struct SaiAttrBackup
+    {
+        sai_object_type_t m_objectType = SAI_OBJECT_TYPE_NULL;
+
+        std::string m_serializedObjectId;
+
+        const sai_attr_metadata_t *m_meta = nullptr;
+
+        std::shared_ptr<SaiAttrWrap> m_value;
+    };
+
     class SwitchVpp:
         public SwitchStateBase
     {
@@ -116,6 +137,63 @@ namespace saivs
                     _In_ const sai_stat_id_t *counter_ids,
                     _In_ sai_stats_mode_t mode,
                     _Out_ uint64_t *counters);
+
+            // RIF counters are relative to creation or the last explicit clear.
+            static sai_status_t queryRifStats(
+                    _In_ const std::string& ifname,
+                    _Out_ std::map<sai_stat_id_t, uint64_t>& stats);
+
+            sai_status_t initializeRifStats(
+                    _In_ sai_object_id_t oid);
+
+            sai_status_t getRifStatsExt(
+                    _In_ sai_object_id_t oid,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Out_ uint64_t *counters);
+
+            /* Translate SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION into
+             * the sonic_ext plugin call. Returns SAI_STATUS_NOT_SUPPORTED for
+             * any action other than FORWARD/DROP, SAI_STATUS_FAILURE if the
+             * feature query or action call fails. */
+            static sai_status_t vpp_apply_loopback_action(
+                    _In_ const std::string& hwif_name,
+                    _In_ int32_t packet_action);
+
+            static sai_status_t validateLoopbackAction(
+                    _In_ int32_t packet_action);
+
+            // Only resources acquired by this CREATE may be unwound on failure.
+            struct RifCreateState
+            {
+                std::string hwif;
+                std::string parent;
+                std::string tap;
+                uint32_t vlan = 0;
+                uint32_t previous_vrf = 0;
+                vpp_interface_state_t previous_state{};
+                bool previous_mpls = false;
+                bool bvi = false;
+                bool interface_created = false;
+                bool lcp_created = false;
+                bool bridge_attached = false;
+                bool loopback_applied = false;
+                bool vrf_changed = false;
+                bool mtu_changed = false;
+                bool mpls_changed = false;
+                bool admin_changed = false;
+                bool ip6_enabled = false;
+                bool resync_children = false;
+            };
+
+            sai_status_t rollbackRifCreate(
+                    _In_ const RifCreateState& state);
+
+            sai_status_t vpp_register_router_interface(
+                    _In_ sai_object_id_t rif_oid,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
 
             sai_status_t getRouteCounterStats(
                     _In_ sai_object_id_t oid,
@@ -198,6 +276,17 @@ namespace saivs
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability) override;
 
+            virtual sai_status_t queryAttrEnumValuesCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Inout_ sai_s32_list_t *enum_values_capability) override;
+
+            virtual sai_status_t queryStatsCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_capability_list_t *stats_capability) override;
+
             virtual sai_status_t queryStatsStCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
@@ -215,6 +304,13 @@ namespace saivs
                     _Out_ uint64_t *counters) override;
 
             virtual void processFdbEntriesForAging() override;
+
+            // Applies a link or BFD state event that vppProcessEvents() posted
+            // (EventPayloadVppEvent): called from the vslib event queue thread
+            // with m_apimutex held, so it never runs concurrently with an API
+            // call, e.g. the create of the BFD session the event reports on.
+            virtual void syncOnPlatformEvent(
+                    _In_ std::shared_ptr<EventPayloadPlatformEvent> payload) override;
 
         public:
 
@@ -259,6 +355,10 @@ namespace saivs
 
         protected:
 
+            sai_status_t check_create_internal(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::string &serializedObjectId) const;
+
             virtual sai_status_t create_internal(
                     _In_ sai_object_type_t object_type,
                     _In_ const std::string &serializedObjectId,
@@ -274,6 +374,30 @@ namespace saivs
                     _In_ sai_object_type_t objectType,
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t* attr) override;
+
+            /**
+             * @brief Take a copy of what an attribute holds right now.
+             *
+             * Some set paths have to commit to the state before VPP is
+             * programmed, because the programming is built out of the state.
+             * The copy taken here is what lets a rejected programming attempt
+             * be undone, so the state keeps describing what VPP enforces.
+             *
+             * Fails only if the object or the attribute id is unknown. An
+             * attribute that merely has no value yet backs up successfully and
+             * is removed again by restoreAttr().
+             */
+            sai_status_t backupAttr(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_attr_id_t attrId,
+                    _Out_ SaiAttrBackup &backup);
+
+            /**
+             * @brief Put an attribute back the way backupAttr() found it.
+             */
+            sai_status_t restoreAttr(
+                    _In_ const SaiAttrBackup &backup);
 
             virtual sai_status_t createPort(
                     _In_ sai_object_id_t object_id,
@@ -345,9 +469,11 @@ namespace saivs
                     _In_ const char *dev,
                     _In_ const sai_mac_t& mac);
 
-            static int vs_set_dev_admin_up(
+            virtual int vs_set_dev_admin_up(
                     _In_ const char *dev,
                     _In_ bool up);
+
+            virtual int exec(const std::string& command, std::string& output);
 
             static int promisc(
                     _In_ const char *dev);
@@ -438,7 +564,8 @@ namespace saivs
 
             sai_status_t vpp_create_bvi_interface(
                     _In_ uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list);
+                    _In_ const sai_attribute_t *attr_list,
+                    _Inout_ RifCreateState& state);
 
             sai_status_t vpp_delete_bvi_interface(
                     _In_ sai_object_id_t bvi_obj_id);
@@ -528,6 +655,10 @@ namespace saivs
 
             sai_status_t vpp_fdbentry_del(
                     _In_ const std::string &serializedObjectId);
+
+            sai_status_t FdbEntryset(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
 
             sai_status_t vpp_fdbentry_flush(
                     _In_ sai_object_id_t switch_id,
@@ -639,11 +770,16 @@ namespace saivs
         public: // VPP
 
             friend class TunnelManager;
+            friend class SwitchVppPbh;
+            friend class SwitchVppTrim;
 
         private: // VPP
 
             SaiObjectDB m_object_db;
             TunnelManager m_tunnel_mgr;
+            SwitchVppPbh m_pbh;
+
+            SwitchVppTrim m_trim;
 
         private: // VPP
 
@@ -706,7 +842,12 @@ namespace saivs
 
             sai_status_t vpp_create_router_interface(
                     _In_ uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list);
+                    _In_ const sai_attribute_t *attr_list,
+                    _Inout_ RifCreateState& state);
+
+            sai_status_t vpp_rif_ip6_enable_disable(
+                    _In_ const std::string& hwif_name,
+                    _In_ bool enable);
 
             sai_status_t vpp_update_router_interface(
                     _In_ sai_object_id_t object_id,
@@ -759,6 +900,22 @@ namespace saivs
                     _In_ bool is_up,
                     _In_ uint32_t attr_count = 0,
                     _In_ const sai_attribute_t *attr_list = nullptr);
+
+            /*
+             * Sets the admin state of a VPP sub-interface (<parent>.<vlan>).
+             * VPP refuses admin up on a sub-interface whose parent is admin
+             * down, and doesn't bring it up when the parent comes up later, so
+             * a refused admin up is kept in m_sub_if_admin_up_pending and
+             * applied by vpp_resync_sub_interface_admin_state() once the
+             * parent goes admin up.
+             */
+            int vpp_set_sub_interface_state(
+                    _In_ const std::string& sub_hwif,
+                    _In_ bool is_up);
+
+            void vpp_resync_sub_interface_admin_state(
+                    _In_ const std::string& parent_hwif);
+
             // set ethernet interface mtu including L2 header
             sai_status_t vpp_set_port_mtu (
                     _In_ sai_object_id_t object_id,
@@ -888,6 +1045,10 @@ namespace saivs
             int vpp_del_ip_vrf(
                     _In_ sai_object_id_t objectId);
 
+            int vpp_ip4_limited_broadcast_receive(
+                    _In_ uint32_t vrf_id,
+                    _In_ bool is_add);
+
             int vpp_get_vrf_id(
                     _In_ const char *linux_ifname,
                     _Out_ uint32_t *vrf_id);
@@ -944,6 +1105,9 @@ namespace saivs
 
             std::map<std::string, uint32_t> m_routeStatsIndexMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsBaseMap;
+
+            // Absolute VPP counters at RIF creation or the last READ_AND_CLEAR.
+            std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_rifStatsBaseMap;
             std::map<sai_object_id_t, std::map<sai_stat_id_t, uint64_t>> m_routeCounterStatsCarryMap;
 
             // Short-lived cache of a full "/net/route/to" dump, keyed by VPP stats
@@ -1047,6 +1211,20 @@ namespace saivs
             sai_status_t uninstallTrapClassifyNow(
                     _In_ sai_object_id_t trap_oid,
                     _In_ const vpp_trap_entry_t &trap);
+
+        protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCP packet action
+
+            // True while every DHCP hostif trap has SAI_PACKET_ACTION_COPY
+            // (and there is at least one), which floods DHCPv4 client
+            // broadcasts in their VLAN and copies them to the CPU. Otherwise
+            // they are trapped, as before. See SwitchVppFdb.cpp.
+            bool m_dhcp_trap_copy = false;
+
+            // Re-derives m_dhcp_trap_copy from m_trap_map and applies it.
+            void vpp_update_dhcp_trap_action();
+
+            void vpp_set_dhcp_trap_copy(
+                    _In_ bool copy);
 
 
         protected: // VPP
@@ -1491,15 +1669,33 @@ namespace saivs
 
             void vppProcessEvents ();
 
+            // Re-read the link state of every host interface's port from VPP
+            // and report the ports whose cached oper status differs. Runs under
+            // m_apimutex, on request only: at startup and after an event-socket
+            // reconnect (VPP_INTF_LINK_RESYNC).
             void resyncPortOperStatus();
 
-            // Run a deferred oper-status resync on the command thread if the
-            // event thread has requested one. resyncPortOperStatus() issues VPP
+            // Re-read the state of every BFD session from VPP and report the
+            // sessions whose state differs from what SONiC was last told. Runs
+            // under m_apimutex, after an event-socket reconnect (VPP_BFD_RESYNC).
+            void resyncBfdSessionState();
+
+            // Whether VPP's state of a BFD session differs from what SONiC was
+            // last told: the session's cached state, or DOWN if it has had no
+            // state change yet. False for a session SONiC doesn't have.
+            bool bfdSessionStateChanged(
+                    _In_ vpp_bfd_state_notif_t& session);
+
+            static sai_bfd_session_state_t saiBfdSessionState(
+                    _In_ vpp_api_bfd_state_e state);
+
+            // Run the startup oper-status resync if the event thread has
+            // requested one (m_operResyncDue). resyncPortOperStatus() issues VPP
             // binary-API calls (interface_get_state) which allocate on VPP's
             // non-thread-safe clib heap; running them on the background event
             // thread races the command thread's clib allocations and crashes
             // (os_panic in clib_mem_heap_realloc_aligned). So the event thread
-            // only flags that a resync is due and the command thread performs it.
+            // only flags that a resync is due, and it runs under m_apimutex.
             void serviceDeferredOperStatusResync();
 
             void startVppEventsThread();
@@ -1518,6 +1714,9 @@ namespace saivs
 
             bool m_run_vpp_events_thread = true;
             std::atomic<bool> m_operResyncDue { false };
+            // A BFD state resync is pending until its session dump succeeds:
+            // the FDB aging pass retries a failed one. Under m_apimutex only.
+            bool m_bfdResyncDue = false;
             bool VppEventsThreadStarted = false;
             std::shared_ptr<std::thread> m_vpp_thread;
 
@@ -1526,6 +1725,10 @@ namespace saivs
 	    // create/set/remove path, which the VS layer serializes through a
 	    // single queue, so it requires no additional locking.
 	    std::set<sai_object_id_t> m_egress_disabled_lag_member_ports;
+
+            // Sub-interfaces whose admin up VPP refused while their parent was
+            // admin down. Only accessed from the SAI API thread.
+            std::set<std::string> m_sub_if_admin_up_pending;
 
             static int currentMaxInstance;
 
@@ -1544,8 +1747,8 @@ namespace saivs
 
             // MAC event queue — thread boundary between VPP and saivpp.
             //
-            // Producer: VPP API receive thread via staticMacEventCb()
-            //   -> vl_api_l2_macs_event_t_handler (holds VPP_LOCK, not m_apimutex)
+            // Producer: VPP event thread (event socket) via staticMacEventCb()
+            //   -> vl_api_l2_macs_event_t_handler (holds EVENT_LOCK, not m_apimutex)
             //   -> onVppMacEvent() pushes to queue and signals m_fdbAgingWakeEvent
             //
             // Consumer: FDB aging thread via processFdbEntriesForAging()
@@ -1557,12 +1760,17 @@ namespace saivs
             struct VppMacEvent {
                 uint8_t  mac[6];
                 uint32_t sw_if_index;
-                uint8_t  action; // 0=ADD(learn), 1=DELETE(age), 2=MOVE
+                uint8_t  action; // 0=ADD(learn), 1=DELETE(age), 2=MOVE, 3=RESYNC
+                bool     retry = false; // queued again after a failed L2FIB dump, behind later events
+                // For a retry: the bridge domain, and its VLAN or bridge, the
+                // event was taken in. sw_if_index may have left both since.
+                uint32_t bd_id = 0;
+                sai_object_id_t bv_id = SAI_NULL_OBJECT_ID;
             };
             std::mutex              m_mac_event_queue_mutex;
             std::queue<VppMacEvent> m_mac_event_queue;
 
-            // Called from VPP API receive thread via vpp_want_l2_macs_events2 callback.
+            // Called from the VPP event thread via the vpp_set_mac_event_cb() callback.
             // Enqueues events for safe processing under m_apimutex.
 
             // Static trampoline registered as vpp_mac_event_cb_fn.
@@ -1576,6 +1784,92 @@ namespace saivs
             bool generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_if_index, sai_fdb_event_t event_type);
             bool generateFdbAgedEvent(const VppFdbKey &key);
 
+            bool findCreatedFdbEntry(const VppFdbKey &key, uint32_t sw_if_index, FdbInfo &fi);
+            bool findCreatedFdbEntryInBv(const VppFdbKey &key, sai_object_id_t bv_id, FdbInfo &fi);
+            // The VLAN, or .1D bridge, of a MAC in bridge domain key.bd_id on sw_if_index
+            sai_object_id_t fdbBvIdOf(const VppFdbKey &key, uint32_t sw_if_index);
+            bool vppMovesFdbEntry(const std::string &serializedObjectId);
+
+            // Whether VPP's L2FIB has a MAC
+            enum class L2fibLookup
+            {
+                ABSENT,
+                PRESENT,
+                FAILED,     // VPP's L2FIB couldn't be dumped
+            };
+            L2fibLookup lookupL2fibMac(const VppFdbKey &key, vpp_l2fib_entry_t &entry);
+            bool isCurrentL2fibRow(const vpp_l2fib_entry_t &e);
+            void reconcileFdbEntryWithVpp(const VppFdbKey &key, const VppMacEvent &ev);
+
+            /*
+             * EVPN remote MAC addresses: FDB entries on a tunnel bridge port,
+             * which orchagent creates from the remote VTEP's type-2 routes.
+             * Each is held in VPP's L2FIB on the L2 VXLAN tunnel to its
+             * remote VTEP (SAI_FDB_ENTRY_ATTR_ENDPOINT_IP, or the bridge
+             * port's tunnel destination) for its VLAN.
+             */
+            struct RemoteFdbTarget
+            {
+                uint32_t sw_if_index;
+                uint32_t bd_id;
+                bool is_static;
+
+                bool operator==(const RemoteFdbTarget& other) const
+                {
+                    return sw_if_index == other.sw_if_index &&
+                        bd_id == other.bd_id && is_static == other.is_static;
+                }
+            };
+
+            // FDB entry -> where VPP holds it now
+            std::map<std::string, RemoteFdbTarget> m_remote_fdb;
+
+            // Where VPP should hold an FDB entry as SAI has it now; false if
+            // it is not a remote MAC address, or its tunnel does not exist yet.
+            bool remote_fdb_target(
+                    _In_ const std::string &serializedObjectId,
+                    _Out_ RemoteFdbTarget& target);
+
+            // Bring VPP's L2FIB in line with one FDB entry: add, re-point or
+            // delete it. Idempotent.
+            void remote_fdb_sync(
+                    _In_ const std::string &serializedObjectId);
+
+            // Delete an FDB entry from VPP's L2FIB if it holds it as remote.
+            bool remote_fdb_forget(
+                    _In_ const std::string &serializedObjectId);
+
+            // Program the remote FDB entries of a VLAN that are not in VPP
+            // yet, after one of its L2 tunnels is created.
+            void remote_fdb_resync(
+                    _In_ uint16_t vlan_id);
+
+            // Delete the remote FDB entries on an L2 tunnel that is about to
+            // be removed. The SAI entries stay, and are programmed again if
+            // their tunnel comes back.
+            bool remote_fdb_drop_tunnel(
+                    _In_ uint32_t sw_if_index);
+
+            bool vlan_id_of_bv(
+                    _In_ sai_object_id_t bv_id,
+                    _Out_ uint16_t& vlan_id);
+
+            // Whether mac is the MAC of the VLAN's router interface (its BVI's).
+            bool is_vlan_router_mac(
+                    _In_ sai_object_id_t vlan_oid,
+                    _In_ const sai_mac_t mac);
+
+            // An attribute as SAI holds it, or null; logs nothing if absent.
+            const sai_attribute_t* stored_attr(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_attr_id_t attr_id);
+
+            // Reconcile m_vpp_fdb_entries/FDB notifications with VPP's L2FIB
+            // after MAC events were lost (VPP_MAC_ACTION_RESYNC). Returns
+            // false, changing nothing, if VPP's L2FIB cannot be dumped.
+            bool resyncFdbWithVpp();
+
             void vpp_fdb_entries_invalidate_all();
             void vpp_fdb_entries_invalidate_by_bd(uint32_t bd_id);
             void vpp_fdb_entries_invalidate_by_port(sai_object_id_t port_id);
@@ -1587,9 +1881,32 @@ namespace saivs
             void swif_bdid_track(const char *hwif_name, uint32_t bd_id);
             void swif_bdid_untrack(const char *hwif_name);
 
-            std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
+            // FDB aging. VPP ages the learned MACs of each bridge domain itself
+            // (mac_age, in whole minutes) and reports each aged one as a DELETE
+            // MAC event, which becomes SAI_FDB_EVENT_AGED. SAI has one aging
+            // time for the switch, in seconds.
 
-            std::map<std::string, bool> m_last_oper_up;
+            // SAI_SWITCH_ATTR_FDB_AGING_TIME as a bridge domain mac_age
+            static uint8_t fdb_aging_time_to_mac_age(uint32_t aging_time);
+
+            // Apply a new aging time to the VLAN bridge domains with a member
+            sai_status_t vpp_set_fdb_aging_time(uint32_t aging_time);
+
+            // Apply the switch's aging time to the bridge domain a VLAN member
+            // joins, unless it has another member already (bd_has_member)
+            void vpp_apply_fdb_aging_time(uint32_t bd_id, bool bd_has_member);
+
+            // The bridge domains VPP has a VLAN's port or LAG member in
+            std::set<uint32_t> vpp_vlan_bridge_domains();
+
+            uint32_t switch_fdb_aging_time();
+
+            // Whether the VLAN bridge domains with a member all have the MAC age
+            // of the stored aging time. Cleared when VPP fails to set one, until
+            // an aging time is set on all of them.
+            bool m_fdb_mac_age_applied = true;
+
+            std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
             CRMTracker m_crmTracker;
 
@@ -1612,6 +1929,8 @@ namespace saivs
             TunnelManagerIpIp m_tunnel_mgr_ipip;
 
         protected: // switch capability related
+            virtual sai_status_t set_acl_capabilities() override;
+
             virtual sai_status_t queryNextHopGroupTypeCapability(
                 _Inout_ sai_s32_list_t *enum_values_capability) override;
 
@@ -1725,5 +2044,11 @@ namespace saivs
             sai_status_t bindMirrorPort(
                     _In_ sai_object_id_t portId,
                     _In_ const sai_attribute_t* attr);
+
+        private: // VPP NAT
+
+            friend class SwitchVppNat;
+
+            SwitchVppNat m_nat;
     };
 }

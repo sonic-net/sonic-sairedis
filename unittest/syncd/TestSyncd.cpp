@@ -435,6 +435,185 @@ protected:
     std::shared_ptr<Syncd> m_syncd;
 };
 
+TEST_F(SyncdTest, GetResponseClearsPointerValue)
+{
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_get = [switchRid](sai_object_type_t objectType, sai_object_id_t objectId,
+            uint32_t attrCount, sai_attribute_t *attrList) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(switchRid, objectId);
+        EXPECT_EQ(1u, attrCount);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrList[0].id);
+        attrList[0].value.ptr = reinterpret_cast<void *>(0x1234);
+        return SAI_STATUS_SUCCESS;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_SUCCESS), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:oid:0x21000000000000",
+        REDIS_ASIC_STATE_COMMAND_GET,
+        {{"SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", "0x0"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(1u, responseValues.size());
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", fvField(responseValues[0]));
+    EXPECT_EQ("0x0", fvValue(responseValues[0]));
+}
+
+TEST_F(SyncdTest, BulkGetResponseClearsPointerValue)
+{
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_get = [switchRid](sai_object_type_t objectType, sai_object_id_t objectId,
+            uint32_t attrCount, sai_attribute_t *attrList) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(switchRid, objectId);
+        EXPECT_EQ(1u, attrCount);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrList[0].id);
+        attrList[0].value.ptr = reinterpret_cast<void *>(0x1234);
+        return SAI_STATUS_SUCCESS;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_SUCCESS), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:1",
+        REDIS_ASIC_STATE_COMMAND_BULK_GET,
+        {{"oid:0x21000000000000", "SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(1u, responseValues.size());
+    EXPECT_EQ(sai_serialize_status(SAI_STATUS_SUCCESS), fvField(responseValues[0]));
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0", fvValue(responseValues[0]));
+}
+
+TEST_F(SyncdTest, GetOverflowResponseClearsPointerValue)
+{
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_get = [switchRid](sai_object_type_t objectType, sai_object_id_t objectId,
+            uint32_t attrCount, sai_attribute_t *attrList) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(switchRid, objectId);
+        EXPECT_EQ(2u, attrCount);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrList[0].id);
+        EXPECT_EQ(SAI_SWITCH_ATTR_PORT_LIST, attrList[1].id);
+        EXPECT_EQ(nullptr, attrList[1].value.objlist.list);
+        attrList[0].value.ptr = reinterpret_cast<void *>(0x1234);
+        attrList[1].value.objlist.count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_BUFFER_OVERFLOW), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:oid:0x21000000000000",
+        REDIS_ASIC_STATE_COMMAND_GET,
+        {{"SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", "0x0"},
+         {"SAI_SWITCH_ATTR_PORT_LIST", "0:null"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(2u, responseValues.size());
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", fvField(responseValues[0]));
+    EXPECT_EQ("0x0", fvValue(responseValues[0]));
+    EXPECT_EQ("SAI_SWITCH_ATTR_PORT_LIST", fvField(responseValues[1]));
+    EXPECT_EQ("2", fvValue(responseValues[1]));
+}
+
+TEST_F(SyncdTest, BulkGetOverflowResponseClearsPointerValue)
+{
+    m_opt->m_enableSaiBulkSupport = true;
+
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_bulkGet = [switchRid](sai_object_type_t objectType, uint32_t objectCount,
+            const sai_object_id_t *objectIds, const uint32_t *attrCounts,
+            sai_attribute_t **attrLists, sai_bulk_op_error_mode_t mode, sai_status_t *statuses) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(1u, objectCount);
+        EXPECT_EQ(switchRid, objectIds[0]);
+        EXPECT_EQ(2u, attrCounts[0]);
+        EXPECT_EQ(SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, mode);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrLists[0][0].id);
+        EXPECT_EQ(SAI_SWITCH_ATTR_PORT_LIST, attrLists[0][1].id);
+        EXPECT_EQ(nullptr, attrLists[0][1].value.objlist.list);
+        attrLists[0][0].value.ptr = reinterpret_cast<void *>(0x1234);
+        attrLists[0][1].value.objlist.count = 2;
+        statuses[0] = SAI_STATUS_BUFFER_OVERFLOW;
+        return SAI_STATUS_FAILURE;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_FAILURE), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:1",
+        REDIS_ASIC_STATE_COMMAND_BULK_GET,
+        {{"oid:0x21000000000000", "SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0|SAI_SWITCH_ATTR_PORT_LIST=0:null"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(1u, responseValues.size());
+    EXPECT_EQ(sai_serialize_status(SAI_STATUS_BUFFER_OVERFLOW), fvField(responseValues[0]));
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0|SAI_SWITCH_ATTR_PORT_LIST=2", fvValue(responseValues[0]));
+}
+
 TEST_F(SyncdTest, FlexCounterRemoveDoesNotRequireVidToRidTranslation)
 {
     auto client = std::make_shared<MockDisabledRedisClient>();
@@ -727,6 +906,115 @@ TEST_F(SyncdTest, BulkCreateTest)
     };
 
     m_syncd->processEvent(*channel);
+}
+
+static void switchMacDefaultsTest(
+        std::shared_ptr<MockableSaiInterface> sai,
+        std::shared_ptr<Syncd> syncd,
+        bool switchTypeKnown,
+        sai_switch_type_t switchType,
+        bool routerMacGettable)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switchVid = 0x21000000000000;
+    sai_object_id_t switchRid = 0x11000000000001;
+    sai_object_id_t portVid = 0x10000000000002;
+    sai_object_id_t portRid = 0x11000000000002;
+
+    syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+    syncd->m_translator->insertRidAndVid(portRid, portVid);
+    syncd->m_client->setPortLanes(switchVid, portRid, {52, 53});
+
+    sai->mock_objectTypeQuery = [switchRid, portRid](sai_object_id_t oid) {
+        if (oid == switchRid)
+            return SAI_OBJECT_TYPE_SWITCH;
+        return oid == portRid ? SAI_OBJECT_TYPE_PORT : SAI_OBJECT_TYPE_QUEUE;
+    };
+    sai->mock_switchIdQuery = [switchVid](sai_object_id_t) { return switchVid; };
+    sai->mock_get = [=](sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attrCount,
+                        sai_attribute_t* attrList) -> sai_status_t {
+        if (attrCount != 1)
+            return SAI_STATUS_INVALID_PARAMETER;
+        if (objectType == SAI_OBJECT_TYPE_SWITCH && objectId == switchRid)
+        {
+            switch (attrList[0].id)
+            {
+                case SAI_SWITCH_ATTR_TYPE:
+                    if (!switchTypeKnown)
+                        return SAI_STATUS_NOT_SUPPORTED;
+                    attrList[0].value.s32 = switchType;
+                    return SAI_STATUS_SUCCESS;
+                case SAI_SWITCH_ATTR_PORT_NUMBER:
+                    attrList[0].value.u32 = 1;
+                    return SAI_STATUS_SUCCESS;
+                case SAI_SWITCH_ATTR_PORT_LIST:
+                    attrList[0].value.objlist.count = 1;
+                    attrList[0].value.objlist.list[0] = portRid;
+                    return SAI_STATUS_SUCCESS;
+                case SAI_SWITCH_ATTR_SRC_MAC_ADDRESS:
+                {
+                    sai_mac_t mac = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+                    memcpy(attrList[0].value.mac, mac, sizeof(sai_mac_t));
+                    return SAI_STATUS_SUCCESS;
+                }
+                case SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC:
+                {
+                    if (!routerMacGettable)
+                        return SAI_STATUS_ATTR_NOT_IMPLEMENTED_0;
+                    sai_mac_t mac = {0x00, 0x11, 0x22, 0x33, 0x44, 0x66};
+                    memcpy(attrList[0].value.mac, mac, sizeof(sai_mac_t));
+                    return SAI_STATUS_SUCCESS;
+                }
+                default:
+                    return SAI_STATUS_NOT_SUPPORTED;
+            }
+        }
+        if (objectType == SAI_OBJECT_TYPE_PORT && objectId == portRid)
+        {
+            if (attrList[0].id == SAI_PORT_ATTR_HW_LANE_LIST)
+            {
+                if (attrList[0].value.u32list.list == nullptr || attrList[0].value.u32list.count < 2)
+                {
+                    attrList[0].value.u32list.count = 2;
+                    return SAI_STATUS_BUFFER_OVERFLOW;
+                }
+                attrList[0].value.u32list.count = 2;
+                attrList[0].value.u32list.list[0] = 52;
+                attrList[0].value.u32list.list[1] = 53;
+                return SAI_STATUS_SUCCESS;
+            }
+            if (attrList[0].id == SAI_PORT_ATTR_PORT_SERDES_ID)
+            {
+                attrList[0].value.oid = SAI_NULL_OBJECT_ID;
+                return SAI_STATUS_SUCCESS;
+            }
+        }
+        return SAI_STATUS_NOT_SUPPORTED;
+    };
+
+    auto sw = std::make_shared<SaiSwitch>(switchVid, switchRid, syncd->m_client, syncd->m_translator, sai, false);
+
+    sai_mac_t mac;
+    sw->getDefaultMacAddress(mac);
+    EXPECT_EQ(sai_serialize_mac(mac), "00:11:22:33:44:55");
+    sw->getVxlanDefaultRouterMacAddress(mac);
+    EXPECT_EQ(sai_serialize_mac(mac), routerMacGettable ? "00:11:22:33:44:66" : "00:00:00:00:00:00");
+}
+
+TEST_F(SyncdTest, SwitchMacDefaultsNpu)
+{
+    switchMacDefaultsTest(m_sai, m_syncd, false, SAI_SWITCH_TYPE_NPU, true);
+}
+
+TEST_F(SyncdTest, SwitchMacDefaultsVoq)
+{
+    switchMacDefaultsTest(m_sai, m_syncd, true, SAI_SWITCH_TYPE_VOQ, true);
+}
+
+TEST_F(SyncdTest, SwitchMacDefaultsRouterMacNotGettable)
+{
+    switchMacDefaultsTest(m_sai, m_syncd, true, SAI_SWITCH_TYPE_VOQ, false);
 }
 
 TEST_F(SyncdTest, BulkSetTest)

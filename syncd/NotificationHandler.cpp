@@ -78,6 +78,21 @@ void NotificationHandler::updateNotificationsPointers(
      * Also notice that we are using the same pointers for ALL switches.
      */
 
+    for (uint32_t index = 0; index < attr_count; ++index)
+    {
+        const auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr_list[index].id);
+
+        if (meta == nullptr)
+        {
+            SWSS_LOG_THROW("failed to find metadata for switch attr %d", attr_list[index].id);
+        }
+
+        if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
+        {
+            attr_list[index].value.ptr = nullptr;
+        }
+    }
+
     sai_metadata_update_attribute_notification_pointers(&m_switchNotifications, attr_count, attr_list);
 }
 
@@ -339,4 +354,3 @@ void NotificationHandler::enqueueNotification(
 
     enqueueNotification(op, data, entry);
 }
-

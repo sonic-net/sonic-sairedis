@@ -447,7 +447,11 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
         if (get(SAI_OBJECT_TYPE_PORT, obj_id, 1, &admin_attr) == SAI_STATUS_SUCCESS &&
             admin_attr.value.booldata)
         {
-            interface_set_state(hwif_name, true);
+            if (interface_set_state(hwif_name, true) == 0)
+            {
+                vpp_resync_sub_interface_admin_state(hwif);
+            }
+
             SWSS_LOG_NOTICE("Applied admin-up to VPP host interface %s for port %s",
                     hwif_name, sai_serialize_object_id(obj_id).c_str());
         }

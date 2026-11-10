@@ -157,6 +157,7 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
 {
     SWSS_LOG_ENTER();
 
+    *nxt_grp_member = {};
     sai_attribute_t attr;
     auto nh_soid = sai_serialize_object_id(next_hop_oid);
 
@@ -260,16 +261,9 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
         }
         break;
     case SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP: {
-        u_int32_t sw_if_index;
-        if (m_tunnel_mgr.get_tunnel_if(next_hop_oid, sw_if_index) == SAI_STATUS_SUCCESS) {
-            nxt_grp_member->sw_if_index = sw_if_index;
-            SWSS_LOG_INFO("Got tunnel interface %d for nexthop %s", sw_if_index,
-                           sai_serialize_object_id(next_hop_oid).c_str());
-        } else {
-            SWSS_LOG_ERROR("Failed to get tunnel interface name for nexthop %s",
-                           sai_serialize_object_id(next_hop_oid).c_str());
-            return SAI_STATUS_FAILURE;
-        }
+        // The mapped VXLAN VNI is selected by the route's VRF, which is not
+        // available while building a reusable next-hop group member.
+        nxt_grp_member->tunnel_nh_oid = next_hop_oid;
         break;
     }
     default:
