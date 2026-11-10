@@ -71,12 +71,15 @@ ZeroMQSelectableChannel::~ZeroMQSelectableChannel()
     m_runThread = false;
     m_allowZmqPoll = true;
 
-    zmq_close(m_socket);
-    zmq_ctx_destroy(m_context);
+    // Wake a blocking zmq_poll and keep its socket open until the thread exits.
+    zmq_ctx_shutdown(m_context);
 
     SWSS_LOG_NOTICE("ending zmq poll thread for channel %s", m_endpoint.c_str());
 
     m_zmlPollThread->join();
+
+    zmq_close(m_socket);
+    zmq_ctx_destroy(m_context);
 
     SWSS_LOG_NOTICE("ended zmq poll thread for channel %s", m_endpoint.c_str());
 }
