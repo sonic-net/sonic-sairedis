@@ -198,12 +198,19 @@ TEST_F(SwitchVppNbrTest, unicastNeighborDoesNotTouchDirectedBroadcast)
     EXPECT_TRUE(nbrCalls[0].flag);
 
     ASSERT_EQ(1u, routeCalls.size());
-    EXPECT_EQ(32u, routeCalls[0].id);
+    EXPECT_EQ("192.168.1.10/32", routeCalls[0].name);
+    EXPECT_EQ(0u, routeCalls[0].id);
     EXPECT_TRUE(routeCalls[0].flag);
 
     ASSERT_EQ(SAI_STATUS_SUCCESS, removeNeighbor("192.168.1.10"));
 
     EXPECT_TRUE(directedBcastCalls().empty());
     EXPECT_EQ(2u, vppCallsTo("ip4_nbr_add_del").size());
-    EXPECT_EQ(2u, vppCallsTo("ip_route_add_del").size());
+
+    routeCalls = vppCallsTo("ip_route_add_del");
+
+    ASSERT_EQ(2u, routeCalls.size());
+    EXPECT_EQ("192.168.1.10/32", routeCalls[1].name);
+    EXPECT_EQ(0u, routeCalls[1].id);
+    EXPECT_FALSE(routeCalls[1].flag);
 }
