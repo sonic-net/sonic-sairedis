@@ -207,9 +207,10 @@ bool BaseCounterContext::isSampleReady(
 
     // Preserve existing plugin membership, including failed polls, when no
     // update interrupted the sweep. A yielded sweep must not expose a newly
-    // enrolled or replaced object using a previous physical object's sample.
-    // A same-RID configuration refresh must still aggregate completed cleared
-    // samples once; its new configuration is polled in the next sweep.
+    // enrolled or removed/re-enrolled registration using an earlier lifetime's
+    // sample. Refreshes of existing registrations wait for this pass and its
+    // plugins, preserving completed cleared samples before accepted changes
+    // are applied.
     // Object removal deliberately excludes registrations from later plugins:
     // their final cleared sample is not guaranteed an aggregate. This prevents
     // post-removal scripts from consuming/recreating stale VID data.
@@ -5458,7 +5459,6 @@ void FlexCounter::removeCounterObjects(
         SWSS_LOG_ERROR("Object type for removal not supported, %s",
                 sai_serialize_object_type(objectType).c_str());
     }
-
 }
 
 void FlexCounter::addCounter(

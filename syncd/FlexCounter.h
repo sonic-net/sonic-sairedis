@@ -132,8 +132,8 @@ namespace syncd
 
         virtual bool hasObject() const = 0;
 
-        // Report actual membership, including all scalar/bulk fragments.
-        // Called only while the group mutex is held; RID validity is unchanged.
+        // Report which requested VIDs remain enrolled, including scalar/bulk fragments.
+        // Called with the group mutex held; reports membership without validating RIDs.
         virtual std::set<sai_object_id_t> getObjectVids(
                 _In_ const std::vector<sai_object_id_t>& vids) const = 0;
 
