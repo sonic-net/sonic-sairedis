@@ -8,8 +8,12 @@ LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main -lgmock
 noinst_LTLIBRARIES = libMdioTest.la libMdioTestMissingSymbols.la
 
 libMdioTest_la_SOURCES = MdioTestLib.c
-libMdioTest_la_CPPFLAGS = $(SAIINC) -DMDIO_TEST_LIB_MARKER="\"$(abs_builddir)/mdiotestlib.loaded\""
+libMdioTest_la_CPPFLAGS = $(SAIINC)
 libMdioTestMissingSymbols_la_SOURCES = MdioTestLibMissingSymbols.c
+
+MDIO_TEST_LIB_LDFLAGS = -module -shared -avoid-version -rpath /nowhere
+libMdioTest_la_LDFLAGS = $(MDIO_TEST_LIB_LDFLAGS)
+libMdioTestMissingSymbols_la_LDFLAGS = $(MDIO_TEST_LIB_LDFLAGS)
 
 tests_SOURCES = main.cpp \
                 MockableSaiInterface.cpp \
@@ -40,12 +44,10 @@ tests_SOURCES = main.cpp \
 				$(top_srcdir)/syncd/Asan.cpp
 
 MDIO_TEST_LIB_DIR = $(abs_builddir)/.libs
-MDIO_TEST_LIB_MARKER_PATH = $(abs_builddir)/mdiotestlib.loaded
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control \
 				 -DMDIO_TEST_LIB_PATH="\"$(MDIO_TEST_LIB_DIR)/libMdioTest.so\"" \
-				 -DMDIO_TEST_LIB_MISSING_SYMBOLS_PATH="\"$(MDIO_TEST_LIB_DIR)/libMdioTestMissingSymbols.so\"" \
-				 -DMDIO_TEST_LIB_MARKER="\"$(MDIO_TEST_LIB_MARKER_PATH)\""
+				 -DMDIO_TEST_LIB_MISSING_SYMBOLS_PATH="\"$(MDIO_TEST_LIB_DIR)/libMdioTestMissingSymbols.so\""
 
 tests_DEPENDENCIES = libMdioTest.la libMdioTestMissingSymbols.la
 tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs

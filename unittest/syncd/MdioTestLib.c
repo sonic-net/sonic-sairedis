@@ -2,30 +2,13 @@
  * @file MdioTestLib.c
  *
  * Stub MDIO access library for the GearboxMdioAccess unit tests. It exports
- * the two symbols syncd resolves (mdio_read/mdio_write) and records its own
- * load in a marker file, so the tests can observe how often it was dlopened.
+ * the two symbols syncd resolves (mdio_read/mdio_write).
  */
 
-#include <stdio.h>
-
+#include <stddef.h>
 #include <stdint.h>
 
 #include "sai.h"
-
-#ifndef MDIO_TEST_LIB_MARKER
-#define MDIO_TEST_LIB_MARKER "/tmp/mdiotestlib.loaded"
-#endif
-
-__attribute__((constructor)) static void mdioTestLibMarkLoaded(void)
-{
-    FILE *f = fopen(MDIO_TEST_LIB_MARKER, "a");
-
-    if (f != NULL)
-    {
-        fputs("loaded\n", f);
-        fclose(f);
-    }
-}
 
 sai_status_t mdio_read(
         _In_ uint64_t platform_context,

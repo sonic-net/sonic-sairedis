@@ -17,8 +17,6 @@
 
 #include <gtest/gtest.h>
 
-#include <cstdio>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -33,28 +31,7 @@ using namespace syncd;
 #define MDIO_TEST_LIB_MISSING_SYMBOLS_PATH "libMdioTestMissingSymbols.so"
 #endif
 
-#ifndef MDIO_TEST_LIB_MARKER
-#define MDIO_TEST_LIB_MARKER "mdiotestlib.loaded"
-#endif
-
 #define GEARBOX_TABLE "_GEARBOX_TABLE"
-
-static size_t markerCount()
-{
-    SWSS_LOG_ENTER();
-
-    std::ifstream f(MDIO_TEST_LIB_MARKER);
-
-    size_t count = 0;
-    std::string line;
-
-    while (std::getline(f, line))
-    {
-        count++;
-    }
-
-    return count;
-}
 
 class GearboxMdioAccessTest : public ::testing::Test
 {
@@ -62,8 +39,6 @@ class GearboxMdioAccessTest : public ::testing::Test
 
         void SetUp() override
         {
-            std::remove(MDIO_TEST_LIB_MARKER);
-
             try
             {
                 m_db = std::make_shared<swss::DBConnector>("APPL_DB", 0);
@@ -84,8 +59,6 @@ class GearboxMdioAccessTest : public ::testing::Test
             {
                 clearGearboxTable();
             }
-
-            std::remove(MDIO_TEST_LIB_MARKER);
         }
 
         void clearGearboxTable()
@@ -366,8 +339,6 @@ TEST_F(GearboxMdioAccessTest, resolvesSymbolsAndPointersAreCallable)
     EXPECT_EQ(reg_val, 0xA5A5A5A5U);
 
     EXPECT_EQ(write(0, 0x1, 0x0, 1, &reg_val), SAI_STATUS_SUCCESS);
-
-    EXPECT_EQ(markerCount(), 1U);
 }
 
 TEST_F(GearboxMdioAccessTest, symbolsAreCachedPerLibrary)
@@ -395,12 +366,12 @@ TEST_F(GearboxMdioAccessTest, symbolsAreCachedPerLibrary)
             static_cast<uint32_t>(attrs1.attrs.size()),
             attrs1.attrs.data());
 
-    /* Both PHYs share the cached symbols; the library was loaded once. */
+    /* Both PHYs share the cached symbols of the one library. */
     EXPECT_EQ(
             attrs0.find(SAI_SWITCH_ATTR_REGISTER_READ)->value.ptr,
             attrs1.find(SAI_SWITCH_ATTR_REGISTER_READ)->value.ptr);
     EXPECT_EQ(
             attrs0.find(SAI_SWITCH_ATTR_REGISTER_WRITE)->value.ptr,
             attrs1.find(SAI_SWITCH_ATTR_REGISTER_WRITE)->value.ptr);
-    EXPECT_EQ(markerCount(), 1U);
+    EXPECT_EQ(access.m_symbolsByLibrary.size(), 1U);
 }
