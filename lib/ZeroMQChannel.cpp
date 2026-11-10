@@ -35,7 +35,7 @@ ZeroMQChannel::ZeroMQChannel(
     }
     else
     {
-        SWSS_LOG_NOTICE("using default zmq response buffer size of %ld bytes", ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
+        SWSS_LOG_NOTICE("using default zmq response buffer size of %d bytes", ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
     }
 
     m_buffer.resize(m_zmqResponseBufferSize);
@@ -167,7 +167,7 @@ void ZeroMQChannel::notificationThreadFunction()
 
         if (rc >= m_zmqResponseBufferSize)
         {
-            SWSS_LOG_WARN("zmq_recv message was truncated (over %d bytes, received %d), increase buffer size, message DROPPED",
+            SWSS_LOG_WARN("zmq_recv message was truncated (over %ld bytes, received %d), increase buffer size, message DROPPED",
                     m_zmqResponseBufferSize,
                     rc);
 
@@ -326,7 +326,7 @@ sai_status_t ZeroMQChannel::wait(
         }
         if (rc >= m_zmqResponseBufferSize)
         {
-            SWSS_LOG_THROW("zmq_recv message was truncated (over %d bytes, received %d), increase buffer size, message DROPPED",
+            SWSS_LOG_THROW("zmq_recv message was truncated (over %ld bytes, received %d), increase buffer size, message DROPPED",
                     m_zmqResponseBufferSize,
                     rc);
         }
