@@ -1026,7 +1026,7 @@ public:
         for (auto &it : m_bulkContexts)
         {
             auto &context = *it.second.get();
-            SWSS_LOG_INFO("%s %s partition %s number of OIDs %d number of counter IDs %d number of counters %d",
+            SWSS_LOG_INFO("%s %s partition %s number of OIDs %zu number of counter IDs %zu number of counters %zu",
                           m_name.c_str(),
                           m_instanceId.c_str(),
                           context.name.c_str(),
@@ -3476,7 +3476,7 @@ private:
 
         if (SAI_STATUS_SUCCESS != status)
         {
-            SWSS_LOG_WARN("Failed to get meter bulk stats for %s: ENI 0x% " PRIx64 ": %u", m_name.c_str(), ctx.eni_vid, status);
+            SWSS_LOG_WARN("Failed to get meter bulk stats for %s: ENI 0x%" PRIx64 ": %u", m_name.c_str(), ctx.eni_vid, status);
             return false;
         }
 
