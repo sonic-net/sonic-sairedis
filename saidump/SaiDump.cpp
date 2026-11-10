@@ -106,7 +106,7 @@ void SaiDump::handleCmdLine(int argc, char **argv)
                 }
 
                 rdbJSonSizeLimit = result * 1024 * 1024;
-                SWSS_LOG_NOTICE("Configure the RDB JSON MAX size to %llu MB", rdbJSonSizeLimit / 1024 / 1024);
+                SWSS_LOG_NOTICE("Configure the RDB JSON MAX size to %" PRIu64 " MB", rdbJSonSizeLimit / 1024 / 1024);
                 break;
 
             case 'h':
