@@ -3078,6 +3078,7 @@ public:
             if (port_vid == SAI_NULL_OBJECT_ID)
             {
                 SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: NULL VID mapping read attempted");
+                return false;
             }
             if (m_translator->tryTranslateVidToRid(port_vid, port_rid))
             {
@@ -3405,8 +3406,8 @@ public:
                 "with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                 attrIds.size(), vid, rid);
 
-            // Refresh missing lane and map information once per object
-            // SAI may still be busy when the SerDes object is registered
+            // Refresh lane count or tap count once per object if it is missing
+            // SAI may still be busy when the SerDes object is registered, causing a missing mapping
             // See: https://github.com/sonic-net/sonic-sairedis/issues/1946
             // All supported attributes need a lane count. A missing tap count
             // must only prevent TX FIR taps collection, allowing RX VGA to proceed
