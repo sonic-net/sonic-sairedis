@@ -189,6 +189,8 @@ struct VppMock
     bool natSupported = true;
     // NAT sessions VPP reports, by inside address (network order)
     std::map<uint32_t, std::vector<vpp_nat44_session_t>> natSessions;
+    // Names of the interfaces the mock creates, by sw_if_index: IP-in-IP tunnels
+    std::map<uint32_t, std::string> swifNames;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;

@@ -2501,6 +2501,9 @@ sai_status_t TunnelManagerIpIp::remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index
         }
     }
 
+    // VPP resets the loopback packet action of the tunnel it deletes
+    m_ipip_loopback_drop.erase(sw_if_index);
+
     const char *ifname = vpp_get_swif_name(sw_if_index);
     if (ifname) {
         interface_set_state(ifname, false);
@@ -2801,6 +2804,9 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
         SWSS_LOG_NOTICE("IpIp Encap: created P2P tunnel nexthop %s: src=%s dst=%s sw_if=%u",
                         tunnel_nh_obj->get_id().c_str(), src_str, dst_str, sw_if_index);
 
+        // Best effort: if it fails, the tunnel forwards as without the action
+        sync_loopback_action(sw_if_index);
+
     } else if (action == Action::DELETE) {
         auto it = m_ipip_encap_nh_map.find(nh_oid);
         if (it == m_ipip_encap_nh_map.end()) {
@@ -2821,7 +2827,97 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
                         tunnel_nh_obj->get_id().c_str(), sw_if_index);
 
         m_ipip_encap_nh_map.erase(it);
+
+        // A VPP tunnel a decap term or another nexthop still uses takes the
+        // action of the encap nexthops left on it
+        sync_loopback_action(sw_if_index);
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+int32_t TunnelManagerIpIp::get_loopback_action(_In_ sai_object_id_t tunnel_oid)
+{
+    SWSS_LOG_ENTER();
+
+    auto tunnel_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL,
+                                                  sai_serialize_object_id(tunnel_oid));
+
+    sai_attribute_t attr;
+    attr.id = SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION;
+
+    if (!tunnel_obj || tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        return SAI_PACKET_ACTION_FORWARD;
+    }
+
+    return attr.value.s32;
+}
+
+sai_status_t TunnelManagerIpIp::sync_loopback_action(_In_ uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    bool exists = std::any_of(m_ipip_tunnel_refcount.begin(), m_ipip_tunnel_refcount.end(),
+                              [sw_if_index](const auto &entry)
+                              { return entry.second.sw_if_index == sw_if_index; });
+    if (!exists) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    bool drop = std::any_of(m_ipip_encap_nh_map.begin(), m_ipip_encap_nh_map.end(),
+                            [this, sw_if_index](const auto &entry)
+                            { return entry.second.sw_if_index == sw_if_index &&
+                                     get_loopback_action(entry.second.tunnel_oid) == SAI_PACKET_ACTION_DROP; });
+
+    if (drop == (m_ipip_loopback_drop.count(sw_if_index) != 0)) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    const char *ifname = vpp_get_swif_name(sw_if_index);
+    if (!ifname) {
+        SWSS_LOG_ERROR("IpIp: could not get interface name for sw_if_index=%u", sw_if_index);
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_status_t status = SwitchVpp::vpp_apply_loopback_action(
+        ifname, drop ? SAI_PACKET_ACTION_DROP : SAI_PACKET_ACTION_FORWARD);
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_WARN("IpIp: loopback packet action %s not applied on %s (sw_if=%u): %s",
+                      drop ? "DROP" : "FORWARD", ifname, sw_if_index,
+                      sai_serialize_status(status).c_str());
+        return status;
+    }
+
+    if (drop) {
+        m_ipip_loopback_drop.insert(sw_if_index);
+    } else {
+        m_ipip_loopback_drop.erase(sw_if_index);
+    }
+
+    SWSS_LOG_NOTICE("IpIp: loopback packet action %s on %s (sw_if=%u)",
+                    drop ? "DROP" : "FORWARD", ifname, sw_if_index);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t TunnelManagerIpIp::update_tunnel_loopback_action(_In_ sai_object_id_t tunnel_oid)
+{
+    SWSS_LOG_ENTER();
+
+    std::set<uint32_t> vpp_tunnels;
+    for (const auto &entry : m_ipip_encap_nh_map) {
+        if (entry.second.tunnel_oid == tunnel_oid) {
+            vpp_tunnels.insert(entry.second.sw_if_index);
+        }
+    }
+
+    sai_status_t result = SAI_STATUS_SUCCESS;
+    for (uint32_t sw_if_index : vpp_tunnels) {
+        sai_status_t status = sync_loopback_action(sw_if_index);
+        if (result == SAI_STATUS_SUCCESS) {
+            result = status;
+        }
+    }
+
+    return result;
 }
