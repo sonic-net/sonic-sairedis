@@ -1273,16 +1273,19 @@ namespace saivs
         protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCPV6 packet action
 
             // Active/COPY aggregate state for the DHCPv6 semantic row.
-            // TRAP installs terminal member classifiers; COPY removes them and
-            // receives the BVI flood copy. Routed interfaces receive ff02::1:2
-            // whenever any DHCPv6 owner is active.
+            // VLAN members use the live admitted-packet semantic feature;
+            // routed interfaces receive ff02::1:2 whenever any DHCPv6 owner
+            // is active.
             bool m_dhcp6_trap_active = false;
             bool m_dhcp6_trap_copy = false;
 
             // Confirmed Accept interfaces per IPv6 MFIB table. The first
             // interface owns the shared local Forward path and the last
-            // removal deletes it.
+            // removal deletes it. A separate set retains operations whose
+            // reply was not confirmed so cleanup/retry cannot be skipped just
+            // because confirmed state already matches the requested state.
             std::map<uint32_t, std::set<std::string>> m_dhcp6_mroute_ifaces;
+            std::set<std::pair<uint32_t, std::string>> m_dhcp6_mroute_uncertain_ifaces;
 
             // Re-derives active/COPY state from m_trap_map and applies it.
             void vpp_update_dhcp6_trap_action();

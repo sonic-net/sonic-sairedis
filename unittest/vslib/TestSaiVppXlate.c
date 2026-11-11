@@ -131,6 +131,38 @@ int main(void)
     if (route_expected_context != VPP_INVALID_CTX_INDEX)
         return 15;
 
+    /* Multicast routes share the isolated route completion state. A late
+     * reply from a released request cannot complete the current wait, and an
+     * unrelated generic reply cannot make WR_ROUTE report success. */
+    uint32_t mroute_marker = UINT32_MAX;
+    old_context = store_ptr(&mroute_marker);
+    release_index(old_context);
+    current_context = begin_route_request(NULL, &mroute_marker);
+    if (current_context == VPP_INVALID_CTX_INDEX)
+        return 16;
+
+    vl_api_ip_mroute_add_del_reply_t mroute = {0};
+    mroute.context = old_context;
+    mroute.retval = 0;
+    vat_main.result_ready = 0;
+    vl_api_ip_mroute_add_del_reply_t_handler(&mroute);
+    if (route_result_ready || vat_main.result_ready ||
+        get_index_ptr(current_context) != (uintptr_t)&mroute_marker)
+        return 17;
+
+    set_reply_status(-19);
+    if (route_result_ready || !vat_main.result_ready || vat_main.retval != -19)
+        return 18;
+
+    mroute.context = current_context;
+    mroute.retval = htonl((uint32_t)-7);
+    vl_api_ip_mroute_add_del_reply_t_handler(&mroute);
+    if (!route_result_ready || route_retval != -7 || get_index_ptr(current_context))
+        return 19;
+    end_route_request(current_context);
+    if (route_expected_context != VPP_INVALID_CTX_INDEX)
+        return 20;
+
     /*
      * A MAC age request times out, and its reply, a success, arrives while
      * the next request is pending: it completes nothing.
@@ -140,7 +172,7 @@ int main(void)
 
     old_context = store_ptr(&mac_age_request);
     if (finish_tagged_request(old_context, -99) != -99 || get_index_ptr(old_context))
-        return 16;
+        return 21;
 
     current_context = store_ptr(&mac_age_request);
     mac_age.context = old_context;
@@ -149,11 +181,11 @@ int main(void)
     vl_api_bridge_domain_set_mac_age_reply_t_handler(&mac_age);
     if (vat_main.result_ready || vat_main.retval != 123 ||
         get_index_ptr(current_context) != (uintptr_t)&mac_age_request)
-        return 17;
+        return 22;
 
     /* WR() ended on another request's reply: the pending request fails */
     if (finish_tagged_request(current_context, 0) != -EAGAIN || get_index_ptr(current_context))
-        return 18;
+        return 23;
 
     /* The request's own reply completes it, with VPP's result */
     current_context = store_ptr(&mac_age_request);
@@ -162,7 +194,7 @@ int main(void)
     vl_api_bridge_domain_set_mac_age_reply_t_handler(&mac_age);
     if (!vat_main.result_ready || vat_main.retval != -3 || get_index_ptr(current_context) ||
         finish_tagged_request(current_context, vat_main.retval) != -3)
-        return 19;
+        return 24;
 
     return 0;
 }

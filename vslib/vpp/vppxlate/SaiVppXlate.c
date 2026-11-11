@@ -1598,7 +1598,17 @@ static void
 vl_api_ip_mroute_add_del_reply_t_handler (vl_api_ip_mroute_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+
+    if (route_expected_context == VPP_INVALID_CTX_INDEX ||
+            msg->context != route_expected_context ||
+            !get_index_ptr(msg->context))
+    {
+        return;
+    }
+
+    route_retval = retval;
+    route_result_ready = 1;
+    release_index(msg->context);
 }
 
 static void
@@ -4172,6 +4182,8 @@ int ip6_mroute_local_add_del (uint32_t table_id, const uint8_t grp[16], uint8_t 
     vl_api_ip_mroute_add_del_t *mp;
     vl_api_mfib_path_t *path;
     u32 sw_if_index;
+    uint32_t ignored_stats_index;
+    uint32_t context;
     int ret;
 
     if (!grp || !accept_hwif || grp_len > 128) {
@@ -4191,6 +4203,13 @@ int ip6_mroute_local_add_del (uint32_t table_id, const uint8_t grp[16], uint8_t 
 
     const u8 n_paths = with_local_path ? 2 : 1;
 
+    context = begin_route_request(NULL, &ignored_stats_index);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        SAIVPP_ERROR("%s: unable to allocate request context", __func__);
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+
     M22 (IP_MROUTE_ADD_DEL, mp, sizeof (vl_api_mfib_path_t) * n_paths);
 
     mp->is_add = is_add;
@@ -4202,6 +4221,7 @@ int ip6_mroute_local_add_del (uint32_t table_id, const uint8_t grp[16], uint8_t 
     mp->route.prefix.grp_address_length = htons(grp_len);
     memcpy(mp->route.prefix.grp_address.ip6, grp, sizeof(mp->route.prefix.grp_address.ip6));
     mp->route.n_paths = n_paths;
+    mp->context = context;
 
     path = &mp->route.paths[0];
     memset(path, 0, sizeof(*path) * n_paths);
@@ -4222,7 +4242,9 @@ int ip6_mroute_local_add_del (uint32_t table_id, const uint8_t grp[16], uint8_t 
 
     S (mp);
 
-    WR (ret);
+    WR_ROUTE (ret);
+
+    end_route_request(context);
 
     ret = vpp_normalize_ret(ret, !is_add, __func__);
 

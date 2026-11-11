@@ -166,6 +166,12 @@ int __wrap_ip6_mroute_local_add_del(uint32_t table_id, const uint8_t grp[16], ui
 {
     SWSS_LOG_ENTER();
 
+    const unsigned int call = ++vppMock().ip6MrouteCalls;
+    if (vppMock().ip6MrouteFailBeforeApplyOnCalls.count(call) != 0)
+    {
+        return -1;
+    }
+
     char addr[INET6_ADDRSTRLEN];
 
     inet_ntop(AF_INET6, grp, addr, sizeof(addr));
@@ -180,15 +186,17 @@ int __wrap_ip6_mroute_local_add_del(uint32_t table_id, const uint8_t grp[16], ui
         {
             g_ip6LocalForwardTables.insert(table_id);
         }
-        return 0;
+        return vppMock().ip6MrouteFailAfterApplyOnCalls.count(call) == 0 ? 0 : -1;
     }
 
     if (with_local_path)
     {
         g_ip6LocalForwardTables.erase(table_id);
     }
-    // VPP fails the removal of paths that are not there
-    return g_ip6LocalMroutes.erase(key) == 1 ? 0 : -1;
+    // SaiVppXlate normalizes an already-absent delete to success, so retries
+    // after an applied-but-timed-out delete are idempotent here too.
+    g_ip6LocalMroutes.erase(key);
+    return vppMock().ip6MrouteFailAfterApplyOnCalls.count(call) == 0 ? 0 : -1;
 }
 
 int __wrap_vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add)
@@ -4502,10 +4510,10 @@ TEST_F(SwitchVppDhcpTrap, TheDefaultTableKeepsItsRouteWhenAVrfObjectGoesAway)
 
 /*
  * SAI_HOSTIF_TRAP_TYPE_DHCPV6 packet action, on the same VLAN. Each test asks
- * what VPP would do with a DHCPv6 client message, sent to ff02::1:2, on a
- * member (punted by the l2 input classifier, or let through to the flood) and
- * with the BVI's flood copy (received, if the BVI's IPv6 table has ff02::1:2
- * accepting on the BVI and forwarding to local, or dropped).
+ * what VPP would do with a DHCPv6 client message, sent to ff02::1:2. Member
+ * classifiers must always miss: the admitted-packet semantic feature owns
+ * absent/TRAP/COPY behavior. The BVI's flood copy is received only when COPY
+ * installs ff02::1:2 accepting on the BVI and forwarding to local.
  */
 class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
 {
@@ -4568,17 +4576,21 @@ class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
                                                            std::string("bvi100"))) == 1;
         }
 
-        // TRAP: punted on both members, so the BVI never sees it and needs no route
+        // TRAP: classifiers miss and the live semantic row consumes the packet.
         void expectTrap6()
         {
             SWSS_LOG_ENTER();
 
-            EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcp6OnWire(false)));
-            EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcp6OnWire(true)));
+            EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
+            EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
             EXPECT_TRUE(g_ip6LocalMroutes.empty());
+            ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
+            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
+            EXPECT_FALSE(vppMock().coppDhcpBindCalls.back().isCopy);
         }
 
-        // COPY: flooded on both members, and the BVI's copy received
+        // COPY: classifiers still miss; the semantic feature clones and
+        // preserves forwarding, and the BVI receive route remains active.
         void expectCopy6()
         {
             SWSS_LOG_ENTER();
@@ -4586,6 +4598,19 @@ class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
             EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
             EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
             EXPECT_TRUE(bviReceivesDhcp6());
+            ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
+            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
+            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isCopy);
+        }
+
+        void expectNoTrap6()
+        {
+            SWSS_LOG_ENTER();
+
+            EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
+            EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
+            EXPECT_TRUE(g_ip6LocalMroutes.empty());
+            EXPECT_FALSE(m_sw->m_dhcp6_trap_active);
         }
 };
 
@@ -4598,12 +4623,12 @@ TEST_F(SwitchVppDhcp6Trap, TrapPuntsOnTheMembersWithNoRoute)
     expectTrap6();
 }
 
-TEST_F(SwitchVppDhcp6Trap, NoDhcp6TrapDefaultsToTrap)
+TEST_F(SwitchVppDhcp6Trap, NoDhcp6TrapPreservesMemberForwarding)
 {
     addMembers();
     createBvi();
 
-    expectTrap6();
+    expectNoTrap6();
 }
 
 TEST_F(SwitchVppDhcp6Trap, CopyBeforeAnyMemberFloodsAndTheBviCopyIsReceived)
@@ -4651,7 +4676,7 @@ TEST_F(SwitchVppDhcp6Trap, UnsupportedOtherActionsLeaveCopyUnchanged)
     expectCopy6();
 }
 
-TEST_F(SwitchVppDhcp6Trap, RemovingTheCopyTrapRevertsToTrap)
+TEST_F(SwitchVppDhcp6Trap, RemovingTheCopyTrapRestoresAbsentState)
 {
     auto trap = createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
     addMembers();
@@ -4659,7 +4684,7 @@ TEST_F(SwitchVppDhcp6Trap, RemovingTheCopyTrapRevertsToTrap)
     expectCopy6();
 
     removeTrap(trap);
-    expectTrap6();
+    expectNoTrap6();
 }
 
 TEST_F(SwitchVppDhcp6Trap, ReplacementCopyTrapWinsOnlyOnceTheOldTrapIsGone)
@@ -4728,11 +4753,61 @@ TEST_F(SwitchVppDhcp6Trap, RoutedPortsInOneTableShareTheLocalForwardPath)
     EXPECT_EQ(0u, g_ip6LocalForwardTables.count(7));
 }
 
-TEST_F(SwitchVppDhcp6Trap, OnlyDhcp6IsPuntedAmongIpv6Multicast)
+TEST_F(SwitchVppDhcp6Trap, AmbiguousRoutedAddIsRemovedByCreateRollback)
 {
+    storePortRif("Ethernet8");
+    vppMock().interfaceVrfs["Ethernet8"] = 7;
+    vppMock().ip6MrouteFailAfterApplyOnCalls.insert(1);
+
+    createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+
+    auto route = std::make_tuple(7u, std::string("ff02::1:2/128"),
+            std::string("Ethernet8"));
+    ASSERT_EQ(1u, g_ip6LocalMroutes.count(route));
+    ASSERT_EQ(1u, vppMock().ip6MrouteCalls);
+
+    SwitchVpp::RifCreateState state;
+    state.hwif = "Ethernet8";
+    state.dhcp6_mroute_added = true;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->rollbackRifCreate(state));
+
+    EXPECT_EQ(0u, g_ip6LocalMroutes.count(route));
+    EXPECT_EQ(0u, g_ip6LocalForwardTables.count(7));
+    EXPECT_EQ(2u, vppMock().ip6MrouteCalls);
+}
+
+TEST_F(SwitchVppDhcp6Trap, AmbiguousDeleteIsRetriedWhenConfirmedStateMatchesAbsent)
+{
+    storePortRif("Ethernet8");
+    vppMock().interfaceVrfs["Ethernet8"] = 7;
+
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP,
+            SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    ASSERT_EQ(1u, vppMock().ip6MrouteCalls);
+
+    vppMock().ip6MrouteFailAfterApplyOnCalls.insert(2);
+    removeTrap(trap);
+
+    EXPECT_TRUE(g_ip6LocalMroutes.empty());
+    ASSERT_EQ(2u, vppMock().ip6MrouteCalls);
+
+    // The operation remains uncertain although the dataplane and requested
+    // state are both absent, so unchanged-state reconciliation retries it.
+    m_sw->vpp_set_dhcp6_trap_state(false, false);
+
+    EXPECT_TRUE(g_ip6LocalMroutes.empty());
+    EXPECT_EQ(3u, vppMock().ip6MrouteCalls);
+    m_sw->vpp_set_dhcp6_trap_state(false, false);
+    EXPECT_EQ(3u, vppMock().ip6MrouteCalls);
+}
+
+TEST_F(SwitchVppDhcp6Trap, Dhcp6AndOtherIpv6MulticastBypassFixedClassifiers)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
     addMembers();
 
-    // all-nodes multicast is flooded as before
+    EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
+    EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
     EXPECT_EQ(MISS, onMember("bobm0", false, ip6UdpOnWire(false, {0x00, 0x00, 0x00, 0x01}, 547)));
     EXPECT_EQ(MISS, onMember("bobm1.100", true, ip6UdpOnWire(true, {0x00, 0x00, 0x00, 0x01}, 547)));
 }
@@ -4747,7 +4822,8 @@ TEST_F(SwitchVppDhcp6Trap, Dhcp6AndDhcp4ActionsAreIndependent)
     expectCopy6();
     expectTrap();
 
-    // broadcast ARP is still punted on the tagged member, whose chain ends in the DHCPv6 table
+    // broadcast ARP is still punted on the tagged member; DHCPv6 has no
+    // classifier session in that chain.
     EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, arpOnWire(true)));
 }
 

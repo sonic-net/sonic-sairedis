@@ -229,6 +229,9 @@ struct VppMock
     int ipRouteResult = 0;
     unsigned int ipRouteCalls = 0;
     std::set<unsigned int> ipRouteFailAfterApplyOnCalls;
+    unsigned int ip6MrouteCalls = 0;
+    std::set<unsigned int> ip6MrouteFailBeforeApplyOnCalls;
+    std::set<unsigned int> ip6MrouteFailAfterApplyOnCalls;
     std::map<std::string, vpp_interface_stats_t> interfaceStats;
     std::map<std::string, int> actions;
     std::set<std::string> interfaces;

@@ -2640,11 +2640,13 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
          m_dhcp6_trap_copy);
     if (want_ip6 && dhcp6_receive)
     {
+        /* Set before dispatch so an applied-but-timed-out add is cleaned by
+         * rollback even though confirmed route state did not advance. */
+        state.dhcp6_mroute_added = true;
         if (vpp_dhcp6_mroute(state.hwif.c_str(), true) != 0)
         {
             return SAI_STATUS_FAILURE;
         }
-        state.dhcp6_mroute_added = true;
     }
 
     bool v4_is_up = false, v6_is_up = false;
@@ -2902,7 +2904,7 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
 
     if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
-        if (m_dhcp6_trap_active && vpp_dhcp6_mroute(hwif_name.c_str(), false) != 0)
+        if (vpp_dhcp6_mroute(hwif_name.c_str(), false) != 0)
         {
             return SAI_STATUS_FAILURE;
         }
@@ -3000,7 +3002,7 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
     std::string sub_hwif = hwif_name + "." + std::to_string(vlan_id);
     std::string sub_tap = tap_name.empty() ? "" : tap_name + "." + std::to_string(vlan_id);
 
-    if (m_dhcp6_trap_active && vpp_dhcp6_mroute(sub_hwif.c_str(), false) != 0)
+    if (vpp_dhcp6_mroute(sub_hwif.c_str(), false) != 0)
     {
         return SAI_STATUS_FAILURE;
     }
