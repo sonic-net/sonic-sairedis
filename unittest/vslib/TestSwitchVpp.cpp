@@ -4808,6 +4808,22 @@ TEST_F(SwitchVppDhcp6Trap, Dhcp6AndOtherIpv6MulticastBypassFixedClassifiers)
 
     EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
     EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
+    // Same destination MAC, but not a DHCPv6 client destination port.
+    EXPECT_EQ(MISS, onMember("bobm0", false,
+                ip6UdpOnWire(false, {0x00, 0x01, 0x00, 0x02}, 9999)));
+    EXPECT_EQ(MISS, onMember("bobm1.100", true,
+                ip6UdpOnWire(true, {0x00, 0x01, 0x00, 0x02}, 9999)));
+
+    // The Ethernet mapping contains only the low 32 group bits. Keep that
+    // MAC but change ff02::1:2 to ff05::1:2; a MAC-only classifier would
+    // incorrectly consume both packets.
+    auto otherScopeUntagged = dhcp6OnWire(false);
+    otherScopeUntagged[14 + 24 + 1] = 0x05;
+    auto otherScopeTagged = dhcp6OnWire(true);
+    otherScopeTagged[18 + 24 + 1] = 0x05;
+    EXPECT_EQ(MISS, onMember("bobm0", false, otherScopeUntagged));
+    EXPECT_EQ(MISS, onMember("bobm1.100", true, otherScopeTagged));
+
     EXPECT_EQ(MISS, onMember("bobm0", false, ip6UdpOnWire(false, {0x00, 0x00, 0x00, 0x01}, 547)));
     EXPECT_EQ(MISS, onMember("bobm1.100", true, ip6UdpOnWire(true, {0x00, 0x00, 0x00, 0x01}, 547)));
 }

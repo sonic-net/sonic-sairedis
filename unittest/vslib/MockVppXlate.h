@@ -163,6 +163,9 @@ struct VppMock
     // sw_interface_set_mac() result, and the MAC each interface carries.
     int macResult = 0;
     std::map<std::string, std::string> macs;
+    // sw_interface_set_ip_directed_broadcast() result, for the ref-counted
+    // directed-broadcast flag of the sub-net broadcast neighbors.
+    int directedBcastResult = 0;
     uint32_t routeStatsIndex = 42;
     std::vector<int> routeResults;
     std::vector<VppRouteCall> routeCalls;

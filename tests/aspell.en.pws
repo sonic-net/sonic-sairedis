@@ -482,6 +482,8 @@ subtree
 iface
 loopback
 resync
+BVI
+bvi
 DHCPv
 LLDP
 cp

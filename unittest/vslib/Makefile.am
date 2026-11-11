@@ -61,7 +61,8 @@ tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry
 				TestSwitchVppTrim.cpp \
 				TestSwitchVppFdb.cpp \
 				MockVppXlate.cpp MockVppXlate.h \
-				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp
+				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp \
+				TestSwitchVppNbr.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_sonic_ext_copp_neighbor_miss_bind \
 				vpp_sonic_ext_copp_dhcp_bind vpp_sonic_ext_copp_ip2me_bind \
 				vpp_sonic_ext_copp_ip2me_bind_condition \
@@ -79,6 +80,7 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_sonic_ext_copp_neighbor_miss_bind
 				get_interface_vrf ip_vrf_add ip_vrf_del interface_ip_address_del_all \
 				init_vpp_client vpp_wait_for_events vpp_drain_events vpp_sync_for_events vpp_ev_dequeue \
 				interface_set_promiscuous set_l2_interface_vlan_tag_rewrite set_bridge_domain_flags \
+				sw_interface_set_ip_directed_broadcast ip4_nbr_add_del \
 				sw_interface_ip6_enable_disable sw_interface_set_mac \
 				bridge_domain_get_member_count vpp_bridge_domain_add_del vpp_bridge_domain_set_mac_age \
 				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \

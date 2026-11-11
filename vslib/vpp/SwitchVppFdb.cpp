@@ -1049,11 +1049,21 @@ int SwitchVpp::vpp_dhcp6_mroute(
     }
 
     // The local Forward path is shared by all Accept interfaces in one MFIB
-    // entry. Add it with the first Accept path and remove it only with the
-    // last; otherwise deleting one routed interface would stop CPU delivery
-    // for every remaining interface in the table.
-    const bool with_local_path = interfaces.empty() ||
-        (!is_add && interfaces.size() == 1);
+    // entry. An uncertain peer may already be live even though it is absent
+    // from confirmed state, so include those peers in first/last ownership.
+    // Otherwise deleting the last confirmed interface could remove local
+    // delivery while an applied-but-timed-out Accept path still exists.
+    bool has_other_uncertain = false;
+    for (const auto &candidate : m_dhcp6_mroute_uncertain_ifaces)
+    {
+        if (candidate.first == table_id && candidate != key)
+        {
+            has_other_uncertain = true;
+            break;
+        }
+    }
+    const size_t other_confirmed = interfaces.size() - (present ? 1u : 0u);
+    const bool with_local_path = other_confirmed == 0 && !has_other_uncertain;
     /* A timeout may mean VPP applied the request but lost its reply. Mark the
      * physical row uncertain before dispatch and clear it only after a
      * correlated successful reply. This deliberately bypasses the
