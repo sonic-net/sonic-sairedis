@@ -178,7 +178,7 @@ namespace
                 return m_sw->set(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnel), &attr);
             }
 
-            /* The loopback packet action stored for a tunnel, or -1 if none is */
+            /* The loopback packet action GET returns for a tunnel, or -1 if GET fails */
             int32_t storedLoopbackAction(
                     sai_object_id_t tunnel)
             {
@@ -286,12 +286,13 @@ TEST_F(SwitchVppIpIpTest, setAppliesToVppTunnelsAndKeepsPreviousActionOnFailure)
         sai_object_id_t tunnel;
         sai_object_id_t nexthop;
         EXIT_UNLESS(createTunnel(tunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(storedLoopbackAction(tunnel) == SAI_PACKET_ACTION_FORWARD);
         EXIT_UNLESS(createNexthop(nexthop, tunnel) == SAI_STATUS_SUCCESS);
         EXIT_UNLESS(vppMock().loopbackCalls == 0);
 
         vppMock().loopbackResult = -1;
         EXIT_UNLESS(setLoopbackAction(tunnel, SAI_PACKET_ACTION_DROP) == SAI_STATUS_FAILURE);
-        EXIT_UNLESS(storedLoopbackAction(tunnel) == -1);
+        EXIT_UNLESS(storedLoopbackAction(tunnel) == SAI_PACKET_ACTION_FORWARD);
         vppMock().loopbackResult = 0;
 
         EXIT_UNLESS(setLoopbackAction(tunnel, SAI_PACKET_ACTION_DROP) == SAI_STATUS_SUCCESS);
@@ -338,14 +339,14 @@ TEST_F(SwitchVppIpIpTest, failedSetReturnsVppTunnelsToPreviousAction)
         /* The second VPP tunnel doesn't take DROP, so the first, which did, goes back to FORWARD */
         vppMock().loopbackFailures.emplace("ipip1", 1);
         EXIT_UNLESS(setLoopbackAction(tunnel, SAI_PACKET_ACTION_DROP) == SAI_STATUS_FAILURE);
-        EXIT_UNLESS(storedLoopbackAction(tunnel) == -1);
+        EXIT_UNLESS(storedLoopbackAction(tunnel) == SAI_PACKET_ACTION_FORWARD);
         EXIT_UNLESS(vppLoopbackAction("ipip0") == 0);
         EXIT_UNLESS(vppLoopbackAction("ipip1") == -1);
 
         /* If the first doesn't go back either, its next sync returns it to the stored action */
         vppMock().loopbackFailures.emplace("ipip0", 0);
         EXIT_UNLESS(setLoopbackAction(tunnel, SAI_PACKET_ACTION_DROP) == SAI_STATUS_FAILURE);
-        EXIT_UNLESS(storedLoopbackAction(tunnel) == -1);
+        EXIT_UNLESS(storedLoopbackAction(tunnel) == SAI_PACKET_ACTION_FORWARD);
         EXIT_UNLESS(vppLoopbackAction("ipip0") == 1);
 
         vppMock().loopbackFailures.clear();
@@ -389,6 +390,36 @@ TEST_F(SwitchVppIpIpTest, nexthopRemoveIsBestEffortAndNextSyncRetries)
     }, ::testing::ExitedWithCode(0), "");
 }
 
+TEST_F(SwitchVppIpIpTest, vppTunnelVppFailsToDeleteKeepsItsAction)
+{
+    ASSERT_EXIT({
+        vppMock().loopbackEnabled = true;
+
+        sai_object_id_t tunnel;
+        sai_object_id_t nexthop;
+        EXIT_UNLESS(createTunnel(tunnel, {loopbackAction(SAI_PACKET_ACTION_DROP)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(nexthop, tunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppLoopbackAction("ipip0") == 1);
+
+        /* The next hop and the VPP tunnel, up and with DROP, stay */
+        vppMock().ipipDelResult = -1;
+        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, nexthop) == SAI_STATUS_FAILURE);
+        EXIT_UNLESS(vppLoopbackAction("ipip0") == 1);
+        EXIT_UNLESS(vppMock().isAdminUp("ipip0"));
+
+        /* so a SET still reaches the VPP tunnel, and a new remove deletes it */
+        EXIT_UNLESS(setLoopbackAction(tunnel, SAI_PACKET_ACTION_FORWARD) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppLoopbackAction("ipip0") == 0);
+
+        vppMock().ipipDelResult = 0;
+        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, nexthop) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_del").size() == 2);
+        EXIT_UNLESS(vppMock().swifNames.empty());
+
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
 TEST_F(SwitchVppIpIpTest, dropIsBestEffortWithoutIfaceLoopback)
 {
     ASSERT_EXIT({
@@ -398,12 +429,13 @@ TEST_F(SwitchVppIpIpTest, dropIsBestEffortWithoutIfaceLoopback)
         sai_object_id_t tunnel;
         EXIT_UNLESS(createTunnel(tunnel) == SAI_STATUS_SUCCESS);
         EXIT_UNLESS(setLoopbackAction(tunnel, SAI_PACKET_ACTION_DROP) == SAI_STATUS_NOT_SUPPORTED);
-        EXIT_UNLESS(storedLoopbackAction(tunnel) == -1);
+        EXIT_UNLESS(storedLoopbackAction(tunnel) == SAI_PACKET_ACTION_FORWARD);
 
-        /* orchagent creates the tunnel to the peer with DROP whatever the platform supports */
+        /* orchagent creates the tunnel to the peer with DROP whatever the platform supports: it falls back to FORWARD */
         sai_object_id_t peerTunnel;
         sai_object_id_t nexthop;
         EXIT_UNLESS(createTunnel(peerTunnel, {loopbackAction(SAI_PACKET_ACTION_DROP)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(storedLoopbackAction(peerTunnel) == SAI_PACKET_ACTION_FORWARD);
         EXIT_UNLESS(createNexthop(nexthop, peerTunnel) == SAI_STATUS_SUCCESS);
         EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_add").size() == 1);
 

@@ -413,6 +413,10 @@ extern "C" int __wrap_vpp_ipip_tunnel_del(uint32_t sw_if_index)
 {
     SWSS_LOG_ENTER();
     vppMock().calls.push_back({"vpp_ipip_tunnel_del", vppMock().swifNames[sw_if_index], sw_if_index, 0, false});
+    if (vppMock().ipipDelResult != 0)
+    {
+        return vppMock().ipipDelResult;
+    }
     vppMock().actions.erase(vppMock().swifNames[sw_if_index]);
     vppMock().swifNames.erase(sw_if_index);
     return 0;

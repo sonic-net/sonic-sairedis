@@ -2483,12 +2483,30 @@ sai_status_t TunnelManagerIpIp::remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index
     auto it = std::find_if(m_ipip_tunnel_refcount.begin(), m_ipip_tunnel_refcount.end(),
                            [sw_if_index](const auto &entry)
                            { return entry.second.sw_if_index == sw_if_index; });
-    if (it != m_ipip_tunnel_refcount.end()) {
-        if (--it->second.refcount > 0) {
-            SWSS_LOG_NOTICE("IpIp: tunnel sw_if=%u still in use (refcount=%u), skipping delete",
-                            sw_if_index, it->second.refcount);
-            return SAI_STATUS_SUCCESS;
+    if (it != m_ipip_tunnel_refcount.end() && it->second.refcount > 1) {
+        it->second.refcount--;
+        SWSS_LOG_NOTICE("IpIp: tunnel sw_if=%u still in use (refcount=%u), skipping delete",
+                        sw_if_index, it->second.refcount);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    const char *ifname = vpp_get_swif_name(sw_if_index);
+    if (ifname) {
+        interface_set_state(ifname, false);
+    }
+
+    int ret = vpp_ipip_tunnel_del(sw_if_index);
+    if (ret < 0) {
+        SWSS_LOG_ERROR("IpIp: vpp_ipip_tunnel_del failed for sw_if=%u: ret=%d", sw_if_index, ret);
+        // The tunnel stays with its last user: bring it back up, and keep its
+        // reference, pending unnumbered setup and loopback packet action
+        if (ifname) {
+            interface_set_state(ifname, true);
         }
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (it != m_ipip_tunnel_refcount.end()) {
         m_ipip_tunnel_refcount.erase(it);
     }
 
@@ -2503,17 +2521,6 @@ sai_status_t TunnelManagerIpIp::remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index
 
     // VPP resets the loopback packet action of the tunnel it deletes
     m_ipip_loopback_drop.erase(sw_if_index);
-
-    const char *ifname = vpp_get_swif_name(sw_if_index);
-    if (ifname) {
-        interface_set_state(ifname, false);
-    }
-
-    int ret = vpp_ipip_tunnel_del(sw_if_index);
-    if (ret < 0) {
-        SWSS_LOG_ERROR("IpIp: vpp_ipip_tunnel_del failed for sw_if=%u: ret=%d", sw_if_index, ret);
-        return SAI_STATUS_FAILURE;
-    }
 
     return SAI_STATUS_SUCCESS;
 }

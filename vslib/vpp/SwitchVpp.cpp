@@ -1772,9 +1772,27 @@ sai_status_t SwitchVpp::create(
         sai_deserialize_object_id(serializedObjectId, object_id);
 
         auto attr_loopback = sai_metadata_get_attr_by_id(SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+        std::vector<sai_attribute_t> effective_attrs;
         if (attr_loopback != nullptr)
         {
             CHECK_STATUS(validateLoopbackAction(attr_loopback->value.s32));
+
+            /*
+             * As for a RIF, DROP without the sonic-ext feature falls back to
+             * FORWARD, in the stored attributes too. If the feature can't be
+             * queried, DROP is kept: the sync of the next hops queries it again.
+             */
+            bool enabled = true;
+            if (attr_loopback->value.s32 == SAI_PACKET_ACTION_DROP &&
+                sonicExtFeatureEnabled("iface-loopback", enabled) == SAI_STATUS_SUCCESS && !enabled)
+            {
+                effective_attrs.assign(attr_list, attr_list + attr_count);
+                effective_attrs.erase(effective_attrs.begin() + (attr_loopback - attr_list));
+                attr_count = static_cast<uint32_t>(effective_attrs.size());
+                attr_list = effective_attrs.data();
+                SWSS_LOG_WARN("Tunnel %s: iface-loopback disabled; CREATE DROP omitted, using FORWARD",
+                              serializedObjectId.c_str());
+            }
         }
 
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
@@ -3015,8 +3033,10 @@ sai_status_t SwitchVpp::get(
 
         if (ait == attrHash.end())
         {
-            if (objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
-                    id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION)
+            if ((objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
+                    id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION) ||
+                (objectType == SAI_OBJECT_TYPE_TUNNEL &&
+                    id == SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION))
             {
                 attr_list[idx].value.s32 = SAI_PACKET_ACTION_FORWARD;
                 continue;
