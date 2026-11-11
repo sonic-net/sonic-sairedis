@@ -667,15 +667,22 @@ sai_status_t SwitchVpp::addIpRoute(
         m_routeStatsIndexMap[serializedObjectId] = stats_index;
     }
 
-    status = setRouteCounterBinding(serializedObjectId, counter_oid);
-    if (status != SAI_STATUS_SUCCESS)
+    // A route being created has no committed COUNTER_ID relationship yet, so a
+    // NULL binding is already the state. Calling setRouteCounterBinding() here
+    // would only unbind, and its lookup of the not-yet-created route logs a
+    // spurious "not found" for every counter-less route.
+    if (counter_oid != SAI_NULL_OBJECT_ID)
     {
-        m_routeStatsIndexMap.erase(serializedObjectId);
-        if (removeProgrammedRoute() != SAI_STATUS_SUCCESS)
+        status = setRouteCounterBinding(serializedObjectId, counter_oid);
+        if (status != SAI_STATUS_SUCCESS)
         {
-            return SAI_STATUS_FAILURE;
+            m_routeStatsIndexMap.erase(serializedObjectId);
+            if (removeProgrammedRoute() != SAI_STATUS_SUCCESS)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+            return status;
         }
-        return status;
     }
 
     status = create_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, switch_id, attr_count, attr_list);
