@@ -98,12 +98,6 @@ struct VppCoppDhcpBindCall
     bool isBind;
 };
 
-struct VppDhcpDelivery
-{
-    bool cpu;
-    bool peer;
-};
-
 struct VppCoppIfoutBindCall
 {
     uint16_t ethertype;
@@ -283,7 +277,6 @@ struct VppMock
     uint32_t nodeNext(
             const std::string& node,
             const std::string& next) const;
-    VppDhcpDelivery dhcpIpv4Delivery(const std::string& hwif) const;
 };
 
 VppMock& vppMock();

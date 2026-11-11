@@ -2103,6 +2103,11 @@ sai_status_t SwitchVpp::rollbackRifCreate(
         }
     };
 
+    if (state.dhcp6_mroute_added)
+    {
+        check(vpp_dhcp6_mroute(state.hwif.c_str(), false),
+                "remove DHCPv6 multicast receive");
+    }
     if (state.bridge_attached)
     {
         check(set_sw_interface_l2_bridge(state.hwif.c_str(), state.vlan,
@@ -2627,6 +2632,21 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         state.ip6_enabled = true;
     }
 
+    // Routed ingress needs the MFIB receive entry for either packet action.
+    // A VLAN BVI receives DHCPv6 only for COPY, when the member classifier is
+    // removed and normal multicast flooding supplies the BVI copy.
+    bool dhcp6_receive = m_dhcp6_trap_active &&
+        (attr_type->value.s32 != SAI_ROUTER_INTERFACE_TYPE_VLAN ||
+         m_dhcp6_trap_copy);
+    if (want_ip6 && dhcp6_receive)
+    {
+        if (vpp_dhcp6_mroute(state.hwif.c_str(), true) != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+        state.dhcp6_mroute_added = true;
+    }
+
     bool v4_is_up = false, v6_is_up = false;
 
     if (attr_type_v4 != NULL)
@@ -2882,6 +2902,11 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
 
     if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
+        if (m_dhcp6_trap_active && vpp_dhcp6_mroute(hwif_name.c_str(), false) != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+
         // Clear any loopback (hairpin) DROP so a persistent port/LAG whose RIF
         // is removed does not keep dropping if a later RIF is created on it
         // without the attribute. A failed clear is propagated instead of
@@ -2974,6 +2999,11 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
      */
     std::string sub_hwif = hwif_name + "." + std::to_string(vlan_id);
     std::string sub_tap = tap_name.empty() ? "" : tap_name + "." + std::to_string(vlan_id);
+
+    if (m_dhcp6_trap_active && vpp_dhcp6_mroute(sub_hwif.c_str(), false) != 0)
+    {
+        return SAI_STATUS_FAILURE;
+    }
 
     configure_lcp_interface(sub_hwif.c_str(), sub_tap.c_str(), false);
 

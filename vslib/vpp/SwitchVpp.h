@@ -178,6 +178,7 @@ namespace saivs
                 bool interface_created = false;
                 bool lcp_created = false;
                 bool bridge_attached = false;
+                bool dhcp6_mroute_added = false;
                 bool loopback_applied = false;
                 bool vrf_changed = false;
                 bool mtu_changed = false;
@@ -1240,8 +1241,8 @@ namespace saivs
         protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCP packet action
 
             // A DHCPv4 trap makes routed limited broadcasts local receives.
-            // VLAN-member TRAP/COPY behavior is read from the live semantic
-            // provider row; fixed classifiers are not used. See
+            // VLAN-member TRAP/COPY behavior remains classifier-driven: TRAP
+            // installs terminal sessions and COPY removes them. See
             // SwitchVppFdb.cpp.
             bool m_dhcp_trap_active = false;
             bool m_dhcp_trap_copy = false;
@@ -1268,6 +1269,33 @@ namespace saivs
             void vpp_set_dhcp_trap_state(
                     _In_ bool active,
                     _In_ bool copy);
+
+        protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCPV6 packet action
+
+            // Active/COPY aggregate state for the DHCPv6 semantic row.
+            // TRAP installs terminal member classifiers; COPY removes them and
+            // receives the BVI flood copy. Routed interfaces receive ff02::1:2
+            // whenever any DHCPv6 owner is active.
+            bool m_dhcp6_trap_active = false;
+            bool m_dhcp6_trap_copy = false;
+
+            // Confirmed Accept interfaces per IPv6 MFIB table. The first
+            // interface owns the shared local Forward path and the last
+            // removal deletes it.
+            std::map<uint32_t, std::set<std::string>> m_dhcp6_mroute_ifaces;
+
+            // Re-derives active/COPY state from m_trap_map and applies it.
+            void vpp_update_dhcp6_trap_action();
+
+            void vpp_set_dhcp6_trap_state(
+                    _In_ bool active,
+                    _In_ bool copy);
+
+            // Adds or removes ff02::1:2 accepting on one ingress interface and
+            // forwarding to local, in that interface's IPv6 table.
+            int vpp_dhcp6_mroute(
+                    _In_ const char *accept_hwif,
+                    _In_ bool is_add);
 
 
         protected: // VPP

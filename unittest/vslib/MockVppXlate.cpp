@@ -185,30 +185,6 @@ uint32_t VppMock::nodeNext(
     return it == nodeNexts.end() ? ~0u : it->second;
 }
 
-VppDhcpDelivery VppMock::dhcpIpv4Delivery(const std::string& hwif) const
-{
-    SWSS_LOG_ENTER();
-
-    if (bridgePorts.count(hwif) == 0)
-    {
-        return {false, false};
-    }
-
-    auto registered = l2InputRegisteredFeatures.find(hwif);
-    bool dhcpRegistered = registered != l2InputRegisteredFeatures.end() &&
-        registered->second.count("sonic-ext-dhcp-ip4") != 0;
-
-    if (coppDhcpIpv4Active && dhcpRegistered &&
-            l2InputFeatureArc.count(hwif) != 0)
-    {
-        return {true, coppDhcpIpv4Copy};
-    }
-
-    // Without feature-arc dispatch, the broadcast still reaches the CPU
-    // through the BVI flood copy but also leaks to peer VLAN members.
-    return {true, true};
-}
-
 sai_status_t TestableSwitchVpp::remove_internal(
         sai_object_type_t object_type,
         const std::string& serializedObjectId)

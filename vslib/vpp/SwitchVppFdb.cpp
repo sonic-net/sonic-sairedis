@@ -25,8 +25,21 @@ using namespace saivs;
  * Scope:
  *   - LLDP (0x88cc): redirect to linux-cp-punt at l2-input-classify
  *     so the frame ends up on the originating member's LCP host tap.
- *   - DHCP/DHCPv6 is not classify-driven. The sonic-ext DHCP L2 feature
- *     applies the live semantic packet action after VLAN admission.
+ *   - DHCPv4 client→server broadcast: redirect to
+ *     sonic-ext-l2-trap-fixup, which sets VLIB_RX to the parent
+ *     physical interface (parent of the bridged sub-if), and hands
+ *     forwards to linux-cp-punt -> bvi-host-tap interface-output ->
+ *     sonic-ext-aggr-tap-redirect -> member-host-tap.  This emulates
+ *     SAI_PACKET_ACTION_TRAP for DHCP on VPP-VS: the L2-flood is
+ *     skipped entirely, so no copies are flooded to other VLAN
+ *     members (sonic-mgmt DHCPBroadcastNotFloodedTest depends on
+ *     this).  When the DHCP trap's action is SAI_PACKET_ACTION_COPY
+ *     the broadcast is flooded instead and the CPU gets the BVI's copy;
+ *     see s_dhcp_member_sessions.
+ *   - DHCPv6 client multicast (dst 33:33:00:01:00:02): trapped the same
+ *     way, or flooded with the BVI's copy delivered through an
+ *     ff02::1:2 route when the DHCPv6 trap's action is
+ *     SAI_PACKET_ACTION_COPY; see s_dhcp6_member_sessions.
  *
  * LLDP needs the classifier to work around a VPP behavior: link-local
  * multicast frames (DA in 01:80:c2:00:00:00..0F) are flooded by the BD
@@ -40,6 +53,14 @@ using namespace saivs;
  * results.  The l2-input-classify arc runs before the multicast
  * feat-mask strip, so a redirect-punt session here consumes the frame
  * and delivers it only to the originating member's LCP host tap.
+ *
+ * DHCP needs the classifier for the dual problem: a client broadcast
+ * (dst=ff:ff:ff:ff:ff:ff) would otherwise hit the BD's l2-flood and
+ * fan out to every member port.  Trapping at l2-input-classify
+ * consumes the buffer before flood, then this node hand-off to
+ * sonic-ext-l2-trap-fixup delivers exactly one copy via the parent
+ * phys's host tap (where the kernel's 8021q layer demuxes it up to
+ * the Vlan netdev where dhcrelay is listening).
  *
  * LACP (0x8809) is intentionally NOT in the classifier: linux-cp
  * registers linux-cp-punt-xc as the ethernet-input next for 0x8809
@@ -71,55 +92,304 @@ using namespace saivs;
  * The two are independent knobs.  See
  * SwitchVpp::vpp_set_vlan_attribute().
  *
- * DHCP/DHCPv6 is deliberately absent from these tables. The sonic-ext DHCP
- * L2 feature parses admitted client packets (including IPv4 options, VLAN
- * tags, and IPv6 extension headers) and reads the live TRAP/COPY binding.
- * An absent trap therefore keeps normal VLAN flooding, TRAP consumes the
- * original, and COPY sends a CPU clone while preserving forwarding.
+ * Slot selection in l2-input-classify (vnet/l2/l2_input_classify.c):
+ * VPP picks the per-interface table by *outer* ethertype at
+ * current_data (h0->type):
+ *   - 0x0800 (IPv4)   -> ip4_table_index
+ *   - 0x86DD (IPv6)   -> ip6_table_index
+ *   - everything else -> other_table_index   (incl. 0x8100 VLAN, 0x88CC LLDP)
  *
- * These classifiers only implement LLDP and the independent per-VLAN flood
- * suppression knobs. Untagged ARP and IPv6 use separate OTHER/IP6 slots.
- * Tagged ARP and IPv6 multicast share OTHER, so the selected chain head is:
- *     both     -> tag_ip6mc_table -> tag_arp_table
- *     IPv6only -> tag_ip6mc_only_table
- *     ARP only -> tag_arp_table
- *     neither  -> ~0
+ * Consequently:
  *
- * Hit-next graph slots out of l2-input-classify:
- *   - linux-cp-punt: LLDP and untagged flood-suppression punts
- *   - sonic-ext-l2-trap-fixup: tagged ARP/IPv6 multicast punts
- *   - sonic-ext-l2-trap-learn: flood-suppression punts when enabled, so
- *     trapped frames retain ASIC-like source-MAC learning
- *   - sonic-ext-l2-vlan-filter: access-port ingress VLAN filtering
+ *   Untagged member  (wire ethertype is the inner protocol):
+ *     IP4 slot   <- untag_ip4_table   (DHCPv4 broadcast match)
+ *     IP6 slot   <- untag_dhcp6_table (DHCPv6 client multicast DA)
+ *     OTHER slot <- untag_other_table (LLDP match)
+ *     No chain between them: DHCPv4 only ever reaches the IP4 slot,
+ *     IPv6 only the IP6 slot, LLDP only OTHER.  The ARP and IPv6
+ *     punts therefore never interact on an untagged member.
+ *
+ *   Tagged member (wire ethertype is 0x8100 -> OTHER slot):
+ *     IP4 slot   <- ~0
+ *     IP6 slot   <- ~0   (tagged IPv6 lands in OTHER, not here)
+ *     OTHER slot <- tag_dhcp_table (DHCPv4 over .1Q match)
+ *                       |  on miss
+ *                       v
+ *                   tag_dhcp6_table (DHCPv6 over .1Q match)
+ *                       |  on miss
+ *                       v
+ *                   continue normal L2 path
+ *     (LLDP is never tagged, so no tagged-LLDP table is needed.)
+ *
+ *   With flood suppression configured, the punting variants take over.
+ *   Untagged, each simply owns its own slot:
+ *     ARP   -> OTHER slot <- untag_arp_table -> untag_other_table
+ *     IPv6  -> IP6 slot   <- untag_ip6mc_table (replaces untag_dhcp6_table)
+ *   Tagged, everything shares the OTHER slot, so the head of the
+ *   miss-chain encodes the combination (tag_dhcp_table always chains on
+ *   to tag_dhcp6_table):
+ *     both     -> tag_ip6mc_table      -> tag_arp_table -> tag_dhcp_table
+ *     IPv6only -> tag_ip6mc_only_table ->                  tag_dhcp_table
+ *     ARP only -> tag_arp_table        ->                  tag_dhcp_table
+ *     neither  -> tag_dhcp_table
+ *
+ * Hit-next graph slots out of l2-input-classify, resolved once via
+ * vpp_add_node_next():
+ *   - linux-cp-punt          : LLDP, untagged DHCPv4/DHCPv6, untagged ARP
+ *     and untagged IPv6 multicast
+ *   - sonic-ext-l2-trap-fixup: tagged DHCPv4/DHCPv6, tagged ARP and tagged
+ *     IPv6 multicast (rewrites VLIB_RX from bridged sub-if to parent phys
+ *     before handing to linux-cp-punt, because a bridged sub-if has no
+ *     LCP pair).
+ *   - sonic-ext-l2-trap-learn: DHCPv4, DHCPv6, ARP and IPv6 multicast, tagged and
+ *     untagged, in place of the two above when the l2-trap-learn feature
+ *     is on.  A trapped frame never reaches l2-learn, so its source MAC
+ *     is never learned, while an ASIC learns the source MAC of the frames
+ *     it traps.  The node sends a copy of the frame on to
+ *     sonic-ext-l2-trap-fixup -- which leaves an untagged frame's VLIB_RX
+ *     alone, as it is the parent phys already -- and the frame itself to
+ *     l2-learn, from where it is dropped.
+ *   - sonic-ext-l2-vlan-filter: 802.1Q frames on an untagged (access)
+ *     member.  Accepts frames whose VID equals the member's access
+ *     VLAN (pops the tag and re-bridges) and drops any other VID, so
+ *     the tag-agnostic access bridge port does not flood foreign VLANs.
+ * Untagged DHCP does not need the fixup node: VLIB_RX on an untagged
+ * bridge member is already the parent phys, so linux-cp-punt resolves
+ * the right LCP pair directly.
  * ====================================================================== */
 
 #define SAIVS_CLASSIFY_ACTION_NONE   0
 
 static bool     s_l2_punt_classify_inited = false;
 static uint32_t s_punt_next_index = ~0;       /* linux-cp-punt (untagged + LLDP) */
-static uint32_t s_trap_fixup_next_index = ~0; /* sonic-ext-l2-trap-fixup (ARP/mcast) */
-static uint32_t s_trap_learn_next_index = ~0; /* sonic-ext-l2-trap-learn (ARP/IPv6-mc, if on) */
+static uint32_t s_trap_fixup_next_index = ~0; /* sonic-ext-l2-trap-fixup (tagged DHCP only) */
+static uint32_t s_trap_learn_next_index = ~0; /* sonic-ext-l2-trap-learn (DHCP/ARP/IPv6-mc, if on) */
 static uint32_t s_vlan_filter_next_index = ~0; /* sonic-ext-l2-vlan-filter (access-port ingress VLAN filter) */
 
-/* Untagged flood-control and LLDP tables. */
+/* Untagged member tables: ip4 slot holds DHCPv4 broadcast,
+ * other slot holds LLDP.  No chain between them (different ethertype
+ * families select different slots in l2-input-classify). */
 static uint32_t s_untag_other_table = ~0;     /* LLDP by ethertype */
+static uint32_t s_untag_ip4_table   = ~0;     /* DHCPv4 client broadcast */
 static uint32_t s_untag_arp_table   = ~0;     /* broadcast ARP (bcast flood NONE) */
 static uint32_t s_untag_ip6mc_table = ~0;     /* IPv6 multicast, IP6 slot (mcast flood NONE) */
+static uint32_t s_untag_dhcp6_table = ~0;     /* DHCPv6 client multicast, IP6 slot otherwise */
 
-/* The ARP and IPv6-multicast punts are independent knobs, but a tagged
+/* Tagged member table: outer ethertype is 0x8100, so EVERY tagged
+ * frame (including IPv4-inside-VLAN) lands in the other slot.  LLDP is
+ * never tagged, so only the DHCPv4-over-.1Q table is needed; it is
+ * attached directly to the tagged member's OTHER slot.
+ *
+ * The ARP and IPv6-multicast punts are independent knobs, but a tagged
  * member has only the one OTHER slot to bind, so they have to share a
  * miss-chain.  A classify table's next_table_index is fixed at creation,
  * so the IPv6-multicast head exists in two variants -- one that chains
  * through the ARP table and one that skips it -- to cover all four
  * on/off combinations. */
-static uint32_t s_tag_arp_table   = ~0;       /* broadcast ARP */
+static uint32_t s_tag_dhcp6_table = ~0;       /* DHCPv6 client multicast over .1Q, chain tail */
+static uint32_t s_tag_dhcp_table  = ~0;       /* DHCPv4 broadcast over .1Q -> s_tag_dhcp6_table */
+static uint32_t s_tag_arp_table   = ~0;       /* broadcast ARP over .1Q -> s_tag_dhcp_table */
 static uint32_t s_tag_ip6mc_table = ~0;       /* IPv6 mcast over .1Q -> s_tag_arp_table */
-static uint32_t s_tag_ip6mc_only_table = ~0;  /* IPv6 mcast over .1Q */
+static uint32_t s_tag_ip6mc_only_table = ~0;  /* IPv6 mcast over .1Q -> s_tag_dhcp_table */
 
-/* Unit tests replace the complete mocked VPP graph between test cases while
- * this translation unit remains loaded. Reset the matching process-global
- * cache as part of that mock reset so a second test cannot compare two stale
- * ~0 indices and report a false classifier hit. */
+/*
+ * DHCPv4 client→server broadcast match.  We match on:
+ *   - dst MAC == ff:ff:ff:ff:ff:ff   (mandatory: client-side broadcast)
+ *   - ethertype == 0x0800            (IPv4)
+ *   - IP protocol == 17              (UDP)
+ *   - UDP dport == 67                (BOOTPS; sport is NOT matched)
+ *
+ * IP header length is NOT matched: virtually all DHCP packets have
+ * IHL=5 (no options) so the UDP header lies at the canonical offset,
+ * but if a future client sends DHCP with IP options the classifier
+ * mask would also need to chain a second table.  Today this is
+ * a non-issue and ASIC TCAM rules used by SAI_PACKET_ACTION_TRAP
+ * make the same assumption.
+ *
+ * Server→client broadcast (sport=67, dport=68) is NOT matched here.
+ * That direction is generated by the local relay/server stack and
+ * exits via the BVI tap; it does not arrive on a bridge member's
+ * wire RX in this topology.
+ */
+#define SAIVS_DHCP_BOOTPC 68
+#define SAIVS_DHCP_BOOTPS 67
+
+/*
+ * SAI_HOSTIF_TRAP_TYPE_DHCP packet action.
+ *
+ * The DHCPv4 sessions in s_untag_ip4_table and s_tag_dhcp_table emulate
+ * SAI_PACKET_ACTION_TRAP: the classify hit is terminal, so the broadcast
+ * reaches the CPU and is not flooded.  SAI_PACKET_ACTION_COPY asks for
+ * both, the flood to the other VLAN members and a copy to the CPU, and a
+ * single classify session cannot do both.  For COPY the member DHCPv4
+ * sessions are removed instead.  The tables stay bound and their
+ * miss-chains stay intact, they just miss, so the broadcast reaches
+ * l2-flood like any other broadcast, flood copy to the BVI included.
+ *
+ * The CPU gets the BVI's copy.  VPP installs 255.255.255.255/32 in every
+ * IPv4 table as a drop, but at the lowest priority so that it can be
+ * overridden. While any DHCP semantic owner is active that entry is
+ * overridden with a local receive in each VRF table (see
+ * vpp_ip4_limited_broadcast_receive()).  Under COPY the BVI flood copy, and
+ * under either action a packet arriving on a routed port, goes to ip4-local,
+ * and from there to the BVI's host tap the way any punted packet for the
+ * BVI does: sonic-ext-aggr-tap-redirect moves it to the originating
+ * member's tap (re-adding the tag for a tagged member) and the kernel
+ * lifts it to the Vlan netdev, where the DHCP relay listens.
+ *
+ * No DHCP trap keeps the #2135 TRAP behavior on VLAN members and leaves
+ * VPP's default drop on 255.255.255.255/32 in place, so routed interfaces do
+ * not punt limited broadcasts without a semantic DHCP owner.
+ */
+static bool     s_dhcp_member_sessions = false; /* DHCPv4 sessions present in the member tables */
+
+/* Untagged member: DHCPv4 client broadcast, see s_untag_ip4_table. */
+static void dhcp_untag_match(uint8_t m[48])
+{
+    memset(m, 0, 48);
+    m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
+    m[12] = 0x08; m[13] = 0x00;
+    m[23] = 0x11;                                /* IPPROTO_UDP */
+    m[36] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
+    m[37] =  SAIVS_DHCP_BOOTPS       & 0xFF;
+}
+
+/* Tagged member: the same over .1Q, see s_tag_dhcp_table. */
+static void dhcp_tag_match(uint8_t m[48])
+{
+    memset(m, 0, 48);
+    m[0] = m[1] = m[2] = m[3] = m[4] = m[5] = 0xFF;
+    m[16] = 0x08; m[17] = 0x00;
+    m[27] = 0x11;
+    m[40] = (SAIVS_DHCP_BOOTPS >> 8) & 0xFF;     /* UDP dport == 67 */
+    m[41] =  SAIVS_DHCP_BOOTPS       & 0xFF;
+}
+
+/*
+ * Adds or removes the member DHCPv4 sessions so that they are present
+ * exactly when the DHCP trap action is not COPY.  Does nothing before the
+ * member tables exist: CoPP is usually programmed before the first VLAN
+ * member, so l2_punt_classify_apply() calls it again on every member once
+ * the tables are there.
+ */
+static void l2_punt_dhcp_sessions_set(bool present)
+{
+    SWSS_LOG_ENTER();
+
+    if (!s_l2_punt_classify_inited || present == s_dhcp_member_sessions)
+        return;
+
+    uint8_t m[48];
+
+    if (s_untag_ip4_table != ~0u) {
+        uint32_t untag_next = s_trap_learn_next_index != ~0u
+            ? s_trap_learn_next_index : s_punt_next_index;
+        dhcp_untag_match(m);
+        if (present)
+            vpp_classify_session_add(s_untag_ip4_table, untag_next,
+                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        else
+            vpp_classify_session_del(s_untag_ip4_table, m, 48);
+    }
+
+    if (s_tag_dhcp_table != ~0u) {
+        uint32_t tag_next = s_trap_learn_next_index != ~0u
+            ? s_trap_learn_next_index : s_trap_fixup_next_index;
+        dhcp_tag_match(m);
+        if (present)
+            vpp_classify_session_add(s_tag_dhcp_table, tag_next,
+                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        else
+            vpp_classify_session_del(s_tag_dhcp_table, m, 48);
+    }
+
+    s_dhcp_member_sessions = present;
+
+    SWSS_LOG_NOTICE("l2_punt_dhcp_sessions_set: DHCPv4 member sessions %s",
+                    present ? "installed (trap)" : "removed (copy)");
+}
+
+/*
+ * SAI_HOSTIF_TRAP_TYPE_DHCPV6 packet action.
+ *
+ * Every DHCPv6 client message is sent to All_DHCP_Relay_Agents_and_Servers,
+ * ff02::1:2, so it is matched on the destination MAC alone,
+ * 33:33:00:01:00:02 (RFC 2464).  Neither the IPv6 nor the UDP header is
+ * matched, so IPv6 extension headers do not cause a miss.  Anything else
+ * sent to that MAC is trapped along with it: Relay-Forward from another
+ * relay on the link, MLDv1 reports for ff02::1:2, and the other groups
+ * ending in 0001:0002.
+ *
+ * As for DHCPv4, the member sessions emulate SAI_PACKET_ACTION_TRAP and are
+ * removed for SAI_PACKET_ACTION_COPY.  The client multicast then floods,
+ * and the CPU gets the BVI's copy through the ff02::1:2 route that
+ * vpp_dhcp6_mroute() installs on every BVI while the action is COPY.
+ */
+static bool     s_dhcp6_member_sessions = false; /* DHCPv6 sessions present in the member tables */
+
+static const uint8_t s_dhcp6_mac[6] = { 0x33, 0x33, 0x00, 0x01, 0x00, 0x02 };
+
+/* Untagged member: see s_untag_dhcp6_table.  The ethertype is implied by
+ * the IP6 slot. */
+static void dhcp6_untag_match(uint8_t m[16])
+{
+    memset(m, 0, 16);
+    memcpy(m, s_dhcp6_mac, sizeof(s_dhcp6_mac));
+}
+
+/* Tagged member: the same over .1Q, see s_tag_dhcp6_table. */
+static void dhcp6_tag_match(uint8_t m[32])
+{
+    memset(m, 0, 32);
+    memcpy(m, s_dhcp6_mac, sizeof(s_dhcp6_mac));
+    m[16] = 0x86; m[17] = 0xDD;
+}
+
+/*
+ * Adds or removes the member DHCPv6 sessions so that they are present
+ * exactly when the DHCPv6 trap action is not COPY.  Like
+ * l2_punt_dhcp_sessions_set(), it does nothing before the member tables
+ * exist.
+ */
+static void l2_punt_dhcp6_sessions_set(bool present)
+{
+    SWSS_LOG_ENTER();
+
+    if (!s_l2_punt_classify_inited || present == s_dhcp6_member_sessions)
+        return;
+
+    if (s_untag_dhcp6_table != ~0u) {
+        uint32_t untag_next = s_trap_learn_next_index != ~0u
+            ? s_trap_learn_next_index : s_punt_next_index;
+        uint8_t m[16];
+        dhcp6_untag_match(m);
+        if (present)
+            vpp_classify_session_add(s_untag_dhcp6_table, untag_next,
+                                     m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        else
+            vpp_classify_session_del(s_untag_dhcp6_table, m, 16);
+    }
+
+    if (s_tag_dhcp6_table != ~0u) {
+        uint32_t tag_next = s_trap_learn_next_index != ~0u
+            ? s_trap_learn_next_index : s_trap_fixup_next_index;
+        uint8_t m[32];
+        dhcp6_tag_match(m);
+        if (present)
+            vpp_classify_session_add(s_tag_dhcp6_table, tag_next,
+                                     m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+        else
+            vpp_classify_session_del(s_tag_dhcp6_table, m, 32);
+    }
+
+    s_dhcp6_member_sessions = present;
+
+    SWSS_LOG_NOTICE("l2_punt_dhcp6_sessions_set: DHCPv6 member sessions %s",
+                    present ? "installed (trap)" : "removed (copy)");
+}
+
+/* Unit tests replace the mocked VPP graph between cases while this translation
+ * unit remains loaded, so reset every process-global classifier cache too. */
 extern "C" void saivpp_reset_l2_punt_classify_for_test()
 {
     SWSS_LOG_ENTER();
@@ -130,11 +400,17 @@ extern "C" void saivpp_reset_l2_punt_classify_for_test()
     s_trap_learn_next_index = ~0u;
     s_vlan_filter_next_index = ~0u;
     s_untag_other_table = ~0u;
+    s_untag_ip4_table = ~0u;
     s_untag_arp_table = ~0u;
     s_untag_ip6mc_table = ~0u;
+    s_untag_dhcp6_table = ~0u;
+    s_tag_dhcp6_table = ~0u;
+    s_tag_dhcp_table = ~0u;
     s_tag_arp_table = ~0u;
     s_tag_ip6mc_table = ~0u;
     s_tag_ip6mc_only_table = ~0u;
+    s_dhcp_member_sessions = false;
+    s_dhcp6_member_sessions = false;
 }
 
 /* Called only from the single SAI processing thread; the s_* globals need no locking. */
@@ -148,8 +424,8 @@ static int l2_punt_classify_init()
      * register the target nodes as nexts of l2-input-classify so the
      * hit_next_index in each session is a valid graph edge.
      *
-     * linux-cp-punt is required for LLDP and untagged flood punts.
-     * sonic-ext-l2-trap-fixup is required for tagged flood punts: it
+     * linux-cp-punt is required (LLDP + untagged DHCP).
+     * sonic-ext-l2-trap-fixup is only required for tagged DHCP: it
      * rewrites VLIB_RX from the bridged sub-if to the parent phys so
      * linux-cp-punt picks the parent's LCP host tap (the sub-if has
      * no LCP pair when it is a pure bridge member). */
@@ -160,14 +436,16 @@ static int l2_punt_classify_init()
     }
     if (!sonicExtFeatureEnabled("l2-trap-fixup")) {
         SWSS_LOG_NOTICE("l2_punt_classify_init: sonic-ext-l2-trap-fixup disabled; "
-                        "tagged ARP/IPv6-mcast broadcast "
+                        "tagged DHCP/ARP/IPv6-mcast broadcast "
                         "will not be punted");
         s_trap_fixup_next_index = ~0;
     } else if (vpp_add_node_next("l2-input-classify", "sonic-ext-l2-trap-fixup",
                                 &s_trap_fixup_next_index) != 0) {
-        /* Not fatal: only tagged flood-control punts need this fixup. */
+        /* Not fatal: without the fixup node, only tagged-DHCP punt
+         * is broken.  Untagged DHCP and LLDP still work via the
+         * direct linux-cp-punt next. */
         SWSS_LOG_WARN("l2_punt_classify_init: sonic-ext-l2-trap-fixup not registered; "
-                      "tagged ARP/IPv6 multicast will not be punted");
+                      "tagged DHCP broadcast will not be punted (untagged DHCP unaffected)");
         s_trap_fixup_next_index = ~0;
     } else {
         SWSS_LOG_NOTICE("l2_punt_classify_init: trap_fixup_next_index=%u",
@@ -224,6 +502,50 @@ static int l2_punt_classify_init()
 
     SWSS_LOG_NOTICE("l2_punt_classify_init: punt_next_index=%u", s_punt_next_index);
 
+    /* --- Untagged IP4-slot table (DHCPv4 broadcast) ---
+     *
+     * l2-input-classify selects this slot when the outer ethertype is
+     * 0x0800, which is the case for ALL IPv4 frames on an untagged
+     * member (including DHCPv4 client broadcasts).
+     *
+     * Match span: 0..37  -> skip=0, match=3 (3 x 16 = 48-byte vector).
+     *   bytes  0..5   -> dst MAC = ff:ff:ff:ff:ff:ff
+     *   bytes 12..13  -> ethertype = 0x0800
+     *   byte  23      -> IP protocol = UDP (17)
+     *   bytes 36..37  -> UDP dport (67); sport (bytes 34..35) NOT matched
+     *
+     * Hit_next is linux-cp-punt directly: VLIB_RX is already the
+     * parent phys (untagged BD member IS the parent phys; sub-if
+     * dispatch never ran), so linux-cp-punt picks the correct LCP
+     * pair straight away.  No fixup node needed.  With l2-trap-learn on
+     * it is sonic-ext-l2-trap-learn instead, as for every trap session
+     * except LLDP's.
+     *
+     * No chain on miss: non-DHCP IPv4 traffic should fall through to
+     * the rest of the L2 feature arc unchanged.
+     *
+     * The session (dhcp_untag_match()) is added by
+     * l2_punt_dhcp_sessions_set(), which l2_punt_classify_apply() calls
+     * once the tables exist, and only while the DHCP trap action is not
+     * COPY.
+     */
+    {
+        uint8_t mask[48] = {0};
+        mask[0] = mask[1] = mask[2] = mask[3] = mask[4] = mask[5] = 0xFF;
+        mask[12] = 0xFF; mask[13] = 0xFF;
+        mask[23] = 0xFF;
+        mask[36] = 0xFF; mask[37] = 0xFF;       /* UDP dport only (sport ignored) */
+
+        if (vpp_classify_table_create(
+                8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
+                0 /*skip*/, 3 /*match_n_vectors*/,
+                ~0 /*next_table*/, ~0 /*miss_next=continue*/,
+                mask, 48, &s_untag_ip4_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: untag_ip4 table create failed");
+            s_untag_ip4_table = ~0;
+        }
+    }
+
     /* --- Untagged OTHER-slot table: match ethertype at offset 12 ---
      * l2-input-classify selects this slot for non-IPv4/IPv6 ethertypes
      * (LLDP 0x88CC, ARP, etc.).  Single LLDP session, no chain. */
@@ -276,7 +598,8 @@ static int l2_punt_classify_init()
      * feature-bitmap-drop, with no proxy-NDP in SONiC to answer in its
      * place.
      *
-     * The effect mirrors the ASIC's SAI_HOSTIF_TRAP_TYPE_ARP_REQUEST.
+     * The effect mirrors the ASIC's SAI_HOSTIF_TRAP_TYPE_ARP_REQUEST,
+     * exactly as the DHCP sessions above emulate SAI_PACKET_ACTION_TRAP.
      * linux-cp-punt delivers it to the member's LCP host tap, the kernel
      * bridge lifts it to the Vlan netdev, and proxy_arp answers there.
      *
@@ -341,7 +664,7 @@ static int l2_punt_classify_init()
      * data stream would reach the host tap at line rate.
      *
      * The IP6 slot carries nothing else, so no chaining is needed and the
-     * LLDP/ARP tables are untouched -- which is precisely why the
+     * LLDP/DHCP/ARP tables are untouched -- which is precisely why the
      * untagged IPv6 punt is fully independent of the untagged ARP punt.
      */
     {
@@ -364,6 +687,102 @@ static int l2_punt_classify_init()
         }
     }
 
+    /* --- Untagged IP6-slot table: DHCPv6 client multicast ---
+     *
+     * Bound to the IP6 slot of members whose VLAN does not punt all IPv6
+     * multicast; s_untag_ip6mc_table punts DHCPv6 along with the rest of
+     * 33:33.  Match is the destination MAC 33:33:00:01:00:02 (bytes 0..5),
+     * see dhcp6_untag_match().  No chain on miss: other IPv6 traffic
+     * continues on the L2 path.
+     *
+     * The session is added by l2_punt_dhcp6_sessions_set(), only while the
+     * DHCPv6 trap action is not COPY.
+     */
+    {
+        uint8_t mask[16] = {0};
+        mask[0] = mask[1] = mask[2] = mask[3] = mask[4] = mask[5] = 0xFF;
+
+        if (vpp_classify_table_create(
+                8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
+                0 /*skip*/, 1 /*match_n_vectors*/,
+                ~0 /*next_table=none*/,
+                ~0 /*miss_next=continue*/,
+                mask, 16, &s_untag_dhcp6_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: untag_dhcp6 table create failed");
+            s_untag_dhcp6_table = ~0;
+        }
+    }
+
+    /* --- Tagged DHCPv6-over-.1Q table, the tail of the tagged chain ---
+     *
+     * Match span: 0..17 -> skip=0, match=2 (32-byte vector).
+     *   bytes  0..5  -> dst MAC = 33:33:00:01:00:02
+     *   bytes 16..17 -> inner ethertype = 0x86DD (IPv6)
+     *
+     * Created before s_tag_dhcp_table, which chains to it on miss, so every
+     * tagged chain head ends here.  hit_next is sonic-ext-l2-trap-fixup (or
+     * sonic-ext-l2-trap-learn) for the usual reason: a bridged sub-if has no
+     * LCP pair.  The session is added by l2_punt_dhcp6_sessions_set().
+     */
+    if (s_trap_fixup_next_index != ~0u) {
+        uint8_t mask[32] = {0};
+        mask[0] = mask[1] = mask[2] = mask[3] = mask[4] = mask[5] = 0xFF;
+        mask[16] = 0xFF; mask[17] = 0xFF;
+
+        if (vpp_classify_table_create(
+                8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
+                0 /*skip*/, 2 /*match_n_vectors*/,
+                ~0 /*next_table=none*/,
+                ~0 /*miss_next=continue*/,
+                mask, 32, &s_tag_dhcp6_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: tag_dhcp6 table create failed");
+            s_tag_dhcp6_table = ~0;
+        }
+    }
+
+    /* --- Tagged DHCP table.  Frame at l2-input-classify on a tagged
+     *     sub-if still carries the outer 802.1Q tag (VTR pop has not
+     *     yet run), so all post-L2 offsets shift by +4.
+     *
+     * Match span: 0..41  -> skip=0, match=3 (48-byte vector).
+     *   bytes  0..5   -> dst MAC = ff:ff:ff:ff:ff:ff
+     *   bytes 16..17  -> inner ethertype = 0x0800
+     *   byte  27      -> IP protocol = UDP (= 14 + 4 vlan + 9)
+     *   bytes 40..41  -> UDP dport (67); sport (bytes 38..39) NOT matched
+     *
+     * Tagged hit_next is sonic-ext-l2-trap-fixup (NOT linux-cp-punt
+     * directly): VLIB_RX is the sub-if (e.g. Ethernet0.10), which has
+     * no LCP pair for a bridged sub-if, so linux-cp-punt would drop
+     * the frame.  The fixup node rewrites VLIB_RX to the parent phys
+     * (Ethernet0), which always has an LCP pair.  Skip table install
+     * if the fixup node is not registered (untagged DHCP still works).
+     * With l2-trap-learn on, hit_next is sonic-ext-l2-trap-learn, which
+     * hands its copy of the frame to the fixup node -- here and for the
+     * tagged ARP and IPv6 multicast tables below.
+     *
+     * As for the untagged table, the session (dhcp_tag_match()) is added
+     * by l2_punt_dhcp_sessions_set().  The table itself is created either
+     * way, because the ARP and IPv6-multicast tables chain to it.  On miss
+     * it chains to s_tag_dhcp6_table.
+     */
+    if (s_trap_fixup_next_index != ~0u) {
+        uint8_t mask[48] = {0};
+        mask[0] = mask[1] = mask[2] = mask[3] = mask[4] = mask[5] = 0xFF;
+        mask[16] = 0xFF; mask[17] = 0xFF;
+        mask[27] = 0xFF;
+        mask[40] = 0xFF; mask[41] = 0xFF;        /* UDP dport only (sport ignored) */
+
+        if (vpp_classify_table_create(
+                8, 4*1024 /*memory_size: 1 session*/,
+                0 /*skip*/, 3 /*match_n_vectors*/,
+                s_tag_dhcp6_table /*next_table: chain to DHCPv6 on miss*/,
+                ~0 /*miss_next*/,
+                mask, 48, &s_tag_dhcp_table) != 0) {
+            SWSS_LOG_ERROR("l2_punt_classify_init: tag_dhcp table create failed");
+            s_tag_dhcp_table = ~0;
+        }
+    }
+
     /* --- Tagged broadcast-ARP-over-.1Q table (proxy-ARP VLANs only) ---
      *
      * Same purpose as s_untag_arp_table, for tagged members.  At
@@ -374,9 +793,12 @@ static int l2_punt_classify_init()
      *   bytes  0..5  -> dst MAC = ff:ff:ff:ff:ff:ff
      *   bytes 16..17 -> inner ethertype = 0x0806 (ARP)
      *
+     * Chains to s_tag_dhcp_table on miss so tagged DHCPv4 punt keeps
+     * working while this table owns the tagged OTHER slot.
+     *
      * hit_next is sonic-ext-l2-trap-fixup, not linux-cp-punt: a bridged
      * sub-if has no LCP pair, so VLIB_RX must first be rewritten to the
-     * parent phys.
+     * parent phys (same constraint as tagged DHCP above).
      */
     if (s_trap_fixup_next_index != ~0u) {
         uint8_t mask[32] = {0};
@@ -386,7 +808,7 @@ static int l2_punt_classify_init()
         if (vpp_classify_table_create(
                 8 /*nbuckets*/, 4*1024 /*memory_size: 1 session*/,
                 0 /*skip*/, 2 /*match_n_vectors*/,
-                ~0 /* no chained table */,
+                s_tag_dhcp_table /*next_table: chain to DHCP on miss*/,
                 ~0 /*miss_next=continue*/,
                 mask, 32, &s_tag_arp_table) != 0) {
             SWSS_LOG_ERROR("l2_punt_classify_init: tag_arp table create failed");
@@ -405,15 +827,15 @@ static int l2_punt_classify_init()
      * Same purpose as s_untag_ip6mc_table, for tagged members.  A tagged
      * frame has outer ethertype 0x8100, so it lands in the OTHER slot
      * rather than the IP6 slot and has to share the tagged miss-chain with
-     * the ARP table.
+     * the ARP and DHCP tables.
      *
      * Because next_table_index is fixed when a table is created, and the
      * ARP punt can be on or off independently of this one, two variants
      * are built so l2_punt_classify_apply() can pick a head that produces
      * the right chain:
      *
-     *     s_tag_ip6mc_table      -> s_tag_arp_table
-     *     s_tag_ip6mc_only_table -> end
+     *     s_tag_ip6mc_table      -> s_tag_arp_table -> s_tag_dhcp_table
+     *     s_tag_ip6mc_only_table ->                    s_tag_dhcp_table
      *
      * They are otherwise identical (same mask, same session).
      *
@@ -441,7 +863,7 @@ static int l2_punt_classify_init()
             const char *name;
         } variants[] = {
             { s_tag_arp_table,  &s_tag_ip6mc_table,      "tag_ip6mc"      },
-            { ~0u, &s_tag_ip6mc_only_table, "tag_ip6mc_only" },
+            { s_tag_dhcp_table, &s_tag_ip6mc_only_table, "tag_ip6mc_only" },
         };
 
         for (auto &v: variants) {
@@ -462,14 +884,17 @@ static int l2_punt_classify_init()
 
     s_l2_punt_classify_inited = true;
     SWSS_LOG_NOTICE("L2 punt classify tables initialized: "
-                    "untag_other=%u untag_arp=%u untag_ip6mc=%u tag_arp=%u "
-                    "tag_ip6mc=%u tag_ip6mc_only=%u punt_next=%u "
-                    "trap_fixup_next=%u trap_learn_next=%u vlan_filter_next=%u",
-                    s_untag_other_table, s_untag_arp_table,
-                    s_untag_ip6mc_table, s_tag_arp_table,
-                    s_tag_ip6mc_table, s_tag_ip6mc_only_table,
-                    s_punt_next_index, s_trap_fixup_next_index,
-                    s_trap_learn_next_index, s_vlan_filter_next_index);
+                    "untag_ip4=%u untag_other=%u untag_arp=%u untag_ip6mc=%u "
+                    "untag_dhcp6=%u tag_dhcp6=%u "
+                    "tag_dhcp=%u tag_arp=%u tag_ip6mc=%u tag_ip6mc_only=%u "
+                    "punt_next=%u trap_fixup_next=%u trap_learn_next=%u "
+                    "vlan_filter_next=%u",
+                    s_untag_ip4_table, s_untag_other_table, s_untag_arp_table,
+                    s_untag_ip6mc_table, s_untag_dhcp6_table, s_tag_dhcp6_table,
+                    s_tag_dhcp_table, s_tag_arp_table, s_tag_ip6mc_table,
+                    s_tag_ip6mc_only_table,
+                    s_punt_next_index, s_trap_fixup_next_index, s_trap_learn_next_index,
+                    s_vlan_filter_next_index);
     return 0;
 }
 
@@ -487,9 +912,15 @@ static int l2_punt_classify_init()
  * s_untag_arp_table and s_untag_ip6mc_table comments in
  * l2_punt_classify_init().
  *
+ * punt_dhcp and punt_dhcp6 are switch-wide rather than per VLAN: they are
+ * false while the SAI_HOSTIF_TRAP_TYPE_DHCP and SAI_HOSTIF_TRAP_TYPE_DHCPV6
+ * actions, respectively, are COPY.  They are applied to the shared DHCP
+ * tables, not by picking a table here, so every member's chain stays as it
+ * is.
  */
 static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
-                                  bool punt_arp, bool punt_ip6mc)
+                                  bool punt_arp, bool punt_ip6mc, bool punt_dhcp,
+                                  bool punt_dhcp6)
 {
     SWSS_LOG_ENTER();
     if (l2_punt_classify_init() != 0) {
@@ -497,11 +928,20 @@ static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
         return -1;
     }
 
-    /* Tagged flood-control punts share OTHER. Untagged IPv6 uses IP6 and
-     * LLDP/ARP use OTHER, so those punts remain independent. */
-    uint32_t ip4_tbl = (uint32_t)~0u;
-    uint32_t ip6_tbl = (!is_tagged && punt_ip6mc) ?
-        s_untag_ip6mc_table : (uint32_t)~0u;
+    l2_punt_dhcp_sessions_set(punt_dhcp);
+    l2_punt_dhcp6_sessions_set(punt_dhcp6);
+
+    /* Tagged frames carry outer ethertype 0x8100, so they all land in the
+     * OTHER slot and every tagged punt has to share one miss-chain.
+     * Untagged frames carry the inner ethertype on the wire, so DHCPv4
+     * (0x0800) lands in the IP4 slot, IPv6 (0x86DD) in the IP6 slot and
+     * LLDP (0x88CC) in the OTHER slot -- three separate slots, so the
+     * untagged punts do not interact at all.  The IP6 slot holds the
+     * DHCPv6 table unless all IPv6 multicast, DHCPv6 included, is punted. */
+    uint32_t ip4_tbl = is_tagged ? (uint32_t)~0u : s_untag_ip4_table;
+    uint32_t ip6_tbl = is_tagged ? (uint32_t)~0u
+        : (punt_ip6mc && s_untag_ip6mc_table != ~0u) ? s_untag_ip6mc_table
+        : s_untag_dhcp6_table;
     uint32_t other_tbl;
 
     bool arp_ok   = false;
@@ -509,10 +949,10 @@ static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
 
     if (is_tagged) {
         /* Pick the chain head that yields the requested combination:
-         *   ip6mc + arp -> s_tag_ip6mc_table -> s_tag_arp_table
-         *   ip6mc only  -> s_tag_ip6mc_only_table
-         *   arp only    -> s_tag_arp_table
-         *   neither     -> no table
+         *   ip6mc + arp -> s_tag_ip6mc_table      -> arp -> dhcp
+         *   ip6mc only  -> s_tag_ip6mc_only_table ->        dhcp
+         *   arp only    -> s_tag_arp_table        ->        dhcp
+         *   neither     -> s_tag_dhcp_table
          * Falling back to a shorter chain when a table failed to create
          * degrades to "not punted" for that class, never to a wrong one. */
         if (punt_ip6mc && punt_arp && s_tag_ip6mc_table != ~0u && s_tag_arp_table != ~0u) {
@@ -528,7 +968,7 @@ static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
             other_tbl = s_tag_ip6mc_only_table;
             ip6mc_ok = true;
         } else {
-            other_tbl = (uint32_t)~0u;
+            other_tbl = s_tag_dhcp_table;
         }
     } else {
         /* s_untag_arp_table chains to s_untag_other_table (LLDP) on miss. */
@@ -538,7 +978,7 @@ static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
         } else {
             other_tbl = s_untag_other_table;
         }
-        ip6mc_ok = (ip6_tbl != ~0u);
+        ip6mc_ok = (ip6_tbl != ~0u && ip6_tbl == s_untag_ip6mc_table);
     }
 
     if (punt_arp && !arp_ok) {
@@ -576,9 +1016,10 @@ static int l2_punt_classify_remove(const char *hwif_name)
 }
 
 /*
- * Tracks DHCPv4 semantic state and reconciles the routed limited-broadcast
- * receive route. VLAN-member TRAP/COPY behavior is driven directly by the
- * live sonic-ext semantic binding, not by fixed classifier sessions here.
+ * Applies the aggregate DHCPv4 owner state.  The #2135 classifier remains
+ * installed for TRAP (and for the no-owner default) and is removed for COPY.
+ * A routed limited broadcast needs the local receive route whenever a DHCPv4
+ * semantic owner is active, independently of TRAP versus COPY.
  */
 void SwitchVpp::vpp_set_dhcp_trap_state(
         _In_ bool active,
@@ -591,6 +1032,8 @@ void SwitchVpp::vpp_set_dhcp_trap_state(
     m_dhcp_trap_active = active;
     m_dhcp_trap_copy = copy;
 
+    l2_punt_dhcp_sessions_set(!copy);
+
     if (active_changed || copy_changed)
     {
         SWSS_LOG_NOTICE("DHCP hostif trap state %s%s",
@@ -600,15 +1043,6 @@ void SwitchVpp::vpp_set_dhcp_trap_state(
                        : ": routed limited-broadcast receive removed");
     }
 
-    /*
-     * Reconcile confirmed and uncertain per-table route state even when the
-     * semantic state did not change.  A failed VPP add/delete may already have
-     * taken effect, so it remains uncertain and must be programmed again even
-     * when the old confirmed state happens to equal the new desired state.
-     * Include confirmed and uncertain tables when disabling: table 0 and a
-     * table attempted by a failed VRF setup may have no vrf_objMap owner but
-     * still need cleanup when the final DHCP trap disappears.
-     */
     std::set<uint32_t> vrfs;
 
     for (const auto &kv : vrf_objMap)
@@ -629,10 +1063,186 @@ void SwitchVpp::vpp_set_dhcp_trap_state(
 
     for (uint32_t vrf_id : vrfs)
     {
-        // Preserve partial success across VRFs: one timeout must not prevent
-        // later tables from reaching the desired state.
         vpp_reconcile_dhcp_route(vrf_id, active);
     }
+}
+
+/*
+ * Switches DHCPv6 client multicast between TRAP (punt at the VLAN member, no
+ * flood) and COPY (flood, and the CPU gets the BVI's copy through the
+ * ff02::1:2 route on every BVI).  See the s_dhcp6_member_sessions comment.
+ */
+void SwitchVpp::vpp_set_dhcp6_trap_state(
+        _In_ bool active,
+        _In_ bool copy)
+{
+    SWSS_LOG_ENTER();
+
+    bool active_changed = active != m_dhcp6_trap_active;
+    bool copy_changed = copy != m_dhcp6_trap_copy;
+    m_dhcp6_trap_active = active;
+    m_dhcp6_trap_copy = copy;
+
+    if (!active_changed && !copy_changed)
+    {
+        return;
+    }
+
+    SWSS_LOG_NOTICE("DHCPv6 hostif trap action %s: DHCPv6 client multicast is %s",
+            copy ? "COPY" : "TRAP",
+            copy ? "flooded in its VLAN and copied to the CPU"
+                 : "trapped to the CPU and not flooded");
+
+    l2_punt_dhcp6_sessions_set(!copy);
+
+    auto rifs = m_objectHash.find(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+
+    if (rifs == m_objectHash.end())
+    {
+        return;
+    }
+
+    for (auto &kv : rifs->second)
+    {
+        auto type = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
+                SAI_ROUTER_INTERFACE_ATTR_TYPE);
+        if (type == nullptr)
+        {
+            continue;
+        }
+
+        std::string hwif;
+        bool receive = active;
+        bool update = active_changed;
+
+        if (type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+        {
+            auto vlan = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
+                    SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
+            if (vlan == nullptr)
+            {
+                continue;
+            }
+            auto vid = stored_attr(SAI_OBJECT_TYPE_VLAN,
+                    sai_serialize_object_id(vlan->value.oid), SAI_VLAN_ATTR_VLAN_ID);
+            if (vid == nullptr)
+            {
+                continue;
+            }
+            hwif = VppVlanInterface::hwifNameFor(vid->value.u16);
+            // A BVI sees DHCPv6 only when COPY leaves the member classifier
+            // and the multicast flood supplies the BVI copy.
+            receive = active && copy;
+            update = active_changed || copy_changed;
+        }
+        else if (type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_PORT ||
+                 type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+        {
+            auto port = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
+                    SAI_ROUTER_INTERFACE_ATTR_PORT_ID);
+            if (port == nullptr)
+            {
+                continue;
+            }
+            uint16_t vlan_id = 0;
+            if (type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+            {
+                auto vlan = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
+                        SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID);
+                if (vlan == nullptr)
+                {
+                    continue;
+                }
+                vlan_id = vlan->value.u16;
+            }
+            hwif = m_ifaceRegistry.resolveHwIfName(port->value.oid, vlan_id);
+        }
+        else
+        {
+            continue;
+        }
+
+        if (update && !hwif.empty())
+        {
+            vpp_dhcp6_mroute(hwif.c_str(), receive);
+        }
+    }
+}
+
+/*
+ * Install one ff02::1:2 MFIB Accept path on the ingress interface and a shared
+ * local Forward path in that interface's actual IPv6 table. The Accept path
+ * satisfies multicast RPF on routed ingress; the local path delivers to CPU.
+ */
+int SwitchVpp::vpp_dhcp6_mroute(
+        _In_ const char *accept_hwif,
+        _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    static const uint8_t all_dhcp_relay_agents_and_servers[16] = {
+        0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0, 0x02 };
+
+    uint32_t table_id = 0;
+
+    if (get_interface_vrf(accept_hwif, true, &table_id) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to get the IPv6 table of %s", accept_hwif);
+        return -1;
+    }
+
+    auto table_it = m_dhcp6_mroute_ifaces.find(table_id);
+    if (!is_add && table_it == m_dhcp6_mroute_ifaces.end())
+    {
+        return 0;
+    }
+
+    auto &interfaces = is_add && table_it == m_dhcp6_mroute_ifaces.end() ?
+        m_dhcp6_mroute_ifaces[table_id] : table_it->second;
+    const bool present = interfaces.count(accept_hwif) != 0;
+    if (present == is_add)
+    {
+        return 0;
+    }
+
+    // The local Forward path is shared by all Accept interfaces in one MFIB
+    // entry. Add it with the first Accept path and remove it only with the
+    // last; otherwise deleting one routed interface would stop CPU delivery
+    // for every remaining interface in the table.
+    const bool with_local_path = interfaces.empty() ||
+        (!is_add && interfaces.size() == 1);
+    int ret = ip6_mroute_local_add_del(table_id,
+            all_dhcp_relay_agents_and_servers, 128, accept_hwif,
+            with_local_path, is_add);
+
+    if (ret == 0)
+    {
+        if (is_add)
+        {
+            interfaces.insert(accept_hwif);
+        }
+        else
+        {
+            interfaces.erase(accept_hwif);
+            if (interfaces.empty())
+            {
+                m_dhcp6_mroute_ifaces.erase(table_id);
+            }
+        }
+    }
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("Failed to %s ff02::1:2/128 on %s in IPv6 table %u (ret %d)",
+                is_add ? "add" : "remove", accept_hwif, table_id, ret);
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("%s ff02::1:2/128 accepting on %s and forwarding to local in IPv6 table %u",
+                is_add ? "Added" : "Removed", accept_hwif, table_id);
+    }
+
+    return ret;
 }
 
 /**
@@ -900,15 +1510,16 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         // Set interface state up, or once the parent is up if it isn't yet
         vpp_set_sub_interface_state(hw_ifname, true);
 
-        /* Install LLDP and per-VLAN flood-control classifiers. DHCP action
-         * is evaluated by the sonic-ext DHCP L2 feature after admission.
-         * Tagged frames still carry the 802.1Q header here.
+        /* Enable L2 classify-based punt on the sub-interface so control
+         * protocols (LLDP, LACP, ARP, DHCP) are punted/copied to the
+         * LCP host tap.  Tagged frames still carry the 802.1Q header
+         * when l2-input-classify runs (VTR has not yet stripped it).
          *
          * Treated as best-effort: on failure the member still comes
          * up, but control-plane punt on this member is not enabled.
          */
-        if (l2_punt_classify_apply(hw_ifname, true /*tagged*/, punt_arp,
-                                   punt_ip6mc) != 0) {
+        if (l2_punt_classify_apply(hw_ifname, true /*tagged*/, punt_arp, punt_ip6mc,
+                                   !m_dhcp_trap_copy, !m_dhcp6_trap_copy) != 0) {
             SWSS_LOG_WARN("l2_punt_classify_apply failed for tagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
         }
@@ -922,12 +1533,10 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
 
         swif_bdid_track(hw_ifname, bridge_id);
 
-        /* Leaving L2 mode resets VPP's per-interface L2 input bitmap, but the
-         * l2-input-ip4/ip6 feature registrations survive. Restore the feature
-         * arc dispatcher when an untagged parent is added back so every
-         * registered feature, including the live DHCP TRAP/COPY handlers, runs
-         * again. Tagged members are newly created subinterfaces, whose add
-         * callback installs the dispatcher with their feature registrations. */
+        /* Leaving L2 mode resets VPP's per-interface L2 input bitmap, but
+         * feature registrations survive. Restore the dispatcher when a
+         * persistent untagged parent is added back so registered features and
+         * the classifier arc run again. */
         if (set_l2_interface_input_feature_arc(hw_ifname, true) != 0) {
             SWSS_LOG_WARN("Failed to restore L2 input feature arc on untagged member %s",
                           hw_ifname);
@@ -938,13 +1547,14 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         // through l2-input/BD/BVI; otherwise ip4-dvr-reinject will
         // egress LCP traffic with a stale 802.1Q tag.
 
-        /* Install LLDP and per-VLAN flood-control classifiers. DHCP action
-         * is evaluated by the sonic-ext DHCP L2 feature after admission.
+        /* Enable L2 classify-based punt on the parent so control
+         * protocols (LLDP, LACP, ARP, DHCP) arriving on the parent
+         * are punted/copied to the LCP host tap.
          *
          * Treated as best-effort; see the tagged branch above.
          */
-        if (l2_punt_classify_apply(hw_ifname, false /*untagged*/, punt_arp,
-                                   punt_ip6mc) != 0) {
+        if (l2_punt_classify_apply(hw_ifname, false /*untagged*/, punt_arp, punt_ip6mc,
+                                   !m_dhcp_trap_copy, !m_dhcp6_trap_copy) != 0) {
             SWSS_LOG_WARN("l2_punt_classify_apply failed for untagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
         }
@@ -1420,7 +2030,8 @@ sai_status_t SwitchVpp::vpp_set_vlan_attribute(
                 }
 
                 if (l2_punt_classify_apply(member_hwif.c_str(), member_tagged,
-                                           punt_arp, punt_ip6mc) != 0)
+                                           punt_arp, punt_ip6mc,
+                                           !m_dhcp_trap_copy, !m_dhcp6_trap_copy) != 0)
                 {
                     SWSS_LOG_WARN("Failed to update punt classify tables on %s (vlan %u)",
                             member_hwif.c_str(), bridge_id);
@@ -1621,6 +2232,11 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
         {
             m_ifaceRegistry.setTapName(bvi_rec->getHwifName(), tap_name);
         }
+
+        if (m_dhcp6_trap_copy && vpp_dhcp6_mroute(vpp_ifname.c_str(), true) == 0)
+        {
+            state.dhcp6_mroute_added = true;
+        }
     }
 
     // Apply a create-time loopback (hairpin) packet action on the BVI so a VLAN
@@ -1803,6 +2419,11 @@ sai_status_t SwitchVpp::vpp_delete_bvi_interface(
     const char *hw_ifname;
     snprintf(hw_bviifname, sizeof(hw_bviifname), "bvi%u",vlan_id);
     hw_ifname = hw_bviifname;
+
+    if (m_dhcp6_trap_copy)
+    {
+        vpp_dhcp6_mroute(hw_ifname, false);
+    }
 
     //Remove interface from bridge, interface type should be changed to others types like l3.
     set_sw_interface_l2_bridge(hw_ifname, bd_id, false, VPP_API_PORT_TYPE_BVI);
