@@ -178,6 +178,7 @@ namespace saivs
                 bool interface_created = false;
                 bool lcp_created = false;
                 bool bridge_attached = false;
+                bool dhcp6_mroute_added = false;
                 bool loopback_applied = false;
                 bool vrf_changed = false;
                 bool mtu_changed = false;
@@ -1225,6 +1226,27 @@ namespace saivs
 
             void vpp_set_dhcp_trap_copy(
                     _In_ bool copy);
+
+        protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCPV6 packet action
+
+            // True while every DHCPv6 hostif trap has SAI_PACKET_ACTION_COPY
+            // (and there is at least one), which floods DHCPv6 client
+            // multicast in its VLAN and installs ff02::1:2 on every BVI so
+            // the BVI's copy reaches the CPU. Otherwise it is trapped at the
+            // VLAN member. See SwitchVppFdb.cpp.
+            bool m_dhcp6_trap_copy = false;
+
+            // Re-derives m_dhcp6_trap_copy from m_trap_map and applies it.
+            void vpp_update_dhcp6_trap_action();
+
+            void vpp_set_dhcp6_trap_copy(
+                    _In_ bool copy);
+
+            // Adds or removes the ff02::1:2 route accepting on the BVI and
+            // forwarding to local, in the BVI's IPv6 table.
+            int vpp_dhcp6_mroute(
+                    _In_ const char *bvi_hwif,
+                    _In_ bool is_add);
 
 
         protected: // VPP

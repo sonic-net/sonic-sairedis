@@ -621,6 +621,10 @@ sai_status_t SwitchVpp::createHostifTrap(
     {
         vpp_update_dhcp_trap_action();
     }
+    else if (entry.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6)
+    {
+        vpp_update_dhcp6_trap_action();
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -635,6 +639,7 @@ sai_status_t SwitchVpp::removeHostifTrap(
 
     bool need_uninstall = false;
     bool is_dhcp = false;
+    bool is_dhcp6 = false;
     vpp_trap_entry_t trap_copy;
     memset(&trap_copy, 0, sizeof(trap_copy));
 
@@ -646,6 +651,7 @@ sai_status_t SwitchVpp::removeHostifTrap(
         if (it != m_trap_map.end())
         {
             is_dhcp = it->second.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP;
+            is_dhcp6 = it->second.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6;
 
             if (it->second.classify_installed)
             {
@@ -668,6 +674,10 @@ sai_status_t SwitchVpp::removeHostifTrap(
     if (is_dhcp)
     {
         vpp_update_dhcp_trap_action();
+    }
+    else if (is_dhcp6)
+    {
+        vpp_update_dhcp6_trap_action();
     }
 
     return remove_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, serializedObjectId);
@@ -763,6 +773,11 @@ sai_status_t SwitchVpp::setHostifTrap(
     {
         vpp_update_dhcp_trap_action();
     }
+    else if (trap_copy.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6 &&
+            attr->id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION)
+    {
+        vpp_update_dhcp6_trap_action();
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -800,4 +815,37 @@ void SwitchVpp::vpp_update_dhcp_trap_action()
     }
 
     vpp_set_dhcp_trap_copy(any && all_copy);
+}
+
+/*
+ * The DHCPv6 counterpart of vpp_update_dhcp_trap_action(): DHCPv6 client
+ * multicast is flooded and copied only while every DHCPv6 trap asks for COPY.
+ */
+void SwitchVpp::vpp_update_dhcp6_trap_action()
+{
+    SWSS_LOG_ENTER();
+
+    bool any = false;
+    bool all_copy = true;
+
+    {
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+
+        for (auto &kv : m_trap_map)
+        {
+            if (kv.second.trap_type != SAI_HOSTIF_TRAP_TYPE_DHCPV6)
+            {
+                continue;
+            }
+
+            any = true;
+
+            if (kv.second.packet_action != SAI_PACKET_ACTION_COPY)
+            {
+                all_copy = false;
+            }
+        }
+    }
+
+    vpp_set_dhcp6_trap_copy(any && all_copy);
 }
