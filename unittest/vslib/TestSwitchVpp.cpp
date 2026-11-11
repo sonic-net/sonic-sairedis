@@ -110,8 +110,8 @@ namespace
     // the IP2ME address set: the destinations the IP2ME policer meters on the punt path
     std::set<std::string> g_ip2meAddrs;
 
-    // IPv6 mroutes VPP holds that accept on an interface and forward to
-    // local: (table, group/len, accepting interface)
+    // IPv6 multicast routes VPP holds that accept on an interface and forward to
+    // local: (table, group/length, accepting interface)
     std::set<std::tuple<uint32_t, std::string, std::string>> g_ip6LocalMroutes;
 
     uint32_t g_nextSwIfIndex = 100;
@@ -2042,7 +2042,7 @@ class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
 {
     protected:
 
-        // an IPv6 UDP datagram as it arrives on a member, to group 33:33:<mac_tail>
+        // an IPv6 UDP packet as it arrives on a member, to group 33:33:<mac_tail>
         static std::vector<uint8_t> ip6UdpOnWire(
                 bool tagged,
                 const std::array<uint8_t, 4>& mac_tail,
