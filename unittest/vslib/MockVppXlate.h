@@ -90,6 +90,8 @@ struct VppMock
     unsigned int loopbackCalls = 0;
     int loopbackAction = -1;
     int loopbackResult = 0;
+    // The interfaces VPP fails to set a loopback packet action on, with that action
+    std::set<std::pair<std::string, int>> loopbackFailures;
     int featureResult = 0;
     unsigned int featureCalls = 0;
     int statsResult = 0;

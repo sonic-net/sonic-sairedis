@@ -378,11 +378,12 @@ extern "C" int __wrap_vpp_iface_loopback_set_action(const char *name, int action
     SWSS_LOG_ENTER();
     ++vppMock().loopbackCalls;
     vppMock().loopbackAction = action;
-    if (vppMock().loopbackResult == 0)
+    int result = vppMock().loopbackFailures.count({name, action}) ? -1 : vppMock().loopbackResult;
+    if (result == 0)
     {
         vppMock().actions[name] = action;
     }
-    return vppMock().loopbackResult;
+    return result;
 }
 
 /*

@@ -42,6 +42,7 @@ namespace
 {
     const char LOCAL_IP[] = "10.1.0.32";
     const char PEER_IP[] = "10.1.0.33";
+    const char OTHER_PEER_IP[] = "10.1.0.34";
 
     class SwitchVppIpIpTest : public SwitchVppTest
     {
@@ -116,10 +117,11 @@ namespace
                 return create(SAI_OBJECT_TYPE_TUNNEL, tunnel, attrs);
             }
 
-            /* An encap next hop to the peer switch */
+            /* An encap next hop to the peer switch, or to another */
             sai_status_t createNexthop(
                     sai_object_id_t& nexthop,
-                    sai_object_id_t tunnel)
+                    sai_object_id_t tunnel,
+                    const char *peer = PEER_IP)
             {
                 SWSS_LOG_ENTER();
 
@@ -127,7 +129,7 @@ namespace
                 attrs[0].id = SAI_NEXT_HOP_ATTR_TYPE;
                 attrs[0].value.s32 = SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP;
                 attrs[1].id = SAI_NEXT_HOP_ATTR_IP;
-                sai_deserialize_ip_address(PEER_IP, attrs[1].value.ipaddr);
+                sai_deserialize_ip_address(peer, attrs[1].value.ipaddr);
                 attrs[2].id = SAI_NEXT_HOP_ATTR_TUNNEL_ID;
                 attrs[2].value.oid = tunnel;
 
@@ -314,6 +316,74 @@ TEST_F(SwitchVppIpIpTest, setAppliesToVppTunnelsAndKeepsPreviousActionOnFailure)
 
         sai_object_id_t trapTunnel;
         EXIT_UNLESS(createTunnel(trapTunnel, {loopbackAction(SAI_PACKET_ACTION_TRAP)}) == SAI_STATUS_NOT_SUPPORTED);
+
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(SwitchVppIpIpTest, failedSetReturnsVppTunnelsToPreviousAction)
+{
+    ASSERT_EXIT({
+        vppMock().loopbackEnabled = true;
+
+        /* Next hops to two peers, so two VPP tunnels */
+        sai_object_id_t tunnel;
+        sai_object_id_t nexthop;
+        sai_object_id_t otherNexthop;
+        EXIT_UNLESS(createTunnel(tunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(nexthop, tunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(otherNexthop, tunnel, OTHER_PEER_IP) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_add").size() == 2);
+
+        /* The second VPP tunnel doesn't take DROP, so the first, which did, goes back to FORWARD */
+        vppMock().loopbackFailures.emplace("ipip1", 1);
+        EXIT_UNLESS(setLoopbackAction(tunnel, SAI_PACKET_ACTION_DROP) == SAI_STATUS_FAILURE);
+        EXIT_UNLESS(storedLoopbackAction(tunnel) == -1);
+        EXIT_UNLESS(vppLoopbackAction("ipip0") == 0);
+        EXIT_UNLESS(vppLoopbackAction("ipip1") == -1);
+
+        /* If the first doesn't go back either, its next sync returns it to the stored action */
+        vppMock().loopbackFailures.emplace("ipip0", 0);
+        EXIT_UNLESS(setLoopbackAction(tunnel, SAI_PACKET_ACTION_DROP) == SAI_STATUS_FAILURE);
+        EXIT_UNLESS(storedLoopbackAction(tunnel) == -1);
+        EXIT_UNLESS(vppLoopbackAction("ipip0") == 1);
+
+        vppMock().loopbackFailures.clear();
+        EXIT_UNLESS(setLoopbackAction(tunnel, SAI_PACKET_ACTION_FORWARD) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppLoopbackAction("ipip0") == 0);
+        EXIT_UNLESS(vppLoopbackAction("ipip1") == -1);
+
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(SwitchVppIpIpTest, nexthopRemoveIsBestEffortAndNextSyncRetries)
+{
+    ASSERT_EXIT({
+        vppMock().loopbackEnabled = true;
+
+        /* Next hops of a DROP and a FORWARD tunnel to the same peer share a VPP tunnel */
+        sai_object_id_t dropTunnel;
+        sai_object_id_t forwardTunnel;
+        sai_object_id_t dropNexthop;
+        sai_object_id_t forwardNexthop;
+        EXIT_UNLESS(createTunnel(dropTunnel, {loopbackAction(SAI_PACKET_ACTION_DROP)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createTunnel(forwardTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(dropNexthop, dropTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(forwardNexthop, forwardTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_add").size() == 1);
+        EXIT_UNLESS(vppLoopbackAction("ipip0") == 1);
+
+        /* The DROP tunnel's next hop is removed even if VPP doesn't take FORWARD */
+        vppMock().loopbackFailures.emplace("ipip0", 0);
+        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, dropNexthop) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_del").empty());
+        EXIT_UNLESS(vppLoopbackAction("ipip0") == 1);
+
+        /* and the next sync of the VPP tunnel applies FORWARD */
+        vppMock().loopbackFailures.clear();
+        EXIT_UNLESS(setLoopbackAction(forwardTunnel, SAI_PACKET_ACTION_FORWARD) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppLoopbackAction("ipip0") == 0);
 
         _exit(0);
     }, ::testing::ExitedWithCode(0), "");

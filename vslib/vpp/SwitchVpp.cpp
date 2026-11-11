@@ -2858,7 +2858,19 @@ sai_status_t SwitchVpp::setTunnelLoopbackAction(
         {
             attrHash.erase(name);
         }
-        m_tunnel_mgr_ipip.update_tunnel_loopback_action(tunnel_oid);
+
+        /*
+         * TunnelManagerIpIp tracks the action each VPP tunnel has, so a VPP
+         * tunnel this can't return to the previous action gets the stored one
+         * at its next sync: a SET of the tunnel, or a next hop created or
+         * removed on it.
+         */
+        sai_status_t restored = m_tunnel_mgr_ipip.update_tunnel_loopback_action(tunnel_oid);
+        if (restored != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Tunnel %s: VPP tunnels not returned to the previous loopback packet action: %s",
+                           serializedObjectId.c_str(), sai_serialize_status(restored).c_str());
+        }
     }
 
     return status;

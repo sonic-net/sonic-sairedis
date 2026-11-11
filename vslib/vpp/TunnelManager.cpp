@@ -2829,7 +2829,9 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
         m_ipip_encap_nh_map.erase(it);
 
         // A VPP tunnel a decap term or another nexthop still uses takes the
-        // action of the encap nexthops left on it
+        // action of the encap nexthops left on it. Best effort, as on create:
+        // the nexthop is removed either way, and as the VPP tunnel keeps its
+        // tracked action, its next sync tries again.
         sync_loopback_action(sw_if_index);
     }
 
