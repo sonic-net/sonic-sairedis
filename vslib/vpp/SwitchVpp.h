@@ -1289,11 +1289,12 @@ namespace saivs
 
             // Confirmed Accept interfaces per IPv6 MFIB table. The first
             // interface owns the shared local Forward path and the last
-            // removal deletes it. A separate set retains operations whose
-            // reply was not confirmed so cleanup/retry cannot be skipped just
-            // because confirmed state already matches the requested state.
+            // removal deletes it. A separate desired-state journal retains
+            // operations whose reply was not confirmed so cleanup/retry cannot
+            // be skipped just because confirmed state already matches the
+            // requested state.
             std::map<uint32_t, std::set<std::string>> m_dhcp6_mroute_ifaces;
-            std::set<std::pair<uint32_t, std::string>> m_dhcp6_mroute_uncertain_ifaces;
+            std::map<std::pair<uint32_t, std::string>, bool> m_dhcp6_mroute_uncertain_ifaces;
 
             // Re-derives active/COPY state from m_trap_map and applies it.
             void vpp_update_dhcp6_trap_action();
@@ -1305,6 +1306,15 @@ namespace saivs
             // Adds or removes ff02::1:2 accepting on one ingress interface and
             // forwarding to local, in that interface's IPv6 table.
             int vpp_dhcp6_mroute(
+                    _In_ const char *accept_hwif,
+                    _In_ bool is_add);
+
+            // Same reconciliation against an already-resolved table. This is
+            // also the retry path after a failed create rollback: the backing
+            // interface may no longer be represented by a SAI RIF, but the
+            // exact attempted MFIB key must remain cleanable.
+            int vpp_dhcp6_mroute_table(
+                    _In_ uint32_t table_id,
                     _In_ const char *accept_hwif,
                     _In_ bool is_add);
 

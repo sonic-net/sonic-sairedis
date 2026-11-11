@@ -2105,8 +2105,18 @@ sai_status_t SwitchVpp::rollbackRifCreate(
 
     if (state.dhcp6_mroute_added)
     {
-        check(vpp_dhcp6_mroute(state.hwif.c_str(), false),
-                "remove DHCPv6 multicast receive");
+        int ret = vpp_dhcp6_mroute(state.hwif.c_str(), false);
+        if (ret != 0)
+        {
+            /* The MFIB path is keyed by this interface. Keep the interface,
+             * its registry record, and all dependent resources alive until
+             * the exact-key delete is confirmed; otherwise a timed-out
+             * cleanup becomes an orphan that no later retry can address. */
+            SWSS_LOG_ERROR("RIF create rollback: remove DHCPv6 multicast "
+                    "receive failed on %s (%d); preserving interface for retry",
+                    state.hwif.c_str(), ret);
+            return SAI_STATUS_FAILURE;
+        }
     }
     if (state.bridge_attached)
     {

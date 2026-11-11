@@ -942,74 +942,84 @@ void SwitchVpp::vpp_set_dhcp6_trap_state(
 
     auto rifs = m_objectHash.find(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
 
-    if (rifs == m_objectHash.end())
+    if (rifs != m_objectHash.end())
     {
-        return;
-    }
-
-    for (auto &kv : rifs->second)
-    {
-        auto type = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
-                SAI_ROUTER_INTERFACE_ATTR_TYPE);
-        if (type == nullptr)
+        for (auto &kv : rifs->second)
         {
-            continue;
-        }
-
-        std::string hwif;
-        bool receive = active;
-
-        if (type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_VLAN)
-        {
-            auto vlan = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
-                    SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
-            if (vlan == nullptr)
+            auto type = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
+                    SAI_ROUTER_INTERFACE_ATTR_TYPE);
+            if (type == nullptr)
             {
                 continue;
             }
-            auto vid = stored_attr(SAI_OBJECT_TYPE_VLAN,
-                    sai_serialize_object_id(vlan->value.oid), SAI_VLAN_ATTR_VLAN_ID);
-            if (vid == nullptr)
-            {
-                continue;
-            }
-            hwif = VppVlanInterface::hwifNameFor(vid->value.u16);
-            // COPY preserves the multicast flood; keep the BVI receive route
-            // for that forwarded copy. TRAP consumes the admitted packet in
-            // the live semantic feature before it reaches the BVI.
-            receive = active && copy;
-        }
-        else if (type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_PORT ||
-                 type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
-        {
-            auto port = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
-                    SAI_ROUTER_INTERFACE_ATTR_PORT_ID);
-            if (port == nullptr)
-            {
-                continue;
-            }
-            uint16_t vlan_id = 0;
-            if (type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+
+            std::string hwif;
+            bool receive = active;
+
+            if (type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_VLAN)
             {
                 auto vlan = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
-                        SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID);
+                        SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
                 if (vlan == nullptr)
                 {
                     continue;
                 }
-                vlan_id = vlan->value.u16;
+                auto vid = stored_attr(SAI_OBJECT_TYPE_VLAN,
+                        sai_serialize_object_id(vlan->value.oid), SAI_VLAN_ATTR_VLAN_ID);
+                if (vid == nullptr)
+                {
+                    continue;
+                }
+                hwif = VppVlanInterface::hwifNameFor(vid->value.u16);
+                // COPY preserves the multicast flood; keep the BVI receive route
+                // for that forwarded copy. TRAP consumes the admitted packet in
+                // the live semantic feature before it reaches the BVI.
+                receive = active && copy;
             }
-            hwif = m_ifaceRegistry.resolveHwIfName(port->value.oid, vlan_id);
-        }
-        else
-        {
-            continue;
-        }
+            else if (type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_PORT ||
+                     type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+            {
+                auto port = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
+                        SAI_ROUTER_INTERFACE_ATTR_PORT_ID);
+                if (port == nullptr)
+                {
+                    continue;
+                }
+                uint16_t vlan_id = 0;
+                if (type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+                {
+                    auto vlan = stored_attr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, kv.first,
+                            SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID);
+                    if (vlan == nullptr)
+                    {
+                        continue;
+                    }
+                    vlan_id = vlan->value.u16;
+                }
+                hwif = m_ifaceRegistry.resolveHwIfName(port->value.oid, vlan_id);
+            }
+            else
+            {
+                continue;
+            }
 
-        if (!hwif.empty())
-        {
-            vpp_dhcp6_mroute(hwif.c_str(), receive);
+            if (!hwif.empty())
+            {
+                vpp_dhcp6_mroute(hwif.c_str(), receive);
+            }
         }
+    }
+
+    /* A failed create is not published in m_objectHash, so its exact MFIB
+     * key would otherwise disappear from this scan. Retry every remaining
+     * uncertain transition from a snapshot; the table id is journaled with
+     * the key and must not be re-resolved through an interface that may have
+     * been rebound or partially torn down. */
+    auto uncertain = m_dhcp6_mroute_uncertain_ifaces;
+    for (const auto &entry : uncertain)
+    {
+        vpp_dhcp6_mroute_table(entry.first.first,
+                entry.first.second.c_str(), entry.second);
     }
 }
 
@@ -1024,9 +1034,6 @@ int SwitchVpp::vpp_dhcp6_mroute(
 {
     SWSS_LOG_ENTER();
 
-    static const uint8_t all_dhcp_relay_agents_and_servers[16] = {
-        0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0, 0x02 };
-
     uint32_t table_id = 0;
 
     if (get_interface_vrf(accept_hwif, true, &table_id) != 0)
@@ -1034,6 +1041,19 @@ int SwitchVpp::vpp_dhcp6_mroute(
         SWSS_LOG_ERROR("Failed to get the IPv6 table of %s", accept_hwif);
         return -1;
     }
+
+    return vpp_dhcp6_mroute_table(table_id, accept_hwif, is_add);
+}
+
+int SwitchVpp::vpp_dhcp6_mroute_table(
+        _In_ uint32_t table_id,
+        _In_ const char *accept_hwif,
+        _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    static const uint8_t all_dhcp_relay_agents_and_servers[16] = {
+        0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0, 0x02 };
 
     const auto key = std::make_pair(table_id, std::string(accept_hwif));
     const bool uncertain = m_dhcp6_mroute_uncertain_ifaces.count(key) != 0;
@@ -1056,19 +1076,23 @@ int SwitchVpp::vpp_dhcp6_mroute(
     bool has_other_uncertain = false;
     for (const auto &candidate : m_dhcp6_mroute_uncertain_ifaces)
     {
-        if (candidate.first == table_id && candidate != key)
+        if (candidate.first.first == table_id && candidate.first != key)
         {
             has_other_uncertain = true;
             break;
         }
     }
     const size_t other_confirmed = interfaces.size() - (present ? 1u : 0u);
-    const bool with_local_path = other_confirmed == 0 && !has_other_uncertain;
+    /* Adds always include the idempotent local Forward path. If an earlier
+     * first-owner add failed before apply, no peer can prove that the shared
+     * path exists. Deletes remove it only for the final possible owner. */
+    const bool with_local_path = is_add ||
+        (other_confirmed == 0 && !has_other_uncertain);
     /* A timeout may mean VPP applied the request but lost its reply. Mark the
      * physical row uncertain before dispatch and clear it only after a
      * correlated successful reply. This deliberately bypasses the
      * confirmed==desired shortcut on retry. */
-    m_dhcp6_mroute_uncertain_ifaces.insert(key);
+    m_dhcp6_mroute_uncertain_ifaces[key] = is_add;
 
     int ret = ip6_mroute_local_add_del(table_id,
             all_dhcp_relay_agents_and_servers, 128, accept_hwif,

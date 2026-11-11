@@ -4753,6 +4753,30 @@ TEST_F(SwitchVppDhcp6Trap, RoutedPortsInOneTableShareTheLocalForwardPath)
     EXPECT_EQ(0u, g_ip6LocalForwardTables.count(7));
 }
 
+TEST_F(SwitchVppDhcp6Trap, FailedFirstAddCannotLeaveSuccessfulPeerWithoutLocalForward)
+{
+    storePortRif("Ethernet8");
+    storePortRif("Ethernet12");
+    vppMock().interfaceVrfs["Ethernet8"] = 7;
+    vppMock().interfaceVrfs["Ethernet12"] = 7;
+    vppMock().ip6MrouteFailBeforeApplyOnCalls.insert(1);
+
+    createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+
+    // Whichever owner is visited second must include the idempotent local
+    // Forward path; an uncertain first add is not proof that it exists.
+    EXPECT_EQ(1u, g_ip6LocalMroutes.size());
+    EXPECT_EQ(1u, g_ip6LocalForwardTables.count(7));
+
+    m_sw->vpp_set_dhcp6_trap_state(true, false);
+
+    EXPECT_EQ(2u, g_ip6LocalMroutes.size());
+    EXPECT_EQ(1u, g_ip6LocalForwardTables.count(7));
+    auto calls = vppMock().ip6MrouteCalls;
+    m_sw->vpp_set_dhcp6_trap_state(true, false);
+    EXPECT_EQ(calls, vppMock().ip6MrouteCalls);
+}
+
 TEST_F(SwitchVppDhcp6Trap, AmbiguousRoutedAddIsRemovedByCreateRollback)
 {
     storePortRif("Ethernet8");
@@ -4774,6 +4798,32 @@ TEST_F(SwitchVppDhcp6Trap, AmbiguousRoutedAddIsRemovedByCreateRollback)
     EXPECT_EQ(0u, g_ip6LocalMroutes.count(route));
     EXPECT_EQ(0u, g_ip6LocalForwardTables.count(7));
     EXPECT_EQ(2u, vppMock().ip6MrouteCalls);
+}
+
+TEST_F(SwitchVppDhcp6Trap, FailedCreateRollbackPreservesBviForExactKeyRetry)
+{
+    createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    createBvi();
+    ASSERT_TRUE(bviReceivesDhcp6());
+
+    vppMock().ip6MrouteFailBeforeApplyOnCalls.insert(2);
+    SwitchVpp::RifCreateState state;
+    state.hwif = "bvi100";
+    state.bvi = true;
+    state.interface_created = true;
+    state.dhcp6_mroute_added = true;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->rollbackRifCreate(state));
+    EXPECT_TRUE(bviReceivesDhcp6());
+    EXPECT_EQ(1u, vppMock().interfaces.count("bvi100"));
+
+    // The failed cleanup is journaled with table+interface and remains
+    // retryable even if no SAI RIF scan rediscovers the failed create.
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove_internal(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+            sai_serialize_object_id(m_rif)));
+    m_sw->vpp_set_dhcp6_trap_state(false, false);
+    EXPECT_FALSE(bviReceivesDhcp6());
 }
 
 TEST_F(SwitchVppDhcp6Trap, AmbiguousDeleteIsRetriedWhenConfirmedStateMatchesAbsent)
