@@ -96,6 +96,38 @@ bool Workaround::isSetAttributeWorkaroundDuringApplyView(
     auto curObject = it->second;
     auto objectType = curObject->getObjectType();
 
+    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
+
+    if (meta != nullptr && meta->isvalidonly)
+    {
+        /*
+         * A valid only attribute has no effect while its condition is not
+         * met (for example a WRED colour threshold while that colour is
+         * neither enabled nor ECN-marked), and some vendor SAIs reject a SET
+         * of it in that state. The current view object already holds its
+         * attributes as they will be after this apply, and the SETs of
+         * condition sources run before the SETs that depend on them, so this
+         * is the condition the SAI sees.
+         */
+
+        std::vector<sai_attribute_t> attrs;
+
+        for (const auto &at: curObject->getAllAttributes())
+        {
+            attrs.push_back(*at.second->getSaiAttr());
+        }
+
+        if (!sai_metadata_is_validonly_met(meta, (uint32_t)attrs.size(), attrs.data()))
+        {
+            SWSS_LOG_WARN("setting %s on %s failed: %s, valid only condition is not met, attribute has no effect, continuing",
+                    meta->attridname,
+                    sai_serialize_object_id(objectId).c_str(),
+                    sai_serialize_status(status).c_str());
+
+            return true;
+        }
+    }
+
     if (objectType == SAI_OBJECT_TYPE_TUNNEL)
     {
         auto tunnelAttrType = curObject->tryGetSaiAttr(SAI_TUNNEL_ATTR_TYPE);

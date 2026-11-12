@@ -4,6 +4,7 @@
 #include "MockableSaiInterface.h"
 #include "MockableSaiSwitchInterface.h"
 #include "SaiObj.h"
+#include "Workaround.h"
 
 #include "swss/logger.h"
 
@@ -20,6 +21,7 @@ namespace
     constexpr sai_object_id_t SWITCH_VID = 0x21000000000000;
     constexpr sai_object_id_t SWITCH_RID = 0x21000000000000;
 
+    constexpr sai_object_id_t WRED_VID = 0x13000000000001;
     const std::string WRED_OID = "oid:0x13000000000001";
     const std::string WRED_KEY = "SAI_OBJECT_TYPE_WRED:" + WRED_OID;
 
@@ -104,28 +106,6 @@ namespace
         std::shared_ptr<SaiObj> tempWred() { return temp->m_soAll.at(WRED_OID); }
     };
 
-    const sai_attr_metadata_t* redMinMeta()
-    {
-        SWSS_LOG_ENTER();
-
-        return sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_WRED, SAI_WRED_ATTR_RED_MIN_THRESHOLD);
-    }
-
-    std::vector<sai_attribute_t> attrsOf(
-            _In_ const std::shared_ptr<SaiObj> &obj)
-    {
-        SWSS_LOG_ENTER();
-
-        std::vector<sai_attribute_t> attrs;
-
-        for (auto &at: obj->getAllAttributes())
-        {
-            attrs.push_back(*at.second->getSaiAttr());
-        }
-
-        return attrs;
-    }
-
     size_t positionOf(
             _In_ const std::vector<std::shared_ptr<SaiAttr>> &ordered,
             _In_ sai_attr_id_t id)
@@ -144,90 +124,95 @@ namespace
     }
 }
 
-TEST(ComparisonLogicValidOnly, threshold_of_disabled_unmarked_colour_is_unmet)
+/*
+ * A failed SET of a threshold whose colour is neither enabled nor ECN-marked
+ * is ignored during apply view: the threshold has no effect in that state.
+ */
+TEST(ComparisonLogicValidOnly, failed_set_of_disabled_colour_threshold_is_ignored)
 {
-    Views v(makeDump(false, true), makeDump(false, false));
+    AsicView view;
+    view.fromDump(makeDump(false, true));
 
-    EXPECT_TRUE(ComparisonLogic::isValidOnlyConditionUnmet(attrsOf(v.tempWred()), redMinMeta()));
+    EXPECT_TRUE(Workaround::isSetAttributeWorkaroundDuringApplyView(view, WRED_VID, SAI_WRED_ATTR_RED_MIN_THRESHOLD, SAI_STATUS_INVALID_PARAMETER));
+    EXPECT_TRUE(Workaround::isSetAttributeWorkaroundDuringApplyView(view, WRED_VID, SAI_WRED_ATTR_RED_MAX_THRESHOLD, SAI_STATUS_INVALID_PARAMETER));
 }
 
-TEST(ComparisonLogicValidOnly, threshold_of_enabled_colour_is_met)
+TEST(ComparisonLogicValidOnly, failed_set_of_enabled_colour_threshold_is_not_ignored)
 {
-    Views v(makeDump(true, true), makeDump(true, false));
+    AsicView view;
+    view.fromDump(makeDump(true, true));
 
-    EXPECT_FALSE(ComparisonLogic::isValidOnlyConditionUnmet(attrsOf(v.tempWred()), redMinMeta()));
+    EXPECT_FALSE(Workaround::isSetAttributeWorkaroundDuringApplyView(view, WRED_VID, SAI_WRED_ATTR_RED_MIN_THRESHOLD, SAI_STATUS_INVALID_PARAMETER));
 }
 
-TEST(ComparisonLogicValidOnly, threshold_of_ecn_marked_colour_is_met)
+TEST(ComparisonLogicValidOnly, failed_set_of_ecn_marked_colour_threshold_is_not_ignored)
 {
-    auto dump = makeDump(false, false);
+    auto dump = makeDump(false, true);
     dump[WRED_KEY]["SAI_WRED_ATTR_ECN_MARK_MODE"] = "SAI_ECN_MARK_MODE_RED";
 
-    Views v(makeDump(false, true), dump);
+    AsicView view;
+    view.fromDump(dump);
 
-    EXPECT_FALSE(ComparisonLogic::isValidOnlyConditionUnmet(attrsOf(v.tempWred()), redMinMeta()));
+    EXPECT_FALSE(Workaround::isSetAttributeWorkaroundDuringApplyView(view, WRED_VID, SAI_WRED_ATTR_RED_MIN_THRESHOLD, SAI_STATUS_INVALID_PARAMETER));
 }
 
-TEST(ComparisonLogicValidOnly, attribute_without_valid_only_is_never_unmet)
+TEST(ComparisonLogicValidOnly, failed_set_of_attribute_without_valid_only_is_not_ignored)
 {
-    Views v(makeDump(false, true), makeDump(false, false));
+    AsicView view;
+    view.fromDump(makeDump(false, true));
 
-    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_WRED, SAI_WRED_ATTR_RED_ENABLE);
-
-    EXPECT_FALSE(ComparisonLogic::isValidOnlyConditionUnmet(attrsOf(v.tempWred()), meta));
-    EXPECT_FALSE(ComparisonLogic::isValidOnlyConditionUnmet(attrsOf(v.tempWred()), nullptr));
+    EXPECT_FALSE(Workaround::isSetAttributeWorkaroundDuringApplyView(view, WRED_VID, SAI_WRED_ATTR_RED_ENABLE, SAI_STATUS_INVALID_PARAMETER));
+    EXPECT_FALSE(Workaround::isSetAttributeWorkaroundDuringApplyView(view, WRED_VID, SAI_WRED_ATTR_RED_MIN_THRESHOLD, SAI_STATUS_SUCCESS));
 }
 
 /*
- * Warm reboot after a colour was disabled by a set: the current object keeps
- * the thresholds from its create, the recreated profile omits them. They must
- * not be brought to their default, since the SAI rejects a set on a disabled
- * colour; the current values are carried over instead.
+ * The condition is evaluated on the object as it is after the transition:
+ * red is enabled on the ASIC and disabled in the new configuration together
+ * with a threshold change, so the threshold SET runs after RED_ENABLE false
+ * and its failure is ignored.
  */
-TEST(ComparisonLogicValidOnly, missing_threshold_of_disabled_colour_is_transferred_not_defaulted)
+TEST(ComparisonLogicValidOnly, condition_is_evaluated_after_the_transition)
 {
-    Views v(makeDump(false, true), makeDump(false, false));
+    Views v(makeDump(true, true, "3000000"), makeDump(false, true, "2500000"));
 
-    ASSERT_FALSE(v.tempWred()->hasAttr(SAI_WRED_ATTR_RED_MIN_THRESHOLD));
+    EXPECT_FALSE(Workaround::isSetAttributeWorkaroundDuringApplyView(*v.current, WRED_VID, SAI_WRED_ATTR_RED_MIN_THRESHOLD, SAI_STATUS_INVALID_PARAMETER));
 
     EXPECT_TRUE(v.cl->performObjectSetTransition(*v.current, *v.temp, v.currentWred(), v.tempWred(), false));
     EXPECT_TRUE(v.cl->performObjectSetTransition(*v.current, *v.temp, v.currentWred(), v.tempWred(), true));
 
-    EXPECT_EQ(v.current->asicGetOperationsCount(), 0u);
-    ASSERT_TRUE(v.tempWred()->hasAttr(SAI_WRED_ATTR_RED_MIN_THRESHOLD));
-    EXPECT_EQ(v.tempWred()->getSaiAttr(SAI_WRED_ATTR_RED_MIN_THRESHOLD)->getStrAttrValue(), "3000000");
-    ASSERT_TRUE(v.tempWred()->hasAttr(SAI_WRED_ATTR_RED_MAX_THRESHOLD));
+    ASSERT_EQ(v.current->asicGetOperationsCount(), 2u);
+    EXPECT_TRUE(Workaround::isSetAttributeWorkaroundDuringApplyView(*v.current, WRED_VID, SAI_WRED_ATTR_RED_MIN_THRESHOLD, SAI_STATUS_INVALID_PARAMETER));
 }
 
 /*
- * Warm reboot after a threshold change the SAI refused: CONFIG_DB (and so the
- * recreated profile) carries the new value, the ASIC the old one. No SET is
- * generated while the colour is disabled; the current value is kept.
+ * Warm reboot after a threshold change the SAI refused while the colour was
+ * disabled: the recreated profile carries the new value. The SET is still
+ * generated, so a SAI that stores the value while the condition is unmet
+ * receives it.
  */
-TEST(ComparisonLogicValidOnly, differing_threshold_of_disabled_colour_is_not_set)
+TEST(ComparisonLogicValidOnly, differing_threshold_of_disabled_colour_is_set)
 {
     Views v(makeDump(false, true, "3000000"), makeDump(false, true, "2500000"));
 
     EXPECT_TRUE(v.cl->performObjectSetTransition(*v.current, *v.temp, v.currentWred(), v.tempWred(), false));
     EXPECT_TRUE(v.cl->performObjectSetTransition(*v.current, *v.temp, v.currentWred(), v.tempWred(), true));
 
-    EXPECT_EQ(v.current->asicGetOperationsCount(), 0u);
-    EXPECT_EQ(v.tempWred()->getSaiAttr(SAI_WRED_ATTR_RED_MIN_THRESHOLD)->getStrAttrValue(), "3000000");
+    ASSERT_EQ(v.current->asicGetOperationsCount(), 1u);
+    EXPECT_EQ(fvField(kfvFieldsValues(*v.current->m_asicOperations[0].m_op).at(0)), "SAI_WRED_ATTR_RED_MIN_THRESHOLD");
 }
 
 /*
- * The control: with the colour enabled the threshold is valid, so a differing
- * value is set on the current object as before.
+ * Warm reboot after a colour was disabled: the recreated profile omits its
+ * thresholds, so they are brought to their default as for any attribute.
  */
-TEST(ComparisonLogicValidOnly, differing_threshold_of_enabled_colour_is_set)
+TEST(ComparisonLogicValidOnly, missing_threshold_of_disabled_colour_is_brought_to_default)
 {
-    Views v(makeDump(true, true, "3000000"), makeDump(true, true, "2500000"));
+    Views v(makeDump(false, true), makeDump(false, false));
 
     EXPECT_TRUE(v.cl->performObjectSetTransition(*v.current, *v.temp, v.currentWred(), v.tempWred(), false));
     EXPECT_TRUE(v.cl->performObjectSetTransition(*v.current, *v.temp, v.currentWred(), v.tempWred(), true));
 
-    EXPECT_EQ(v.current->asicGetOperationsCount(), 1u);
-    EXPECT_EQ(v.tempWred()->getSaiAttr(SAI_WRED_ATTR_RED_MIN_THRESHOLD)->getStrAttrValue(), "2500000");
+    EXPECT_EQ(v.current->asicGetOperationsCount(), 2u);
 }
 
 TEST(ComparisonLogicValidOnly, condition_sources_are_ordered_first)
@@ -274,68 +259,6 @@ TEST(ComparisonLogicValidOnly, chained_condition_sources_are_ordered_by_depth)
     ASSERT_EQ(ordered.size(), 4u);
     EXPECT_LT(positionOf(ordered, SAI_MIRROR_SESSION_ATTR_TYPE), positionOf(ordered, SAI_MIRROR_SESSION_ATTR_VLAN_HEADER_VALID));
     EXPECT_LT(positionOf(ordered, SAI_MIRROR_SESSION_ATTR_VLAN_HEADER_VALID), positionOf(ordered, SAI_MIRROR_SESSION_ATTR_VLAN_ID));
-}
-
-/*
- * OID attributes are never carried over or skipped, even when their
- * condition is unmet: hostif trap TRAP_GROUP is valid only on a TRAP or COPY
- * action.
- */
-TEST(ComparisonLogicValidOnly, oid_attribute_is_not_skipped)
-{
-    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_HOSTIF_TRAP, SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
-
-    ASSERT_NE(meta, nullptr);
-    ASSERT_TRUE(meta->isvalidonly);
-    ASSERT_TRUE(meta->isoidattribute);
-
-    sai_attribute_t action;
-    action.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
-    action.value.s32 = SAI_PACKET_ACTION_DROP;
-
-    std::vector<sai_attribute_t> attrs = { action };
-
-    EXPECT_TRUE(ComparisonLogic::isValidOnlyConditionUnmet(attrs, meta));
-    EXPECT_FALSE(ComparisonLogic::isSetSkippedForUnmetValidOnly(attrs, meta));
-    EXPECT_TRUE(ComparisonLogic::isSetSkippedForUnmetValidOnly(attrsOf(Views(makeDump(false, true), makeDump(false, false)).tempWred()), redMinMeta()));
-}
-
-/*
- * Warm reboot after a threshold was added while the colour was disabled and
- * the SAI refused it: the recreated profile carries the threshold, the
- * current object does not. No SET while the colour is disabled.
- */
-TEST(ComparisonLogicValidOnly, threshold_only_on_temporary_object_of_disabled_colour_is_not_set)
-{
-    auto temp = makeDump(false, false);
-    temp[WRED_KEY]["SAI_WRED_ATTR_RED_MIN_THRESHOLD"] = "2500000";
-
-    Views v(makeDump(false, false), temp);
-
-    ASSERT_FALSE(v.currentWred()->hasAttr(SAI_WRED_ATTR_RED_MIN_THRESHOLD));
-
-    EXPECT_TRUE(v.cl->performObjectSetTransition(*v.current, *v.temp, v.currentWred(), v.tempWred(), false));
-    EXPECT_TRUE(v.cl->performObjectSetTransition(*v.current, *v.temp, v.currentWred(), v.tempWred(), true));
-
-    EXPECT_EQ(v.current->asicGetOperationsCount(), 0u);
-    EXPECT_EQ(v.tempWred()->getSaiAttr(SAI_WRED_ATTR_RED_MIN_THRESHOLD)->getStrAttrValue(), "2500000");
-}
-
-/*
- * The control: with the colour enabled, the threshold present only on the
- * recreated profile is set as before.
- */
-TEST(ComparisonLogicValidOnly, threshold_only_on_temporary_object_of_enabled_colour_is_set)
-{
-    auto temp = makeDump(true, false);
-    temp[WRED_KEY]["SAI_WRED_ATTR_RED_MIN_THRESHOLD"] = "2500000";
-
-    Views v(makeDump(true, false), temp);
-
-    EXPECT_TRUE(v.cl->performObjectSetTransition(*v.current, *v.temp, v.currentWred(), v.tempWred(), false));
-    EXPECT_TRUE(v.cl->performObjectSetTransition(*v.current, *v.temp, v.currentWred(), v.tempWred(), true));
-
-    EXPECT_EQ(v.current->asicGetOperationsCount(), 1u);
 }
 
 /*
