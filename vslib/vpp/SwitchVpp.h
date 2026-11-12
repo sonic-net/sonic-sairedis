@@ -172,6 +172,22 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t* attr);
 
+            /* Set SAI_TUNNEL_ATTR_ENCAP_TTL_VAL, the outer TTL of the pipe
+             * model, and apply it to the VPP IPIP tunnels of the tunnel's
+             * encap nexthops. The attribute keeps its previous value if VPP
+             * does not take the new one. */
+            sai_status_t setTunnelEncapTtl(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr);
+
+            /* Store a tunnel attribute and apply it to the VPP IPIP tunnels
+             * of the tunnel's encap nexthops with apply. If that fails, the
+             * previous value is stored again and applied. */
+            sai_status_t setTunnelAttrOfVppTunnels(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr,
+                    _In_ const std::function<sai_status_t(sai_object_id_t)>& apply);
+
             // Only resources acquired by this CREATE may be unwound on failure.
             struct RifCreateState
             {
