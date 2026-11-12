@@ -2925,6 +2925,23 @@ sai_status_t SwitchVpp::aclReconcileInterfacePbh(
     return status;
 }
 
+std::vector<std::string> SwitchVpp::resolveAclInterfaces(
+        _In_ sai_object_id_t port_oid) const
+{
+    SWSS_LOG_ENTER();
+
+    const auto parent = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
+    if (parent.empty()) {
+        return {};
+    }
+    auto interfaces = m_ifaceRegistry.getChildren(port_oid,
+        [](const VppInterface& child) {
+            return child.hasBdId() && !child.hasRifOid();
+        });
+    interfaces.insert(interfaces.begin(), parent);
+    return interfaces;
+}
+
 sai_status_t SwitchVpp::aclReconcileGroupPbh(
         _In_ sai_object_id_t port_oid,
         _In_ sai_object_id_t group_oid,
@@ -2935,7 +2952,7 @@ sai_status_t SwitchVpp::aclReconcileGroupPbh(
     if (found == m_acl_group_pbh_tables.end() && desired.empty()) {
         return SAI_STATUS_SUCCESS;
     }
-    const auto interfaces = m_ifaceRegistry.resolveAclInterfaces(port_oid);
+    const auto interfaces = resolveAclInterfaces(port_oid);
     const std::set<std::string> current(interfaces.begin(), interfaces.end());
     std::set<std::string> targets = current;
     if (found != m_acl_group_pbh_tables.end()) {
@@ -2967,7 +2984,7 @@ sai_status_t SwitchVpp::aclRestorePbhRegularPolicy(
     const auto parent = m_ifaceRegistry.resolveHwIfName(port_oid, 0);
     const auto parent_policy = pending->second.find(parent);
     sai_status_t status = SAI_STATUS_SUCCESS;
-    for (const auto &hwif : m_ifaceRegistry.resolveAclInterfaces(port_oid)) {
+    for (const auto &hwif : resolveAclInterfaces(port_oid)) {
         auto policy = pending->second.find(hwif);
         if (policy == pending->second.end()) {
             // A child created during incomplete recovery inherits the original
@@ -3038,7 +3055,7 @@ sai_status_t SwitchVpp::aclSetPortTableGroup(
         if (pending != m_acl_pbh_regular_restore.end()) {
             old_regular = pending->second;
         } else {
-            for (const auto &hwif : m_ifaceRegistry.resolveAclInterfaces(port_oid)) {
+            for (const auto &hwif : resolveAclInterfaces(port_oid)) {
                 if (m_acl_interface_state_unknown.count(hwif)) {
                     CHECK_STATUS(aclReadInterfacePolicy(hwif));
                 }
@@ -3068,7 +3085,7 @@ sai_status_t SwitchVpp::aclSetPortTableGroup(
     // remove its old PBH contribution; regular lists never detach first.
     status = aclReconcileGroupPbh(port_oid, old_group, {});
     if (status == SAI_STATUS_SUCCESS && new_pbh_only && !old_pbh_only && old_group != SAI_NULL_OBJECT_ID) {
-        for (const auto &hwif : m_ifaceRegistry.resolveAclInterfaces(port_oid)) {
+        for (const auto &hwif : resolveAclInterfaces(port_oid)) {
             if (aclApplyInterfacePolicy(hwif, PortAclTables{}, is_input, !is_input) != SAI_STATUS_SUCCESS) {
                 status = SAI_STATUS_FAILURE;
             }
@@ -3125,7 +3142,7 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
     const std::list<sai_object_id_t> member_list = it != m_acl_tbl_grp_mbr_map.end() ?
         it->second : std::list<sai_object_id_t>{};
 
-    auto interfaces = m_ifaceRegistry.resolveAclInterfaces(port_oid);
+    auto interfaces = resolveAclInterfaces(port_oid);
 
     if (interfaces.empty() && !member_list.empty()) {
         SWSS_LOG_WARN("VS hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
@@ -3291,7 +3308,7 @@ sai_status_t SwitchVpp::aclBindUnbindPorts(
     const auto member_list = it->second;
     sai_status_t status = SAI_STATUS_SUCCESS;
     for (auto port_oid : member_list) {
-        auto interfaces = m_ifaceRegistry.resolveAclInterfaces(port_oid);
+        auto interfaces = resolveAclInterfaces(port_oid);
         if (interfaces.empty()) {
             SWSS_LOG_WARN("VS hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
             status = SAI_STATUS_FAILURE;

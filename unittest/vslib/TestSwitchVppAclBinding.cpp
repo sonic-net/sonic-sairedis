@@ -967,6 +967,41 @@ TEST_P(SwitchVppAclBindingTest, PbhOnlyOwnerRetriesIndependentRegularSnapshot)
     }
 }
 
+TEST_P(SwitchVppAclBindingTest, PolicyTargetsIncludeParentAndBridgedChildren)
+{
+    addBridgedChild(m_interface);
+    addBridgedChild(m_interface, 200);
+    addBridgedChild(m_interface, 300);
+    // Even a stale bridge association must not include a routed sub-port.
+    ASSERT_TRUE(m_switch->m_ifaceRegistry.setRifOid(m_interface + ".300", 42));
+
+    EXPECT_EQ((std::vector<std::string>{m_interface, m_interface + ".100", m_interface + ".200"}),
+              m_switch->resolveAclInterfaces(m_port));
+    EXPECT_TRUE(m_switch->resolveAclInterfaces(SAI_NULL_OBJECT_ID).empty());
+}
+
+TEST_P(SwitchVppAclBindingTest, MemberLifecycleChangesPolicyTargets)
+{
+    auto& registry = m_switch->m_ifaceRegistry;
+    auto parent = registry.findByOid(m_port);
+    ASSERT_NE(nullptr, parent);
+    EXPECT_EQ((std::vector<std::string>{m_interface}), m_switch->resolveAclInterfaces(m_port));
+
+    ASSERT_NE(nullptr, registry.addSubInterface(parent, 100, 100));
+    EXPECT_EQ((std::vector<std::string>{m_interface}), m_switch->resolveAclInterfaces(m_port));
+    ASSERT_TRUE(registry.setBdId(m_interface + ".100", 100));
+    EXPECT_EQ((std::vector<std::string>{m_interface, m_interface + ".100"}),
+              m_switch->resolveAclInterfaces(m_port));
+
+    ASSERT_TRUE(registry.clearBdId(m_interface + ".100"));
+    EXPECT_EQ((std::vector<std::string>{m_interface}), m_switch->resolveAclInterfaces(m_port));
+    EXPECT_EQ(1u, registry.remove(m_interface + ".100"));
+    ASSERT_NE(nullptr, registry.addSubInterface(parent, 100, 100));
+    EXPECT_EQ((std::vector<std::string>{m_interface}), m_switch->resolveAclInterfaces(m_port));
+    EXPECT_EQ(2u, registry.remove(m_interface));
+    EXPECT_TRUE(m_switch->resolveAclInterfaces(m_port).empty());
+}
+
 TEST_P(SwitchVppAclBindingTest, PbhGroupIncludesBridgedChildrenAndExcludesRoutedChildren)
 {
     auto group = createGroup(700);

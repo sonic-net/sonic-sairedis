@@ -836,28 +836,15 @@ std::string VppInterfaceRegistry::resolveHwIfByRifOid(
     return it == m_byRifOid.end() ? std::string() : it->second->getHwifName();
 }
 
-std::vector<std::string> VppInterfaceRegistry::resolveAclInterfaces(
-        _In_ sai_object_id_t oid) const
+std::vector<std::string> VppInterfaceRegistry::getChildren(
+        _In_ sai_object_id_t oid,
+        _In_ const std::function<bool(const VppInterface&)>& filter) const
 {
     SWSS_LOG_ENTER();
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     auto parent = findByOid(oid);
-    if (!parent)
-    {
-        return {};
-    }
-
-    std::vector<std::string> interfaces = {parent->getHwifName()};
-    for (const auto& name : collectChildren(parent))
-    {
-        auto child = findByHwif(name);
-        if (child && child->hasBdId() && !child->hasRifOid())
-        {
-            interfaces.push_back(name);
-        }
-    }
-    return interfaces;
+    return parent ? collectChildren(parent, filter) : std::vector<std::string>{};
 }
 
 /*
@@ -1085,7 +1072,8 @@ void VppInterfaceRegistry::unindexRecord(
 }
 
 std::vector<std::string> VppInterfaceRegistry::collectChildren(
-        _In_ const std::shared_ptr<VppInterface>& parent) const
+        _In_ const std::shared_ptr<VppInterface>& parent,
+        _In_ const std::function<bool(const VppInterface&)>& filter) const
 {
     SWSS_LOG_ENTER();
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -1101,7 +1089,7 @@ std::vector<std::string> VppInterfaceRegistry::collectChildren(
     {
         auto sub = kv.second->asSubIf();
 
-        if (sub && sub->getParent() == parent)
+        if (sub && sub->getParent() == parent && (!filter || filter(*sub)))
         {
             children.push_back(kv.first);
         }

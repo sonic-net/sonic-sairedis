@@ -107,10 +107,20 @@ sai_status_t saivs::getAclRuleIpFamily(
 
         case SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE:
             if (attr.value.aclfield.enable) {
-                if (attr.value.aclfield.data.s32 == SAI_ACL_IP_TYPE_IPV4ANY) {
+                switch (attr.value.aclfield.data.s32) {
+                case SAI_ACL_IP_TYPE_ANY:
+                case SAI_ACL_IP_TYPE_IP:
+                    break;
+                case SAI_ACL_IP_TYPE_IPV4ANY:
                     field_family = AF_INET;
-                } else if (attr.value.aclfield.data.s32 == SAI_ACL_IP_TYPE_IPV6ANY) {
+                    break;
+                case SAI_ACL_IP_TYPE_IPV6ANY:
                     field_family = AF_INET6;
+                    break;
+                default:
+                    // Non-IP and negative-family matches cannot be represented
+                    // by IP ACL rules. Do not expand them into wildcard IP rules.
+                    return SAI_STATUS_NOT_SUPPORTED;
                 }
             }
             break;

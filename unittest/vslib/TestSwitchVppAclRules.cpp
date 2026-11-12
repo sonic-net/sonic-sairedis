@@ -212,6 +212,68 @@ TEST(SwitchVppAclRules, GenericIpTypesRemainFamilyNeutral)
     }
 }
 
+TEST(SwitchVppAclRules, ExplicitIpTypesConstrainWildcardExpansion)
+{
+    for (auto type : {SAI_ACL_IP_TYPE_IPV4ANY, SAI_ACL_IP_TYPE_IPV6ANY}) {
+        acl_tbl_entries_t ace = {};
+        ace.attrs[0] = enabledField(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE);
+        ace.attrs[0].value.aclfield.data.s32 = type;
+        ace.attrs_count = 1;
+        int family = AF_UNSPEC;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, getAclRuleIpFamily(ace, family));
+        const int expected_family = type == SAI_ACL_IP_TYPE_IPV4ANY ? AF_INET : AF_INET6;
+        EXPECT_EQ(expected_family, family);
+        std::vector<vpp_acl_rule_t> variants;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, expandAclRuleVariants({}, family, true, true, false, variants));
+        EXPECT_EQ((PacketClasses{{expected_family, 0}}), packetClasses(variants));
+    }
+}
+
+TEST(SwitchVppAclRules, NonIpTypesAreRejectedBeforeWildcardExpansion)
+{
+    const sai_acl_ip_type_t unsupported_types[] = {
+        SAI_ACL_IP_TYPE_NON_IP, SAI_ACL_IP_TYPE_NON_IPV4, SAI_ACL_IP_TYPE_NON_IPV6,
+        SAI_ACL_IP_TYPE_ARP, SAI_ACL_IP_TYPE_ARP_REQUEST, SAI_ACL_IP_TYPE_ARP_REPLY,
+    };
+    for (auto type : unsupported_types) {
+        SCOPED_TRACE(type);
+        acl_tbl_entries_t ace = {};
+        ace.attrs[0] = enabledField(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE);
+        ace.attrs[0].value.aclfield.data.s32 = type;
+        ace.attrs_count = 1;
+        int family;
+        EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, getAclRuleIpFamily(ace, family));
+        ace.attrs[0].value.aclfield.mask.s32 = -1;
+        EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, getAclRuleIpFamily(ace, family));
+        ace.attrs[0].value.aclfield.mask.s32 = 0;
+        // An explicit IP prefix must not hide the unsupported qualifier,
+        // regardless of the order in which the attributes were supplied.
+        for (auto field : {SAI_ACL_ENTRY_ATTR_FIELD_SRC_IP, SAI_ACL_ENTRY_ATTR_FIELD_SRC_IPV6}) {
+            ace.attrs[1] = enabledField(field);
+            ace.attrs_count = 2;
+            EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, getAclRuleIpFamily(ace, family));
+            std::swap(ace.attrs[0], ace.attrs[1]);
+            EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, getAclRuleIpFamily(ace, family));
+            std::swap(ace.attrs[0], ace.attrs[1]);
+        }
+        ace.attrs[0].value.aclfield.enable = false;
+        ace.attrs[0].value.aclfield.mask.s32 = -1;
+        ace.attrs_count = 1;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, getAclRuleIpFamily(ace, family));
+        EXPECT_EQ(AF_UNSPEC, family);
+    }
+}
+
+TEST(SwitchVppAclRules, UnknownIpTypesAreRejected)
+{
+    acl_tbl_entries_t ace = {};
+    ace.attrs[0] = enabledField(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE);
+    ace.attrs[0].value.aclfield.data.s32 = 0x7fffffff;
+    ace.attrs_count = 1;
+    int family;
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, getAclRuleIpFamily(ace, family));
+}
+
 TEST(SwitchVppAclRules, ExactIpEtherTypesConstrainFamilyAndRejectConflicts)
 {
     const uint16_t ether_types[] = {0x0800, 0x86dd};

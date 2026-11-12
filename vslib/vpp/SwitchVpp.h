@@ -1542,6 +1542,11 @@ namespace saivs
             sai_status_t aclReadInterfacePolicy(
                     _In_ const std::string &hwif_name);
 
+            // Port/LAG ACLs cover the parent and its bridged children.
+            // Routed sub-ports keep their own RIF policy.
+            std::vector<std::string> resolveAclInterfaces(
+                    _In_ sai_object_id_t port_oid) const;
+
             sai_status_t aclReconcileGroupPbh(
                     _In_ sai_object_id_t port_oid,
                     _In_ sai_object_id_t group_oid,

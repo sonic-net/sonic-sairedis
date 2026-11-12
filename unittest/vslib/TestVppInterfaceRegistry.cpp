@@ -109,3 +109,30 @@ TEST(VppInterfaceRegistry, clearingRegistryDoesNotRetainRecycledRifOid)
     ASSERT_TRUE(registry.setRifOid("bvi200", 100));
     EXPECT_EQ("bvi200", registry.resolveHwIfByRifOid(100));
 }
+
+TEST(VppInterfaceRegistry, getChildrenFiltersRecordsInOneTraversal)
+{
+    VppInterfaceRegistry registry;
+    auto port = registry.addPhysicalPort("port0", "Ethernet0", 1);
+    auto other = registry.addPhysicalPort("port1", "Ethernet4", 2);
+    ASSERT_NE(nullptr, port);
+    ASSERT_NE(nullptr, other);
+    ASSERT_NE(nullptr, registry.addSubInterface(port, 10, 10));
+    ASSERT_NE(nullptr, registry.addSubInterface(port, 20, 20));
+    ASSERT_NE(nullptr, registry.addSubInterface(other, 10, 10));
+    ASSERT_TRUE(registry.setBdId("port0.20", 20));
+
+    EXPECT_EQ((std::vector<std::string>{"port0.10", "port0.20"}), registry.getChildren(1));
+    EXPECT_TRUE(registry.getChildren(99).empty());
+
+    std::vector<std::string> visited;
+    const auto filter = [&visited](const VppInterface& child) {
+        visited.push_back(child.getHwifName());
+        return child.hasBdId();
+    };
+    EXPECT_EQ((std::vector<std::string>{"port0.20"}), registry.getChildren(1, filter));
+    EXPECT_EQ((std::vector<std::string>{"port0.10", "port0.20"}), visited);
+    visited.clear();
+    EXPECT_TRUE(registry.getChildren(99, filter).empty());
+    EXPECT_TRUE(visited.empty());
+}
