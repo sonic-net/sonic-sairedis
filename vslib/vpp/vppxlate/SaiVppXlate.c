@@ -7900,6 +7900,8 @@ int vpp_classify_session_del(uint32_t table_index,
     S (mp);
     WR (ret);
 
+    ret = vpp_normalize_ret(ret, true, __func__);
+
     if (ret) { SAIVPP_ERROR("%s failed(%d) table %u", __func__, ret, table_index); }
     else { SAIVPP_INFO("%s table %u", __func__, table_index); }
 

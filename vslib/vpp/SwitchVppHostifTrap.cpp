@@ -547,6 +547,21 @@ sai_status_t SwitchVpp::programTrapClassifyNow(
     const bool desired_binding_present = action_controls_binding ?
         semantic_active : have_policer;
 
+    /* DHCP delivery (member classifiers plus routed receive state) is part of
+     * the same transaction as the provider row. A failure returns through the
+     * existing create/set/remove rollback shell instead of being discarded
+     * after the SAI object and binding journal have committed. */
+    if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP)
+    {
+        CHECK_STATUS(vpp_set_dhcp_trap_state(semantic_active,
+                effective_action == SAI_PACKET_ACTION_COPY));
+    }
+    else if (trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6)
+    {
+        CHECK_STATUS(vpp_set_dhcp6_trap_state(semantic_active,
+                effective_action == SAI_PACKET_ACTION_COPY));
+    }
+
     // Reprogramming a confirmed, identical physical row is not harmless:
     // VPP may recreate its policer attachment and reset counters. Shared-row
     // owner removal commonly resolves right back to the journaled owner, so
@@ -1281,15 +1296,6 @@ sai_status_t SwitchVpp::createHostifTrap(
     SWSS_LOG_NOTICE("created hostif trap %s: trap_type %d, packet_action %d, trap_group 0x%lx",
             sid.c_str(), (int)entry.trap_type, (int)entry.packet_action, (unsigned long)entry.trap_group_oid);
 
-    if (entry.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP)
-    {
-        vpp_update_dhcp_trap_action();
-    }
-    else if (entry.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6)
-    {
-        vpp_update_dhcp6_trap_action();
-    }
-
     return SAI_STATUS_SUCCESS;
 }
 
@@ -1302,8 +1308,6 @@ sai_status_t SwitchVpp::removeHostifTrap(
     sai_deserialize_object_id(serializedObjectId, object_id);
 
     bool need_uninstall = false;
-    bool is_dhcp = false;
-    bool is_dhcp6 = false;
     bool old_binding_present = false;
     uint32_t old_binding_key = 0;
     uint32_t old_effective_vpp_policer_index = (uint32_t)~0;
@@ -1320,9 +1324,6 @@ sai_status_t SwitchVpp::removeHostifTrap(
 
         if (it != m_trap_map.end())
         {
-            is_dhcp = it->second.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP;
-            is_dhcp6 = it->second.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6;
-
             if (it->second.classify_installed)
             {
                 need_uninstall = true;
@@ -1396,15 +1397,6 @@ sai_status_t SwitchVpp::removeHostifTrap(
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
         m_trap_map.erase(object_id);
-    }
-
-    if (is_dhcp)
-    {
-        vpp_update_dhcp_trap_action();
-    }
-    else if (is_dhcp6)
-    {
-        vpp_update_dhcp6_trap_action();
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1618,84 +1610,5 @@ sai_status_t SwitchVpp::setHostifTrap(
         m_trap_map[object_id] = new_entry;
     }
 
-    if (new_entry.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP &&
-            attr->id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION)
-    {
-        vpp_update_dhcp_trap_action();
-    }
-    else if (new_entry.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6 &&
-            attr->id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION)
-    {
-        vpp_update_dhcp6_trap_action();
-    }
-
     return SAI_STATUS_SUCCESS;
-}
-
-/*
- * DHCPv4 client broadcasts are flooded and copied only while every DHCP
- * trap asks for COPY. orchagent may create a trap's replacement before it
- * removes the old one, so a lone COPY trap does not win over a TRAP one
- * still present.
- */
-void SwitchVpp::vpp_update_dhcp_trap_action()
-{
-    SWSS_LOG_ENTER();
-
-    bool any = false;
-    bool all_copy = true;
-
-    {
-        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
-
-        for (auto &kv : m_trap_map)
-        {
-            if (kv.second.trap_type != SAI_HOSTIF_TRAP_TYPE_DHCP)
-            {
-                continue;
-            }
-
-            any = true;
-
-            if (kv.second.packet_action != SAI_PACKET_ACTION_COPY)
-            {
-                all_copy = false;
-            }
-        }
-    }
-
-    vpp_set_dhcp_trap_state(any, any && all_copy);
-}
-
-/*
- * The DHCPv6 counterpart of vpp_update_dhcp_trap_action(): DHCPv6 client
- * multicast is flooded and copied only while every DHCPv6 trap asks for COPY.
- */
-void SwitchVpp::vpp_update_dhcp6_trap_action()
-{
-    SWSS_LOG_ENTER();
-
-    bool any = false;
-    bool all_copy = true;
-
-    {
-        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
-
-        for (auto &kv : m_trap_map)
-        {
-            if (kv.second.trap_type != SAI_HOSTIF_TRAP_TYPE_DHCPV6)
-            {
-                continue;
-            }
-
-            any = true;
-
-            if (kv.second.packet_action != SAI_PACKET_ACTION_COPY)
-            {
-                all_copy = false;
-            }
-        }
-    }
-
-    vpp_set_dhcp6_trap_state(any, any && all_copy);
 }

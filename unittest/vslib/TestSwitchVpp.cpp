@@ -3676,26 +3676,31 @@ class SwitchVppDhcpTrap : public ::testing::Test
             vppMock().reset();
         }
 
-        sai_object_id_t createTrap(
+        sai_status_t tryCreateTrap(
                 sai_packet_action_t action,
-                sai_hostif_trap_type_t trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP)
+                sai_hostif_trap_type_t trap_type,
+                sai_object_id_t &oid)
         {
             SWSS_LOG_ENTER();
 
-            auto oid = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_HOSTIF_TRAP, m_switchId);
-
-            sai_attribute_t attrs[3];
-
+            oid = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_HOSTIF_TRAP, m_switchId);
+            sai_attribute_t attrs[3]{};
             attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
             attrs[0].value.s32 = trap_type;
             attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
             attrs[1].value.s32 = action;
             attrs[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP;
             attrs[2].value.oid = m_trapGroup;
+            return m_sw->createHostifTrap(oid, m_switchId, 3, attrs);
+        }
 
+        sai_object_id_t createTrap(
+                sai_packet_action_t action,
+                sai_hostif_trap_type_t trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP)
+        {
+            sai_object_id_t oid;
             EXPECT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->createHostifTrap(oid, m_switchId, 3, attrs));
-
+                    tryCreateTrap(action, trap_type, oid));
             return oid;
         }
 
@@ -4244,137 +4249,65 @@ TEST_F(SwitchVppDhcpTrap, AVrfTableReceivesLimitedBroadcastsUntilItIsRemoved)
     EXPECT_TRUE(policesLimitedBroadcast());
 }
 
-TEST_F(SwitchVppDhcpTrap, FailedActiveRouteTransitionIsRetriedWithoutAStateChange)
+TEST_F(SwitchVppDhcpTrap, TrapCreatePropagatesRouteFailureAndRetrySucceeds)
 {
     auto vrf = m_mgr->allocateNewObjectId(
             SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
-
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
-    ASSERT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
-
-    vppMock().ipRouteResult = -1;
-    createTrap(SAI_PACKET_ACTION_TRAP);
-
-    // The trap's desired state is retained, but a failed add is not recorded
-    // as installed.
-    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
-    ASSERT_EQ(1u, vppMock().ipRouteCalls);
-
-    vppMock().ipRouteResult = 0;
     ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
 
-    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
-    EXPECT_EQ(2u, vppMock().ipRouteCalls);
-}
-
-TEST_F(SwitchVppDhcpTrap, FailedInactiveRouteTransitionIsRetriedWithoutAStateChange)
-{
-    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
-    auto vrf = m_mgr->allocateNewObjectId(
-            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
-
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
-    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
-
-    vppMock().ipRouteResult = -1;
-    removeTrap(trap);
-
-    // A failed delete remains confirmed installed and therefore pending.
-    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
-    ASSERT_EQ(2u, vppMock().ipRouteCalls);
-
-    vppMock().ipRouteResult = 0;
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
-
-    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
-    EXPECT_EQ(3u, vppMock().ipRouteCalls);
-}
-
-TEST_F(SwitchVppDhcpTrap, AmbiguousAddIsCleanedUpWhenTheFinalTrapIsRemoved)
-{
-    auto vrf = m_mgr->allocateNewObjectId(
-            SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
-
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
-    ASSERT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
-
-    // VPP installs the route, but the reply is lost.  Confirmed state still
-    // says absent while the dataplane is now active.
     vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
-    auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
-
-    ASSERT_EQ(1u, vppMock().ipRouteCalls);
-    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
-
-    // The final removal must use uncertain state, not confirmed==desired, to
-    // discover and remove the route that the timed-out add left behind.
-    removeTrap(trap);
-
-    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+    sai_object_id_t failed;
+    EXPECT_EQ(SAI_STATUS_FAILURE, tryCreateTrap(SAI_PACKET_ACTION_TRAP,
+            SAI_HOSTIF_TRAP_TYPE_DHCP, failed));
     EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_EQ(nullptr, m_sw->get_sai_object(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(failed)));
 
-    // Successful cleanup commits absent state and clears uncertainty.
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
-    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+    sai_object_id_t retry;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, tryCreateTrap(SAI_PACKET_ACTION_TRAP,
+            SAI_HOSTIF_TRAP_TYPE_DHCP, retry));
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
 }
-
-TEST_F(SwitchVppDhcpTrap, AmbiguousDeleteIsRetriedWhenConfirmedAlreadyMatchesDesired)
+TEST_F(SwitchVppDhcpTrap, TrapRemovePropagatesRouteFailureAndRestoresOwner)
 {
     auto vrf = m_mgr->allocateNewObjectId(
             SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
-
     ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
-
-    // First make the add ambiguous, so confirmed state remains absent.
-    vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
     auto trap = createTrap(SAI_PACKET_ACTION_COPY);
     ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
 
-    // Cleanup also takes effect but times out.  Confirmed and desired state
-    // are both absent now, but this second uncertain operation still needs a
-    // retry before it can be considered committed.
     vppMock().ipRouteFailAfterApplyOnCalls.insert(2);
-    removeTrap(trap);
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->removeHostifTrap(sai_serialize_object_id(trap)));
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_NE(nullptr, m_sw->get_sai_object(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
 
-    ASSERT_EQ(2u, vppMock().ipRouteCalls);
-    ASSERT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
-
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
-    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->removeHostifTrap(sai_serialize_object_id(trap)));
     EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
-
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
-    EXPECT_EQ(3u, vppMock().ipRouteCalls);
 }
-
-TEST_F(SwitchVppDhcpTrap, MultiVrfReconcilePreservesPerTablePartialSuccess)
+TEST_F(SwitchVppDhcpTrap, MultiVrfCreateFailureRollsBackPartialRouteSuccess)
 {
     auto first = m_mgr->allocateNewObjectId(
             SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
     auto second = m_mgr->allocateNewObjectId(
             SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
-
     ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(first, VRF_TABLE));
     ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(second, VRF_TABLE + 1));
 
-    // The first table becomes uncertain, but reconciliation must continue and
-    // commit the independent second table rather than rolling it back.
     vppMock().ipRouteFailAfterApplyOnCalls.insert(1);
-    createTrap(SAI_PACKET_ACTION_TRAP);
+    sai_object_id_t failed;
+    EXPECT_EQ(SAI_STATUS_FAILURE, tryCreateTrap(SAI_PACKET_ACTION_TRAP,
+            SAI_HOSTIF_TRAP_TYPE_DHCP, failed));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE + 1));
 
-    ASSERT_EQ(2u, vppMock().ipRouteCalls);
-    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
-    ASSERT_TRUE(receivesLimitedBroadcast(VRF_TABLE + 1));
-
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(second, VRF_TABLE + 1));
-    EXPECT_EQ(2u, vppMock().ipRouteCalls);
-
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(first, VRF_TABLE));
-    EXPECT_EQ(3u, vppMock().ipRouteCalls);
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(first, VRF_TABLE));
-    EXPECT_EQ(3u, vppMock().ipRouteCalls);
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE + 1));
+    removeTrap(trap);
 }
-
 TEST_F(SwitchVppDhcpTrap, AmbiguousTableZeroVrfSetupIsCleanedUpAndRetryable)
 {
     auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
@@ -4420,21 +4353,20 @@ TEST_F(SwitchVppDhcpTrap, AmbiguousNewTableVrfSetupRetainsItsIdAcrossRollback)
     EXPECT_EQ(0u, vppMock().vrfTables.count(VRF_TABLE));
     EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
 
-    // Final trap removal discovers the table ID that otherwise has no owner.
-    // The table is absent, so cleanup remains uncertain and can be retried.
-    removeTrap(trap);
-    EXPECT_EQ(2u, vppMock().ipRouteCalls);
+    // The absent table prevents authoritative cleanup, so trap removal fails
+    // and leaves the owner published for retry.
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->removeHostifTrap(sai_serialize_object_id(trap)));
+    EXPECT_NE(nullptr, m_sw->get_sai_object(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
 
-    // Recreating the table gives the retained cleanup a place to complete;
-    // only then is the VRF owner published and uncertainty cleared.
+    // Recreating the table first reconciles the still-active owner. The
+    // retried remove can then commit the absent route and object together.
     ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
-    EXPECT_NE(nullptr, m_sw->vpp_get_ip_vrf(vrf));
-    EXPECT_EQ(1u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->removeHostifTrap(sai_serialize_object_id(trap)));
     EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
-    EXPECT_EQ(3u, vppMock().ipRouteCalls);
-
-    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
-    EXPECT_EQ(3u, vppMock().ipRouteCalls);
 }
 
 TEST_F(SwitchVppDhcpTrap, VrfAddRouteFailureRollsBackCacheAndRetrySucceeds)
@@ -4651,6 +4583,30 @@ TEST_F(SwitchVppDhcp6Trap, SetAttributeSwitchesBetweenTrapAndCopyOnExistingMembe
     expectCopy6();
 }
 
+TEST_F(SwitchVppDhcp6Trap, PartialClassifierFailureRollsBackAndRetrySucceeds)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY,
+            SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi();
+    expectCopy6();
+
+    sai_attribute_t attr{};
+    attr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attr.value.s32 = SAI_PACKET_ACTION_TRAP;
+    vppMock().classifySessionFailAfterApplyOnCalls.insert(
+            vppMock().classifySessionCalls + 1);
+
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    expectCopy6();
+
+    vppMock().classifySessionFailAfterApplyOnCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    expectTrap6();
+}
+
 TEST_F(SwitchVppDhcp6Trap, UntaggedMemberReaddRestoresTerminalTrap)
 {
     createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
@@ -4765,6 +4721,43 @@ TEST_F(SwitchVppDhcp6Trap, RoutedPortReceivesWhileTheDhcp6TrapIsActive)
     EXPECT_EQ(0u, g_ip6LocalForwardTables.count(7));
 }
 
+TEST_F(SwitchVppDhcp6Trap, EnablingIpv6OnExistingRifInstallsReceiveRoute)
+{
+    auto rif = storePortRif("Ethernet8");
+    vppMock().interfaceVrfs["Ethernet8"] = 7;
+
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    admin.value.booldata = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+            sai_serialize_object_id(rif), &admin));
+
+    createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    EXPECT_TRUE(g_ip6LocalMroutes.empty());
+
+    admin.value.booldata = true;
+    vppMock().ip6MrouteFailBeforeApplyOnCalls.insert(
+            vppMock().ip6MrouteCalls + 1);
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->vpp_update_router_interface(rif, 1, &admin));
+    EXPECT_TRUE(g_ip6LocalMroutes.empty());
+
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+    EXPECT_FALSE(stored.value.booldata);
+
+    vppMock().ip6MrouteFailBeforeApplyOnCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->vpp_update_router_interface(rif, 1, &admin));
+
+    EXPECT_EQ(1u, g_ip6LocalMroutes.count(std::make_tuple(
+            7u, std::string("ff02::1:2/128"), std::string("Ethernet8"))));
+    EXPECT_EQ(1u, g_ip6LocalForwardTables.count(7));
+}
+
 TEST_F(SwitchVppDhcp6Trap, RoutedPortsInOneTableShareTheLocalForwardPath)
 {
     storePortRif("Ethernet8");
@@ -4783,7 +4776,7 @@ TEST_F(SwitchVppDhcp6Trap, RoutedPortsInOneTableShareTheLocalForwardPath)
     EXPECT_EQ(0u, g_ip6LocalForwardTables.count(7));
 }
 
-TEST_F(SwitchVppDhcp6Trap, FailedFirstAddCannotLeaveSuccessfulPeerWithoutLocalForward)
+TEST_F(SwitchVppDhcp6Trap, FailedFirstAddRollsBackPeerAndRetryRestoresDelivery)
 {
     storePortRif("Ethernet8");
     storePortRif("Ethernet12");
@@ -4791,45 +4784,33 @@ TEST_F(SwitchVppDhcp6Trap, FailedFirstAddCannotLeaveSuccessfulPeerWithoutLocalFo
     vppMock().interfaceVrfs["Ethernet12"] = 7;
     vppMock().ip6MrouteFailBeforeApplyOnCalls.insert(1);
 
-    createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    sai_object_id_t failed;
+    EXPECT_EQ(SAI_STATUS_FAILURE, tryCreateTrap(SAI_PACKET_ACTION_TRAP,
+            SAI_HOSTIF_TRAP_TYPE_DHCPV6, failed));
+    EXPECT_TRUE(g_ip6LocalMroutes.empty());
+    EXPECT_EQ(0u, g_ip6LocalForwardTables.count(7));
 
-    // Whichever owner is visited second must include the idempotent local
-    // Forward path; an uncertain first add is not proof that it exists.
-    EXPECT_EQ(1u, g_ip6LocalMroutes.size());
-    EXPECT_EQ(1u, g_ip6LocalForwardTables.count(7));
-
-    m_sw->vpp_set_dhcp6_trap_state(true, false);
-
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP,
+            SAI_HOSTIF_TRAP_TYPE_DHCPV6);
     EXPECT_EQ(2u, g_ip6LocalMroutes.size());
     EXPECT_EQ(1u, g_ip6LocalForwardTables.count(7));
-    auto calls = vppMock().ip6MrouteCalls;
-    m_sw->vpp_set_dhcp6_trap_state(true, false);
-    EXPECT_EQ(calls, vppMock().ip6MrouteCalls);
+    removeTrap(trap);
 }
-
-TEST_F(SwitchVppDhcp6Trap, AmbiguousRoutedAddIsRemovedByCreateRollback)
+TEST_F(SwitchVppDhcp6Trap, AmbiguousRoutedAddIsRemovedBeforeCreateFails)
 {
     storePortRif("Ethernet8");
     vppMock().interfaceVrfs["Ethernet8"] = 7;
     vppMock().ip6MrouteFailAfterApplyOnCalls.insert(1);
 
-    createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    sai_object_id_t failed;
+    EXPECT_EQ(SAI_STATUS_FAILURE, tryCreateTrap(SAI_PACKET_ACTION_TRAP,
+            SAI_HOSTIF_TRAP_TYPE_DHCPV6, failed));
 
-    auto route = std::make_tuple(7u, std::string("ff02::1:2/128"),
-            std::string("Ethernet8"));
-    ASSERT_EQ(1u, g_ip6LocalMroutes.count(route));
-    ASSERT_EQ(1u, vppMock().ip6MrouteCalls);
-
-    SwitchVpp::RifCreateState state;
-    state.hwif = "Ethernet8";
-    state.dhcp6_mroute_added = true;
-    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->rollbackRifCreate(state));
-
-    EXPECT_EQ(0u, g_ip6LocalMroutes.count(route));
+    EXPECT_TRUE(g_ip6LocalMroutes.empty());
     EXPECT_EQ(0u, g_ip6LocalForwardTables.count(7));
-    EXPECT_EQ(2u, vppMock().ip6MrouteCalls);
+    EXPECT_EQ(nullptr, m_sw->get_sai_object(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(failed)));
 }
-
 TEST_F(SwitchVppDhcp6Trap, FailedCreateRollbackPreservesBviForExactKeyRetry)
 {
     createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
@@ -4842,45 +4823,50 @@ TEST_F(SwitchVppDhcp6Trap, FailedCreateRollbackPreservesBviForExactKeyRetry)
     state.bvi = true;
     state.interface_created = true;
     state.dhcp6_mroute_added = true;
+    state.dhcp6_table_valid = true;
+    state.dhcp6_table_id = 0;
 
     EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->rollbackRifCreate(state));
     EXPECT_TRUE(bviReceivesDhcp6());
     EXPECT_EQ(1u, vppMock().interfaces.count("bvi100"));
+
+    // Cleanup must retain the table used by the failed add, not follow a
+    // later interface rebinding.
+    vppMock().interfaceVrfs["bvi100"] = 8;
 
     // The failed cleanup is journaled with table+interface and remains
     // retryable even if no SAI RIF scan rediscovers the failed create.
     ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove_internal(
             SAI_OBJECT_TYPE_ROUTER_INTERFACE,
             sai_serialize_object_id(m_rif)));
-    m_sw->vpp_set_dhcp6_trap_state(false, false);
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->vpp_set_dhcp6_trap_state(false, false));
     EXPECT_FALSE(bviReceivesDhcp6());
+    EXPECT_EQ(0u, vppMock().interfaces.count("bvi100"));
+    EXPECT_TRUE(m_sw->m_pending_rif_create_rollbacks.empty());
+
+    createBvi();
+    EXPECT_EQ(1u, vppMock().interfaces.count("bvi100"));
 }
 
-TEST_F(SwitchVppDhcp6Trap, AmbiguousDeleteIsRetriedWhenConfirmedStateMatchesAbsent)
+TEST_F(SwitchVppDhcp6Trap, AmbiguousDeleteRestoresTrapAndRetryRemovesIt)
 {
     storePortRif("Ethernet8");
     vppMock().interfaceVrfs["Ethernet8"] = 7;
-
     auto trap = createTrap(SAI_PACKET_ACTION_TRAP,
             SAI_HOSTIF_TRAP_TYPE_DHCPV6);
-    ASSERT_EQ(1u, vppMock().ip6MrouteCalls);
 
     vppMock().ip6MrouteFailAfterApplyOnCalls.insert(2);
-    removeTrap(trap);
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->removeHostifTrap(sai_serialize_object_id(trap)));
+    EXPECT_EQ(1u, g_ip6LocalMroutes.size());
+    EXPECT_NE(nullptr, m_sw->get_sai_object(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
 
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->removeHostifTrap(sai_serialize_object_id(trap)));
     EXPECT_TRUE(g_ip6LocalMroutes.empty());
-    ASSERT_EQ(2u, vppMock().ip6MrouteCalls);
-
-    // The operation remains uncertain although the dataplane and requested
-    // state are both absent, so unchanged-state reconciliation retries it.
-    m_sw->vpp_set_dhcp6_trap_state(false, false);
-
-    EXPECT_TRUE(g_ip6LocalMroutes.empty());
-    EXPECT_EQ(3u, vppMock().ip6MrouteCalls);
-    m_sw->vpp_set_dhcp6_trap_state(false, false);
-    EXPECT_EQ(3u, vppMock().ip6MrouteCalls);
 }
-
 TEST_F(SwitchVppDhcp6Trap, ClassifierKeysOnlyOnTheDhcp6DestinationMac)
 {
     createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);

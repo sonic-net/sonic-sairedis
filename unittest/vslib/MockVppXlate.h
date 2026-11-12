@@ -226,6 +226,9 @@ struct VppMock
     std::map<std::pair<std::string, std::string>, uint32_t> nodeNexts;
     std::map<std::string, uint32_t> nodeNextCounts;
     std::map<std::string, std::array<uint32_t, 3>> l2ClassifyTables;
+    unsigned int classifySessionCalls = 0;
+    std::set<unsigned int> classifySessionFailOnCalls;
+    std::set<unsigned int> classifySessionFailAfterApplyOnCalls;
 
     std::map<std::string, uint32_t> interfaceVrfs;
     std::set<uint32_t> vrfTables;

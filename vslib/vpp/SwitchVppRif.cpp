@@ -2093,89 +2093,159 @@ sai_status_t SwitchVpp::rollbackRifCreate(
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = SAI_STATUS_SUCCESS;
-    auto check = [&](int result, const char *operation) {
-        if (result != 0)
-        {
-            SWSS_LOG_ERROR("RIF create rollback: %s failed on %s (%d)",
-                    operation, state.hwif.c_str(), result);
-            status = SAI_STATUS_FAILURE;
-        }
+    RifCreateState remaining = state;
+    auto fail = [&](const char *operation, int result) {
+        SWSS_LOG_ERROR("RIF create rollback: %s failed on %s (%d)",
+                operation, state.hwif.c_str(), result);
+        m_pending_rif_create_rollbacks[state.hwif] = remaining;
+        return SAI_STATUS_FAILURE;
     };
 
-    if (state.dhcp6_mroute_added)
+    if (remaining.refresh_required)
     {
-        int ret = vpp_dhcp6_mroute(state.hwif.c_str(), false);
+        int ret = refresh_interfaces_list();
         if (ret != 0)
         {
-            /* The MFIB path is keyed by this interface. Keep the interface,
-             * its registry record, and all dependent resources alive until
-             * the exact-key delete is confirmed; otherwise a timed-out
-             * cleanup becomes an orphan that no later retry can address. */
-            SWSS_LOG_ERROR("RIF create rollback: remove DHCPv6 multicast "
-                    "receive failed on %s (%d); preserving interface for retry",
-                    state.hwif.c_str(), ret);
-            return SAI_STATUS_FAILURE;
+            return fail("refresh interfaces", ret);
         }
+        m_pending_rif_create_rollbacks.erase(state.hwif);
+        return SAI_STATUS_SUCCESS;
     }
-    if (state.bridge_attached)
+
+    if (remaining.dhcp6_mroute_added)
     {
-        check(set_sw_interface_l2_bridge(state.hwif.c_str(), state.vlan,
-                    false, VPP_API_PORT_TYPE_BVI), "detach bridge");
+        int ret = remaining.dhcp6_table_valid ?
+            vpp_dhcp6_mroute_table(remaining.dhcp6_table_id,
+                    state.hwif.c_str(), false) :
+            vpp_dhcp6_mroute(state.hwif.c_str(), false);
+        if (ret != 0)
+        {
+            return fail("remove DHCPv6 multicast receive", ret);
+        }
+        remaining.dhcp6_mroute_added = false;
     }
-    if (state.lcp_created)
+    if (remaining.bridge_attached)
     {
-        check(configure_lcp_interface(state.hwif.c_str(), state.tap.c_str(), false),
-                "delete LCP pair");
+        int ret = set_sw_interface_l2_bridge(state.hwif.c_str(), state.vlan,
+                false, VPP_API_PORT_TYPE_BVI);
+        if (ret != 0)
+        {
+            return fail("detach bridge", ret);
+        }
+        remaining.bridge_attached = false;
     }
-    if (state.interface_created)
+    if (remaining.lcp_created)
+    {
+        int ret = configure_lcp_interface(state.hwif.c_str(), state.tap.c_str(), false);
+        if (ret != 0)
+        {
+            return fail("delete LCP pair", ret);
+        }
+        remaining.lcp_created = false;
+    }
+    if (remaining.interface_created)
     {
         int ret = state.bvi ? delete_bvi_interface(state.hwif.c_str()) :
             delete_sub_interface(state.parent.c_str(), state.vlan);
-        check(ret, "delete interface");
-        if (ret == 0)
+        if (ret != 0)
         {
-            m_ifaceRegistry.remove(state.hwif);
-            if (!state.bvi)
-            {
-                m_sub_if_admin_up_pending.erase(state.hwif);
-            }
+            return fail("delete interface", ret);
         }
-        check(refresh_interfaces_list(), "refresh interfaces");
+        remaining.interface_created = false;
+        m_ifaceRegistry.remove(state.hwif);
+        if (!state.bvi)
+        {
+            m_sub_if_admin_up_pending.erase(state.hwif);
+        }
+        RifCreateState refresh;
+        refresh.hwif = state.hwif;
+        refresh.refresh_required = true;
+        remaining = refresh;
+        ret = refresh_interfaces_list();
+        if (ret != 0)
+        {
+            return fail("refresh interfaces", ret);
+        }
     }
     else
     {
-        if (state.admin_changed)
+        if (remaining.admin_changed)
         {
-            check(interface_set_state(state.hwif.c_str(), state.previous_state.admin_up),
-                    "restore admin state");
+            int ret = interface_set_state(state.hwif.c_str(),
+                    state.previous_state.admin_up);
+            if (ret != 0)
+            {
+                return fail("restore admin state", ret);
+            }
+            remaining.admin_changed = false;
         }
-        if (state.loopback_applied)
+        if (remaining.loopback_applied)
         {
-            check(vpp_apply_loopback_action(state.hwif, SAI_PACKET_ACTION_FORWARD),
-                    "restore loopback action");
+            sai_status_t ret = vpp_apply_loopback_action(
+                    state.hwif, SAI_PACKET_ACTION_FORWARD);
+            if (ret != SAI_STATUS_SUCCESS)
+            {
+                return fail("restore loopback action", ret);
+            }
+            remaining.loopback_applied = false;
         }
-        if (state.ip6_enabled)
+        if (remaining.ip6_enabled)
         {
-            // through the wrapper, so an interface something else already
-            // dropped the last lock on is not reported as a rollback failure
-            check(vpp_rif_ip6_enable_disable(state.hwif, false),
-                    "release IPv6 reference");
+            sai_status_t ret = vpp_rif_ip6_enable_disable(state.hwif, false);
+            if (ret != SAI_STATUS_SUCCESS)
+            {
+                return fail("release IPv6 reference", ret);
+            }
+            remaining.ip6_enabled = false;
         }
-        if (state.mpls_changed)
+        if (remaining.mpls_changed)
         {
-            check(sw_interface_set_mpls_enable(state.hwif.c_str(), state.previous_mpls),
-                    "restore MPLS state");
+            int ret = sw_interface_set_mpls_enable(
+                    state.hwif.c_str(), state.previous_mpls);
+            if (ret != 0)
+            {
+                return fail("restore MPLS state", ret);
+            }
+            remaining.mpls_changed = false;
         }
-        if (state.mtu_changed)
+        if (remaining.mtu_changed)
         {
-            check(sw_interface_set_mtu_all(state.hwif.c_str(), state.previous_state.mtu),
-                    "restore MTU");
+            int ret = sw_interface_set_mtu_all(
+                    state.hwif.c_str(), state.previous_state.mtu);
+            if (ret != 0)
+            {
+                return fail("restore MTU", ret);
+            }
+            remaining.mtu_changed = false;
         }
-        if (state.vrf_changed)
+        if (remaining.vrf_changed)
         {
-            check(set_interface_vrf(state.hwif.c_str(), 0, state.previous_vrf, false),
-                    "restore IPv4 VRF");
+            int ret = set_interface_vrf(
+                    state.hwif.c_str(), 0, state.previous_vrf, false);
+            if (ret != 0)
+            {
+                return fail("restore IPv4 VRF", ret);
+            }
+            remaining.vrf_changed = false;
+        }
+    }
+
+    m_pending_rif_create_rollbacks.erase(state.hwif);
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::retryPendingRifCreateRollbacks()
+{
+    SWSS_LOG_ENTER();
+
+    auto pending = m_pending_rif_create_rollbacks;
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    for (const auto &entry : pending)
+    {
+        if (rollbackRifCreate(entry.second) != SAI_STATUS_SUCCESS)
+        {
+            status = SAI_STATUS_FAILURE;
         }
     }
 
@@ -2242,6 +2312,10 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         _Inout_ RifCreateState& state)
 {
     SWSS_LOG_ENTER();
+
+    /* Finish any durable partial-create cleanup before another RIF create can
+     * collide with its BVI/subinterface or LCP pair. */
+    CHECK_STATUS(retryPendingRifCreateRollbacks());
 
     auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
     if (attr_loopback != nullptr)
@@ -2653,7 +2727,14 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         /* Set before dispatch so an applied-but-timed-out add is cleaned by
          * rollback even though confirmed route state did not advance. */
         state.dhcp6_mroute_added = true;
-        if (vpp_dhcp6_mroute(state.hwif.c_str(), true) != 0)
+        if (get_interface_vrf(state.hwif.c_str(), true,
+                &state.dhcp6_table_id) != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+        state.dhcp6_table_valid = true;
+        if (vpp_dhcp6_mroute_table(state.dhcp6_table_id,
+                state.hwif.c_str(), true) != 0)
         {
             return SAI_STATUS_FAILURE;
         }
@@ -2814,27 +2895,68 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
                      sai_serialize_object_id(object_id), attr_loopback);
     }
 
-    bool v4_is_up = false, v6_is_up = false;
-
-    auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
-
-    if (attr_type_v4 != NULL)
-    {
-        v4_is_up = attr_type_v4->value.booldata;
-    }
-    auto attr_type_v6 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
-
-    if (attr_type_v6 != NULL)
-    {
-        v6_is_up = attr_type_v6->value.booldata;
-    }
+    auto attr_type_v4 = sai_metadata_get_attr_by_id(
+            SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
+    auto attr_type_v6 = sai_metadata_get_attr_by_id(
+            SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
 
     if (attr_type_v4 != NULL || attr_type_v6 != NULL)
     {
-        return vpp_set_interface_state(obj_id, vlan_id, (v4_is_up || v6_is_up));
-    } else {
+        auto stored_admin = [&](sai_attr_id_t id) {
+            sai_attribute_t current{};
+            current.id = id;
+            return get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1,
+                    &current) == SAI_STATUS_SUCCESS ?
+                current.value.booldata : true;
+        };
+        const bool old_v4 = stored_admin(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE);
+        const bool old_v6 = stored_admin(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE);
+        const bool new_v4 = attr_type_v4 != NULL ?
+            attr_type_v4->value.booldata : old_v4;
+        const bool new_v6 = attr_type_v6 != NULL ?
+            attr_type_v6->value.booldata : old_v6;
+
+        CHECK_STATUS(vpp_set_interface_state(obj_id, vlan_id,
+                new_v4 || new_v6));
+
+        if (attr_type_v6 != NULL)
+        {
+            std::string hwif = m_ifaceRegistry.resolveHwIfName(obj_id, vlan_id);
+            auto rollback = [&]() {
+                sai_status_t state_status = vpp_set_interface_state(
+                        obj_id, vlan_id, old_v4 || old_v6);
+                int route_status = hwif.empty() ? -1 :
+                    vpp_dhcp6_mroute(hwif.c_str(),
+                            old_v6 && m_dhcp6_trap_active);
+                return state_status == SAI_STATUS_SUCCESS && route_status == 0 ?
+                    SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
+            };
+
+            if (hwif.empty() || vpp_dhcp6_mroute(hwif.c_str(),
+                    new_v6 && m_dhcp6_trap_active) != 0)
+            {
+                if (rollback() != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to restore RIF %s after DHCPv6 "
+                            "receive update failure", hwif.c_str());
+                }
+                return SAI_STATUS_FAILURE;
+            }
+            sai_status_t status = set_internal(
+                    SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                    sai_serialize_object_id(object_id), attr_type_v6);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                sai_status_t rollback_status = rollback();
+                return rollback_status == SAI_STATUS_SUCCESS ?
+                    status : rollback_status;
+            }
+        }
+
         return SAI_STATUS_SUCCESS;
     }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)

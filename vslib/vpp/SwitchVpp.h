@@ -179,6 +179,9 @@ namespace saivs
                 bool lcp_created = false;
                 bool bridge_attached = false;
                 bool dhcp6_mroute_added = false;
+                uint32_t dhcp6_table_id = 0;
+                bool dhcp6_table_valid = false;
+                bool refresh_required = false;
                 bool loopback_applied = false;
                 bool vrf_changed = false;
                 bool mtu_changed = false;
@@ -190,6 +193,10 @@ namespace saivs
 
             sai_status_t rollbackRifCreate(
                     _In_ const RifCreateState& state);
+
+            sai_status_t retryPendingRifCreateRollbacks();
+
+            std::map<std::string, RifCreateState> m_pending_rif_create_rollbacks;
 
             sai_status_t vpp_register_router_interface(
                     _In_ sai_object_id_t rif_oid,
@@ -1270,11 +1277,7 @@ namespace saivs
                     _In_ uint32_t vrf_id,
                     _In_ bool receive);
 
-            // Re-derives active/COPY state from m_trap_map and reconciles it,
-            // including any previously failed per-VRF route operation.
-            void vpp_update_dhcp_trap_action();
-
-            void vpp_set_dhcp_trap_state(
+            sai_status_t vpp_set_dhcp_trap_state(
                     _In_ bool active,
                     _In_ bool copy);
 
@@ -1296,10 +1299,7 @@ namespace saivs
             std::map<uint32_t, std::set<std::string>> m_dhcp6_mroute_ifaces;
             std::map<std::pair<uint32_t, std::string>, bool> m_dhcp6_mroute_uncertain_ifaces;
 
-            // Re-derives active/COPY state from m_trap_map and applies it.
-            void vpp_update_dhcp6_trap_action();
-
-            void vpp_set_dhcp6_trap_state(
+            sai_status_t vpp_set_dhcp6_trap_state(
                     _In_ bool active,
                     _In_ bool copy);
 

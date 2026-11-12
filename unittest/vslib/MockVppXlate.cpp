@@ -1071,6 +1071,11 @@ int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_inde
         int32_t advance, uint8_t action)
 {
     SWSS_LOG_ENTER();
+    const unsigned int call = ++vppMock().classifySessionCalls;
+    if (vppMock().classifySessionFailOnCalls.count(call) != 0)
+    {
+        return -1;
+    }
     (void)opaque_index;
     (void)advance;
     (void)action;
@@ -1084,20 +1089,28 @@ int __wrap_vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_inde
             it->second, match, match_len)] = hit_next_index;
     vppMock().classifySessions.push_back({table_index, hit_next_index,
             std::vector<uint8_t>(match, match + match_len)});
-    return 0;
+    return vppMock().classifySessionFailAfterApplyOnCalls.count(call) == 0 ?
+        0 : -1;
 }
 
 int __wrap_vpp_classify_session_del(uint32_t table_index,
         const uint8_t *match, uint32_t match_len)
 {
     SWSS_LOG_ENTER();
+    const unsigned int call = ++vppMock().classifySessionCalls;
+    if (vppMock().classifySessionFailOnCalls.count(call) != 0)
+    {
+        return -1;
+    }
     auto it = vppMock().classifyTables.find(table_index);
     if (it == vppMock().classifyTables.end())
     {
         return -1;
     }
-    return it->second.sessions.erase(maskedClassifyKey(
-            it->second, match, match_len)) == 1 ? 0 : -1;
+    it->second.sessions.erase(maskedClassifyKey(
+            it->second, match, match_len));
+    return vppMock().classifySessionFailAfterApplyOnCalls.count(call) == 0 ?
+        0 : -1;
 }
 
 int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t ip4_table_index,
