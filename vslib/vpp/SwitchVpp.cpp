@@ -1247,6 +1247,13 @@ sai_status_t SwitchVpp::queryAttributeCapability(
     capability->set_implemented    = implemented;
     capability->get_implemented    = implemented;
 
+    // A tunnel's VPP tunnels take its TTL model when VPP creates them
+    if (object_type == SAI_OBJECT_TYPE_TUNNEL &&
+            attr_id == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE)
+    {
+        capability->set_implemented = false;
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -1778,6 +1785,14 @@ sai_status_t SwitchVpp::create(
 
         auto attr_loopback = sai_metadata_get_attr_by_id(SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
         std::vector<sai_attribute_t> effective_attrs;
+
+        auto attr_type = sai_metadata_get_attr_by_id(SAI_TUNNEL_ATTR_TYPE, attr_count, attr_list);
+        auto attr_ttl = sai_metadata_get_attr_by_id(SAI_TUNNEL_ATTR_ENCAP_TTL_VAL, attr_count, attr_list);
+        if (attr_type != nullptr && attr_type->value.s32 == SAI_TUNNEL_TYPE_IPINIP && attr_ttl != nullptr)
+        {
+            CHECK_STATUS(validateEncapTtl(serializedObjectId, attr_ttl->value.u8));
+        }
+
         if (attr_loopback != nullptr)
         {
             CHECK_STATUS(validateLoopbackAction(attr_loopback->value.s32));
@@ -2652,7 +2667,9 @@ sai_status_t SwitchVpp::set(
     }
 
     if (objectType == SAI_OBJECT_TYPE_TUNNEL &&
-        attr->id == SAI_TUNNEL_ATTR_ENCAP_TTL_VAL)
+        (attr->id == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE ||
+         attr->id == SAI_TUNNEL_ATTR_ENCAP_TTL_VAL) &&
+        isIpInIpTunnel(serializedObjectId))
     {
         return setTunnelEncapTtl(serializedObjectId, attr);
     }
@@ -2864,6 +2881,30 @@ sai_status_t SwitchVpp::setTunnelEncapTtl(
 {
     SWSS_LOG_ENTER();
 
+    if (attr->id == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE)
+    {
+        /*
+         * VPP gives the uniform model with a flag of the VPP tunnel when it
+         * creates it, so the model can't change: only a SET of the one the
+         * tunnel has is taken.
+         */
+        auto tunnel_obj = get_sai_object(SAI_OBJECT_TYPE_TUNNEL, serializedObjectId);
+        sai_attribute_t mode;
+        mode.id = SAI_TUNNEL_ATTR_ENCAP_TTL_MODE;
+        int32_t current = (tunnel_obj && tunnel_obj->get_attr(mode) == SAI_STATUS_SUCCESS) ?
+            mode.value.s32 : SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL;
+        if (attr->value.s32 != current)
+        {
+            SWSS_LOG_ERROR("Cannot change the encap TTL mode of tunnel %s: VPP takes it when it creates the tunnel",
+                           serializedObjectId.c_str());
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+
+        return set_internal(SAI_OBJECT_TYPE_TUNNEL, serializedObjectId, attr);
+    }
+
+    CHECK_STATUS(validateEncapTtl(serializedObjectId, attr->value.u8));
+
     // VPP can only give a tunnel a fixed outer TTL with the sonic-ext feature
     bool enabled = false;
     CHECK_STATUS(sonicExtFeatureEnabled("tunnel-encap-ttl", enabled));
@@ -2877,6 +2918,35 @@ sai_status_t SwitchVpp::setTunnelEncapTtl(
     return setTunnelAttrOfVppTunnels(serializedObjectId, attr,
             [this](sai_object_id_t tunnel_oid)
             { return m_tunnel_mgr_ipip.update_tunnel_encap_ttl(tunnel_oid); });
+}
+
+sai_status_t SwitchVpp::validateEncapTtl(
+        _In_ const std::string &serializedObjectId,
+        _In_ uint8_t ttl)
+{
+    SWSS_LOG_ENTER();
+
+    // The sonic-ext plugin takes an encap TTL of 0 as none
+    if (ttl == 0)
+    {
+        SWSS_LOG_ERROR("Tunnel %s: an encap TTL of 0 is not supported", serializedObjectId.c_str());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+bool SwitchVpp::isIpInIpTunnel(
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    auto tunnel_obj = get_sai_object(SAI_OBJECT_TYPE_TUNNEL, serializedObjectId);
+    sai_attribute_t type;
+    type.id = SAI_TUNNEL_ATTR_TYPE;
+
+    return tunnel_obj && tunnel_obj->get_attr(type) == SAI_STATUS_SUCCESS &&
+        type.value.s32 == SAI_TUNNEL_TYPE_IPINIP;
 }
 
 sai_status_t SwitchVpp::setTunnelAttrOfVppTunnels(

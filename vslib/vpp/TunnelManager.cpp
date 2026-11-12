@@ -2960,7 +2960,6 @@ uint8_t TunnelManagerIpIp::get_encap_ttl(_In_ sai_object_id_t tunnel_oid)
         return 0;
     }
 
-    // A TTL of 0, which no router forwards, leaves the stock outer TTL
     attr.id = SAI_TUNNEL_ATTR_ENCAP_TTL_VAL;
     if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
         return 255;

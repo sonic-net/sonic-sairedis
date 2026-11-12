@@ -253,6 +253,29 @@ namespace
                     SAI_STATUS_SUCCESS ? attr.value.u8 : -1;
             }
 
+            sai_status_t setEncapTtlMode(
+                    sai_object_id_t tunnel,
+                    int32_t mode)
+            {
+                SWSS_LOG_ENTER();
+
+                auto attr = encapTtlMode(mode);
+
+                return m_sw->set(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnel), &attr);
+            }
+
+            /* The encap TTL mode GET returns for a tunnel, or -1 if GET fails */
+            int32_t storedEncapTtlMode(
+                    sai_object_id_t tunnel)
+            {
+                SWSS_LOG_ENTER();
+
+                auto attr = encapTtlMode(-1);
+
+                return m_sw->get(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnel), 1, &attr) ==
+                    SAI_STATUS_SUCCESS ? attr.value.s32 : -1;
+            }
+
             /* The encap TTL VPP has for an interface, 0 if none */
             int vppEncapTtl(
                     const std::string& ifname)
@@ -591,6 +614,10 @@ TEST_F(SwitchVppIpIpTest, encapTtlFollowsTtlModeAndValue)
         EXIT_UNLESS(vppCallsTo("vpp_sonic_ext_tunnel_encap_ttl_set").size() == 1);
         EXIT_UNLESS(vppMock().encapTtls.size() == 1);
 
+        /* The plugin takes TTL 0 as none */
+        sai_object_id_t zeroTunnel;
+        EXIT_UNLESS(createTunnel(zeroTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL), encapTtlVal(0)}) == SAI_STATUS_NOT_SUPPORTED);
+
         _exit(0);
     }, ::testing::ExitedWithCode(0), "");
 }
@@ -659,6 +686,11 @@ TEST_F(SwitchVppIpIpTest, setEncapTtlAppliesAndKeepsPreviousOnFailure)
         EXIT_UNLESS(storedEncapTtl(tunnel) == 128);
         EXIT_UNLESS(vppEncapTtl("ipip0") == 128);
 
+        /* nor is TTL 0, which the plugin takes as none */
+        EXIT_UNLESS(setEncapTtl(tunnel, 0) == SAI_STATUS_NOT_SUPPORTED);
+        EXIT_UNLESS(storedEncapTtl(tunnel) == 128);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 128);
+
         _exit(0);
     }, ::testing::ExitedWithCode(0), "");
 }
@@ -694,4 +726,37 @@ TEST_F(SwitchVppIpIpTest, encapTtlNeedsTunnelEncapTtlFeature)
             _exit(0);
         }, ::testing::ExitedWithCode(0), "");
     }
+}
+
+TEST_F(SwitchVppIpIpTest, encapTtlModeCannotChange)
+{
+    ASSERT_EXIT({
+        vppMock().enabledFeatures.insert("tunnel-encap-ttl");
+
+        sai_object_id_t tunnel;
+        sai_object_id_t nexthop;
+        EXIT_UNLESS(createTunnel(tunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(nexthop, tunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 255);
+
+        /* VPP takes the model when it creates the VPP tunnel: a change is rejected, the model the tunnel has is taken */
+        EXIT_UNLESS(setEncapTtlMode(tunnel, SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL) == SAI_STATUS_NOT_SUPPORTED);
+        EXIT_UNLESS(storedEncapTtlMode(tunnel) == SAI_TUNNEL_TTL_MODE_PIPE_MODEL);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 255);
+        EXIT_UNLESS(setEncapTtlMode(tunnel, SAI_TUNNEL_TTL_MODE_PIPE_MODEL) == SAI_STATUS_SUCCESS);
+
+        /* also for the uniform model, the SAI default */
+        sai_object_id_t uniformTunnel;
+        EXIT_UNLESS(createTunnel(uniformTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(setEncapTtlMode(uniformTunnel, SAI_TUNNEL_TTL_MODE_PIPE_MODEL) == SAI_STATUS_NOT_SUPPORTED);
+        EXIT_UNLESS(setEncapTtlMode(uniformTunnel, SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(storedEncapTtlMode(uniformTunnel) == SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL);
+
+        sai_attr_capability_t capability{};
+        EXIT_UNLESS(m_sw->queryAttributeCapability(m_switchId, SAI_OBJECT_TYPE_TUNNEL,
+                    SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, &capability) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(capability.create_implemented && !capability.set_implemented && capability.get_implemented);
+
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
 }
