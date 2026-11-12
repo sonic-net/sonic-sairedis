@@ -756,7 +756,12 @@ sai_status_t SwitchVpp::createHostifTrap(
 
     if (entry.packet_action == SAI_PACKET_ACTION_TRAP || entry.packet_action == SAI_PACKET_ACTION_COPY)
     {
-        CHECK_STATUS(installTrapClassify(object_id, entry, vpp_policer_index));
+        sai_status_t install_status = installTrapClassify(object_id, entry, vpp_policer_index);
+        if (install_status != SAI_STATUS_SUCCESS)
+        {
+            remove_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, sid);
+            return install_status;
+        }
         entry.classify_installed = true;
     }
 
@@ -774,7 +779,22 @@ sai_status_t SwitchVpp::createHostifTrap(
     }
     else if (entry.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6)
     {
-        vpp_update_dhcp6_trap_action();
+        sai_status_t update_status = vpp_update_dhcp6_trap_action();
+        if (update_status != SAI_STATUS_SUCCESS)
+        {
+            {
+                std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+                m_trap_map.erase(object_id);
+            }
+            if (entry.classify_installed &&
+                    uninstallTrapClassify(object_id, entry) != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to roll back DHCPv6 semantic binding for trap %s",
+                               sid.c_str());
+            }
+            remove_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, sid);
+            return update_status;
+        }
     }
 
     return SAI_STATUS_SUCCESS;
@@ -789,6 +809,7 @@ sai_status_t SwitchVpp::removeHostifTrap(
     sai_deserialize_object_id(serializedObjectId, object_id);
 
     bool need_uninstall = false;
+    bool have_trap = false;
     bool is_dhcp = false;
     bool is_dhcp6 = false;
     vpp_trap_entry_t trap_copy;
@@ -801,14 +822,11 @@ sai_status_t SwitchVpp::removeHostifTrap(
 
         if (it != m_trap_map.end())
         {
+            have_trap = true;
+            trap_copy = it->second;
             is_dhcp = it->second.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP;
             is_dhcp6 = it->second.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6;
-
-            if (it->second.classify_installed)
-            {
-                need_uninstall = true;
-                trap_copy = it->second;
-            }
+            need_uninstall = it->second.classify_installed;
         }
     }
 
@@ -828,10 +846,39 @@ sai_status_t SwitchVpp::removeHostifTrap(
     }
     else if (is_dhcp6)
     {
+        sai_status_t update_status = vpp_update_dhcp6_trap_action();
+        if (update_status != SAI_STATUS_SUCCESS)
+        {
+            if (have_trap)
+            {
+                std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+                m_trap_map[object_id] = trap_copy;
+            }
+            if (need_uninstall &&
+                    installTrapClassify(object_id, trap_copy, (uint32_t)~0) != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to restore DHCPv6 semantic binding for trap %s",
+                               serializedObjectId.c_str());
+            }
+            return update_status;
+        }
+    }
+
+    sai_status_t remove_status = remove_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, serializedObjectId);
+    if (remove_status != SAI_STATUS_SUCCESS && is_dhcp6 && have_trap)
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+            m_trap_map[object_id] = trap_copy;
+        }
+        if (need_uninstall)
+        {
+            installTrapClassify(object_id, trap_copy, (uint32_t)~0);
+        }
         vpp_update_dhcp6_trap_action();
     }
 
-    return remove_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, serializedObjectId);
+    return remove_status;
 }
 
 sai_status_t SwitchVpp::setHostifTrap(
@@ -843,13 +890,12 @@ sai_status_t SwitchVpp::setHostifTrap(
     sai_object_id_t object_id;
     sai_deserialize_object_id(serializedObjectId, object_id);
 
-    CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, serializedObjectId, attr));
-
     bool need_install = false;
     bool need_uninstall = false;
-    uint32_t vpp_policer_index = (uint32_t)~0;
-    vpp_trap_entry_t trap_copy;
-    memset(&trap_copy, 0, sizeof(trap_copy));
+    uint32_t new_policer_index = (uint32_t)~0;
+    uint32_t old_policer_index = (uint32_t)~0;
+    vpp_trap_entry_t old_trap{};
+    vpp_trap_entry_t new_trap{};
 
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
@@ -859,17 +905,20 @@ sai_status_t SwitchVpp::setHostifTrap(
         if (it == m_trap_map.end())
         {
             SWSS_LOG_ERROR("hostif trap 0x%lx not tracked in m_trap_map", (unsigned long)object_id);
-            return SAI_STATUS_SUCCESS;
+            return set_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, serializedObjectId, attr);
         }
+
+        old_trap = it->second;
+        new_trap = old_trap;
 
         switch (attr->id)
         {
             case SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION:
-                it->second.packet_action = (sai_packet_action_t)attr->value.s32;
+                new_trap.packet_action = (sai_packet_action_t)attr->value.s32;
                 break;
 
             case SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP:
-                it->second.trap_group_oid = attr->value.oid;
+                new_trap.trap_group_oid = attr->value.oid;
                 break;
 
             default:
@@ -877,57 +926,100 @@ sai_status_t SwitchVpp::setHostifTrap(
         }
 
         bool should_be_installed =
-            (it->second.packet_action == SAI_PACKET_ACTION_TRAP ||
-             it->second.packet_action == SAI_PACKET_ACTION_COPY);
+            (new_trap.packet_action == SAI_PACKET_ACTION_TRAP ||
+             new_trap.packet_action == SAI_PACKET_ACTION_COPY);
 
         need_install = should_be_installed &&
-            (!it->second.classify_installed || attr->id == SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
-        need_uninstall = !should_be_installed && it->second.classify_installed;
+            (!old_trap.classify_installed || attr->id == SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
+        need_uninstall = !should_be_installed && old_trap.classify_installed;
+        new_trap.classify_installed = should_be_installed;
 
-        if (need_install)
-        {
-            auto git = m_trap_group_map.find(it->second.trap_group_oid);
+        auto resolvePolicer = [this](const vpp_trap_entry_t &trap) {
+            uint32_t index = (uint32_t)~0;
+            auto git = m_trap_group_map.find(trap.trap_group_oid);
             if (git != m_trap_group_map.end())
             {
                 auto pit = m_policer_map.find(git->second.policer_oid);
                 if (pit != m_policer_map.end())
                 {
-                    vpp_policer_index = pit->second.vpp_policer_index;
+                    index = pit->second.vpp_policer_index;
                 }
             }
-        }
+            return index;
+        };
 
-        trap_copy = it->second;
+        new_policer_index = resolvePolicer(new_trap);
+        old_policer_index = resolvePolicer(old_trap);
     }
 
     if (need_install)
     {
-        CHECK_STATUS(installTrapClassify(object_id, trap_copy, vpp_policer_index));
+        CHECK_STATUS(installTrapClassify(object_id, new_trap, new_policer_index));
     }
     else if (need_uninstall)
     {
-        CHECK_STATUS(uninstallTrapClassify(object_id, trap_copy));
+        CHECK_STATUS(uninstallTrapClassify(object_id, new_trap));
     }
 
-    if (need_install || need_uninstall)
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
-        auto it = m_trap_map.find(object_id);
-        if (it != m_trap_map.end())
-        {
-            it->second.classify_installed = need_install;
-        }
+        m_trap_map[object_id] = new_trap;
     }
 
-    if (trap_copy.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP &&
+    auto restoreTrap = [&]() {
+        {
+            std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+            m_trap_map[object_id] = old_trap;
+        }
+
+        sai_status_t restore_status = SAI_STATUS_SUCCESS;
+        if (need_install)
+        {
+            restore_status = old_trap.classify_installed ?
+                installTrapClassify(object_id, old_trap, old_policer_index) :
+                uninstallTrapClassify(object_id, new_trap);
+        }
+        else if (need_uninstall)
+        {
+            restore_status = installTrapClassify(object_id, old_trap, old_policer_index);
+        }
+
+        if (restore_status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to restore classify state for hostif trap %s",
+                           serializedObjectId.c_str());
+        }
+    };
+
+    if (new_trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP &&
             attr->id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION)
     {
         vpp_update_dhcp_trap_action();
     }
-    else if (trap_copy.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6 &&
+    else if (new_trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6 &&
             attr->id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION)
     {
-        vpp_update_dhcp6_trap_action();
+        sai_status_t update_status = vpp_update_dhcp6_trap_action();
+        if (update_status != SAI_STATUS_SUCCESS)
+        {
+            restoreTrap();
+            return update_status;
+        }
+    }
+
+    sai_status_t persist_status = set_internal(
+            SAI_OBJECT_TYPE_HOSTIF_TRAP, serializedObjectId, attr);
+    if (persist_status != SAI_STATUS_SUCCESS)
+    {
+        restoreTrap();
+        if (old_trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6 &&
+                attr->id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION &&
+                vpp_update_dhcp6_trap_action() != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to restore DHCPv6 delivery state for trap %s",
+                           serializedObjectId.c_str());
+        }
+        return persist_status;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -973,7 +1065,7 @@ void SwitchVpp::vpp_update_dhcp_trap_action()
  * The DHCPv6 counterpart of vpp_update_dhcp_trap_action(): DHCPv6 client
  * multicast is flooded and copied only while every DHCPv6 trap asks for COPY.
  */
-void SwitchVpp::vpp_update_dhcp6_trap_action()
+sai_status_t SwitchVpp::vpp_update_dhcp6_trap_action()
 {
     SWSS_LOG_ENTER();
 
@@ -1004,5 +1096,5 @@ void SwitchVpp::vpp_update_dhcp6_trap_action()
         }
     }
 
-    vpp_set_dhcp6_trap_state(active, active && all_copy);
+    return vpp_set_dhcp6_trap_state(active, active && all_copy);
 }

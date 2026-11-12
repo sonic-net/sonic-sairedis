@@ -2727,7 +2727,17 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
                      sai_serialize_object_id(object_id), attr_loopback);
     }
 
-    bool v4_is_up = false, v6_is_up = false;
+    auto storedAdminState = [this, object_id](sai_attr_id_t id) {
+        sai_attribute_t stored{};
+        stored.id = id;
+        return get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &stored) !=
+            SAI_STATUS_SUCCESS || stored.value.booldata;
+    };
+
+    bool previous_v4 = storedAdminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE);
+    bool previous_v6 = storedAdminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE);
+    bool v4_is_up = previous_v4;
+    bool v6_is_up = previous_v6;
 
     auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
 
@@ -2744,18 +2754,107 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
 
     if (attr_type_v4 != NULL || attr_type_v6 != NULL)
     {
-        CHECK_STATUS(vpp_set_interface_state(obj_id, vlan_id, (v4_is_up || v6_is_up)));
+        std::string hwif;
+        bool v6_changed = attr_type_v6 != NULL && previous_v6 != v6_is_up;
+        bool v6_programmed = false;
 
         if (attr_type_v6 != NULL)
         {
-            std::string hwif = m_ifaceRegistry.resolveHwIfName(obj_id, vlan_id);
-            if (hwif.empty() || vpp_dhcp6_mroute(hwif.c_str(),
-                    attr_type_v6->value.booldata && m_dhcp6_trap_active) != 0)
+            hwif = m_ifaceRegistry.resolveHwIfName(obj_id, vlan_id);
+            if (hwif.empty())
             {
                 return SAI_STATUS_FAILURE;
             }
-            CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE,
-                    sai_serialize_object_id(object_id), attr_type_v6));
+
+            if (v6_changed && v6_is_up)
+            {
+                CHECK_STATUS(vpp_rif_ip6_enable_disable(hwif, true));
+                v6_programmed = true;
+            }
+
+            if (vpp_dhcp6_mroute(hwif.c_str(), v6_is_up && m_dhcp6_trap_active) != 0)
+            {
+                if (v6_programmed &&
+                        vpp_rif_ip6_enable_disable(hwif, false) != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to restore IPv6 ownership on %s", hwif.c_str());
+                }
+                return SAI_STATUS_FAILURE;
+            }
+
+            if (v6_changed && !v6_is_up)
+            {
+                if (vpp_rif_ip6_enable_disable(hwif, false) != SAI_STATUS_SUCCESS)
+                {
+                    if (previous_v6 && m_dhcp6_trap_active &&
+                            vpp_dhcp6_mroute(hwif.c_str(), true) != 0)
+                    {
+                        SWSS_LOG_ERROR("Failed to restore DHCPv6 receive state on %s", hwif.c_str());
+                    }
+                    return SAI_STATUS_FAILURE;
+                }
+                v6_programmed = true;
+            }
+        }
+
+        sai_status_t admin_status = vpp_set_interface_state(obj_id, vlan_id, (v4_is_up || v6_is_up));
+
+        if (admin_status != SAI_STATUS_SUCCESS)
+        {
+            if (v6_programmed)
+            {
+                if (vpp_rif_ip6_enable_disable(hwif, previous_v6) != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to restore IPv6 ownership on %s", hwif.c_str());
+                }
+                if (vpp_dhcp6_mroute(hwif.c_str(), previous_v6 && m_dhcp6_trap_active) != 0)
+                {
+                    SWSS_LOG_ERROR("Failed to restore DHCPv6 receive state on %s", hwif.c_str());
+                }
+            }
+            return admin_status;
+        }
+
+        auto restoreProgramming = [&]() {
+            vpp_set_interface_state(obj_id, vlan_id, previous_v4 || previous_v6);
+            if (v6_programmed)
+            {
+                vpp_rif_ip6_enable_disable(hwif, previous_v6);
+                vpp_dhcp6_mroute(hwif.c_str(), previous_v6 && m_dhcp6_trap_active);
+            }
+        };
+
+        const std::string sid = sai_serialize_object_id(object_id);
+        bool v4_persisted = false;
+
+        if (attr_type_v4 != NULL)
+        {
+            sai_status_t persist_status = set_internal(
+                    SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_type_v4);
+            if (persist_status != SAI_STATUS_SUCCESS)
+            {
+                restoreProgramming();
+                return persist_status;
+            }
+            v4_persisted = true;
+        }
+
+        if (attr_type_v6 != NULL)
+        {
+            sai_status_t persist_status = set_internal(
+                    SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_type_v6);
+            if (persist_status != SAI_STATUS_SUCCESS)
+            {
+                if (v4_persisted)
+                {
+                    sai_attribute_t previous_attr{};
+                    previous_attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+                    previous_attr.value.booldata = previous_v4;
+                    set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, &previous_attr);
+                }
+                restoreProgramming();
+                return persist_status;
+            }
         }
 
         return SAI_STATUS_SUCCESS;

@@ -1261,9 +1261,9 @@ namespace saivs
             bool m_dhcp6_trap_copy = false;
 
             // Re-derives active/COPY state from m_trap_map and applies it.
-            void vpp_update_dhcp6_trap_action();
+            sai_status_t vpp_update_dhcp6_trap_action();
 
-            void vpp_set_dhcp6_trap_state(
+            sai_status_t vpp_set_dhcp6_trap_state(
                     _In_ bool active,
                     _In_ bool copy);
 

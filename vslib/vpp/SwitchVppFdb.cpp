@@ -351,23 +351,30 @@ static void dhcp6_tag_match(uint8_t m[32])
  * l2_punt_dhcp_sessions_set(), it does nothing before the member tables
  * exist.
  */
-static void l2_punt_dhcp6_sessions_set(bool present)
+static int l2_punt_dhcp6_sessions_set(bool present)
 {
     SWSS_LOG_ENTER();
 
     if (!s_l2_punt_classify_inited || present == s_dhcp6_member_sessions)
-        return;
+        return 0;
+
+    bool untag_changed = false;
 
     if (s_untag_dhcp6_table != ~0u) {
         uint32_t untag_next = s_trap_learn_next_index != ~0u
             ? s_trap_learn_next_index : s_punt_next_index;
         uint8_t m[16];
         dhcp6_untag_match(m);
-        if (present)
+        int ret = present ?
             vpp_classify_session_add(s_untag_dhcp6_table, untag_next,
-                                     m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
-        else
+                                     m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE) :
             vpp_classify_session_del(s_untag_dhcp6_table, m, 16);
+        if (ret != 0) {
+            SWSS_LOG_ERROR("Failed to %s the untagged DHCPv6 member session: %d",
+                           present ? "add" : "remove", ret);
+            return ret;
+        }
+        untag_changed = true;
     }
 
     if (s_tag_dhcp6_table != ~0u) {
@@ -375,17 +382,38 @@ static void l2_punt_dhcp6_sessions_set(bool present)
             ? s_trap_learn_next_index : s_trap_fixup_next_index;
         uint8_t m[32];
         dhcp6_tag_match(m);
-        if (present)
+        int ret = present ?
             vpp_classify_session_add(s_tag_dhcp6_table, tag_next,
-                                     m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
-        else
+                                     m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE) :
             vpp_classify_session_del(s_tag_dhcp6_table, m, 32);
+        if (ret != 0) {
+            SWSS_LOG_ERROR("Failed to %s the tagged DHCPv6 member session: %d",
+                           present ? "add" : "remove", ret);
+
+            if (untag_changed) {
+                uint32_t untag_next = s_trap_learn_next_index != ~0u
+                    ? s_trap_learn_next_index : s_punt_next_index;
+                uint8_t untag_match[16];
+                dhcp6_untag_match(untag_match);
+                int rollback = present ?
+                    vpp_classify_session_del(s_untag_dhcp6_table, untag_match, 16) :
+                    vpp_classify_session_add(s_untag_dhcp6_table, untag_next,
+                            untag_match, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
+                if (rollback != 0) {
+                    SWSS_LOG_ERROR("Failed to roll back the untagged DHCPv6 member session: %d",
+                                   rollback);
+                }
+            }
+            return ret;
+        }
     }
 
     s_dhcp6_member_sessions = present;
 
     SWSS_LOG_NOTICE("l2_punt_dhcp6_sessions_set: DHCPv6 member sessions %s",
                     present ? "installed (trap)" : "removed (copy)");
+
+    return 0;
 }
 
 /* Called only from the single SAI processing thread; the s_* globals need no locking. */
@@ -1049,15 +1077,36 @@ void SwitchVpp::vpp_set_dhcp_trap_state(
  * flood) and COPY (flood, and the CPU gets the BVI's copy through the
  * ff02::1:2 route on every BVI).  See the s_dhcp6_member_sessions comment.
  */
-void SwitchVpp::vpp_set_dhcp6_trap_state(
+sai_status_t SwitchVpp::vpp_set_dhcp6_trap_state(
         _In_ bool active,
         _In_ bool copy)
 {
     SWSS_LOG_ENTER();
 
-    // Keep the established default member behavior: absent and non-COPY
-    // DHCPv6 traps use the terminal member classifier.
-    l2_punt_dhcp6_sessions_set(!copy);
+    if (active == m_dhcp6_trap_active && copy == m_dhcp6_trap_copy)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    struct RouteTransition
+    {
+        std::string hwif;
+        bool old_receive;
+        bool new_receive;
+    };
+
+    std::vector<RouteTransition> transitions;
+
+    auto routePresent = [this](const std::string &hwif) {
+        for (const auto &table : m_dhcp6_mroute_ifaces)
+        {
+            if (table.second.count(hwif) != 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
 
     auto rifs = m_objectHash.find(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
 
@@ -1120,8 +1169,85 @@ void SwitchVpp::vpp_set_dhcp6_trap_state(
 
             if (!hwif.empty())
             {
-                vpp_dhcp6_mroute(hwif.c_str(), receive);
+                bool old_receive = routePresent(hwif);
+                if (old_receive != receive)
+                {
+                    transitions.push_back({hwif, old_receive, receive});
+                }
             }
+        }
+    }
+
+    const bool old_sessions = s_dhcp6_member_sessions;
+    const bool new_sessions = !copy;
+    bool sessions_changed = false;
+    std::vector<RouteTransition> applied;
+
+    auto rollbackRoutes = [this, &applied]() {
+        for (auto it = applied.rbegin(); it != applied.rend(); ++it)
+        {
+            if (vpp_dhcp6_mroute(it->hwif.c_str(), it->old_receive) != 0)
+            {
+                SWSS_LOG_ERROR("Failed to restore DHCPv6 receive state on %s",
+                               it->hwif.c_str());
+            }
+        }
+    };
+
+    auto applyRoutes = [this, &transitions, &applied]() {
+        for (const auto &transition : transitions)
+        {
+            if (vpp_dhcp6_mroute(transition.hwif.c_str(), transition.new_receive) != 0)
+            {
+                return false;
+            }
+            applied.push_back(transition);
+        }
+        return true;
+    };
+
+    /* Entering COPY must establish every receive path before member trapping
+     * is removed. All other transitions install the member trap first and
+     * then remove or add receive paths. Either order is rolled back on error. */
+    const bool routes_first = copy && !m_dhcp6_trap_copy;
+
+    if (routes_first)
+    {
+        if (!applyRoutes())
+        {
+            rollbackRoutes();
+            return SAI_STATUS_FAILURE;
+        }
+
+        if (old_sessions != new_sessions)
+        {
+            if (l2_punt_dhcp6_sessions_set(new_sessions) != 0)
+            {
+                rollbackRoutes();
+                return SAI_STATUS_FAILURE;
+            }
+            sessions_changed = true;
+        }
+    }
+    else
+    {
+        if (old_sessions != new_sessions)
+        {
+            if (l2_punt_dhcp6_sessions_set(new_sessions) != 0)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+            sessions_changed = true;
+        }
+
+        if (!applyRoutes())
+        {
+            rollbackRoutes();
+            if (sessions_changed && l2_punt_dhcp6_sessions_set(old_sessions) != 0)
+            {
+                SWSS_LOG_ERROR("Failed to restore DHCPv6 member sessions");
+            }
+            return SAI_STATUS_FAILURE;
         }
     }
 
@@ -1133,6 +1259,8 @@ void SwitchVpp::vpp_set_dhcp6_trap_state(
             active ? (copy ? "flooded in its VLAN and copied to the CPU"
                            : "trapped on VLAN members and received on routed RIFs")
                    : "not received on routed RIFs");
+
+    return SAI_STATUS_SUCCESS;
 }
 
 /*
@@ -2196,7 +2324,11 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
             m_ifaceRegistry.setTapName(bvi_rec->getHwifName(), tap_name);
         }
 
-        if (m_dhcp6_trap_active && m_dhcp6_trap_copy)
+        auto attr_v6 = sai_metadata_get_attr_by_id(
+                SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
+        bool admin_v6 = attr_v6 == nullptr || attr_v6->value.booldata;
+
+        if (admin_v6 && m_dhcp6_trap_active && m_dhcp6_trap_copy)
         {
             if (vpp_dhcp6_mroute(vpp_ifname.c_str(), true) != 0)
             {
@@ -2333,13 +2465,56 @@ sai_status_t SwitchVpp::vpp_update_bvi_interface(
             SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
     if (attr_v6 != NULL)
     {
-        bool receive = attr_v6->value.booldata &&
-            m_dhcp6_trap_active && m_dhcp6_trap_copy;
+        sai_attribute_t previous_attr{};
+        previous_attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+        bool previous = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_obj_id,
+                1, &previous_attr) != SAI_STATUS_SUCCESS || previous_attr.value.booldata;
+        bool desired = attr_v6->value.booldata;
+        bool receive = desired && m_dhcp6_trap_active && m_dhcp6_trap_copy;
+        bool ownership_changed = previous != desired;
+
+        if (ownership_changed && desired)
+        {
+            CHECK_STATUS(vpp_rif_ip6_enable_disable(hwif_name, true));
+        }
+
         if (vpp_dhcp6_mroute(hwif_name, receive) != 0)
         {
+            if (ownership_changed && desired &&
+                    vpp_rif_ip6_enable_disable(hwif_name, false) != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to restore IPv6 ownership on %s", hwif_name);
+            }
             return SAI_STATUS_FAILURE;
         }
-        set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_v6);
+
+        if (ownership_changed && !desired &&
+                vpp_rif_ip6_enable_disable(hwif_name, false) != SAI_STATUS_SUCCESS)
+        {
+            if (previous && m_dhcp6_trap_active && m_dhcp6_trap_copy &&
+                    vpp_dhcp6_mroute(hwif_name, true) != 0)
+            {
+                SWSS_LOG_ERROR("Failed to restore DHCPv6 receive state on %s", hwif_name);
+            }
+            return SAI_STATUS_FAILURE;
+        }
+
+        sai_status_t persist_status = set_internal(
+                SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_v6);
+        if (persist_status != SAI_STATUS_SUCCESS)
+        {
+            if (ownership_changed &&
+                    vpp_rif_ip6_enable_disable(hwif_name, previous) != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to restore IPv6 ownership on %s", hwif_name);
+            }
+            if (vpp_dhcp6_mroute(hwif_name,
+                    previous && m_dhcp6_trap_active && m_dhcp6_trap_copy) != 0)
+            {
+                SWSS_LOG_ERROR("Failed to restore DHCPv6 receive state on %s", hwif_name);
+            }
+            return persist_status;
+        }
     }
 
     return SAI_STATUS_SUCCESS;

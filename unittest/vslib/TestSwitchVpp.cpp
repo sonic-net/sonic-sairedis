@@ -111,8 +111,10 @@ namespace
     std::set<std::string> g_ip2meAddrs;
 
     // IPv6 multicast routes VPP holds that accept on an interface and forward to
-    // local: (table, group/length, accepting interface)
+    // local: (table, group/length, accepting interface). Tests can inject a
+    // sequence of API results before state is changed.
     std::set<std::tuple<uint32_t, std::string, std::string>> g_ip6LocalMroutes;
+    std::vector<int> g_ip6MrouteResults;
 
     uint32_t g_nextSwIfIndex = 100;
     int g_l2fibByIndexDelResult = 0;
@@ -274,6 +276,16 @@ int __wrap_ip6_mroute_local_add_del(uint32_t table_id, const uint8_t grp[16], ui
                                     const char *accept_hwif, bool, bool is_add)
 {
     SWSS_LOG_ENTER();
+
+    if (!g_ip6MrouteResults.empty())
+    {
+        int result = g_ip6MrouteResults.front();
+        g_ip6MrouteResults.erase(g_ip6MrouteResults.begin());
+        if (result != 0)
+        {
+            return result;
+        }
+    }
 
     char addr[INET6_ADDRSTRLEN];
 
@@ -1559,6 +1571,7 @@ class SwitchVppDhcpTrap : public ::testing::Test
             g_ip4Routes.clear();
             g_ip2meAddrs.clear();
             g_ip6LocalMroutes.clear();
+            g_ip6MrouteResults.clear();
         }
 
         void TearDown() override
@@ -1715,13 +1728,14 @@ class SwitchVppDhcpTrap : public ::testing::Test
             addMember("bobm1", true);
         }
 
-        void createBvi()
+        void createBvi(
+                bool admin_v6 = true)
         {
             SWSS_LOG_ENTER();
 
             m_rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
 
-            sai_attribute_t attrs[4];
+            sai_attribute_t attrs[5];
 
             attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
             attrs[0].value.s32 = SAI_ROUTER_INTERFACE_TYPE_VLAN;
@@ -1731,12 +1745,14 @@ class SwitchVppDhcpTrap : public ::testing::Test
             memcpy(attrs[2].value.mac, BVI_MAC, sizeof(sai_mac_t));
             attrs[3].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
             attrs[3].value.oid = m_defaultVr;
+            attrs[4].id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+            attrs[4].value.booldata = admin_v6;
 
             SwitchVpp::RifCreateState state;
 
             ASSERT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(m_rif), m_switchId, 4, attrs));
-            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_create_bvi_interface(4, attrs, state));
+                    m_sw->create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(m_rif), m_switchId, 5, attrs));
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_create_bvi_interface(5, attrs, state));
         }
 
         static std::vector<uint8_t> ip4Udp(
@@ -2382,6 +2398,76 @@ TEST_F(SwitchVppDhcp6Trap, RoutedReceivePersistsAcrossTrapCopyTransitions)
 
     removeTrap(trap);
     EXPECT_TRUE(g_ip6LocalMroutes.empty());
+}
+
+TEST_F(SwitchVppDhcp6Trap, ReceiveRouteFailuresRollBackCreateSetAndRemove)
+{
+    addMembers();
+    createBvi();
+
+    auto trap = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_HOSTIF_TRAP, m_switchId);
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_COPY;
+
+    g_ip6MrouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->create(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap),
+                    m_switchId, 2, attrs));
+    EXPECT_EQ(0u, m_sw->m_trap_map.count(trap));
+    auto stored_traps = m_sw->m_objectHash.find(SAI_OBJECT_TYPE_HOSTIF_TRAP);
+    EXPECT_TRUE(stored_traps == m_sw->m_objectHash.end() ||
+            stored_traps->second.count(sai_serialize_object_id(trap)) == 0);
+    expectTrap6();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap),
+                    m_switchId, 2, attrs));
+    expectCopy6();
+
+    sai_attribute_t action{};
+    action.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    action.value.s32 = SAI_PACKET_ACTION_TRAP;
+    g_ip6MrouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap), &action));
+    expectCopy6();
+
+    sai_attribute_t stored{};
+    stored.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->get(SAI_OBJECT_TYPE_HOSTIF_TRAP, trap, 1, &stored));
+    EXPECT_EQ(SAI_PACKET_ACTION_COPY, stored.value.s32);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap), &action));
+    expectTrap6();
+
+    action.value.s32 = SAI_PACKET_ACTION_COPY;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap), &action));
+    expectCopy6();
+
+    g_ip6MrouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->remove(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
+    EXPECT_EQ(1u, m_sw->m_trap_map.count(trap));
+    expectCopy6();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->remove(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
+    expectTrap6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, AdminDownBviDoesNotReceiveDhcp6Copy)
+{
+    createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi(false);
+
+    EXPECT_FALSE(bviReceivesDhcp6());
 }
 
 TEST_F(SwitchVppDhcp6Trap, OnlyDhcp6IsPuntedAmongIpv6Multicast)
