@@ -2966,11 +2966,9 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
         // IPv6 multicast has a session in each of its two tables
         const Nexts NEXTS_WITHOUT_TRAP_LEARN = {
             {"untagged DHCPv4", {PUNT}},
-            {"untagged DHCPv6", {PUNT}},
             {"untagged ARP", {PUNT}},
             {"untagged IPv6 multicast", {PUNT}},
             {"tagged DHCPv4", {TRAP_FIXUP}},
-            {"tagged DHCPv6", {TRAP_FIXUP}}
             {"tagged ARP", {TRAP_FIXUP}},
             {"tagged IPv6 multicast", {TRAP_FIXUP, TRAP_FIXUP}},
             {"LLDP", {PUNT}},
@@ -2982,11 +2980,9 @@ TEST_F(SwitchVppL2TrapLearn, TrapsGoToTrapLearnWhenItIsOn)
 {
     expectPuntNexts(FEATURES, NODES, {
         {"untagged DHCPv4", {TRAP_LEARN}},
-        {"untagged DHCPv6", {TRAP_LEARN}},
         {"untagged ARP", {TRAP_LEARN}},
         {"untagged IPv6 multicast", {TRAP_LEARN}},
         {"tagged DHCPv4", {TRAP_LEARN}},
-        {"tagged DHCPv6", {TRAP_LEARN}}
         {"tagged ARP", {TRAP_LEARN}},
         {"tagged IPv6 multicast", {TRAP_LEARN, TRAP_LEARN}},
         {"LLDP", {PUNT}},
@@ -3019,7 +3015,6 @@ TEST_F(SwitchVppL2TrapLearn, TrapsDoNotGoToTrapLearnWithoutTrapFixup)
 {
     expectPuntNexts({"l2-trap-learn", "l2-vlan-filter"}, NODES, {
         {"untagged DHCPv4", {PUNT}},
-        {"untagged DHCPv6", {PUNT}}
         {"untagged ARP", {PUNT}},
         {"untagged IPv6 multicast", {PUNT}},
         {"LLDP", {PUNT}},
@@ -4064,7 +4059,7 @@ TEST_F(SwitchVppDhcpTrap, UntaggedMemberReaddRestoresDhcpTrapDispatch)
     createBvi();
 
     auto registrations = vppMock().l2InputRegisteredFeatures.at("bobm0");
-    ASSERT_EQ(2u, registrations.size());
+    ASSERT_EQ(1u, registrations.size());
     auto bindCalls = vppMock().coppDhcpBindCalls.size();
     auto restoreCalls = vppMock().callsTo(
             "set_l2_interface_input_feature_arc", "bobm0").size();
@@ -4509,11 +4504,10 @@ TEST_F(SwitchVppDhcpTrap, TheDefaultTableKeepsItsRouteWhenAVrfObjectGoesAway)
 }
 
 /*
- * SAI_HOSTIF_TRAP_TYPE_DHCPV6 packet action, on the same VLAN. Each test asks
- * what VPP would do with a DHCPv6 client message, sent to ff02::1:2. Member
- * classifiers must always miss: the admitted-packet semantic feature owns
- * absent/TRAP/COPY behavior. The BVI's flood copy is received only when COPY
- * installs ff02::1:2 accepting on the BVI and forwarding to local.
+ * SAI_HOSTIF_TRAP_TYPE_DHCPV6 packet action, on the same VLAN. TRAP installs
+ * terminal destination-MAC classifiers on tagged and untagged members, so one
+ * copy reaches CPU and no copy reaches a peer. COPY and absence remove those
+ * sessions; normal bridge flooding then supplies the BVI copy for COPY.
  */
 class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
 {
@@ -4576,21 +4570,21 @@ class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
                                                            std::string("bvi100"))) == 1;
         }
 
-        // TRAP: classifiers miss and the live semantic row consumes the packet.
+        // A classifier hit is terminal: CPU delivery without bridge flooding.
         void expectTrap6()
         {
             SWSS_LOG_ENTER();
 
-            EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
-            EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
+            EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcp6OnWire(false)));
+            EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcp6OnWire(true)));
             EXPECT_TRUE(g_ip6LocalMroutes.empty());
             ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
             EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
             EXPECT_FALSE(vppMock().coppDhcpBindCalls.back().isCopy);
         }
 
-        // COPY: classifiers still miss; the semantic feature clones and
-        // preserves forwarding, and the BVI receive route remains active.
+        // COPY removes the member sessions. Normal flooding reaches peers and
+        // supplies the BVI copy, whose receive route remains active.
         void expectCopy6()
         {
             SWSS_LOG_ENTER();
@@ -4657,6 +4651,30 @@ TEST_F(SwitchVppDhcp6Trap, SetAttributeSwitchesBetweenTrapAndCopyOnExistingMembe
     expectCopy6();
 }
 
+TEST_F(SwitchVppDhcp6Trap, UntaggedMemberReaddRestoresTerminalTrap)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+
+    sai_object_id_t member;
+    addMember("bobm0", false, &member);
+    addMember("bobm1", true);
+
+    EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcp6OnWire(false)));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeVlanMember(member));
+    EXPECT_EQ(0u, vppMock().l2InputFeatureArc.count("bobm0"));
+    EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
+
+    sai_object_id_t replacement;
+    addMember("bobm0", false, &replacement);
+    EXPECT_NE(member, replacement);
+
+    // Rebinding the shared table plus restoring INPUT_FEAT_ARC makes the
+    // existing global session terminal again; no provider row is rebound.
+    EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcp6OnWire(false)));
+    EXPECT_EQ(1u, vppMock().l2InputFeatureArc.count("bobm0"));
+}
+
 TEST_F(SwitchVppDhcp6Trap, UnsupportedOtherActionsLeaveCopyUnchanged)
 {
     auto trap = createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
@@ -4682,6 +4700,18 @@ TEST_F(SwitchVppDhcp6Trap, RemovingTheCopyTrapRestoresAbsentState)
     addMembers();
     createBvi();
     expectCopy6();
+
+    removeTrap(trap);
+    expectNoTrap6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, RemovingTheTrapSessionRestoresMemberForwarding)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP,
+            SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi();
+    expectTrap6();
 
     removeTrap(trap);
     expectNoTrap6();
@@ -4717,7 +4747,7 @@ TEST_F(SwitchVppDhcp6Trap, BviGetsTheRouteInItsIpv6TableAndLosesItWhenDeleted)
     EXPECT_TRUE(g_ip6LocalMroutes.empty());
 }
 
-TEST_F(SwitchVppDhcp6Trap, RoutedPortReceivesWhileTheSemanticTrapIsActive)
+TEST_F(SwitchVppDhcp6Trap, RoutedPortReceivesWhileTheDhcp6TrapIsActive)
 {
     storePortRif("Ethernet8");
     vppMock().interfaceVrfs["Ethernet8"] = 7;
@@ -4851,31 +4881,31 @@ TEST_F(SwitchVppDhcp6Trap, AmbiguousDeleteIsRetriedWhenConfirmedStateMatchesAbse
     EXPECT_EQ(3u, vppMock().ip6MrouteCalls);
 }
 
-TEST_F(SwitchVppDhcp6Trap, Dhcp6AndOtherIpv6MulticastBypassFixedClassifiers)
+TEST_F(SwitchVppDhcp6Trap, ClassifierKeysOnlyOnTheDhcp6DestinationMac)
 {
     createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
     addMembers();
 
-    EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
-    EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
-    // Same destination MAC, but not a DHCPv6 client destination port.
-    EXPECT_EQ(MISS, onMember("bobm0", false,
+    // The HLD rule deliberately keys only on 33:33:00:01:00:02. Payload and
+    // IPv6 scope do not affect its terminal verdict.
+    EXPECT_EQ(memberPunt(), onMember("bobm0", false,
                 ip6UdpOnWire(false, {0x00, 0x01, 0x00, 0x02}, 9999)));
-    EXPECT_EQ(MISS, onMember("bobm1.100", true,
+    EXPECT_EQ(tagFixup(), onMember("bobm1.100", true,
                 ip6UdpOnWire(true, {0x00, 0x01, 0x00, 0x02}, 9999)));
 
-    // The Ethernet mapping contains only the low 32 group bits. Keep that
-    // MAC but change ff02::1:2 to ff05::1:2; a MAC-only classifier would
-    // incorrectly consume both packets.
     auto otherScopeUntagged = dhcp6OnWire(false);
     otherScopeUntagged[14 + 24 + 1] = 0x05;
     auto otherScopeTagged = dhcp6OnWire(true);
     otherScopeTagged[18 + 24 + 1] = 0x05;
-    EXPECT_EQ(MISS, onMember("bobm0", false, otherScopeUntagged));
-    EXPECT_EQ(MISS, onMember("bobm1.100", true, otherScopeTagged));
+    EXPECT_EQ(memberPunt(), onMember("bobm0", false, otherScopeUntagged));
+    EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, otherScopeTagged));
 
-    EXPECT_EQ(MISS, onMember("bobm0", false, ip6UdpOnWire(false, {0x00, 0x00, 0x00, 0x01}, 547)));
-    EXPECT_EQ(MISS, onMember("bobm1.100", true, ip6UdpOnWire(true, {0x00, 0x00, 0x00, 0x01}, 547)));
+    // Unrelated IPv6 multicast with another destination MAC remains on the
+    // ordinary bridge path.
+    EXPECT_EQ(MISS, onMember("bobm0", false,
+                ip6UdpOnWire(false, {0x00, 0x00, 0x00, 0x01}, 547)));
+    EXPECT_EQ(MISS, onMember("bobm1.100", true,
+                ip6UdpOnWire(true, {0x00, 0x00, 0x00, 0x01}, 547)));
 }
 
 TEST_F(SwitchVppDhcp6Trap, Dhcp6AndDhcp4ActionsAreIndependent)
@@ -4888,8 +4918,8 @@ TEST_F(SwitchVppDhcp6Trap, Dhcp6AndDhcp4ActionsAreIndependent)
     expectCopy6();
     expectTrap();
 
-    // broadcast ARP is still punted on the tagged member; DHCPv6 has no
-    // classifier session in that chain.
+    // Broadcast ARP is still punted on the tagged member while the DHCPv6
+    // COPY session is absent from the same classifier chain.
     EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, arpOnWire(true)));
 }
 

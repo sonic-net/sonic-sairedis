@@ -1280,10 +1280,10 @@ namespace saivs
 
         protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCPV6 packet action
 
-            // Active/COPY aggregate state for the DHCPv6 semantic row.
-            // VLAN members use the live admitted-packet semantic feature;
-            // routed interfaces receive ff02::1:2 whenever any DHCPv6 owner
-            // is active.
+            // Active/COPY aggregate state for DHCPv6. An active TRAP installs
+            // terminal VLAN-member classifier sessions; COPY and absence
+            // remove them. Routed interfaces receive ff02::1:2 whenever any
+            // DHCPv6 owner is active.
             bool m_dhcp6_trap_active = false;
             bool m_dhcp6_trap_copy = false;
 
