@@ -1746,7 +1746,7 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
             SWSS_LOG_ERROR("Failed to add 255.255.255.255 to the CoPP IP2ME addresses, "
                            "so limited broadcasts reach the CPU unpoliced");
         }
-        if (m_dhcp_trap_copy) {
+        if (m_dhcp_trap_active) {
             vpp_ip4_limited_broadcast_receive(vrf_id, true);
         }
     }
@@ -1776,7 +1776,7 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
         if (sw != nullptr) {
                  SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
            // table 0 outlives every VRF object, and other router interfaces may still use it
-           if (m_dhcp_trap_copy && sw->m_vrf_id != 0)
+           if (m_dhcp_trap_active && sw->m_vrf_id != 0)
            {
                vpp_ip4_limited_broadcast_receive(sw->m_vrf_id, false);
            }
@@ -1802,16 +1802,14 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
  * to the interface's host tap. For a VLAN that is the BVI's copy of a
  * flooded broadcast, and it is how a DHCPv4 client broadcast reaches the
  * DHCP relay when the SAI_HOSTIF_TRAP_TYPE_DHCP action is COPY (see
- * SwitchVppFdb.cpp). Under TRAP (or when no DHCP trap is configured) the
- * client broadcast is punted at the VLAN member and never reaches the BVI,
- * while routed ports keep VPP's default drop on 255.255.255.255/32 so a
- * switch without a COPY DHCP trap (such as a T1 spine) does not punt limited
- * broadcasts to the CPU.
+ * SwitchVppFdb.cpp). Under TRAP the client broadcast is punted at a VLAN
+ * member, but the same local route is required when it arrives on a routed
+ * interface. With no active DHCP trap, routed ports keep VPP's default drop.
  *
- * While COPY is active a limited broadcast is to-me traffic, and
+ * While a DHCP trap is active a limited broadcast is to-me traffic, and
  * vpp_add_ip_vrf() adds 255.255.255.255 to sonic-ext-copp-ip2me's address set
- * with the switch's own addresses so the IP2ME trap group's policer meters
- * limited broadcasts on the punt path regardless of trap mode.
+ * with the switch's own addresses. The semantic DHCP row makes copp-ip2me
+ * defer these packets to the DHCP trap-group policer at copp-ifout.
  */
 int SwitchVpp::vpp_ip4_limited_broadcast_receive(
         _In_ uint32_t vrf_id,
@@ -2037,6 +2035,10 @@ sai_status_t SwitchVpp::rollbackRifCreate(
         }
     };
 
+    if (state.dhcp6_mroute_added)
+    {
+        check(vpp_dhcp6_mroute(state.hwif.c_str(), false), "remove ff02::1:2 route");
+    }
     if (state.bridge_attached)
     {
         check(set_sw_interface_l2_bridge(state.hwif.c_str(), state.vlan,
@@ -2559,6 +2561,15 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     {
         CHECK_STATUS(vpp_rif_ip6_enable_disable(state.hwif, true));
         state.ip6_enabled = true;
+
+        if (m_dhcp6_trap_active)
+        {
+            if (vpp_dhcp6_mroute(state.hwif.c_str(), true) != 0)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+            state.dhcp6_mroute_added = true;
+        }
     }
 
     bool v4_is_up = false, v6_is_up = false;
@@ -2733,7 +2744,21 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
 
     if (attr_type_v4 != NULL || attr_type_v6 != NULL)
     {
-        return vpp_set_interface_state(obj_id, vlan_id, (v4_is_up || v6_is_up));
+        CHECK_STATUS(vpp_set_interface_state(obj_id, vlan_id, (v4_is_up || v6_is_up)));
+
+        if (attr_type_v6 != NULL)
+        {
+            std::string hwif = m_ifaceRegistry.resolveHwIfName(obj_id, vlan_id);
+            if (hwif.empty() || vpp_dhcp6_mroute(hwif.c_str(),
+                    attr_type_v6->value.booldata && m_dhcp6_trap_active) != 0)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+            CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                    sai_serialize_object_id(object_id), attr_type_v6));
+        }
+
+        return SAI_STATUS_SUCCESS;
     } else {
         return SAI_STATUS_SUCCESS;
     }
@@ -2816,6 +2841,11 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
 
     if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
+        if (vpp_dhcp6_mroute(hwif_name.c_str(), false) != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+
         // Clear any loopback (hairpin) DROP so a persistent port/LAG whose RIF
         // is removed does not keep dropping if a later RIF is created on it
         // without the attribute. A failed clear is propagated instead of
@@ -2908,6 +2938,11 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
      */
     std::string sub_hwif = hwif_name + "." + std::to_string(vlan_id);
     std::string sub_tap = tap_name.empty() ? "" : tap_name + "." + std::to_string(vlan_id);
+
+    if (vpp_dhcp6_mroute(sub_hwif.c_str(), false) != 0)
+    {
+        return SAI_STATUS_FAILURE;
+    }
 
     configure_lcp_interface(sub_hwif.c_str(), sub_tap.c_str(), false);
 

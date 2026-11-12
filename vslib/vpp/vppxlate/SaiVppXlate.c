@@ -68,6 +68,8 @@
 
 #include <vpp_plugins/sonic_ext/sonic_ext.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api_enum.h>
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api_types.h>
 
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api_types.h>
@@ -204,6 +206,25 @@
 #define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
 #include <vpp_plugins/sonic_ext/sonic_ext.api.h>
 #undef vl_api_version
+
+/* compatibility-isolated sonic_ext semantic API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_copp_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_api_version
+
 /* sonic_ext packet-trim API inclusion */
 
 #define vl_typedefs
@@ -1441,6 +1462,13 @@ vl_api_ip_route_add_del_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg)
 }
 
 static void
+vl_api_ip_mroute_add_del_reply_t_handler (vl_api_ip_mroute_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_sw_interface_ip6_enable_disable_reply_t_handler(
     vl_api_sw_interface_ip6_enable_disable_reply_t *msg)
 {
@@ -2007,6 +2035,22 @@ vl_api_sonic_ext_copp_ifout_bind_reply_t_handler(vl_api_sonic_ext_copp_ifout_bin
 }
 
 static void
+vl_api_sonic_ext_copp_neighbor_miss_bind_reply_t_handler(
+        vl_api_sonic_ext_copp_neighbor_miss_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_copp_dhcp_bind_reply_t_handler(
+        vl_api_sonic_ext_copp_dhcp_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_sonic_ext_copp_ip2me_addr_add_del_reply_t_handler(vl_api_sonic_ext_copp_ip2me_addr_add_del_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2392,6 +2436,7 @@ static void vpp_base_vpe_init(void)
     _(INTERFACE_MSG_ID(SW_INTERFACE_EVENT), sw_interface_event) \
     _(IP_MSG_ID(IP_TABLE_ADD_DEL_REPLY), ip_table_add_del_reply) \
     _(IP_MSG_ID(IP_ROUTE_ADD_DEL_REPLY), ip_route_add_del_reply) \
+    _(IP_MSG_ID(IP_MROUTE_ADD_DEL_REPLY), ip_mroute_add_del_reply) \
     _(IP_MSG_ID(SW_INTERFACE_IP6_ENABLE_DISABLE_REPLY), sw_interface_ip6_enable_disable_reply) \
     _(IP_MSG_ID(SET_IP_FLOW_HASH_V2_REPLY), set_ip_flow_hash_v2_reply)        \
     _(IP_MSG_ID(SET_IP_FLOW_HASH_ROUTER_ID_REPLY), set_ip_flow_hash_router_id_reply) \
@@ -2443,6 +2488,7 @@ static u16 sflow_msg_id_base;
  */
 static u16 nat44_ed_msg_id_base = (u16) ~0;
 static u16 sonic_ext_msg_id_base;
+static u16 sonic_ext_copp_msg_id_base;
 static u16 policer_msg_id_base;
 
 static void vpp_ext_vpe_init(void)
@@ -2619,6 +2665,9 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
 #define SONIC_EXT_MSG_ID(id) \
     (VL_API_##id + sonic_ext_msg_id_base)
 
+#define SONIC_EXT_COPP_MSG_ID(id) \
+    (VL_API_##id + sonic_ext_copp_msg_id_base)
+
 #define foreach_vpe_plugin_api_reply_msg                                \
     _(LCP_MSG_ID(LCP_ITF_PAIR_ADD_DEL_REPLY), lcp_itf_pair_add_del_reply) \
     _(LCP_MSG_ID(LCP_ETHERTYPE_ENABLE_REPLY), lcp_ethertype_enable_reply) \
@@ -2633,6 +2682,8 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(SONIC_EXT_MSG_ID(SONIC_EXT_EGRESS_MIRROR_ENABLE_DISABLE_REPLY), sonic_ext_egress_mirror_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_MIRROR_ENCAP_FIXUP_ENABLE_DISABLE_REPLY), sonic_ext_mirror_encap_fixup_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IFOUT_BIND_REPLY), sonic_ext_copp_ifout_bind_reply) \
+    _(SONIC_EXT_COPP_MSG_ID(SONIC_EXT_COPP_NEIGHBOR_MISS_BIND_REPLY), sonic_ext_copp_neighbor_miss_bind_reply) \
+    _(SONIC_EXT_COPP_MSG_ID(SONIC_EXT_COPP_DHCP_BIND_REPLY), sonic_ext_copp_dhcp_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_ADDR_ADD_DEL_REPLY), sonic_ext_copp_ip2me_addr_add_del_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_REPLY), sonic_ext_copp_ip2me_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_CONDITION_REPLY), sonic_ext_copp_ip2me_bind_condition_reply) \
@@ -2795,6 +2846,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "sonic_ext_%08x%c", sonic_ext_api_version, 0);
     sonic_ext_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sonic_ext_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "sonic_ext_copp_%08x%c", sonic_ext_copp_api_version, 0);
+    sonic_ext_copp_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(sonic_ext_copp_msg_id_base != (u16) ~0);
 
     msg_base_lookup_name = format (0, "nat44_ed_%08x%c", nat44_ed_api_version, 0);
     nat44_ed_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
@@ -3971,6 +4026,81 @@ int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
     return ip_route_add_del_get_stats(prefix, is_add, NULL);
 }
 
+/*
+ * The equivalent of
+ *   ip mroute add [table N] <grp>/<len> via <accept_hwif> Accept
+ *   ip mroute add [table N] <grp>/<len> via local Forward
+ * or, with is_add false, the removal of both paths, which removes the
+ * entry once it has no path left.
+ */
+int ip6_mroute_local_add_del (uint32_t table_id, const uint8_t grp[16], uint8_t grp_len,
+                              const char *accept_hwif, bool with_local_path, bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_ip_mroute_add_del_t *mp;
+    vl_api_mfib_path_t *path;
+    u32 sw_if_index;
+    int ret;
+
+    if (!grp || !accept_hwif || grp_len > 128) {
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    sw_if_index = get_swif_idx(vam, accept_hwif);
+    if (sw_if_index == (u32) -1) {
+        SAIVPP_ERROR("%s: unable to get sw_if_index for %s", __func__, accept_hwif);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    __plugin_msg_base = ip_msg_id_base;
+
+    M22 (IP_MROUTE_ADD_DEL, mp,
+            sizeof (vl_api_mfib_path_t) * (with_local_path ? 2 : 1));
+
+    mp->is_add = is_add;
+    mp->is_multipath = true;
+    mp->route.table_id = htonl(table_id);
+    mp->route.entry_flags = htonl(MFIB_API_ENTRY_FLAG_NONE);
+    mp->route.rpf_id = htonl((uint32_t)~0);
+    mp->route.prefix.af = ADDRESS_IP6;
+    mp->route.prefix.grp_address_length = htons(grp_len);
+    memcpy(mp->route.prefix.grp_address.ip6, grp, sizeof(mp->route.prefix.grp_address.ip6));
+    mp->route.n_paths = with_local_path ? 2 : 1;
+
+    path = &mp->route.paths[0];
+    memset(path, 0, sizeof(*path) * (with_local_path ? 2 : 1));
+
+    path[0].itf_flags = htonl(MFIB_API_ITF_FLAG_ACCEPT);
+    path[0].path.sw_if_index = htonl(sw_if_index);
+    path[0].path.type = htonl(FIB_API_PATH_TYPE_NORMAL);
+    path[0].path.proto = htonl(FIB_API_PATH_NH_PROTO_IP6);
+    path[0].path.rpf_id = htonl((uint32_t)~0);
+
+    if (with_local_path) {
+        path[1].itf_flags = htonl(MFIB_API_ITF_FLAG_FORWARD);
+        path[1].path.sw_if_index = htonl((uint32_t)~0);
+        path[1].path.type = htonl(FIB_API_PATH_TYPE_LOCAL);
+        path[1].path.proto = htonl(FIB_API_PATH_NH_PROTO_IP6);
+        path[1].path.rpf_id = htonl((uint32_t)~0);
+    }
+
+    S (mp);
+
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u accept %s is_add %d", __func__, ret, table_id, accept_hwif, is_add); }
+    else { SAIVPP_INFO("%s table %u accept %s is_add %d", __func__, table_id, accept_hwif, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
 static unsigned int ipv4_mask_len (uint32_t mask)
 {
     u64 val = 0;
@@ -4481,6 +4611,78 @@ int vpp_sonic_ext_copp_ifout_bind(
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) ethertype 0x%04x policer_name %s is_bind %d", __func__, ret, ethertype, policer_name ? policer_name : "", is_bind); }
     else { SAIVPP_INFO("%s ethertype 0x%04x policer_name %s is_bind %d", __func__, ethertype, policer_name ? policer_name : "", is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/*
+ * Dedicated semantic NEIGHBOR_MISS binding. The provider identifies this
+ * reason from its per-buffer side-band rather than from a wire ethertype.
+ */
+int vpp_sonic_ext_copp_neighbor_miss_bind(
+        const char *policer_name,
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_neighbor_miss_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_copp_msg_id_base;
+
+    M (SONIC_EXT_COPP_NEIGHBOR_MISS_BIND, mp);
+
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s",
+            policer_name ? policer_name : "");
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer_name %s is_bind %d", __func__, ret, policer_name ? policer_name : "", is_bind); }
+    else { SAIVPP_INFO("%s policer_name %s is_bind %d", __func__, policer_name ? policer_name : "", is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+/* Dedicated DHCPv4/DHCPv6 semantic policer binding. Classifier and MFIB
+ * programming in sairedis continue to own TRAP versus COPY delivery. */
+int vpp_sonic_ext_copp_dhcp_bind(
+        const char *policer_name,
+        bool is_ipv6,
+        bool is_copy,
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_dhcp_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_copp_msg_id_base;
+
+    M (SONIC_EXT_COPP_DHCP_BIND, mp);
+
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s",
+            policer_name ? policer_name : "");
+    mp->is_ipv6 = is_ipv6;
+    mp->is_copy = is_copy;
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) policer_name %s is_ipv6 %d is_copy %d is_bind %d", __func__, ret, policer_name ? policer_name : "", is_ipv6, is_copy, is_bind); }
+    else { SAIVPP_INFO("%s policer_name %s is_ipv6 %d is_copy %d is_bind %d", __func__, policer_name ? policer_name : "", is_ipv6, is_copy, is_bind); }
 
     VPP_UNLOCK();
 
