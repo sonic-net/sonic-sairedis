@@ -242,6 +242,10 @@ struct VppMock
     int ipipDelResult = 0;
     // vpp_sw_interface_find_by_ip() result: -1 when no interface owns the IP
     int findByIpResult = -1;
+    // Encap TTL of the interfaces that have one, by name
+    std::map<std::string, uint8_t> encapTtls;
+    // The interfaces VPP fails to set an encap TTL on, with that TTL
+    std::set<std::pair<std::string, int>> encapTtlFailures;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;

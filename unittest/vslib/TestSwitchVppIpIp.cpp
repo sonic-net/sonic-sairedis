@@ -26,6 +26,10 @@ using namespace saivs_test;
  * sonicExtFeatureEnabled() keeps the iface-loopback state process-wide, so
  * each case runs as a death test, in a process that runs the test anew
  * (gtest_death_test_style), and exits 0 if it passes.
+ *
+ * The tunnel to the peer also has the pipe TTL model (SAI_TUNNEL_ATTR_ENCAP_TTL_MODE),
+ * with the default SAI_TUNNEL_ATTR_ENCAP_TTL_VAL, 255: VPP needs the sonic_ext
+ * tunnel-encap-ttl feature to give its VPP tunnel that outer TTL.
  */
 
 #define EXIT_UNLESS(condition) \
@@ -200,6 +204,64 @@ namespace
                 auto it = vppMock().actions.find(ifname);
 
                 return it == vppMock().actions.end() ? -1 : it->second;
+            }
+
+            sai_attribute_t encapTtlMode(
+                    int32_t mode)
+            {
+                SWSS_LOG_ENTER();
+
+                sai_attribute_t attr{};
+                attr.id = SAI_TUNNEL_ATTR_ENCAP_TTL_MODE;
+                attr.value.s32 = mode;
+
+                return attr;
+            }
+
+            sai_attribute_t encapTtlVal(
+                    uint8_t ttl)
+            {
+                SWSS_LOG_ENTER();
+
+                sai_attribute_t attr{};
+                attr.id = SAI_TUNNEL_ATTR_ENCAP_TTL_VAL;
+                attr.value.u8 = ttl;
+
+                return attr;
+            }
+
+            sai_status_t setEncapTtl(
+                    sai_object_id_t tunnel,
+                    uint8_t ttl)
+            {
+                SWSS_LOG_ENTER();
+
+                auto attr = encapTtlVal(ttl);
+
+                return m_sw->set(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnel), &attr);
+            }
+
+            /* The encap TTL GET returns for a tunnel, or -1 if GET fails */
+            int storedEncapTtl(
+                    sai_object_id_t tunnel)
+            {
+                SWSS_LOG_ENTER();
+
+                auto attr = encapTtlVal(0);
+
+                return m_sw->get(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnel), 1, &attr) ==
+                    SAI_STATUS_SUCCESS ? attr.value.u8 : -1;
+            }
+
+            /* The encap TTL VPP has for an interface, 0 if none */
+            int vppEncapTtl(
+                    const std::string& ifname)
+            {
+                SWSS_LOG_ENTER();
+
+                auto it = vppMock().encapTtls.find(ifname);
+
+                return it == vppMock().encapTtls.end() ? 0 : it->second;
             }
 
             sai_object_id_t m_overlayRif = SAI_NULL_OBJECT_ID;
@@ -460,6 +522,174 @@ TEST_F(SwitchVppIpIpTest, loopbackCapabilityFollowsIfaceLoopback)
             EXIT_UNLESS(capability.create_implemented == enabled);
             EXIT_UNLESS(capability.set_implemented == enabled);
             EXIT_UNLESS(capability.get_implemented == enabled);
+
+            _exit(0);
+        }, ::testing::ExitedWithCode(0), "");
+    }
+}
+
+TEST_F(SwitchVppIpIpTest, pipeTunnelNexthopSetsEncapTtlOfItsVppTunnel)
+{
+    ASSERT_EXIT({
+        vppMock().enabledFeatures.insert("tunnel-encap-ttl");
+
+        /* As on a dual top-of-rack pair: a decap tunnel with the P2MP term, and the pipe tunnel to the peer */
+        sai_object_id_t decapTunnel;
+        sai_object_id_t term;
+        EXIT_UNLESS(createTunnel(decapTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createTerm(term, decapTunnel, SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2MP) == SAI_STATUS_SUCCESS);
+
+        sai_object_id_t tunnel;
+        sai_object_id_t nexthop;
+        EXIT_UNLESS(createTunnel(tunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallsTo("vpp_sonic_ext_tunnel_encap_ttl_set").empty());
+
+        /* The VPP tunnel of the next hop gets the default pipe TTL; the decap term's, which doesn't encap, none */
+        EXIT_UNLESS(createNexthop(nexthop, tunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_add").size() == 2);
+        EXIT_UNLESS(vppEncapTtl("ipip1") == 255);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 0);
+
+        /* VPP resets the TTL of the tunnel it deletes */
+        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, nexthop) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallIndex("vpp_ipip_tunnel_del", "ipip1") >= 0);
+        EXIT_UNLESS(vppCallsTo("vpp_sonic_ext_tunnel_encap_ttl_set").size() == 1);
+
+        /* so the next tunnel, which takes the same sw_if_index, needs it again */
+        EXIT_UNLESS(createNexthop(nexthop, tunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppEncapTtl("ipip1") == 255);
+        EXIT_UNLESS(vppCallsTo("vpp_sonic_ext_tunnel_encap_ttl_set").size() == 2);
+
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(SwitchVppIpIpTest, encapTtlFollowsTtlModeAndValue)
+{
+    ASSERT_EXIT({
+        vppMock().enabledFeatures.insert("tunnel-encap-ttl");
+
+        /* Pipe model with a TTL */
+        sai_object_id_t tunnel;
+        sai_object_id_t nexthop;
+        EXIT_UNLESS(createTunnel(tunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL), encapTtlVal(64)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(nexthop, tunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 64);
+
+        /* The uniform model, set or the SAI default, copies the inner TTL with the VPP tunnel flags instead */
+        sai_object_id_t uniformTunnel;
+        sai_object_id_t uniformNexthop;
+        EXIT_UNLESS(createTunnel(uniformTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(uniformNexthop, uniformTunnel, OTHER_PEER_IP) == SAI_STATUS_SUCCESS);
+
+        sai_object_id_t defaultTunnel;
+        sai_object_id_t defaultNexthop;
+        EXIT_UNLESS(createTunnel(defaultTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(defaultNexthop, defaultTunnel, "10.1.0.35") == SAI_STATUS_SUCCESS);
+
+        EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_add").size() == 3);
+        EXIT_UNLESS(vppCallsTo("vpp_sonic_ext_tunnel_encap_ttl_set").size() == 1);
+        EXIT_UNLESS(vppMock().encapTtls.size() == 1);
+
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(SwitchVppIpIpTest, sharedVppTunnelTakesHighestEncapTtlOfItsNexthops)
+{
+    ASSERT_EXIT({
+        vppMock().enabledFeatures.insert("tunnel-encap-ttl");
+
+        /* A P2P decap term creates the VPP tunnel to the peer, which next hops of two pipe tunnels then use */
+        sai_object_id_t decapTunnel;
+        sai_object_id_t term;
+        EXIT_UNLESS(createTunnel(decapTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createTerm(term, decapTunnel) == SAI_STATUS_SUCCESS);
+
+        sai_object_id_t lowTunnel;
+        sai_object_id_t highTunnel;
+        sai_object_id_t lowNexthop;
+        sai_object_id_t highNexthop;
+        EXIT_UNLESS(createTunnel(lowTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL), encapTtlVal(64)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createTunnel(highTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL), encapTtlVal(128)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(lowNexthop, lowTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 64);
+        EXIT_UNLESS(createNexthop(highNexthop, highTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_add").size() == 1);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 128);
+
+        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, highNexthop) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 64);
+
+        /* The decap term keeps the VPP tunnel, which encapsulates nothing now: it loses the TTL */
+        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, lowNexthop) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_del").empty());
+        EXIT_UNLESS(vppMock().callsTo("vpp_sonic_ext_tunnel_encap_ttl_set", "ipip0").back().sub_id == 0);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 0);
+
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(SwitchVppIpIpTest, setEncapTtlAppliesAndKeepsPreviousOnFailure)
+{
+    ASSERT_EXIT({
+        vppMock().enabledFeatures.insert("tunnel-encap-ttl");
+
+        /* The VPP tunnel doesn't take the TTL, but the next hop is created: it's best effort */
+        vppMock().encapTtlFailures.emplace("ipip0", 255);
+        sai_object_id_t tunnel;
+        sai_object_id_t nexthop;
+        EXIT_UNLESS(createTunnel(tunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(nexthop, tunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 0);
+
+        /* and the next sync of the VPP tunnel applies it */
+        vppMock().encapTtlFailures.clear();
+        EXIT_UNLESS(setEncapTtl(tunnel, 255) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 255);
+
+        EXIT_UNLESS(setEncapTtl(tunnel, 128) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(storedEncapTtl(tunnel) == 128);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 128);
+
+        /* A TTL VPP fails to take is not stored */
+        vppMock().encapTtlFailures.emplace("ipip0", 200);
+        EXIT_UNLESS(setEncapTtl(tunnel, 200) == SAI_STATUS_FAILURE);
+        EXIT_UNLESS(storedEncapTtl(tunnel) == 128);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 128);
+
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(SwitchVppIpIpTest, encapTtlNeedsTunnelEncapTtlFeature)
+{
+    for (bool enabled : {false, true})
+    {
+        ASSERT_EXIT({
+            if (enabled)
+            {
+                vppMock().enabledFeatures.insert("tunnel-encap-ttl");
+            }
+
+            sai_attr_capability_t capability{};
+            EXIT_UNLESS(m_sw->queryAttributeCapability(m_switchId, SAI_OBJECT_TYPE_TUNNEL,
+                        SAI_TUNNEL_ATTR_ENCAP_TTL_VAL, &capability) == SAI_STATUS_SUCCESS);
+            EXIT_UNLESS(capability.create_implemented == enabled);
+            EXIT_UNLESS(capability.set_implemented == enabled);
+            EXIT_UNLESS(capability.get_implemented == enabled);
+
+            /* orchagent creates the tunnel to the peer with the pipe model whatever the platform supports */
+            sai_object_id_t tunnel;
+            sai_object_id_t nexthop;
+            EXIT_UNLESS(createTunnel(tunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL)}) == SAI_STATUS_SUCCESS);
+            EXIT_UNLESS(createNexthop(nexthop, tunnel) == SAI_STATUS_SUCCESS);
+            EXIT_UNLESS(vppEncapTtl("ipip0") == (enabled ? 255 : 0));
+            EXIT_UNLESS(vppCallsTo("vpp_sonic_ext_tunnel_encap_ttl_set").size() == (enabled ? 1u : 0u));
+
+            EXIT_UNLESS(setEncapTtl(tunnel, 64) == (enabled ? SAI_STATUS_SUCCESS : SAI_STATUS_NOT_SUPPORTED));
+            EXIT_UNLESS(storedEncapTtl(tunnel) == (enabled ? 64 : -1));
 
             _exit(0);
         }, ::testing::ExitedWithCode(0), "");
