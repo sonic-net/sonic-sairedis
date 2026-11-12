@@ -683,11 +683,49 @@ namespace saivs
          */
         sai_status_t update_tunnel_loopback_action(_In_ sai_object_id_t tunnel_oid);
 
+        /**
+         * @brief Apply the encap TTL of a tunnel, just set, to the VPP IPIP
+         * tunnels its encap nexthops use.
+         *
+         * @param tunnel_oid The SAI tunnel object ID.
+         * @return SAI_STATUS_SUCCESS, or the status of the first VPP tunnel the
+         *         TTL could not be applied to.
+         */
+        sai_status_t update_tunnel_encap_ttl(_In_ sai_object_id_t tunnel_oid);
+
     private:
         /**
          * @brief Map SAI tunnel TTL/DSCP/ECN modes to VPP tunnel_encap_decap_flags.
          */
         uint8_t map_sai_to_vpp_flags(const SaiObject *tunnel_obj);
+
+        /**
+         * @brief The VPP IPIP tunnels the encap nexthops of a tunnel use.
+         */
+        std::set<uint32_t> get_encap_vpp_tunnels(_In_ sai_object_id_t tunnel_oid) const;
+
+        /**
+         * @brief The fixed outer TTL of a tunnel's encap: SAI_TUNNEL_ATTR_ENCAP_TTL_VAL,
+         * 255 by default, in the pipe model; 0, none, in the uniform model, the
+         * SAI default, which the VPP tunnel flags give.
+         */
+        uint8_t get_encap_ttl(_In_ sai_object_id_t tunnel_oid);
+
+        /**
+         * @brief Apply the encap TTL to a VPP IPIP tunnel.
+         *
+         * VPP builds the outer header of an IPIP tunnel with TTL 64, and the
+         * underlay decrements an IPv4 one, so without the copy flag of the
+         * uniform model the outer TTL is 63: the pipe model needs the
+         * sonic_ext plugin, which sets the TTL on the tunnel's output arcs and
+         * keeps the underlay from decrementing it. The TTL is that of the
+         * tunnels of the encap nexthops on the VPP tunnel, the highest if they
+         * differ, or none if no nexthop has one.
+         *
+         * @param sw_if_index VPP sw_if_index of the tunnel.
+         * @return SAI_STATUS_SUCCESS if the TTL is in place.
+         */
+        sai_status_t sync_encap_ttl(_In_ uint32_t sw_if_index);
 
         /**
          * @brief SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION of a tunnel: FORWARD, the
@@ -809,5 +847,9 @@ namespace saivs
         // VPP IPIP tunnels with loopback packet action DROP. VPP resets the
         // action of a tunnel it deletes.
         std::set<uint32_t> m_ipip_loopback_drop;
+
+        // Encap TTL of the VPP IPIP tunnels that have one. VPP resets the TTL
+        // of a tunnel it deletes.
+        std::map<uint32_t, uint8_t> m_ipip_encap_ttl;
     };
 }

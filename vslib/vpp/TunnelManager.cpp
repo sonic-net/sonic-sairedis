@@ -2499,7 +2499,8 @@ sai_status_t TunnelManagerIpIp::remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index
     if (ret < 0) {
         SWSS_LOG_ERROR("IpIp: vpp_ipip_tunnel_del failed for sw_if=%u: ret=%d", sw_if_index, ret);
         // The tunnel stays with its last user: bring it back up, and keep its
-        // reference, pending unnumbered setup and loopback packet action
+        // reference, pending unnumbered setup, loopback packet action and
+        // encap TTL
         if (ifname) {
             interface_set_state(ifname, true);
         }
@@ -2519,8 +2520,9 @@ sai_status_t TunnelManagerIpIp::remove_ipip_vpp_tunnel(_In_ uint32_t sw_if_index
         }
     }
 
-    // VPP resets the loopback packet action of the tunnel it deletes
+    // VPP resets the loopback packet action and encap TTL of the tunnel it deletes
     m_ipip_loopback_drop.erase(sw_if_index);
+    m_ipip_encap_ttl.erase(sw_if_index);
 
     return SAI_STATUS_SUCCESS;
 }
@@ -2811,8 +2813,10 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
         SWSS_LOG_NOTICE("IpIp Encap: created P2P tunnel nexthop %s: src=%s dst=%s sw_if=%u",
                         tunnel_nh_obj->get_id().c_str(), src_str, dst_str, sw_if_index);
 
-        // Best effort: if it fails, the tunnel forwards as without the action
+        // Best effort: if they fail, the tunnel forwards as without the action
+        // and with the stock outer TTL
         sync_loopback_action(sw_if_index);
+        sync_encap_ttl(sw_if_index);
 
     } else if (action == Action::DELETE) {
         auto it = m_ipip_encap_nh_map.find(nh_oid);
@@ -2836,10 +2840,11 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
         m_ipip_encap_nh_map.erase(it);
 
         // A VPP tunnel a decap term or another nexthop still uses takes the
-        // action of the encap nexthops left on it. Best effort, as on create:
-        // the nexthop is removed either way, and as the VPP tunnel keeps its
-        // tracked action, its next sync tries again.
+        // action and encap TTL of the encap nexthops left on it. Best effort,
+        // as on create: the nexthop is removed either way, and as the VPP
+        // tunnel keeps its tracked state, its next sync tries again.
         sync_loopback_action(sw_if_index);
+        sync_encap_ttl(sw_if_index);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -2913,6 +2918,21 @@ sai_status_t TunnelManagerIpIp::update_tunnel_loopback_action(_In_ sai_object_id
 {
     SWSS_LOG_ENTER();
 
+    sai_status_t result = SAI_STATUS_SUCCESS;
+    for (uint32_t sw_if_index : get_encap_vpp_tunnels(tunnel_oid)) {
+        sai_status_t status = sync_loopback_action(sw_if_index);
+        if (result == SAI_STATUS_SUCCESS) {
+            result = status;
+        }
+    }
+
+    return result;
+}
+
+std::set<uint32_t> TunnelManagerIpIp::get_encap_vpp_tunnels(_In_ sai_object_id_t tunnel_oid) const
+{
+    SWSS_LOG_ENTER();
+
     std::set<uint32_t> vpp_tunnels;
     for (const auto &entry : m_ipip_encap_nh_map) {
         if (entry.second.tunnel_oid == tunnel_oid) {
@@ -2920,9 +2940,92 @@ sai_status_t TunnelManagerIpIp::update_tunnel_loopback_action(_In_ sai_object_id
         }
     }
 
+    return vpp_tunnels;
+}
+
+uint8_t TunnelManagerIpIp::get_encap_ttl(_In_ sai_object_id_t tunnel_oid)
+{
+    SWSS_LOG_ENTER();
+
+    auto tunnel_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL,
+                                                  sai_serialize_object_id(tunnel_oid));
+    if (!tunnel_obj) {
+        return 0;
+    }
+
+    sai_attribute_t attr;
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_TTL_MODE;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS ||
+        attr.value.s32 != SAI_TUNNEL_TTL_MODE_PIPE_MODEL) {
+        return 0;
+    }
+
+    // A TTL of 0, which no router forwards, leaves the stock outer TTL
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_TTL_VAL;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        return 255;
+    }
+
+    return attr.value.u8;
+}
+
+sai_status_t TunnelManagerIpIp::sync_encap_ttl(_In_ uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    bool exists = std::any_of(m_ipip_tunnel_refcount.begin(), m_ipip_tunnel_refcount.end(),
+                              [sw_if_index](const auto &entry)
+                              { return entry.second.sw_if_index == sw_if_index; });
+    if (!exists) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    uint8_t ttl = 0;
+    for (const auto &entry : m_ipip_encap_nh_map) {
+        if (entry.second.sw_if_index == sw_if_index) {
+            ttl = std::max(ttl, get_encap_ttl(entry.second.tunnel_oid));
+        }
+    }
+
+    auto applied = m_ipip_encap_ttl.find(sw_if_index);
+    if (ttl == (applied == m_ipip_encap_ttl.end() ? 0 : applied->second)) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (ttl != 0) {
+        bool enabled = false;
+        CHECK_STATUS(sonicExtFeatureEnabled("tunnel-encap-ttl", enabled));
+        if (!enabled) {
+            SWSS_LOG_WARN("IpIp: sonic-ext tunnel-encap-ttl is disabled, sw_if=%u keeps the stock outer TTL, not %u",
+                          sw_if_index, ttl);
+            return SAI_STATUS_SUCCESS;
+        }
+    }
+
+    int ret = vpp_sonic_ext_tunnel_encap_ttl_set(sw_if_index, ttl);
+    if (ret != 0) {
+        SWSS_LOG_WARN("IpIp: encap TTL %u not applied on sw_if=%u: ret=%d", ttl, sw_if_index, ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (ttl != 0) {
+        m_ipip_encap_ttl[sw_if_index] = ttl;
+        SWSS_LOG_NOTICE("IpIp: encap TTL %u set on sw_if=%u", ttl, sw_if_index);
+    } else {
+        m_ipip_encap_ttl.erase(sw_if_index);
+        SWSS_LOG_NOTICE("IpIp: encap TTL removed from sw_if=%u", sw_if_index);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t TunnelManagerIpIp::update_tunnel_encap_ttl(_In_ sai_object_id_t tunnel_oid)
+{
+    SWSS_LOG_ENTER();
+
     sai_status_t result = SAI_STATUS_SUCCESS;
-    for (uint32_t sw_if_index : vpp_tunnels) {
-        sai_status_t status = sync_loopback_action(sw_if_index);
+    for (uint32_t sw_if_index : get_encap_vpp_tunnels(tunnel_oid)) {
+        sai_status_t status = sync_encap_ttl(sw_if_index);
         if (result == SAI_STATUS_SUCCESS) {
             result = status;
         }

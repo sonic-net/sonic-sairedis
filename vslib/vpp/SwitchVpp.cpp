@@ -1237,6 +1237,11 @@ sai_status_t SwitchVpp::queryAttributeCapability(
     {
         CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", implemented));
     }
+    else if (object_type == SAI_OBJECT_TYPE_TUNNEL &&
+            attr_id == SAI_TUNNEL_ATTR_ENCAP_TTL_VAL)
+    {
+        CHECK_STATUS(sonicExtFeatureEnabled("tunnel-encap-ttl", implemented));
+    }
 
     capability->create_implemented = implemented;
     capability->set_implemented    = implemented;
@@ -2646,6 +2651,12 @@ sai_status_t SwitchVpp::set(
         return setTunnelLoopbackAction(serializedObjectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_TUNNEL &&
+        attr->id == SAI_TUNNEL_ATTR_ENCAP_TTL_VAL)
+    {
+        return setTunnelEncapTtl(serializedObjectId, attr);
+    }
+
     if (objectType == SAI_OBJECT_TYPE_NAT_ENTRY)
     {
         return m_nat.setNatEntry(serializedObjectId, attr);
@@ -2842,6 +2853,39 @@ sai_status_t SwitchVpp::setTunnelLoopbackAction(
         }
     }
 
+    return setTunnelAttrOfVppTunnels(serializedObjectId, attr,
+            [this](sai_object_id_t tunnel_oid)
+            { return m_tunnel_mgr_ipip.update_tunnel_loopback_action(tunnel_oid); });
+}
+
+sai_status_t SwitchVpp::setTunnelEncapTtl(
+        _In_ const std::string &serializedObjectId,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    // VPP can only give a tunnel a fixed outer TTL with the sonic-ext feature
+    bool enabled = false;
+    CHECK_STATUS(sonicExtFeatureEnabled("tunnel-encap-ttl", enabled));
+    if (!enabled)
+    {
+        SWSS_LOG_ERROR("Cannot set tunnel encap TTL on %s: sonic-ext tunnel-encap-ttl is disabled",
+                       serializedObjectId.c_str());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return setTunnelAttrOfVppTunnels(serializedObjectId, attr,
+            [this](sai_object_id_t tunnel_oid)
+            { return m_tunnel_mgr_ipip.update_tunnel_encap_ttl(tunnel_oid); });
+}
+
+sai_status_t SwitchVpp::setTunnelAttrOfVppTunnels(
+        _In_ const std::string &serializedObjectId,
+        _In_ const sai_attribute_t* attr,
+        _In_ const std::function<sai_status_t(sai_object_id_t)>& apply)
+{
+    SWSS_LOG_ENTER();
+
     auto& tunnels = m_objectHash.at(SAI_OBJECT_TYPE_TUNNEL);
     auto it = tunnels.find(serializedObjectId);
     if (it == tunnels.end())
@@ -2851,9 +2895,9 @@ sai_status_t SwitchVpp::setTunnelLoopbackAction(
     }
 
     /*
-     * The IPIP tunnel manager takes the action from the tunnel object, so
-     * store it first. If VPP does not take it, put the previous one back and
-     * return the VPP tunnels to that.
+     * The IPIP tunnel manager takes the attribute from the tunnel object, so
+     * store it first. If VPP does not take it, put the previous value back
+     * and return the VPP tunnels to that.
      */
     auto& attrHash = it->second;
     const std::string name = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_TUNNEL, attr->id)->attridname;
@@ -2865,7 +2909,7 @@ sai_status_t SwitchVpp::setTunnelLoopbackAction(
     sai_object_id_t tunnel_oid;
     sai_deserialize_object_id(serializedObjectId, tunnel_oid);
 
-    sai_status_t status = m_tunnel_mgr_ipip.update_tunnel_loopback_action(tunnel_oid);
+    sai_status_t status = apply(tunnel_oid);
     if (status != SAI_STATUS_SUCCESS)
     {
         if (saved)
@@ -2878,16 +2922,16 @@ sai_status_t SwitchVpp::setTunnelLoopbackAction(
         }
 
         /*
-         * TunnelManagerIpIp tracks the action each VPP tunnel has, so a VPP
-         * tunnel this can't return to the previous action gets the stored one
-         * at its next sync: a SET of the tunnel, or a next hop created or
-         * removed on it.
+         * TunnelManagerIpIp tracks what each VPP tunnel has, so a VPP tunnel
+         * this can't return to the previous value gets the stored one at its
+         * next sync: a SET of the tunnel, or a next hop created or removed on
+         * it.
          */
-        sai_status_t restored = m_tunnel_mgr_ipip.update_tunnel_loopback_action(tunnel_oid);
+        sai_status_t restored = apply(tunnel_oid);
         if (restored != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Tunnel %s: VPP tunnels not returned to the previous loopback packet action: %s",
-                           serializedObjectId.c_str(), sai_serialize_status(restored).c_str());
+            SWSS_LOG_ERROR("Tunnel %s: VPP tunnels not returned to the previous %s: %s",
+                           serializedObjectId.c_str(), name.c_str(), sai_serialize_status(restored).c_str());
         }
     }
 
