@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <mutex>
@@ -638,6 +639,88 @@ int __wrap_interface_get_state(const char *hwif_name, bool *link_is_up)
 
 int __wrap_interface_set_promiscuous(const char *hwif_name, bool enable) {
     SWSS_LOG_ENTER();
+    return 0;
+}
+
+/*
+ * IPv6 link enable/disable, recorded as name: interface, sub_id: the returned
+ * status, flag: enable. VPP reference counts these, so the mock does too, and
+ * it counts them the way VPP does: ip6_link_enable() takes the lock even when
+ * it reports VALUE_EXIST for an interface someone else enabled first, while
+ * IP6_NOT_ENABLED means ip6_link_disable() found no lock to drop.
+ */
+int __wrap_sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    std::string name = hwif_name ? hwif_name : "";
+
+    const int VPP_API_ERROR_VALUE_EXIST = -81;
+
+    int ret = vppMock().ip6EnableResult;
+
+    if (enable && (ret == 0 || ret == VPP_API_ERROR_VALUE_EXIST))
+    {
+        vppMock().ip6Locks[name]++;
+    }
+    else if (!enable && ret == 0)
+    {
+        vppMock().ip6Locks[name]--;
+    }
+
+    vppMock().calls.push_back({"sw_interface_ip6_enable_disable", name, 0, (uint32_t)ret, enable});
+
+    return ret;
+}
+
+// Recorded as name: interface, sub_id: the returned status.
+int __wrap_sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address)
+{
+    SWSS_LOG_ENTER();
+
+    std::string name = hwif_name ? hwif_name : "";
+
+    int ret = vppMock().macResult;
+
+    if (ret == 0 && mac_address != nullptr)
+    {
+        char mac[18];
+        snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+                mac_address[0], mac_address[1], mac_address[2],
+                mac_address[3], mac_address[4], mac_address[5]);
+        vppMock().macs[name] = mac;
+    }
+
+    vppMock().calls.push_back({"sw_interface_set_mac", name, 0, (uint32_t)ret, true});
+
+    return ret;
+}
+
+/*
+ * Neighbor programming. Recorded as name: interface for the interface flag and
+ * the adjacency, empty for a route; id: the route's prefix length; sub_id: the
+ * returned status; flag: enable or is_add.
+ */
+int __wrap_sw_interface_set_ip_directed_broadcast(const char *hwif_name, bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    int ret = vppMock().directedBcastResult;
+
+    vppMock().calls.push_back({"sw_interface_set_ip_directed_broadcast",
+            hwif_name ? hwif_name : "", 0, (uint32_t)ret, enable});
+
+    return ret;
+}
+
+int __wrap_ip4_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct sockaddr_in *addr,
+        bool is_static, bool no_fib_entry, uint8_t *mac, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"ip4_nbr_add_del", hwif_name ? hwif_name : "",
+            addr ? addr->sin_addr.s_addr : 0, 0, is_add});
+
     return 0;
 }
 

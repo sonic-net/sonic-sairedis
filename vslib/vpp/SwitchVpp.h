@@ -256,6 +256,7 @@ namespace saivs
                 bool mtu_changed = false;
                 bool mpls_changed = false;
                 bool admin_changed = false;
+                bool ip6_enabled = false;
                 bool resync_children = false;
             };
 
@@ -917,6 +918,10 @@ namespace saivs
                     _In_ const sai_attribute_t *attr_list,
                     _Inout_ RifCreateState& state);
 
+            sai_status_t vpp_rif_ip6_enable_disable(
+                    _In_ const std::string& hwif_name,
+                    _In_ bool enable);
+
             sai_status_t vpp_update_router_interface(
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t attr_count,
@@ -1023,6 +1028,14 @@ namespace saivs
                     _In_ bool is_add,
                     _In_ bool program_adjacency = true,
                     _In_ bool program_host_route = false);
+
+            // hwif name -> number of subnet broadcast neighbors on it, refcounts the
+            // per-interface ip4 directed-broadcast flag.
+            std::map<std::string, uint32_t> m_directed_bcast_hwif;
+
+            sai_status_t updateDirectedBroadcast(
+                    _In_ const std::string &hwif_name,
+                    _In_ bool is_add);
 
             sai_status_t addIpNbr(
                     _In_ const std::string &serializedObjectId,

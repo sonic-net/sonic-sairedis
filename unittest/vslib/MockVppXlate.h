@@ -115,6 +115,17 @@ struct VppMock
     int mplsResult = 0;
     int adminResult = 0;
     int deleteResult = 0;
+    // sw_interface_ip6_enable_disable() result, and the per-interface lock count
+    // VPP keeps for IPv6 (ip6_link_t.il_locks), so a test can check that the
+    // enables a RIF takes are released again.
+    int ip6EnableResult = 0;
+    std::map<std::string, int> ip6Locks;
+    // sw_interface_set_mac() result, and the MAC each interface carries.
+    int macResult = 0;
+    std::map<std::string, std::string> macs;
+    // sw_interface_set_ip_directed_broadcast() result, for the ref-counted
+    // directed-broadcast flag of the sub-net broadcast neighbors.
+    int directedBcastResult = 0;
     uint32_t routeStatsIndex = 42;
     std::vector<int> routeResults;
     std::vector<VppRouteCall> routeCalls;
