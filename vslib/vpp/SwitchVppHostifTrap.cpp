@@ -89,6 +89,147 @@ namespace
         return trap_type == SAI_HOSTIF_TRAP_TYPE_BGP || trap_type == SAI_HOSTIF_TRAP_TYPE_BGPV6;
     }
 
+    bool isDhcpTrap(sai_hostif_trap_type_t trap_type)
+    {
+        SWSS_LOG_ENTER();
+
+        return trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP ||
+            trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6;
+    }
+
+    bool isSemanticTrap(sai_hostif_trap_type_t trap_type)
+    {
+        SWSS_LOG_ENTER();
+
+        return isDhcpTrap(trap_type) ||
+            trap_type == SAI_HOSTIF_TRAP_TYPE_NEIGHBOR_MISS;
+    }
+
+    bool isActiveTrap(const vpp_trap_entry_t &trap)
+    {
+        SWSS_LOG_ENTER();
+
+        return trap.packet_action == SAI_PACKET_ACTION_TRAP ||
+            trap.packet_action == SAI_PACKET_ACTION_COPY;
+    }
+
+}
+
+/*
+ * NEIGHBOR_MISS and each DHCP family have one semantic provider row rather
+ * than an ethertype-keyed row. Re-derive that singleton from the installed
+ * SAI owners so replacement create/remove ordering cannot tear down a row
+ * still needed by another owner. An empty policer name is deliberately a
+ * present, active-but-unpoliced row; is_bind=false means the trap is absent.
+ */
+sai_status_t SwitchVpp::programSemanticTrapBinding(
+        _In_ sai_object_id_t trap_oid,
+        _In_ const vpp_trap_entry_t &trap,
+        _In_ bool include_trap)
+{
+    SWSS_LOG_ENTER();
+
+    if (!isSemanticTrap(trap.trap_type))
+    {
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    bool active = false;
+    bool all_copy = true;
+    vpp_trap_entry_t selected{};
+    bool have_selected = false;
+    sai_object_id_t policer_oid = SAI_NULL_OBJECT_ID;
+
+    {
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+
+        auto consider = [&](const vpp_trap_entry_t &candidate) {
+            if (candidate.trap_type != trap.trap_type || !isActiveTrap(candidate))
+            {
+                return;
+            }
+
+            active = true;
+            all_copy = all_copy && candidate.packet_action == SAI_PACKET_ACTION_COPY;
+            if (!have_selected)
+            {
+                selected = candidate;
+                have_selected = true;
+            }
+        };
+
+        for (const auto &kv : m_trap_map)
+        {
+            if (kv.first != trap_oid && kv.second.classify_installed)
+            {
+                consider(kv.second);
+            }
+        }
+
+        if (include_trap && isActiveTrap(trap))
+        {
+            consider(trap);
+            // A create or explicit update owns the resulting physical row.
+            selected = trap;
+            have_selected = true;
+        }
+
+        if (have_selected)
+        {
+            auto group = m_trap_group_map.find(selected.trap_group_oid);
+            if (group != m_trap_group_map.end())
+            {
+                policer_oid = group->second.policer_oid;
+            }
+        }
+        else
+        {
+            // Owner-qualified DHCP unbinds cannot accidentally remove a
+            // replacement programmed after this trap's last bind.
+            auto group = m_trap_group_map.find(trap.trap_group_oid);
+            if (group != m_trap_group_map.end())
+            {
+                policer_oid = group->second.policer_oid;
+            }
+        }
+    }
+
+    char policer_name[64] = {};
+    if (policer_oid != SAI_NULL_OBJECT_ID)
+    {
+        snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx",
+                (unsigned long)policer_oid);
+    }
+
+    int ret;
+    if (isDhcpTrap(trap.trap_type))
+    {
+        ret = vpp_sonic_ext_copp_dhcp_bind(
+                policer_name,
+                trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6,
+                active && all_copy,
+                active);
+    }
+    else
+    {
+        ret = vpp_sonic_ext_copp_neighbor_miss_bind(policer_name, active);
+    }
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("failed to %s semantic trap %d for SAI trap 0x%lx: ret %d",
+                active ? "bind" : "unbind", (int)trap.trap_type,
+                (unsigned long)trap_oid, ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("%s semantic trap %d for SAI trap 0x%lx%s%s",
+            active ? "bound" : "unbound", (int)trap.trap_type,
+            (unsigned long)trap_oid,
+            active ? " with policer " : "",
+            active ? (policer_name[0] ? policer_name : "none") : "");
+
+    return SAI_STATUS_SUCCESS;
 }
 
 
@@ -111,6 +252,11 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
         _In_ uint32_t vpp_policer_index)
 {
     SWSS_LOG_ENTER();
+
+    if (isSemanticTrap(trap.trap_type))
+    {
+        return programSemanticTrapBinding(trap_oid, trap, true);
+    }
 
     if (vpp_policer_index == (uint32_t)~0)
     {
@@ -266,6 +412,11 @@ sai_status_t SwitchVpp::uninstallTrapClassifyNow(
         _In_ const vpp_trap_entry_t &trap)
 {
     SWSS_LOG_ENTER();
+
+    if (isSemanticTrap(trap.trap_type))
+    {
+        return programSemanticTrapBinding(trap_oid, trap, false);
+    }
 
     if (isBgpTrap(trap.trap_type))
     {
@@ -621,6 +772,10 @@ sai_status_t SwitchVpp::createHostifTrap(
     {
         vpp_update_dhcp_trap_action();
     }
+    else if (entry.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6)
+    {
+        vpp_update_dhcp6_trap_action();
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -635,6 +790,7 @@ sai_status_t SwitchVpp::removeHostifTrap(
 
     bool need_uninstall = false;
     bool is_dhcp = false;
+    bool is_dhcp6 = false;
     vpp_trap_entry_t trap_copy;
     memset(&trap_copy, 0, sizeof(trap_copy));
 
@@ -646,6 +802,7 @@ sai_status_t SwitchVpp::removeHostifTrap(
         if (it != m_trap_map.end())
         {
             is_dhcp = it->second.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCP;
+            is_dhcp6 = it->second.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6;
 
             if (it->second.classify_installed)
             {
@@ -668,6 +825,10 @@ sai_status_t SwitchVpp::removeHostifTrap(
     if (is_dhcp)
     {
         vpp_update_dhcp_trap_action();
+    }
+    else if (is_dhcp6)
+    {
+        vpp_update_dhcp6_trap_action();
     }
 
     return remove_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, serializedObjectId);
@@ -763,6 +924,11 @@ sai_status_t SwitchVpp::setHostifTrap(
     {
         vpp_update_dhcp_trap_action();
     }
+    else if (trap_copy.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6 &&
+            attr->id == SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION)
+    {
+        vpp_update_dhcp6_trap_action();
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -777,7 +943,7 @@ void SwitchVpp::vpp_update_dhcp_trap_action()
 {
     SWSS_LOG_ENTER();
 
-    bool any = false;
+    bool active = false;
     bool all_copy = true;
 
     {
@@ -785,12 +951,13 @@ void SwitchVpp::vpp_update_dhcp_trap_action()
 
         for (auto &kv : m_trap_map)
         {
-            if (kv.second.trap_type != SAI_HOSTIF_TRAP_TYPE_DHCP)
+            if (kv.second.trap_type != SAI_HOSTIF_TRAP_TYPE_DHCP ||
+                    !kv.second.classify_installed)
             {
                 continue;
             }
 
-            any = true;
+            active = true;
 
             if (kv.second.packet_action != SAI_PACKET_ACTION_COPY)
             {
@@ -799,5 +966,43 @@ void SwitchVpp::vpp_update_dhcp_trap_action()
         }
     }
 
-    vpp_set_dhcp_trap_copy(any && all_copy);
+    vpp_set_dhcp_trap_state(active, active && all_copy);
+}
+
+/*
+ * The DHCPv6 counterpart of vpp_update_dhcp_trap_action(): DHCPv6 client
+ * multicast is flooded and copied only while every DHCPv6 trap asks for COPY.
+ */
+void SwitchVpp::vpp_update_dhcp6_trap_action()
+{
+    SWSS_LOG_ENTER();
+
+    bool active = false;
+    bool all_copy = true;
+
+    {
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+
+        for (auto &kv : m_trap_map)
+        {
+            if (kv.second.trap_type != SAI_HOSTIF_TRAP_TYPE_DHCPV6)
+            {
+                continue;
+            }
+
+            if (!kv.second.classify_installed)
+            {
+                continue;
+            }
+
+            active = true;
+
+            if (kv.second.packet_action != SAI_PACKET_ACTION_COPY)
+            {
+                all_copy = false;
+            }
+        }
+    }
+
+    vpp_set_dhcp6_trap_state(active, active && all_copy);
 }
