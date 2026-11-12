@@ -35,7 +35,7 @@ using namespace saivs;
  *     members (sonic-mgmt DHCPBroadcastNotFloodedTest depends on
  *     this).  When the DHCP trap's action is SAI_PACKET_ACTION_COPY
  *     the broadcast is flooded instead and the CPU gets the BVI's copy;
- *     see s_dhcp_member_sessions.
+ *     see the per-table DHCPv4 session state below.
  *   - DHCPv6 client multicast (dst 33:33:00:01:00:02): trapped the same
  *     way, or flooded with the BVI's copy delivered through an
  *     ff02::1:2 route when the DHCPv6 trap's action is
@@ -241,7 +241,14 @@ static uint32_t s_tag_ip6mc_only_table = ~0;  /* IPv6 mcast over .1Q -> s_tag_dh
  * VPP's default drop on 255.255.255.255/32 in place, so routed interfaces do
  * not punt limited broadcasts without a semantic DHCP owner.
  */
-static bool     s_dhcp_member_sessions = false; /* DHCPv4 sessions present in the member tables */
+struct DhcpMemberSessionState
+{
+    bool present = false;
+    bool uncertain = false;
+};
+
+static DhcpMemberSessionState s_dhcp4_untag_session;
+static DhcpMemberSessionState s_dhcp4_tag_session;
 
 /* Untagged member: DHCPv4 client broadcast, see s_untag_ip4_table. */
 static void dhcp_untag_match(uint8_t m[48])
@@ -272,41 +279,86 @@ static void dhcp_tag_match(uint8_t m[48])
  * member, so l2_punt_classify_apply() calls it again on every member once
  * the tables are there.
  */
-static void l2_punt_dhcp_sessions_set(bool present)
+static int reconcile_dhcp_member_session(
+        uint32_t table_index,
+        uint32_t next_index,
+        const uint8_t *match,
+        uint32_t match_len,
+        bool present,
+        DhcpMemberSessionState& state)
 {
     SWSS_LOG_ENTER();
 
-    if (!s_l2_punt_classify_inited || present == s_dhcp_member_sessions)
-        return;
+    if (table_index == ~0u || (!state.uncertain && state.present == present))
+    {
+        return 0;
+    }
+
+    /* A timeout may mean the session changed without a reply. Mark this
+     * physical table row uncertain before dispatch and retry it even when the
+     * last confirmed state already equals the requested state. */
+    state.uncertain = true;
+    int ret = present ?
+        vpp_classify_session_add(table_index, next_index, match, match_len,
+                0, 0, SAIVS_CLASSIFY_ACTION_NONE) :
+        vpp_classify_session_del(table_index, match, match_len);
+
+    if (ret == 0)
+    {
+        state.present = present;
+        state.uncertain = false;
+    }
+
+    return ret;
+}
+
+static int l2_punt_dhcp_sessions_set(bool present)
+{
+    SWSS_LOG_ENTER();
+
+    if (!s_l2_punt_classify_inited)
+    {
+        return 0;
+    }
 
     uint8_t m[48];
+    int status = 0;
 
-    if (s_untag_ip4_table != ~0u) {
+    if (s_untag_ip4_table != ~0u)
+    {
         uint32_t untag_next = s_trap_learn_next_index != ~0u
             ? s_trap_learn_next_index : s_punt_next_index;
         dhcp_untag_match(m);
-        if (present)
-            vpp_classify_session_add(s_untag_ip4_table, untag_next,
-                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
-        else
-            vpp_classify_session_del(s_untag_ip4_table, m, 48);
+        status = reconcile_dhcp_member_session(s_untag_ip4_table, untag_next,
+                m, 48, present, s_dhcp4_untag_session);
     }
 
-    if (s_tag_dhcp_table != ~0u) {
+    if (s_tag_dhcp_table != ~0u)
+    {
         uint32_t tag_next = s_trap_learn_next_index != ~0u
             ? s_trap_learn_next_index : s_trap_fixup_next_index;
         dhcp_tag_match(m);
-        if (present)
-            vpp_classify_session_add(s_tag_dhcp_table, tag_next,
-                                     m, 48, 0, 0, SAIVS_CLASSIFY_ACTION_NONE);
-        else
-            vpp_classify_session_del(s_tag_dhcp_table, m, 48);
+        int ret = reconcile_dhcp_member_session(s_tag_dhcp_table, tag_next,
+                m, 48, present, s_dhcp4_tag_session);
+        if (status == 0)
+        {
+            status = ret;
+        }
     }
 
-    s_dhcp_member_sessions = present;
+    if (status == 0)
+    {
+        SWSS_LOG_NOTICE("l2_punt_dhcp_sessions_set: DHCPv4 member sessions %s",
+                present ? "installed (trap/default)" : "removed (copy)");
+    }
+    else
+    {
+        SWSS_LOG_ERROR("l2_punt_dhcp_sessions_set: failed to make all DHCPv4 "
+                "member sessions %s (ret %d)", present ? "present" : "absent",
+                status);
+    }
 
-    SWSS_LOG_NOTICE("l2_punt_dhcp_sessions_set: DHCPv4 member sessions %s",
-                    present ? "installed (trap)" : "removed (copy)");
+    return status;
 }
 
 /*
@@ -325,10 +377,8 @@ static void l2_punt_dhcp_sessions_set(bool present)
  * and the CPU gets the BVI's copy through the ff02::1:2 route that
  * vpp_dhcp6_mroute() installs on every BVI while the action is COPY.
  */
-static bool s_dhcp6_untag_session_present = false;
-static bool s_dhcp6_tag_session_present = false;
-static bool s_dhcp6_untag_session_uncertain = false;
-static bool s_dhcp6_tag_session_uncertain = false;
+static DhcpMemberSessionState s_dhcp6_untag_session;
+static DhcpMemberSessionState s_dhcp6_tag_session;
 
 static const uint8_t s_dhcp6_mac[6] = { 0x33, 0x33, 0x00, 0x01, 0x00, 0x02 };
 
@@ -363,42 +413,26 @@ static int l2_punt_dhcp6_sessions_set(bool present)
 
     int status = 0;
 
-    if (s_untag_dhcp6_table != ~0u &&
-            (s_dhcp6_untag_session_uncertain ||
-             present != s_dhcp6_untag_session_present)) {
+    if (s_untag_dhcp6_table != ~0u)
+    {
         uint32_t untag_next = s_trap_learn_next_index != ~0u
             ? s_trap_learn_next_index : s_punt_next_index;
         uint8_t m[16];
         dhcp6_untag_match(m);
-        s_dhcp6_untag_session_uncertain = true;
-        int ret = present ?
-            vpp_classify_session_add(s_untag_dhcp6_table, untag_next,
-                    m, 16, 0, 0, SAIVS_CLASSIFY_ACTION_NONE) :
-            vpp_classify_session_del(s_untag_dhcp6_table, m, 16);
-        if (ret == 0) {
-            s_dhcp6_untag_session_present = present;
-            s_dhcp6_untag_session_uncertain = false;
-        } else {
-            status = ret;
-        }
+        status = reconcile_dhcp_member_session(s_untag_dhcp6_table, untag_next,
+                m, 16, present, s_dhcp6_untag_session);
     }
 
-    if (s_tag_dhcp6_table != ~0u &&
-            (s_dhcp6_tag_session_uncertain ||
-             present != s_dhcp6_tag_session_present)) {
+    if (s_tag_dhcp6_table != ~0u)
+    {
         uint32_t tag_next = s_trap_learn_next_index != ~0u
             ? s_trap_learn_next_index : s_trap_fixup_next_index;
         uint8_t m[32];
         dhcp6_tag_match(m);
-        s_dhcp6_tag_session_uncertain = true;
-        int ret = present ?
-            vpp_classify_session_add(s_tag_dhcp6_table, tag_next,
-                    m, 32, 0, 0, SAIVS_CLASSIFY_ACTION_NONE) :
-            vpp_classify_session_del(s_tag_dhcp6_table, m, 32);
-        if (ret == 0) {
-            s_dhcp6_tag_session_present = present;
-            s_dhcp6_tag_session_uncertain = false;
-        } else if (status == 0) {
+        int ret = reconcile_dhcp_member_session(s_tag_dhcp6_table, tag_next,
+                m, 32, present, s_dhcp6_tag_session);
+        if (status == 0)
+        {
             status = ret;
         }
     }
@@ -435,11 +469,10 @@ extern "C" void saivpp_reset_l2_punt_classify_for_test()
     s_tag_arp_table = ~0u;
     s_tag_ip6mc_table = ~0u;
     s_tag_ip6mc_only_table = ~0u;
-    s_dhcp_member_sessions = false;
-    s_dhcp6_untag_session_present = false;
-    s_dhcp6_tag_session_present = false;
-    s_dhcp6_untag_session_uncertain = false;
-    s_dhcp6_tag_session_uncertain = false;
+    s_dhcp4_untag_session = {};
+    s_dhcp4_tag_session = {};
+    s_dhcp6_untag_session = {};
+    s_dhcp6_tag_session = {};
 }
 
 /* Called only from the single SAI processing thread; the s_* globals need no locking. */
@@ -957,9 +990,12 @@ static int l2_punt_classify_apply(const char *hwif_name, bool is_tagged,
         return -1;
     }
 
-    l2_punt_dhcp_sessions_set(punt_dhcp);
-    if (l2_punt_dhcp6_sessions_set(punt_dhcp6) != 0)
+    const int dhcp_status = l2_punt_dhcp_sessions_set(punt_dhcp);
+    const int dhcp6_status = l2_punt_dhcp6_sessions_set(punt_dhcp6);
+    if (dhcp_status != 0 || dhcp6_status != 0)
+    {
         return -1;
+    }
 
     /* Tagged frames carry outer ethertype 0x8100, so they all land in the
      * OTHER slot and every tagged punt has to share one miss-chain.
@@ -1057,6 +1093,19 @@ sai_status_t SwitchVpp::vpp_set_dhcp_trap_state(
 {
     SWSS_LOG_ENTER();
 
+    if (m_dhcp_rollback_pending)
+    {
+        const bool rollback_active = m_dhcp_rollback_active;
+        const bool rollback_copy = m_dhcp_rollback_copy;
+        m_dhcp_rollback_pending = false;
+        if (vpp_set_dhcp_trap_state(rollback_active, rollback_copy) !=
+                SAI_STATUS_SUCCESS)
+        {
+            m_dhcp_rollback_pending = true;
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
     const bool old_active = m_dhcp_trap_active;
     const bool old_copy = m_dhcp_trap_copy;
 
@@ -1088,11 +1137,32 @@ sai_status_t SwitchVpp::vpp_set_dhcp_trap_state(
      * aggregate state until every table confirms the requested receive state. */
     if (reconcile_routes(active) != 0)
     {
-        reconcile_routes(old_active);
+        if (reconcile_routes(old_active) != 0)
+        {
+            m_dhcp_rollback_pending = true;
+            m_dhcp_rollback_active = old_active;
+            m_dhcp_rollback_copy = old_copy;
+        }
         return SAI_STATUS_FAILURE;
     }
 
-    l2_punt_dhcp_sessions_set(!copy);
+    if (l2_punt_dhcp_sessions_set(!copy) != 0)
+    {
+        /* The helper retains uncertainty for either table that did not
+         * confirm. Reconcile the authoritative old classifier and route
+         * state before the enclosing hostif-trap transaction restores its
+         * provider row. */
+        int classifier_rollback = l2_punt_dhcp_sessions_set(!old_copy);
+        int route_rollback = reconcile_routes(old_active);
+        if (classifier_rollback != 0 || route_rollback != 0)
+        {
+            m_dhcp_rollback_pending = true;
+            m_dhcp_rollback_active = old_active;
+            m_dhcp_rollback_copy = old_copy;
+        }
+        return SAI_STATUS_FAILURE;
+    }
+
     m_dhcp_trap_active = active;
     m_dhcp_trap_copy = copy;
 
@@ -1119,6 +1189,19 @@ sai_status_t SwitchVpp::vpp_set_dhcp6_trap_state(
 {
     SWSS_LOG_ENTER();
 
+    if (m_dhcp6_rollback_pending)
+    {
+        const bool rollback_active = m_dhcp6_rollback_active;
+        const bool rollback_copy = m_dhcp6_rollback_copy;
+        m_dhcp6_rollback_pending = false;
+        if (vpp_set_dhcp6_trap_state(rollback_active, rollback_copy) !=
+                SAI_STATUS_SUCCESS)
+        {
+            m_dhcp6_rollback_pending = true;
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
     const bool old_active = m_dhcp6_trap_active;
     const bool old_copy = m_dhcp6_trap_copy;
 
@@ -1134,6 +1217,7 @@ sai_status_t SwitchVpp::vpp_set_dhcp6_trap_state(
                         SAI_ROUTER_INTERFACE_ATTR_TYPE);
                 if (type == nullptr)
                 {
+                    result = -1;
                     continue;
                 }
 
@@ -1150,6 +1234,7 @@ sai_status_t SwitchVpp::vpp_set_dhcp6_trap_state(
                             SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
                     if (vlan == nullptr)
                     {
+                        result = -1;
                         continue;
                     }
                     auto vid = stored_attr(SAI_OBJECT_TYPE_VLAN,
@@ -1157,6 +1242,7 @@ sai_status_t SwitchVpp::vpp_set_dhcp6_trap_state(
                             SAI_VLAN_ATTR_VLAN_ID);
                     if (vid == nullptr)
                     {
+                        result = -1;
                         continue;
                     }
                     hwif = VppVlanInterface::hwifNameFor(vid->value.u16);
@@ -1169,6 +1255,7 @@ sai_status_t SwitchVpp::vpp_set_dhcp6_trap_state(
                             SAI_ROUTER_INTERFACE_ATTR_PORT_ID);
                     if (port == nullptr)
                     {
+                        result = -1;
                         continue;
                     }
                     uint16_t vlan_id = 0;
@@ -1178,14 +1265,24 @@ sai_status_t SwitchVpp::vpp_set_dhcp6_trap_state(
                                 kv.first, SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID);
                         if (vlan == nullptr)
                         {
+                            result = -1;
                             continue;
                         }
                         vlan_id = vlan->value.u16;
                     }
-                    hwif = m_ifaceRegistry.resolveHwIfName(port->value.oid, vlan_id);
+                    if (!vppGetHwIfNameForPort(port->value.oid, vlan_id, hwif))
+                    {
+                        result = -1;
+                        continue;
+                    }
+                }
+                else
+                {
+                    continue;
                 }
 
-                if (!hwif.empty() && vpp_dhcp6_mroute(hwif.c_str(), receive) != 0)
+                if (hwif.empty() ||
+                        vpp_dhcp6_mroute(hwif.c_str(), receive) != 0)
                 {
                     result = -1;
                 }
@@ -1211,14 +1308,26 @@ sai_status_t SwitchVpp::vpp_set_dhcp6_trap_state(
 
     if (reconcile_routes(active, copy) != 0)
     {
-        reconcile_routes(old_active, old_copy);
+        if (reconcile_routes(old_active, old_copy) != 0)
+        {
+            m_dhcp6_rollback_pending = true;
+            m_dhcp6_rollback_active = old_active;
+            m_dhcp6_rollback_copy = old_copy;
+        }
         return SAI_STATUS_FAILURE;
     }
 
     if (l2_punt_dhcp6_sessions_set(active && !copy) != 0)
     {
-        reconcile_routes(old_active, old_copy);
-        l2_punt_dhcp6_sessions_set(old_active && !old_copy);
+        int route_rollback = reconcile_routes(old_active, old_copy);
+        int classifier_rollback = l2_punt_dhcp6_sessions_set(
+                old_active && !old_copy);
+        if (route_rollback != 0 || classifier_rollback != 0)
+        {
+            m_dhcp6_rollback_pending = true;
+            m_dhcp6_rollback_active = old_active;
+            m_dhcp6_rollback_copy = old_copy;
+        }
         return SAI_STATUS_FAILURE;
     }
 
@@ -1396,7 +1505,20 @@ sai_status_t SwitchVpp::createVlanMember(
 
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_VLAN_MEMBER, sid, switch_id, attr_count, attr_list));
 
-    return vpp_create_vlan_member(attr_count, attr_list);
+    sai_status_t status = vpp_create_vlan_member(attr_count, attr_list);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        sai_status_t rollback_status = remove_internal(
+                SAI_OBJECT_TYPE_VLAN_MEMBER, sid);
+        if (rollback_status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to roll back VLAN member %s after "
+                    "data-plane create failure: status=%d",
+                    sid.c_str(), rollback_status);
+        }
+    }
+
+    return status;
 
 }
 
@@ -1613,14 +1735,24 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * LCP host tap.  Tagged frames still carry the 802.1Q header
          * when l2-input-classify runs (VTR has not yet stripped it).
          *
-         * Treated as best-effort: on failure the member still comes
-         * up, but control-plane punt on this member is not enabled.
+         * This is part of member creation: committing the SAI member without
+         * its requested control-plane delivery would leave no exact retry
+         * owner, so unwind the new sub-interface on failure.
          */
         if (l2_punt_classify_apply(hw_ifname, true /*tagged*/, punt_arp, punt_ip6mc,
                                    !m_dhcp_trap_copy,
                                    m_dhcp6_trap_active && !m_dhcp6_trap_copy) != 0) {
-            SWSS_LOG_WARN("l2_punt_classify_apply failed for tagged member %s (vlan %u)",
+            SWSS_LOG_ERROR("l2_punt_classify_apply failed for tagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
+            l2_punt_classify_remove(hw_ifname);
+            set_sw_interface_l2_bridge(hw_ifname, bridge_id, false,
+                    VPP_API_PORT_TYPE_NORMAL);
+            swif_bdid_untrack(hw_ifname);
+            delete_sub_interface(hwifname, vlan_id);
+            m_ifaceRegistry.remove(hw_ifname);
+            m_sub_if_admin_up_pending.erase(hw_ifname);
+            refresh_interfaces_list();
+            return SAI_STATUS_FAILURE;
         }
     }
     else if (tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED)
@@ -1637,8 +1769,12 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * persistent untagged parent is added back so registered features and
          * the classifier arc run again. */
         if (set_l2_interface_input_feature_arc(hw_ifname, true) != 0) {
-            SWSS_LOG_WARN("Failed to restore L2 input feature arc on untagged member %s",
+            SWSS_LOG_ERROR("Failed to restore L2 input feature arc on untagged member %s",
                           hw_ifname);
+            set_sw_interface_l2_bridge(hw_ifname, bridge_id, false,
+                    VPP_API_PORT_TYPE_NORMAL);
+            swif_bdid_untrack(hw_ifname);
+            return SAI_STATUS_FAILURE;
         }
 
         // Untagged BD member: do NOT install an input tag-rewrite on
@@ -1650,13 +1786,19 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * protocols (LLDP, LACP, ARP, DHCP) arriving on the parent
          * are punted/copied to the LCP host tap.
          *
-         * Treated as best-effort; see the tagged branch above.
+         * This is transactional for the same reason as the tagged branch.
          */
         if (l2_punt_classify_apply(hw_ifname, false /*untagged*/, punt_arp, punt_ip6mc,
                                    !m_dhcp_trap_copy,
                                    m_dhcp6_trap_active && !m_dhcp6_trap_copy) != 0) {
-            SWSS_LOG_WARN("l2_punt_classify_apply failed for untagged member %s (vlan %u)",
+            SWSS_LOG_ERROR("l2_punt_classify_apply failed for untagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
+            l2_punt_classify_remove(hw_ifname);
+            set_l2_interface_input_feature_arc(hw_ifname, false);
+            set_sw_interface_l2_bridge(hw_ifname, bridge_id, false,
+                    VPP_API_PORT_TYPE_NORMAL);
+            swif_bdid_untrack(hw_ifname);
+            return SAI_STATUS_FAILURE;
         }
     }
     else {
@@ -2334,24 +2476,10 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
             m_ifaceRegistry.setTapName(bvi_rec->getHwifName(), tap_name);
         }
 
-        if (m_dhcp6_trap_copy)
-        {
-            /* Mark the attempted receive before dispatch. If the reply is
-             * lost after VPP applies it, outer create rollback must still
-             * drive the authoritative delete. */
-            state.dhcp6_mroute_added = true;
-            if (get_interface_vrf(vpp_ifname.c_str(), true,
-                    &state.dhcp6_table_id) != 0)
-            {
-                return SAI_STATUS_FAILURE;
-            }
-            state.dhcp6_table_valid = true;
-            if (vpp_dhcp6_mroute_table(state.dhcp6_table_id,
-                    vpp_ifname.c_str(), true) != 0)
-            {
-                return SAI_STATUS_FAILURE;
-            }
-        }
+        /* Create-time IPv6 admin and DHCPv6 receive state are reconciled by
+         * vpp_create_router_interface() after all RIF kinds have resolved the
+         * same defaults. Keeping that policy out of this BVI allocator avoids
+         * trap-before-RIF and RIF-before-trap producing different state. */
     }
 
     // Apply a create-time loopback (hairpin) packet action on the BVI so a VLAN
@@ -2534,30 +2662,59 @@ sai_status_t SwitchVpp::vpp_delete_bvi_interface(
     const char *hw_ifname;
     snprintf(hw_bviifname, sizeof(hw_bviifname), "bvi%u",vlan_id);
     hw_ifname = hw_bviifname;
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    const bool admin_v6 = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, bvi_obj_id,
+            1, &attr) != SAI_STATUS_SUCCESS || attr.value.booldata;
+    const bool restore_dhcp6 = m_dhcp6_trap_active &&
+        m_dhcp6_trap_copy && admin_v6;
+    auto restore_route = [&]() {
+        if (restore_dhcp6 && vpp_dhcp6_mroute(hw_ifname, true) != 0)
+        {
+            SWSS_LOG_ERROR("Failed to restore DHCPv6 receive on %s after BVI remove failure",
+                    hw_ifname);
+        }
+    };
 
     /* Always ask the reconciler to remove this interface. It is a cheap no-op
      * when confirmed absent, and it is required when a prior add timed out
      * before confirmed state advanced. */
     if (vpp_dhcp6_mroute(hw_ifname, false) != 0)
     {
+        restore_route();
         return SAI_STATUS_FAILURE;
     }
 
     //Remove interface from bridge, interface type should be changed to others types like l3.
-    set_sw_interface_l2_bridge(hw_ifname, bd_id, false, VPP_API_PORT_TYPE_BVI);
+    if (set_sw_interface_l2_bridge(hw_ifname, bd_id, false,
+            VPP_API_PORT_TYPE_BVI) != 0)
+    {
+        restore_route();
+        return SAI_STATUS_FAILURE;
+    }
 
     // Tear down LCP pair for the BVI tap.  Tap name is deterministic:
     // tap_Vlan<id>; no per-instance lookup table is needed.
-    {
-        std::string tap_name = std::string("tap_Vlan") + std::to_string(vlan_id);
+    std::string tap_name = std::string("tap_Vlan") + std::to_string(vlan_id);
 
-        SWSS_LOG_NOTICE("configure_lcp_interface remove vpp_name:%s tap:%s",
-                        hw_ifname, tap_name.c_str());
-        configure_lcp_interface(hw_ifname, tap_name.c_str(), false);
+    SWSS_LOG_NOTICE("configure_lcp_interface remove vpp_name:%s tap:%s",
+                    hw_ifname, tap_name.c_str());
+    if (configure_lcp_interface(hw_ifname, tap_name.c_str(), false) != 0)
+    {
+        set_sw_interface_l2_bridge(hw_ifname, bd_id, true,
+                VPP_API_PORT_TYPE_BVI);
+        restore_route();
+        return SAI_STATUS_FAILURE;
     }
 
     //Remove the bvi interface
-    delete_bvi_interface(hw_ifname);
+    if (delete_bvi_interface(hw_ifname) != 0)
+    {
+        configure_lcp_interface(hw_ifname, tap_name.c_str(), true);
+        set_sw_interface_l2_bridge(hw_ifname, bd_id, true,
+                VPP_API_PORT_TYPE_BVI);
+        restore_route();
+        return SAI_STATUS_FAILURE;
+    }
 
     m_ifaceRegistry.remove(hw_ifname);
 

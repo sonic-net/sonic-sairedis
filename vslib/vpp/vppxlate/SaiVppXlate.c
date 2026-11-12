@@ -611,10 +611,6 @@ static inline int vpp_normalize_ret(int ret, bool is_del, const char *func)
 	    SAIVPP_INFO("%s: ignoring VALUE_EXIST(%d) on add", func, ret);
 	    ret = 0;
     }
-    if (!is_del && ret == VNET_API_ERROR_VALUE_EXIST) {
-	    SAIVPP_INFO("%s: ignoring VALUE_EXIST(%d) on add", func, ret);
-	    ret = 0;
-    }
     return ret;
 }
 
@@ -680,6 +676,41 @@ do {                                                            \
         }                                                       \
         vat_suspend (vam->vlib_main, 1e-5);                     \
     }                                                            \
+} while(0);
+
+/* Wait only for the reply belonging to one generation-tagged request.
+ * Unrelated and late replies may still be drained from the command socket,
+ * but they cannot satisfy this request's completion condition. */
+#define WR_CORRELATED(ret, request)                              \
+do {                                                            \
+    f64 start_time = vat_time_now (vam);                        \
+    f64 hard_deadline = start_time + 10.0;                      \
+    f64 idle_deadline = start_time + 1.0;                       \
+    socket_client_main_t *scm = vam->socket_client_main;        \
+    int _wr_rv;                                                 \
+    ret = -99;                                                  \
+    while (1) {                                                 \
+        f64 now = vat_time_now (vam);                           \
+        if (now >= hard_deadline || now >= idle_deadline)       \
+            break;                                              \
+        if (scm && scm->socket_enable) {                        \
+            _wr_rv = vl_socket_client_read (1);                 \
+            if (_wr_rv < 0) {                                   \
+                ret = _wr_rv;                                   \
+                break;                                          \
+            }                                                   \
+            if (_wr_rv == 0) {                                  \
+                idle_deadline = vat_time_now (vam) + 1.0;       \
+                if (idle_deadline > hard_deadline)              \
+                    idle_deadline = hard_deadline;              \
+            }                                                   \
+        }                                                       \
+        if ((request).result_ready == 1) {                      \
+            ret = (request).retval;                             \
+            break;                                              \
+        }                                                       \
+        vat_suspend (vam->vlib_main, 1e-5);                     \
+    }                                                           \
 } while(0);
 
 /* CoPP requests use their own completion state so a late reply from any
@@ -1196,6 +1227,77 @@ static void set_reply_status (int retval)
     }
 }
 
+typedef struct _vpp_correlated_request_t {
+    int result_ready;
+    int retval;
+    void *reply_data;
+} vpp_correlated_request_t;
+
+typedef struct _vpp_classify_ids_result_t {
+    uint32_t *ids;
+} vpp_classify_ids_result_t;
+
+typedef struct _vpp_classify_info_result_t {
+    uint32_t table_id;
+    uint32_t nbuckets;
+    uint32_t match_n_vectors;
+    uint32_t skip_n_vectors;
+    uint32_t active_sessions;
+    uint32_t next_table_index;
+    uint32_t miss_next_index;
+    uint8_t *mask;
+} vpp_classify_info_result_t;
+
+typedef struct _vpp_pending_classify_create_t {
+    bool active;
+    uint32_t nbuckets;
+    uint32_t skip_n_vectors;
+    uint32_t match_n_vectors;
+    uint32_t next_table_index;
+    uint32_t miss_next_index;
+    uint8_t *mask;
+    uint32_t *before_ids;
+} vpp_pending_classify_create_t;
+
+static vpp_pending_classify_create_t pending_classify_create;
+
+static uint32_t begin_correlated_request(
+        vpp_correlated_request_t *request,
+        void *reply_data)
+{
+    request->result_ready = 0;
+    request->retval = -99;
+    request->reply_data = reply_data;
+    return store_ptr(request);
+}
+
+static vpp_correlated_request_t *get_correlated_request(uint32_t context)
+{
+    return (vpp_correlated_request_t *) get_index_ptr(context);
+}
+
+static void complete_correlated_reply(uint32_t context, int retval)
+{
+    vpp_correlated_request_t *request = get_correlated_request(context);
+
+    if (!request || request->result_ready)
+    {
+        return;
+    }
+
+    request->retval = retval;
+    request->result_ready = 1;
+    release_index(context);
+}
+
+static void end_correlated_request(uint32_t context)
+{
+    if (get_index_ptr(context))
+    {
+        release_index(context);
+    }
+}
+
 /* CoPP rollback can issue a second synchronous RPC after the first timed out.
  * Tag every CoPP request so a late reply from the timed-out operation cannot
  * satisfy the rollback wait. VPP_LOCK serializes this command path. */
@@ -1517,7 +1619,7 @@ static void
 vl_api_sw_interface_set_flags_reply_t_handler (vl_api_sw_interface_set_flags_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    complete_correlated_reply(msg->context, retval);
 }
 
 static void
@@ -1624,7 +1726,7 @@ vl_api_sw_interface_ip6_enable_disable_reply_t_handler(
     vl_api_sw_interface_ip6_enable_disable_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    complete_correlated_reply(msg->context, retval);
 }
 
 static void
@@ -1705,7 +1807,7 @@ static void
 vl_api_l2_flags_set_reply_t_handler (vl_api_l2_flags_set_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    complete_correlated_reply(msg->context, retval);
 }
 
 static void
@@ -1955,6 +2057,14 @@ vl_api_sonic_ext_ip2me_enable_disable_reply_t_handler(vl_api_sonic_ext_ip2me_ena
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_rif_ip6_enable_disable_reply_t_handler(
+    vl_api_sonic_ext_rif_ip6_enable_disable_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    complete_correlated_reply(msg->context, retval);
 }
 
 static void
@@ -2378,29 +2488,69 @@ static void vl_api_classify_add_del_table_reply_t_handler(
     vl_api_classify_add_del_table_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    vpp_correlated_request_t *request = get_correlated_request(msg->context);
 
-    if (msg->context) {
-        uint32_t *table_index = (uint32_t *) get_index_ptr(msg->context);
-        if (table_index) {
-            *table_index = ntohl(msg->new_table_index);
-        }
-        release_index(msg->context);
+    if (request && request->reply_data && retval == 0) {
+        uint32_t *table_index = (uint32_t *) request->reply_data;
+        *table_index = ntohl(msg->new_table_index);
     }
+    complete_correlated_reply(msg->context, retval);
+}
+
+static void vl_api_classify_table_ids_reply_t_handler(
+    vl_api_classify_table_ids_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    vpp_correlated_request_t *request = get_correlated_request(msg->context);
+
+    if (request && request->reply_data && retval == 0) {
+        vpp_classify_ids_result_t *result =
+            (vpp_classify_ids_result_t *) request->reply_data;
+        uint32_t count = ntohl(msg->count);
+        for (uint32_t i = 0; i < count; ++i) {
+            vec_add1(result->ids, ntohl(msg->ids[i]));
+        }
+    }
+    complete_correlated_reply(msg->context, retval);
+}
+
+static void vl_api_classify_table_info_reply_t_handler(
+    vl_api_classify_table_info_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    vpp_correlated_request_t *request = get_correlated_request(msg->context);
+
+    if (request && request->reply_data && retval == 0) {
+        vpp_classify_info_result_t *result =
+            (vpp_classify_info_result_t *) request->reply_data;
+        uint32_t mask_length = ntohl(msg->mask_length);
+        result->table_id = ntohl(msg->table_id);
+        result->nbuckets = ntohl(msg->nbuckets);
+        result->match_n_vectors = ntohl(msg->match_n_vectors);
+        result->skip_n_vectors = ntohl(msg->skip_n_vectors);
+        result->active_sessions = ntohl(msg->active_sessions);
+        result->next_table_index = ntohl(msg->next_table_index);
+        result->miss_next_index = ntohl(msg->miss_next_index);
+        if (mask_length != 0) {
+            vec_validate(result->mask, mask_length - 1);
+            clib_memcpy(result->mask, msg->mask, mask_length);
+        }
+    }
+    complete_correlated_reply(msg->context, retval);
 }
 
 static void vl_api_classify_add_del_session_reply_t_handler(
     vl_api_classify_add_del_session_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    complete_correlated_reply(msg->context, retval);
 }
 
 static void vl_api_classify_set_interface_l2_tables_reply_t_handler(
     vl_api_classify_set_interface_l2_tables_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
-    set_reply_status(retval);
+    complete_correlated_reply(msg->context, retval);
 }
 
 /* vlib API reply handler (get_next_index) */
@@ -2631,6 +2781,8 @@ static void vpp_base_vpe_init(void)
     _(BFD_MSG_ID(BFD_UDP_SET_TOS_REPLY), bfd_udp_set_tos_reply) \
     _(SPAN_MSG_ID(SW_INTERFACE_SPAN_ENABLE_DISABLE_REPLY), sw_interface_span_enable_disable_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_TABLE_REPLY), classify_add_del_table_reply) \
+    _(CLASSIFY_MSG_ID(CLASSIFY_TABLE_IDS_REPLY), classify_table_ids_reply) \
+    _(CLASSIFY_MSG_ID(CLASSIFY_TABLE_INFO_REPLY), classify_table_info_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_ADD_DEL_SESSION_REPLY), classify_add_del_session_reply) \
     _(CLASSIFY_MSG_ID(CLASSIFY_SET_INTERFACE_L2_TABLES_REPLY), classify_set_interface_l2_tables_reply) \
     _(VLIB_API_MSG_ID(GET_NEXT_INDEX_REPLY), get_next_index_reply) \
@@ -2857,6 +3009,7 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_SAMPLING_RATE_SET_REPLY), sflow_interface_sampling_rate_set_reply) \
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_RIF_IP6_ENABLE_DISABLE_REPLY), sonic_ext_rif_ip6_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IFACE_LOOPBACK_SET_ACTION_REPLY), sonic_ext_iface_loopback_set_action_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_FEATURE_GET_REPLY), sonic_ext_feature_get_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_PROFILE_ADD_DEL_REPLY), sonic_ext_pbh_profile_add_del_reply) \
@@ -5521,6 +5674,57 @@ int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable)
     return ret;
 }
 
+int vpp_sonic_ext_rif_ip6_enable_disable(
+        const char *hwif_name,
+        bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_rif_ip6_enable_disable_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context;
+    u32 idx;
+    int ret;
+
+    if (!hwif_name) {
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32)-1) {
+        SAIVPP_ERROR("Unable to get the sw_index for %s", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    context = begin_correlated_request(&request, NULL);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+    M(SONIC_EXT_RIF_IP6_ENABLE_DISABLE, mp);
+    mp->context = context;
+    mp->sw_if_index = htonl(idx);
+    mp->enable = enable;
+
+    S(mp);
+    WR_CORRELATED(ret, request);
+    end_correlated_request(context);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret,
+                hwif_name, enable);
+    } else {
+        SAIVPP_INFO("%s %s enable %d", __func__, hwif_name, enable);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
 int vpp_iface_loopback_set_action(const char *hwif_name, int action)
 {
     vat_main_t *vam = &vat_main;
@@ -6070,33 +6274,41 @@ int interface_set_state (const char *hwif_name, bool is_up)
 {
     vat_main_t *vam = &vat_main;
     vl_api_sw_interface_set_flags_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context;
+    u32 idx;
     int ret;
 
+    if (!hwif_name) {
+        return -EINVAL;
+    }
+
     VPP_LOCK();
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    context = begin_correlated_request(&request, NULL);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
 
     __plugin_msg_base = interface_msg_id_base;
 
     M (SW_INTERFACE_SET_FLAGS, mp);
-    if (hwif_name) {
-        u32 idx;
-
-        idx = get_swif_idx(vam, hwif_name);
-        if (idx != (u32) -1) {
-            mp->sw_if_index = htonl(idx);
-        } else {
-            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
-            VPP_UNLOCK();
-            return -EINVAL;
-        }
-    } else {
-        VPP_UNLOCK();
-        return -EINVAL;
-    }
+    mp->context = context;
+    mp->sw_if_index = htonl(idx);
     mp->flags = htonl ((is_up) ? IF_STATUS_API_FLAG_ADMIN_UP : 0);
 
     S (mp);
 
-    WR (ret);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s is_up %d", __func__, ret, hwif_name, is_up); }
     else { SAIVPP_INFO("%s %s is_up %d", __func__, hwif_name, is_up); }
@@ -6192,19 +6404,33 @@ int interface_set_state_by_index (uint32_t sw_if_index, bool is_up)
 {
     vat_main_t *vam = &vat_main;
     vl_api_sw_interface_set_flags_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context;
     int ret;
 
+    if (sw_if_index == (uint32_t)~0) {
+        return -EINVAL;
+    }
+
     VPP_LOCK();
+
+    context = begin_correlated_request(&request, NULL);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
 
     __plugin_msg_base = interface_msg_id_base;
 
     M (SW_INTERFACE_SET_FLAGS, mp);
+    mp->context = context;
     mp->sw_if_index = htonl(sw_if_index);
     mp->flags = htonl ((is_up) ? IF_STATUS_API_FLAG_ADMIN_UP : 0);
 
     S (mp);
 
-    WR (ret);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
 
     VPP_UNLOCK();
 
@@ -6726,38 +6952,45 @@ int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
 {
     vat_main_t *vam = &vat_main;
     vl_api_sw_interface_ip6_enable_disable_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context;
+    u32 idx;
     int ret;
 
+    if (!hwif_name) {
+        return -EINVAL;
+    }
+
     VPP_LOCK();
+
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    context = begin_correlated_request(&request, NULL);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
 
     __plugin_msg_base = ip_msg_id_base;
 
     M (SW_INTERFACE_IP6_ENABLE_DISABLE, mp);
-    if (hwif_name) {
-        u32 idx;
-
-        idx = get_swif_idx(vam, hwif_name);
-        if (idx != (u32) -1) {
-            mp->sw_if_index = htonl(idx);
-        } else {
-            SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
-            VPP_UNLOCK();
-            return -EINVAL;
-        }
-    } else {
-        VPP_UNLOCK();
-        return -EINVAL;
-    }
+    mp->context = context;
+    mp->sw_if_index = htonl(idx);
     mp->enable = enable;
 
     S (mp);
 
-    WR (ret);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
 
-    /* enable is an "add"; disable is a "delete". Tolerate VALUE_EXIST when
-     * enabling an interface whose IPv6 is already enabled (and NO_SUCH_ENTRY
-     * when disabling one that is already disabled) so host-interface recreate
-     * in a single process is idempotent. */
+    /* VALUE_EXIST still means ip6_link_enable() acquired this caller's
+     * reference. Normalize it only after the exact reply has been correlated;
+     * the C++ owner records the successful acquisition. */
     ret = vpp_normalize_ret(ret, !enable, __func__);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) %s enable %d", __func__, ret, hwif_name, enable); }
@@ -6876,6 +7109,8 @@ int set_l2_interface_input_feature_arc(const char *hwif_name, bool enable)
 {
     vat_main_t *vam = &vat_main;
     vl_api_l2_flags_set_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context;
     uint32_t sw_if_index;
     int ret;
 
@@ -6890,14 +7125,21 @@ int set_l2_interface_input_feature_arc(const char *hwif_name, bool enable)
     }
 
     VPP_LOCK();
+    context = begin_correlated_request(&request, NULL);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
     __plugin_msg_base = l2_msg_id_base;
     M (L2_FLAGS_SET, mp);
+    mp->context = context;
     mp->sw_if_index = htonl(sw_if_index);
     mp->is_set = enable;
     mp->input_feature_bitmap = htonl(SAIVPP_L2INPUT_FEAT_INPUT_FEAT_ARC);
     mp->output_feature_bitmap = 0;
     S (mp);
-    WR (ret);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
 
     if (ret) {
         SAIVPP_ERROR("%s failed(%d) hwif %s enable %d",
@@ -7777,6 +8019,149 @@ static int vpp_lcp_ethertype_enable(u16 ethertype)
  * VPP Classify API wrappers for L2 input and output
  * ======================================================================== */
 
+static int vpp_classify_table_ids_get(uint32_t **ids)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_table_ids_t *mp;
+    vpp_classify_ids_result_t result = {0};
+    vpp_correlated_request_t request;
+    uint32_t context = begin_correlated_request(&request, &result);
+    int ret;
+
+    if (context == VPP_INVALID_CTX_INDEX) {
+        return -ENOMEM;
+    }
+
+    __plugin_msg_base = classify_msg_id_base;
+    M (CLASSIFY_TABLE_IDS, mp);
+    mp->context = context;
+    S (mp);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
+
+    if (ret == 0) {
+        *ids = result.ids;
+    } else {
+        vec_free(result.ids);
+    }
+    return ret;
+}
+
+static int vpp_classify_table_info_get(
+        uint32_t table_id,
+        vpp_classify_info_result_t *result)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_classify_table_info_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context = begin_correlated_request(&request, result);
+    int ret;
+
+    if (context == VPP_INVALID_CTX_INDEX) {
+        return -ENOMEM;
+    }
+
+    __plugin_msg_base = classify_msg_id_base;
+    M (CLASSIFY_TABLE_INFO, mp);
+    mp->context = context;
+    mp->table_id = htonl(table_id);
+    S (mp);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
+    return ret;
+}
+
+static bool vpp_classify_create_matches(
+        const vpp_pending_classify_create_t *pending,
+        uint32_t nbuckets,
+        uint32_t skip_n_vectors,
+        uint32_t match_n_vectors,
+        uint32_t next_table_index,
+        uint32_t miss_next_index,
+        const uint8_t *mask,
+        uint32_t mask_len)
+{
+    return pending->nbuckets == nbuckets &&
+        pending->skip_n_vectors == skip_n_vectors &&
+        pending->match_n_vectors == match_n_vectors &&
+        pending->next_table_index == next_table_index &&
+        pending->miss_next_index == miss_next_index &&
+        vec_len(pending->mask) == mask_len &&
+        memcmp(pending->mask, mask, mask_len) == 0;
+}
+
+static void vpp_classify_pending_create_clear(void)
+{
+    vec_free(pending_classify_create.mask);
+    vec_free(pending_classify_create.before_ids);
+    memset(&pending_classify_create, 0, sizeof(pending_classify_create));
+}
+
+/* A table create allocates its index inside VPP. If the reply is lost, query
+ * the table inventory before issuing another create and adopt the one table
+ * added by the timed-out request whose immutable shape matches exactly. */
+static int vpp_classify_pending_create_recover(uint32_t *table_index)
+{
+    uint32_t *after_ids = NULL;
+    uint32_t recovered = ~0u;
+    int ret = vpp_classify_table_ids_get(&after_ids);
+
+    if (ret != 0) {
+        return ret;
+    }
+
+    for (uint32_t i = 0; i < vec_len(after_ids); ++i) {
+        uint32_t candidate = after_ids[i];
+        bool existed = false;
+        for (uint32_t j = 0;
+                j < vec_len(pending_classify_create.before_ids); ++j) {
+            if (pending_classify_create.before_ids[j] == candidate) {
+                existed = true;
+                break;
+            }
+        }
+        if (existed) {
+            continue;
+        }
+
+        vpp_classify_info_result_t info = {0};
+        ret = vpp_classify_table_info_get(candidate, &info);
+        if (ret != 0) {
+            vec_free(info.mask);
+            vec_free(after_ids);
+            return ret;
+        }
+        bool match = info.nbuckets == pending_classify_create.nbuckets &&
+            info.skip_n_vectors == pending_classify_create.skip_n_vectors &&
+            info.match_n_vectors == pending_classify_create.match_n_vectors &&
+            info.active_sessions == 0 &&
+            info.next_table_index == pending_classify_create.next_table_index &&
+            info.miss_next_index == pending_classify_create.miss_next_index &&
+            vec_len(info.mask) == vec_len(pending_classify_create.mask) &&
+            memcmp(info.mask, pending_classify_create.mask,
+                    vec_len(info.mask)) == 0;
+        vec_free(info.mask);
+        if (!match) {
+            continue;
+        }
+        if (recovered != ~0u) {
+            vec_free(after_ids);
+            return -EEXIST;
+        }
+        recovered = candidate;
+    }
+
+    vec_free(after_ids);
+    if (recovered == ~0u) {
+        vpp_classify_pending_create_clear();
+        return -ENOENT;
+    }
+
+    *table_index = recovered;
+    vpp_classify_pending_create_clear();
+    return 0;
+}
+
 int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
                               uint32_t skip_n_vectors, uint32_t match_n_vectors,
                               uint32_t next_table_index, uint32_t miss_next_index,
@@ -7785,9 +8170,48 @@ int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
 {
     vat_main_t *vam = &vat_main;
     vl_api_classify_add_del_table_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context;
     int ret;
 
+    if (!new_table_index || (mask_len != 0 && !mask)) {
+        return -EINVAL;
+    }
+
     VPP_LOCK();
+
+    if (pending_classify_create.active) {
+        if (!vpp_classify_create_matches(&pending_classify_create, nbuckets,
+                skip_n_vectors, match_n_vectors, next_table_index,
+                miss_next_index, mask, mask_len)) {
+            VPP_UNLOCK();
+            return -EINPROGRESS;
+        }
+        ret = vpp_classify_pending_create_recover(new_table_index);
+        if (ret == 0) {
+            VPP_UNLOCK();
+            return 0;
+        }
+        if (ret != -ENOENT) {
+            VPP_UNLOCK();
+            return ret;
+        }
+    }
+
+    uint32_t *before_ids = NULL;
+    ret = vpp_classify_table_ids_get(&before_ids);
+    if (ret != 0) {
+        VPP_UNLOCK();
+        return ret;
+    }
+
+    *new_table_index = ~0u;
+    context = begin_correlated_request(&request, new_table_index);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        vec_free(before_ids);
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
 
     __plugin_msg_base = classify_msg_id_base;
 
@@ -7805,10 +8229,31 @@ int vpp_classify_table_create(uint32_t nbuckets, uint32_t memory_size,
     mp->current_data_offset = 0;
     mp->mask_len = htonl(mask_len);
     clib_memcpy(mp->mask, mask, mask_len);
-    mp->context = store_ptr(new_table_index);
+    mp->context = context;
 
     S (mp);
-    WR (ret);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
+
+    if (ret != 0 && !request.result_ready) {
+        pending_classify_create.active = true;
+        pending_classify_create.nbuckets = nbuckets;
+        pending_classify_create.skip_n_vectors = skip_n_vectors;
+        pending_classify_create.match_n_vectors = match_n_vectors;
+        pending_classify_create.next_table_index = next_table_index;
+        pending_classify_create.miss_next_index = miss_next_index;
+        vec_add(pending_classify_create.mask, mask, mask_len);
+        pending_classify_create.before_ids = before_ids;
+        before_ids = NULL;
+
+        int recover = vpp_classify_pending_create_recover(new_table_index);
+        if (recover == 0) {
+            ret = 0;
+        } else if (recover != -ENOENT) {
+            ret = recover;
+        }
+    }
+    vec_free(before_ids);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d)", __func__, ret); }
     else { SAIVPP_INFO("%s table_index=%u", __func__, *new_table_index); }
@@ -7821,10 +8266,17 @@ int vpp_classify_table_delete(uint32_t table_index)
 {
     vat_main_t *vam = &vat_main;
     vl_api_classify_add_del_table_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context;
     int ret;
-    uint32_t dummy_idx = ~0u;
 
     VPP_LOCK();
+
+    context = begin_correlated_request(&request, NULL);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
 
     __plugin_msg_base = classify_msg_id_base;
 
@@ -7833,10 +8285,11 @@ int vpp_classify_table_delete(uint32_t table_index)
     mp->del_chain = true;
     mp->table_index = htonl(table_index);
     mp->mask_len = 0;
-    mp->context = store_ptr(&dummy_idx);
+    mp->context = context;
 
     S (mp);
-    WR (ret);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) table %u", __func__, ret, table_index); }
     else { SAIVPP_INFO("%s table %u", __func__, table_index); }
@@ -7852,13 +8305,26 @@ int vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
 {
     vat_main_t *vam = &vat_main;
     vl_api_classify_add_del_session_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context;
     int ret;
 
+    if (match_len != 0 && !match) {
+        return -EINVAL;
+    }
+
     VPP_LOCK();
+
+    context = begin_correlated_request(&request, NULL);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
 
     __plugin_msg_base = classify_msg_id_base;
 
     M22 (CLASSIFY_ADD_DEL_SESSION, mp, match_len);
+    mp->context = context;
     mp->is_add = true;
     mp->table_index = htonl(table_index);
     mp->hit_next_index = htonl(hit_next_index);
@@ -7870,7 +8336,13 @@ int vpp_classify_session_add(uint32_t table_index, uint32_t hit_next_index,
     clib_memcpy(mp->match, match, match_len);
 
     S (mp);
-    WR (ret);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
+
+    /* An add may have applied before its reply timed out. Treat the
+     * authoritative retry's VALUE_EXIST result as success so callers can
+     * clear their uncertainty journal, mirroring idempotent delete. */
+    ret = vpp_normalize_ret(ret, false, __func__);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) table %u", __func__, ret, table_index); }
     else { SAIVPP_INFO("%s table %u hit_next %u", __func__, table_index, hit_next_index); }
@@ -7884,13 +8356,26 @@ int vpp_classify_session_del(uint32_t table_index,
 {
     vat_main_t *vam = &vat_main;
     vl_api_classify_add_del_session_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context;
     int ret;
 
+    if (match_len != 0 && !match) {
+        return -EINVAL;
+    }
+
     VPP_LOCK();
+
+    context = begin_correlated_request(&request, NULL);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
 
     __plugin_msg_base = classify_msg_id_base;
 
     M22 (CLASSIFY_ADD_DEL_SESSION, mp, match_len);
+    mp->context = context;
     mp->is_add = false;
     mp->table_index = htonl(table_index);
     mp->hit_next_index = 0;
@@ -7898,7 +8383,8 @@ int vpp_classify_session_del(uint32_t table_index,
     clib_memcpy(mp->match, match, match_len);
 
     S (mp);
-    WR (ret);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
 
     ret = vpp_normalize_ret(ret, true, __func__);
 
@@ -7918,6 +8404,8 @@ static int vpp_classify_set_interface_l2_tables_internal(uint32_t sw_if_index,
 {
     vat_main_t *vam = &vat_main;
     vl_api_classify_set_interface_l2_tables_t *mp;
+    vpp_correlated_request_t request;
+    uint32_t context;
     char interface_name[64] = "<unknown>";
     int ret;
 
@@ -7928,6 +8416,12 @@ static int vpp_classify_set_interface_l2_tables_internal(uint32_t sw_if_index,
     }
 
     VPP_LOCK();
+
+    context = begin_correlated_request(&request, NULL);
+    if (context == VPP_INVALID_CTX_INDEX) {
+        VPP_UNLOCK();
+        return -ENOMEM;
+    }
 
     if (hwif_name) {
         snprintf(interface_name, sizeof(interface_name), "%s", hwif_name);
@@ -7944,6 +8438,7 @@ static int vpp_classify_set_interface_l2_tables_internal(uint32_t sw_if_index,
     __plugin_msg_base = classify_msg_id_base;
 
     M (CLASSIFY_SET_INTERFACE_L2_TABLES, mp);
+    mp->context = context;
     mp->sw_if_index = htonl(sw_if_index);
     mp->ip4_table_index = htonl(ip4_table_index);
     mp->ip6_table_index = htonl(ip6_table_index);
@@ -7951,7 +8446,8 @@ static int vpp_classify_set_interface_l2_tables_internal(uint32_t sw_if_index,
     mp->is_input = is_input ? 1 : 0;
 
     S (mp);
-    WR (ret);
+    WR_CORRELATED (ret, request);
+    end_correlated_request(context);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) hwif %s sw_if_index %u", __func__,
                             ret, interface_name, sw_if_index); }

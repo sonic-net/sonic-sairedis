@@ -855,10 +855,17 @@ namespace saivs
 
             sai_status_t vpp_rif_ip6_enable_disable(
                     _In_ const std::string& hwif_name,
-                    _In_ bool enable);
+                    _In_ bool enable,
+                    _Out_ bool *uncertain = nullptr);
 
             sai_status_t vpp_update_router_interface(
                     _In_ sai_object_id_t object_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t vpp_update_rif_admin_state(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_router_interface_type_t rif_type,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
@@ -1261,6 +1268,9 @@ namespace saivs
             // SwitchVppFdb.cpp.
             bool m_dhcp_trap_active = false;
             bool m_dhcp_trap_copy = false;
+            bool m_dhcp_rollback_pending = false;
+            bool m_dhcp_rollback_active = false;
+            bool m_dhcp_rollback_copy = false;
             // IPv4 tables whose limited-broadcast local route was confirmed
             // installed, and tables where an attempted update has no reliable
             // reply.  Keep both separate from the desired trap state: an RPC
@@ -1289,6 +1299,9 @@ namespace saivs
             // DHCPv6 owner is active.
             bool m_dhcp6_trap_active = false;
             bool m_dhcp6_trap_copy = false;
+            bool m_dhcp6_rollback_pending = false;
+            bool m_dhcp6_rollback_active = false;
+            bool m_dhcp6_rollback_copy = false;
 
             // Confirmed Accept interfaces per IPv6 MFIB table. The first
             // interface owns the shared local Forward path and the last

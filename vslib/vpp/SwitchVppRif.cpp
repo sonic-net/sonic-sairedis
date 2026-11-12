@@ -24,6 +24,7 @@
 #include <iostream>
 #include <sstream>
 #include <cstring>
+#include <cerrno>
 #include <regex>
 #include <fstream>
 #include <algorithm>
@@ -897,22 +898,37 @@ sai_status_t SwitchVpp::vpp_set_interface_state (
 
     std::string ifname;
 
-    if (vppGetHwIfNameForPort(object_id, vlan_id, ifname, attr_count, attr_list))
+    if (!vppGetHwIfNameForPort(object_id, vlan_id, ifname, attr_count, attr_list))
     {
-        const char *hwif_name = ifname.c_str();
+        return SAI_STATUS_FAILURE;
+    }
 
-        if (vlan_id)
+    const char *hwif_name = ifname.c_str();
+
+    if (vlan_id)
+    {
+        int ret = vpp_set_sub_interface_state(ifname, is_up);
+        if (ret != 0 && !(is_up &&
+                m_sub_if_admin_up_pending.count(ifname) != 0))
         {
-            vpp_set_sub_interface_state(ifname, is_up);
+            return SAI_STATUS_FAILURE;
         }
-        else if (interface_set_state(hwif_name, is_up) == 0 && is_up)
+    }
+    else
+    {
+        int ret = interface_set_state(hwif_name, is_up);
+        if (ret != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+        if (is_up)
         {
             vpp_resync_sub_interface_admin_state(ifname);
         }
-
-        SWSS_LOG_NOTICE("Updating router interface admin state %s %s", hwif_name,
-                        (is_up ? "UP" : "DOWN"));
     }
+
+    SWSS_LOG_NOTICE("Updating router interface admin state %s %s", hwif_name,
+                    (is_up ? "UP" : "DOWN"));
     return SAI_STATUS_SUCCESS;
 }
 
@@ -2094,11 +2110,11 @@ sai_status_t SwitchVpp::rollbackRifCreate(
     SWSS_LOG_ENTER();
 
     RifCreateState remaining = state;
-    auto fail = [&](const char *operation, int result) {
+    auto fail = [&](const char *operation, sai_status_t result) -> sai_status_t {
         SWSS_LOG_ERROR("RIF create rollback: %s failed on %s (%d)",
                 operation, state.hwif.c_str(), result);
         m_pending_rif_create_rollbacks[state.hwif] = remaining;
-        return SAI_STATUS_FAILURE;
+        return static_cast<sai_status_t>(SAI_STATUS_FAILURE);
     };
 
     if (remaining.refresh_required)
@@ -2261,21 +2277,22 @@ sai_status_t SwitchVpp::retryPendingRifCreateRollbacks()
  * side effect is not reliable: a RIF that is IPv6 admin-up but carries no
  * global IPv6 address.
  *
- * ip6_link_enable()/ip6_link_disable() are reference counted (ip6_link_t.
- * il_locks), so the reference taken here composes with the address-driven
- * enables and with the hostif-driven one in createHostif(); it is released on
- * RIF remove. VPP reports an already-enabled interface as VALUE_EXIST and a
- * not-enabled one as IP6_NOT_ENABLED, yet still adjusts the lock count in the
- * first case, so both are the no-op they look like and neither is an error.
+ * ip6_link_enable()/ip6_link_disable() are reference counted. The sonic-ext
+ * API wraps one provider-owned reference in an idempotent per-interface bit,
+ * so a retry after an applied request loses its reply cannot change the count
+ * twice. Interface deletion clears the bit before a sw_if_index can be reused.
  */
 sai_status_t SwitchVpp::vpp_rif_ip6_enable_disable(
         _In_ const std::string& hwif_name,
-        _In_ bool enable)
+        _In_ bool enable,
+        _Out_ bool *uncertain)
 {
     SWSS_LOG_ENTER();
 
-    const int VPP_API_ERROR_IP6_NOT_ENABLED = -62;
-    const int VPP_API_ERROR_VALUE_EXIST = -81;
+    if (uncertain != nullptr)
+    {
+        *uncertain = false;
+    }
 
     if (hwif_name.empty())
     {
@@ -2284,13 +2301,18 @@ sai_status_t SwitchVpp::vpp_rif_ip6_enable_disable(
         return SAI_STATUS_FAILURE;
     }
 
-    int ret = sw_interface_ip6_enable_disable(hwif_name.c_str(), enable);
+    int ret = vpp_sonic_ext_rif_ip6_enable_disable(
+            hwif_name.c_str(), enable);
 
-    if (ret == VPP_API_ERROR_VALUE_EXIST || ret == VPP_API_ERROR_IP6_NOT_ENABLED)
+    if (ret == -EINPROGRESS || ret == -99)
     {
-        SWSS_LOG_NOTICE("IPv6 already %s on router interface %s",
-                enable ? "enabled" : "disabled", hwif_name.c_str());
-        return SAI_STATUS_SUCCESS;
+        if (uncertain != nullptr)
+        {
+            *uncertain = true;
+        }
+        SWSS_LOG_ERROR("IPv6 %s pending exact VPP reply on %s",
+                enable ? "enable" : "disable", hwif_name.c_str());
+        return SAI_STATUS_FAILURE;
     }
 
     if (ret != 0)
@@ -2332,13 +2354,17 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         return SAI_STATUS_FAILURE;
     }
 
-    /*
-     * SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE defaults to true, so an absent
-     * attribute means the RIF is IPv6 admin-up and VPP has to hold a link-local
-     * for it.
-     */
-    auto attr_v6_state = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
-    const bool want_ip6 = (attr_v6_state == NULL) || attr_v6_state->value.booldata;
+    /* Both IP-family admin attributes default to true. Use those effective
+     * values for combined interface state, IPv6 reference ownership, DHCPv6
+     * receive eligibility, and later persistence/readback decisions. */
+    auto attr_v4_state = sai_metadata_get_attr_by_id(
+            SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
+    auto attr_v6_state = sai_metadata_get_attr_by_id(
+            SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
+    const bool want_ip4 = attr_v4_state == nullptr ||
+        attr_v4_state->value.booldata;
+    const bool want_ip6 = attr_v6_state == nullptr ||
+        attr_v6_state->value.booldata;
 
     if (attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_VLAN)
     {
@@ -2350,8 +2376,38 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         // link-local VPP derives here already matches the kernel's Vlan<N>.
         if (want_ip6 && !state.hwif.empty())
         {
-            CHECK_STATUS(vpp_rif_ip6_enable_disable(state.hwif, true));
-            state.ip6_enabled = true;
+            bool uncertain = false;
+            sai_status_t status = vpp_rif_ip6_enable_disable(
+                    state.hwif, true, &uncertain);
+            state.ip6_enabled = status == SAI_STATUS_SUCCESS || uncertain;
+            CHECK_STATUS(status);
+        }
+
+        /* VLAN receive is eligible only for COPY after applying the same
+         * create-time ADMIN_V6 default as every other RIF kind. */
+        if (want_ip6 && m_dhcp6_trap_active && m_dhcp6_trap_copy)
+        {
+            state.dhcp6_mroute_added = true;
+            if (get_interface_vrf(state.hwif.c_str(), true,
+                    &state.dhcp6_table_id) != 0)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+            state.dhcp6_table_valid = true;
+            if (vpp_dhcp6_mroute_table(state.dhcp6_table_id,
+                    state.hwif.c_str(), true) != 0)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+        }
+
+        /* vpp_create_bvi_interface() brings the new BVI up so its LCP pair can
+         * be established. Apply the requested combined admin state after that
+         * setup, including the both-families-down case. */
+        if (!want_ip4 && !want_ip6 &&
+                interface_set_state(state.hwif.c_str(), false) != 0)
+        {
+            return SAI_STATUS_FAILURE;
         }
 
         return SAI_STATUS_SUCCESS;
@@ -2587,12 +2643,10 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     }
     auto attr_type_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
     auto attr_type_mpls = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_MPLS_STATE, attr_count, attr_list);
-    auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
-    auto attr_type_v6 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
     const bool program_interface = is_ip_nbr_active();
 
     if (!state.interface_created &&
-        (attr_type_mpls || (program_interface && (attr_type_mtu || attr_type_v4 || attr_type_v6))))
+        (attr_type_mpls || program_interface || attr_type_mtu))
     {
         if (get_interface_state(state.hwif.c_str(), &state.previous_state) != 0 ||
             (attr_type_mpls && get_interface_mpls_enabled(state.hwif.c_str(), &state.previous_mpls) != 0))
@@ -2712,8 +2766,11 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
     if (want_ip6)
     {
-        CHECK_STATUS(vpp_rif_ip6_enable_disable(state.hwif, true));
-        state.ip6_enabled = true;
+        bool uncertain = false;
+        sai_status_t status = vpp_rif_ip6_enable_disable(
+                state.hwif, true, &uncertain);
+        state.ip6_enabled = status == SAI_STATUS_SUCCESS || uncertain;
+        CHECK_STATUS(status);
     }
 
     // Routed ingress needs the MFIB receive entry for either packet action.
@@ -2740,35 +2797,317 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         }
     }
 
-    bool v4_is_up = false, v6_is_up = false;
+    /* Both admin attributes default to true. A CREATE that supplies only one
+     * family must not silently treat the omitted peer as down. */
+    const bool v4_is_up = want_ip4;
+    const bool v6_is_up = want_ip6;
 
-    if (attr_type_v4 != NULL)
+    const bool admin_up = v4_is_up || v6_is_up;
+    if (!state.interface_created && program_interface)
     {
-        v4_is_up = attr_type_v4->value.booldata;
-    }
-    if (attr_type_v6 != NULL)
-    {
-        v6_is_up = attr_type_v6->value.booldata;
-    }
-
-    if (attr_type_v4 != NULL || attr_type_v6 != NULL)
-    {
-        if (!state.interface_created && program_interface)
+        if (state.previous_state.admin_up != admin_up)
         {
-            if (interface_set_state(state.hwif.c_str(), v4_is_up || v6_is_up) != 0)
+            int admin_ret = interface_set_state(state.hwif.c_str(), admin_up);
+            state.admin_changed = admin_ret == 0 || admin_ret == -99 ||
+                admin_ret == -EINPROGRESS;
+            if (admin_ret != 0)
             {
                 SWSS_LOG_ERROR("Failed to set RIF admin state for %s", state.hwif.c_str());
                 return SAI_STATUS_FAILURE;
             }
-            state.admin_changed = true;
-            // Replay child requests only after this parent CREATE commits.
-            state.resync_children = v4_is_up || v6_is_up;
-            return SAI_STATUS_SUCCESS;
         }
-        return vpp_set_interface_state(obj_id, vlan_id, (v4_is_up || v6_is_up));
-    } else {
+        // Replay child requests only after this parent CREATE commits.
+        state.resync_children = admin_up;
         return SAI_STATUS_SUCCESS;
     }
+    if (state.interface_created && program_interface)
+    {
+        return vpp_set_interface_state(obj_id, vlan_id, admin_up);
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::vpp_update_rif_admin_state(
+        _In_ sai_object_id_t object_id,
+        _In_ sai_router_interface_type_t rif_type,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    auto attr_v4 = sai_metadata_get_attr_by_id(
+            SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
+    auto attr_v6 = sai_metadata_get_attr_by_id(
+            SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
+    if (attr_v4 == nullptr && attr_v6 == nullptr)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    auto stored_admin = [&](sai_attr_id_t id) {
+        sai_attribute_t current{};
+        current.id = id;
+        return get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1,
+                &current) == SAI_STATUS_SUCCESS ?
+            current.value.booldata : true;
+    };
+
+    const bool old_v4 = stored_admin(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE);
+    const bool old_v6 = stored_admin(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE);
+    const bool new_v4 = attr_v4 != nullptr ? attr_v4->value.booldata : old_v4;
+    const bool new_v6 = attr_v6 != nullptr ? attr_v6->value.booldata : old_v6;
+    const bool old_admin = old_v4 || old_v6;
+    const bool new_admin = new_v4 || new_v6;
+
+    std::string hwif;
+    sai_object_id_t backing_oid = SAI_NULL_OBJECT_ID;
+    uint16_t vlan_id = 0;
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+    {
+        sai_attribute_t vlan{};
+        vlan.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+        CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &vlan));
+
+        sai_attribute_t vid{};
+        vid.id = SAI_VLAN_ATTR_VLAN_ID;
+        CHECK_STATUS(get(SAI_OBJECT_TYPE_VLAN, vlan.value.oid, 1, &vid));
+        hwif = VppVlanInterface::hwifNameFor(vid.value.u16);
+    }
+    else if (rif_type == SAI_ROUTER_INTERFACE_TYPE_PORT ||
+             rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+    {
+        sai_attribute_t backing{};
+        backing.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+        CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &backing));
+        backing_oid = backing.value.oid;
+
+        if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+        {
+            sai_attribute_t vlan{};
+            vlan.id = SAI_ROUTER_INTERFACE_ATTR_OUTER_VLAN_ID;
+            CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &vlan));
+            vlan_id = vlan.value.u16;
+        }
+
+        if (!vppGetHwIfNameForPort(backing_oid, vlan_id, hwif))
+        {
+            return SAI_STATUS_FAILURE;
+        }
+    }
+    else
+    {
+        /* Other RIF kinds have no VPP interface lifecycle here, but their
+         * SAI attributes still need to remain observable. */
+        for (auto candidate : {attr_v4, attr_v6})
+        {
+            if (candidate != nullptr)
+            {
+                CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                        sai_serialize_object_id(object_id), candidate));
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (hwif.empty())
+    {
+        SWSS_LOG_ERROR("Cannot update RIF %s admin state: no VPP interface",
+                sai_serialize_object_id(object_id).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    const bool route_eligible = rif_type != SAI_ROUTER_INTERFACE_TYPE_VLAN ||
+        m_dhcp6_trap_copy;
+    const bool old_receive = m_dhcp6_trap_active && route_eligible && old_v6;
+    const bool new_receive = m_dhcp6_trap_active && route_eligible && new_v6;
+    const bool reconcile_receive = attr_v6 != nullptr;
+    uint32_t table_id = 0;
+    if (reconcile_receive &&
+            get_interface_vrf(hwif.c_str(), true, &table_id) != 0)
+    {
+        SWSS_LOG_ERROR("Cannot resolve IPv6 table for RIF %s (%s)",
+                sai_serialize_object_id(object_id).c_str(), hwif.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    const auto sid = sai_serialize_object_id(object_id);
+    std::vector<SaiAttrBackup> backups;
+    for (auto candidate : {attr_v4, attr_v6})
+    {
+        if (candidate != nullptr)
+        {
+            SaiAttrBackup backup;
+            CHECK_STATUS(backupAttr(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid,
+                    candidate->id, backup));
+            backups.push_back(backup);
+        }
+    }
+
+    bool admin_uncertain = false;
+    auto set_admin = [&](bool up) {
+        admin_uncertain = false;
+        if (!is_ip_nbr_active())
+        {
+            return SAI_STATUS_SUCCESS;
+        }
+
+        int ret = 0;
+        if (rif_type == SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
+        {
+            ret = vpp_set_sub_interface_state(hwif, up);
+            /* Admin-up is deliberately deferred while the parent is down.
+             * The pending set is the authoritative physical intent. */
+            if (up && ret != 0 && m_sub_if_admin_up_pending.count(hwif) != 0)
+            {
+                return SAI_STATUS_SUCCESS;
+            }
+        }
+        else
+        {
+            ret = interface_set_state(hwif.c_str(), up);
+        }
+
+        if (ret != 0)
+        {
+            admin_uncertain = ret == -99 || ret == -EINPROGRESS;
+            SWSS_LOG_ERROR("Failed to set RIF %s admin %s (%d)",
+                    hwif.c_str(), up ? "up" : "down", ret);
+            return SAI_STATUS_FAILURE;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    bool route_removed = false;
+    bool ip6_enabled = false;
+    bool admin_changed = false;
+    bool ip6_disabled = false;
+    bool route_reconciled = false;
+
+    auto rollback = [&]() {
+        sai_status_t rollback_status = SAI_STATUS_SUCCESS;
+
+        /* Exact reverse order of the forward transition below. */
+        if (route_reconciled &&
+                vpp_dhcp6_mroute_table(table_id, hwif.c_str(), old_receive) != 0)
+        {
+            rollback_status = SAI_STATUS_FAILURE;
+        }
+        if (ip6_disabled &&
+                vpp_rif_ip6_enable_disable(hwif, true) != SAI_STATUS_SUCCESS)
+        {
+            rollback_status = SAI_STATUS_FAILURE;
+        }
+        if (admin_changed && set_admin(old_admin) != SAI_STATUS_SUCCESS)
+        {
+            rollback_status = SAI_STATUS_FAILURE;
+        }
+        if (ip6_enabled &&
+                vpp_rif_ip6_enable_disable(hwif, false) != SAI_STATUS_SUCCESS)
+        {
+            rollback_status = SAI_STATUS_FAILURE;
+        }
+        if (route_removed &&
+                vpp_dhcp6_mroute_table(table_id, hwif.c_str(), old_receive) != 0)
+        {
+            rollback_status = SAI_STATUS_FAILURE;
+        }
+
+        for (const auto& backup : backups)
+        {
+            if (restoreAttr(backup) != SAI_STATUS_SUCCESS)
+            {
+                rollback_status = SAI_STATUS_FAILURE;
+            }
+        }
+        return rollback_status;
+    };
+
+    /* Remove obsolete receive state before changing any prerequisite. A
+     * failed/ambiguous delete is immediately driven back to the authoritative
+     * old state and no interface/reference mutation is attempted. */
+    if (reconcile_receive && old_receive && !new_receive)
+    {
+        route_removed = true;
+        if (vpp_dhcp6_mroute_table(table_id, hwif.c_str(), false) != 0)
+        {
+            rollback();
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    if (!old_v6 && new_v6)
+    {
+        bool uncertain = false;
+        sai_status_t status = vpp_rif_ip6_enable_disable(
+                hwif, true, &uncertain);
+        ip6_enabled = status == SAI_STATUS_SUCCESS || uncertain;
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            rollback();
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    if (old_admin != new_admin)
+    {
+        if (set_admin(new_admin) != SAI_STATUS_SUCCESS)
+        {
+            admin_changed = admin_uncertain;
+            rollback();
+            return SAI_STATUS_FAILURE;
+        }
+        admin_changed = true;
+    }
+
+    if (old_v6 && !new_v6)
+    {
+        bool uncertain = false;
+        sai_status_t status = vpp_rif_ip6_enable_disable(
+                hwif, false, &uncertain);
+        ip6_disabled = status == SAI_STATUS_SUCCESS || uncertain;
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            rollback();
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    /* Add receive only after IPv6 and interface prerequisites are live. An
+     * unchanged ADMIN_V6 SET still reconciles an uncertain physical row. */
+    if (reconcile_receive && !(old_receive && !new_receive))
+    {
+        route_reconciled = true;
+        if (vpp_dhcp6_mroute_table(
+                table_id, hwif.c_str(), new_receive) != 0)
+        {
+            rollback();
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    for (auto candidate : {attr_v4, attr_v6})
+    {
+        if (candidate != nullptr)
+        {
+            sai_status_t persist_status = set_internal(
+                    SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, candidate);
+            if (persist_status != SAI_STATUS_SUCCESS)
+            {
+                sai_status_t rollback_status = rollback();
+                return rollback_status == SAI_STATUS_SUCCESS ?
+                    persist_status : rollback_status;
+            }
+        }
+    }
+
+    if (rif_type == SAI_ROUTER_INTERFACE_TYPE_PORT &&
+            !old_admin && new_admin)
+    {
+        vpp_resync_sub_interface_admin_state(hwif);
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchVpp::vpp_update_router_interface(
@@ -2779,7 +3118,7 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
     SWSS_LOG_ENTER();
 
     sai_attribute_t attr;
-    int32_t rif_type;
+    sai_router_interface_type_t rif_type;
 
     attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
     sai_status_t status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &attr);
@@ -2790,7 +3129,17 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
 
         return SAI_STATUS_FAILURE;
     }
-    rif_type = attr.value.s32;
+    rif_type = static_cast<sai_router_interface_type_t>(attr.value.s32);
+
+    auto attr_admin_v4 = sai_metadata_get_attr_by_id(
+            SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
+    auto attr_admin_v6 = sai_metadata_get_attr_by_id(
+            SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
+    if (attr_admin_v4 != nullptr || attr_admin_v6 != nullptr)
+    {
+        return vpp_update_rif_admin_state(
+                object_id, rif_type, attr_count, attr_list);
+    }
 
     if (rif_type == SAI_ROUTER_INTERFACE_TYPE_VLAN)
     {
@@ -2895,67 +3244,6 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
                      sai_serialize_object_id(object_id), attr_loopback);
     }
 
-    auto attr_type_v4 = sai_metadata_get_attr_by_id(
-            SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
-    auto attr_type_v6 = sai_metadata_get_attr_by_id(
-            SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
-
-    if (attr_type_v4 != NULL || attr_type_v6 != NULL)
-    {
-        auto stored_admin = [&](sai_attr_id_t id) {
-            sai_attribute_t current{};
-            current.id = id;
-            return get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1,
-                    &current) == SAI_STATUS_SUCCESS ?
-                current.value.booldata : true;
-        };
-        const bool old_v4 = stored_admin(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE);
-        const bool old_v6 = stored_admin(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE);
-        const bool new_v4 = attr_type_v4 != NULL ?
-            attr_type_v4->value.booldata : old_v4;
-        const bool new_v6 = attr_type_v6 != NULL ?
-            attr_type_v6->value.booldata : old_v6;
-
-        CHECK_STATUS(vpp_set_interface_state(obj_id, vlan_id,
-                new_v4 || new_v6));
-
-        if (attr_type_v6 != NULL)
-        {
-            std::string hwif = m_ifaceRegistry.resolveHwIfName(obj_id, vlan_id);
-            auto rollback = [&]() {
-                sai_status_t state_status = vpp_set_interface_state(
-                        obj_id, vlan_id, old_v4 || old_v6);
-                int route_status = hwif.empty() ? -1 :
-                    vpp_dhcp6_mroute(hwif.c_str(),
-                            old_v6 && m_dhcp6_trap_active);
-                return state_status == SAI_STATUS_SUCCESS && route_status == 0 ?
-                    SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
-            };
-
-            if (hwif.empty() || vpp_dhcp6_mroute(hwif.c_str(),
-                    new_v6 && m_dhcp6_trap_active) != 0)
-            {
-                if (rollback() != SAI_STATUS_SUCCESS)
-                {
-                    SWSS_LOG_ERROR("Failed to restore RIF %s after DHCPv6 "
-                            "receive update failure", hwif.c_str());
-                }
-                return SAI_STATUS_FAILURE;
-            }
-            sai_status_t status = set_internal(
-                    SAI_OBJECT_TYPE_ROUTER_INTERFACE,
-                    sai_serialize_object_id(object_id), attr_type_v6);
-            if (status != SAI_STATUS_SUCCESS)
-            {
-                sai_status_t rollback_status = rollback();
-                return rollback_status == SAI_STATUS_SUCCESS ?
-                    status : rollback_status;
-            }
-        }
-
-        return SAI_STATUS_SUCCESS;
-    }
-
     return SAI_STATUS_SUCCESS;
 }
 
@@ -3036,8 +3324,33 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
 
     if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+        const bool admin_v6 =
+            get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) !=
+                SAI_STATUS_SUCCESS || attr.value.booldata;
+        const bool restore_dhcp6 = m_dhcp6_trap_active && admin_v6;
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION;
+        const int32_t old_loopback =
+            get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) ==
+                SAI_STATUS_SUCCESS ? attr.value.s32 :
+                SAI_PACKET_ACTION_FORWARD;
+        uint32_t previous_vrf = 0;
+        if (get_interface_vrf(hwif_name.c_str(), false, &previous_vrf) != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+        auto restore_route = [&]() {
+            if (restore_dhcp6 && vpp_dhcp6_mroute(
+                    hwif_name.c_str(), true) != 0)
+            {
+                SWSS_LOG_ERROR("Failed to restore DHCPv6 receive on %s after remove failure",
+                        hwif_name.c_str());
+            }
+        };
+
         if (vpp_dhcp6_mroute(hwif_name.c_str(), false) != 0)
         {
+            restore_route();
             return SAI_STATUS_FAILURE;
         }
 
@@ -3060,6 +3373,8 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
             SWSS_LOG_ERROR("Failed to clear loopback action to FORWARD on %s during RIF remove "
                            "(status %d); leaving SAI RIF for retry to avoid stale DROP state",
                            hwif_name.c_str(), clear_status);
+            vpp_apply_loopback_action(hwif_name, old_loopback);
+            restore_route();
             return clear_status;
         }
 
@@ -3081,17 +3396,34 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
          * create-side default so the count stays balanced for a RIF that was
          * created IPv6 admin-down.
          */
-        attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
-
-        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) != SAI_STATUS_SUCCESS ||
-            attr.value.booldata)
+        if (admin_v6)
         {
-            CHECK_STATUS(vpp_rif_ip6_enable_disable(hwif_name, false));
+            sai_status_t ip6_status = vpp_rif_ip6_enable_disable(
+                    hwif_name, false);
+            if (ip6_status != SAI_STATUS_SUCCESS)
+            {
+                /* The provider API is idempotent, so this compensation is
+                 * safe whether the timed-out disable applied or not. */
+                vpp_rif_ip6_enable_disable(hwif_name, true);
+                vpp_apply_loopback_action(hwif_name, old_loopback);
+                restore_route();
+                return ip6_status;
+            }
         }
 
         uint32_t vrf_id = 0;
         /* For now support is only for ipv4 tables */
-        set_interface_vrf(hwif_name.c_str(), 0, vrf_id, false);
+        if (set_interface_vrf(hwif_name.c_str(), 0, vrf_id, false) != 0)
+        {
+            if (admin_v6)
+            {
+                vpp_rif_ip6_enable_disable(hwif_name, true);
+            }
+            set_interface_vrf(hwif_name.c_str(), 0, previous_vrf, false);
+            vpp_apply_loopback_action(hwif_name, old_loopback);
+            restore_route();
+            return SAI_STATUS_FAILURE;
+        }
 
         return SAI_STATUS_SUCCESS;
     }
@@ -3133,15 +3465,39 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
      */
     std::string sub_hwif = hwif_name + "." + std::to_string(vlan_id);
     std::string sub_tap = tap_name.empty() ? "" : tap_name + "." + std::to_string(vlan_id);
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    const bool sub_admin_v6 =
+        get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr) !=
+            SAI_STATUS_SUCCESS || attr.value.booldata;
+    const bool restore_sub_dhcp6 = m_dhcp6_trap_active && sub_admin_v6;
 
     if (vpp_dhcp6_mroute(sub_hwif.c_str(), false) != 0)
     {
+        if (restore_sub_dhcp6)
+        {
+            vpp_dhcp6_mroute(sub_hwif.c_str(), true);
+        }
         return SAI_STATUS_FAILURE;
     }
 
-    configure_lcp_interface(sub_hwif.c_str(), sub_tap.c_str(), false);
+    if (configure_lcp_interface(sub_hwif.c_str(), sub_tap.c_str(), false) != 0)
+    {
+        if (restore_sub_dhcp6)
+        {
+            vpp_dhcp6_mroute(sub_hwif.c_str(), true);
+        }
+        return SAI_STATUS_FAILURE;
+    }
 
-    delete_sub_interface(hwif_name.c_str(), vlan_id);
+    if (delete_sub_interface(hwif_name.c_str(), vlan_id) != 0)
+    {
+        configure_lcp_interface(sub_hwif.c_str(), sub_tap.c_str(), true);
+        if (restore_sub_dhcp6)
+        {
+            vpp_dhcp6_mroute(sub_hwif.c_str(), true);
+        }
+        return SAI_STATUS_FAILURE;
+    }
 
     m_ifaceRegistry.remove(sub_hwif);
     m_sub_if_admin_up_pending.erase(sub_hwif);
@@ -3248,17 +3604,55 @@ sai_status_t SwitchVpp::removeRouterif(
 {
     SWSS_LOG_ENTER();
 
-    // the outside feature goes before the interface does
-    m_nat.removeRouterInterface(objectId);
+    auto sid = sai_serialize_object_id(objectId);
+    auto &rifs = m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto rif = rifs.find(sid);
+    if (rif == rifs.end())
+    {
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    /* Preflight the in-memory removal before changing VPP. remove_internal()
+     * is deterministic once the object exists, but test/fault-injection
+     * implementations can reject it. Recreate the exact RIF immediately so
+     * VPP cleanup still resolves attributes normally; the final removal only
+     * happens after cleanup succeeds. RIF attributes contain no list storage,
+     * so value copies are sufficient here. */
+    std::vector<sai_attribute_t> attrs;
+    attrs.reserve(rif->second.size());
+    for (const auto &entry : rif->second)
+    {
+        attrs.push_back(*entry.second->getAttr());
+    }
+
+    sai_status_t status = remove_internal(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+    status = create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid,
+            m_switch_id, static_cast<uint32_t>(attrs.size()), attrs.data());
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to restore RIF %s after remove preflight",
+                sid.c_str());
+        return status;
+    }
 
     if (m_switchConfig->m_useTapDevice == true)
     {
         CHECK_STATUS(vpp_remove_router_interface(objectId));
     }
 
-    auto sid = sai_serialize_object_id(objectId);
+    status = remove_internal(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
 
-    CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid));
+    m_nat.removeRouterInterface(objectId);
 
     m_ifaceRegistry.clearRifOid(objectId);
     m_rifStatsBaseMap.erase(objectId);

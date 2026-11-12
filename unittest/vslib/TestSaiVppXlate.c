@@ -1,6 +1,42 @@
 /* Exercise private reply handlers without opening a live VPP API socket. */
 #include "../../vslib/vpp/vppxlate/SaiVppXlate.c"
 
+#define TEST_CORRELATED_HANDLER(base, reply_type, handler)                 \
+do {                                                                      \
+    vpp_correlated_request_t expired_request;                             \
+    vpp_correlated_request_t current_request;                             \
+    uint32_t expired_context = begin_correlated_request(                  \
+            &expired_request, NULL);                                      \
+    end_correlated_request(expired_context);                              \
+    uint32_t live_context = begin_correlated_request(                     \
+            &current_request, NULL);                                      \
+    reply_type correlated_reply = {0};                                    \
+    correlated_reply.context = expired_context;                           \
+    correlated_reply.retval = htonl((uint32_t)-5);                        \
+    handler(&correlated_reply);                                           \
+    if (current_request.result_ready ||                                   \
+        get_index_ptr(live_context) != (uintptr_t)&current_request)        \
+        return (base);                                                    \
+    correlated_reply.context = VPP_INVALID_CTX_INDEX;                     \
+    handler(&correlated_reply);                                           \
+    if (current_request.result_ready)                                     \
+        return (base) + 1;                                                \
+    vat_main.result_ready = 0;                                            \
+    set_reply_status(-19);                                                \
+    if (current_request.result_ready || !vat_main.result_ready)           \
+        return (base) + 2;                                                \
+    correlated_reply.context = live_context;                              \
+    correlated_reply.retval = htonl((uint32_t)-7);                        \
+    handler(&correlated_reply);                                           \
+    if (!current_request.result_ready || current_request.retval != -7 ||  \
+        get_index_ptr(live_context))                                      \
+        return (base) + 3;                                                \
+    correlated_reply.retval = 0;                                         \
+    handler(&correlated_reply);                                           \
+    if (current_request.retval != -7)                                     \
+        return (base) + 4;                                                \
+} while (0)
+
 int main(void)
 {
     vpp_sonic_ext_trim_counters_t expired = {0};
@@ -195,6 +231,50 @@ int main(void)
     if (!vat_main.result_ready || vat_main.retval != -3 || get_index_ptr(current_context) ||
         finish_tagged_request(current_context, vat_main.retval) != -3)
         return 24;
+
+    /* Every newly transactional mutation waits on its own request state.
+     * Late, zero-context and unrelated replies must not complete it. */
+    TEST_CORRELATED_HANDLER(30, vl_api_sw_interface_set_flags_reply_t,
+            vl_api_sw_interface_set_flags_reply_t_handler);
+    TEST_CORRELATED_HANDLER(40,
+            vl_api_sw_interface_ip6_enable_disable_reply_t,
+            vl_api_sw_interface_ip6_enable_disable_reply_t_handler);
+    TEST_CORRELATED_HANDLER(50,
+            vl_api_classify_add_del_session_reply_t,
+            vl_api_classify_add_del_session_reply_t_handler);
+    TEST_CORRELATED_HANDLER(60,
+            vl_api_classify_set_interface_l2_tables_reply_t,
+            vl_api_classify_set_interface_l2_tables_reply_t_handler);
+    TEST_CORRELATED_HANDLER(70, vl_api_l2_flags_set_reply_t,
+            vl_api_l2_flags_set_reply_t_handler);
+    TEST_CORRELATED_HANDLER(75,
+            vl_api_sonic_ext_rif_ip6_enable_disable_reply_t,
+            vl_api_sonic_ext_rif_ip6_enable_disable_reply_t_handler);
+
+    uint32_t expired_table = 99;
+    uint32_t current_table = 99;
+    vpp_correlated_request_t expired_table_request;
+    vpp_correlated_request_t current_table_request;
+    old_context = begin_correlated_request(
+            &expired_table_request, &expired_table);
+    end_correlated_request(old_context);
+    current_context = begin_correlated_request(
+            &current_table_request, &current_table);
+    vl_api_classify_add_del_table_reply_t table_reply = {0};
+    table_reply.context = old_context;
+    table_reply.new_table_index = htonl(41);
+    vl_api_classify_add_del_table_reply_t_handler(&table_reply);
+    if (current_table_request.result_ready || current_table != 99 ||
+        get_index_ptr(current_context) !=
+            (uintptr_t)&current_table_request)
+        return 80;
+
+    table_reply.context = current_context;
+    table_reply.new_table_index = htonl(42);
+    vl_api_classify_add_del_table_reply_t_handler(&table_reply);
+    if (!current_table_request.result_ready || current_table != 42 ||
+        get_index_ptr(current_context))
+        return 81;
 
     return 0;
 }

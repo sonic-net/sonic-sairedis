@@ -154,11 +154,20 @@ struct VppMock
     int mtuResult = 0;
     int mplsResult = 0;
     int adminResult = 0;
+    unsigned int adminCalls = 0;
+    std::set<unsigned int> adminFailAfterApplyOnCalls;
     int deleteResult = 0;
-    // sw_interface_ip6_enable_disable() result, and the per-interface lock count
-    // VPP keeps for IPv6 (ip6_link_t.il_locks), so a test can check that the
-    // enables a RIF takes are released again.
+    // IPv6 result and per-interface lock count. Raw requests retain pending
+    // completion state; the sonic-ext RIF API additionally records its
+    // idempotent provider owner so retrying a timed-out request is safe.
     int ip6EnableResult = 0;
+    unsigned int ip6EnableCalls = 0;
+    std::set<unsigned int> ip6EnableFailAfterApplyOnCalls;
+    bool ip6RequestPending = false;
+    bool ip6PendingEnable = false;
+    std::string ip6PendingName;
+    int ip6PendingResult = 0;
+    std::set<std::string> rifIp6Owned;
     std::map<std::string, int> ip6Locks;
     // sw_interface_set_mac() result, and the MAC each interface carries.
     int macResult = 0;
@@ -226,6 +235,8 @@ struct VppMock
     std::map<std::pair<std::string, std::string>, uint32_t> nodeNexts;
     std::map<std::string, uint32_t> nodeNextCounts;
     std::map<std::string, std::array<uint32_t, 3>> l2ClassifyTables;
+    int classifyBindResult = 0;
+    int featureArcResult = 0;
     unsigned int classifySessionCalls = 0;
     std::set<unsigned int> classifySessionFailOnCalls;
     std::set<unsigned int> classifySessionFailAfterApplyOnCalls;

@@ -1180,7 +1180,10 @@ class SwitchVppDhcpVlanPunt : public ::testing::Test
             m_sw.reset();
         }
 
-        void addMember(const char *hwif, bool tagged)
+        void addMember(
+                const char *hwif,
+                bool tagged,
+                sai_status_t expected = SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ENTER();
 
@@ -1215,8 +1218,7 @@ class SwitchVppDhcpVlanPunt : public ::testing::Test
             mattrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
             mattrs[2].value.s32 = tagged ? SAI_VLAN_TAGGING_MODE_TAGGED :
                 SAI_VLAN_TAGGING_MODE_UNTAGGED;
-            ASSERT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->vpp_create_vlan_member(3, mattrs));
+            EXPECT_EQ(expected, m_sw->vpp_create_vlan_member(3, mattrs));
         }
 
         static std::vector<uint8_t> dhcp6(
@@ -1326,6 +1328,80 @@ TEST_F(SwitchVppDhcpVlanPunt, RebuildsClassifierAfterMockReset)
     lldp[12] = 0x88;
     lldp[13] = 0xcc;
     EXPECT_EQ(puntNext, vppMock().classifyFrame("bobm2", 2, lldp));
+}
+
+TEST_F(SwitchVppDhcpVlanPunt, TaggedClassifierFailureRollsBackNewMember)
+{
+    vppMock().classifyBindResult = -1;
+
+    addMember("Ethernet8", true, SAI_STATUS_FAILURE);
+
+    EXPECT_EQ(0u, vppMock().interfaces.count("Ethernet8.100"));
+    EXPECT_EQ(0u, vppMock().bridgePorts.count("Ethernet8.100"));
+    EXPECT_EQ(0u, vppMock().l2ClassifyTables.count("Ethernet8.100"));
+}
+
+TEST_F(SwitchVppDhcpVlanPunt, UntaggedDispatcherFailureRollsBackNewMember)
+{
+    vppMock().featureArcResult = -1;
+
+    addMember("Ethernet12", false, SAI_STATUS_FAILURE);
+
+    EXPECT_EQ(0u, vppMock().bridgePorts.count("Ethernet12"));
+    EXPECT_EQ(0u, vppMock().l2InputFeatureArc.count("Ethernet12"));
+}
+
+TEST_F(SwitchVppDhcpVlanPunt, PublicCreateFailureRemovesPublishedObject)
+{
+    auto port = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_PORT, m_switchId);
+    sai_attribute_t pattr{};
+    pattr.id = SAI_PORT_ATTR_ADMIN_STATE;
+    pattr.value.booldata = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+            SAI_OBJECT_TYPE_PORT, sai_serialize_object_id(port),
+            m_switchId, 1, &pattr));
+    ASSERT_NE(nullptr, m_sw->m_ifaceRegistry.addPhysicalPort(
+            "Ethernet16", "os_Ethernet16", port));
+
+    auto bridgePort = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+    sai_attribute_t battrs[2]{};
+    battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+    battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+    battrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+    battrs[1].value.oid = port;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+            SAI_OBJECT_TYPE_BRIDGE_PORT,
+            sai_serialize_object_id(bridgePort), m_switchId, 2, battrs));
+
+    auto member = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_VLAN_MEMBER, m_switchId);
+    sai_attribute_t mattrs[3]{};
+    mattrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+    mattrs[0].value.oid = m_vlan;
+    mattrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
+    mattrs[1].value.oid = bridgePort;
+    mattrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
+    mattrs[2].value.s32 = SAI_VLAN_TAGGING_MODE_TAGGED;
+
+    vppMock().classifyBindResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->createVlanMember(member, m_switchId, 3, mattrs));
+
+    sai_attribute_t readAttr{};
+    readAttr.id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m_sw->get(
+            SAI_OBJECT_TYPE_VLAN_MEMBER,
+            sai_serialize_object_id(member), 1, &readAttr));
+
+    vppMock().classifyBindResult = 0;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->createVlanMember(member, m_switchId, 3, mattrs));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_VLAN_MEMBER,
+            sai_serialize_object_id(member), 1, &readAttr));
+    EXPECT_EQ(m_vlan, readAttr.value.oid);
 }
 
 TEST_F(SwitchVppNeighborMissTrap, BindsAndUnbindsTheNeighborMissPolicer)
@@ -3809,13 +3885,13 @@ class SwitchVppDhcpTrap : public ::testing::Test
             addMember("bobm1", true);
         }
 
-        void createBvi()
+        void createBvi(bool admin_v6 = true)
         {
             SWSS_LOG_ENTER();
 
             m_rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
 
-            sai_attribute_t attrs[4];
+            sai_attribute_t attrs[5]{};
 
             attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
             attrs[0].value.s32 = SAI_ROUTER_INTERFACE_TYPE_VLAN;
@@ -3825,12 +3901,22 @@ class SwitchVppDhcpTrap : public ::testing::Test
             memcpy(attrs[2].value.mac, BVI_MAC, sizeof(sai_mac_t));
             attrs[3].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
             attrs[3].value.oid = m_defaultVr;
+            uint32_t attr_count = 4;
+            if (!admin_v6)
+            {
+                attrs[4].id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+                attrs[4].value.booldata = false;
+                ++attr_count;
+            }
 
             SwitchVpp::RifCreateState state;
 
             ASSERT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(m_rif), m_switchId, 4, attrs));
-            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_create_bvi_interface(4, attrs, state));
+                    m_sw->vpp_create_router_interface(attr_count, attrs, state));
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+                            sai_serialize_object_id(m_rif), m_switchId,
+                            attr_count, attrs));
         }
 
         sai_object_id_t storePortRif(
@@ -3972,6 +4058,21 @@ class SwitchVppDhcpTrap : public ::testing::Test
             return TRAP_FIXUP;
         }
 
+        static const VppCoppDhcpBindCall *lastDhcpBind(bool ipv6)
+        {
+            SWSS_LOG_ENTER();
+
+            for (auto it = vppMock().coppDhcpBindCalls.rbegin();
+                    it != vppMock().coppDhcpBindCalls.rend(); ++it)
+            {
+                if (it->isIpv6 == ipv6)
+                {
+                    return &*it;
+                }
+            }
+            return nullptr;
+        }
+
         // TRAP installs terminal member classifier sessions. Routed limited
         // broadcasts independently retain their local receive route.
         void expectTrap()
@@ -3981,9 +4082,10 @@ class SwitchVppDhcpTrap : public ::testing::Test
             EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcpOnWire(false)));
             EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcpOnWire(true)));
             EXPECT_TRUE(receivesLimitedBroadcast(0));
-            ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
-            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
-            EXPECT_FALSE(vppMock().coppDhcpBindCalls.back().isCopy);
+            auto binding = lastDhcpBind(false);
+            ASSERT_NE(nullptr, binding);
+            EXPECT_TRUE(binding->isBind);
+            EXPECT_FALSE(binding->isCopy);
         }
 
         // #2135 defaults VLAN members to terminal DHCP trapping even before
@@ -4009,9 +4111,10 @@ class SwitchVppDhcpTrap : public ::testing::Test
             EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcpOnWire(true)));
             EXPECT_TRUE(receivesLimitedBroadcast(0));
             EXPECT_TRUE(policesLimitedBroadcast());
-            ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
-            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
-            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isCopy);
+            auto binding = lastDhcpBind(false);
+            ASSERT_NE(nullptr, binding);
+            EXPECT_TRUE(binding->isBind);
+            EXPECT_TRUE(binding->isCopy);
         }
 
         static constexpr uint16_t VLAN_ID = 100;
@@ -4109,6 +4212,81 @@ TEST_F(SwitchVppDhcpTrap, SetAttributeSwitchesBetweenTrapAndCopyOnExistingMember
 
     setTrapAction(trap, SAI_PACKET_ACTION_COPY);
     expectCopy();
+}
+
+TEST_F(SwitchVppDhcpTrap, PartialClassifierDeleteFailureRestoresTrapAndRetries)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP);
+    addMembers();
+    createBvi();
+    expectTrap();
+
+    sai_attribute_t attr{};
+    attr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attr.value.s32 = SAI_PACKET_ACTION_COPY;
+    vppMock().classifySessionFailAfterApplyOnCalls.insert(
+            vppMock().classifySessionCalls + 1);
+
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    expectTrap();
+
+    vppMock().classifySessionFailAfterApplyOnCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    expectCopy();
+}
+
+TEST_F(SwitchVppDhcpTrap, ClassifierFailureBeforeApplyIsRetried)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
+    addMembers();
+    createBvi();
+    expectCopy();
+
+    sai_attribute_t attr{};
+    attr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attr.value.s32 = SAI_PACKET_ACTION_TRAP;
+    vppMock().classifySessionFailOnCalls.insert(
+            vppMock().classifySessionCalls + 2);
+
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    expectCopy();
+
+    vppMock().classifySessionFailOnCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    expectTrap();
+}
+
+TEST_F(SwitchVppDhcpTrap, FailedForwardAndRollbackReplayOldStateBeforeRetry)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY);
+    addMembers();
+    createBvi();
+    expectCopy();
+
+    sai_attribute_t attr{};
+    attr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attr.value.s32 = SAI_PACKET_ACTION_TRAP;
+    const unsigned int first = vppMock().classifySessionCalls + 1;
+    vppMock().classifySessionFailAfterApplyOnCalls.insert(first);
+    for (unsigned int call = first + 2; call <= first + 20; ++call)
+    {
+        vppMock().classifySessionFailOnCalls.insert(call);
+    }
+
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    EXPECT_TRUE(m_sw->m_dhcp_rollback_pending);
+
+    vppMock().classifySessionFailAfterApplyOnCalls.clear();
+    vppMock().classifySessionFailOnCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    EXPECT_FALSE(m_sw->m_dhcp_rollback_pending);
+    expectTrap();
 }
 
 TEST_F(SwitchVppDhcpTrap, UnsupportedOtherActionsLeaveCopyUnchanged)
@@ -4510,9 +4688,10 @@ class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
             EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcp6OnWire(false)));
             EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcp6OnWire(true)));
             EXPECT_TRUE(g_ip6LocalMroutes.empty());
-            ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
-            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
-            EXPECT_FALSE(vppMock().coppDhcpBindCalls.back().isCopy);
+            auto binding = lastDhcpBind(true);
+            ASSERT_NE(nullptr, binding);
+            EXPECT_TRUE(binding->isBind);
+            EXPECT_FALSE(binding->isCopy);
         }
 
         // COPY removes the member sessions. Normal flooding reaches peers and
@@ -4524,9 +4703,10 @@ class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
             EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
             EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
             EXPECT_TRUE(bviReceivesDhcp6());
-            ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
-            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
-            EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isCopy);
+            auto binding = lastDhcpBind(true);
+            ASSERT_NE(nullptr, binding);
+            EXPECT_TRUE(binding->isBind);
+            EXPECT_TRUE(binding->isCopy);
         }
 
         void expectNoTrap6()
@@ -4604,6 +4784,36 @@ TEST_F(SwitchVppDhcp6Trap, PartialClassifierFailureRollsBackAndRetrySucceeds)
     vppMock().classifySessionFailAfterApplyOnCalls.clear();
     ASSERT_EQ(SAI_STATUS_SUCCESS,
             m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    expectTrap6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, FailedForwardAndRollbackReplayOldStateBeforeRetry)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY,
+            SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi();
+    expectCopy6();
+
+    sai_attribute_t attr{};
+    attr.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attr.value.s32 = SAI_PACKET_ACTION_TRAP;
+    const unsigned int first = vppMock().classifySessionCalls + 1;
+    vppMock().classifySessionFailAfterApplyOnCalls.insert(first);
+    for (unsigned int call = first + 2; call <= first + 20; ++call)
+    {
+        vppMock().classifySessionFailOnCalls.insert(call);
+    }
+
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    EXPECT_TRUE(m_sw->m_dhcp6_rollback_pending);
+
+    vppMock().classifySessionFailAfterApplyOnCalls.clear();
+    vppMock().classifySessionFailOnCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->setHostifTrap(sai_serialize_object_id(trap), &attr));
+    EXPECT_FALSE(m_sw->m_dhcp6_rollback_pending);
     expectTrap6();
 }
 
@@ -4703,6 +4913,48 @@ TEST_F(SwitchVppDhcp6Trap, BviGetsTheRouteInItsIpv6TableAndLosesItWhenDeleted)
     EXPECT_TRUE(g_ip6LocalMroutes.empty());
 }
 
+TEST_F(SwitchVppDhcp6Trap, BviAdminStateOwnsIpv6ReferenceAndCopyReceivePath)
+{
+    createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    createBvi(false);
+
+    EXPECT_FALSE(bviReceivesDhcp6());
+    EXPECT_EQ(0u, vppMock().ip6Locks.count("bvi100"));
+
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    admin.value.booldata = true;
+    vppMock().ip6MrouteFailBeforeApplyOnCalls.insert(
+            vppMock().ip6MrouteCalls + 1);
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_rif, &admin));
+    EXPECT_FALSE(bviReceivesDhcp6());
+    EXPECT_EQ(0, vppMock().ip6Locks["bvi100"]);
+    sai_attribute_t failed_stored{};
+    failed_stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_rif, 1, &failed_stored));
+    EXPECT_FALSE(failed_stored.value.booldata);
+
+    vppMock().ip6MrouteFailBeforeApplyOnCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_rif, &admin));
+    EXPECT_TRUE(bviReceivesDhcp6());
+    EXPECT_EQ(1, vppMock().ip6Locks.at("bvi100"));
+
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_rif, 1, &stored));
+    EXPECT_TRUE(stored.value.booldata);
+
+    admin.value.booldata = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_rif, &admin));
+    EXPECT_FALSE(bviReceivesDhcp6());
+    EXPECT_EQ(0, vppMock().ip6Locks.at("bvi100"));
+}
+
 TEST_F(SwitchVppDhcp6Trap, RoutedPortReceivesWhileTheDhcp6TrapIsActive)
 {
     storePortRif("Ethernet8");
@@ -4742,6 +4994,7 @@ TEST_F(SwitchVppDhcp6Trap, EnablingIpv6OnExistingRifInstallsReceiveRoute)
     EXPECT_EQ(SAI_STATUS_FAILURE,
             m_sw->vpp_update_router_interface(rif, 1, &admin));
     EXPECT_TRUE(g_ip6LocalMroutes.empty());
+    EXPECT_EQ(0, vppMock().ip6Locks["Ethernet8"]);
 
     sai_attribute_t stored{};
     stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
@@ -4756,6 +5009,7 @@ TEST_F(SwitchVppDhcp6Trap, EnablingIpv6OnExistingRifInstallsReceiveRoute)
     EXPECT_EQ(1u, g_ip6LocalMroutes.count(std::make_tuple(
             7u, std::string("ff02::1:2/128"), std::string("Ethernet8"))));
     EXPECT_EQ(1u, g_ip6LocalForwardTables.count(7));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("Ethernet8"));
 }
 
 TEST_F(SwitchVppDhcp6Trap, RoutedPortsInOneTableShareTheLocalForwardPath)
@@ -4820,8 +5074,12 @@ TEST_F(SwitchVppDhcp6Trap, FailedCreateRollbackPreservesBviForExactKeyRetry)
     vppMock().ip6MrouteFailBeforeApplyOnCalls.insert(2);
     SwitchVpp::RifCreateState state;
     state.hwif = "bvi100";
+    state.tap = "tap_Vlan100";
+    state.vlan = 100;
     state.bvi = true;
     state.interface_created = true;
+    state.lcp_created = true;
+    state.bridge_attached = true;
     state.dhcp6_mroute_added = true;
     state.dhcp6_table_valid = true;
     state.dhcp6_table_id = 0;

@@ -6,6 +6,7 @@ extern "C" void saivpp_reset_l2_punt_classify_for_test();
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
@@ -700,6 +701,10 @@ extern "C" int __wrap_set_l2_interface_input_feature_arc(
 {
     SWSS_LOG_ENTER();
     vppMock().calls.push_back({"set_l2_interface_input_feature_arc", name, 0, 0, enable});
+    if (vppMock().featureArcResult != 0)
+    {
+        return vppMock().featureArcResult;
+    }
     if (vppMock().bridgePorts.count(name) == 0)
     {
         return -1;
@@ -867,18 +872,27 @@ int __wrap_interface_set_state(const char *hwif_name, bool is_up)
 
     std::string name = hwif_name ? hwif_name : "";
 
+    ++vppMock().adminCalls;
     int ret = vppMock().adminResult;
     vppMock().adminResult = 0;
+    const bool fail_after =
+        vppMock().adminFailAfterApplyOnCalls.count(vppMock().adminCalls) != 0;
+    int apply_ret = fail_after ? 0 : ret;
 
     auto dot = name.rfind('.');
 
-    if (ret == 0 && is_up && dot != std::string::npos && !vppMock().isAdminUp(name.substr(0, dot)))
+    if (apply_ret == 0 && is_up && dot != std::string::npos &&
+        !vppMock().isAdminUp(name.substr(0, dot)))
     {
         ret = -1;
     }
-    else if (ret == 0)
+    else if (apply_ret == 0)
     {
         vppMock().adminUp[name] = is_up;
+        if (fail_after)
+        {
+            ret = -99;
+        }
     }
 
     vppMock().calls.push_back({"interface_set_state", name, 0, (uint32_t)ret, is_up});
@@ -913,19 +927,92 @@ int __wrap_sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
 
     const int VPP_API_ERROR_VALUE_EXIST = -81;
 
-    int ret = vppMock().ip6EnableResult;
+    if (vppMock().ip6RequestPending)
+    {
+        if (vppMock().ip6PendingName != name)
+        {
+            return -EINPROGRESS;
+        }
 
-    if (enable && (ret == 0 || ret == VPP_API_ERROR_VALUE_EXIST))
+        const bool pending_enable = vppMock().ip6PendingEnable;
+        const int pending_result = vppMock().ip6PendingResult;
+        vppMock().ip6RequestPending = false;
+        if (pending_enable == enable)
+        {
+            return pending_result;
+        }
+    }
+
+    ++vppMock().ip6EnableCalls;
+    int ret = vppMock().ip6EnableResult;
+    const bool fail_after = vppMock().ip6EnableFailAfterApplyOnCalls.count(
+            vppMock().ip6EnableCalls) != 0;
+    const int apply_ret = fail_after ? 0 : ret;
+
+    if (enable && (apply_ret == 0 || apply_ret == VPP_API_ERROR_VALUE_EXIST))
     {
         vppMock().ip6Locks[name]++;
     }
-    else if (!enable && ret == 0)
+    else if (!enable && apply_ret == 0)
     {
         vppMock().ip6Locks[name]--;
     }
 
+    if (fail_after)
+    {
+        vppMock().ip6RequestPending = true;
+        vppMock().ip6PendingEnable = enable;
+        vppMock().ip6PendingName = name;
+        vppMock().ip6PendingResult = 0;
+        ret = -EINPROGRESS;
+    }
+
     vppMock().calls.push_back({"sw_interface_ip6_enable_disable", name, 0, (uint32_t)ret, enable});
 
+    return ret;
+}
+
+int __wrap_vpp_sonic_ext_rif_ip6_enable_disable(
+        const char *hwif_name,
+        bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string name = hwif_name ? hwif_name : "";
+    ++vppMock().ip6EnableCalls;
+    int ret = vppMock().ip6EnableResult;
+    const bool fail_after = vppMock().ip6EnableFailAfterApplyOnCalls.count(
+            vppMock().ip6EnableCalls) != 0;
+    const int VPP_API_ERROR_IP6_NOT_ENABLED = -62;
+    const int VPP_API_ERROR_VALUE_EXIST = -81;
+    const bool idempotent_success =
+        (enable && ret == VPP_API_ERROR_VALUE_EXIST) ||
+        (!enable && ret == VPP_API_ERROR_IP6_NOT_ENABLED);
+    const int apply_ret = fail_after || idempotent_success ? 0 : ret;
+
+    if (apply_ret == 0)
+    {
+        if (enable && vppMock().rifIp6Owned.insert(name).second)
+        {
+            ++vppMock().ip6Locks[name];
+        }
+        else if (!enable && vppMock().rifIp6Owned.erase(name) != 0)
+        {
+            --vppMock().ip6Locks[name];
+        }
+    }
+
+    if (fail_after)
+    {
+        ret = -99;
+    }
+    else if (idempotent_success)
+    {
+        ret = 0;
+    }
+
+    vppMock().calls.push_back({"sw_interface_ip6_enable_disable", name, 0,
+            (uint32_t)ret, enable});
     return ret;
 }
 
@@ -1118,6 +1205,10 @@ int __wrap_vpp_classify_set_interface_l2_tables(const char *hwif_name, uint32_t 
 {
     SWSS_LOG_ENTER();
     (void)is_input;
+    if (vppMock().classifyBindResult != 0)
+    {
+        return vppMock().classifyBindResult;
+    }
     vppMock().l2ClassifyTables[hwif_name] = {
         ip4_table_index, ip6_table_index, other_table_index
     };

@@ -263,7 +263,9 @@ TEST_F(SwitchVppRifTest, failedPersistentSnapshotRestoresAllSettingsBeforeRetry)
         ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, backing)));
         EXPECT_EQ(previousMtu, vppMock().mtus[name]);
         EXPECT_EQ(previousEnabled, vppMock().mplsReferences[name]);
-        EXPECT_EQ(previousEnabled, vppMock().isAdminUp(name));
+        // Both RIF admin families default true, so the successful retry owns
+        // an administratively-up interface even if the backing LAG was down.
+        EXPECT_TRUE(vppMock().isAdminUp(name));
         ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
     }
 }
@@ -359,7 +361,7 @@ TEST_F(SwitchVppRifTest, failedParentCreateDoesNotConsumeDeferredChildAdmin)
     EXPECT_TRUE(sw->m_sub_if_admin_up_pending.empty());
 }
 
-TEST_F(SwitchVppRifTest, failedSubPortCreateDoesNotApplyDeferredAdminToReplacement)
+TEST_F(SwitchVppRifTest, failedSubPortCreateDoesNotLeakDeferredAdminToReplacement)
 {
     auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, port);
     sai_attribute_t admin{};
@@ -376,9 +378,12 @@ TEST_F(SwitchVppRifTest, failedSubPortCreateDoesNotApplyDeferredAdminToReplaceme
     vppMock().statsResult = 0;
     ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
     const auto calls = vppMock().callsTo("interface_set_state", "port0.10").size();
+    EXPECT_EQ(1u, sw->m_sub_if_admin_up_pending.count("port0.10"));
     ASSERT_EQ(SAI_STATUS_SUCCESS, sw->vpp_set_interface_state(port, 0, true));
-    EXPECT_FALSE(vppMock().isAdminUp("port0.10"));
-    EXPECT_EQ(calls, vppMock().callsTo("interface_set_state", "port0.10").size());
+    EXPECT_TRUE(vppMock().isAdminUp("port0.10"));
+    EXPECT_EQ(calls + 1u,
+            vppMock().callsTo("interface_set_state", "port0.10").size());
+    EXPECT_TRUE(sw->m_sub_if_admin_up_pending.empty());
 }
 
 TEST_F(SwitchVppRifTest, rollbackRetainsDeferredAdminOnlyIfOwnedInterfaceDeletionFails)
@@ -876,6 +881,51 @@ TEST_F(SwitchVppRifTest, failedPortSnapshotRestoresActionWithoutDeletingPort)
     EXPECT_EQ(0u, sw->m_rifStatsBaseMap.count(rif));
 }
 
+TEST_F(SwitchVppRifTest, createAdminTimeoutRestoresAdminAndIpv6Ownership)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    vppMock().ip6Locks["port0"] = 1; // hostif/address owner
+    vppMock().adminFailAfterApplyOnCalls.insert(1);
+
+    ASSERT_EQ(SAI_STATUS_FAILURE,
+            create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    EXPECT_FALSE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+    EXPECT_EQ(0u, sw->m_objectHash.at(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE).count(
+                    sai_serialize_object_id(rif)));
+
+    vppMock().adminFailAfterApplyOnCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(2, vppMock().ip6Locks.at("port0"));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+}
+
+TEST_F(SwitchVppRifTest, createIpv6TimeoutReleasesExactlyItsOwnReference)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    vppMock().ip6Locks["port0"] = 1; // hostif/address owner
+    vppMock().ip6EnableFailAfterApplyOnCalls.insert(1);
+
+    ASSERT_EQ(SAI_STATUS_FAILURE,
+            create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+    EXPECT_FALSE(vppMock().ip6RequestPending);
+    EXPECT_EQ(0u, sw->m_objectHash.at(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE).count(
+                    sai_serialize_object_id(rif)));
+
+    vppMock().ip6EnableFailAfterApplyOnCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    EXPECT_EQ(2, vppMock().ip6Locks.at("port0"));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+}
+
 /*
  * VPP builds an interface's IPv6 link-local inside ip6_link_enable(), which
  * only runs when something takes an IPv6 lock on it, so a RIF has to take one
@@ -900,6 +950,27 @@ TEST_F(SwitchVppRifTest, rifCreateEnablesIpv6AndRemoveReleasesIt)
         EXPECT_FALSE(vppMock().callsTo("sw_interface_ip6_enable_disable", name)[1].flag);
         EXPECT_EQ(0, vppMock().ip6Locks.at(name));
     }
+}
+
+TEST_F(SwitchVppRifTest, failedObjectRemoveRestoresIpv6ReferenceBeforeRetry)
+{
+    vppMock().ip6Locks["port0"] = 1; // hostif/address owner
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    ASSERT_EQ(2, vppMock().ip6Locks.at("port0"));
+
+    auto testable = std::static_pointer_cast<TestableSwitchVpp>(sw);
+    testable->removeInternalResult = SAI_STATUS_FAILURE;
+    EXPECT_EQ(SAI_STATUS_FAILURE, sw->removeRouterif(rif));
+    EXPECT_EQ(2, vppMock().ip6Locks.at("port0"));
+    EXPECT_EQ(1u, sw->m_objectHash.at(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE).count(
+                    sai_serialize_object_id(rif)));
+
+    testable->removeInternalResult = SAI_STATUS_SUCCESS;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
 }
 
 // An interface this RIF created is deleted on remove, which drops its locks.
@@ -938,6 +1009,249 @@ TEST_F(SwitchVppRifTest, ipv6AdminDownRifTakesNoLock)
     // and the remove must not release a lock it never took
     ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
     EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").empty());
+}
+
+TEST_F(SwitchVppRifTest, createDefaultsOmittedIpv6AdminToUp)
+{
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    admin.value.booldata = false;
+    attrs.push_back(admin);
+
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+}
+
+TEST_F(SwitchVppRifTest, createDefaultsOmittedIpv4AdminToUp)
+{
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    admin.value.booldata = false;
+    attrs.push_back(admin);
+
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+    EXPECT_TRUE(vppMock().callsTo(
+            "sw_interface_ip6_enable_disable", "port0").empty());
+}
+
+TEST_F(SwitchVppRifTest, createWithBothAdminFamiliesDownLeavesInterfaceDown)
+{
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    admin.value.booldata = false;
+    attrs.push_back(admin);
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    attrs.push_back(admin);
+
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_FALSE(vppMock().isAdminUp("port0"));
+    EXPECT_TRUE(vppMock().callsTo(
+            "sw_interface_ip6_enable_disable", "port0").empty());
+}
+
+TEST_F(SwitchVppRifTest, adminFamilyUpdatesPersistAndDriveOneCombinedState)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+    ASSERT_EQ(1, vppMock().ip6Locks.at("port0"));
+
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    admin.value.booldata = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+    EXPECT_FALSE(stored.value.booldata);
+
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    admin.value.booldata = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_FALSE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(0, vppMock().ip6Locks.at("port0"));
+
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+    EXPECT_FALSE(stored.value.booldata);
+
+    /* ADMIN_V6=false means SET already released the RIF-owned reference;
+     * remove must not release it a second time. */
+    const auto calls = vppMock().callsTo(
+            "sw_interface_ip6_enable_disable", "port0").size();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    EXPECT_EQ(calls, vppMock().callsTo(
+            "sw_interface_ip6_enable_disable", "port0").size());
+}
+
+TEST_F(SwitchVppRifTest, ipv6AdminEnableAcquiresReferenceAndRemoveReleasesIt)
+{
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    sai_attribute_t adminV4{};
+    adminV4.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    adminV4.value.booldata = false;
+    attrs.push_back(adminV4);
+    sai_attribute_t adminV6{};
+    adminV6.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    adminV6.value.booldata = false;
+    attrs.push_back(adminV6);
+
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_FALSE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(0u, vppMock().ip6Locks.count("port0"));
+
+    adminV6.value.booldata = true;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &adminV6));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    EXPECT_EQ(0, vppMock().ip6Locks.at("port0"));
+}
+
+TEST_F(SwitchVppRifTest, failedAdminPersistenceRestoresInterfaceAndIpv6Reference)
+{
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    sai_attribute_t adminV4{};
+    adminV4.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    adminV4.value.booldata = false;
+    attrs.push_back(adminV4);
+    sai_attribute_t adminV6{};
+    adminV6.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    adminV6.value.booldata = false;
+    attrs.push_back(adminV6);
+
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    auto testable = std::static_pointer_cast<TestableSwitchVpp>(sw);
+    testable->setInternalResult = SAI_STATUS_FAILURE;
+
+    adminV6.value.booldata = true;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &adminV6));
+    EXPECT_FALSE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(0, vppMock().ip6Locks["port0"]);
+
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+    EXPECT_FALSE(stored.value.booldata);
+
+    testable->setInternalResult = SAI_STATUS_SUCCESS;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &adminV6));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+}
+
+TEST_F(SwitchVppRifTest, ipv6DisableTimeoutRestoresExactlyOneRifReference)
+{
+    vppMock().ip6Locks["port0"] = 1; // hostif/address owner
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    ASSERT_EQ(2, vppMock().ip6Locks.at("port0"));
+
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    admin.value.booldata = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+
+    vppMock().ip6EnableFailAfterApplyOnCalls.insert(
+            vppMock().ip6EnableCalls + 1);
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(2, vppMock().ip6Locks.at("port0"));
+    EXPECT_FALSE(vppMock().ip6RequestPending);
+
+    // The failed SET must restore the original attribute absence; omitted
+    // ADMIN_V6 has an effective default of true without storing a value.
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+
+    vppMock().ip6EnableFailAfterApplyOnCalls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+}
+
+TEST_F(SwitchVppRifTest, adminTimeoutRestoresCombinedStateBeforeIpv6Release)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    admin.value.booldata = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+
+    vppMock().adminFailAfterApplyOnCalls.insert(vppMock().adminCalls + 1);
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+}
+
+TEST_F(SwitchVppRifTest, failedIpv4AdminPersistenceRestoresCombinedState)
+{
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    sai_attribute_t explicit_v4{};
+    explicit_v4.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    explicit_v4.value.booldata = true;
+    attrs.push_back(explicit_v4);
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    admin.value.booldata = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+
+    auto testable = std::static_pointer_cast<TestableSwitchVpp>(sw);
+    testable->setInternalResult = SAI_STATUS_FAILURE;
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+    EXPECT_TRUE(stored.value.booldata);
 }
 
 /*
@@ -1031,6 +1345,7 @@ TEST_F(SwitchVppRifTest, createRollbackReleasesIpv6Lock)
     SwitchVpp::RifCreateState state;
     state.hwif = "port0";
     state.ip6_enabled = true;
+    vppMock().rifIp6Owned.insert("port0");
     vppMock().ip6Locks["port0"] = 1;
 
     ASSERT_EQ(SAI_STATUS_SUCCESS, sw->rollbackRifCreate(state));
