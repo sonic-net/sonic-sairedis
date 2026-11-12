@@ -585,6 +585,8 @@ void NotificationProcessor::process_on_bfd_session_state_change(
 
     SWSS_LOG_DEBUG("bfd session state notification count: %u", count);
 
+    std::vector<sai_bfd_session_state_notification_t> v;
+
     for (uint32_t i = 0; i < count; i++)
     {
         sai_bfd_session_state_notification_t *bfd_session_state = &data[i];
@@ -597,13 +599,24 @@ void NotificationProcessor::process_on_bfd_session_state_change(
          * query switch id and extract rid of switch id and then convert it to
          * switch vid.
          */
+        if (!m_translator->checkRidExists(bfd_session_state->bfd_session_id, false))
+        {
+            SWSS_LOG_WARN("BFD RID 0x%" PRIx64 " is not present on local ASIC DB", bfd_session_state->bfd_session_id);
+            continue;
+        }
 
         bfd_session_state->bfd_session_id = m_translator->translateRidToVid(bfd_session_state->bfd_session_id, SAI_NULL_OBJECT_ID, true);
+        v.push_back(*bfd_session_state);
     }
 
-    std::string s = sai_serialize_bfd_session_state_ntf(count, data);
+    uint32_t nc = static_cast<uint32_t>(v.size());
 
-    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
+    if (nc > 0)
+    {
+        std::string s = sai_serialize_bfd_session_state_ntf(nc, v.data());
+
+        sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
+    }
 }
 
 void NotificationProcessor::process_on_icmp_echo_session_state_change(
