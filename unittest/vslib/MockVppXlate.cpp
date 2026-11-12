@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <mutex>
@@ -162,6 +163,34 @@ int TestableSwitchVpp::vs_set_dev_admin_up(const char *, bool)
 {
     SWSS_LOG_ENTER();
     return 0;
+}
+
+extern "C" int __wrap_ip_route_add_del_get_stats(
+        vpp_ip_route_t *route, bool is_add, uint32_t *stats_index)
+{
+    SWSS_LOG_ENTER();
+    char next_hop[INET6_ADDRSTRLEN] = {};
+    if (route->nexthop_cnt)
+    {
+        const auto& address = route->nexthop[0].addr;
+        if (address.sa_family == AF_INET)
+        {
+            inet_ntop(AF_INET, &address.addr.ip4.sin_addr, next_hop, sizeof(next_hop));
+        }
+        else
+        {
+            inet_ntop(AF_INET6, &address.addr.ip6.sin6_addr, next_hop, sizeof(next_hop));
+        }
+    }
+    auto& mock = vppMock();
+    auto index = mock.routeCalls.size();
+    mock.routeCalls.push_back({is_add, route->is_multipath, route->nexthop_cnt, next_hop});
+    int result = index < mock.routeResults.size() ? mock.routeResults[index] : 0;
+    if (result == 0 && stats_index)
+    {
+        *stats_index = mock.routeStatsIndex;
+    }
+    return result;
 }
 
 int TestableSwitchVpp::exec(const std::string& command, std::string& output)
@@ -456,16 +485,18 @@ extern "C" int __wrap_configure_lcp_interface(const char *name, const char *, bo
     return vppMock().lcpPairs.erase(name) == 1 ? 0 : -1;
 }
 
-extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t, bool add, uint32_t)
+extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t bd_id, bool add, uint32_t)
 {
     SWSS_LOG_ENTER();
     if (add)
     {
         vppMock().bridgePorts.insert(name);
+        vppMock().bdMembers[bd_id].insert(name);
     }
     else
     {
         vppMock().bridgePorts.erase(name);
+        vppMock().bdMembers[bd_id].erase(name);
     }
     return 0;
 }
@@ -481,6 +512,11 @@ extern "C" int __wrap_vpp_l2fib_dump(uint32_t, vpp_l2fib_entry_cb_fn cb, void *c
 {
     SWSS_LOG_ENTER();
     ++vppMock().l2fibDumpCalls;
+    if (vppMock().l2fibDumpFailures > 0)
+    {
+        --vppMock().l2fibDumpFailures;
+        return -1;
+    }
     if (vppMock().l2fibDumpResult == 0)
     {
         for (const auto& entry : vppMock().l2fib)
@@ -502,6 +538,19 @@ extern "C" int __wrap_vpp_bfd_session_dump(vpp_bfd_session_cb_fn cb, void *ctx)
         }
     }
     return vppMock().bfdDumpResult;
+}
+extern "C" int __wrap_vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_age)
+{
+    SWSS_LOG_ENTER();
+    // VPP rejects a bridge domain it doesn't have
+    bool fails = vppMock().macAgeFailures.count(bd_id) != 0 || vppMock().bdMembers.count(bd_id) == 0;
+    vppMock().calls.push_back({"vpp_bridge_domain_set_mac_age", std::to_string(bd_id), bd_id, mac_age, !fails});
+    if (fails)
+    {
+        return -1;
+    }
+    vppMock().bdMacAges[bd_id] = mac_age;
+    return 0;
 }
 extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
     SWSS_LOG_ENTER();
@@ -635,6 +684,88 @@ int __wrap_interface_set_promiscuous(const char *hwif_name, bool enable) {
     return 0;
 }
 
+/*
+ * IPv6 link enable/disable, recorded as name: interface, sub_id: the returned
+ * status, flag: enable. VPP reference counts these, so the mock does too, and
+ * it counts them the way VPP does: ip6_link_enable() takes the lock even when
+ * it reports VALUE_EXIST for an interface someone else enabled first, while
+ * IP6_NOT_ENABLED means ip6_link_disable() found no lock to drop.
+ */
+int __wrap_sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    std::string name = hwif_name ? hwif_name : "";
+
+    const int VPP_API_ERROR_VALUE_EXIST = -81;
+
+    int ret = vppMock().ip6EnableResult;
+
+    if (enable && (ret == 0 || ret == VPP_API_ERROR_VALUE_EXIST))
+    {
+        vppMock().ip6Locks[name]++;
+    }
+    else if (!enable && ret == 0)
+    {
+        vppMock().ip6Locks[name]--;
+    }
+
+    vppMock().calls.push_back({"sw_interface_ip6_enable_disable", name, 0, (uint32_t)ret, enable});
+
+    return ret;
+}
+
+// Recorded as name: interface, sub_id: the returned status.
+int __wrap_sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address)
+{
+    SWSS_LOG_ENTER();
+
+    std::string name = hwif_name ? hwif_name : "";
+
+    int ret = vppMock().macResult;
+
+    if (ret == 0 && mac_address != nullptr)
+    {
+        char mac[18];
+        snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+                mac_address[0], mac_address[1], mac_address[2],
+                mac_address[3], mac_address[4], mac_address[5]);
+        vppMock().macs[name] = mac;
+    }
+
+    vppMock().calls.push_back({"sw_interface_set_mac", name, 0, (uint32_t)ret, true});
+
+    return ret;
+}
+
+/*
+ * Neighbor programming. Recorded as name: interface for the interface flag and
+ * the adjacency, empty for a route; id: the route's prefix length; sub_id: the
+ * returned status; flag: enable or is_add.
+ */
+int __wrap_sw_interface_set_ip_directed_broadcast(const char *hwif_name, bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    int ret = vppMock().directedBcastResult;
+
+    vppMock().calls.push_back({"sw_interface_set_ip_directed_broadcast",
+            hwif_name ? hwif_name : "", 0, (uint32_t)ret, enable});
+
+    return ret;
+}
+
+int __wrap_ip4_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct sockaddr_in *addr,
+        bool is_static, bool no_fib_entry, uint8_t *mac, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"ip4_nbr_add_del", hwif_name ? hwif_name : "",
+            addr ? addr->sin_addr.s_addr : 0, 0, is_add});
+
+    return 0;
+}
+
 int __wrap_set_l2_interface_vlan_tag_rewrite(const char *hwif_name, uint32_t tag1, uint32_t tag2, uint32_t push_dot1q, uint32_t vtr_op) {
     SWSS_LOG_ENTER();
     return 0;
@@ -648,12 +779,19 @@ int __wrap_bridge_domain_get_member_count(uint32_t bd_id, uint32_t *member_count
 {
     SWSS_LOG_ENTER();
 
-    *member_count = 0;
+    auto bd = vppMock().bdMembers.find(bd_id);
+
+    *member_count = bd == vppMock().bdMembers.end() ? 0 : static_cast<uint32_t>(bd->second.size());
     return 0;
 }
 
 int __wrap_vpp_bridge_domain_add_del(uint32_t bridge_id, bool is_add) {
     SWSS_LOG_ENTER();
+    if (!is_add)
+    {
+        vppMock().bdMembers.erase(bridge_id);
+        vppMock().bdMacAges.erase(bridge_id);
+    }
     return 0;
 }
 uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
