@@ -101,8 +101,10 @@ RUN set -eux; \
     cp /usr/sbin/sysctl /usr/sbin/sysctl.real; \
     cp /usr/bin/true /usr/sbin/sysctl; \
     apt-get install -y --no-install-recommends --allow-downgrades "${runtime_debs[@]}"; \
-    find /usr/lib/python3/dist-packages -maxdepth 1 \( -type d -o -type f \) -name 'saithrift-*.egg' -print > /usr/lib/python3/dist-packages/saithrift.pth; \
-    if [[ ! -s /usr/lib/python3/dist-packages/saithrift.pth ]]; then rm -f /usr/lib/python3/dist-packages/saithrift.pth; fi; \
+    saithrift_eggs="$(find /usr/lib/python3/dist-packages -maxdepth 1 -type d -name 'saithrift-*.egg' -print)"; \
+    if [[ -n "$saithrift_eggs" ]]; then \
+        printf '%s\n' "$saithrift_eggs" > /usr/lib/python3/dist-packages/saithrift.pth; \
+    fi; \
     python3 -c 'import sai_thrift'; \
     mv /usr/sbin/sysctl.real /usr/sbin/sysctl; \
     build_dev_debs=(); \
