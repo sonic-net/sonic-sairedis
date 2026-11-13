@@ -27,6 +27,7 @@
 #include <memory>
 #include <string>
 #include <set>
+#include <tuple>
 #include <vector>
 #include <unistd.h>
 
@@ -108,6 +109,10 @@ namespace
 
     // the IP2ME address set: the destinations the IP2ME policer meters on the punt path
     std::set<std::string> g_ip2meAddrs;
+
+    // IPv6 multicast routes VPP holds that accept on an interface and forward to
+    // local: (table, group/length, accepting interface)
+    std::set<std::tuple<uint32_t, std::string, std::string>> g_ip6LocalMroutes;
 
     uint32_t g_nextSwIfIndex = 100;
     int g_l2fibByIndexDelResult = 0;
@@ -263,6 +268,28 @@ int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
     }
 
     return g_ip4Routes.erase(key) == 1 ? 0 : -1;
+}
+
+int __wrap_ip6_mroute_local_add_del(uint32_t table_id, const uint8_t grp[16], uint8_t grp_len,
+                                    const char *accept_hwif, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    char addr[INET6_ADDRSTRLEN];
+
+    inet_ntop(AF_INET6, grp, addr, sizeof(addr));
+
+    auto key = std::make_tuple(table_id, std::string(addr) + "/" + std::to_string(grp_len),
+                               std::string(accept_hwif));
+
+    if (is_add)
+    {
+        g_ip6LocalMroutes.insert(key);
+        return 0;
+    }
+
+    // VPP fails the removal of paths that are not there
+    return g_ip6LocalMroutes.erase(key) == 1 ? 0 : -1;
 }
 
 int __wrap_vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add)
@@ -723,6 +750,11 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
             bool tagged = u16(16) != 0;
             std::string member = tagged ? "tagged " : "untagged ";
 
+            if (u16(0) == 0x3333 && u16(2) == 0x0001 && u16(4) == 0x0002)
+            {
+                return member + "DHCPv6";
+            }
+
             if (u16(0) == 0x3333)
             {
                 return member + "IPv6 multicast";
@@ -828,9 +860,11 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
         // IPv6 multicast has a session in each of its two tables
         const Nexts NEXTS_WITHOUT_TRAP_LEARN = {
             {"untagged DHCPv4", {PUNT}},
+            {"untagged DHCPv6", {PUNT}},
             {"untagged ARP", {PUNT}},
             {"untagged IPv6 multicast", {PUNT}},
             {"tagged DHCPv4", {TRAP_FIXUP}},
+            {"tagged DHCPv6", {TRAP_FIXUP}},
             {"tagged ARP", {TRAP_FIXUP}},
             {"tagged IPv6 multicast", {TRAP_FIXUP, TRAP_FIXUP}},
             {"LLDP", {PUNT}},
@@ -842,9 +876,11 @@ TEST_F(SwitchVppL2TrapLearn, TrapsGoToTrapLearnWhenItIsOn)
 {
     expectPuntNexts(FEATURES, NODES, {
         {"untagged DHCPv4", {TRAP_LEARN}},
+        {"untagged DHCPv6", {TRAP_LEARN}},
         {"untagged ARP", {TRAP_LEARN}},
         {"untagged IPv6 multicast", {TRAP_LEARN}},
         {"tagged DHCPv4", {TRAP_LEARN}},
+        {"tagged DHCPv6", {TRAP_LEARN}},
         {"tagged ARP", {TRAP_LEARN}},
         {"tagged IPv6 multicast", {TRAP_LEARN, TRAP_LEARN}},
         {"LLDP", {PUNT}},
@@ -877,6 +913,7 @@ TEST_F(SwitchVppL2TrapLearn, TrapsDoNotGoToTrapLearnWithoutTrapFixup)
 {
     expectPuntNexts({"l2-trap-learn", "l2-vlan-filter"}, NODES, {
         {"untagged DHCPv4", {PUNT}},
+        {"untagged DHCPv6", {PUNT}},
         {"untagged ARP", {PUNT}},
         {"untagged IPv6 multicast", {PUNT}},
         {"LLDP", {PUNT}},
@@ -1521,6 +1558,7 @@ class SwitchVppDhcpTrap : public ::testing::Test
             g_l2Tables.clear();
             g_ip4Routes.clear();
             g_ip2meAddrs.clear();
+            g_ip6LocalMroutes.clear();
         }
 
         void TearDown() override
@@ -1531,7 +1569,8 @@ class SwitchVppDhcpTrap : public ::testing::Test
         }
 
         sai_object_id_t createTrap(
-                sai_packet_action_t action)
+                sai_packet_action_t action,
+                sai_hostif_trap_type_t trap_type = SAI_HOSTIF_TRAP_TYPE_DHCP)
         {
             SWSS_LOG_ENTER();
 
@@ -1540,7 +1579,7 @@ class SwitchVppDhcpTrap : public ::testing::Test
             sai_attribute_t attrs[2];
 
             attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
-            attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCP;
+            attrs[0].value.s32 = trap_type;
             attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
             attrs[1].value.s32 = action;
 
@@ -1716,9 +1755,11 @@ class SwitchVppDhcpTrap : public ::testing::Test
             }
 
             bool ip4 = !tagged && frame[12] == 0x08 && frame[13] == 0x00;
+            bool ip6 = !tagged && frame[12] == 0x86 && frame[13] == 0xdd;
 
-            // an untagged IPv4 frame selects the ip4 slot, any tagged frame the other slot
-            return classify(ip4 ? it->second[0] : it->second[2], frame);
+            // an untagged IPv4 or IPv6 frame selects the ip4 or ip6 slot, any
+            // tagged frame the other slot
+            return classify(ip4 ? it->second[0] : ip6 ? it->second[1] : it->second[2], frame);
         }
 
         // whether table vrf_id receives a limited broadcast, rather than dropping it
@@ -1988,6 +2029,215 @@ TEST_F(SwitchVppDhcpTrap, TheDefaultTableKeepsItsRouteWhenAVrfObjectGoesAway)
     ASSERT_EQ(0, m_sw->vpp_del_ip_vrf(m_defaultVr));
 
     EXPECT_TRUE(receivesLimitedBroadcast(0));
+}
+
+/*
+ * SAI_HOSTIF_TRAP_TYPE_DHCPV6 packet action, on the same VLAN. Each test asks
+ * what VPP would do with a DHCPv6 client message, sent to ff02::1:2, on a
+ * member (punted by the l2 input classifier, or let through to the flood) and
+ * with the BVI's flood copy (received, if the BVI's IPv6 table has ff02::1:2
+ * accepting on the BVI and forwarding to local, or dropped).
+ */
+class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
+{
+    protected:
+
+        // an IPv6 UDP packet as it arrives on a member, to group 33:33:<mac_tail>
+        static std::vector<uint8_t> ip6UdpOnWire(
+                bool tagged,
+                const std::array<uint8_t, 4>& mac_tail,
+                uint16_t dport)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<uint8_t> f = {0x33, 0x33, mac_tail[0], mac_tail[1], mac_tail[2], mac_tail[3],
+                                      0x02, 0, 0, 0, 0, 0x01};
+
+            if (tagged)
+            {
+                f.insert(f.end(), {0x81, 0x00, 0x00, (uint8_t)VLAN_ID});
+            }
+
+            f.insert(f.end(), {0x86, 0xdd});
+
+            std::vector<uint8_t> ip(48, 0);
+
+            ip[0] = 0x60;                                   // IPv6
+            ip[5] = 8;                                      // payload length
+            ip[6] = 17;                                     // UDP
+            ip[7] = 1;                                      // hop limit
+            ip[8] = 0xfe; ip[9] = 0x80; ip[23] = 0x01;      // source fe80::1
+            ip[24] = 0xff; ip[25] = 0x02;                   // destination ff02::<mac_tail>
+            memcpy(&ip[36], mac_tail.data(), mac_tail.size());
+            ip[40] = (uint8_t)(546 >> 8);                   // sport 546
+            ip[41] = (uint8_t)(546 & 0xff);
+            ip[42] = (uint8_t)(dport >> 8);
+            ip[43] = (uint8_t)(dport & 0xff);
+
+            f.insert(f.end(), ip.begin(), ip.end());
+
+            return f;
+        }
+
+        // a DHCPv6 client message (SOLICIT, REQUEST, ...) to ff02::1:2
+        static std::vector<uint8_t> dhcp6OnWire(
+                bool tagged)
+        {
+            SWSS_LOG_ENTER();
+
+            return ip6UdpOnWire(tagged, {0x00, 0x01, 0x00, 0x02}, 547);
+        }
+
+        // whether the BVI's flood copy of a DHCPv6 client message is received,
+        // in IPv6 table table_id
+        static bool bviReceivesDhcp6(
+                uint32_t table_id = 0)
+        {
+            SWSS_LOG_ENTER();
+
+            return g_ip6LocalMroutes.count(std::make_tuple(table_id, std::string("ff02::1:2/128"),
+                                                           std::string("bvi100"))) == 1;
+        }
+
+        // TRAP: punted on both members, so the BVI never sees it and needs no route
+        void expectTrap6()
+        {
+            SWSS_LOG_ENTER();
+
+            EXPECT_EQ(memberPunt(), onMember("bobm0", false, dhcp6OnWire(false)));
+            EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, dhcp6OnWire(true)));
+            EXPECT_TRUE(g_ip6LocalMroutes.empty());
+        }
+
+        // COPY: flooded on both members, and the BVI's copy received
+        void expectCopy6()
+        {
+            SWSS_LOG_ENTER();
+
+            EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
+            EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
+            EXPECT_TRUE(bviReceivesDhcp6());
+        }
+};
+
+TEST_F(SwitchVppDhcp6Trap, TrapPuntsOnTheMembersWithNoRoute)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi();
+
+    expectTrap6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, NoDhcp6TrapDefaultsToTrap)
+{
+    addMembers();
+    createBvi();
+
+    expectTrap6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, CopyBeforeAnyMemberFloodsAndTheBviCopyIsReceived)
+{
+    createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi();
+
+    expectCopy6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, SetAttributeSwitchesBetweenTrapAndCopyOnExistingMembersAndBvi)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi();
+    expectTrap6();
+
+    setTrapAction(trap, SAI_PACKET_ACTION_COPY);
+    expectCopy6();
+
+    setTrapAction(trap, SAI_PACKET_ACTION_TRAP);
+    expectTrap6();
+
+    setTrapAction(trap, SAI_PACKET_ACTION_COPY);
+    expectCopy6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, OtherActionsKeepTheTrapBehavior)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi();
+
+    setTrapAction(trap, SAI_PACKET_ACTION_FORWARD);
+    expectTrap6();
+
+    setTrapAction(trap, SAI_PACKET_ACTION_DROP);
+    expectTrap6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, RemovingTheCopyTrapRevertsToTrap)
+{
+    auto trap = createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi();
+    expectCopy6();
+
+    removeTrap(trap);
+    expectTrap6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, ReplacementCopyTrapWinsOnlyOnceTheOldTrapIsGone)
+{
+    auto oldTrap = createTrap(SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi();
+
+    createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    expectTrap6();
+
+    removeTrap(oldTrap);
+    expectCopy6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, BviGetsTheRouteInItsIpv6TableAndLosesItWhenDeleted)
+{
+    createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+
+    // the BVI's IPv6 table, whatever its router interface's VRF
+    vppMock().interfaceVrfs["bvi100"] = 7;
+
+    createBvi();
+
+    EXPECT_TRUE(bviReceivesDhcp6(7));
+    EXPECT_EQ(1u, g_ip6LocalMroutes.size());
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_delete_bvi_interface(m_rif));
+
+    EXPECT_TRUE(g_ip6LocalMroutes.empty());
+}
+
+TEST_F(SwitchVppDhcp6Trap, OnlyDhcp6IsPuntedAmongIpv6Multicast)
+{
+    addMembers();
+
+    // all-nodes multicast is flooded as before
+    EXPECT_EQ(MISS, onMember("bobm0", false, ip6UdpOnWire(false, {0x00, 0x00, 0x00, 0x01}, 547)));
+    EXPECT_EQ(MISS, onMember("bobm1.100", true, ip6UdpOnWire(true, {0x00, 0x00, 0x00, 0x01}, 547)));
+}
+
+TEST_F(SwitchVppDhcp6Trap, Dhcp6AndDhcp4ActionsAreIndependent)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP);
+    createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
+    addMembers();
+    createBvi();
+
+    expectCopy6();
+    expectTrap();
+
+    // broadcast ARP is still punted on the tagged member, whose chain ends in the DHCPv6 table
+    EXPECT_EQ(tagFixup(), onMember("bobm1.100", true, arpOnWire(true)));
 }
 
 /*

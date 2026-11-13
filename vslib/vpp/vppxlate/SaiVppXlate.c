@@ -1441,6 +1441,13 @@ vl_api_ip_route_add_del_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg)
 }
 
 static void
+vl_api_ip_mroute_add_del_reply_t_handler (vl_api_ip_mroute_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_sw_interface_ip6_enable_disable_reply_t_handler(
     vl_api_sw_interface_ip6_enable_disable_reply_t *msg)
 {
@@ -2392,6 +2399,7 @@ static void vpp_base_vpe_init(void)
     _(INTERFACE_MSG_ID(SW_INTERFACE_EVENT), sw_interface_event) \
     _(IP_MSG_ID(IP_TABLE_ADD_DEL_REPLY), ip_table_add_del_reply) \
     _(IP_MSG_ID(IP_ROUTE_ADD_DEL_REPLY), ip_route_add_del_reply) \
+    _(IP_MSG_ID(IP_MROUTE_ADD_DEL_REPLY), ip_mroute_add_del_reply) \
     _(IP_MSG_ID(SW_INTERFACE_IP6_ENABLE_DISABLE_REPLY), sw_interface_ip6_enable_disable_reply) \
     _(IP_MSG_ID(SET_IP_FLOW_HASH_V2_REPLY), set_ip_flow_hash_v2_reply)        \
     _(IP_MSG_ID(SET_IP_FLOW_HASH_ROUTER_ID_REPLY), set_ip_flow_hash_router_id_reply) \
@@ -3969,6 +3977,78 @@ int ip_route_add_del_get_stats (vpp_ip_route_t *prefix, bool is_add, uint32_t *s
 int ip_route_add_del (vpp_ip_route_t *prefix, bool is_add)
 {
     return ip_route_add_del_get_stats(prefix, is_add, NULL);
+}
+
+/*
+ * The equivalent of
+ *   ip mroute add [table N] <grp>/<len> via <accept_hwif> Accept
+ *   ip mroute add [table N] <grp>/<len> via local Forward
+ * or, with is_add false, the removal of both paths, which removes the
+ * entry once it has no path left.
+ */
+int ip6_mroute_local_add_del (uint32_t table_id, const uint8_t grp[16], uint8_t grp_len,
+                              const char *accept_hwif, bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_ip_mroute_add_del_t *mp;
+    vl_api_mfib_path_t *path;
+    u32 sw_if_index;
+    int ret;
+
+    if (!grp || !accept_hwif || grp_len > 128) {
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+
+    sw_if_index = get_swif_idx(vam, accept_hwif);
+    if (sw_if_index == (u32) -1) {
+        SAIVPP_ERROR("%s: unable to get sw_if_index for %s", __func__, accept_hwif);
+        VPP_UNLOCK();
+        return -EINVAL;
+    }
+
+    __plugin_msg_base = ip_msg_id_base;
+
+    M22 (IP_MROUTE_ADD_DEL, mp, sizeof (vl_api_mfib_path_t) * 2);
+
+    mp->is_add = is_add;
+    mp->is_multipath = true;
+    mp->route.table_id = htonl(table_id);
+    mp->route.entry_flags = htonl(MFIB_API_ENTRY_FLAG_NONE);
+    mp->route.rpf_id = htonl((uint32_t)~0);
+    mp->route.prefix.af = ADDRESS_IP6;
+    mp->route.prefix.grp_address_length = htons(grp_len);
+    memcpy(mp->route.prefix.grp_address.ip6, grp, sizeof(mp->route.prefix.grp_address.ip6));
+    mp->route.n_paths = 2;
+
+    path = &mp->route.paths[0];
+    memset(path, 0, sizeof(*path) * 2);
+
+    path[0].itf_flags = htonl(MFIB_API_ITF_FLAG_ACCEPT);
+    path[0].path.sw_if_index = htonl(sw_if_index);
+    path[0].path.type = htonl(FIB_API_PATH_TYPE_NORMAL);
+    path[0].path.proto = htonl(FIB_API_PATH_NH_PROTO_IP6);
+    path[0].path.rpf_id = htonl((uint32_t)~0);
+
+    path[1].itf_flags = htonl(MFIB_API_ITF_FLAG_FORWARD);
+    path[1].path.sw_if_index = htonl((uint32_t)~0);
+    path[1].path.type = htonl(FIB_API_PATH_TYPE_LOCAL);
+    path[1].path.proto = htonl(FIB_API_PATH_NH_PROTO_IP6);
+    path[1].path.rpf_id = htonl((uint32_t)~0);
+
+    S (mp);
+
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, !is_add, __func__);
+
+    if (ret) { SAIVPP_ERROR("%s failed(%d) table %u accept %s is_add %d", __func__, ret, table_id, accept_hwif, is_add); }
+    else { SAIVPP_INFO("%s table %u accept %s is_add %d", __func__, table_id, accept_hwif, is_add); }
+
+    VPP_UNLOCK();
+
+    return ret;
 }
 
 static unsigned int ipv4_mask_len (uint32_t mask)

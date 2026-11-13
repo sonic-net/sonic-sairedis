@@ -2037,6 +2037,10 @@ sai_status_t SwitchVpp::rollbackRifCreate(
         }
     };
 
+    if (state.dhcp6_mroute_added)
+    {
+        check(vpp_dhcp6_mroute(state.hwif.c_str(), false), "remove ff02::1:2 route");
+    }
     if (state.bridge_attached)
     {
         check(set_sw_interface_l2_bridge(state.hwif.c_str(), state.vlan,
