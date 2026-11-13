@@ -1253,7 +1253,54 @@ sai_status_t SwitchVpp::queryAttrEnumValuesCapability(
 {
     SWSS_LOG_ENTER();
 
-    return m_trim.queryAttrEnumValuesCapability(
+    // A provider answers "do I own this (object_type, attr_id), and which enum
+    // values do I advertise for it?". Returning false means "not mine" and lets
+    // the next provider - ultimately SwitchStateBase - answer.
+    //
+    // Providers append to a vector and never see the sai_s32_list_t buffer
+    // protocol, which is handled once below, so adding a component means
+    // writing one predicate and adding one entry to this table.
+    using Provider = bool (*)(
+            sai_object_type_t object_type,
+            sai_attr_id_t attr_id,
+            std::vector<sai_int32_t> &values);
+
+    static const Provider providers[] =
+    {
+        &SwitchVppTrim::getTrimEnumValuesCapability,
+        &SwitchVpp::getSflowEnumValuesCapability,
+    };
+
+    std::vector<sai_int32_t> values;
+
+    for (auto provider: providers)
+    {
+        values.clear();
+
+        if (!provider(object_type, attr_id, values))
+        {
+            continue;
+        }
+
+        auto count = static_cast<uint32_t>(values.size());
+
+        if (enum_values_capability->count < count)
+        {
+            enum_values_capability->count = count;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        enum_values_capability->count = count;
+
+        for (uint32_t idx = 0; idx < count; idx++)
+        {
+            enum_values_capability->list[idx] = values[idx];
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    return SwitchStateBase::queryAttrEnumValuesCapability(
             switch_id, object_type, attr_id, enum_values_capability);
 }
 
@@ -2724,6 +2771,34 @@ sai_status_t SwitchVpp::set(
                     SWSS_LOG_NOTICE("VPP set ECMP default hash seed=%u", seed);
                     break;
                 }
+            case SAI_SWITCH_ATTR_TAM_OBJECT_ID:
+                {
+                    // SflowOrch arms sFlow drop monitoring by binding its TAM
+                    // object to the switch, and disarms it by clearing the
+                    // list. The TAM object graph itself has no VPP counterpart
+                    // (the sflow plugin reports drops to hsflowd over NET_DM),
+                    // so only the global plugin flag and the drop_monitor_limit
+                    // policer binding are driven from here. The policer goes in
+                    // first so no drop is reported unlimited. Fall through to
+                    // set_internal() below so the attribute is also cached.
+                    bool enable = attr->value.objlist.count > 0;
+
+                    if (enable)
+                    {
+                        m_sflow_drop_tam = attr->value.objlist.list[0];
+                        m_sflow_drop_policer = sflowDropMonitorPolicer(m_sflow_drop_tam);
+                        CHECK_STATUS(sflowDropPolicerApply());
+                        CHECK_STATUS(sflowDropMonitoringSet(true));
+                    }
+                    else
+                    {
+                        CHECK_STATUS(sflowDropMonitoringSet(false));
+                        m_sflow_drop_tam = SAI_NULL_OBJECT_ID;
+                        m_sflow_drop_policer = SAI_NULL_OBJECT_ID;
+                        CHECK_STATUS(sflowDropPolicerApply());
+                    }
+                    break;
+                }
         }
 
         return set_internal(objectType, serializedObjectId, attr);
@@ -2810,12 +2885,23 @@ sai_status_t SwitchVpp::set(
 
     if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
     {
-        return setHostifTrapGroup(serializedObjectId, attr);
+        CHECK_STATUS(setHostifTrapGroup(serializedObjectId, attr));
+        return sflowDropMonitorChainSet(objectType, attr->id);
     }
 
     if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP)
     {
         return setHostifTrap(serializedObjectId, attr);
+    }
+
+    // Links of the sFlow drop monitor TAM -> POLICER chain, see
+    // sflowDropMonitorPolicer()
+    if (objectType == SAI_OBJECT_TYPE_TAM ||
+            objectType == SAI_OBJECT_TYPE_TAM_COLLECTOR ||
+            objectType == SAI_OBJECT_TYPE_HOSTIF_USER_DEFINED_TRAP)
+    {
+        CHECK_STATUS(set_internal(objectType, serializedObjectId, attr));
+        return sflowDropMonitorChainSet(objectType, attr->id);
     }
 
     return set_internal(objectType, serializedObjectId, attr);

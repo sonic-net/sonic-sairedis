@@ -1133,6 +1133,10 @@ namespace saivs
             bool m_routeStatsCacheValid = false;
             std::mutex m_routeStatsCacheMutex;
             std::map<sai_object_id_t, sai_object_id_t> m_sflow_port_to_samplepacket;
+            // TAM object bound to the switch for drop monitoring, and the policer
+            // carrying SONiC's drop_monitor_limit, see sflowDropMonitorPolicer()
+            sai_object_id_t m_sflow_drop_tam = SAI_NULL_OBJECT_ID;
+            sai_object_id_t m_sflow_drop_policer = SAI_NULL_OBJECT_ID;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
@@ -1592,6 +1596,25 @@ namespace saivs
 
             sai_status_t sflowSamplingRateSet(
                     _In_ uint32_t rate);
+
+            sai_status_t sflowDropMonitoringSet(
+                    _In_ bool enable);
+
+            sai_object_id_t sflowDropMonitorPolicer(
+                    _In_ sai_object_id_t tam_id);
+
+            sai_status_t sflowDropPolicerApply();
+
+            sai_status_t sflowDropMonitorChainSet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id);
+
+            // Enum values capability provider for sFlow drop monitoring, see
+            // queryAttrEnumValuesCapability().
+            static bool getSflowEnumValuesCapability(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Inout_ std::vector<sai_int32_t> &values);
 
             sai_status_t sflowHostifTrapSamplePacketCreate(
                      _In_ sai_object_id_t object_id,

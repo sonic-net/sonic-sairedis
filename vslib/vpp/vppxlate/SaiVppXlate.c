@@ -1765,6 +1765,20 @@ vl_api_sflow_sampling_rate_set_reply_t_handler(vl_api_sflow_sampling_rate_set_re
 }
 
 static void
+vl_api_sflow_drop_monitoring_set_reply_t_handler(vl_api_sflow_drop_monitoring_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sflow_drop_policer_set_reply_t_handler(vl_api_sflow_drop_policer_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_sonic_ext_ip2me_enable_disable_reply_t_handler(vl_api_sonic_ext_ip2me_enable_disable_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2644,6 +2658,8 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(SR_MSG_ID(SR_SET_ENCAP_SOURCE_REPLY), sr_set_encap_source_reply) \
     _(SFLOW_MSG_ID(SFLOW_ENABLE_DISABLE_REPLY), sflow_enable_disable_reply) \
     _(SFLOW_MSG_ID(SFLOW_SAMPLING_RATE_SET_REPLY), sflow_sampling_rate_set_reply) \
+    _(SFLOW_MSG_ID(SFLOW_DROP_MONITORING_SET_REPLY), sflow_drop_monitoring_set_reply) \
+    _(SFLOW_MSG_ID(SFLOW_DROP_POLICER_SET_REPLY), sflow_drop_policer_set_reply) \
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_SAMPLING_RATE_SET_REPLY), sflow_interface_sampling_rate_set_reply) \
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
@@ -5091,6 +5107,63 @@ int vpp_sflow_sampling_rate_set(uint32_t sampling_n)
         SAIVPP_ERROR("%s failed(%d) sampling_N %u", __func__, ret, sampling_n);
     } else {
         SAIVPP_INFO("%s sampling_N %u", __func__, sampling_n);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_sflow_drop_monitoring_set(bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_drop_monitoring_set_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_DROP_MONITORING_SET, mp);
+
+    mp->drop_M = htonl(enable ? 1 : 0);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) drop_M %d", __func__, ret, enable);
+    } else {
+        SAIVPP_INFO("%s drop_M %d", __func__, enable);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_sflow_drop_policer_set(const char *policer_name)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sflow_drop_policer_set_t *mp;
+    const char *name = policer_name ? policer_name : "";
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sflow_msg_id_base;
+    M(SFLOW_DROP_POLICER_SET, mp);
+
+    {
+        size_t name_len = strnlen(name, sizeof(mp->name) - 1);
+        memcpy((char *)mp->name, name, name_len);
+        ((char *)mp->name)[name_len] = '\0';
+    }
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) policer '%s'", __func__, ret, name);
+    } else {
+        SAIVPP_INFO("%s policer '%s'", __func__, name);
     }
 
     VPP_UNLOCK();

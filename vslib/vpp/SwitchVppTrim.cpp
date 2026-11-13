@@ -790,7 +790,7 @@ sai_status_t SwitchVppTrim::refreshTrimDscpToQueueMap()
 bool SwitchVppTrim::getTrimEnumValuesCapability(
         _In_ sai_object_type_t object_type,
         _In_ sai_attr_id_t attr_id,
-        _Out_ sai_int32_t *value)
+        _Inout_ std::vector<sai_int32_t> &values)
 {
     SWSS_LOG_ENTER();
 
@@ -807,54 +807,16 @@ bool SwitchVppTrim::getTrimEnumValuesCapability(
     switch (attr_id)
     {
         case SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE:
-            if (value)
-            {
-                *value = (sai_int32_t) SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE;
-            }
+            values.push_back((sai_int32_t) SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE);
             return true;
 
         case SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE:
-            if (value)
-            {
-                *value = (sai_int32_t) SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC;
-            }
+            values.push_back((sai_int32_t) SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC);
             return true;
 
         default:
             return false;
     }
-}
-
-sai_status_t SwitchVppTrim::queryAttrEnumValuesCapability(
-        _In_ sai_object_id_t switch_id,
-        _In_ sai_object_type_t object_type,
-        _In_ sai_attr_id_t attr_id,
-        _Inout_ sai_s32_list_t *enum_values_capability)
-{
-    SWSS_LOG_ENTER();
-
-    // Advertise only the trim resolution modes the VPP software admission shim
-    // actually honors (see getTrimEnumValuesCapability). The buffer-profile
-    // DROP_AND_TRIM admission-fail action is advertised as-is by the base
-    // metadata.
-    sai_int32_t value = 0;
-
-    if (getTrimEnumValuesCapability(object_type, attr_id, &value))
-    {
-        if (enum_values_capability->count < 1)
-        {
-            enum_values_capability->count = 1;
-            return SAI_STATUS_BUFFER_OVERFLOW;
-        }
-
-        enum_values_capability->count   = 1;
-        enum_values_capability->list[0] = value;
-
-        return SAI_STATUS_SUCCESS;
-    }
-
-    return m_switch_db->SwitchStateBase::queryAttrEnumValuesCapability(
-            switch_id, object_type, attr_id, enum_values_capability);
 }
 
 sai_status_t SwitchVppTrim::queryStatsCapability(
