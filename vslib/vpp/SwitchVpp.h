@@ -226,7 +226,8 @@ namespace saivs
                     _In_ sai_stats_mode_t mode,
                     _Out_ uint64_t *counters);
 
-            /* Translate SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION into
+            /* Translate SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, or the
+             * SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION of an IPINIP tunnel, into
              * the sonic_ext plugin call. Returns SAI_STATUS_NOT_SUPPORTED for
              * any action other than FORWARD/DROP, SAI_STATUS_FAILURE if the
              * feature query or action call fails. */
@@ -236,6 +237,13 @@ namespace saivs
 
             static sai_status_t validateLoopbackAction(
                     _In_ int32_t packet_action);
+
+            /* Set SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION and apply it to the
+             * VPP IPIP tunnels of the tunnel's encap nexthops. The attribute
+             * keeps its previous value if VPP does not take the new one. */
+            sai_status_t setTunnelLoopbackAction(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr);
 
             // Only resources acquired by this CREATE may be unwound on failure.
             struct RifCreateState

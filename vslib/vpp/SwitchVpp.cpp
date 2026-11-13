@@ -1232,8 +1232,10 @@ sai_status_t SwitchVpp::queryAttributeCapability(
     // than hard-coding it here.
 
     bool implemented = true;
-    if (object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
-            attr_id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION)
+    if ((object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
+            attr_id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION) ||
+        (object_type == SAI_OBJECT_TYPE_TUNNEL &&
+            attr_id == SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION))
     {
         CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", implemented));
     }
@@ -1783,6 +1785,30 @@ sai_status_t SwitchVpp::create(
     {
         sai_object_id_t object_id;
         sai_deserialize_object_id(serializedObjectId, object_id);
+
+        auto attr_loopback = sai_metadata_get_attr_by_id(SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
+        std::vector<sai_attribute_t> effective_attrs;
+        if (attr_loopback != nullptr)
+        {
+            CHECK_STATUS(validateLoopbackAction(attr_loopback->value.s32));
+
+            /*
+             * As for a RIF, DROP without the sonic-ext feature falls back to
+             * FORWARD, in the stored attributes too. If the feature can't be
+             * queried, DROP is kept: the sync of the next hops queries it again.
+             */
+            bool enabled = true;
+            if (attr_loopback->value.s32 == SAI_PACKET_ACTION_DROP &&
+                sonicExtFeatureEnabled("iface-loopback", enabled) == SAI_STATUS_SUCCESS && !enabled)
+            {
+                effective_attrs.assign(attr_list, attr_list + attr_count);
+                effective_attrs.erase(effective_attrs.begin() + (attr_loopback - attr_list));
+                attr_count = static_cast<uint32_t>(effective_attrs.size());
+                attr_list = effective_attrs.data();
+                SWSS_LOG_WARN("Tunnel %s: iface-loopback disabled; CREATE DROP omitted, using FORWARD",
+                              serializedObjectId.c_str());
+            }
+        }
 
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
 
@@ -2636,6 +2662,12 @@ sai_status_t SwitchVpp::set(
         return vpp_update_router_interface(objectId, 1, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_TUNNEL &&
+        attr->id == SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION)
+    {
+        return setTunnelLoopbackAction(serializedObjectId, attr);
+    }
+
     if (objectType == SAI_OBJECT_TYPE_NAT_ENTRY)
     {
         return m_nat.setNatEntry(serializedObjectId, attr);
@@ -2811,6 +2843,79 @@ sai_status_t SwitchVpp::set(
     return set_internal(objectType, serializedObjectId, attr);
 }
 
+sai_status_t SwitchVpp::setTunnelLoopbackAction(
+        _In_ const std::string &serializedObjectId,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    CHECK_STATUS(validateLoopbackAction(attr->value.s32));
+
+    // As for a RIF: VPP can only drop a hairpin with the sonic-ext feature
+    if (attr->value.s32 == SAI_PACKET_ACTION_DROP)
+    {
+        bool enabled = false;
+        CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", enabled));
+        if (!enabled)
+        {
+            SWSS_LOG_ERROR("Cannot set tunnel loopback packet action DROP on %s: sonic-ext iface-loopback is disabled",
+                           serializedObjectId.c_str());
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+    }
+
+    auto& tunnels = m_objectHash.at(SAI_OBJECT_TYPE_TUNNEL);
+    auto it = tunnels.find(serializedObjectId);
+    if (it == tunnels.end())
+    {
+        SWSS_LOG_ERROR("not found %s", serializedObjectId.c_str());
+        return SAI_STATUS_ITEM_NOT_FOUND;
+    }
+
+    /*
+     * The IPIP tunnel manager takes the action from the tunnel object, so
+     * store it first. If VPP does not take it, put the previous one back and
+     * return the VPP tunnels to that.
+     */
+    auto& attrHash = it->second;
+    const std::string name = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_TUNNEL, attr->id)->attridname;
+    auto previous = attrHash.find(name);
+    auto saved = previous == attrHash.end() ? nullptr : previous->second;
+
+    CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_TUNNEL, serializedObjectId, attr));
+
+    sai_object_id_t tunnel_oid;
+    sai_deserialize_object_id(serializedObjectId, tunnel_oid);
+
+    sai_status_t status = m_tunnel_mgr_ipip.update_tunnel_loopback_action(tunnel_oid);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        if (saved)
+        {
+            attrHash[name] = saved;
+        }
+        else
+        {
+            attrHash.erase(name);
+        }
+
+        /*
+         * TunnelManagerIpIp tracks the action each VPP tunnel has, so a VPP
+         * tunnel this can't return to the previous action gets the stored one
+         * at its next sync: a SET of the tunnel, or a next hop created or
+         * removed on it.
+         */
+        sai_status_t restored = m_tunnel_mgr_ipip.update_tunnel_loopback_action(tunnel_oid);
+        if (restored != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Tunnel %s: VPP tunnels not returned to the previous loopback packet action: %s",
+                           serializedObjectId.c_str(), sai_serialize_status(restored).c_str());
+        }
+    }
+
+    return status;
+}
+
 sai_status_t SwitchVpp::set_internal(
         _In_ sai_object_type_t objectType,
         _In_ const std::string &serializedObjectId,
@@ -2950,8 +3055,10 @@ sai_status_t SwitchVpp::get(
 
         if (ait == attrHash.end())
         {
-            if (objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
-                    id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION)
+            if ((objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
+                    id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION) ||
+                (objectType == SAI_OBJECT_TYPE_TUNNEL &&
+                    id == SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION))
             {
                 attr_list[idx].value.s32 = SAI_PACKET_ACTION_FORWARD;
                 continue;

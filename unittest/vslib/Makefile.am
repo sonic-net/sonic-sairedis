@@ -60,10 +60,12 @@ tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry
 				TestSwitchVppPbh.cpp \
 				TestSwitchVppTrim.cpp \
 				TestSwitchVppFdb.cpp \
+				TestSwitchVppIpIp.cpp \
 				MockVppXlate.cpp MockVppXlate.h \
 				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp \
 				TestSwitchVppNbr.cpp TestSwitchVppDebugCounter.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
+				vpp_ipip_tunnel_add vpp_ipip_tunnel_del vpp_get_swif_name vpp_sw_interface_find_by_ip \
 				ip_route_add_del_get_stats \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
 				create_sub_interface delete_sub_interface configure_lcp_interface \

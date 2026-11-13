@@ -90,6 +90,8 @@ struct VppMock
     unsigned int loopbackCalls = 0;
     int loopbackAction = -1;
     int loopbackResult = 0;
+    // The interfaces VPP fails to set a loopback packet action on, with that action
+    std::set<std::pair<std::string, int>> loopbackFailures;
     int featureResult = 0;
     unsigned int featureCalls = 0;
     int statsResult = 0;
@@ -197,6 +199,10 @@ struct VppMock
     std::map<std::string, std::map<uint32_t, std::vector<uint64_t>>> dropReasonStats;
     int dropReasonDumpResult = 0;
     unsigned int dropReasonDumpCalls = 0;
+    // Names of the interfaces the mock creates, by sw_if_index: IP-in-IP tunnels
+    std::map<uint32_t, std::string> swifNames;
+    // vpp_ipip_tunnel_del() result: on failure, VPP keeps the tunnel
+    int ipipDelResult = 0;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
