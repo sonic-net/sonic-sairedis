@@ -5922,7 +5922,12 @@ void Meta::meta_generic_validation_post_create(
     }
     else if (connectToSwitch)
     {
-        // don't create object, since it already exists and we are connecting to existing switch
+        // connecting to existing switch: the object exists only when its metadata is already populated
+
+        if (!m_saiObjectCollection.objectExists(meta_key))
+        {
+            m_saiObjectCollection.createObject(meta_key);
+        }
     }
     else
     {
@@ -6012,7 +6017,12 @@ void Meta::meta_generic_validation_post_create(
             }
             else if (connectToSwitch)
             {
-                // don't create object reference, since we are connecting to existing switch
+                // connecting to existing switch: the reference exists only when its metadata is already populated
+
+                if (!m_oids.objectReferenceExists(oid))
+                {
+                    m_oids.objectReferenceInsert(oid);
+                }
             }
             else
             {
