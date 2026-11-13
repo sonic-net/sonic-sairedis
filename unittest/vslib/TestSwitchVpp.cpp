@@ -104,8 +104,10 @@ namespace
         return MISS;
     }
 
-    // IPv4 API routes VPP holds: (table, prefix) -> next hop type
+    // IPv4 API routes VPP holds: (table, prefix) -> next hop type. Tests can
+    // inject a sequence of API failures before route state is changed.
     std::map<std::pair<uint32_t, std::string>, int> g_ip4Routes;
+    std::vector<int> g_ip4RouteResults;
 
     // the IP2ME address set: the destinations the IP2ME policer meters on the punt path
     std::set<std::string> g_ip2meAddrs;
@@ -254,6 +256,16 @@ int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
     std::string prefix = std::string(addr) + "/" + std::to_string(route->prefix_len);
 
     vppMock().calls.push_back({"ip_route_add_del", prefix, route->vrf_id, 0, is_add});
+
+    if (!g_ip4RouteResults.empty())
+    {
+        int result = g_ip4RouteResults.front();
+        g_ip4RouteResults.erase(g_ip4RouteResults.begin());
+        if (result != 0)
+        {
+            return result;
+        }
+    }
 
     // VPP has no table to add the route to, or no route to delete (table 0 always exists)
     if (route->vrf_id != 0 && vppMock().vrfTables.count(route->vrf_id) == 0)
@@ -1569,6 +1581,7 @@ class SwitchVppDhcpTrap : public ::testing::Test
             };
             g_l2Tables.clear();
             g_ip4Routes.clear();
+            g_ip4RouteResults.clear();
             g_ip2meAddrs.clear();
             g_ip6LocalMroutes.clear();
             g_ip6MrouteResults.clear();
@@ -2094,6 +2107,94 @@ TEST_F(SwitchVppDhcpTrap, CopyLeavesTheOtherPuntsAlone)
  * active so routed ingress reaches the CPU under either TRAP or COPY. The
  * VLAN-member classifier still distinguishes TRAP from COPY delivery.
  */
+TEST_F(SwitchVppDhcpTrap, RouteFailuresRollBackTrapCreateSetAndRemove)
+{
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(m_defaultVr, 0));
+
+    auto trap = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_HOSTIF_TRAP, m_switchId);
+    sai_attribute_t attrs[2]{};
+    attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+    attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCP;
+    attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+
+    g_ip4RouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->create(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap),
+                    m_switchId, 2, attrs));
+    EXPECT_FALSE(m_sw->m_dhcp_trap_active);
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+    EXPECT_EQ(0u, m_sw->m_trap_map.count(trap));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap),
+                    m_switchId, 2, attrs));
+    EXPECT_TRUE(m_sw->m_dhcp_trap_active);
+    EXPECT_TRUE(receivesLimitedBroadcast(0));
+
+    sai_attribute_t action{};
+    action.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    action.value.s32 = SAI_PACKET_ACTION_DROP;
+    g_ip4RouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap), &action));
+    EXPECT_TRUE(m_sw->m_dhcp_trap_active);
+    EXPECT_TRUE(receivesLimitedBroadcast(0));
+
+    sai_attribute_t stored{};
+    stored.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->get(SAI_OBJECT_TYPE_HOSTIF_TRAP, trap, 1, &stored));
+    EXPECT_EQ(SAI_PACKET_ACTION_TRAP, stored.value.s32);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap), &action));
+    EXPECT_FALSE(m_sw->m_dhcp_trap_active);
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+
+    action.value.s32 = SAI_PACKET_ACTION_TRAP;
+    g_ip4RouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap), &action));
+    EXPECT_FALSE(m_sw->m_dhcp_trap_active);
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap), &action));
+    EXPECT_TRUE(m_sw->m_dhcp_trap_active);
+    EXPECT_TRUE(receivesLimitedBroadcast(0));
+
+    g_ip4RouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->remove(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
+    EXPECT_EQ(1u, m_sw->m_trap_map.count(trap));
+    EXPECT_TRUE(m_sw->m_dhcp_trap_active);
+    EXPECT_TRUE(receivesLimitedBroadcast(0));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->remove(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
+    EXPECT_FALSE(m_sw->m_dhcp_trap_active);
+    EXPECT_FALSE(receivesLimitedBroadcast(0));
+}
+
+TEST_F(SwitchVppDhcpTrap, FailedVrfRouteIsNotCachedAndCanRetry)
+{
+    createTrap(SAI_PACKET_ACTION_TRAP);
+    auto vrf = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+
+    g_ip4RouteResults = {-1};
+    EXPECT_EQ(-1, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_EQ(0u, m_sw->vrf_objMap.count(vrf));
+    // ip_vrf_add() may have created the table or found it already present.
+    // The failed caller must not delete shared table state it does not own.
+    EXPECT_EQ(1u, vppMock().vrfTables.count(VRF_TABLE));
+    EXPECT_FALSE(receivesLimitedBroadcast(VRF_TABLE));
+
+    ASSERT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, VRF_TABLE));
+    EXPECT_EQ(1u, m_sw->vrf_objMap.count(vrf));
+    EXPECT_TRUE(receivesLimitedBroadcast(VRF_TABLE));
+}
+
 TEST_F(SwitchVppDhcpTrap, ActiveTrapReceivesRoutedLimitedBroadcasts)
 {
     auto trap = createTrap(SAI_PACKET_ACTION_TRAP);

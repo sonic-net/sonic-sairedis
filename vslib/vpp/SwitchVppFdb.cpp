@@ -1023,7 +1023,7 @@ static int l2_punt_classify_remove(const char *hwif_name)
  * and COPY (flood, and the CPU gets the BVI's copy). An active trap also
  * makes 255.255.255.255 a local receive for DHCP arriving on a routed port.
  */
-void SwitchVpp::vpp_set_dhcp_trap_state(
+sai_status_t SwitchVpp::vpp_set_dhcp_trap_state(
         _In_ bool active,
         _In_ bool copy)
 {
@@ -1034,7 +1034,42 @@ void SwitchVpp::vpp_set_dhcp_trap_state(
 
     if (!active_changed && !copy_changed)
     {
-        return;
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (active_changed)
+    {
+        std::set<uint32_t> vrfs;
+        std::vector<uint32_t> applied;
+
+        for (const auto &kv : vrf_objMap)
+        {
+            if (kv.second)
+            {
+                vrfs.insert(kv.second->m_vrf_id);
+            }
+        }
+
+        for (uint32_t vrf_id : vrfs)
+        {
+            if (vpp_ip4_limited_broadcast_receive(vrf_id, active) != 0)
+            {
+                for (auto it = applied.rbegin(); it != applied.rend(); ++it)
+                {
+                    if (vpp_ip4_limited_broadcast_receive(*it, m_dhcp_trap_active) != 0)
+                    {
+                        SWSS_LOG_ERROR("Failed to restore DHCPv4 receive state in VRF %u", *it);
+                    }
+                }
+                return SAI_STATUS_FAILURE;
+            }
+            applied.push_back(vrf_id);
+        }
+    }
+
+    if (copy_changed)
+    {
+        l2_punt_dhcp_sessions_set(!copy);
     }
 
     m_dhcp_trap_active = active;
@@ -1046,30 +1081,7 @@ void SwitchVpp::vpp_set_dhcp_trap_state(
                            : "trapped on VLAN members and received on routed RIFs")
                    : "not received on routed RIFs");
 
-    if (copy_changed)
-    {
-        l2_punt_dhcp_sessions_set(!copy);
-    }
-
-    if (!active_changed)
-    {
-        return;
-    }
-
-    std::set<uint32_t> vrfs;
-
-    for (const auto &kv : vrf_objMap)
-    {
-        if (kv.second)
-        {
-            vrfs.insert(kv.second->m_vrf_id);
-        }
-    }
-
-    for (uint32_t vrf_id : vrfs)
-    {
-        vpp_ip4_limited_broadcast_receive(vrf_id, active);
-    }
+    return SAI_STATUS_SUCCESS;
 }
 
 /*
