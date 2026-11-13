@@ -2915,6 +2915,10 @@ sai_status_t SwitchVpp::setTunnelEncapTtl(
         return SAI_STATUS_NOT_SUPPORTED;
     }
 
+    sai_object_id_t oid;
+    sai_deserialize_object_id(serializedObjectId, oid);
+    CHECK_STATUS(m_tunnel_mgr_ipip.validate_encap_ttl_val(oid, attr->value.u8));
+
     return setTunnelAttrOfVppTunnels(serializedObjectId, attr,
             [this](sai_object_id_t tunnel_oid)
             { return m_tunnel_mgr_ipip.update_tunnel_encap_ttl(tunnel_oid); });

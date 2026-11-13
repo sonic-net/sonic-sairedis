@@ -175,9 +175,10 @@ namespace saivs
             /* Set SAI_TUNNEL_ATTR_ENCAP_TTL_VAL, the outer TTL of the pipe
              * model, of an IPINIP tunnel, and apply it to the VPP IPIP tunnels
              * of the tunnel's encap nexthops. The attribute keeps its previous
-             * value if VPP does not take the new one. A SET of
-             * SAI_TUNNEL_ATTR_ENCAP_TTL_MODE is only taken for the model the
-             * tunnel has. */
+             * value if VPP does not take the new one, and a value a VPP tunnel
+             * the tunnel shares with another one can't take is not supported.
+             * A SET of SAI_TUNNEL_ATTR_ENCAP_TTL_MODE is only taken for the
+             * model the tunnel has. */
             sai_status_t setTunnelEncapTtl(
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t* attr);

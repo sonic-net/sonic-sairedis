@@ -622,37 +622,97 @@ TEST_F(SwitchVppIpIpTest, encapTtlFollowsTtlModeAndValue)
     }, ::testing::ExitedWithCode(0), "");
 }
 
-TEST_F(SwitchVppIpIpTest, sharedVppTunnelTakesHighestEncapTtlOfItsNexthops)
+TEST_F(SwitchVppIpIpTest, nexthopsOfVppTunnelAgreeOnEncapTtl)
 {
     ASSERT_EXIT({
         vppMock().enabledFeatures.insert("tunnel-encap-ttl");
 
-        /* A P2P decap term creates the VPP tunnel to the peer, which next hops of two pipe tunnels then use */
+        /* A P2P decap term creates the VPP tunnel to the peer, which next hops of pipe tunnels then use */
         sai_object_id_t decapTunnel;
         sai_object_id_t term;
         EXIT_UNLESS(createTunnel(decapTunnel) == SAI_STATUS_SUCCESS);
         EXIT_UNLESS(createTerm(term, decapTunnel) == SAI_STATUS_SUCCESS);
 
-        sai_object_id_t lowTunnel;
-        sai_object_id_t highTunnel;
-        sai_object_id_t lowNexthop;
-        sai_object_id_t highNexthop;
-        EXIT_UNLESS(createTunnel(lowTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL), encapTtlVal(64)}) == SAI_STATUS_SUCCESS);
-        EXIT_UNLESS(createTunnel(highTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL), encapTtlVal(128)}) == SAI_STATUS_SUCCESS);
-        EXIT_UNLESS(createNexthop(lowNexthop, lowTunnel) == SAI_STATUS_SUCCESS);
+        sai_object_id_t tunnel;
+        sai_object_id_t sameTtlTunnel;
+        sai_object_id_t otherTtlTunnel;
+        EXIT_UNLESS(createTunnel(tunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL), encapTtlVal(64)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createTunnel(sameTtlTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL), encapTtlVal(64)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createTunnel(otherTtlTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL), encapTtlVal(128)}) == SAI_STATUS_SUCCESS);
+
+        sai_object_id_t nexthop;
+        sai_object_id_t sameTtlNexthop;
+        sai_object_id_t otherTtlNexthop;
+        EXIT_UNLESS(createNexthop(nexthop, tunnel) == SAI_STATUS_SUCCESS);
         EXIT_UNLESS(vppEncapTtl("ipip0") == 64);
-        EXIT_UNLESS(createNexthop(highNexthop, highTunnel) == SAI_STATUS_SUCCESS);
+
+        /* The plugin gives the whole VPP tunnel the TTL: a next hop with another one can't use it */
+        EXIT_UNLESS(createNexthop(otherTtlNexthop, otherTtlTunnel) == SAI_STATUS_NOT_SUPPORTED);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 64);
+        EXIT_UNLESS(createNexthop(sameTtlNexthop, sameTtlTunnel) == SAI_STATUS_SUCCESS);
         EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_add").size() == 1);
-        EXIT_UNLESS(vppEncapTtl("ipip0") == 128);
+        EXIT_UNLESS(vppCallsTo("vpp_sonic_ext_tunnel_encap_ttl_set").size() == 1);
 
-        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, highNexthop) == SAI_STATUS_SUCCESS);
+        /* nor can a SET give the next hops of one of the tunnels there another TTL */
+        EXIT_UNLESS(setEncapTtl(tunnel, 128) == SAI_STATUS_NOT_SUPPORTED);
+        EXIT_UNLESS(storedEncapTtl(tunnel) == 64);
         EXIT_UNLESS(vppEncapTtl("ipip0") == 64);
 
-        /* The decap term keeps the VPP tunnel, which encapsulates nothing now: it loses the TTL */
-        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, lowNexthop) == SAI_STATUS_SUCCESS);
+        /* once they are the only ones there, it can */
+        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, sameTtlNexthop) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(setEncapTtl(tunnel, 128) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 128);
+        EXIT_UNLESS(createNexthop(otherTtlNexthop, otherTtlTunnel) == SAI_STATUS_SUCCESS);
+
+        /* The decap term keeps the VPP tunnel, which encapsulates nothing then: it loses the TTL */
+        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, nexthop) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppEncapTtl("ipip0") == 128);
+        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_NEXT_HOP, otherTtlNexthop) == SAI_STATUS_SUCCESS);
         EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_del").empty());
         EXIT_UNLESS(vppMock().callsTo("vpp_sonic_ext_tunnel_encap_ttl_set", "ipip0").back().sub_id == 0);
         EXIT_UNLESS(vppEncapTtl("ipip0") == 0);
+
+        /* The rejected next hop holds no reference to the VPP tunnel, so the term's removal deletes it */
+        EXIT_UNLESS(remove(SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY, term) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallIndex("vpp_ipip_tunnel_del", "ipip0") >= 0);
+
+        _exit(0);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(SwitchVppIpIpTest, uniformAndPipeNexthopsCannotShareVppTunnel)
+{
+    ASSERT_EXIT({
+        vppMock().enabledFeatures.insert("tunnel-encap-ttl");
+
+        sai_object_id_t uniformTunnel;
+        sai_object_id_t pipeTunnel;
+        EXIT_UNLESS(createTunnel(uniformTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createTunnel(pipeTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_PIPE_MODEL)}) == SAI_STATUS_SUCCESS);
+
+        /* The pipe TTL would replace the inner TTL the packets of a uniform next hop take */
+        sai_object_id_t uniformNexthop;
+        sai_object_id_t pipeNexthop;
+        EXIT_UNLESS(createNexthop(uniformNexthop, uniformTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(pipeNexthop, pipeTunnel) == SAI_STATUS_NOT_SUPPORTED);
+        EXIT_UNLESS(vppCallsTo("vpp_sonic_ext_tunnel_encap_ttl_set").empty());
+
+        /* Uniform next hops share it, and a uniform tunnel has no TTL, whatever its value */
+        sai_object_id_t otherUniformTunnel;
+        sai_object_id_t otherUniformNexthop;
+        EXIT_UNLESS(createTunnel(otherUniformTunnel, {encapTtlMode(SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL)}) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(createNexthop(otherUniformNexthop, otherUniformTunnel) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(setEncapTtl(uniformTunnel, 64) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppCallsTo("vpp_sonic_ext_tunnel_encap_ttl_set").empty());
+
+        /* The other way around, on the VPP tunnel to another peer */
+        sai_object_id_t peerPipeNexthop;
+        sai_object_id_t peerUniformNexthop;
+        EXIT_UNLESS(createNexthop(peerPipeNexthop, pipeTunnel, OTHER_PEER_IP) == SAI_STATUS_SUCCESS);
+        EXIT_UNLESS(vppEncapTtl("ipip1") == 255);
+        EXIT_UNLESS(createNexthop(peerUniformNexthop, uniformTunnel, OTHER_PEER_IP) == SAI_STATUS_NOT_SUPPORTED);
+        EXIT_UNLESS(vppEncapTtl("ipip1") == 255);
+        EXIT_UNLESS(vppCallsTo("vpp_ipip_tunnel_add").size() == 2);
 
         _exit(0);
     }, ::testing::ExitedWithCode(0), "");
@@ -722,6 +782,12 @@ TEST_F(SwitchVppIpIpTest, encapTtlNeedsTunnelEncapTtlFeature)
 
             EXIT_UNLESS(setEncapTtl(tunnel, 64) == (enabled ? SAI_STATUS_SUCCESS : SAI_STATUS_NOT_SUPPORTED));
             EXIT_UNLESS(storedEncapTtl(tunnel) == (enabled ? 64 : -1));
+
+            /* With or without the feature, VPP can't give each next hop on a VPP tunnel its own TTL */
+            sai_object_id_t uniformTunnel;
+            sai_object_id_t uniformNexthop;
+            EXIT_UNLESS(createTunnel(uniformTunnel) == SAI_STATUS_SUCCESS);
+            EXIT_UNLESS(createNexthop(uniformNexthop, uniformTunnel) == SAI_STATUS_NOT_SUPPORTED);
 
             _exit(0);
         }, ::testing::ExitedWithCode(0), "");

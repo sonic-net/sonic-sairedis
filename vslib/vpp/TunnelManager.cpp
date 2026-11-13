@@ -2792,6 +2792,18 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
             return status;
         }
 
+        sai_object_id_t tunnel_oid;
+        sai_deserialize_object_id(tunnel_obj->get_id(), tunnel_oid);
+
+        if (has_other_encap_ttl(sw_if_index, tunnel_oid, get_encap_ttl(tunnel_oid))) {
+            SWSS_LOG_ERROR("IpIp Encap: nexthop %s not supported: VPP tunnel sw_if=%u has a nexthop of a tunnel with another encap TTL",
+                           tunnel_nh_obj->get_id().c_str(), sw_if_index);
+            // A nexthop of another tunnel uses the VPP tunnel, so this only
+            // drops the reference just taken
+            remove_ipip_vpp_tunnel(sw_if_index);
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+
         // Bookkeeping
         IpIpTunnelVPPData data;
         data.sw_if_index = sw_if_index;
@@ -2800,9 +2812,6 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
         data.mode = IpIpTunnelVPPData::TUNNEL_API_MODE_P2P;
         data.flags = vpp_flags;
         data.vrf_id = vrf_id;
-
-        sai_object_id_t tunnel_oid;
-        sai_deserialize_object_id(tunnel_obj->get_id(), tunnel_oid);
         data.tunnel_oid = tunnel_oid;
 
         m_ipip_encap_nh_map[nh_oid] = data;
@@ -2968,6 +2977,40 @@ uint8_t TunnelManagerIpIp::get_encap_ttl(_In_ sai_object_id_t tunnel_oid)
     return attr.value.u8;
 }
 
+bool TunnelManagerIpIp::has_other_encap_ttl(
+    _In_ uint32_t sw_if_index,
+    _In_ sai_object_id_t tunnel_oid,
+    _In_ uint8_t ttl)
+{
+    SWSS_LOG_ENTER();
+
+    return std::any_of(m_ipip_encap_nh_map.begin(), m_ipip_encap_nh_map.end(),
+                       [this, sw_if_index, tunnel_oid, ttl](const auto &entry)
+                       { return entry.second.sw_if_index == sw_if_index &&
+                                entry.second.tunnel_oid != tunnel_oid &&
+                                get_encap_ttl(entry.second.tunnel_oid) != ttl; });
+}
+
+sai_status_t TunnelManagerIpIp::validate_encap_ttl_val(
+    _In_ sai_object_id_t tunnel_oid,
+    _In_ uint8_t ttl_val)
+{
+    SWSS_LOG_ENTER();
+
+    // In the uniform model a tunnel has no encap TTL, whatever the value
+    uint8_t ttl = get_encap_ttl(tunnel_oid) == 0 ? 0 : ttl_val;
+
+    for (uint32_t sw_if_index : get_encap_vpp_tunnels(tunnel_oid)) {
+        if (has_other_encap_ttl(sw_if_index, tunnel_oid, ttl)) {
+            SWSS_LOG_ERROR("IpIp: encap TTL %u of tunnel %s not supported: its VPP tunnel sw_if=%u has a nexthop of a tunnel with another encap TTL",
+                           ttl_val, sai_serialize_object_id(tunnel_oid).c_str(), sw_if_index);
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t TunnelManagerIpIp::sync_encap_ttl(_In_ uint32_t sw_if_index)
 {
     SWSS_LOG_ENTER();
@@ -2979,10 +3022,12 @@ sai_status_t TunnelManagerIpIp::sync_encap_ttl(_In_ uint32_t sw_if_index)
         return SAI_STATUS_SUCCESS;
     }
 
+    // The encap nexthops on the VPP tunnel agree on the TTL (has_other_encap_ttl())
     uint8_t ttl = 0;
     for (const auto &entry : m_ipip_encap_nh_map) {
         if (entry.second.sw_if_index == sw_if_index) {
-            ttl = std::max(ttl, get_encap_ttl(entry.second.tunnel_oid));
+            ttl = get_encap_ttl(entry.second.tunnel_oid);
+            break;
         }
     }
 
