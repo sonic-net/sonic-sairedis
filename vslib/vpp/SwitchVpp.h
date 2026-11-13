@@ -153,7 +153,8 @@ namespace saivs
                     _In_ sai_stats_mode_t mode,
                     _Out_ uint64_t *counters);
 
-            /* Translate SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION into
+            /* Translate SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, or the
+             * SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION of an IPINIP tunnel, into
              * the sonic_ext plugin call. Returns SAI_STATUS_NOT_SUPPORTED for
              * any action other than FORWARD/DROP, SAI_STATUS_FAILURE if the
              * feature query or action call fails. */
@@ -163,6 +164,13 @@ namespace saivs
 
             static sai_status_t validateLoopbackAction(
                     _In_ int32_t packet_action);
+
+            /* Set SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION and apply it to the
+             * VPP IPIP tunnels of the tunnel's encap nexthops. The attribute
+             * keeps its previous value if VPP does not take the new one. */
+            sai_status_t setTunnelLoopbackAction(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr);
 
             // Only resources acquired by this CREATE may be unwound on failure.
             struct RifCreateState
@@ -183,6 +191,7 @@ namespace saivs
                 bool mtu_changed = false;
                 bool mpls_changed = false;
                 bool admin_changed = false;
+                bool ip6_enabled = false;
                 bool resync_children = false;
             };
 
@@ -844,6 +853,10 @@ namespace saivs
                     _In_ const sai_attribute_t *attr_list,
                     _Inout_ RifCreateState& state);
 
+            sai_status_t vpp_rif_ip6_enable_disable(
+                    _In_ const std::string& hwif_name,
+                    _In_ bool enable);
+
             sai_status_t vpp_update_router_interface(
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t attr_count,
@@ -950,6 +963,14 @@ namespace saivs
                     _In_ bool is_add,
                     _In_ bool program_adjacency = true,
                     _In_ bool program_host_route = false);
+
+            // hwif name -> number of subnet broadcast neighbors on it, refcounts the
+            // per-interface ip4 directed-broadcast flag.
+            std::map<std::string, uint32_t> m_directed_bcast_hwif;
+
+            sai_status_t updateDirectedBroadcast(
+                    _In_ const std::string &hwif_name,
+                    _In_ bool is_add);
 
             sai_status_t addIpNbr(
                     _In_ const std::string &serializedObjectId,

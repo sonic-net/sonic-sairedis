@@ -673,11 +673,48 @@ namespace saivs
          */
         void retry_pending_unnumbered(_In_ const vpp_ip_addr_t &rif_ip);
 
+        /**
+         * @brief Apply SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION, just set on a tunnel,
+         * to the VPP IPIP tunnels its encap nexthops use.
+         *
+         * @param tunnel_oid The SAI tunnel object ID.
+         * @return SAI_STATUS_SUCCESS, or the status of the first VPP tunnel the
+         *         action could not be applied to.
+         */
+        sai_status_t update_tunnel_loopback_action(_In_ sai_object_id_t tunnel_oid);
+
     private:
         /**
          * @brief Map SAI tunnel TTL/DSCP/ECN modes to VPP tunnel_encap_decap_flags.
          */
         uint8_t map_sai_to_vpp_flags(const SaiObject *tunnel_obj);
+
+        /**
+         * @brief SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION of a tunnel: FORWARD, the
+         * SAI default, if it is not set.
+         */
+        int32_t get_loopback_action(_In_ sai_object_id_t tunnel_oid);
+
+        /**
+         * @brief Apply the loopback packet action to a VPP IPIP tunnel.
+         *
+         * The action is for a packet that came in from the tunnel's remote
+         * endpoint and is routed back to it, whichever SAI tunnel decapsulates
+         * it: on a dual ToR, orchagent sets it on the tunnel of the encap
+         * nexthop to the peer, which has no decap term, while the P2MP terms
+         * of the decap tunnels take in the peer's packets. VPP decapsulates a
+         * peer's packets on the P2P tunnel to that peer, though, when there is
+         * one (an exact match comes before an MP2P one), and that is the
+         * tunnel the encap nexthops to the peer use. So a packet from the peer
+         * routed back to it has the VPP tunnel as both its ingress and egress
+         * interface, which the sonic_ext plugin drops on the tunnel's output
+         * arcs. The action is DROP if the tunnel of any encap nexthop on the
+         * VPP tunnel has DROP, else FORWARD.
+         *
+         * @param sw_if_index VPP sw_if_index of the tunnel.
+         * @return SAI_STATUS_SUCCESS if the action is in place.
+         */
+        sai_status_t sync_loopback_action(_In_ uint32_t sw_if_index);
 
         /**
          * @brief Resolve a VR OID to a VPP VRF table ID.
@@ -768,5 +805,9 @@ namespace saivs
 
         // IPIP tunnel ref count map
         std::unordered_map<IpIpTunnelKey, IpIpTunnelRef, IpIpTunnelKeyHash> m_ipip_tunnel_refcount;
+
+        // VPP IPIP tunnels with loopback packet action DROP. VPP resets the
+        // action of a tunnel it deletes.
+        std::set<uint32_t> m_ipip_loopback_drop;
     };
 }

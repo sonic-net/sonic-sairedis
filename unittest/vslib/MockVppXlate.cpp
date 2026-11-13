@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <mutex>
@@ -377,11 +378,62 @@ extern "C" int __wrap_vpp_iface_loopback_set_action(const char *name, int action
     SWSS_LOG_ENTER();
     ++vppMock().loopbackCalls;
     vppMock().loopbackAction = action;
-    if (vppMock().loopbackResult == 0)
+    int result = vppMock().loopbackFailures.count({name, action}) ? -1 : vppMock().loopbackResult;
+    if (result == 0)
     {
         vppMock().actions[name] = action;
     }
-    return vppMock().loopbackResult;
+    return result;
+}
+
+/*
+ * IP-in-IP tunnels, named for their instance as VPP names them. Like VPP, the
+ * mock reuses the lowest free instance and the sw_if_index of a deleted tunnel
+ * (1000 on, here). A call is recorded with the tunnel's name, its sw_if_index
+ * as id and, for an add, its mode as sub_id. Deleting a tunnel resets its
+ * loopback packet action, as the sonic_ext plugin does for any interface VPP
+ * deletes.
+ */
+extern "C" int __wrap_vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index)
+{
+    SWSS_LOG_ENTER();
+    uint32_t instance = 0;
+    while (vppMock().swifNames.count(1000 + instance))
+    {
+        instance++;
+    }
+    uint32_t idx = 1000 + instance;
+    vppMock().swifNames[idx] = "ipip" + std::to_string(instance);
+    *sw_if_index = idx;
+    vppMock().calls.push_back({"vpp_ipip_tunnel_add", vppMock().swifNames[idx], idx, tunnel->mode, false});
+    return 0;
+}
+
+extern "C" int __wrap_vpp_ipip_tunnel_del(uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_ipip_tunnel_del", vppMock().swifNames[sw_if_index], sw_if_index, 0, false});
+    if (vppMock().ipipDelResult != 0)
+    {
+        return vppMock().ipipDelResult;
+    }
+    vppMock().actions.erase(vppMock().swifNames[sw_if_index]);
+    vppMock().swifNames.erase(sw_if_index);
+    return 0;
+}
+
+extern "C" const char *__wrap_vpp_get_swif_name(const uint32_t swif_idx)
+{
+    SWSS_LOG_ENTER();
+    auto it = vppMock().swifNames.find(swif_idx);
+    return it == vppMock().swifNames.end() ? nullptr : it->second.c_str();
+}
+
+// No interface has the tunnel's source address yet: its unnumbered setup waits
+extern "C" int __wrap_vpp_sw_interface_find_by_ip(vpp_ip_addr_t *, uint32_t, uint32_t *)
+{
+    SWSS_LOG_ENTER();
+    return -1;
 }
 
 extern "C" int __wrap_vpp_intf_stats_query(const char *name, vpp_interface_stats_t *stats)
@@ -638,6 +690,88 @@ int __wrap_interface_get_state(const char *hwif_name, bool *link_is_up)
 
 int __wrap_interface_set_promiscuous(const char *hwif_name, bool enable) {
     SWSS_LOG_ENTER();
+    return 0;
+}
+
+/*
+ * IPv6 link enable/disable, recorded as name: interface, sub_id: the returned
+ * status, flag: enable. VPP reference counts these, so the mock does too, and
+ * it counts them the way VPP does: ip6_link_enable() takes the lock even when
+ * it reports VALUE_EXIST for an interface someone else enabled first, while
+ * IP6_NOT_ENABLED means ip6_link_disable() found no lock to drop.
+ */
+int __wrap_sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    std::string name = hwif_name ? hwif_name : "";
+
+    const int VPP_API_ERROR_VALUE_EXIST = -81;
+
+    int ret = vppMock().ip6EnableResult;
+
+    if (enable && (ret == 0 || ret == VPP_API_ERROR_VALUE_EXIST))
+    {
+        vppMock().ip6Locks[name]++;
+    }
+    else if (!enable && ret == 0)
+    {
+        vppMock().ip6Locks[name]--;
+    }
+
+    vppMock().calls.push_back({"sw_interface_ip6_enable_disable", name, 0, (uint32_t)ret, enable});
+
+    return ret;
+}
+
+// Recorded as name: interface, sub_id: the returned status.
+int __wrap_sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address)
+{
+    SWSS_LOG_ENTER();
+
+    std::string name = hwif_name ? hwif_name : "";
+
+    int ret = vppMock().macResult;
+
+    if (ret == 0 && mac_address != nullptr)
+    {
+        char mac[18];
+        snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+                mac_address[0], mac_address[1], mac_address[2],
+                mac_address[3], mac_address[4], mac_address[5]);
+        vppMock().macs[name] = mac;
+    }
+
+    vppMock().calls.push_back({"sw_interface_set_mac", name, 0, (uint32_t)ret, true});
+
+    return ret;
+}
+
+/*
+ * Neighbor programming. Recorded as name: interface for the interface flag and
+ * the adjacency, empty for a route; id: the route's prefix length; sub_id: the
+ * returned status; flag: enable or is_add.
+ */
+int __wrap_sw_interface_set_ip_directed_broadcast(const char *hwif_name, bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    int ret = vppMock().directedBcastResult;
+
+    vppMock().calls.push_back({"sw_interface_set_ip_directed_broadcast",
+            hwif_name ? hwif_name : "", 0, (uint32_t)ret, enable});
+
+    return ret;
+}
+
+int __wrap_ip4_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct sockaddr_in *addr,
+        bool is_static, bool no_fib_entry, uint8_t *mac, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"ip4_nbr_add_del", hwif_name ? hwif_name : "",
+            addr ? addr->sin_addr.s_addr : 0, 0, is_add});
+
     return 0;
 }
 

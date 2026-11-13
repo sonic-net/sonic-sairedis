@@ -90,6 +90,8 @@ struct VppMock
     unsigned int loopbackCalls = 0;
     int loopbackAction = -1;
     int loopbackResult = 0;
+    // The interfaces VPP fails to set a loopback packet action on, with that action
+    std::set<std::pair<std::string, int>> loopbackFailures;
     int featureResult = 0;
     unsigned int featureCalls = 0;
     int statsResult = 0;
@@ -115,6 +117,17 @@ struct VppMock
     int mplsResult = 0;
     int adminResult = 0;
     int deleteResult = 0;
+    // sw_interface_ip6_enable_disable() result, and the per-interface lock count
+    // VPP keeps for IPv6 (ip6_link_t.il_locks), so a test can check that the
+    // enables a RIF takes are released again.
+    int ip6EnableResult = 0;
+    std::map<std::string, int> ip6Locks;
+    // sw_interface_set_mac() result, and the MAC each interface carries.
+    int macResult = 0;
+    std::map<std::string, std::string> macs;
+    // sw_interface_set_ip_directed_broadcast() result, for the ref-counted
+    // directed-broadcast flag of the sub-net broadcast neighbors.
+    int directedBcastResult = 0;
     uint32_t routeStatsIndex = 42;
     std::vector<int> routeResults;
     std::vector<VppRouteCall> routeCalls;
@@ -178,6 +191,10 @@ struct VppMock
     bool natSupported = true;
     // NAT sessions VPP reports, by inside address (network order)
     std::map<uint32_t, std::vector<vpp_nat44_session_t>> natSessions;
+    // Names of the interfaces the mock creates, by sw_if_index: IP-in-IP tunnels
+    std::map<uint32_t, std::string> swifNames;
+    // vpp_ipip_tunnel_del() result: on failure, VPP keeps the tunnel
+    int ipipDelResult = 0;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
