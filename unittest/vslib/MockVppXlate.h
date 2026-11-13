@@ -83,6 +83,20 @@ struct VppClassifySession
     std::vector<uint8_t> match;
 };
 
+struct VppCoppNeighborMissBindCall
+{
+    std::string policerName;
+    bool isBind;
+};
+
+struct VppCoppDhcpBindCall
+{
+    std::string policerName;
+    bool isIpv6;
+    bool isCopy;
+    bool isBind;
+};
+
 struct VppMock
 {
     bool loopbackEnabled = false;
@@ -142,6 +156,12 @@ struct VppMock
     std::map<std::string, uint32_t> nodeNexts;
     uint32_t nextClassifyTable = 0;
     std::vector<VppClassifySession> classifySessions;
+
+    // Semantic trap rows supplied by sonic_ext_copp.api.
+    int coppNeighborMissBindResult = 0;
+    int coppDhcpBindResult = 0;
+    std::vector<VppCoppNeighborMissBindCall> coppNeighborMissBindCalls;
+    std::vector<VppCoppDhcpBindCall> coppDhcpBindCalls;
 
     // Policy Based Hashing.
     int pbhProfileResult = 0;

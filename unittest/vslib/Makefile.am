@@ -64,7 +64,8 @@ tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry
 				MockVppXlate.cpp MockVppXlate.h \
 				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp \
 				TestSwitchVppNbr.cpp
-VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
+VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_sonic_ext_copp_neighbor_miss_bind \
+				vpp_sonic_ext_copp_dhcp_bind vpp_iface_loopback_set_action \
 				vpp_ipip_tunnel_add vpp_ipip_tunnel_del vpp_get_swif_name vpp_sw_interface_find_by_ip \
 				ip_route_add_del_get_stats \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
@@ -84,7 +85,7 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
 				vpp_classify_table_create vpp_classify_table_delete \
 				vpp_classify_session_add vpp_classify_session_del \
-				ip_route_add_del vpp_sonic_ext_copp_ip2me_addr_add_del \
+				ip_route_add_del ip6_mroute_local_add_del vpp_sonic_ext_copp_ip2me_addr_add_del \
 				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state interface_get_state \
 				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
 				vpp_sonic_ext_trim_global_set vpp_sonic_ext_trim_queue_set \

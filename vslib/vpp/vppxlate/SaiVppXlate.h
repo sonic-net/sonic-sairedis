@@ -527,6 +527,8 @@ typedef enum {
     extern int sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address);
     extern int sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address);
     extern int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable);
+    extern int ip6_mroute_local_add_del(uint32_t table_id, const uint8_t grp[16], uint8_t grp_len,
+                                        const char *accept_hwif, bool with_local_path, bool is_add);
     extern int ip_vrf_add(uint32_t vrf_id, const char *vrf_name, bool is_ipv6);
     extern int ip_vrf_del(uint32_t vrf_id, const char *vrf_name, bool is_ipv6);
 
@@ -554,6 +556,10 @@ typedef enum {
     /* interface-output-arc ethertype -> policer binding */
     extern int vpp_sonic_ext_copp_ifout_bind(uint16_t ethertype,
             const char *policer_name, bool is_bind, bool match_ip4_ttl_expiring);
+    extern int vpp_sonic_ext_copp_neighbor_miss_bind(
+            const char *policer_name, bool is_bind);
+    extern int vpp_sonic_ext_copp_dhcp_bind(
+            const char *policer_name, bool is_ipv6, bool is_copy, bool is_bind);
     extern int vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add);
     extern int vpp_sonic_ext_copp_ip2me_bind(const char *policer_name, bool is_bind);
     extern int vpp_sonic_ext_copp_ip2me_bind_condition(const char *policer_name, uint16_t tcp_port, bool is_bind);
