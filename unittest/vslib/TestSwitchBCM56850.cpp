@@ -96,6 +96,43 @@ TEST(SwitchBCM56850, refresh_bridge_port_list)
     //std::cout << sw.dump_switch_database_for_warm_restart();
 }
 
+TEST(SwitchBCM56850, max_stp_instance)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(sw.initialize_default_objects(1, &attr), SAI_STATUS_SUCCESS);
+
+    attr.id = SAI_SWITCH_ATTR_MAX_STP_INSTANCE;
+    attr.value.u32 = 0;
+
+    EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_SWITCH, "oid:0x2100000000", 1, &attr), SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(attr.value.u32, 63);
+}
+
 static std::map<sai_object_id_t, WarmBootState> g_warmBootState;
 // TODO move to utils
 static bool getWarmBootState(
