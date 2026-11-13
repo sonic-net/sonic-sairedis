@@ -512,7 +512,6 @@ TEST_F(TestPortPhySerdesAttr, CollectDataPartialSuccess)
     flexCounter->removeCounter(partialSerdesOid);
 }
 
-
 // Exercise individual polls without enabling the background collector.
 class TestPortPhySerdesAttrResize : public TestPortPhySerdesAttr
 {
@@ -964,11 +963,99 @@ TEST_F(TestPortPhySerdesAttrResize, OverflowWithoutLargerCountsStops)
     EXPECT_EQ(2u, tapQueries);    // registration + fallback
     expectUnchanged();
 
-    // Second poll: fallback exhausted, no extra queries, no repeated logging.
+    // Second poll: query still runs (recovery path stays open), but logs are suppressed.
     poll();
     EXPECT_EQ(2u, collectionGets);
     EXPECT_EQ(1u, laneQueries);
-    EXPECT_EQ(2u, tapQueries);
+    EXPECT_EQ(3u, tapQueries);    // registration + 2 fallback queries
+    expectUnchanged();
+}
+
+TEST_F(TestPortPhySerdesAttrResize, FallbackRecoversAfterQueryReportsLargerCount)
+{
+    registerCounter(false, true);
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        if (attrs[0].value.portserdestaps.count < 6)
+            return SAI_STATUS_BUFFER_OVERFLOW; // Vendor leaves all counts unchanged.
+        return completeGet(count, attrs, 2, 6);
+    };
+
+    poll(); // The fallback query still returns 3 taps.
+    EXPECT_EQ(1u, collectionGets);
+    expectUnchanged();
+
+    queriedTaps = 6;
+    poll(); // The fallback query returns 6 taps.
+    EXPECT_EQ(3u, collectionGets);
+    expectPublished(2, 6, false, true);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, OverflowCountAboveLimitIsRejected)
+{
+    registerCounter(false, true);
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs, 2, 3);
+        if (collectionGets == 1)
+        {
+            attrs[0].value.portserdestaps.count = 65; // Above the limit.
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        return completeGet(count, attrs, 2, 3);
+    };
+
+    poll();
+    EXPECT_EQ(1u, collectionGets);
+    expectUnchanged();
+
+    poll();
+    EXPECT_EQ(2u, collectionGets);
+    expectPublished(2, 3, false, true);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, OverflowInnerLaneCountAboveLimitIsRejected)
+{
+    registerCounter(false, true);
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        expectCapacity(count, attrs, 2, 3);
+        if (collectionGets == 1)
+        {
+            attrs[0].value.portserdestaps.list[0].count = 65; // Above the limit.
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        return completeGet(count, attrs, 2, 3);
+    };
+
+    poll();
+    EXPECT_EQ(1u, collectionGets);
+    expectUnchanged();
+
+    poll();
+    EXPECT_EQ(2u, collectionGets);
+    expectPublished(2, 3, false, true);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, TxFirCountAboveLimitAtRegistrationIsRejected)
+{
+    queriedTaps = 65;
+    registerCounter(false, true);
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        return completeGet(count, attrs, 2, 3);
+    };
+
+    // Tap count above the sanity limit is rejected at registration.
+    // Without a per-poll refresh of missing counts, the object cannot
+    // recover until it is removed and re-added.
+    poll();
+    EXPECT_EQ(0u, collectionGets);
+    expectUnchanged();
+
+    queriedTaps = 3;
+    poll();
+    EXPECT_EQ(0u, collectionGets);
     expectUnchanged();
 }
 
@@ -1073,11 +1160,11 @@ TEST_P(TestPortPhySerdesAttrGetFailure, OrdinaryErrorDoesNotRetryOrPublish)
 INSTANTIATE_TEST_SUITE_P(InitialAndRetry, TestPortPhySerdesAttrGetFailure,
         ::testing::Bool());
 
-TEST_F(TestPortPhySerdesAttrResize, PartialInitializationStillAllowsResizeRetry)
+TEST_F(TestPortPhySerdesAttrResize, MissingTapCountStillAllowsRxResizeRetry)
 {
-    tapQueryStatus = SAI_STATUS_FAILURE;
-    phyTable->hdel(toOid(testPortOid), "tx_fir_taps_list");
+    tapQueryStatus = SAI_STATUS_NOT_SUPPORTED;
     registerCounter();
+    phyTable->hdel(toOid(testPortOid), "tx_fir_taps_list");
     onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
     {
         EXPECT_EQ(1u, count);
@@ -1092,15 +1179,41 @@ TEST_F(TestPortPhySerdesAttrResize, PartialInitializationStillAllowsResizeRetry)
     };
 
     poll();
+
     EXPECT_EQ(2u, collectionGets);
+    EXPECT_EQ(1u, laneQueries);
+    EXPECT_EQ(1u, tapQueries);
     expectPublished(4, 0, true, false);
     std::string value;
     EXPECT_FALSE(phyTable->hget(toOid(testPortOid), "tx_fir_taps_list", value));
-    EXPECT_EQ(1u, laneQueries);
-    EXPECT_EQ(1u, tapQueries);
 }
 
-TEST_F(TestPortPhySerdesAttrResize, NoInitializedAttributesSkipsCollectionGet)
+TEST_F(TestPortPhySerdesAttrResize, RxOnlyCollectionDoesNotWaitForTapCount)
+{
+    tapQueryStatus = SAI_STATUS_NOT_SUPPORTED;
+    registerCounter(true, false);
+    onCollect = [this](uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        EXPECT_EQ(1u, count);
+        EXPECT_EQ(SAI_PORT_SERDES_ATTR_RX_VGA, attrs[0].id);
+        expectCapacity(count, attrs, 2, 0);
+        return completeGet(count, attrs, 2, 0);
+    };
+
+    poll();
+    poll();
+
+    EXPECT_EQ(2u, collectionGets);
+    EXPECT_EQ(1u, laneQueries);
+    // Registration still queries taps; RX-only polls must not retry that query
+    EXPECT_EQ(1u, tapQueries);
+    expectPublished(2, 0, true, false);
+    std::string value;
+    ASSERT_TRUE(phyTable->hget(toOid(testPortOid), "tx_fir_taps_list", value));
+    EXPECT_EQ("previous-taps", value);
+}
+
+TEST_F(TestPortPhySerdesAttrResize, MissingLaneCountSkipsBothAttributes)
 {
     laneQueryStatus = SAI_STATUS_FAILURE;
     registerCounter();
