@@ -808,7 +808,42 @@ uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
     SWSS_LOG_ENTER();
 
     ++vppMock().interfaceLookups;
+
+    auto it = vppMock().swIfIndexByName.find(hwif_name);
+
+    if (it != vppMock().swIfIndexByName.end())
+    {
+        return it->second;
+    }
+
     return vppMock().nextSwIfIndex++;
+}
+
+// Replays vppMock().dropReasonStats the way vpp_stats_dump() walks a simple
+// counter vector: one callback per thread and index.
+int __wrap_vpp_drop_reason_stats_dump(vpp_drop_reason_stats_cb cb, void *data)
+{
+    SWSS_LOG_ENTER();
+
+    ++vppMock().dropReasonDumpCalls;
+
+    if (vppMock().dropReasonDumpResult != 0)
+    {
+        return vppMock().dropReasonDumpResult;
+    }
+
+    for (const auto& reason: vppMock().dropReasonStats)
+    {
+        for (const auto& port: reason.second)
+        {
+            for (auto value: port.second)
+            {
+                cb(reason.first.c_str(), port.first, value, data);
+            }
+        }
+    }
+
+    return 0;
 }
 
 // Adds only the nodes in vppMock().nodeNexts
