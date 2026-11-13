@@ -103,11 +103,11 @@ bool Workaround::isSetAttributeWorkaroundDuringApplyView(
         /*
          * A valid only attribute has no effect while its condition is not
          * met (for example a WRED colour threshold while that colour is
-         * neither enabled nor ECN-marked), and some vendor SAIs reject a SET
-         * of it in that state. The current view object already holds its
-         * attributes as they will be after this apply, and the SETs of
-         * condition sources run before the SETs that depend on them, so this
-         * is the condition the SAI sees.
+         * neither enabled nor ECN-marked), and some vendor SAI implementations
+         * reject a SET of it in that state. The current view object already
+         * holds its attributes as they will be after this apply, and each
+         * condition source is set before the attributes that depend on it,
+         * so this is the condition the SAI sees.
          */
 
         std::vector<sai_attribute_t> attrs;
