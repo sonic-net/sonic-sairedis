@@ -1,5 +1,6 @@
 #pragma once
 #include "swss/logger.h"
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -305,6 +306,17 @@ namespace saivs
                     _In_ sai_object_id_t rifOid) const;
 
             /*
+             * Names of direct children of the interface identified by oid.
+             * An empty filter accepts every child. Otherwise the predicate is
+             * called once per child while the registry lock is held; it must
+             * only inspect the supplied record, without acquiring other locks
+             * or making VPP calls. No record escapes the locked read.
+             */
+            std::vector<std::string> getChildren(
+                    _In_ sai_object_id_t oid,
+                    _In_ const std::function<bool(const VppInterface&)>& filter = {}) const;
+
+            /*
              * A LAG that is fully realised: registered, of LAG type and bound
              * to a VPP sw_if_index. addLag() takes the bond id, the sw_if_index
              * and the oid in one call, so those three are either all present or
@@ -389,7 +401,8 @@ namespace saivs
                     _In_ const std::shared_ptr<VppInterface>& rec);
 
             std::vector<std::string> collectChildren(
-                    _In_ const std::shared_ptr<VppInterface>& parent) const;
+                    _In_ const std::shared_ptr<VppInterface>& parent,
+                    _In_ const std::function<bool(const VppInterface&)>& filter = {}) const;
 
             /*
              * Parse sonic_vpp_ifmap.ini on first use. Retries on every call

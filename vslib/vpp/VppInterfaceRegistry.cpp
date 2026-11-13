@@ -836,6 +836,17 @@ std::string VppInterfaceRegistry::resolveHwIfByRifOid(
     return it == m_byRifOid.end() ? std::string() : it->second->getHwifName();
 }
 
+std::vector<std::string> VppInterfaceRegistry::getChildren(
+        _In_ sai_object_id_t oid,
+        _In_ const std::function<bool(const VppInterface&)>& filter) const
+{
+    SWSS_LOG_ENTER();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    auto parent = findByOid(oid);
+    return parent ? collectChildren(parent, filter) : std::vector<std::string>{};
+}
+
 /*
  * sonic_vpp_ifmap.ini maps the host OS interface name ("osif") to the VPP
  * hardware interface name, e.g. "Ethernet0" -> "TenGigabitEthernet0/0/0". The
@@ -1079,7 +1090,8 @@ void VppInterfaceRegistry::unindexRecord(
 }
 
 std::vector<std::string> VppInterfaceRegistry::collectChildren(
-        _In_ const std::shared_ptr<VppInterface>& parent) const
+        _In_ const std::shared_ptr<VppInterface>& parent,
+        _In_ const std::function<bool(const VppInterface&)>& filter) const
 {
     SWSS_LOG_ENTER();
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -1095,7 +1107,7 @@ std::vector<std::string> VppInterfaceRegistry::collectChildren(
     {
         auto sub = kv.second->asSubIf();
 
-        if (sub && sub->getParent() == parent)
+        if (sub && sub->getParent() == parent && (!filter || filter(*sub)))
         {
             children.push_back(kv.first);
         }

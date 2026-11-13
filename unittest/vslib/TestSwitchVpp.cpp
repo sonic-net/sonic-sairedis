@@ -529,6 +529,40 @@ class SwitchVppSubIfAdminState : public ::testing::Test
             EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->vpp_set_interface_state(m_port, SUB_PORT_VLAN_ID, is_up));
         }
 
+        void installMemberAclPolicy()
+        {
+            auto ingress = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId);
+            auto egress = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId);
+            m_sw->m_acl_swindex_map[ingress] = 100;
+            m_sw->m_acl_swindex_map[egress] = 101;
+            m_sw->m_acl_default_created = true;
+            m_sw->m_acl_default_swindex = 102;
+            SwitchVpp::PortAclTables policy;
+            policy.updateTable(ingress, true, true);
+            policy.updateTable(egress, false, true);
+            policy.ingressDefault = policy.egressDefault = true;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->aclApplyInterfacePolicy(MEMBER_HWIF, policy));
+            vppMock().aclListCalls.clear();
+            vppMock().aclListAdminUp.clear();
+        }
+
+        void expectMemberAclPolicy(bool present)
+        {
+            const auto &actual = vppMock().aclLists.at(MEMBER_HWIF);
+            EXPECT_EQ(present ? (std::vector<uint32_t>{100, 102}) : std::vector<uint32_t>{},
+                    actual.ingress);
+            EXPECT_EQ(present ? (std::vector<uint32_t>{101, 102}) : std::vector<uint32_t>{},
+                    actual.egress);
+        }
+
+        void expectMemberRetained(sai_object_id_t member)
+        {
+            EXPECT_EQ(1u, m_sw->m_objectHash[SAI_OBJECT_TYPE_VLAN_MEMBER].count(
+                        sai_serialize_object_id(member)));
+            EXPECT_NE(nullptr, m_sw->m_ifaceRegistry.findByHwif(MEMBER_HWIF));
+            EXPECT_TRUE(vppMock().callsTo("delete_sub_interface", PORT_HWIF).empty());
+        }
+
         static constexpr uint16_t VLAN_ID = 100;
         static constexpr uint16_t SUB_PORT_VLAN_ID = 200;
         static constexpr const char *PORT_HWIF = "bobm1";
@@ -630,6 +664,181 @@ TEST_F(SwitchVppSubIfAdminState, TaggedMemberRemovedBeforeThePortComesUpIsNotSet
 
     EXPECT_TRUE(vppMock().isAdminUp(PORT_HWIF));
     EXPECT_TRUE(vppMock().callsTo("interface_set_state", MEMBER_HWIF).empty());
+}
+
+TEST_F(SwitchVppSubIfAdminState, FailedMemberAclRemovalRestoresPolicyBeforeAdminUp)
+{
+    setPortAdminState(m_port, true);
+    auto member = addTaggedMember(m_bridgePort);
+    installMemberAclPolicy();
+    // Model a lost reply after both ACL lists were cleared, then a successful restore.
+    vppMock().aclListResults = {{-1, true}, {0, false}};
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVlanMember(member));
+
+    expectMemberRetained(member);
+    expectMemberAclPolicy(true);
+    EXPECT_TRUE(vppMock().isAdminUp(MEMBER_HWIF));
+    EXPECT_EQ(0u, m_sw->m_sub_if_admin_up_pending.count(MEMBER_HWIF));
+    ASSERT_EQ(2u, vppMock().aclListCalls.size());
+    EXPECT_TRUE(vppMock().aclListCalls.front().ingress.empty());
+    EXPECT_TRUE(vppMock().aclListCalls.front().egress.empty());
+    EXPECT_EQ((std::vector<bool>{false, false}), vppMock().aclListAdminUp);
+}
+
+TEST_F(SwitchVppSubIfAdminState, RejectedMemberAclRemovalRestoresAdminWithoutRebinding)
+{
+    setPortAdminState(m_port, true);
+    auto member = addTaggedMember(m_bridgePort);
+    installMemberAclPolicy();
+    vppMock().aclListResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVlanMember(member));
+
+    expectMemberRetained(member);
+    expectMemberAclPolicy(true);
+    EXPECT_TRUE(vppMock().isAdminUp(MEMBER_HWIF));
+    EXPECT_EQ(1u, vppMock().aclListCalls.size());
+}
+
+TEST_F(SwitchVppSubIfAdminState, FailedMemberAclRemovalPreservesDeferredActivation)
+{
+    auto member = addTaggedMember(m_bridgePort);
+    installMemberAclPolicy();
+    vppMock().aclListResults = {{-1, true}, {0, false}};
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVlanMember(member));
+
+    expectMemberRetained(member);
+    expectMemberAclPolicy(true);
+    EXPECT_FALSE(vppMock().isAdminUp(MEMBER_HWIF));
+    EXPECT_EQ(1u, m_sw->m_sub_if_admin_up_pending.count(MEMBER_HWIF));
+    EXPECT_EQ((std::vector<bool>{false, false}), vppMock().aclListAdminUp);
+    setPortAdminState(m_port, true);
+    EXPECT_TRUE(vppMock().isAdminUp(MEMBER_HWIF));
+    expectMemberAclPolicy(true);
+}
+
+TEST_F(SwitchVppSubIfAdminState, FailedMemberAclRollbackCancelsDeferredActivation)
+{
+    auto member = addTaggedMember(m_bridgePort);
+    installMemberAclPolicy();
+    vppMock().aclListResults = {{-1, true}, {-1, false}};
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVlanMember(member));
+
+    expectMemberRetained(member);
+    expectMemberAclPolicy(false);
+    EXPECT_FALSE(vppMock().isAdminUp(MEMBER_HWIF));
+    EXPECT_EQ(0u, m_sw->m_sub_if_admin_up_pending.count(MEMBER_HWIF));
+    setPortAdminState(m_port, true);
+    EXPECT_FALSE(vppMock().isAdminUp(MEMBER_HWIF));
+    expectMemberAclPolicy(false);
+}
+
+TEST_F(SwitchVppSubIfAdminState, FailedMemberAclRemovalPreservesExplicitAdminDown)
+{
+    setPortAdminState(m_port, true);
+    auto member = addTaggedMember(m_bridgePort);
+    ASSERT_EQ(0, m_sw->vpp_set_sub_interface_state(MEMBER_HWIF, false));
+    installMemberAclPolicy();
+    vppMock().aclListResults = {{-1, true}, {0, false}};
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVlanMember(member));
+
+    expectMemberRetained(member);
+    expectMemberAclPolicy(true);
+    EXPECT_FALSE(vppMock().isAdminUp(MEMBER_HWIF));
+    EXPECT_EQ(0u, m_sw->m_sub_if_admin_up_pending.count(MEMBER_HWIF));
+}
+
+TEST_F(SwitchVppSubIfAdminState, FailedMemberAclRollbackNeverActivatesUnverifiedPolicy)
+{
+    setPortAdminState(m_port, true);
+    auto member = addTaggedMember(m_bridgePort);
+    installMemberAclPolicy();
+    vppMock().aclListResults = {{-1, true}, {-1, false}};
+    vppMock().aclListReadResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVlanMember(member));
+
+    expectMemberRetained(member);
+    expectMemberAclPolicy(false);
+    EXPECT_EQ(1u, m_sw->m_acl_interface_state_unknown.count(MEMBER_HWIF));
+    EXPECT_FALSE(vppMock().isAdminUp(MEMBER_HWIF));
+    EXPECT_EQ(0u, m_sw->m_sub_if_admin_up_pending.count(MEMBER_HWIF));
+    setPortAdminState(m_port, false);
+    setPortAdminState(m_port, true);
+    EXPECT_FALSE(vppMock().isAdminUp(MEMBER_HWIF));
+}
+
+TEST_F(SwitchVppSubIfAdminState, FailedMemberAdminDownPreservesPolicyAndPendingActivation)
+{
+    auto member = addTaggedMember(m_bridgePort);
+    installMemberAclPolicy();
+    vppMock().adminResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVlanMember(member));
+
+    expectMemberRetained(member);
+    expectMemberAclPolicy(true);
+    EXPECT_TRUE(vppMock().aclListCalls.empty());
+    EXPECT_EQ(1u, m_sw->m_sub_if_admin_up_pending.count(MEMBER_HWIF));
+    setPortAdminState(m_port, true);
+    EXPECT_TRUE(vppMock().isAdminUp(MEMBER_HWIF));
+}
+
+TEST_F(SwitchVppSubIfAdminState, FailedMemberStateReadDoesNotChangePolicyOrAdmin)
+{
+    setPortAdminState(m_port, true);
+    auto member = addTaggedMember(m_bridgePort);
+    installMemberAclPolicy();
+    vppMock().calls.clear();
+    vppMock().settingsResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVlanMember(member));
+
+    expectMemberRetained(member);
+    expectMemberAclPolicy(true);
+    EXPECT_TRUE(vppMock().isAdminUp(MEMBER_HWIF));
+    EXPECT_TRUE(vppMock().aclListCalls.empty());
+    EXPECT_TRUE(vppMock().callsTo("interface_set_state", MEMBER_HWIF).empty());
+}
+
+TEST_F(SwitchVppSubIfAdminState, FailedUnknownMemberPolicyReadCancelsDeferredActivation)
+{
+    auto member = addTaggedMember(m_bridgePort);
+    installMemberAclPolicy();
+    m_sw->m_acl_interface_state_unknown.insert(MEMBER_HWIF);
+    vppMock().aclListReadResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVlanMember(member));
+
+    expectMemberRetained(member);
+    expectMemberAclPolicy(true);
+    EXPECT_TRUE(vppMock().aclListCalls.empty());
+    EXPECT_EQ(1u, m_sw->m_acl_interface_state_unknown.count(MEMBER_HWIF));
+    EXPECT_EQ(0u, m_sw->m_sub_if_admin_up_pending.count(MEMBER_HWIF));
+    setPortAdminState(m_port, true);
+    EXPECT_FALSE(vppMock().isAdminUp(MEMBER_HWIF));
+}
+
+TEST_F(SwitchVppSubIfAdminState, FailedUnknownMemberAdminReadCancelsDeferredActivation)
+{
+    auto member = addTaggedMember(m_bridgePort);
+    installMemberAclPolicy();
+    m_sw->m_acl_interface_state_unknown.insert(MEMBER_HWIF);
+    vppMock().settingsResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->removeVlanMember(member));
+
+    expectMemberRetained(member);
+    expectMemberAclPolicy(true);
+    EXPECT_TRUE(vppMock().aclListCalls.empty());
+    EXPECT_EQ(1u, m_sw->m_acl_interface_state_unknown.count(MEMBER_HWIF));
+    EXPECT_EQ(0u, m_sw->m_sub_if_admin_up_pending.count(MEMBER_HWIF));
+    setPortAdminState(m_port, true);
+    EXPECT_FALSE(vppMock().isAdminUp(MEMBER_HWIF));
 }
 
 /*
