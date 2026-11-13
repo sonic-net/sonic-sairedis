@@ -1990,7 +1990,7 @@ sai_status_t SwitchVpp::validateLoopbackAction(
     if (packet_action != SAI_PACKET_ACTION_FORWARD &&
         packet_action != SAI_PACKET_ACTION_DROP)
     {
-        SWSS_LOG_ERROR("Unsupported RIF loopback packet action %d", packet_action);
+        SWSS_LOG_ERROR("Unsupported loopback packet action %d", packet_action);
         return SAI_STATUS_NOT_SUPPORTED;
     }
 
@@ -2016,7 +2016,7 @@ sai_status_t SwitchVpp::vpp_apply_loopback_action(
 
     int ret = vpp_iface_loopback_set_action(hwif_name.c_str(), action);
 
-    SWSS_LOG_NOTICE("RIF loopback action %s on %s (ret %d)",
+    SWSS_LOG_NOTICE("Loopback packet action %s on %s (ret %d)",
                     action ? "drop" : "forward", hwif_name.c_str(), ret);
 
     return (ret != 0) ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;

@@ -378,11 +378,62 @@ extern "C" int __wrap_vpp_iface_loopback_set_action(const char *name, int action
     SWSS_LOG_ENTER();
     ++vppMock().loopbackCalls;
     vppMock().loopbackAction = action;
-    if (vppMock().loopbackResult == 0)
+    int result = vppMock().loopbackFailures.count({name, action}) ? -1 : vppMock().loopbackResult;
+    if (result == 0)
     {
         vppMock().actions[name] = action;
     }
-    return vppMock().loopbackResult;
+    return result;
+}
+
+/*
+ * IP-in-IP tunnels, named for their instance as VPP names them. Like VPP, the
+ * mock reuses the lowest free instance and the sw_if_index of a deleted tunnel
+ * (1000 on, here). A call is recorded with the tunnel's name, its sw_if_index
+ * as id and, for an add, its mode as sub_id. Deleting a tunnel resets its
+ * loopback packet action, as the sonic_ext plugin does for any interface VPP
+ * deletes.
+ */
+extern "C" int __wrap_vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index)
+{
+    SWSS_LOG_ENTER();
+    uint32_t instance = 0;
+    while (vppMock().swifNames.count(1000 + instance))
+    {
+        instance++;
+    }
+    uint32_t idx = 1000 + instance;
+    vppMock().swifNames[idx] = "ipip" + std::to_string(instance);
+    *sw_if_index = idx;
+    vppMock().calls.push_back({"vpp_ipip_tunnel_add", vppMock().swifNames[idx], idx, tunnel->mode, false});
+    return 0;
+}
+
+extern "C" int __wrap_vpp_ipip_tunnel_del(uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_ipip_tunnel_del", vppMock().swifNames[sw_if_index], sw_if_index, 0, false});
+    if (vppMock().ipipDelResult != 0)
+    {
+        return vppMock().ipipDelResult;
+    }
+    vppMock().actions.erase(vppMock().swifNames[sw_if_index]);
+    vppMock().swifNames.erase(sw_if_index);
+    return 0;
+}
+
+extern "C" const char *__wrap_vpp_get_swif_name(const uint32_t swif_idx)
+{
+    SWSS_LOG_ENTER();
+    auto it = vppMock().swifNames.find(swif_idx);
+    return it == vppMock().swifNames.end() ? nullptr : it->second.c_str();
+}
+
+// No interface has the tunnel's source address yet: its unnumbered setup waits
+extern "C" int __wrap_vpp_sw_interface_find_by_ip(vpp_ip_addr_t *, uint32_t, uint32_t *)
+{
+    SWSS_LOG_ENTER();
+    return -1;
 }
 
 extern "C" int __wrap_vpp_intf_stats_query(const char *name, vpp_interface_stats_t *stats)
