@@ -525,6 +525,7 @@ void SwitchStateBase::process_packet_for_fdb_event(
 
         fi.setTimestamp(frametime);
 
+        m_fdb_info_set.erase(it);
         m_fdb_info_set.insert(fi);
 
         return;
