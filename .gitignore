@@ -100,6 +100,7 @@ deps/
 lib/tests
 meta/tests
 saiasiccmp/saiasiccmp
+saiconfig/saiconfig
 saidiscovery/saidiscovery
 saidump/saidump
 saiplayer/saiplayer
@@ -122,6 +123,7 @@ unittest/vslib/tests
 unittest/vslib/testslibsaivs
 unittest/proxylib/tests
 unittest/proxylib/testslibsaiproxy
+unittest/saiconfig/tests
 unittest/saidump/tests
 unittest/saisdkdump/tests
 vslib/tests
