@@ -4,7 +4,12 @@
 
 #include <gtest/gtest.h>
 
+#include <fstream>
 #include <memory>
+#include <utility>
+#include <vector>
+
+#include <unistd.h>
 
 using namespace saivs;
 
@@ -560,4 +565,204 @@ TEST(SwitchBCM56850, test_port_autoneg_fec_override_support)
     EXPECT_EQ(attr_capability.create_implemented, false);
     EXPECT_EQ(attr_capability.set_implemented, false);
     EXPECT_EQ(attr_capability.get_implemented, false);
+}
+
+static void createLagAndTunnelBridgePorts(
+        _In_ SwitchBCM56850& sw,
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_id_t bridgeId,
+        _Out_ sai_object_id_t& lagBridgePort,
+        _Out_ sai_object_id_t& tunnelBridgePort)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t lag;
+
+    ASSERT_EQ(sw.create(SAI_OBJECT_TYPE_LAG, &lag, switchId, 0, nullptr), SAI_STATUS_SUCCESS);
+
+    sai_attribute_t attrs[3];
+
+    attrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+    attrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+    attrs[1].value.oid = lag;
+    attrs[2].id = SAI_BRIDGE_PORT_ATTR_BRIDGE_ID;
+    attrs[2].value.oid = bridgeId;
+
+    ASSERT_EQ(sw.create(SAI_OBJECT_TYPE_BRIDGE_PORT, &lagBridgePort, switchId, 3, attrs), SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_TUNNEL_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_TUNNEL_TYPE_VXLAN;
+
+    sai_object_id_t tunnel;
+
+    ASSERT_EQ(sw.create(SAI_OBJECT_TYPE_TUNNEL, &tunnel, switchId, 1, attrs), SAI_STATUS_SUCCESS);
+
+    // a tunnel bridge port has SAI_BRIDGE_PORT_ATTR_TUNNEL_ID and no PORT_ID
+    attrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_TUNNEL;
+    attrs[1].id = SAI_BRIDGE_PORT_ATTR_TUNNEL_ID;
+    attrs[1].value.oid = tunnel;
+    attrs[2].id = SAI_BRIDGE_PORT_ATTR_BRIDGE_ID;
+    attrs[2].value.oid = bridgeId;
+
+    ASSERT_EQ(sw.create(SAI_OBJECT_TYPE_BRIDGE_PORT, &tunnelBridgePort, switchId, 3, attrs), SAI_STATUS_SUCCESS);
+}
+
+static std::vector<sai_object_id_t> getBridgePortList(
+        _In_ SwitchBCM56850& sw,
+        _In_ sai_object_id_t switchId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
+
+    EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, &attr), SAI_STATUS_SUCCESS);
+
+    auto bridgeId = attr.value.oid;
+
+    std::vector<sai_object_id_t> list(256);
+
+    attr.id = SAI_BRIDGE_ATTR_PORT_LIST;
+    attr.value.objlist.count = (uint32_t)list.size();
+    attr.value.objlist.list = list.data();
+
+    sai_status_t status = SAI_STATUS_FAILURE;
+
+    EXPECT_NO_THROW(status = sw.get(SAI_OBJECT_TYPE_BRIDGE, bridgeId, 1, &attr));
+    EXPECT_EQ(status, SAI_STATUS_SUCCESS);
+
+    list.resize(status == SAI_STATUS_SUCCESS ? attr.value.objlist.count : 0);
+
+    return list;
+}
+
+TEST(SwitchBCM56850, refresh_bridge_port_list_lag_and_tunnel_warm_boot)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    const sai_object_id_t switchId = 0x2100000000;
+
+    SwitchBCM56850 sw(switchId, std::make_shared<RealObjectIdManager>(0, scc), sc);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    ASSERT_EQ(sw.initialize_default_objects(1, &attr), SAI_STATUS_SUCCESS);
+
+    auto coldList = getBridgePortList(sw, switchId);
+
+    ASSERT_EQ(coldList.size(), sw.m_port_list.size());
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
+
+    ASSERT_EQ(sw.get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, &attr), SAI_STATUS_SUCCESS);
+
+    sai_object_id_t lagBridgePort = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnelBridgePort = SAI_NULL_OBJECT_ID;
+
+    ASSERT_NO_FATAL_FAILURE(createLagAndTunnelBridgePorts(sw, switchId, attr.value.oid, lagBridgePort, tunnelBridgePort));
+
+    // switch port bridge ports keep their order, the lag bridge port follows,
+    // the tunnel bridge port is not listed
+    auto expected = coldList;
+
+    expected.push_back(lagBridgePort);
+
+    EXPECT_NE(tunnelBridgePort, SAI_NULL_OBJECT_ID);
+
+    EXPECT_EQ(getBridgePortList(sw, switchId), expected);
+
+    // warm boot: syncd discovery reads the bridge port list of the restored switch
+
+    const char* warmFile = "SwitchBCM56850_lag_tunnel.warm.bin";
+
+    {
+        std::ofstream ofs(warmFile);
+
+        ofs << sw.dump_switch_database_for_warm_restart();
+    }
+
+    auto roidm = std::make_shared<RealObjectIdManager>(0, scc);
+
+    g_warmBootState.clear();
+
+    bool loaded = getWarmBootState(warmFile, roidm);
+
+    unlink(warmFile);
+
+    ASSERT_TRUE(loaded);
+
+    auto warmBootState = std::make_shared<WarmBootState>(g_warmBootState.at(switchId));
+
+    sc->m_bootType = SAI_VS_BOOT_TYPE_WARM;
+
+    SwitchBCM56850 warm(switchId, roidm, sc, warmBootState);
+
+    ASSERT_EQ(warm.warm_boot_initialize_objects(), SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(getBridgePortList(warm, switchId), expected);
+}
+
+TEST(SwitchBCM56850, enum_values_capability_reports_count_on_overflow)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(0x2100000000, std::make_shared<RealObjectIdManager>(0, scc), sc);
+
+    const std::vector<std::pair<sai_object_type_t, sai_attr_id_t>> queries = {
+        { SAI_OBJECT_TYPE_TUNNEL, SAI_TUNNEL_ATTR_PEER_MODE },
+        { SAI_OBJECT_TYPE_VLAN, SAI_VLAN_ATTR_UNKNOWN_UNICAST_FLOOD_CONTROL_TYPE },
+        { SAI_OBJECT_TYPE_NEXT_HOP_GROUP, SAI_NEXT_HOP_GROUP_ATTR_TYPE },
+    };
+
+    for (const auto& q: queries)
+    {
+        // the user first asks for the count, then reads the values
+
+        sai_s32_list_t enumList;
+
+        enumList.count = 0;
+        enumList.list = nullptr;
+
+        EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000, q.first, q.second, &enumList), SAI_STATUS_BUFFER_OVERFLOW);
+        EXPECT_GT(enumList.count, 0u);
+
+        std::vector<int32_t> values(enumList.count);
+
+        enumList.list = values.data();
+
+        EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000, q.first, q.second, &enumList), SAI_STATUS_SUCCESS);
+        EXPECT_EQ(enumList.count, values.size());
+    }
 }
