@@ -172,6 +172,34 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t* attr);
 
+            /* Set SAI_TUNNEL_ATTR_ENCAP_TTL_VAL, the outer TTL of the pipe
+             * model, of an IPINIP tunnel, and apply it to the VPP IPIP tunnels
+             * of the tunnel's encap nexthops. The attribute keeps its previous
+             * value if VPP does not take the new one, and a value a VPP tunnel
+             * the tunnel shares with another one can't take is not supported.
+             * A SET of SAI_TUNNEL_ATTR_ENCAP_TTL_MODE is only taken for the
+             * model the tunnel has. */
+            sai_status_t setTunnelEncapTtl(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr);
+
+            /* SAI_STATUS_NOT_SUPPORTED for an encap TTL of 0, which the
+             * sonic-ext plugin takes as none. */
+            static sai_status_t validateEncapTtl(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ uint8_t ttl);
+
+            bool isIpInIpTunnel(
+                    _In_ const std::string &serializedObjectId);
+
+            /* Store a tunnel attribute and apply it to the VPP IPIP tunnels
+             * of the tunnel's encap nexthops with apply. If that fails, the
+             * previous value is stored again and applied. */
+            sai_status_t setTunnelAttrOfVppTunnels(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr,
+                    _In_ const std::function<sai_status_t(sai_object_id_t)>& apply);
+
             // Only resources acquired by this CREATE may be unwound on failure.
             struct RifCreateState
             {

@@ -1779,6 +1779,13 @@ vl_api_sonic_ext_iface_loopback_set_action_reply_t_handler(vl_api_sonic_ext_ifac
 }
 
 static void
+vl_api_sonic_ext_tunnel_encap_ttl_set_reply_t_handler(vl_api_sonic_ext_tunnel_encap_ttl_set_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_sonic_ext_feature_get_reply_t_handler(vl_api_sonic_ext_feature_get_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2648,6 +2655,7 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IFACE_LOOPBACK_SET_ACTION_REPLY), sonic_ext_iface_loopback_set_action_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_TUNNEL_ENCAP_TTL_SET_REPLY), sonic_ext_tunnel_encap_ttl_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_FEATURE_GET_REPLY), sonic_ext_feature_get_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_PROFILE_ADD_DEL_REPLY), sonic_ext_pbh_profile_add_del_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_TABLE_ADD_REPLACE_REPLY), sonic_ext_pbh_table_add_replace_reply) \
@@ -4214,6 +4222,36 @@ int vpp_sonic_ext_mirror_encap_fixup_enable_disable(uint32_t sw_if_index,
 
     SAIVPP_INFO("sonic_ext mirror encap fixup: sw_if_index=%u gre_protocol=0x%04x ttl=%u enable=%d ret=%d",
 		sw_if_index, gre_protocol, ttl, enable, ret);
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_tunnel_encap_ttl_set(uint32_t sw_if_index, uint8_t ttl)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_tunnel_encap_ttl_set_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+
+    M (SONIC_EXT_TUNNEL_ENCAP_TTL_SET, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->ttl = ttl;
+
+    S (mp);
+    WR (ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) sw_if_index %u ttl %u", __func__, ret, sw_if_index, ttl);
+    } else {
+        SAIVPP_INFO("%s sw_if_index %u ttl %u", __func__, sw_if_index, ttl);
+    }
 
     VPP_UNLOCK();
 
