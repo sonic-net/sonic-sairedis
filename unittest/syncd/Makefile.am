@@ -9,6 +9,8 @@ tests_SOURCES = main.cpp \
                 MockHelper.cpp \
 				MockableSaiSwitchInterface.cpp \
 				TestBestCandidateFinder.cpp \
+				TestAsicViewIdentityIndex.cpp \
+				TestBestCandidateFinderIdentityIndex.cpp \
 				TestMySidWarmboot.cpp \
 				TestAttrVersionChecker.cpp \
 				TestCommandLineOptions.cpp \
