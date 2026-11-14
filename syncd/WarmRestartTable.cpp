@@ -7,7 +7,7 @@ WarmRestartTable::WarmRestartTable(
 {
     SWSS_LOG_ENTER();
 
-    m_dbState = std::make_shared<swss::DBConnector>(dbName, 0);
+    m_dbState = std::make_shared<swss::DBConnector>(dbName, 0, false, "", true);
 
     m_table = std::make_shared<swss::Table>(m_dbState.get(), STATE_WARM_RESTART_TABLE_NAME);
 }

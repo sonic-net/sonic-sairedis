@@ -105,7 +105,7 @@ sai_status_t RedisRemoteSaiInterface::apiInitialize(
 
     m_responseTimeoutMs = m_communicationChannel->getResponseTimeout();
 
-    m_db = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
+    m_db = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0, false, "", true);
 
     m_redisVidIndexGenerator = std::make_shared<RedisVidIndexGenerator>(m_db, REDIS_KEY_VIDCOUNTER);
 
