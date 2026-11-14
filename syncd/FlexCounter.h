@@ -4,6 +4,7 @@ extern "C" {
 #include "sai.h"
 }
 
+#include "FlexCounterSyncState.h"
 #include "meta/SaiInterface.h"
 
 #include "swss/table.h"
@@ -13,8 +14,13 @@ extern "C" {
 #include <condition_variable>
 #include <unordered_map>
 #include <memory>
+#include <map>
+#include <string>
+#include <utility>
 #include <type_traits>
 #include <cstdint>
+#include <atomic>
+#include <functional>
 
 // Placeholder type for attributes not requiring data allocation
 // Used as default template parameter for simple attributes
@@ -44,7 +50,35 @@ namespace syncd
     class BaseCounterContext
     {
     public:
-        BaseCounterContext(const std::string &name, const std::string &instance);
+        // Called with the group mutex held at safe object/chunk boundaries.
+        using PollCheckpoint = std::function<bool(swss::Table&)>;
+
+        struct ObjectRegistration
+        {
+            uint64_t epoch;
+        };
+
+        using ObjectRegistrationMap = std::map<std::pair<std::string, sai_object_id_t>, ObjectRegistration>;
+
+        // Shared lifetime, not independent synchronization: accesses still
+        // require the owning FlexCounter group's mutex.
+        struct PollingState
+        {
+            ObjectRegistrationMap registrations;
+
+            bool yielded = false;
+
+            sai_stats_mode_t statsMode = SAI_STATS_MODE_READ;
+        };
+
+        BaseCounterContext(
+                _In_ const std::string& name,
+                _In_ const std::string& instance,
+                _In_ std::shared_ptr<const PollingState> pollingState);
+
+        void clearSamples(
+                _In_ sai_stats_mode_t statsMode);
+
         void addPlugins(
             _In_ const std::vector<std::string>& shaStrings);
 
@@ -89,7 +123,8 @@ namespace syncd
                 _In_ sai_object_id_t vid) = 0;
 
         virtual void collectData(
-                _In_ swss::Table &countersTable) = 0;
+                _In_ swss::Table &countersTable,
+                _In_ const PollCheckpoint& checkpoint) = 0;
 
         virtual void runPlugin(
                 _In_ swss::DBConnector& counters_db,
@@ -97,12 +132,34 @@ namespace syncd
 
         virtual bool hasObject() const = 0;
 
+        // Report which requested VIDs remain enrolled, including scalar/bulk fragments.
+        // Called with the group mutex held; reports membership without validating RIDs.
+        virtual std::set<sai_object_id_t> getObjectVids(
+                _In_ const std::vector<sai_object_id_t>& vids) const = 0;
+
     protected:
+        bool isPollRegistrationCurrent(
+                _In_ sai_object_id_t vid) const;
+
+        void markSampled(
+                _In_ sai_object_id_t vid);
+
+        bool isSampleReady(
+                _In_ sai_object_id_t vid) const;
+
         std::string m_name;
         std::string m_instanceId;
         std::set<std::string> m_plugins;
         std::string m_bulkChunkSizePerPrefix;
         std::map<std::pair<sai_object_id_t, sai_object_id_t>, uint32_t> m_failedPolls;
+
+        const std::shared_ptr<const PollingState> m_pollingState;
+
+        std::map<sai_object_id_t, uint64_t> m_pollEpochs;
+
+        std::map<sai_object_id_t, uint64_t> m_sampledEpochs;
+
+        sai_stats_mode_t m_pollStatsMode = SAI_STATS_MODE_READ;
 
     public:
         bool always_check_supported_counters = false;
@@ -171,11 +228,30 @@ namespace syncd
             bool allPluginsEmpty() const;
 
         private: // remove counter
+            void removeCounterObjects(
+                    _In_ sai_object_id_t vid);
+
             void removeDataFromCountersDB(
                     _In_ sai_object_id_t vid,
                     _In_ const std::string &ratePrefix);
 
         private:
+            bool hasRegistration(
+                    _In_ sai_object_id_t vid) const;
+
+            void recordRegistration(
+                    _In_ const std::string& name,
+                    _In_ sai_object_id_t vid);
+
+            void enrollCounterObjects(
+                    _In_ const std::string& name,
+                    _In_ const std::vector<sai_object_id_t>& vids,
+                    _In_ const std::vector<sai_object_id_t>& rids,
+                    _In_ const std::vector<std::string>& idStrings,
+                    _In_ const std::string& statsMode,
+                    _In_ bool bulk,
+                    _In_ bool perPortDiscovery);
+
             std::shared_ptr<BaseCounterContext> getCounterContext(
                     _In_ const std::string &name);
 
@@ -190,10 +266,13 @@ namespace syncd
                     _In_ const std::string &name) const;
 
             void collectCounters(
-                    _In_ swss::Table &countersTable);
+                    _In_ swss::Table &countersTable,
+                    _Inout_ std::unique_lock<std::mutex>& lock);
 
             void runPlugins(
                     _In_ swss::DBConnector& db,
+                    _In_ uint32_t pollInterval,
+                    _In_ uint32_t secondaryPollFactor,
                     _In_ int64_t cycleStartUs,
                     _In_ int64_t collectUs);
 
@@ -208,8 +287,10 @@ namespace syncd
 
             void notifyPoll();
 
+            void notifySleep();
+
         private:
-            bool m_runFlexCounterThread;
+            std::atomic<bool> m_runFlexCounterThread;
 
             std::shared_ptr<std::thread> m_flexCounterThread;
 
@@ -217,7 +298,10 @@ namespace syncd
 
             std::condition_variable m_cvSleep;
 
-            std::mutex m_mtx;
+            FlexCounterSyncState m_syncState;
+
+            // Preserve configuration notifications even before wait_for().
+            std::atomic<uint64_t> m_sleepGeneration{0};
 
             std::condition_variable m_pollCond;
 
@@ -229,8 +313,6 @@ namespace syncd
 
             std::string m_instanceId;
 
-            sai_stats_mode_t m_statsMode;
-
             bool m_enable;
 
             std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
@@ -240,6 +322,11 @@ namespace syncd
             bool m_isTcpConn;
 
             bool m_isDiscarded;
+
+            const std::shared_ptr<BaseCounterContext::PollingState> m_pollingState =
+                std::make_shared<BaseCounterContext::PollingState>();
+
+            uint64_t m_nextObjectEpoch = 0;
 
             std::map<std::string, std::shared_ptr<BaseCounterContext>> m_counterContext;
 

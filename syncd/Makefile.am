@@ -35,6 +35,7 @@ libSyncd_a_SOURCES = \
 				NotificationHandler.cpp \
 				NotificationProcessor.cpp \
 				NotificationQueue.cpp \
+				PollCycleGuard.cpp \
 				PortMap.cpp \
 				PortMapParser.cpp \
 				PortStateChangeHandler.cpp \
@@ -52,6 +53,7 @@ libSyncd_a_SOURCES = \
 				SwitchNotifications.cpp \
 				Syncd.cpp \
 				TimerWatchdog.cpp \
+				UpdateLock.cpp \
 				VendorSai.cpp \
 				VidManager.cpp \
 				VidManager.cpp \
