@@ -1211,6 +1211,14 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
+    sai_status_t iso_status = vpp_isolation_vlan_member_added(br_port_id, hw_ifname);
+
+    if (iso_status != SAI_STATUS_SUCCESS)
+    {
+        vpp_rollback_vlan_member(port_id, hwifname, hw_ifname, vlan_id, tagging_mode, bd_has_member);
+        return iso_status;
+    }
+
     /* The bridge domain can have any MAC age when the first member joins:
      * VPP keeps the one of a VLAN with a router interface, with its MAC age,
      * when the last member leaves, and creates one in the slot of a deleted
@@ -1744,6 +1752,11 @@ sai_status_t SwitchVpp::setBridgePort(
     SWSS_LOG_ENTER();
 
     auto sid = sai_serialize_object_id(br_port_id);
+
+    if (attr->id == SAI_BRIDGE_PORT_ATTR_ISOLATION_GROUP)
+    {
+        return setIsolationGroupBinding(SAI_OBJECT_TYPE_BRIDGE_PORT, br_port_id, attr);
+    }
 
     if (attr->id != SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE)
     {

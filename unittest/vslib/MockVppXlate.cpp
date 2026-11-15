@@ -607,6 +607,41 @@ extern "C" int __wrap_set_l2_interface_flags(const char *name, vpp_bd_flags_t fl
     return vppMock().l2FlagsResult;
 }
 
+extern "C" int __wrap_vpp_isolation_group_add_del(uint32_t group_id, bool is_add)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_isolation_group_add_del", "", group_id, 0, is_add});
+    return !is_add && vppMock().isolationGroupDelFailures.count(group_id) ? -1 : 0;
+}
+
+extern "C" int __wrap_vpp_isolation_group_member_add_del(uint32_t group_id, const char *name, bool is_add)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_isolation_group_member_add_del", name, group_id, 0, is_add});
+    return is_add && vppMock().isolationMemberAddFailures.count(name) ? -1 : 0;
+}
+
+extern "C" int __wrap_vpp_isolation_group_member_add_del_by_index(uint32_t group_id, uint32_t sw_if_index, bool is_add)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_isolation_group_member_add_del_by_index", "", group_id, sw_if_index, is_add});
+    return is_add && vppMock().isolationMemberAddIndexFailures.count(sw_if_index) ? -1 : 0;
+}
+
+extern "C" int __wrap_vpp_isolation_group_bind(const char *name, uint32_t group_id)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_isolation_group_bind", name, group_id, 0, true});
+    return vppMock().isolationBindFailures.count({name, group_id}) ? -1 : 0;
+}
+
+extern "C" int __wrap_vpp_isolation_group_bind_by_index(uint32_t sw_if_index, uint32_t group_id)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_isolation_group_bind_by_index", "", group_id, sw_if_index, true});
+    return vppMock().isolationBindIndexFailures.count({sw_if_index, group_id}) ? -1 : 0;
+}
+
 extern "C" int __wrap_refresh_interfaces_list() {
     SWSS_LOG_ENTER();
     return 0;

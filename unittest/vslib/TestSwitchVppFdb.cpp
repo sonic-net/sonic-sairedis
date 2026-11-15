@@ -7,12 +7,15 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
+
+#include <unistd.h>
 
 using namespace saivs;
 
@@ -1722,4 +1725,594 @@ TEST_F(SwitchVppBridgePortLearning, TunnelBridgePortModeIsOnlyStored)
 
     EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, setLearningMode(bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DROP));
     EXPECT_EQ(SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE, storedMode(bridgePort));
+}
+
+/*
+ * SAI isolation groups, on sonic-ext's isolation-group feature: each binding
+ * and membership on the VPP interface of every VLAN membership of the port.
+ */
+class SwitchVppIsolation : public SwitchVppBridgePortLearning
+{
+    protected:
+
+        void SetUp() override
+        {
+            SwitchVppBridgePortLearning::SetUp();
+
+            vppMock().enabledFeatures.insert("isolation-group");
+        }
+
+        sai_status_t createGroup(
+                sai_object_id_t &group)
+        {
+            SWSS_LOG_ENTER();
+
+            group = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ISOLATION_GROUP, m_switchId);
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_ISOLATION_GROUP_ATTR_TYPE;
+            attr.value.s32 = SAI_ISOLATION_GROUP_TYPE_BRIDGE_PORT;
+
+            return m_sw->create(SAI_OBJECT_TYPE_ISOLATION_GROUP, sai_serialize_object_id(group), m_switchId, 1, &attr);
+        }
+
+        sai_status_t addMember(
+                sai_object_id_t group,
+                sai_object_id_t object,
+                sai_object_id_t &member)
+        {
+            SWSS_LOG_ENTER();
+
+            member = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER, m_switchId);
+
+            sai_attribute_t attrs[2];
+
+            attrs[0].id = SAI_ISOLATION_GROUP_MEMBER_ATTR_ISOLATION_GROUP_ID;
+            attrs[0].value.oid = group;
+            attrs[1].id = SAI_ISOLATION_GROUP_MEMBER_ATTR_ISOLATION_OBJECT;
+            attrs[1].value.oid = object;
+
+            return m_sw->create(SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER, sai_serialize_object_id(member), m_switchId, 2, attrs);
+        }
+
+        sai_status_t bind(
+                sai_object_id_t object,
+                sai_object_id_t group)
+        {
+            SWSS_LOG_ENTER();
+
+            auto type = m_sw->objectTypeQuery(object);
+
+            sai_attribute_t attr;
+
+            attr.id = type == SAI_OBJECT_TYPE_PORT
+                ? (sai_attr_id_t)SAI_PORT_ATTR_ISOLATION_GROUP
+                : (sai_attr_id_t)SAI_BRIDGE_PORT_ATTR_ISOLATION_GROUP;
+            attr.value.oid = group;
+
+            return m_sw->set(type, sai_serialize_object_id(object), &attr);
+        }
+
+        // The (interface, group id) pairs VPP got for an API, in order
+        std::vector<std::pair<std::string, uint32_t>> calls(
+                const std::string &api,
+                bool flag = true)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<std::pair<std::string, uint32_t>> result;
+
+            for (const auto &call: vppMock().calls)
+            {
+                if (call.api == api && call.flag == flag)
+                {
+                    result.push_back({call.name, call.id});
+                }
+            }
+
+            return result;
+        }
+
+        // The (sw_if_index, group id) pairs VPP got for a by-index API, in order
+        std::vector<std::pair<uint32_t, uint32_t>> indexCalls(
+                const std::string &api,
+                bool flag = true)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<std::pair<uint32_t, uint32_t>> result;
+
+            for (const auto &call: vppMock().calls)
+            {
+                if (call.api == api && call.flag == flag)
+                {
+                    result.push_back({call.sub_id, call.id});
+                }
+            }
+
+            return result;
+        }
+
+        sai_object_id_t createVniMapper(uint16_t vlanId, uint32_t vni)
+        {
+            SWSS_LOG_ENTER();
+
+            auto mapper = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP, m_switchId);
+            sai_attribute_t mattr;
+            mattr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+            mattr.value.s32 = SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID;
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create(SAI_OBJECT_TYPE_TUNNEL_MAP, sai_serialize_object_id(mapper), m_switchId, 1, &mattr));
+
+            auto entry = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, m_switchId);
+            sai_attribute_t eattrs[4];
+            eattrs[0].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE;
+            eattrs[0].value.s32 = SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID;
+            eattrs[1].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+            eattrs[1].value.oid = mapper;
+            eattrs[2].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+            eattrs[2].value.u32 = vni;
+            eattrs[3].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE;
+            eattrs[3].value.u16 = vlanId;
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(entry), m_switchId, 4, eattrs));
+            return mapper;
+        }
+
+        sai_status_t createEvpnTunnel(
+                sai_object_id_t mapper,
+                uint32_t dstIpHostOrder,
+                sai_object_id_t &tunnel,
+                sai_object_id_t &tunnelBridgePort)
+        {
+            SWSS_LOG_ENTER();
+
+            tunnel = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL, m_switchId);
+            sai_object_id_t mappers[1] = {mapper};
+            sai_attribute_t tattrs[5];
+            tattrs[0].id = SAI_TUNNEL_ATTR_TYPE;
+            tattrs[0].value.s32 = SAI_TUNNEL_TYPE_VXLAN;
+            tattrs[1].id = SAI_TUNNEL_ATTR_PEER_MODE;
+            tattrs[1].value.s32 = SAI_TUNNEL_PEER_MODE_P2P;
+            tattrs[2].id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+            tattrs[2].value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            tattrs[2].value.ipaddr.addr.ip4 = htonl(0x0a000001u);
+            tattrs[3].id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
+            tattrs[3].value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            tattrs[3].value.ipaddr.addr.ip4 = htonl(dstIpHostOrder);
+            tattrs[4].id = SAI_TUNNEL_ATTR_DECAP_MAPPERS;
+            tattrs[4].value.objlist.count = 1;
+            tattrs[4].value.objlist.list = mappers;
+
+            sai_status_t st = m_sw->create(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnel), m_switchId, 5, tattrs);
+            if (st != SAI_STATUS_SUCCESS)
+            {
+                return st;
+            }
+
+            tunnelBridgePort = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+            sai_attribute_t battrs[2];
+            battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+            battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_TUNNEL;
+            battrs[1].id = SAI_BRIDGE_PORT_ATTR_TUNNEL_ID;
+            battrs[1].value.oid = tunnel;
+            return m_sw->create(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(tunnelBridgePort), m_switchId, 2, battrs);
+        }
+
+        typedef std::vector<std::pair<std::string, uint32_t>> Calls;
+        typedef std::vector<std::pair<uint32_t, uint32_t>> IndexCalls;
+
+        static constexpr const char *OTHER_MEMBER_HWIF = "bobm10.100";
+        static constexpr uint32_t NONE = ~0u;
+};
+
+constexpr const char *SwitchVppIsolation::OTHER_MEMBER_HWIF;
+constexpr uint32_t SwitchVppIsolation::NONE;
+
+/*
+ * sonicExtFeatureEnabled() memorizes its answer in a process-wide cache, so
+ * the feature-off case runs in a process of its own.
+ */
+TEST_F(SwitchVppIsolation, GroupNeedsTheSonicExtFeature)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+
+    ASSERT_EXIT({
+        vppMock().enabledFeatures.clear();
+
+        sai_object_id_t group;
+
+        bool ok = createGroup(group) == SAI_STATUS_NOT_SUPPORTED &&
+            calls("vpp_isolation_group_add_del").empty() &&
+            m_sw->m_objectHash.at(SAI_OBJECT_TYPE_ISOLATION_GROUP).count(sai_serialize_object_id(group)) == 0;
+
+        _exit(ok ? 0 : 1);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(SwitchVppIsolation, GroupIsCreatedAndRemovedInVpp)
+{
+    sai_object_id_t group;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    EXPECT_EQ(Calls({{"", 1}}), calls("vpp_isolation_group_add_del"));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_ISOLATION_GROUP, sai_serialize_object_id(group)));
+    EXPECT_EQ(Calls({{"", 1}}), calls("vpp_isolation_group_add_del", false));
+}
+
+TEST_F(SwitchVppIsolation, GroupVppRefusesToDeleteIsInUse)
+{
+    sai_object_id_t group;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    vppMock().isolationGroupDelFailures.insert(1);
+
+    EXPECT_EQ(SAI_STATUS_OBJECT_IN_USE, m_sw->remove(SAI_OBJECT_TYPE_ISOLATION_GROUP, sai_serialize_object_id(group)));
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_ISOLATION_GROUP).count(sai_serialize_object_id(group)));
+}
+
+TEST_F(SwitchVppIsolation, UnknownGroupRemovalLeavesVppAlone)
+{
+    sai_object_id_t group;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    auto unknown = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ISOLATION_GROUP, m_switchId);
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m_sw->removeIsolationGroup(unknown));
+    EXPECT_TRUE(calls("vpp_isolation_group_add_del", false).empty());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_ISOLATION_GROUP, sai_serialize_object_id(group)));
+}
+
+/*
+ * The MC-LAG shape: the peer link (the other port) bound to a group whose
+ * member is a dual-homed port (the port), each across every VLAN it belongs to.
+ */
+TEST_F(SwitchVppIsolation, BindingAndMembershipCoverEveryVlanMembership)
+{
+    addTaggedMember(m_bridgePort);
+    addUntaggedMember(m_bridgePort);
+    addTaggedMember(m_otherBridgePort);
+    vppMock().calls.clear();
+
+    sai_object_id_t group, member;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group, m_bridgePort, member));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bind(m_otherBridgePort, group));
+
+    auto members = calls("vpp_isolation_group_member_add_del");
+    std::sort(members.begin(), members.end());
+
+    EXPECT_EQ(Calls({{PORT_HWIF, 1}, {MEMBER_HWIF, 1}}), members);
+    EXPECT_EQ(Calls({{OTHER_MEMBER_HWIF, 1}}), calls("vpp_isolation_group_bind"));
+}
+
+TEST_F(SwitchVppIsolation, UnbindingBindsToNoGroup)
+{
+    addTaggedMember(m_otherBridgePort);
+
+    sai_object_id_t group;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bind(m_otherBridgePort, group));
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, bind(m_otherBridgePort, SAI_NULL_OBJECT_ID));
+
+    EXPECT_EQ(Calls({{OTHER_MEMBER_HWIF, NONE}}), calls("vpp_isolation_group_bind"));
+}
+
+/*
+ * orchagent sets up the group before the port-channels join each VLAN;
+ * each VPP interface that appears later is bound and added as it joins.
+ */
+TEST_F(SwitchVppIsolation, VlanJoinedLaterIsBoundAndAdded)
+{
+    sai_object_id_t group, member;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group, m_bridgePort, member));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bind(m_otherBridgePort, group));
+    EXPECT_TRUE(calls("vpp_isolation_group_member_add_del").empty());
+    EXPECT_TRUE(calls("vpp_isolation_group_bind").empty());
+
+    addTaggedMember(m_bridgePort);
+    addTaggedMember(m_otherBridgePort);
+
+    EXPECT_EQ(Calls({{MEMBER_HWIF, 1}}), calls("vpp_isolation_group_member_add_del"));
+    EXPECT_EQ(Calls({{OTHER_MEMBER_HWIF, 1}}), calls("vpp_isolation_group_bind"));
+}
+
+TEST_F(SwitchVppIsolation, PortTypeGroupCoversTheBridgePortsOfThePort)
+{
+    addTaggedMember(m_bridgePort);
+    vppMock().calls.clear();
+
+    sai_object_id_t group, member;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group, m_port, member));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bind(m_otherPort, group));
+
+    EXPECT_EQ(Calls({{MEMBER_HWIF, 1}}), calls("vpp_isolation_group_member_add_del"));
+
+    addTaggedMember(m_otherBridgePort);
+
+    EXPECT_EQ(Calls({{OTHER_MEMBER_HWIF, 1}}), calls("vpp_isolation_group_bind"));
+}
+
+TEST_F(SwitchVppIsolation, MemberRemovalLeavesTheGroupInVpp)
+{
+    addTaggedMember(m_bridgePort);
+
+    sai_object_id_t group, member;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group, m_bridgePort, member));
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER, sai_serialize_object_id(member)));
+
+    EXPECT_EQ(Calls({{MEMBER_HWIF, 1}}), calls("vpp_isolation_group_member_add_del", false));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER).count(sai_serialize_object_id(member)));
+}
+
+TEST_F(SwitchVppIsolation, MemberVppFailsToAddIsRolledBack)
+{
+    addTaggedMember(m_bridgePort);
+    addUntaggedMember(m_bridgePort);
+
+    sai_object_id_t group, member;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    vppMock().isolationMemberAddFailures.insert(PORT_HWIF);
+    vppMock().isolationMemberAddFailures.insert(MEMBER_HWIF);
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, addMember(group, m_bridgePort, member));
+
+    EXPECT_TRUE(calls("vpp_isolation_group_member_add_del", false).empty());
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER).count(sai_serialize_object_id(member)));
+
+    // VPP adds the first interface and fails the second
+    auto first = calls("vpp_isolation_group_member_add_del").front().first;
+
+    vppMock().isolationMemberAddFailures.erase(first);
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, addMember(group, m_bridgePort, member));
+
+    EXPECT_EQ(Calls({{first, 1}}), calls("vpp_isolation_group_member_add_del", false));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER).count(sai_serialize_object_id(member)));
+}
+
+TEST_F(SwitchVppIsolation, UnknownGroupIsRejected)
+{
+    addTaggedMember(m_otherBridgePort);
+
+    auto group = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ISOLATION_GROUP, m_switchId);
+    sai_object_id_t member;
+
+    EXPECT_NE(SAI_STATUS_SUCCESS, bind(m_otherBridgePort, group));
+    EXPECT_NE(SAI_STATUS_SUCCESS, addMember(group, m_bridgePort, member));
+    EXPECT_TRUE(calls("vpp_isolation_group_bind").empty());
+}
+
+TEST_F(SwitchVppIsolation, TunnelBridgePortCoversExistingAndLateTunnels)
+{
+    auto mapper = createVniMapper(VLAN_ID, 1000);
+    sai_object_id_t tunnel = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnelBp = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createEvpnTunnel(mapper, 0x0a000002u, tunnel, tunnelBp));
+
+    std::vector<uint32_t> sw_ifs;
+    m_sw->m_tunnel_mgr.get_l2_vxlan_tunnel_if_indices(tunnel, sw_ifs);
+    ASSERT_EQ(1u, sw_ifs.size());
+    uint32_t firstSwIf = sw_ifs[0];
+
+    sai_object_id_t group, member;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, addMember(group, tunnelBp, member));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, bind(tunnelBp, group));
+
+    EXPECT_EQ(IndexCalls({{firstSwIf, 1}}), indexCalls("vpp_isolation_group_member_add_del_by_index"));
+    EXPECT_EQ(IndexCalls({{firstSwIf, 1}}), indexCalls("vpp_isolation_group_bind_by_index"));
+
+    // A second VNI added to the mapper creates another VPP VXLAN tunnel on the
+    // same SAI P2P tunnel; it inherits both the binding and the membership.
+    vppMock().calls.clear();
+    auto lateEntry = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, m_switchId);
+    sai_attribute_t eattrs[4];
+    eattrs[0].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE;
+    eattrs[0].value.s32 = SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID;
+    eattrs[1].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+    eattrs[1].value.oid = mapper;
+    eattrs[2].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+    eattrs[2].value.u32 = 2000;
+    eattrs[3].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE;
+    eattrs[3].value.u16 = OTHER_VLAN_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(lateEntry), m_switchId, 4, eattrs));
+
+    m_sw->m_tunnel_mgr.get_l2_vxlan_tunnel_if_indices(tunnel, sw_ifs);
+    ASSERT_EQ(2u, sw_ifs.size());
+    uint32_t secondSwIf = sw_ifs[0] == firstSwIf ? sw_ifs[1] : sw_ifs[0];
+
+    EXPECT_EQ(IndexCalls({{secondSwIf, 1}}), indexCalls("vpp_isolation_group_bind_by_index"));
+    EXPECT_EQ(IndexCalls({{secondSwIf, 1}}), indexCalls("vpp_isolation_group_member_add_del_by_index"));
+
+    vppMock().calls.clear();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, bind(tunnelBp, SAI_NULL_OBJECT_ID));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER, sai_serialize_object_id(member)));
+
+    auto unbinds = indexCalls("vpp_isolation_group_bind_by_index");
+    auto removes = indexCalls("vpp_isolation_group_member_add_del_by_index", false);
+    std::sort(unbinds.begin(), unbinds.end());
+    std::sort(removes.begin(), removes.end());
+    IndexCalls wantUnbinds = {{firstSwIf, NONE}, {secondSwIf, NONE}};
+    IndexCalls wantRemoves = {{firstSwIf, 1}, {secondSwIf, 1}};
+    std::sort(wantUnbinds.begin(), wantUnbinds.end());
+    std::sort(wantRemoves.begin(), wantRemoves.end());
+    EXPECT_EQ(wantUnbinds, unbinds);
+    EXPECT_EQ(wantRemoves, removes);
+}
+
+/*
+ * Two SAI P2P tunnels to the same VTEP share the VPP tunnel of a VNI both
+ * map. VPP binds an interface to one group, so the second owner may not
+ * rebind it to another group, and a group both already hold is left alone.
+ */
+TEST_F(SwitchVppIsolation, SharedTunnelKeepsTheFirstOwnersBinding)
+{
+    auto mapper1 = createVniMapper(VLAN_ID, 1000);
+    sai_object_id_t tunnel1 = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnelBp1 = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createEvpnTunnel(mapper1, 0x0a000002u, tunnel1, tunnelBp1));
+
+    std::vector<uint32_t> sw_ifs;
+    m_sw->m_tunnel_mgr.get_l2_vxlan_tunnel_if_indices(tunnel1, sw_ifs);
+    ASSERT_EQ(1u, sw_ifs.size());
+    uint32_t swIf = sw_ifs[0];
+
+    sai_object_id_t group1, group2, member1, member2;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group1));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group2));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group1, tunnelBp1, member1));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bind(tunnelBp1, group1));
+
+    auto addVniEntry = [&](sai_object_id_t mapper, uint32_t vni) {
+        auto entry = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, m_switchId);
+        sai_attribute_t eattrs[4];
+        eattrs[0].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE;
+        eattrs[0].value.s32 = SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID;
+        eattrs[1].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+        eattrs[1].value.oid = mapper;
+        eattrs[2].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+        eattrs[2].value.u32 = vni;
+        eattrs[3].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE;
+        eattrs[3].value.u16 = VLAN_ID;
+        return m_sw->create(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(entry), m_switchId, 4, eattrs);
+    };
+
+    // a second tunnel bound to another group cannot take over the shared tunnel
+    auto mapper2 = createVniMapper(OTHER_VLAN_ID, 2000);
+    sai_object_id_t tunnel2 = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnelBp2 = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createEvpnTunnel(mapper2, 0x0a000002u, tunnel2, tunnelBp2));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bind(tunnelBp2, group2));
+
+    vppMock().calls.clear();
+    EXPECT_NE(SAI_STATUS_SUCCESS, addVniEntry(mapper2, 1000));
+    EXPECT_TRUE(indexCalls("vpp_isolation_group_bind_by_index").empty());
+
+    // one bound to the same group shares it without touching VPP again
+    auto mapper3 = createVniMapper(OTHER_VLAN_ID, 3000);
+    sai_object_id_t tunnel3 = SAI_NULL_OBJECT_ID;
+    sai_object_id_t tunnelBp3 = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createEvpnTunnel(mapper3, 0x0a000002u, tunnel3, tunnelBp3));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group1, tunnelBp3, member2));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bind(tunnelBp3, group1));
+
+    vppMock().calls.clear();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, addVniEntry(mapper3, 1000));
+    m_sw->m_tunnel_mgr.get_l2_vxlan_tunnel_if_indices(tunnel3, sw_ifs);
+    EXPECT_NE(sw_ifs.end(), std::find(sw_ifs.begin(), sw_ifs.end(), swIf));
+    for (const auto &call: indexCalls("vpp_isolation_group_bind_by_index"))
+    {
+        EXPECT_NE(swIf, call.first);
+    }
+    for (const auto &call: indexCalls("vpp_isolation_group_member_add_del_by_index"))
+    {
+        EXPECT_NE(swIf, call.first);
+    }
+}
+
+TEST_F(SwitchVppIsolation, WarmBootRestoresIsolationGroupIdsWithoutCollision)
+{
+    sai_object_id_t firstGroup, secondGroup, thirdGroup;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(firstGroup));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(secondGroup));
+    uint32_t firstId = m_sw->isolation_group_vpp_id(firstGroup);
+    uint32_t secondId = m_sw->isolation_group_vpp_id(secondGroup);
+    EXPECT_NE(firstId, secondId);
+
+    // Simulate warm-boot reload: clear runtime map and rebuild from m_objectHash
+    m_sw->m_isolation_group_ids.clear();
+    m_sw->restoreIsolationGroups();
+
+    EXPECT_EQ(firstId, m_sw->isolation_group_vpp_id(firstGroup));
+    EXPECT_EQ(secondId, m_sw->isolation_group_vpp_id(secondGroup));
+
+    vppMock().calls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(thirdGroup));
+    uint32_t thirdId = m_sw->isolation_group_vpp_id(thirdGroup);
+    EXPECT_NE(firstId, thirdId);
+    EXPECT_NE(secondId, thirdId);
+    EXPECT_EQ(Calls({{"", thirdId}}), calls("vpp_isolation_group_add_del"));
+}
+
+TEST_F(SwitchVppIsolation, BindingVppFailsToApplyIsRolledBack)
+{
+    addTaggedMember(m_bridgePort);
+    addUntaggedMember(m_bridgePort);
+
+    sai_object_id_t firstGroup, secondGroup;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(firstGroup));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(secondGroup));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bind(m_bridgePort, firstGroup));
+
+    vppMock().isolationBindFailures.insert({PORT_HWIF, 2});
+    vppMock().isolationBindFailures.insert({MEMBER_HWIF, 2});
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, bind(m_bridgePort, secondGroup));
+    auto first = calls("vpp_isolation_group_bind").front().first;
+
+    vppMock().isolationBindFailures.erase({first, 2});
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, bind(m_bridgePort, secondGroup));
+
+    auto second = first == PORT_HWIF ? std::string(MEMBER_HWIF) : std::string(PORT_HWIF);
+
+    EXPECT_EQ(Calls({{first, 2}, {second, 2}, {first, 1}}), calls("vpp_isolation_group_bind"));
+    auto stored = m_sw->stored_attr(SAI_OBJECT_TYPE_BRIDGE_PORT,
+            sai_serialize_object_id(m_bridgePort), SAI_BRIDGE_PORT_ATTR_ISOLATION_GROUP);
+    ASSERT_NE(nullptr, stored);
+    EXPECT_EQ(firstGroup, stored->value.oid);
+}
+
+TEST_F(SwitchVppIsolation, VlanJoinedLaterRollsBackWhenIsolationFails)
+{
+    sai_object_id_t group, member;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createGroup(group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bind(m_bridgePort, group));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(group, m_bridgePort, member));
+    vppMock().isolationMemberAddFailures.insert(MEMBER_HWIF);
+    vppMock().calls.clear();
+
+    auto vlanMember = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN_MEMBER, m_switchId);
+
+    sai_attribute_t attrs[3];
+
+    attrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+    attrs[0].value.oid = m_vlan;
+    attrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = m_bridgePort;
+    attrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
+    attrs[2].value.s32 = SAI_VLAN_TAGGING_MODE_TAGGED;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->createVlanMember(vlanMember, m_switchId, 3, attrs));
+
+    EXPECT_EQ(Calls({{MEMBER_HWIF, 1}, {MEMBER_HWIF, NONE}}), calls("vpp_isolation_group_bind"));
+    EXPECT_EQ(0u, vppMock().bdMembers[VLAN_ID].count(MEMBER_HWIF));
+    EXPECT_EQ(0u, vppMock().interfaces.count(MEMBER_HWIF));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_VLAN_MEMBER).count(sai_serialize_object_id(vlanMember)));
 }
