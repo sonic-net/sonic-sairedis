@@ -277,6 +277,14 @@ namespace saivs
             _Out_ uint32_t& sw_if_index) const;
 
         /**
+         * @brief Collect the VPP sw_if_index of every L2 VXLAN tunnel owned by
+         *        a SAI P2P tunnel object.
+         */
+        void get_l2_vxlan_tunnel_if_indices(
+            _In_ sai_object_id_t tunnel_oid,
+            _Out_ std::vector<uint32_t>& sw_if_indices) const;
+
+        /**
          * @brief Handle late tunnel map entry for L2 VXLAN.
          *
          * Called when a VNI-to-VLAN mapper entry is created after a P2P tunnel

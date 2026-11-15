@@ -1809,6 +1809,27 @@ vl_api_sonic_ext_iface_loopback_set_action_reply_t_handler(vl_api_sonic_ext_ifac
 }
 
 static void
+vl_api_sonic_ext_isolation_group_add_del_reply_t_handler(vl_api_sonic_ext_isolation_group_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_isolation_group_member_add_del_reply_t_handler(vl_api_sonic_ext_isolation_group_member_add_del_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
+vl_api_sonic_ext_isolation_group_bind_reply_t_handler(vl_api_sonic_ext_isolation_group_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_sonic_ext_feature_get_reply_t_handler(vl_api_sonic_ext_feature_get_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2752,6 +2773,9 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IFACE_LOOPBACK_SET_ACTION_REPLY), sonic_ext_iface_loopback_set_action_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_ISOLATION_GROUP_ADD_DEL_REPLY), sonic_ext_isolation_group_add_del_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_ISOLATION_GROUP_MEMBER_ADD_DEL_REPLY), sonic_ext_isolation_group_member_add_del_reply) \
+    _(SONIC_EXT_MSG_ID(SONIC_EXT_ISOLATION_GROUP_BIND_REPLY), sonic_ext_isolation_group_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_FEATURE_GET_REPLY), sonic_ext_feature_get_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_PROFILE_ADD_DEL_REPLY), sonic_ext_pbh_profile_add_del_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_TABLE_ADD_REPLACE_REPLY), sonic_ext_pbh_table_add_replace_reply) \
@@ -5583,6 +5607,127 @@ int vpp_iface_loopback_set_action(const char *hwif_name, int action)
 
     VPP_UNLOCK();
     return ret;
+}
+
+int vpp_isolation_group_add_del(uint32_t group_id, bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_isolation_group_add_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+    M(SONIC_EXT_ISOLATION_GROUP_ADD_DEL, mp);
+    mp->group_id = htonl(group_id);
+    mp->is_add = is_add;
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) group %u is_add %d", __func__, ret, group_id, is_add);
+    } else {
+        SAIVPP_INFO("%s group %u is_add %d", __func__, group_id, is_add);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_isolation_group_member_add_del_by_index(uint32_t group_id, uint32_t sw_if_index, bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_isolation_group_member_add_del_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+    M(SONIC_EXT_ISOLATION_GROUP_MEMBER_ADD_DEL, mp);
+    mp->group_id = htonl(group_id);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->is_add = is_add;
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) group %u sw_if %u is_add %d", __func__, ret, group_id, sw_if_index, is_add);
+    } else {
+        SAIVPP_INFO("%s group %u sw_if %u is_add %d", __func__, group_id, sw_if_index, is_add);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_isolation_group_member_add_del(uint32_t group_id, const char *hwif_name, bool is_add)
+{
+    vat_main_t *vam = &vat_main;
+    u32 idx;
+
+    if (!hwif_name) {
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+    idx = get_swif_idx(vam, hwif_name);
+    VPP_UNLOCK();
+
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+        return -EINVAL;
+    }
+
+    return vpp_isolation_group_member_add_del_by_index(group_id, idx, is_add);
+}
+
+int vpp_isolation_group_bind_by_index(uint32_t sw_if_index, uint32_t group_id)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_isolation_group_bind_t *mp;
+    int ret;
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_msg_id_base;
+    M(SONIC_EXT_ISOLATION_GROUP_BIND, mp);
+    mp->sw_if_index = htonl(sw_if_index);
+    mp->group_id = htonl(group_id);
+
+    S(mp);
+    WR(ret);
+
+    if (ret) {
+        SAIVPP_ERROR("%s failed(%d) sw_if %u group %u", __func__, ret, sw_if_index, group_id);
+    } else {
+        SAIVPP_INFO("%s sw_if %u group %u", __func__, sw_if_index, group_id);
+    }
+
+    VPP_UNLOCK();
+    return ret;
+}
+
+int vpp_isolation_group_bind(const char *hwif_name, uint32_t group_id)
+{
+    vat_main_t *vam = &vat_main;
+    u32 idx;
+
+    if (!hwif_name) {
+        return -EINVAL;
+    }
+
+    VPP_LOCK();
+    idx = get_swif_idx(vam, hwif_name);
+    VPP_UNLOCK();
+
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get the sw_index for %s\n", hwif_name);
+        return -EINVAL;
+    }
+
+    return vpp_isolation_group_bind_by_index(idx, group_id);
 }
 
 int vpp_sonic_ext_feature_get(const char *feature, bool *enabled)

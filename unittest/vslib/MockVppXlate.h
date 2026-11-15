@@ -244,6 +244,13 @@ struct VppMock
     int findByIpResult = -1;
     // set_l2_interface_flags() result
     int l2FlagsResult = 0;
+    // vpp_isolation_group_*() results: a group VPP fails to delete, and the
+    // interfaces VPP fails to add to a group
+    std::set<uint32_t> isolationGroupDelFailures;
+    std::set<std::string> isolationMemberAddFailures;
+    std::set<uint32_t> isolationMemberAddIndexFailures;
+    std::set<std::pair<std::string, uint32_t>> isolationBindFailures;
+    std::set<std::pair<uint32_t, uint32_t>> isolationBindIndexFailures;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
