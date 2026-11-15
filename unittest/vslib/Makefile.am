@@ -74,7 +74,7 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_sonic_ext_copp_neighbor_miss_bind
 				l2fib_add_del l2fib_flush_all l2fib_flush_int l2fib_flush_bd \
 				l2fib_add_del_by_index vpp_vxlan_tunnel_add_del \
 				set_sw_interface_l2_bridge_by_index set_sw_interface_l2_bridge_shg_by_index \
-				set_l2_interface_flags_by_index \
+				set_l2_interface_flags_by_index set_l2_interface_flags \
 				sw_interface_set_mac_by_index interface_ip_address_add_del \
 				ip6_nbr_add_del \
 				set_sw_interface_l2_bridge interface_set_state refresh_interfaces_list \

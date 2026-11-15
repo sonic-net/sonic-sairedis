@@ -1449,3 +1449,283 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, ResyncIgnoresTheRowOfAPortThatLeftTheBridg
     EXPECT_EQ(m_bridgePort, entryBridgePort());
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
 }
+
+/*
+ * SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE: VPP's per-interface learn flag, on
+ * the VPP interface of each VLAN membership of the bridge port.
+ */
+class SwitchVppBridgePortLearning : public SwitchVppFdbTest
+{
+    protected:
+
+        void SetUp() override
+        {
+            SwitchVppFdbTest::SetUp();
+
+            m_otherVlan = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN, m_switchId);
+
+            sai_attribute_t vattr;
+
+            vattr.id = SAI_VLAN_ATTR_VLAN_ID;
+            vattr.value.u16 = OTHER_VLAN_ID;
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_VLAN, sai_serialize_object_id(m_otherVlan), m_switchId, 1, &vattr));
+        }
+
+        sai_status_t setLearningMode(
+                sai_object_id_t bridgePort,
+                sai_bridge_port_fdb_learning_mode_t mode)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE;
+            attr.value.s32 = mode;
+
+            return m_sw->set(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bridgePort), &attr);
+        }
+
+        // orchagent adds the port to VLAN 200 as an untagged member
+        void addUntaggedMember(
+                sai_object_id_t bridgePort)
+        {
+            SWSS_LOG_ENTER();
+
+            auto member = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN_MEMBER, m_switchId);
+
+            sai_attribute_t attrs[3];
+
+            attrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+            attrs[0].value.oid = m_otherVlan;
+            attrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
+            attrs[1].value.oid = bridgePort;
+            attrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
+            attrs[2].value.s32 = SAI_VLAN_TAGGING_MODE_UNTAGGED;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->createVlanMember(member, m_switchId, 3, attrs));
+        }
+
+        // The learn flag calls VPP got for an interface, as (enable) values
+        std::vector<bool> learnCalls(
+                const std::string &hwif)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<bool> enables;
+
+            for (const auto &call: vppMock().callsTo("set_l2_interface_flags", hwif))
+            {
+                EXPECT_EQ((uint32_t)VPP_BD_FLAG_LEARN, call.id);
+                enables.push_back(call.flag);
+            }
+
+            return enables;
+        }
+
+        int32_t storedMode(
+                sai_object_id_t bridgePort)
+        {
+            SWSS_LOG_ENTER();
+
+            auto attr = m_sw->stored_attr(SAI_OBJECT_TYPE_BRIDGE_PORT,
+                    sai_serialize_object_id(bridgePort), SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE);
+
+            return attr ? attr->value.s32 : -1;
+        }
+
+        static constexpr uint16_t OTHER_VLAN_ID = 200;
+
+        sai_object_id_t m_otherVlan = SAI_NULL_OBJECT_ID;
+};
+
+constexpr uint16_t SwitchVppBridgePortLearning::OTHER_VLAN_ID;
+
+TEST_F(SwitchVppBridgePortLearning, DisableTurnsLearningOffOnEveryVlanMembership)
+{
+    addTaggedMember(m_bridgePort);
+    addUntaggedMember(m_bridgePort);
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setLearningMode(m_bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE));
+
+    EXPECT_EQ(std::vector<bool>({false}), learnCalls(MEMBER_HWIF));
+    EXPECT_EQ(std::vector<bool>({false}), learnCalls(PORT_HWIF));
+    EXPECT_EQ(SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE, storedMode(m_bridgePort));
+}
+
+TEST_F(SwitchVppBridgePortLearning, HardwareTurnsLearningBackOn)
+{
+    addTaggedMember(m_bridgePort);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setLearningMode(m_bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE));
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setLearningMode(m_bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW));
+
+    EXPECT_EQ(std::vector<bool>({true}), learnCalls(MEMBER_HWIF));
+}
+
+/*
+ * VPP turns learning on for an interface that joins a bridge domain, so a
+ * bridge port with learning off joining a VLAN turns it off again.
+ */
+TEST_F(SwitchVppBridgePortLearning, BridgePortWithLearningOffJoiningAVlanTurnsItOff)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setLearningMode(m_bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE));
+    EXPECT_TRUE(vppMock().calls.empty());
+
+    addTaggedMember(m_bridgePort);
+    addUntaggedMember(m_bridgePort);
+
+    EXPECT_EQ(std::vector<bool>({false}), learnCalls(MEMBER_HWIF));
+    EXPECT_EQ(std::vector<bool>({false}), learnCalls(PORT_HWIF));
+    EXPECT_EQ(1u, vppMock().bdMembers[VLAN_ID].count(MEMBER_HWIF));
+}
+
+TEST_F(SwitchVppBridgePortLearning, BridgePortCreatedWithLearningOffJoiningAVlanTurnsItOff)
+{
+    auto bridgePort = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+
+    sai_attribute_t attrs[3];
+
+    attrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+    attrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+    attrs[1].value.oid = m_port;
+    attrs[2].id = SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE;
+    attrs[2].value.s32 = SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bridgePort), m_switchId, 3, attrs));
+
+    addTaggedMember(bridgePort);
+
+    EXPECT_EQ(std::vector<bool>({false}), learnCalls(MEMBER_HWIF));
+}
+
+TEST_F(SwitchVppBridgePortLearning, DefaultModeJoinsWithoutTouchingTheLearnFlag)
+{
+    addTaggedMember(m_bridgePort);
+
+    EXPECT_TRUE(learnCalls(MEMBER_HWIF).empty());
+}
+
+TEST_F(SwitchVppBridgePortLearning, SettingTheModeItHasCallsNothing)
+{
+    addTaggedMember(m_bridgePort);
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setLearningMode(m_bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setLearningMode(m_bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_FDB_NOTIFICATION));
+
+    EXPECT_TRUE(learnCalls(MEMBER_HWIF).empty());
+}
+
+TEST_F(SwitchVppBridgePortLearning, OtherBridgePortsKeepLearning)
+{
+    addTaggedMember(m_bridgePort);
+    addTaggedMember(m_otherBridgePort);
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setLearningMode(m_bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE));
+
+    EXPECT_EQ(std::vector<bool>({false}), learnCalls(MEMBER_HWIF));
+    EXPECT_TRUE(learnCalls(std::string(OTHER_PORT_HWIF) + ".100").empty());
+}
+
+/*
+ * DROP also drops frames with an unknown source MAC, which VPP can't do per
+ * interface: rejected, at create and on set, rather than half-honoured.
+ */
+TEST_F(SwitchVppBridgePortLearning, DropIsNotSupported)
+{
+    addTaggedMember(m_bridgePort);
+    vppMock().calls.clear();
+
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, setLearningMode(m_bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DROP));
+    EXPECT_TRUE(learnCalls(MEMBER_HWIF).empty());
+    EXPECT_EQ(-1, storedMode(m_bridgePort));
+
+    auto bridgePort = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+
+    sai_attribute_t attrs[3];
+
+    attrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+    attrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+    attrs[1].value.oid = m_otherPort;
+    attrs[2].id = SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE;
+    attrs[2].value.s32 = SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DROP;
+
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED,
+            m_sw->create(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bridgePort), m_switchId, 3, attrs));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).count(sai_serialize_object_id(bridgePort)));
+}
+
+TEST_F(SwitchVppBridgePortLearning, ModeVppFailsToSetIsNotStored)
+{
+    addTaggedMember(m_bridgePort);
+    vppMock().l2FlagsResult = -1;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, setLearningMode(m_bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE));
+
+    EXPECT_EQ(-1, storedMode(m_bridgePort));
+}
+
+TEST_F(SwitchVppBridgePortLearning, MemberVppFailsToTurnLearningOffForIsAFailure)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setLearningMode(m_bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE));
+    vppMock().l2FlagsResult = -1;
+
+    auto member = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VLAN_MEMBER, m_switchId);
+
+    sai_attribute_t attrs[3];
+
+    attrs[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+    attrs[0].value.oid = m_vlan;
+    attrs[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = m_bridgePort;
+    attrs[2].id = SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE;
+    attrs[2].value.s32 = SAI_VLAN_TAGGING_MODE_TAGGED;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->createVlanMember(member, m_switchId, 3, attrs));
+    EXPECT_EQ(0u, vppMock().bdMembers[VLAN_ID].count(MEMBER_HWIF));
+    EXPECT_EQ(0u, vppMock().interfaces.count(MEMBER_HWIF));
+    EXPECT_EQ(nullptr, m_sw->m_ifaceRegistry.findByHwif(MEMBER_HWIF));
+    EXPECT_EQ(0u, m_sw->m_port_acl_tables.count(MEMBER_HWIF));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_VLAN_MEMBER).count(sai_serialize_object_id(member)));
+
+    vppMock().deleteResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->createVlanMember(member, m_switchId, 3, attrs));
+    EXPECT_NE(nullptr, m_sw->m_ifaceRegistry.findByHwif(MEMBER_HWIF));
+    vppMock().deleteResult = 0;
+
+    attrs[0].value.oid = m_otherVlan;
+    attrs[2].value.s32 = SAI_VLAN_TAGGING_MODE_UNTAGGED;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->createVlanMember(member, m_switchId, 3, attrs));
+    EXPECT_EQ(0u, vppMock().bdMembers[OTHER_VLAN_ID].count(PORT_HWIF));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_VLAN_MEMBER).count(sai_serialize_object_id(member)));
+}
+
+TEST_F(SwitchVppBridgePortLearning, TunnelBridgePortModeIsOnlyStored)
+{
+    auto bridgePort = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+
+    sai_attribute_t battr;
+
+    battr.id = SAI_BRIDGE_PORT_ATTR_TYPE;
+    battr.value.s32 = SAI_BRIDGE_PORT_TYPE_TUNNEL;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bridgePort), m_switchId, 1, &battr));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setLearningMode(bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE));
+
+    EXPECT_TRUE(vppMock().calls.empty());
+    EXPECT_EQ(SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE, storedMode(bridgePort));
+
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED, setLearningMode(bridgePort, SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DROP));
+    EXPECT_EQ(SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE, storedMode(bridgePort));
+}

@@ -560,6 +560,14 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+            void vpp_rollback_vlan_member(
+                    _In_ sai_object_id_t port_id,
+                    _In_ const char *parent_hwif,
+                    _In_ const char *hw_ifname,
+                    _In_ uint16_t vlan_id,
+                    _In_ uint32_t tagging_mode,
+                    _In_ bool bd_has_member);
+
             sai_status_t removeVlanMember(
                     _In_ sai_object_id_t objectId);
 
@@ -599,6 +607,33 @@ namespace saivs
                     _In_ uint16_t vlan_id,
                     _Out_ std::string &hwif_name,
                     _Out_ bool &is_tagged);
+
+            // Whether VPP learns MAC addresses on a bridge port, from its
+            // SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE (HW when unset).
+            bool bridge_port_learning_enabled(
+                    _In_ sai_object_id_t br_port_id);
+
+            // The VPP interface of every VLAN membership of a bridge port:
+            // the parent for an untagged one, <parent>.<vid> for a tagged one.
+            void bridge_port_vlan_hwifs(
+                    _In_ sai_object_id_t br_port_id,
+                    _Out_ std::vector<std::string> &hwifs);
+
+            // Turns MAC learning on or off on the VPP interface of every
+            // VLAN membership of a bridge port.
+            sai_status_t vpp_set_bridge_port_learning(
+                    _In_ sai_object_id_t br_port_id,
+                    _In_ bool enable);
+
+            sai_status_t setBridgePort(
+                    _In_ sai_object_id_t br_port_id,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t createBridgePort(
+                    _In_ sai_object_id_t br_port_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
 
             sai_status_t vpp_create_bvi_interface(
                     _In_ uint32_t attr_count,

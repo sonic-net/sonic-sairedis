@@ -242,6 +242,8 @@ struct VppMock
     int ipipDelResult = 0;
     // vpp_sw_interface_find_by_ip() result: -1 when no interface owns the IP
     int findByIpResult = -1;
+    // set_l2_interface_flags() result
+    int l2FlagsResult = 0;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
