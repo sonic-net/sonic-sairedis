@@ -137,6 +137,14 @@ namespace syncd
                     _In_ const std::shared_ptr<SaiObj>& currentBestMatch,
                     _In_ const std::shared_ptr<SaiObj>& temporaryObj);
 
+            /**
+             * @brief Object's attributes ordered so that each condition
+             * source of a valid only attribute comes before the attributes
+             * that depend on it.
+             */
+            static std::vector<std::shared_ptr<SaiAttr>> orderConditionSourcesFirst(
+                    _In_ const std::shared_ptr<const SaiObj> obj);
+
             bool performObjectSetTransition(
                     _In_ AsicView& currentView,
                     _In_ AsicView& temporaryView,

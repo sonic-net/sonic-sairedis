@@ -13,6 +13,9 @@
 
 #include <inttypes.h>
 
+#include <algorithm>
+#include <map>
+
 using namespace syncd;
 using namespace saimeta;
 
@@ -1166,6 +1169,77 @@ void ComparisonLogic::updateObjectStatus(
     }
 }
 
+std::vector<std::shared_ptr<SaiAttr>> ComparisonLogic::orderConditionSourcesFirst(
+        _In_ const std::shared_ptr<const SaiObj> obj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Depth of each attribute in the object type's valid only graph: 0 for
+     * an attribute that is not valid only, otherwise one more than its
+     * deepest condition source (mirror session VLAN_ID depends on
+     * VLAN_HEADER_VALID, which depends on TYPE).
+     */
+
+    std::map<sai_attr_id_t, size_t> depth;
+
+    auto info = sai_metadata_get_object_type_info(obj->getObjectType());
+
+    if (info != nullptr)
+    {
+        for (size_t pass = 0; pass < info->attrmetadatalength; pass++)
+        {
+            bool changed = false;
+
+            for (size_t i = 0; i < info->attrmetadatalength; i++)
+            {
+                auto md = info->attrmetadata[i];
+
+                for (size_t j = 0; j < md->validonlylength; j++)
+                {
+                    if (md->validonly[j]->type != SAI_ATTR_CONDITION_TYPE_NONE)
+                    {
+                        continue; // operator entry of a mixed condition, not an attribute
+                    }
+
+                    size_t d = depth[md->validonly[j]->attrid] + 1;
+
+                    if (d > depth[md->attrid])
+                    {
+                        depth[md->attrid] = d;
+                        changed = true;
+                    }
+                }
+            }
+
+            if (!changed)
+            {
+                break;
+            }
+        }
+    }
+
+    std::vector<std::shared_ptr<SaiAttr>> ordered;
+
+    for (auto &at: obj->getAllAttributes())
+    {
+        ordered.push_back(at.second);
+    }
+
+    std::sort(ordered.begin(), ordered.end(),
+            [&depth](const std::shared_ptr<SaiAttr> &a, const std::shared_ptr<SaiAttr> &b)
+            {
+                auto ida = a->getSaiAttr()->id;
+                auto idb = b->getSaiAttr()->id;
+                auto da = depth.count(ida) ? depth.at(ida) : 0;
+                auto db = depth.count(idb) ? depth.at(idb) : 0;
+
+                return (da != db) ? (da < db) : (ida < idb);
+            });
+
+    return ordered;
+}
+
 bool ComparisonLogic::performObjectSetTransition(
         _In_ AsicView &currentView,
         _In_ AsicView &temporaryView,
@@ -1212,10 +1286,19 @@ bool ComparisonLogic::performObjectSetTransition(
      * function must return true, just skip all create only attributes.
      */
 
-    for (auto &at: temporaryObj->getAllAttributes())
-    {
-        auto &temporaryAttr = at.second;
+    /*
+     * Each condition source of a valid only attribute goes before the
+     * attributes that depend on it (for WRED the colour enables and the ECN
+     * mark mode before the thresholds), so that a SET which makes a
+     * condition true is generated, and later executed, before the SET of an
+     * attribute that depends on it; a vendor SAI that enforces the condition
+     * would otherwise reject the dependent SET.
+     */
 
+    auto orderedTemporaryAttributes = orderConditionSourcesFirst(temporaryObj);
+
+    for (auto &temporaryAttr: orderedTemporaryAttributes)
+    {
         SWSS_LOG_INFO("first pass (temp): attr %s", temporaryAttr->getStrAttrId().c_str());
 
         const auto meta = temporaryAttr->getAttrMetadata();
