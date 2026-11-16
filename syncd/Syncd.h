@@ -34,6 +34,7 @@
 
 class SyncdTest;
 class SyncdLinkEventDampingTest;
+class SyncdWarmBootStateTest;
 
 namespace syncd
 {
@@ -41,6 +42,7 @@ namespace syncd
     {
         friend class ::SyncdTest;
         friend class ::SyncdLinkEventDampingTest;
+        friend class ::SyncdWarmBootStateTest;
 
         private:
 
@@ -103,6 +105,9 @@ namespace syncd
                     _Out_ const char** value);
 
             void performStartupLogic();
+
+            static bool hasWarmBootState(
+                    _In_ const char* warmBootReadFile);
 
             void sendShutdownRequest(
                     _In_ sai_object_id_t switchVid);
