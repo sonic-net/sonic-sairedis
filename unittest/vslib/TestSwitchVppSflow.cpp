@@ -494,7 +494,7 @@ TEST_F(SwitchVppSflowTest, dropMonitorChainSetFollowsPolicer)
         sai_serialize_object_id(group), &attr));
     EXPECT_EQ(2u, drop_policer_calls.size());
 
-    // unlinking the policer lifts the limit
+    // detaching the policer lifts the limit
     attr.value.oid = SAI_NULL_OBJECT_ID;
     ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP,
         sai_serialize_object_id(group), &attr));
