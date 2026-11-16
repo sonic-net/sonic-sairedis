@@ -321,6 +321,7 @@ saiDiscovery
 sairedis
 saiswitch
 saivs
+saivpp
 sanitycheck
 sc
 scb
@@ -481,6 +482,8 @@ subtree
 iface
 loopback
 resync
+BVI
+bvi
 DHCPv
 LLDP
 cp

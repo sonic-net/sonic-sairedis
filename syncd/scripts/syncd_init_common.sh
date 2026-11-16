@@ -818,13 +818,18 @@ config_syncd_clounix()
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
+config_syncd_grandtrans()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
+
 config_syncd()
 {
     check_warm_boot
 
     cleanup_stale_flow_dump_files
 
-    if [ "$SONIC_ASIC_TYPE" == "cisco-8000" ]; then
+    if [ "$SONIC_ASIC_TYPE" == "cisco-8000" ] || [ "$SONIC_ASIC_TYPE" == "cisco" ]; then
         config_syncd_cisco_8000
     elif [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
         config_syncd_bcm
@@ -864,6 +869,8 @@ config_syncd()
         config_syncd_clounix
     elif [ "$SONIC_ASIC_TYPE" == "otn-kvm" ]; then
         config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "grandtrans" ]; then
+        config_syncd_grandtrans
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
