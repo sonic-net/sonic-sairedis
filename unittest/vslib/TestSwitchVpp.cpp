@@ -2384,7 +2384,6 @@ TEST_F(SwitchVppDhcpTrap, SemanticBindingFollowsCreateSetAndRemove)
     setTrapAction(trap, SAI_PACKET_ACTION_COPY);
     ASSERT_EQ(4u, vppMock().coppDhcpBindCalls.size());
     EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
-    EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isCopy);
 
     removeTrap(trap);
     ASSERT_EQ(5u, vppMock().coppDhcpBindCalls.size());

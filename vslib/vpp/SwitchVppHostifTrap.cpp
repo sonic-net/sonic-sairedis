@@ -135,7 +135,6 @@ sai_status_t SwitchVpp::programSemanticTrapBinding(
     }
 
     bool active = false;
-    bool all_copy = true;
     vpp_trap_entry_t selected{};
     bool have_selected = false;
     sai_object_id_t policer_oid = SAI_NULL_OBJECT_ID;
@@ -150,7 +149,6 @@ sai_status_t SwitchVpp::programSemanticTrapBinding(
             }
 
             active = true;
-            all_copy = all_copy && candidate.packet_action == SAI_PACKET_ACTION_COPY;
             if (!have_selected)
             {
                 selected = candidate;
@@ -207,7 +205,6 @@ sai_status_t SwitchVpp::programSemanticTrapBinding(
         ret = vpp_sonic_ext_copp_dhcp_bind(
                 policer_name,
                 trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6,
-                active && all_copy,
                 active);
     }
     else

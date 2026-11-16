@@ -366,12 +366,11 @@ extern "C" int __wrap_vpp_sonic_ext_copp_neighbor_miss_bind(
 extern "C" int __wrap_vpp_sonic_ext_copp_dhcp_bind(
         const char *policer_name,
         bool is_ipv6,
-        bool is_copy,
         bool is_bind)
 {
     SWSS_LOG_ENTER();
     vppMock().coppDhcpBindCalls.push_back({
-        policer_name ? policer_name : "", is_ipv6, is_copy, is_bind});
+        policer_name ? policer_name : "", is_ipv6, is_bind});
     return vppMock().coppDhcpBindResult;
 }
 
