@@ -6,6 +6,7 @@
 
 #include <array>
 #include <chrono>
+#include <functional>
 #include <initializer_list>
 #include <map>
 #include <set>
@@ -105,6 +106,7 @@ struct VppMock
     int kernelLinkResult = 0;
     std::vector<std::string> kernelCommands;
     std::set<std::string> kernelInterfaces;
+    std::function<int(const std::string&, std::string&)> execHook;
     int getVrfResult = 0;
     int setVrfResult = 0;
     unsigned int vrfSetCalls = 0;
@@ -131,6 +133,8 @@ struct VppMock
     uint32_t routeStatsIndex = 42;
     std::vector<int> routeResults;
     std::vector<VppRouteCall> routeCalls;
+    // Active FIB next hop sw_if_index list per (table, prefix)
+    std::map<std::pair<uint32_t, std::string>, std::vector<uint32_t>> fibRoutePaths;
 
     // sonic-ext features reported as enabled. "iface-loopback" keeps its own
     // flag because the loopback tests predate this set.
@@ -195,6 +199,8 @@ struct VppMock
     std::map<uint32_t, std::string> swifNames;
     // vpp_ipip_tunnel_del() result: on failure, VPP keeps the tunnel
     int ipipDelResult = 0;
+    // vpp_sw_interface_find_by_ip() result: -1 when no interface owns the IP
+    int findByIpResult = -1;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
