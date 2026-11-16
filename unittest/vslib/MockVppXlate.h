@@ -159,6 +159,8 @@ struct VppMock
     int directedBcastResult = 0;
     uint32_t routeStatsIndex = 42;
     std::vector<int> routeResults;
+    // Results returned by ip_route_add_del(), consumed in call order.
+    std::vector<int> ipRouteResults;
     std::vector<VppRouteCall> routeCalls;
     // Active FIB next hop sw_if_index list per (table, prefix)
     std::map<std::pair<uint32_t, std::string>, std::vector<uint32_t>> fibRoutePaths;

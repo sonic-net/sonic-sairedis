@@ -267,6 +267,16 @@ int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
 
     vppMock().calls.push_back({"ip_route_add_del", prefix, route->vrf_id, 0, is_add});
 
+    if (!vppMock().ipRouteResults.empty())
+    {
+        int result = vppMock().ipRouteResults.front();
+        vppMock().ipRouteResults.erase(vppMock().ipRouteResults.begin());
+        if (result != 0)
+        {
+            return result;
+        }
+    }
+
     if (!g_ip4RouteResults.empty())
     {
         int result = g_ip4RouteResults.front();

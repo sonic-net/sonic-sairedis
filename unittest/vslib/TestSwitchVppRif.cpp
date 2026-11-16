@@ -640,6 +640,22 @@ TEST_F(SwitchVppRifTest, rollbackRestoresActualPreviousVrfAndDefaultCreateBindsT
     EXPECT_EQ(0u, vppMock().interfaceVrfs.at("port0"));
 }
 
+TEST_F(SwitchVppRifTest, defaultVrfRouteFailureAbortsCreateAndCanRetry)
+{
+    sw->m_dhcp_trap_active = true;
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+
+    vppMock().ipRouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
+    EXPECT_EQ(0u, sw->vrf_objMap.count(vrf));
+    EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_EQ(1u, sw->vrf_objMap.count(vrf));
+    EXPECT_EQ("port0", sw->m_ifaceRegistry.resolveHwIfByRifOid(rif));
+}
+
 TEST_F(SwitchVppRifTest, vrfLookupAndProgrammingErrorsAbortBeforeActionProgramming)
 {
     for (const std::string failure : {"kernel", "get", "set"})

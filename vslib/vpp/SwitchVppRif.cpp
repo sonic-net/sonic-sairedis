@@ -1969,7 +1969,10 @@ sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
             attr.value.oid == vr_oid)
         {
             // registering the default table sets its flow hash
-            vpp_add_ip_vrf(vr_oid, 0);
+            if (vpp_add_ip_vrf(vr_oid, 0) != 0)
+            {
+                return SAI_STATUS_FAILURE;
+            }
         }
         else
         {
