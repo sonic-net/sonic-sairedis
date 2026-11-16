@@ -3474,7 +3474,13 @@ json sai_serialize_stat_capability(
 
     json j;
 
-    j["stat_enum"] = sai_serialize_enum(stat_capability.stat_enum, meta);
+    // IDs inside a stat range (drop reasons, custom) have no enum name, and a
+    // SAI can return thousands of them; write those as numbers without the
+    // per-value warning from sai_serialize_enum.
+
+    const char* name = sai_metadata_get_enum_value_name(meta, stat_capability.stat_enum);
+
+    j["stat_enum"] = name ? std::string(name) : sai_serialize_number(stat_capability.stat_enum);
 
     json arr = json::array();
 
