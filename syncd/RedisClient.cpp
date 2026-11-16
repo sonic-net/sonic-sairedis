@@ -8,6 +8,9 @@
 #include "swss/logger.h"
 #include "swss/redisapi.h"
 
+#include <algorithm>
+#include <chrono>
+
 using namespace syncd;
 
 // vid and rid maps contains objects from all switches
@@ -25,7 +28,7 @@ RedisClient::RedisClient(
 {
     SWSS_LOG_ENTER();
 
-    std::string fdbFlushLuaScript = swss::loadLuaScript("fdb_flush.lua"); // TODO script must be updated to version 2
+    std::string fdbFlushLuaScript = swss::loadLuaScript("fdb_flush_scan.lua");
 
     m_fdbFlushSha = swss::loadRedisScript(dbAsic.get(), fdbFlushLuaScript);
 }
@@ -980,8 +983,6 @@ void RedisClient::processFlushEvent(
             sai_serialize_object_id(portVid).c_str(),
             sai_serialize_object_id(bvId).c_str());
 
-    // TODO script must be updated to version 2
-
     std::string pattern = (bvId == SAI_NULL_OBJECT_ID)
         ? (ASIC_STATE_TABLE ":SAI_OBJECT_TYPE_FDB_ENTRY:*")
         : (ASIC_STATE_TABLE ":SAI_OBJECT_TYPE_FDB_ENTRY:*" + sai_serialize_object_id(bvId) + "*");
@@ -1011,17 +1012,77 @@ void RedisClient::processFlushEvent(
             SWSS_LOG_THROW("unknown fdb flush entry type: %d", type);
     }
 
+    // The lua script deletes entries in batches (SCAN + DEL) instead of using
+    // KEYS, and returns the next cursor together with the number of deleted
+    // entries. Scanning is repeated here until the cursor is 0 again, so every
+    // single script invocation stays (far) below the redis busy timeout while
+    // still deleting all matching entries.
+
     for (int flush_static: vals)
     {
-        swss::RedisCommand command;
+        const int minScanCount = 10;                // minimum SCAN COUNT
+        const int maxScanCount = minScanCount * 1000;
+        const long targetExecTimeMs = 50;           // aim for ~50ms per call
 
-        command.format(
-                "EVALSHA %s 3 %s %s %s",
-                m_fdbFlushSha.c_str(),
-                pattern.c_str(),
-                portStr.c_str(),
-                std::to_string(flush_static).c_str());
+        int cursor = 0;
+        int scanCount = 50;                         // start small; adjusted at runtime
+        int totalDeleted = 0;
 
-        swss::RedisReply r(m_dbAsic.get(), command);
+        do
+        {
+            auto startTime = std::chrono::high_resolution_clock::now();
+
+            swss::RedisCommand command;
+
+            command.format(
+                    "EVALSHA %s 0 %s %s %s %s %s",
+                    m_fdbFlushSha.c_str(),
+                    std::to_string(cursor).c_str(),
+                    std::to_string(scanCount).c_str(),
+                    pattern.c_str(),
+                    portStr.c_str(),
+                    std::to_string(flush_static).c_str());
+
+            swss::RedisReply r(m_dbAsic.get(), command);
+
+            auto endTime = std::chrono::high_resolution_clock::now();
+            auto execTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+
+            redisReply *reply = r.getContext();
+
+            if (reply->type != REDIS_REPLY_ARRAY || reply->elements < 2)
+            {
+                SWSS_LOG_ERROR("invalid response from fdb flush lua script");
+                break;
+            }
+
+            cursor = std::stoi(reply->element[0]->str);
+            int deletedCount = std::stoi(reply->element[1]->str);
+            totalDeleted += deletedCount;
+
+            // dynamically adjust scan count to keep the call time near target
+            if (execTimeMs > targetExecTimeMs * 2)
+            {
+                // execution time too long, reduce scan count
+                scanCount = std::max(minScanCount, scanCount / 2);
+            }
+            else if (execTimeMs < targetExecTimeMs / 2)
+            {
+                // execution time too short, increase scan count
+                scanCount = std::min(maxScanCount, scanCount * 2);
+            }
+            else if (deletedCount == 0 && cursor != 0)
+            {
+                // nothing deleted but still entries left, scan range may be too small
+                scanCount = std::min(maxScanCount, scanCount + 20);
+            }
+
+            SWSS_LOG_INFO("fdb flush progress: cursor=%d, deleted=%d, totalDeleted=%d, scanCount=%d, execTime=%ldms",
+                    cursor, deletedCount, totalDeleted, scanCount, execTimeMs);
+
+        } while (cursor != 0);
+
+        SWSS_LOG_NOTICE("fdb flush completed for flush type %d, total deleted %d entries",
+                flush_static, totalDeleted);
     }
 }
