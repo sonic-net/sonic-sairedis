@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include <arpa/inet.h>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -1448,4 +1449,346 @@ TEST_F(SwitchVppFdbAgingCreatedEntry, ResyncIgnoresTheRowOfAPortThatLeftTheBridg
     EXPECT_EQ(0u, m_sw->m_switchConfig->m_eventQueue->size());
     EXPECT_EQ(m_bridgePort, entryBridgePort());
     EXPECT_TRUE(m_sw->m_vpp_fdb_entries.empty());
+}
+
+class SwitchVppLocalLagFdbMove : public SwitchVppFdbAging
+{
+    protected:
+
+        void SetUp() override
+        {
+            SwitchVppFdbAging::SetUp();
+
+            sai_attribute_t attr;
+            attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+            attr.value.ptr = reinterpret_cast<void *>(0x1);
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->set_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), &attr));
+
+            addLag(LOCAL_BOND_ID, LOCAL_BOND_SW_IF_INDEX, m_localLag, m_localLagBp);
+            addLag(PEER_BOND_ID, PEER_BOND_SW_IF_INDEX, m_peerLag, m_peerLagBp);
+            vppMock().calls.clear();
+        }
+
+        void addLag(
+                uint32_t bondId,
+                uint32_t swIfIndex,
+                sai_object_id_t& lag,
+                sai_object_id_t& bridgePort)
+        {
+            SWSS_LOG_ENTER();
+
+            lag = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_LAG, m_switchId);
+
+            // Trunk LAG whose default port VLAN (1) differs from VLAN 100
+            sai_attribute_t lattr;
+            lattr.id = SAI_LAG_ATTR_PORT_VLAN_ID;
+            lattr.value.u16 = 1;
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_LAG, sai_serialize_object_id(lag), m_switchId, 1, &lattr));
+            ASSERT_NE(nullptr, m_sw->m_ifaceRegistry.addLag(bondId, swIfIndex, lag));
+
+            bridgePort = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+            sai_attribute_t battrs[2];
+            battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+            battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
+            battrs[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+            battrs[1].value.oid = lag;
+            ASSERT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bridgePort), m_switchId, 2, battrs));
+        }
+
+        std::string fdbSid(const uint8_t *mac = HOST_MAC)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_fdb_entry_t fdb = {};
+            fdb.switch_id = m_switchId;
+            fdb.bv_id = m_vlan;
+            memcpy(fdb.mac_address, mac, sizeof(sai_mac_t));
+            return sai_serialize_fdb_entry(fdb);
+        }
+
+        sai_status_t addFdb(
+                sai_object_id_t bp,
+                int32_t type,
+                bool hasAllowMove = false,
+                bool allowMove = false,
+                const uint8_t *mac = HOST_MAC)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attrs[3];
+            uint32_t count = 2;
+            attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+            attrs[0].value.s32 = type;
+            attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+            attrs[1].value.oid = bp;
+            if (hasAllowMove)
+            {
+                attrs[2].id = SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE;
+                attrs[2].value.booldata = allowMove;
+                count = 3;
+            }
+            return m_sw->create(SAI_OBJECT_TYPE_FDB_ENTRY, fdbSid(mac), m_switchId, count, attrs);
+        }
+
+        static sai_ip_address_t ipv4(const char *addr)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_ip_address_t ip = {};
+            ip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            EXPECT_EQ(1, inet_pton(AF_INET, addr, &ip.addr.ip4));
+            return ip;
+        }
+
+        static std::vector<VppCall> callsByApi(const std::string& api)
+        {
+            SWSS_LOG_ENTER();
+
+            std::vector<VppCall> out;
+            for (const auto& call : vppMock().calls)
+            {
+                if (call.api == api)
+                {
+                    out.push_back(call);
+                }
+            }
+            return out;
+        }
+
+        sai_object_id_t addRemoteEvpnBridgePort(const char *remoteVtep)
+        {
+            SWSS_LOG_ENTER();
+
+            auto mapper = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP, m_switchId);
+            sai_attribute_t mattr;
+            mattr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+            mattr.value.s32 = SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID;
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_TUNNEL_MAP, sai_serialize_object_id(mapper), m_switchId, 1, &mattr));
+
+            auto mapEntry = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, m_switchId);
+            sai_attribute_t eattrs[4];
+            eattrs[0].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE;
+            eattrs[0].value.s32 = SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID;
+            eattrs[1].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+            eattrs[1].value.oid = mapper;
+            eattrs[2].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+            eattrs[2].value.u32 = 100100;
+            eattrs[3].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE;
+            eattrs[3].value.u16 = VLAN_ID;
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(mapEntry), m_switchId, 4, eattrs));
+
+            auto tunnel = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL, m_switchId);
+            sai_attribute_t tattrs[4];
+            tattrs[0].id = SAI_TUNNEL_ATTR_TYPE;
+            tattrs[0].value.s32 = SAI_TUNNEL_TYPE_VXLAN;
+            tattrs[1].id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+            tattrs[1].value.ipaddr = ipv4("10.0.0.1");
+            tattrs[2].id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
+            tattrs[2].value.ipaddr = ipv4(remoteVtep);
+            tattrs[3].id = SAI_TUNNEL_ATTR_DECAP_MAPPERS;
+            tattrs[3].value.objlist.count = 1;
+            tattrs[3].value.objlist.list = &mapper;
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create(SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnel), m_switchId, 4, tattrs));
+
+            auto bp = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_BRIDGE_PORT, m_switchId);
+            sai_attribute_t battrs[2];
+            battrs[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
+            battrs[0].value.s32 = SAI_BRIDGE_PORT_TYPE_TUNNEL;
+            battrs[1].id = SAI_BRIDGE_PORT_ATTR_TUNNEL_ID;
+            battrs[1].value.oid = tunnel;
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sai_serialize_object_id(bp), m_switchId, 2, battrs));
+            return bp;
+        }
+
+        static constexpr uint32_t LOCAL_BOND_ID = 16;
+        static constexpr uint32_t LOCAL_BOND_SW_IF_INDEX = 116;
+        static constexpr const char *LOCAL_TAGGED_HWIF = "BondEthernet16.100";
+        static constexpr uint32_t PEER_BOND_ID = 1;
+        static constexpr uint32_t PEER_BOND_SW_IF_INDEX = 101;
+        static constexpr const char *PEER_TAGGED_HWIF = "BondEthernet1.100";
+        static constexpr uint8_t HOST_MAC[6] = {0x02, 0xaa, 0xbb, 0xcc, 0xdd, 0x11};
+        static constexpr const char *HOST_MAC_STR = "02:aa:bb:cc:dd:11";
+
+        sai_object_id_t m_localLag = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_localLagBp = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_peerLag = SAI_NULL_OBJECT_ID;
+        sai_object_id_t m_peerLagBp = SAI_NULL_OBJECT_ID;
+};
+
+constexpr uint32_t SwitchVppLocalLagFdbMove::LOCAL_BOND_ID;
+constexpr uint32_t SwitchVppLocalLagFdbMove::LOCAL_BOND_SW_IF_INDEX;
+constexpr const char *SwitchVppLocalLagFdbMove::LOCAL_TAGGED_HWIF;
+constexpr uint32_t SwitchVppLocalLagFdbMove::PEER_BOND_ID;
+constexpr uint32_t SwitchVppLocalLagFdbMove::PEER_BOND_SW_IF_INDEX;
+constexpr const char *SwitchVppLocalLagFdbMove::PEER_TAGGED_HWIF;
+constexpr uint8_t SwitchVppLocalLagFdbMove::HOST_MAC[6];
+constexpr const char *SwitchVppLocalLagFdbMove::HOST_MAC_STR;
+
+TEST_F(SwitchVppLocalLagFdbMove, TaggedTrunkLagProgramsSubinterfaceAndHonorsAllowMacMove)
+{
+    addTaggedMember(m_peerLagBp);
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addFdb(m_peerLagBp, SAI_FDB_ENTRY_TYPE_STATIC, true, true));
+
+    auto adds = vppMock().callsTo("l2fib_add_del", std::string(PEER_TAGGED_HWIF) + " " + HOST_MAC_STR);
+    ASSERT_EQ(1u, adds.size());
+    EXPECT_EQ(VLAN_ID, adds[0].id);
+    EXPECT_EQ(0u, adds[0].sub_id);
+    EXPECT_TRUE(adds[0].flag);
+    EXPECT_TRUE(m_sw->vppMovesFdbEntry(fdbSid()));
+
+    // Making the entry sticky turns static_mac on in VPP
+    vppMock().calls.clear();
+    sai_attribute_t attr;
+    attr.id = SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE;
+    attr.value.booldata = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, fdbSid(), &attr));
+
+    adds = vppMock().callsTo("l2fib_add_del", std::string(PEER_TAGGED_HWIF) + " " + HOST_MAC_STR);
+    ASSERT_EQ(1u, adds.size());
+    EXPECT_EQ(1u, adds[0].sub_id);
+    EXPECT_TRUE(adds[0].flag);
+    EXPECT_FALSE(m_sw->vppMovesFdbEntry(fdbSid()));
+
+    vppMock().calls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, fdbSid()));
+    auto dels = vppMock().callsTo("l2fib_add_del", std::string(PEER_TAGGED_HWIF) + " " + HOST_MAC_STR);
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_FALSE(dels[0].flag);
+    EXPECT_TRUE(m_sw->m_local_fdb.empty());
+}
+
+TEST_F(SwitchVppLocalLagFdbMove, FdbEntrySetMovesAcrossTaggedLagsAndRemoteEvpnTunnelInPlace)
+{
+    addTaggedMember(m_localLagBp);
+    addTaggedMember(m_peerLagBp);
+    sai_object_id_t remoteBp = addRemoteEvpnBridgePort("10.0.0.2");
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addFdb(m_localLagBp, SAI_FDB_ENTRY_TYPE_DYNAMIC));
+    ASSERT_EQ(1u, m_sw->m_local_fdb.count(fdbSid()));
+
+    // Move local LAG -> peer-link LAG in-place without deleting first
+    vppMock().calls.clear();
+    sai_attribute_t attr;
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attr.value.oid = m_peerLagBp;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, fdbSid(), &attr));
+
+    auto peerAdds = vppMock().callsTo("l2fib_add_del", std::string(PEER_TAGGED_HWIF) + " " + HOST_MAC_STR);
+    ASSERT_EQ(1u, peerAdds.size());
+    EXPECT_TRUE(peerAdds[0].flag);
+    EXPECT_TRUE(vppMock().callsTo("l2fib_add_del", std::string(LOCAL_TAGGED_HWIF) + " " + HOST_MAC_STR).empty());
+
+    // Move peer-link LAG -> remote EVPN tunnel in-place, handing ownership to m_remote_fdb
+    vppMock().calls.clear();
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attr.value.oid = remoteBp;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, fdbSid(), &attr));
+
+    EXPECT_EQ(0u, m_sw->m_local_fdb.count(fdbSid()));
+    EXPECT_EQ(1u, m_sw->m_remote_fdb.count(fdbSid()));
+    EXPECT_EQ(1u, callsByApi("l2fib_add_del_by_index").size());
+    EXPECT_TRUE(callsByApi("l2fib_add_del").empty());
+
+    // Move remote EVPN tunnel -> local LAG in-place, handing ownership back to m_local_fdb
+    vppMock().calls.clear();
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attr.value.oid = m_localLagBp;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, fdbSid(), &attr));
+
+    EXPECT_EQ(1u, m_sw->m_local_fdb.count(fdbSid()));
+    EXPECT_EQ(0u, m_sw->m_remote_fdb.count(fdbSid()));
+    auto localAdds = vppMock().callsTo("l2fib_add_del", std::string(LOCAL_TAGGED_HWIF) + " " + HOST_MAC_STR);
+    ASSERT_EQ(1u, localAdds.size());
+    EXPECT_TRUE(localAdds[0].flag);
+    EXPECT_TRUE(callsByApi("l2fib_add_del_by_index").empty());
+}
+
+TEST_F(SwitchVppLocalLagFdbMove, DataPlaneMoveOfAllowMacMoveStaticLagEntryReportsMoveToLocalLeg)
+{
+    addTaggedMember(m_localLagBp);
+    addTaggedMember(m_peerLagBp);
+
+    const uint32_t localSubSwIfIndex = 216;
+    ASSERT_TRUE(m_sw->m_ifaceRegistry.bindSwIfIndex(LOCAL_TAGGED_HWIF, localSubSwIfIndex));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addFdb(m_peerLagBp, SAI_FDB_ENTRY_TYPE_STATIC, true, true));
+
+    vpp_l2fib_entry_t row = {};
+    memcpy(row.mac, HOST_MAC, sizeof(row.mac));
+    row.bd_id = VLAN_ID;
+    row.sw_if_index = localSubSwIfIndex;
+    vppMock().l2fib = {row};
+
+    SwitchVpp::VppMacEvent ev = {};
+    memcpy(ev.mac, HOST_MAC, sizeof(ev.mac));
+    ev.sw_if_index = localSubSwIfIndex;
+    ev.action = VPP_MAC_ACTION_MOVE;
+    m_sw->m_mac_event_queue.push(ev);
+    m_sw->processFdbEntriesForAging();
+
+    ASSERT_EQ(1u, m_sw->m_switchConfig->m_eventQueue->size());
+    auto event = m_sw->m_switchConfig->m_eventQueue->dequeue();
+    auto ntf = std::dynamic_pointer_cast<EventPayloadNotification>(event->getPayload())->getNotification();
+    EXPECT_NE(std::string::npos, ntf->getSerializedNotification().find("SAI_FDB_EVENT_MOVE"));
+
+    sai_attribute_t attr;
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->get(SAI_OBJECT_TYPE_FDB_ENTRY, fdbSid(), 1, &attr));
+    EXPECT_EQ(m_localLagBp, attr.value.oid);
+    EXPECT_TRUE(m_sw->m_local_fdb.empty());
+}
+
+TEST_F(SwitchVppLocalLagFdbMove, LateTaggedVlanMemberProgramsWaitingFdbEntryAndRemoveCleansUp)
+{
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addFdb(m_localLagBp, SAI_FDB_ENTRY_TYPE_STATIC, true, true));
+    EXPECT_TRUE(m_sw->m_local_fdb.empty());
+    EXPECT_TRUE(callsByApi("l2fib_add_del").empty());
+
+    auto member = addTaggedMember(m_localLagBp);
+    EXPECT_EQ(1u, m_sw->m_local_fdb.count(fdbSid()));
+    auto adds = vppMock().callsTo("l2fib_add_del", std::string(LOCAL_TAGGED_HWIF) + " " + HOST_MAC_STR);
+    ASSERT_EQ(1u, adds.size());
+    EXPECT_TRUE(adds[0].flag);
+
+    vppMock().calls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->removeVlanMember(member));
+    auto dels = vppMock().callsTo("l2fib_add_del", std::string(LOCAL_TAGGED_HWIF) + " " + HOST_MAC_STR);
+    ASSERT_EQ(1u, dels.size());
+    EXPECT_FALSE(dels[0].flag);
+    EXPECT_TRUE(m_sw->m_local_fdb.empty());
+}
+
+TEST_F(SwitchVppLocalLagFdbMove, RouterInterfaceMacOnLocalPortStaysOnBvi)
+{
+    const uint8_t sagMac[6] = {0x00, 0x00, 0x5e, 0x00, 0x01, 0x01};
+    auto vrf = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+    auto rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
+
+    sai_attribute_t rattrs[4] = {};
+    rattrs[0].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    rattrs[0].value.s32 = SAI_ROUTER_INTERFACE_TYPE_VLAN;
+    rattrs[1].id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+    rattrs[1].value.oid = m_vlan;
+    rattrs[2].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+    rattrs[2].value.oid = vrf;
+    rattrs[3].id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+    memcpy(rattrs[3].value.mac, sagMac, sizeof(sai_mac_t));
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(rif), m_switchId, 4, rattrs));
+
+    addTaggedMember(m_peerLagBp);
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addFdb(m_peerLagBp, SAI_FDB_ENTRY_TYPE_STATIC, true, true, sagMac));
+    EXPECT_TRUE(m_sw->m_local_fdb.empty());
+    EXPECT_TRUE(callsByApi("l2fib_add_del").empty());
 }
