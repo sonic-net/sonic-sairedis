@@ -512,6 +512,8 @@ extern "C" int __wrap_create_sub_interface(const char *parent, uint32_t id, uint
 
 extern "C" int __wrap_create_vlan_sub_interface(const char *parent, uint32_t id, uint16_t vlan)
 {
+    SWSS_LOG_ENTER();
+
     return __wrap_create_sub_interface(parent, id, vlan);
 }
 

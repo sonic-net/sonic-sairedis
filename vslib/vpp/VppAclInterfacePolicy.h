@@ -2,6 +2,8 @@
 
 #include "sai.h"
 
+#include <swss/logger.h>
+
 #include <algorithm>
 #include <set>
 #include <vector>
@@ -27,6 +29,8 @@ namespace saivs
 
         void updateTable(sai_object_id_t table, bool is_input, bool is_bind)
         {
+            SWSS_LOG_ENTER();
+
             auto &tables = is_input ? ingress : egress;
             auto &order = is_input ? ingressOrder : egressOrder;
             if (is_bind)
@@ -45,6 +49,8 @@ namespace saivs
 
         bool empty() const
         {
+            SWSS_LOG_ENTER();
+
             return ingress.empty() && egress.empty() && !ingressDefault &&
                 !egressDefault && !ingressDefaultPending && !egressDefaultPending;
         }
@@ -52,6 +58,8 @@ namespace saivs
         // Null table denotes the shared permit, always last in its direction.
         std::vector<Binding> bindingPlan() const
         {
+            SWSS_LOG_ENTER();
+
             std::vector<Binding> plan;
             for (bool is_input : {true, false})
             {

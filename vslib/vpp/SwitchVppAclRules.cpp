@@ -1,6 +1,8 @@
 #include "sai.h"
 #include "SwitchVppAcl.h"
 
+#include <swss/logger.h>
+
 #include <cstring>
 #include <sys/socket.h>
 
@@ -8,11 +10,15 @@ namespace
 {
     bool vpp_ip_addr_family_is_set(const vpp_ip_addr_t *addr)
     {
+        SWSS_LOG_ENTER();
+
         return addr->sa_family == AF_INET || addr->sa_family == AF_INET6;
     }
 
     void set_any_addr(vpp_ip_addr_t *addr, int family)
     {
+        SWSS_LOG_ENTER();
+
         memset(addr, 0, sizeof(*addr));
         addr->sa_family = family;
     }
@@ -20,6 +26,8 @@ namespace
 
 sai_status_t saivs::setAclRuleIpFamilyWildcard(vpp_acl_rule_t &rule, int family)
 {
+    SWSS_LOG_ENTER();
+
     if (family != AF_INET && family != AF_INET6) {
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -44,6 +52,8 @@ sai_status_t saivs::acl_rule_set_outer_vlan(
     const sai_attribute_value_t *value,
     vpp_acl_rule_t *rule)
 {
+    SWSS_LOG_ENTER();
+
     if (!value || !rule) {
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -71,6 +81,8 @@ sai_status_t saivs::getAclRuleIpFamily(
     const acl_tbl_entries_t &ace,
     int &family)
 {
+    SWSS_LOG_ENTER();
+
     family = AF_UNSPEC;
 
     if (ace.attrs_count > MAX_ACL_ATTRS) {
@@ -167,6 +179,8 @@ sai_status_t saivs::expandAclRuleVariants(
     bool has_ports,
     std::vector<vpp_acl_rule_t> &variants)
 {
+    SWSS_LOG_ENTER();
+
     variants.clear();
 
     if (family != AF_UNSPEC && family != AF_INET && family != AF_INET6) {

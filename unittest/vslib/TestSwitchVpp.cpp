@@ -531,6 +531,8 @@ class SwitchVppSubIfAdminState : public ::testing::Test
 
         void installMemberAclPolicy()
         {
+            SWSS_LOG_ENTER();
+
             auto ingress = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId);
             auto egress = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId);
             m_sw->m_acl_swindex_map[ingress] = 100;
@@ -548,6 +550,8 @@ class SwitchVppSubIfAdminState : public ::testing::Test
 
         void expectMemberAclPolicy(bool present)
         {
+            SWSS_LOG_ENTER();
+
             const auto &actual = vppMock().aclLists.at(MEMBER_HWIF);
             EXPECT_EQ(present ? (std::vector<uint32_t>{100, 102}) : std::vector<uint32_t>{},
                     actual.ingress);
@@ -557,6 +561,8 @@ class SwitchVppSubIfAdminState : public ::testing::Test
 
         void expectMemberRetained(sai_object_id_t member)
         {
+            SWSS_LOG_ENTER();
+
             EXPECT_EQ(1u, m_sw->m_objectHash[SAI_OBJECT_TYPE_VLAN_MEMBER].count(
                         sai_serialize_object_id(member)));
             EXPECT_NE(nullptr, m_sw->m_ifaceRegistry.findByHwif(MEMBER_HWIF));

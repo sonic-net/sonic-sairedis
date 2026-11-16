@@ -2529,6 +2529,8 @@ void SwitchVpp::aclRecordInterfacePolicy(
         _In_ const std::string &hwif_name,
         _In_ const PortAclTables &policy)
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_port_acl_tables.find(hwif_name);
     const auto previous = it == m_port_acl_tables.end() ? PortAclTables{} : it->second;
     for (bool is_input : {true, false}) {
@@ -2570,6 +2572,8 @@ void SwitchVpp::aclRecordInterfacePolicy(
 sai_status_t SwitchVpp::aclReadInterfacePolicy(
         _In_ const std::string &hwif_name)
 {
+    SWSS_LOG_ENTER();
+
     uint32_t input[255] = {}, output[255] = {};
     uint32_t input_count = 0, output_count = 0;
     m_acl_interface_state_unknown.insert(hwif_name);
@@ -2721,6 +2725,8 @@ sai_status_t SwitchVpp::aclBindInterfaceDefault(
         _In_ bool is_input,
         _In_ bool is_bind)
 {
+    SWSS_LOG_ENTER();
+
     if (m_acl_interface_state_unknown.count(hwif_name)) {
         CHECK_STATUS(aclReadInterfacePolicy(hwif_name));
     }
@@ -2737,6 +2743,8 @@ sai_status_t SwitchVpp::aclBindInterfaceTable(
         _In_ bool is_input,
         _In_ bool is_bind)
 {
+    SWSS_LOG_ENTER();
+
     if (m_acl_interface_state_unknown.count(hwif_name)) {
         CHECK_STATUS(aclReadInterfacePolicy(hwif_name));
     }
@@ -2789,6 +2797,8 @@ sai_status_t SwitchVpp::aclInheritInterfacePolicy(
 sai_status_t SwitchVpp::aclRemoveInterfacePolicy(
         _In_ const std::string &hwif_name)
 {
+    SWSS_LOG_ENTER();
+
     return aclApplyInterfacePolicy(hwif_name, PortAclTables{});
 }
 
@@ -2976,6 +2986,8 @@ sai_status_t SwitchVpp::aclRestorePbhRegularPolicy(
         _In_ sai_object_id_t group_oid,
         _In_ bool is_input)
 {
+    SWSS_LOG_ENTER();
+
     const auto key = std::make_tuple(port_oid, group_oid, is_input);
     auto pending = m_acl_pbh_regular_restore.find(key);
     if (pending == m_acl_pbh_regular_restore.end()) {

@@ -47,19 +47,24 @@ namespace
     const uint32_t defaultAclIndex = 900;
 }
 
-// Only the VPP boundary is substituted. Object storage, getters, PORT/LAG
-// setters, group-member lifecycle and attachment bookkeeping remain real.
+// Only the VPP boundary is substituted. Object storage, reads, PORT/LAG
+// setters, group-member life cycle and attachment bookkeeping remain real.
 extern "C" sai_status_t __wrap__ZN5saivs9SwitchVpp17vpp_dp_initializeEv(SwitchVpp *)
 {
+    SWSS_LOG_ENTER();
+
     return SAI_STATUS_SUCCESS;
 }
 
 extern "C" void __wrap_vpp_set_mac_event_cb(vpp_mac_event_cb_fn, void *)
 {
+    SWSS_LOG_ENTER();
 }
 
 extern "C" int __wrap_vpp_acl_add_replace(vpp_acl_t *, uint32_t *index, bool)
 {
+    SWSS_LOG_ENTER();
+
     *index = defaultAclIndex;
     return 0;
 }
@@ -68,6 +73,8 @@ extern "C" int __wrap_vpp_acl_interface_set_acl_list(const char *interface,
         const uint32_t *ingress, uint32_t ingressCount,
         const uint32_t *egress, uint32_t egressCount)
 {
+    SWSS_LOG_ENTER();
+
     BindingCall call{interface, {}, {}, false};
     if (ingressCount) call.ingress.assign(ingress, ingress + ingressCount);
     if (egressCount) call.egress.assign(egress, egress + egressCount);
@@ -89,7 +96,7 @@ extern "C" int __wrap_vpp_acl_interface_set_acl_list(const char *interface,
     if (fail && !commitBeforeFailure) return -1;
     if (fail) {
         // Simulate a partially applied request or a lost error reply: one
-        // direction changed, so failure must trigger readback before rollback.
+        // direction changed, so failure must trigger a read back before rollback.
         actualBindings[InterfaceKey(interface, commitInput)] =
             commitInput ? call.ingress : call.egress;
         return -1;
@@ -103,6 +110,8 @@ extern "C" int __wrap_vpp_acl_interface_set_acl_list(const char *interface,
 extern "C" int __wrap_vpp_acl_interface_get_acl_list(const char *interface,
         uint32_t *ingress, uint32_t *ingressCount, uint32_t *egress, uint32_t *egressCount)
 {
+    SWSS_LOG_ENTER();
+
     readCalls.push_back(interface);
     auto failure = readFailures.find(interface);
     if (failure != readFailures.end()) {
@@ -120,12 +129,16 @@ extern "C" int __wrap_vpp_acl_interface_get_acl_list(const char *interface,
 
 extern "C" int __wrap_vpp_acl_interface_bind(const char *, uint32_t, bool)
 {
+    SWSS_LOG_ENTER();
+
     ADD_FAILURE() << "Individual bind used instead of complete ACL list";
     return -1;
 }
 
 extern "C" int __wrap_vpp_acl_interface_unbind(const char *, uint32_t, bool)
 {
+    SWSS_LOG_ENTER();
+
     ADD_FAILURE() << "Individual unbind used instead of complete ACL list";
     return -1;
 }
@@ -133,6 +146,8 @@ extern "C" int __wrap_vpp_acl_interface_unbind(const char *, uint32_t, bool)
 extern "C" int __wrap_vpp_tunterm_acl_interface_add_del(uint32_t index,
         bool bind, const char *interface)
 {
+    SWSS_LOG_ENTER();
+
     const auto key = TuntermKey(interface, index, bind);
     tuntermCalls.push_back(key);
     auto it = tuntermFailures.find(key);
@@ -147,6 +162,8 @@ extern "C" int __wrap_vpp_tunterm_acl_interface_add_del(uint32_t index,
 extern "C" int __wrap_vpp_pbh_interface_attach_detach(const char *interface,
         uint32_t index, bool bind)
 {
+    SWSS_LOG_ENTER();
+
     const auto key = TuntermKey(interface, index, bind);
     pbhCalls.push_back(key);
     auto failure = pbhFailures.find(key);
@@ -165,6 +182,8 @@ extern "C" int __wrap_vpp_pbh_interface_attach_detach(const char *interface,
 
 extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *, bool *enabled)
 {
+    SWSS_LOG_ENTER();
+
     *enabled = false;
     return 0;
 }
@@ -223,6 +242,8 @@ protected:
 
     Group createGroup(uint32_t index, bool input)
     {
+        SWSS_LOG_ENTER();
+
         Group group = {
             m_manager->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE_GROUP, m_switchId),
             m_manager->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId),
@@ -244,11 +265,15 @@ protected:
 
     Group createGroup(uint32_t index)
     {
+        SWSS_LOG_ENTER();
+
         return createGroup(index, m_input);
     }
 
     Group createTableMember(sai_object_id_t group, uint32_t index)
     {
+        SWSS_LOG_ENTER();
+
         Group member = {
             group,
             m_manager->allocateNewObjectId(SAI_OBJECT_TYPE_ACL_TABLE, m_switchId),
@@ -263,6 +288,8 @@ protected:
 
     void markPbh(const Group &group)
     {
+        SWSS_LOG_ENTER();
+
         // As for regular ACLs, supply an already compiled table index. The
         // real PBH classification and bind/unbind policy remain in use.
         m_switch->m_acl_swindex_map.erase(group.table);
@@ -284,12 +311,16 @@ protected:
 
     sai_status_t removeMember(const Group &group)
     {
+        SWSS_LOG_ENTER();
+
         return m_switch->remove(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER,
                 sai_serialize_object_id(group.member));
     }
 
     std::vector<Group> createBoundThreeTableGroup()
     {
+        SWSS_LOG_ENTER();
+
         auto first = createGroup(100);
         auto second = createTableMember(first.oid, 200);
         auto third = createTableMember(first.oid, 300);
@@ -302,6 +333,8 @@ protected:
 
     sai_object_id_t createAdditionalPort(const std::string &interface)
     {
+        SWSS_LOG_ENTER();
+
         auto port = m_manager->allocateNewObjectId(m_type, m_switchId);
         EXPECT_EQ(SAI_STATUS_SUCCESS, m_switch->create_internal(
                     m_type, sai_serialize_object_id(port), m_switchId, 0, nullptr));
@@ -336,11 +369,15 @@ protected:
 
     void setOppositeGroup(sai_object_id_t group)
     {
+        SWSS_LOG_ENTER();
+
         ASSERT_EQ(SAI_STATUS_SUCCESS, setOppositeGroupStatus(group));
     }
 
     sai_status_t setOppositeGroupStatus(sai_object_id_t group)
     {
+        SWSS_LOG_ENTER();
+
         sai_attribute_t attr = {};
         if (m_type == SAI_OBJECT_TYPE_PORT) {
             attr.id = m_input ? SAI_PORT_ATTR_EGRESS_ACL : SAI_PORT_ATTR_INGRESS_ACL;
@@ -353,11 +390,15 @@ protected:
 
     const std::vector<uint32_t> &policy(const BindingCall &call) const
     {
+        SWSS_LOG_ENTER();
+
         return m_input ? call.ingress : call.egress;
     }
 
     void expectNoEmptyListUpdate()
     {
+        SWSS_LOG_ENTER();
+
         for (const auto &call : bindingCalls) {
             EXPECT_FALSE(policy(call).empty()) << call.interface;
             EXPECT_EQ(defaultAclIndex, policy(call).empty() ? 0 : policy(call).back());
@@ -366,6 +407,8 @@ protected:
 
     void expectPolicy(const std::string &interface, const std::vector<uint32_t> &expected, bool input)
     {
+        SWSS_LOG_ENTER();
+
         auto it = actualBindings.find(InterfaceKey(interface, input));
         const std::vector<uint32_t> empty;
         EXPECT_EQ(expected, it == actualBindings.end() ? empty : it->second);
@@ -373,11 +416,15 @@ protected:
 
     void expectPolicy(const std::string &interface, const std::vector<uint32_t> &expected)
     {
+        SWSS_LOG_ENTER();
+
         expectPolicy(interface, expected, m_input);
     }
 
     void expectMembers(sai_object_id_t group, const std::vector<Group> &expected)
     {
+        SWSS_LOG_ENTER();
+
         auto it = m_switch->m_acl_tbl_grp_mbr_map.find(group);
         ASSERT_NE(m_switch->m_acl_tbl_grp_mbr_map.end(), it);
         std::vector<sai_object_id_t> members;
@@ -389,6 +436,8 @@ protected:
 
     void expectMemberObject(const Group &member, bool present)
     {
+        SWSS_LOG_ENTER();
+
         sai_attribute_t attr = {};
         attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID;
         auto status = m_switch->get(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member.member, 1, &attr);
@@ -406,6 +455,8 @@ protected:
 
     sai_status_t setGroup(sai_object_id_t group, sai_object_id_t port)
     {
+        SWSS_LOG_ENTER();
+
         sai_attribute_t attr = {};
         attr.id = m_attr;
         attr.value.oid = group;
@@ -414,11 +465,15 @@ protected:
 
     sai_status_t setGroup(sai_object_id_t group)
     {
+        SWSS_LOG_ENTER();
+
         return setGroup(group, m_port);
     }
 
     void expectStoredGroup(sai_object_id_t group, sai_object_id_t port)
     {
+        SWSS_LOG_ENTER();
+
         sai_attribute_t attr = {};
         attr.id = m_attr;
         ASSERT_EQ(SAI_STATUS_SUCCESS, m_switch->get(m_type, port, 1, &attr));
@@ -427,11 +482,15 @@ protected:
 
     void expectStoredGroup(sai_object_id_t group)
     {
+        SWSS_LOG_ENTER();
+
         expectStoredGroup(group, m_port);
     }
 
     void expectAssociation(sai_object_id_t group, bool present, sai_object_id_t port)
     {
+        SWSS_LOG_ENTER();
+
         const auto &ports = m_switch->m_acl_tbl_grp_ports_map;
         auto it = ports.find(group);
         bool found = it != ports.end() &&
@@ -444,12 +503,16 @@ protected:
 
     void expectAssociation(sai_object_id_t group, bool present)
     {
+        SWSS_LOG_ENTER();
+
         expectAssociation(group, present, m_port);
     }
 
     void expectCall(size_t offset, const std::vector<uint32_t> &expected,
             const std::string &interface)
     {
+        SWSS_LOG_ENTER();
+
         ASSERT_LT(offset, bindingCalls.size());
         EXPECT_EQ(interface, bindingCalls[offset].interface);
         EXPECT_EQ(expected, policy(bindingCalls[offset]));
@@ -457,6 +520,8 @@ protected:
 
     void expectCall(size_t offset, const std::vector<uint32_t> &expected)
     {
+        SWSS_LOG_ENTER();
+
         expectCall(offset, expected, m_interface);
     }
 
@@ -755,7 +820,7 @@ TEST_P(SwitchVppAclBindingTest, FailedReadbackRequiresRefreshBeforePreservingOth
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(opposite));
     ASSERT_EQ(SAI_STATUS_SUCCESS, setGroup(group.oid));
     // Model a lost error reply after VPP applied the requested list. Both
-    // readback and immediate recovery refresh fail; later retry must refresh.
+    // the read back and immediate recovery refresh fail; later retry must refresh.
     auto replacement = createGroup(200);
     ASSERT_EQ(SAI_STATUS_SUCCESS, addMember(replacement));
     failList(m_interface, {200, defaultAclIndex}, 1, true);
@@ -840,7 +905,7 @@ TEST_P(SwitchVppAclBindingTest, FailedChildInheritanceClearsUnverifiedLists)
     failList(child, {100, 200, 300, defaultAclIndex}, 1, true);
     readFailures[child] = 100;
     ASSERT_EQ(SAI_STATUS_FAILURE, m_switch->aclInheritInterfacePolicy(m_interface, child));
-    // Full child teardown can replace both directions with empty lists even
+    // Full child cleanup can replace both directions with empty lists even
     // when a failed dump prevents a safe direction-only update.
     expectPolicy(child, {});
     expectPolicy(child, {}, !m_input);

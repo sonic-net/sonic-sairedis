@@ -2,6 +2,7 @@
 #include "vpp/SwitchVppAcl.h"
 
 #include <gtest/gtest.h>
+#include <swss/logger.h>
 
 #include <arpa/inet.h>
 #include <algorithm>
@@ -17,6 +18,8 @@ namespace
 
     PacketClasses packetClasses(const std::vector<vpp_acl_rule_t> &rules)
     {
+        SWSS_LOG_ENTER();
+
         PacketClasses result;
         for (const auto &rule : rules) {
             EXPECT_EQ(rule.src_prefix.sa_family, rule.dst_prefix.sa_family);
@@ -29,6 +32,8 @@ namespace
 
     sai_attribute_t enabledField(sai_acl_entry_attr_t id)
     {
+        SWSS_LOG_ENTER();
+
         sai_attribute_t attr = {};
         attr.id = id;
         attr.value.aclfield.enable = true;
