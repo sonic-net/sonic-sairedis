@@ -852,6 +852,10 @@ uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
     SWSS_LOG_ENTER();
 
     ++vppMock().interfaceLookups;
+    if (vppMock().missingInterfaces.count(hwif_name))
+    {
+        return static_cast<uint32_t>(-1);
+    }
     return vppMock().nextSwIfIndex++;
 }
 

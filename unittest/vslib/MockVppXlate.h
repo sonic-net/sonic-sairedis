@@ -184,6 +184,7 @@ struct VppMock
     std::map<std::string, vpp_interface_stats_t> interfaceStats;
     std::map<std::string, int> actions;
     std::set<std::string> interfaces;
+    std::set<std::string> missingInterfaces;
     std::set<std::string> lcpPairs;
     std::set<std::string> bridgePorts;
     // VPP's bridge domains: the interfaces in each, a VLAN's bridge virtual

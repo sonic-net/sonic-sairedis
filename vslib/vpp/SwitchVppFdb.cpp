@@ -1339,9 +1339,9 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
-    hwif_str = m_ifaceRegistry.resolveHwIfName(port_id, 0);
-
-    if (hwif_str.empty())
+    // Default VLAN members can be removed before their ports are registered.
+    // Resolve the stored lanes when the registry has no physical port yet.
+    if (!vppGetHwIfNameForPort(port_id, 0, hwif_str))
     {
         SWSS_LOG_NOTICE("No VPP interface found for bridge port id :%s",
                 sai_serialize_object_id(br_port_oid).c_str());

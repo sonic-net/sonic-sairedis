@@ -1699,7 +1699,7 @@ namespace saivs
                     _Out_ uint32_t *num_rules);
 
             /*
-             * VPP interface name of a PORT, on the port create/update path.
+             * VPP interface name of a PORT, resolving its identity when needed.
              *
              * Registry first, falling back to the hardware lane list, which is
              * also what registers the port: create_ports() makes ports with no
@@ -1710,9 +1710,9 @@ namespace saivs
              * attribute list -- during a set, the new lane list is in attr_list
              * and not yet in the object store.
              *
-             * Everywhere else the interface is necessarily already known, and
-             * the plain index lookup, VppInterfaceRegistry::resolveHwIfName(),
-             * is what should be used.
+             * Default VLAN member removal can also need this fallback before
+             * its port is registered. Paths that require an existing record
+             * use VppInterfaceRegistry::resolveHwIfName().
              */
             bool vppGetHwIfNameForPort (
                     _In_ sai_object_id_t object_id,
