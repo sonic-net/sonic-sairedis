@@ -466,7 +466,13 @@ desync
 rebuildable
 jitter
 jittered
+BondEthernet
+PortChannel
 VPP
+EVPN
+VNI
+VTEP
+anycast
 ARGV
 vppxlate
 PBH
