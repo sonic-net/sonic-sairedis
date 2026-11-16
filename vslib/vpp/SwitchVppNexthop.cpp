@@ -19,6 +19,7 @@
 #include "vppxlate/SaiVppXlate.h"
 
 #include <list>
+#include <set>
 
 using namespace saivs;
 
@@ -515,4 +516,185 @@ SwitchVpp::buildNhgMember(
     }
 
     return fillNHGrpMember(&member, next_hop_oid, weight, 0);
+}
+
+void
+SwitchVpp::detachRoutesForNexthops(
+        _In_ const std::vector<sai_object_id_t>& nh_oids,
+        _Out_ DetachedNexthopRoutes& state)
+{
+    SWSS_LOG_ENTER();
+
+    state.direct_routes.clear();
+    state.nhg_members.clear();
+    state.counter_stats.clear();
+
+    if (!is_ip_nbr_active()) {
+        return;
+    }
+
+    auto is_forward_route = [](const SaiObject* route_obj) -> bool {
+        SWSS_LOG_ENTER();
+
+        sai_attribute_t attr;
+        attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
+        if (route_obj->get_attr(attr) == SAI_STATUS_SUCCESS &&
+            attr.value.s32 != SAI_PACKET_ACTION_FORWARD) {
+            return false;
+        }
+        return true;
+    };
+
+    auto snapshot_counter = [this, &state](const std::string& route_id) {
+        SWSS_LOG_ENTER();
+
+        if (state.counter_stats.count(route_id) != 0) {
+            return;
+        }
+        DetachedNexthopRoutes::SavedCounterStats saved;
+        sai_object_id_t counter_oid = getRouteBoundCounter(route_id);
+        if (counter_oid != SAI_NULL_OBJECT_ID) {
+            if (getRouteCounterStats(counter_oid, saved.old_stats) == SAI_STATUS_SUCCESS) {
+                saved.has_old_stats = true;
+            } else {
+                SWSS_LOG_WARN("Failed to read route counter stats before detaching route %s",
+                              route_id.c_str());
+            }
+        }
+        state.counter_stats.emplace(route_id, std::move(saved));
+    };
+
+    std::set<std::string> seen_direct_routes;
+    std::set<std::string> seen_nhg_members;
+
+    for (sai_object_id_t nh_oid : nh_oids) {
+        auto nh_obj = m_object_db.get(SAI_OBJECT_TYPE_NEXT_HOP,
+                                      sai_serialize_object_id(nh_oid));
+        if (!nh_obj) {
+            continue;
+        }
+
+        if (auto routes = nh_obj->get_child_objs(SAI_OBJECT_TYPE_ROUTE_ENTRY)) {
+            for (const auto& pair : *routes) {
+                if (!pair.second || !is_forward_route(pair.second.get()) ||
+                    !seen_direct_routes.insert(pair.first).second) {
+                    continue;
+                }
+                snapshot_counter(pair.first);
+                if (IpRouteAddRemove(pair.second.get(), false, nullptr) == SAI_STATUS_SUCCESS) {
+                    m_routeStatsIndexMap.erase(pair.first);
+                    state.direct_routes.push_back(pair.second);
+                } else {
+                    SWSS_LOG_ERROR("Failed to detach direct route %s from next hop %s",
+                                   pair.first.c_str(), nh_obj->get_id().c_str());
+                }
+            }
+        }
+
+        if (auto members = nh_obj->get_child_objs(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER)) {
+            for (const auto& pair : *members) {
+                if (!pair.second || !seen_nhg_members.insert(pair.first).second) {
+                    continue;
+                }
+                auto nhg_obj = pair.second->get_linked_object(
+                    SAI_OBJECT_TYPE_NEXT_HOP_GROUP,
+                    SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID);
+                if (!nhg_obj) {
+                    continue;
+                }
+                auto routes = nhg_obj->get_child_objs(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+                if (!routes || routes->empty()) {
+                    continue;
+                }
+                nexthop_grp_member_t member;
+                if (buildNhgMember(*pair.second, member) != SAI_STATUS_SUCCESS) {
+                    SWSS_LOG_ERROR("Failed to build NHG member %s while detaching next hop %s",
+                                   pair.first.c_str(), nh_obj->get_id().c_str());
+                    continue;
+                }
+                for (const auto& rpair : *routes) {
+                    if (!rpair.second || !is_forward_route(rpair.second.get())) {
+                        continue;
+                    }
+                    snapshot_counter(rpair.first);
+                    if (IpRoutePathAddRemove(rpair.second.get(), &member, false, nullptr) !=
+                        SAI_STATUS_SUCCESS) {
+                        SWSS_LOG_ERROR("Failed to detach NHG member %s path from route %s",
+                                       pair.first.c_str(), rpair.first.c_str());
+                    }
+                }
+                state.nhg_members.emplace_back(pair.second, nhg_obj);
+            }
+        }
+    }
+}
+
+void
+SwitchVpp::reattachRoutesForNexthops(
+        _In_ const DetachedNexthopRoutes& state)
+{
+    SWSS_LOG_ENTER();
+
+    auto is_forward_route = [](const SaiObject* route_obj) -> bool {
+        SWSS_LOG_ENTER();
+
+        sai_attribute_t attr;
+        attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
+        if (route_obj->get_attr(attr) == SAI_STATUS_SUCCESS &&
+            attr.value.s32 != SAI_PACKET_ACTION_FORWARD) {
+            return false;
+        }
+        return true;
+    };
+
+    const std::map<sai_stat_id_t, uint64_t> empty_stats;
+
+    for (const auto& route_obj : state.direct_routes) {
+        uint32_t stats_index = UINT32_MAX;
+        const std::string route_id = route_obj->get_id();
+        if (IpRouteAddRemove(route_obj.get(), true, &stats_index) != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to reattach direct route %s", route_id.c_str());
+            continue;
+        }
+        auto it = state.counter_stats.find(route_id);
+        bool has_old = (it != state.counter_stats.end() && it->second.has_old_stats);
+        recordRouteStatsIndexAndResetBase(
+            route_id, stats_index, has_old, has_old ? it->second.old_stats : empty_stats);
+    }
+
+    std::map<std::string, uint32_t> nhg_route_stats_index;
+    for (const auto& entry : state.nhg_members) {
+        const auto& mbr_obj = entry.first;
+        const auto& nhg_obj = entry.second;
+        auto routes = nhg_obj->get_child_objs(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+        if (!routes) {
+            continue;
+        }
+        nexthop_grp_member_t member;
+        if (buildNhgMember(*mbr_obj, member) != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to build NHG member %s while reattaching",
+                           mbr_obj->get_id().c_str());
+            continue;
+        }
+        for (const auto& rpair : *routes) {
+            if (!rpair.second || !is_forward_route(rpair.second.get())) {
+                continue;
+            }
+            uint32_t stats_index = UINT32_MAX;
+            if (IpRoutePathAddRemove(rpair.second.get(), &member, true, &stats_index) !=
+                SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to reattach NHG member %s path to route %s",
+                               mbr_obj->get_id().c_str(), rpair.first.c_str());
+                continue;
+            }
+            nhg_route_stats_index[rpair.first] = stats_index;
+        }
+    }
+
+    for (const auto& pair : nhg_route_stats_index) {
+        auto it = state.counter_stats.find(pair.first);
+        bool has_old = (it != state.counter_stats.end() && it->second.has_old_stats);
+        recordRouteStatsIndexAndResetBase(
+            pair.first, pair.second, has_old, has_old ? it->second.old_stats : empty_stats);
+    }
 }

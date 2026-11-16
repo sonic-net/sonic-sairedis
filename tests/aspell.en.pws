@@ -491,3 +491,6 @@ ethertype
 fixup
 nexts
 sFlow
+SVI
+VNIs
+decapsulate

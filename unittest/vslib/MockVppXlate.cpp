@@ -13,6 +13,18 @@
 
 namespace
 {
+std::string macStr(const uint8_t *mac)
+{
+    SWSS_LOG_ENTER();
+    if (!mac)
+    {
+        return "";
+    }
+    char buf[18];
+    snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return buf;
+}
     std::atomic<int> g_vppEventWaits{0};
     std::mutex g_vppEventsMutex;
     std::deque<vpp_event_info_t *> g_vppEvents;
@@ -151,7 +163,54 @@ extern "C" int __wrap_ip_route_add_del_get_stats(
     int result = index < mock.routeResults.size() ? mock.routeResults[index] : 0;
     if (result == 0 && stats_index)
     {
-        *stats_index = mock.routeStatsIndex;
+        *stats_index = is_add ? mock.routeStatsIndex : UINT32_MAX;
+    }
+    if (result == 0 && route->prefix_addr.sa_family == AF_INET && route->nexthop_cnt >= 1)
+    {
+        char addr[INET_ADDRSTRLEN] = {};
+        inet_ntop(AF_INET, &route->prefix_addr.addr.ip4.sin_addr, addr, sizeof(addr));
+        auto key = std::make_pair(route->vrf_id,
+                std::string(addr) + "/" + std::to_string(route->prefix_len));
+        if (is_add)
+        {
+            auto& paths = mock.fibRoutePaths[key];
+            if (!route->is_multipath)
+            {
+                paths.clear();
+            }
+            for (uint32_t i = 0; i < route->nexthop_cnt; i++)
+            {
+                uint32_t sw_if = route->nexthop[i].sw_if_index;
+                if (std::find(paths.begin(), paths.end(), sw_if) == paths.end())
+                {
+                    paths.push_back(sw_if);
+                }
+            }
+        }
+        else if (!route->is_multipath)
+        {
+            mock.fibRoutePaths.erase(key);
+        }
+        else
+        {
+            auto it = mock.fibRoutePaths.find(key);
+            if (it != mock.fibRoutePaths.end())
+            {
+                for (uint32_t i = 0; i < route->nexthop_cnt; i++)
+                {
+                    auto pit = std::find(it->second.begin(), it->second.end(),
+                            route->nexthop[i].sw_if_index);
+                    if (pit != it->second.end())
+                    {
+                        it->second.erase(pit);
+                    }
+                }
+                if (it->second.empty())
+                {
+                    mock.fibRoutePaths.erase(it);
+                }
+            }
+        }
     }
     return result;
 }
@@ -160,6 +219,10 @@ int TestableSwitchVpp::exec(const std::string& command, std::string& output)
 {
     SWSS_LOG_ENTER();
     vppMock().kernelCommands.push_back(command);
+    if (vppMock().execHook)
+    {
+        return vppMock().execHook(command, output);
+    }
     if (command.find(" -o link show") != std::string::npos)
     {
         output = vppMock().kernelLinkNames;
@@ -429,11 +492,15 @@ extern "C" const char *__wrap_vpp_get_swif_name(const uint32_t swif_idx)
     return it == vppMock().swifNames.end() ? nullptr : it->second.c_str();
 }
 
-// No interface has the tunnel's source address yet: its unnumbered setup waits
-extern "C" int __wrap_vpp_sw_interface_find_by_ip(vpp_ip_addr_t *, uint32_t, uint32_t *)
+// No interface has the tunnel's source address unless a test sets findByIpResult = 0
+extern "C" int __wrap_vpp_sw_interface_find_by_ip(vpp_ip_addr_t *, uint32_t, uint32_t *out_sw_if_index)
 {
     SWSS_LOG_ENTER();
-    return -1;
+    if (vppMock().findByIpResult == 0 && out_sw_if_index != nullptr)
+    {
+        *out_sw_if_index = 1;
+    }
+    return vppMock().findByIpResult;
 }
 
 extern "C" int __wrap_vpp_intf_stats_query(const char *name, vpp_interface_stats_t *stats)
@@ -444,11 +511,16 @@ extern "C" int __wrap_vpp_intf_stats_query(const char *name, vpp_interface_stats
     return vppMock().statsResult;
 }
 
-extern "C" int __wrap_create_bvi_interface(uint8_t *, uint32_t instance)
+extern "C" int __wrap_create_bvi_interface(uint8_t *mac_address, uint32_t instance)
 {
     SWSS_LOG_ENTER();
     ++vppMock().interfaceCreates;
-    return vppMock().interfaces.insert("bvi" + std::to_string(instance)).second ? 0 : -1;
+    if (!vppMock().interfaces.insert("bvi" + std::to_string(instance)).second)
+    {
+        return -1;
+    }
+    vppMock().calls.push_back({"create_bvi_interface", macStr(mac_address), instance, 0, true});
+    return 0;
 }
 
 extern "C" int __wrap_delete_bvi_interface(const char *name)
@@ -462,7 +534,12 @@ extern "C" int __wrap_delete_bvi_interface(const char *name)
     vppMock().adminUp.erase(name);
     vppMock().mtus.erase(name);
     vppMock().mplsReferences.erase(name);
-    return vppMock().interfaces.erase(name) == 1 ? 0 : -1;
+    if (vppMock().interfaces.erase(name) != 1)
+    {
+        return -1;
+    }
+    vppMock().calls.push_back({"delete_bvi_interface", name ? name : "", 0, 0, false});
+    return 0;
 }
 
 extern "C" int __wrap_create_sub_interface(const char *parent, uint32_t id, uint16_t vlan)
@@ -480,7 +557,7 @@ extern "C" int __wrap_delete_sub_interface(const char *parent, uint32_t id)
     return __wrap_delete_bvi_interface((std::string(parent) + "." + std::to_string(id)).c_str());
 }
 
-extern "C" int __wrap_configure_lcp_interface(const char *name, const char *, bool add)
+extern "C" int __wrap_configure_lcp_interface(const char *name, const char *hostif_name, bool add)
 {
     SWSS_LOG_ENTER();
     if (add)
@@ -489,12 +566,24 @@ extern "C" int __wrap_configure_lcp_interface(const char *name, const char *, bo
         {
             return vppMock().lcpResult;
         }
-        return vppMock().lcpPairs.insert(name).second ? 0 : -1;
+        if (!vppMock().lcpPairs.insert(name).second)
+        {
+            return -1;
+        }
+        vppMock().calls.push_back({"configure_lcp_interface",
+                std::string(name ? name : "") + " " + (hostif_name ? hostif_name : ""), 0, 0, true});
+        return 0;
     }
-    return vppMock().lcpPairs.erase(name) == 1 ? 0 : -1;
+    if (vppMock().lcpPairs.erase(name) != 1)
+    {
+        return -1;
+    }
+    vppMock().calls.push_back({"configure_lcp_interface",
+            std::string(name ? name : "") + " " + (hostif_name ? hostif_name : ""), 0, 0, false});
+    return 0;
 }
 
-extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t bd_id, bool add, uint32_t)
+extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t bd_id, bool add, uint32_t port_type)
 {
     SWSS_LOG_ENTER();
     if (add)
@@ -507,6 +596,7 @@ extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t bd_i
         vppMock().bridgePorts.erase(name);
         vppMock().bdMembers[bd_id].erase(name);
     }
+    vppMock().calls.push_back({"set_sw_interface_l2_bridge", name ? name : "", bd_id, port_type, add});
     return 0;
 }
 
@@ -561,11 +651,12 @@ extern "C" int __wrap_vpp_bridge_domain_set_mac_age(uint32_t bd_id, uint8_t mac_
     vppMock().bdMacAges[bd_id] = mac_age;
     return 0;
 }
-extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t, uint32_t, int) {
+extern "C" int __wrap_vpp_ip_flow_hash_set(uint32_t vrf_id, uint32_t, int addr_family) {
     SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"vpp_ip_flow_hash_set", "", vrf_id, 0, addr_family == AF_INET6});
     return 0;
 }
-extern "C" int __wrap_set_interface_vrf(const char *name, uint32_t subId, uint32_t table, bool)
+extern "C" int __wrap_set_interface_vrf(const char *name, uint32_t subId, uint32_t table, bool is_ipv6)
 {
     SWSS_LOG_ENTER();
     ++vppMock().vrfSetCalls;
@@ -573,6 +664,7 @@ extern "C" int __wrap_set_interface_vrf(const char *name, uint32_t subId, uint32
     {
         const auto ifname = std::string(name) + (subId ? "." + std::to_string(subId) : "");
         vppMock().interfaceVrfs[ifname] = table;
+        vppMock().calls.push_back({"set_interface_vrf", name ? name : "", table, subId, is_ipv6});
     }
     return vppMock().setVrfResult;
 }
@@ -584,19 +676,19 @@ extern "C" int __wrap_get_interface_vrf(const char *name, bool, uint32_t *table)
     return vppMock().getVrfResult;
 }
 
-extern "C" int __wrap_ip_vrf_add(uint32_t table, const char *vrf_name, bool)
+extern "C" int __wrap_ip_vrf_add(uint32_t table, const char *vrf_name, bool is_ipv6)
 {
     SWSS_LOG_ENTER();
     vppMock().vrfTables.insert(table);
-    vppMock().calls.push_back({"ip_vrf_add", vrf_name ? vrf_name : "", table, 0, true});
+    vppMock().calls.push_back({"ip_vrf_add", vrf_name ? vrf_name : "", table, 0, is_ipv6});
     return 0;
 }
 
-extern "C" int __wrap_ip_vrf_del(uint32_t table, const char *vrf_name, bool)
+extern "C" int __wrap_ip_vrf_del(uint32_t table, const char *vrf_name, bool is_ipv6)
 {
     SWSS_LOG_ENTER();
-    vppMock().calls.push_back({"ip_vrf_del", vrf_name ? vrf_name : "", table, 0, false});
     vppMock().vrfTables.erase(table);
+    vppMock().calls.push_back({"ip_vrf_del", vrf_name ? vrf_name : "", table, 0, is_ipv6});
     return 0;
 }
 
