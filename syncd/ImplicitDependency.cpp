@@ -12,24 +12,6 @@
 
 using namespace syncd;
 
-static const sai_attribute_t* findAttr(
-        _In_ sai_attr_id_t id,
-        _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t* attrList)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < attrCount; idx++)
-    {
-        if (attrList[idx].id == id)
-        {
-            return &attrList[idx];
-        }
-    }
-
-    return nullptr;
-}
-
 static sai_int32_t getEnumOrDefault(
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t id,
@@ -38,7 +20,7 @@ static sai_int32_t getEnumOrDefault(
 {
     SWSS_LOG_ENTER();
 
-    if (auto attr = findAttr(id, attrCount, attrList))
+    if (auto attr = sai_metadata_get_attr_by_id(id, attrCount, attrList))
     {
         return attr->value.s32;
     }
@@ -77,7 +59,7 @@ static std::string getTunnelEndpointKey(
 {
     SWSS_LOG_ENTER();
 
-    auto type = findAttr(SAI_TUNNEL_ATTR_TYPE, attrCount, attrList);
+    auto type = sai_metadata_get_attr_by_id(SAI_TUNNEL_ATTR_TYPE, attrCount, attrList);
 
     if (type == nullptr || type->value.s32 != SAI_TUNNEL_TYPE_VXLAN)
     {
@@ -89,7 +71,7 @@ static std::string getTunnelEndpointKey(
         return "";
     }
 
-    auto srcIp = findAttr(SAI_TUNNEL_ATTR_ENCAP_SRC_IP, attrCount, attrList);
+    auto srcIp = sai_metadata_get_attr_by_id(SAI_TUNNEL_ATTR_ENCAP_SRC_IP, attrCount, attrList);
 
     if (srcIp == nullptr)
     {
@@ -109,9 +91,9 @@ static std::string getTunnelTermEndpointKey(
 {
     SWSS_LOG_ENTER();
 
-    auto type = findAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TYPE, attrCount, attrList);
-    auto tunnelType = findAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE, attrCount, attrList);
-    auto dstIp = findAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP, attrCount, attrList);
+    auto type = sai_metadata_get_attr_by_id(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TYPE, attrCount, attrList);
+    auto tunnelType = sai_metadata_get_attr_by_id(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE, attrCount, attrList);
+    auto dstIp = sai_metadata_get_attr_by_id(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP, attrCount, attrList);
 
     if (type == nullptr || type->value.s32 != SAI_TUNNEL_TERM_TABLE_ENTRY_TYPE_P2MP ||
             tunnelType == nullptr || tunnelType->value.s32 != SAI_TUNNEL_TYPE_VXLAN ||
