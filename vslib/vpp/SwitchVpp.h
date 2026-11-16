@@ -2042,6 +2042,53 @@ namespace saivs
             bool remote_fdb_drop_tunnel(
                     _In_ uint32_t sw_if_index);
 
+            /*
+             * Provisioned local port and LAG FDB entries (static MACs, MC-LAG
+             * peer-synced MACs with SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE, and
+             * dynamic entries orchagent creates or moves across local and
+             * peer-link bridge ports). Each is held in VPP's L2FIB on the
+             * VLAN's tagged sub-interface (<hwif>.<vid>) or untagged parent
+             * (<hwif>) in bridge domain <vid>.
+             */
+            struct LocalFdbTarget
+            {
+                std::string hwif_name;
+                uint32_t bd_id;
+                bool is_static;
+
+                bool operator==(const LocalFdbTarget& other) const
+                {
+                    return hwif_name == other.hwif_name &&
+                        bd_id == other.bd_id && is_static == other.is_static;
+                }
+            };
+
+            // Provisioned local FDB entry -> where VPP holds it now
+            std::map<std::string, LocalFdbTarget> m_local_fdb;
+
+            bool resolve_bridge_port_vlan_hwif(
+                    _In_ sai_object_id_t br_port_id,
+                    _In_ sai_object_id_t bv_id,
+                    _Out_ uint16_t& vlan_id,
+                    _Out_ std::string& hwif_name);
+
+            bool local_fdb_target(
+                    _In_ const std::string &serializedObjectId,
+                    _Out_ LocalFdbTarget& target);
+
+            void local_fdb_sync(
+                    _In_ const std::string &serializedObjectId);
+
+            bool local_fdb_forget(
+                    _In_ const std::string &serializedObjectId);
+
+            void local_fdb_resync(
+                    _In_ uint16_t vlan_id);
+
+            void local_fdb_drop_hwif(
+                    _In_ const std::string &hwif_name,
+                    _In_ uint32_t bd_id);
+
             bool vlan_id_of_bv(
                     _In_ sai_object_id_t bv_id,
                     _Out_ uint16_t& vlan_id);
