@@ -337,15 +337,30 @@ int __wrap_vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, uin
 {
     SWSS_LOG_ENTER();
 
+    char src[INET6_ADDRSTRLEN];
+    char dst[INET6_ADDRSTRLEN];
+    vpp_ip_addr_t_to_string(&tunnel->src_address, src, sizeof(src));
+    vpp_ip_addr_t_to_string(&tunnel->dst_address, dst, sizeof(dst));
+    std::string key = std::string(src) + "|" + dst + "|" + std::to_string(tunnel->vni);
+
     if (is_add)
     {
+        if (vppMock().rejectDuplicateVxlanTunnels && vppMock().activeVxlanTunnels.count(key))
+        {
+            return -13;
+        }
         *sw_if_index = g_nextSwIfIndex++;
-
-        char dst[INET6_ADDRSTRLEN];
-
-        vpp_ip_addr_t_to_string(&tunnel->dst_address, dst, sizeof(dst));
         g_vxlanTunnelDst[*sw_if_index] = dst;
         g_vxlanTunnelDecapAny[*sw_if_index] = tunnel->decap_any;
+        vppMock().activeVxlanTunnels.insert(key);
+    }
+    else
+    {
+        if (vppMock().vxlanTunnelDelResult != 0)
+        {
+            return vppMock().vxlanTunnelDelResult;
+        }
+        vppMock().activeVxlanTunnels.erase(key);
     }
 
     vppMock().calls.push_back({"vpp_vxlan_tunnel_add_del", "", tunnel->vni, is_add ? *sw_if_index : 0, is_add});
@@ -384,12 +399,6 @@ int __wrap_l2fib_add_del_by_index(uint32_t sw_if_index, const uint8_t *mac, uint
     vppMock().calls.push_back({"l2fib_add_del_by_index", std::to_string(sw_if_index) + " " + macStr(mac), bd_id, is_static_mac, is_add});
     return is_add ? 0 : g_l2fibByIndexDelResult;
 }
-
-int __wrap_sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address) { return 0; }
-int __wrap_interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add) { return 0; }
-
-int __wrap_ip6_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct sockaddr_in6 *addr,
-        bool is_static, bool no_fib_entry, uint8_t *mac, bool is_add) { return 0; }
 
 }
 
