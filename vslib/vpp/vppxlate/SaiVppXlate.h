@@ -596,6 +596,7 @@ typedef enum {
     /* Per-interface ingress feature overrides. Uses the VPP_BD_FLAG_* bit
      * values; ARP_UFWD is not supported by the VPP l2_flags API. */
     extern int set_l2_interface_flags_by_index(uint32_t sw_if_index, vpp_bd_flags_t flags, bool enable);
+    extern int set_l2_interface_flags(const char *hwif_name, vpp_bd_flags_t flags, bool enable);
     extern int set_l2_interface_vlan_tag_rewrite(const char *hwif_name, uint32_t tag1, uint32_t tag2, uint32_t push_dot1q, uint32_t vtr_op);
     extern int bridge_domain_get_member_count (uint32_t bd_id, uint32_t *member_count);
     extern int create_bvi_interface(uint8_t *mac_address, uint32_t instance);
@@ -704,6 +705,13 @@ typedef enum {
 
     extern int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable);
     extern int vpp_iface_loopback_set_action(const char *hwif_name, int action);
+    /* sonic-ext isolation groups: a frame received on an interface bound to
+     * a group is not bridged out of its members. group_id ~0 unbinds. */
+    extern int vpp_isolation_group_add_del(uint32_t group_id, bool is_add);
+    extern int vpp_isolation_group_member_add_del(uint32_t group_id, const char *hwif_name, bool is_add);
+    extern int vpp_isolation_group_member_add_del_by_index(uint32_t group_id, uint32_t sw_if_index, bool is_add);
+    extern int vpp_isolation_group_bind(const char *hwif_name, uint32_t group_id);
+    extern int vpp_isolation_group_bind_by_index(uint32_t sw_if_index, uint32_t group_id);
     extern int vpp_sonic_ext_feature_get(const char *feature, bool *enabled);
     extern int vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index);
     extern int vpp_ipip_tunnel_del(uint32_t sw_if_index);

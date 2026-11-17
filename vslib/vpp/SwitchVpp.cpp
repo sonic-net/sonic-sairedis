@@ -87,6 +87,7 @@ SwitchVpp::SwitchVpp(
     SWSS_LOG_ENTER();
 
     m_trim.restoreTrimPolicy();
+    restoreIsolationGroups();
 
     loadPortConfig();
 
@@ -1740,6 +1741,27 @@ sai_status_t SwitchVpp::create(
         return createVlanMember(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_BRIDGE_PORT)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createBridgePort(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_ISOLATION_GROUP)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createIsolationGroup(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createIsolationGroupMember(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_FDB_ENTRY)
     {
         return FdbEntryadd(serializedObjectId, switch_id, attr_count, attr_list);
@@ -2331,6 +2353,18 @@ sai_status_t SwitchVpp::remove(
     {
         return bfd_session_del(serializedObjectId);
     }
+    else if (object_type == SAI_OBJECT_TYPE_ISOLATION_GROUP)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return removeIsolationGroup(objectId);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_ISOLATION_GROUP_MEMBER)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return removeIsolationGroupMember(objectId);
+    }
 
     if (object_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP)
     {
@@ -2434,6 +2468,11 @@ sai_status_t SwitchVpp::setPort(
         _In_ const sai_attribute_t* attr)
 {
     SWSS_LOG_ENTER();
+
+    if (attr->id == SAI_PORT_ATTR_ISOLATION_GROUP)
+    {
+        return setIsolationGroupBinding(SAI_OBJECT_TYPE_PORT, portId, attr);
+    }
 
     sai_status_t status = UpdatePort(portId, 1, attr);
 
@@ -2762,6 +2801,13 @@ sai_status_t SwitchVpp::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setLag(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_BRIDGE_PORT)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setBridgePort(objectId, attr);
     }
 
     if (objectType == SAI_OBJECT_TYPE_MIRROR_SESSION)
