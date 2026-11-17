@@ -796,12 +796,22 @@ namespace saivs
          * the sonic_ext plugin gives the whole VPP tunnel the encap TTL, so
          * they must agree on it: a nexthop or a SET of
          * SAI_TUNNEL_ATTR_ENCAP_TTL_VAL that would make them differ, as a pipe
-         * nexthop with a uniform one, is not supported.
+         * nexthop with a uniform one, is not supported. A uniform nexthop also
+         * needs the VPP tunnel to copy the inner TTL (get_vpp_tunnel_flags()).
          */
         bool has_other_encap_ttl(
             _In_ uint32_t sw_if_index,
             _In_ sai_object_id_t tunnel_oid,
             _In_ uint8_t ttl);
+
+        /**
+         * @brief The tunnel_encap_decap_flags a VPP IPIP tunnel was created
+         * with, 0 for a tunnel this does not track. They come from the SAI
+         * object that created it, a decap term or an encap nexthop, as VPP
+         * takes them only then: the uniform TTL model's copy of the inner TTL
+         * (TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_HOP_LIMIT) among them.
+         */
+        uint8_t get_vpp_tunnel_flags(_In_ uint32_t sw_if_index) const;
 
         /**
          * @brief Apply the encap TTL to a VPP IPIP tunnel.
@@ -921,6 +931,9 @@ namespace saivs
         struct IpIpTunnelRef {
             uint32_t sw_if_index;
             uint32_t refcount;
+            // tunnel_encap_decap_flags VPP created the tunnel with, which it
+            // keeps for the tunnel's lifetime, whoever uses it
+            uint8_t flags;
         };
 
 
