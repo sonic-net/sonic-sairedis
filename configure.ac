@@ -209,7 +209,11 @@ AC_SUBST(CXXFLAGS_COMMON)
 
 # -lvlibapi -lvapiclient -lvppapiclient -lvlibmemoryclient -lsvm -lvppinfra -lvlib -lvatplugin
 # -lvapiclient -lsvm -lvatplugin
-AC_CHECK_LIB([vlib], [main], [AC_SUBST(VPP_LIBS, "-lvlib -lvlibapi -lvppapiclient -lvlibmemoryclient -lvppinfra")])
+AC_CHECK_LIB(
+    [vlib],
+    [main],
+    [AC_SUBST(VPP_LIBS,
+        "-lvlib -lvlibapi -lvppapiclient -lvlibmemoryclient -lvppinfra -lnl-genl-3 -lnl-3")])
 AM_CONDITIONAL([USE_VPP], [test "x$VPP_LIBS" != "x"])
 
 AC_ARG_WITH(extra-libsai-ldflags,

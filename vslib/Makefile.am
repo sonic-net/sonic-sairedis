@@ -84,6 +84,7 @@ libSaiVS_a_SOURCES +=\
 					  vpp/SaiObjectDB.cpp \
 					  vpp/VppInterfaceRegistry.cpp \
 					  vpp/SwitchVpp.cpp \
+					  vpp/SwitchVppStel.cpp \
 					  vpp/SwitchVppAcl.cpp \
 					  vpp/SwitchVppPbh.cpp \
 					  vpp/SwitchVppTrim.cpp \

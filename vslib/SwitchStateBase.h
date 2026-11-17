@@ -33,6 +33,20 @@
 
 namespace saivs
 {
+    struct TamCounterSubscription
+    {
+        sai_object_id_t objectId;
+        sai_object_type_t objectType;
+        sai_stat_id_t statId;
+        uint16_t label;
+    };
+
+    struct TamTemplateKey
+    {
+        uint32_t observationDomainId;
+        uint16_t templateId;
+    };
+
     class SwitchStateBase:
         public SwitchState
     {
@@ -590,8 +604,20 @@ namespace saivs
             void send_tam_tel_type_config_change(
                 _In_ sai_object_id_t tam_tel_type_id);
 
-            sai_status_t refresh_tam_tel_ipfix_templates(
+            std::vector<TamCounterSubscription> getTamCounterSubscriptions(
                 _In_ sai_object_id_t tam_tel_type_id);
+
+            TamTemplateKey nextTamTemplateKey(
+                _In_ sai_object_id_t tam_tel_type_id);
+
+            bool getTamTemplateKey(
+                _In_ sai_object_id_t tam_tel_type_id,
+                _Out_ TamTemplateKey& key) const;
+
+            virtual sai_status_t refresh_tam_tel_ipfix_templates(
+                _In_ sai_object_id_t tam_tel_type_id);
+
+            std::map<sai_object_id_t, TamTemplateKey> m_tamTemplateKeys;
 
         protected:
 

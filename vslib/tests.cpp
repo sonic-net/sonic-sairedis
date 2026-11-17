@@ -785,7 +785,7 @@ void test_supported_obj_types()
 
     sai_reinit();
 
-    uint32_t expected_num_attrs = 8;
+    uint32_t expected_num_attrs = 10;
 
     sai_attribute_t attr;
 
