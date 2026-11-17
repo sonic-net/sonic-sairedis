@@ -30,10 +30,12 @@
 #include <mutex>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <queue>
 #include <set>
 #include <string>
+#include <thread>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -127,6 +129,54 @@ namespace saivs
                     _In_ sai_object_id_t port_id) override;
 
         private: // from vpp VirtualSwitchSaiInterface
+
+            struct StelCounter
+            {
+                TamCounterSubscription subscription;
+                std::string hwifName;
+            };
+
+            struct StelStream
+            {
+                std::atomic<bool> running{false};
+                std::chrono::nanoseconds interval{0};
+                sai_object_id_t reportId = SAI_NULL_OBJECT_ID;
+                TamTemplateKey templateKey{};
+                std::vector<StelCounter> counters;
+                std::mutex wakeMutex;
+                std::condition_variable wake;
+                uint64_t intervalVersion = 0;
+                bool startupDone = false;
+                bool startupOk = false;
+                std::thread worker;
+            };
+
+            sai_status_t setTamTelType(
+                    _In_ sai_object_id_t tam_tel_type_id,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t startStelStream(
+                    _In_ sai_object_id_t tam_tel_type_id);
+
+            void stopStelStream(
+                    _In_ sai_object_id_t tam_tel_type_id);
+
+            void stopAllStelStreams();
+
+            void stelWorker(
+                    _In_ const std::shared_ptr<StelStream>& stream);
+
+            sai_status_t getTamReportInterval(
+                    _In_ sai_object_id_t tam_tel_type_id,
+                    _Out_ std::chrono::nanoseconds& interval,
+                    _Out_ sai_object_id_t *report_id = nullptr);
+
+            sai_status_t getReportInterval(
+                    _In_ sai_object_id_t report_id,
+                    _Out_ std::chrono::nanoseconds& interval);
+
+            sai_status_t updateStelReportInterval(
+                    _In_ sai_object_id_t report_id);
 
             void setPortStats(
                     _In_ sai_object_id_t oid);
@@ -1788,6 +1838,9 @@ namespace saivs
             // Sub-interfaces whose admin up VPP refused while their parent was
             // admin down. Only accessed from the SAI API thread.
             std::set<std::string> m_sub_if_admin_up_pending;
+
+            std::mutex m_stelMutex;
+            std::map<sai_object_id_t, std::shared_ptr<StelStream>> m_stelStreams;
 
             static int currentMaxInstance;
 

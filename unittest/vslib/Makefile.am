@@ -52,7 +52,8 @@ tests_SOURCES = main.cpp \
 				TestSwitchStateBase.cpp \
 				TestSai.cpp \
 				TestVirtualSwitchSaiInterface.cpp \
-				TestTAM.cpp
+				TestTAM.cpp \
+				TestTAMIpfixTemplate.cpp
 
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \

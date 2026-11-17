@@ -575,6 +575,118 @@ constexpr const char *SwitchVppSubIfAdminState::MEMBER_HWIF;
 constexpr const char *SwitchVppSubIfAdminState::OTHER_MEMBER_HWIF;
 constexpr const char *SwitchVppSubIfAdminState::SUB_PORT_HWIF;
 
+TEST_F(SwitchVppSubIfAdminState, HftCapabilitiesArePortOnly)
+{
+    sai_attr_capability_t capability{};
+    ASSERT_EQ(
+            SAI_STATUS_SUCCESS,
+            m_sw->queryAttributeCapability(
+                    m_switchId,
+                    SAI_OBJECT_TYPE_TAM_TEL_TYPE,
+                    SAI_TAM_TEL_TYPE_ATTR_SWITCH_ENABLE_PORT_STATS,
+                    &capability));
+    EXPECT_TRUE(capability.create_implemented);
+
+    ASSERT_EQ(
+            SAI_STATUS_SUCCESS,
+            m_sw->queryAttributeCapability(
+                    m_switchId,
+                    SAI_OBJECT_TYPE_TAM_TEL_TYPE,
+                    SAI_TAM_TEL_TYPE_ATTR_SWITCH_ENABLE_MMU_STATS,
+                    &capability));
+    EXPECT_FALSE(capability.create_implemented);
+
+    sai_s32_list_t modes{};
+    EXPECT_EQ(
+            SAI_STATUS_BUFFER_OVERFLOW,
+            m_sw->queryAttrEnumValuesCapability(
+                    m_switchId,
+                    SAI_OBJECT_TYPE_TAM_TEL_TYPE,
+                    SAI_TAM_TEL_TYPE_ATTR_MODE,
+                    &modes));
+    ASSERT_EQ(1u, modes.count);
+    int32_t mode;
+    modes.list = &mode;
+    EXPECT_EQ(
+            SAI_STATUS_SUCCESS,
+            m_sw->queryAttrEnumValuesCapability(
+                    m_switchId,
+                    SAI_OBJECT_TYPE_TAM_TEL_TYPE,
+                    SAI_TAM_TEL_TYPE_ATTR_MODE,
+                    &modes));
+    EXPECT_EQ(SAI_TAM_TEL_TYPE_MODE_SINGLE_TYPE, mode);
+
+    sai_stat_st_capability_list_t stats{};
+    EXPECT_EQ(
+            SAI_STATUS_BUFFER_OVERFLOW,
+            m_sw->queryStatsStCapability(
+                    m_switchId,
+                    SAI_OBJECT_TYPE_PORT,
+                    &stats));
+    ASSERT_EQ(6u, stats.count);
+
+    std::vector<sai_stat_st_capability_t> values(stats.count);
+    stats.list = values.data();
+    EXPECT_EQ(
+            SAI_STATUS_SUCCESS,
+            m_sw->queryStatsStCapability(
+                    m_switchId,
+                    SAI_OBJECT_TYPE_PORT,
+                    &stats));
+    for (const auto& value : values)
+    {
+        EXPECT_EQ(1000000u, value.minimal_polling_interval);
+    }
+
+    EXPECT_EQ(
+            SAI_STATUS_NOT_SUPPORTED,
+            m_sw->queryStatsStCapability(
+                    m_switchId,
+                    SAI_OBJECT_TYPE_QUEUE,
+                    &stats));
+}
+
+TEST_F(SwitchVppSubIfAdminState, HftUsesTheTamReportInterval)
+{
+    sai_object_id_t report = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_TAM_REPORT,
+            m_switchId);
+    sai_attribute_t reportAttrs[2]{};
+    reportAttrs[0].id = SAI_TAM_REPORT_ATTR_REPORT_INTERVAL;
+    reportAttrs[0].value.u32 = 1000;
+    reportAttrs[1].id = SAI_TAM_REPORT_ATTR_REPORT_INTERVAL_UNIT;
+    reportAttrs[1].value.s32 = SAI_TAM_REPORT_INTERVAL_UNIT_USEC;
+    ASSERT_EQ(
+            SAI_STATUS_SUCCESS,
+            m_sw->create_internal(
+                    SAI_OBJECT_TYPE_TAM_REPORT,
+                    sai_serialize_object_id(report),
+                    m_switchId,
+                    2,
+                    reportAttrs));
+
+    sai_object_id_t telType = m_mgr->allocateNewObjectId(
+            SAI_OBJECT_TYPE_TAM_TEL_TYPE,
+            m_switchId);
+    sai_attribute_t telTypeAttr{};
+    telTypeAttr.id = SAI_TAM_TEL_TYPE_ATTR_REPORT_ID;
+    telTypeAttr.value.oid = report;
+    ASSERT_EQ(
+            SAI_STATUS_SUCCESS,
+            m_sw->create_internal(
+                    SAI_OBJECT_TYPE_TAM_TEL_TYPE,
+                    sai_serialize_object_id(telType),
+                    m_switchId,
+                    1,
+                    &telTypeAttr));
+
+    std::chrono::nanoseconds interval;
+    EXPECT_EQ(
+            SAI_STATUS_SUCCESS,
+            m_sw->getTamReportInterval(telType, interval));
+    EXPECT_EQ(std::chrono::milliseconds(1), interval);
+}
+
 /*
  * A tagged member added while its port is still admin down: VPP refuses the
  * sub-interface's admin up, and nothing brought it up when the port came up,

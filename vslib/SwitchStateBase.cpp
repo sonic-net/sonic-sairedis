@@ -11,7 +11,9 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <random>
+#include <chrono>
+#include <limits>
+#include <tuple>
 
 #define SAI_VS_MAX_PORTS 1024
 
@@ -1103,6 +1105,8 @@ sai_status_t SwitchStateBase::set_switch_supported_object_types()
         SAI_OBJECT_TYPE_TAM_REPORT,
         SAI_OBJECT_TYPE_TAM_TRANSPORT,
         SAI_OBJECT_TYPE_TAM_TELEMETRY,
+        SAI_OBJECT_TYPE_TAM_TEL_TYPE,
+        SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
         SAI_OBJECT_TYPE_TAM_EVENT_THRESHOLD
     };
 
@@ -1286,6 +1290,16 @@ sai_status_t SwitchStateBase::set_initial_tam_objects()
     attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
     attr.value.objlist.count = 0;
     attr.value.objlist.list = nullptr;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_TAM_ST_REPORT_CHUNK_SIZE;
+    attr.value.u32 = 65535;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_TAM_ST_CHUNK_COUNT;
+    attr.value.u32 = 0;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
@@ -4898,28 +4912,200 @@ void SwitchStateBase::send_tam_tel_type_config_change(
     m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
 }
 
-sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t tam_tel_type_id)
+std::vector<TamCounterSubscription> SwitchStateBase::getTamCounterSubscriptions(
+        _In_ sai_object_id_t tam_tel_type_id)
 {
     SWSS_LOG_ENTER();
 
-    std::vector<uint8_t> ipfix_templates;
+    std::vector<TamCounterSubscription> subscriptions;
 
-    // TODO: This is a placeholder for the actual logic to generate IPFIX templates.
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<uint16_t> dist(0, 255);
-    ipfix_templates.resize(64 * 1024);
-
-    for (size_t i = 0; i < ipfix_templates.size(); ++i)
+    auto objectIt = m_objectHash.find(SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION);
+    if (objectIt == m_objectHash.end())
     {
-        ipfix_templates[i] = static_cast<uint8_t>(dist(gen));
+        return subscriptions;
     }
 
+    const auto *telTypeMeta = sai_metadata_get_attr_metadata(
+            SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+            SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_TEL_TYPE);
+    const auto *objectIdMeta = sai_metadata_get_attr_metadata(
+            SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+            SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_OBJECT_ID);
+    const auto *statIdMeta = sai_metadata_get_attr_metadata(
+            SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+            SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_STAT_ID);
+    const auto *labelMeta = sai_metadata_get_attr_metadata(
+            SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+            SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_LABEL);
+
+    const auto telTypeName = sai_serialize_attr_id(*telTypeMeta);
+    const auto objectIdName = sai_serialize_attr_id(*objectIdMeta);
+    const auto statIdName = sai_serialize_attr_id(*statIdMeta);
+    const auto labelName = sai_serialize_attr_id(*labelMeta);
+
+    for (const auto &object : objectIt->second)
+    {
+        const auto &attrs = object.second;
+        auto telTypeIt = attrs.find(telTypeName);
+        auto objectIdIt = attrs.find(objectIdName);
+        auto statIdIt = attrs.find(statIdName);
+        auto labelIt = attrs.find(labelName);
+
+        if (telTypeIt == attrs.end() || objectIdIt == attrs.end() ||
+            statIdIt == attrs.end() || labelIt == attrs.end() ||
+            telTypeIt->second->getAttr()->value.oid != tam_tel_type_id)
+        {
+            continue;
+        }
+
+        sai_object_id_t objectId = objectIdIt->second->getAttr()->value.oid;
+        uint64_t label = labelIt->second->getAttr()->value.u64;
+
+        if (label > 0x7fff)
+        {
+            SWSS_LOG_WARN(
+                    "TAM subscription label %lu exceeds the 15-bit IPFIX range",
+                    static_cast<unsigned long>(label));
+            continue;
+        }
+
+        subscriptions.push_back({
+                objectId,
+                objectTypeQuery(objectId),
+                static_cast<sai_stat_id_t>(statIdIt->second->getAttr()->value.u32),
+                static_cast<uint16_t>(label)});
+    }
+
+    std::sort(
+            subscriptions.begin(),
+            subscriptions.end(),
+            [](const auto &left, const auto &right)
+            {
+                return std::tie(left.label, left.objectId, left.statId) <
+                       std::tie(right.label, right.objectId, right.statId);
+            });
+
+    return subscriptions;
+}
+
+TamTemplateKey SwitchStateBase::nextTamTemplateKey(
+        _In_ sai_object_id_t tam_tel_type_id)
+{
+    SWSS_LOG_ENTER();
+
+    // Object indexes start at zero, while an IPFIX observation domain of zero
+    // means that no specific observation domain is identified.
+    auto it = m_tamTemplateKeys.emplace(
+            tam_tel_type_id,
+            TamTemplateKey{
+                    static_cast<uint32_t>(tam_tel_type_id & 0xffffffff) + 1,
+                    255}).first;
+    auto& key = it->second;
+
+    if (key.templateId == std::numeric_limits<uint16_t>::max())
+    {
+        ++key.observationDomainId;
+        key.templateId = 256;
+    }
+    else
+    {
+        ++key.templateId;
+    }
+
+    return key;
+}
+
+bool SwitchStateBase::getTamTemplateKey(
+        _In_ sai_object_id_t tam_tel_type_id,
+        _Out_ TamTemplateKey& key) const
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_tamTemplateKeys.find(tam_tel_type_id);
+    if (it == m_tamTemplateKeys.end())
+    {
+        return false;
+    }
+
+    key = it->second;
+    return true;
+}
+
+namespace
+{
+    void writeU16Be(std::vector<uint8_t> &buffer, uint16_t value)
+    {
+        // SWSS_LOG_ENTER() omitted - serialization helper.
+        buffer.push_back(static_cast<uint8_t>((value >> 8) & 0xff));
+        buffer.push_back(static_cast<uint8_t>(value & 0xff));
+    }
+
+    void writeU32Be(std::vector<uint8_t> &buffer, uint32_t value)
+    {
+        // SWSS_LOG_ENTER() omitted - serialization helper.
+        buffer.push_back(static_cast<uint8_t>((value >> 24) & 0xff));
+        buffer.push_back(static_cast<uint8_t>((value >> 16) & 0xff));
+        buffer.push_back(static_cast<uint8_t>((value >> 8) & 0xff));
+        buffer.push_back(static_cast<uint8_t>(value & 0xff));
+    }
+}
+
+sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(
+        _In_ sai_object_id_t tam_tel_type_id)
+{
+    SWSS_LOG_ENTER();
+
+    const auto subscriptions = getTamCounterSubscriptions(tam_tel_type_id);
+    const size_t setSize = 12 + subscriptions.size() * 8;
+    const size_t messageSize = 16 + setSize;
+
+    if (messageSize > std::numeric_limits<uint16_t>::max())
+    {
+        SWSS_LOG_ERROR("IPFIX template for TAM telemetry type %s is too large",
+                sai_serialize_object_id(tam_tel_type_id).c_str());
+        return SAI_STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    const auto key = nextTamTemplateKey(tam_tel_type_id);
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    const auto exportTime = std::chrono::duration_cast<std::chrono::seconds>(
+            now).count();
+
+    std::vector<uint8_t> ipfixTemplates;
+    ipfixTemplates.reserve(messageSize);
+
+    writeU16Be(ipfixTemplates, 10); // IPFIX version.
+    writeU16Be(ipfixTemplates, static_cast<uint16_t>(messageSize));
+    writeU32Be(ipfixTemplates, static_cast<uint32_t>(exportTime));
+    writeU32Be(ipfixTemplates, 0); // Data-record sequence number.
+    writeU32Be(ipfixTemplates, key.observationDomainId);
+
+    writeU16Be(ipfixTemplates, 2); // Template Set ID.
+    writeU16Be(ipfixTemplates, static_cast<uint16_t>(setSize));
+    writeU16Be(ipfixTemplates, key.templateId);
+    writeU16Be(
+            ipfixTemplates,
+            static_cast<uint16_t>(subscriptions.size() + 1));
+
+    writeU16Be(ipfixTemplates, 325); // observationTimeNanoseconds.
+    writeU16Be(ipfixTemplates, 8);
+
+    for (const auto &subscription : subscriptions)
+    {
+        writeU16Be(
+                ipfixTemplates,
+                static_cast<uint16_t>(subscription.label | 0x8000));
+        writeU16Be(ipfixTemplates, 8);
+        writeU32Be(
+                ipfixTemplates,
+                (static_cast<uint32_t>(subscription.objectType) << 16) |
+                (static_cast<uint32_t>(subscription.statId) & 0xffff));
+    }
 
     sai_attribute_t attr;
     attr.id = SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES;
-    attr.value.u8list.count = static_cast<uint32_t>(ipfix_templates.size());
-    attr.value.u8list.list = ipfix_templates.data();
+    attr.value.u8list.count = static_cast<uint32_t>(ipfixTemplates.size());
+    attr.value.u8list.list = ipfixTemplates.data();
     sai_status_t status = set(SAI_OBJECT_TYPE_TAM_TEL_TYPE, tam_tel_type_id, &attr);
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -4929,7 +5115,8 @@ sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t ta
     }
     else
     {
-        SWSS_LOG_INFO("Successfully set IPFIX templates for TAM Tel Type %s",
+        SWSS_LOG_INFO("Set %zu-byte IPFIX template for TAM Tel Type %s",
+                      ipfixTemplates.size(),
                       sai_serialize_object_id(tam_tel_type_id).c_str());
     }
 

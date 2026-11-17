@@ -97,6 +97,8 @@ SwitchVpp::~SwitchVpp()
 {
     SWSS_LOG_ENTER();
 
+    stopAllStelStreams();
+
     // Clear the VPP MAC event callback before stopping the thread so no
     // callback fires against a partially-destroyed object during join().
     deinitFdbEventHandling();
@@ -1229,6 +1231,19 @@ sai_status_t SwitchVpp::queryAttributeCapability(
     // TODO: We should generate this metadata for the virtual switch rather
     // than hard-coding it here.
 
+    if (object_type == SAI_OBJECT_TYPE_TAM_TEL_TYPE &&
+        (attr_id == SAI_TAM_TEL_TYPE_ATTR_SWITCH_ENABLE_PORT_STATS ||
+         attr_id == SAI_TAM_TEL_TYPE_ATTR_SWITCH_ENABLE_MMU_STATS ||
+         attr_id == SAI_TAM_TEL_TYPE_ATTR_SWITCH_ENABLE_OUTPUT_QUEUE_STATS))
+    {
+        const bool implemented =
+                attr_id == SAI_TAM_TEL_TYPE_ATTR_SWITCH_ENABLE_PORT_STATS;
+        capability->create_implemented = implemented;
+        capability->set_implemented = false;
+        capability->get_implemented = implemented;
+        return SAI_STATUS_SUCCESS;
+    }
+
     bool implemented = true;
     if ((object_type == SAI_OBJECT_TYPE_ROUTER_INTERFACE &&
             attr_id == SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION) ||
@@ -1253,6 +1268,20 @@ sai_status_t SwitchVpp::queryAttrEnumValuesCapability(
 {
     SWSS_LOG_ENTER();
 
+    if (object_type == SAI_OBJECT_TYPE_TAM_TEL_TYPE &&
+        attr_id == SAI_TAM_TEL_TYPE_ATTR_MODE)
+    {
+        if (enum_values_capability->count < 1)
+        {
+            enum_values_capability->count = 1;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        enum_values_capability->count = 1;
+        enum_values_capability->list[0] = SAI_TAM_TEL_TYPE_MODE_SINGLE_TYPE;
+        return SAI_STATUS_SUCCESS;
+    }
+
     return m_trim.queryAttrEnumValuesCapability(
             switch_id, object_type, attr_id, enum_values_capability);
 }
@@ -1274,10 +1303,36 @@ sai_status_t SwitchVpp::queryStatsStCapability(
 {
     SWSS_LOG_ENTER();
 
-    // VPP does not support streaming telemetry (HFTel / TAM).
-    // Returning NOT_SUPPORTED prevents HFTelOrch from being instantiated.
+    static const std::vector<sai_port_stat_t> supportedStats = {
+        SAI_PORT_STAT_IF_IN_OCTETS,
+        SAI_PORT_STAT_IF_IN_DISCARDS,
+        SAI_PORT_STAT_IF_OUT_OCTETS,
+        SAI_PORT_STAT_IF_IN_UCAST_PKTS,
+        SAI_PORT_STAT_IF_OUT_ERRORS,
+        SAI_PORT_STAT_IF_OUT_UCAST_PKTS,
+    };
 
-    return SAI_STATUS_NOT_SUPPORTED;
+    if (object_type != SAI_OBJECT_TYPE_PORT)
+    {
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    if (stats_capability->count < supportedStats.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(supportedStats.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(supportedStats.size());
+    for (uint32_t i = 0; i < stats_capability->count; ++i)
+    {
+        stats_capability->list[i].capability.stat_enum =
+                static_cast<sai_stat_id_t>(supportedStats[i]);
+        stats_capability->list[i].capability.stat_modes = SAI_STATS_MODE_READ;
+        stats_capability->list[i].minimal_polling_interval = 1000000;
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 uint64_t SwitchVpp::getObjectTypeAvailability(
@@ -1557,6 +1612,20 @@ sai_status_t SwitchVpp::create(
         sai_object_id_t object_id;
         sai_deserialize_object_id(serializedObjectId, object_id);
         return createHostif(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_TAM)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return createTam(objectId, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_TAM_TELEMETRY)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return createTamTelemetry(objectId, switch_id, attr_count, attr_list);
     }
 
     if (object_type == SAI_OBJECT_TYPE_POLICER)
@@ -2110,6 +2179,19 @@ sai_status_t SwitchVpp::remove(
 
     serviceDeferredOperStatusResync();
 
+    if (object_type == SAI_OBJECT_TYPE_TAM_TEL_TYPE)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        stopStelStream(objectId);
+        sai_status_t status = remove_internal(object_type, serializedObjectId);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            m_tamTemplateKeys.erase(objectId);
+        }
+        return status;
+    }
+
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
         sai_object_id_t objectId;
@@ -2658,6 +2740,28 @@ sai_status_t SwitchVpp::set(
         return m_nat.setNatEntry(serializedObjectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_TAM_REPORT &&
+        (attr->id == SAI_TAM_REPORT_ATTR_REPORT_INTERVAL ||
+         attr->id == SAI_TAM_REPORT_ATTR_REPORT_INTERVAL_UNIT))
+    {
+        SaiAttrBackup backup;
+        CHECK_STATUS(backupAttr(
+                objectType,
+                serializedObjectId,
+                attr->id,
+                backup));
+        CHECK_STATUS(set_internal(objectType, serializedObjectId, attr));
+
+        sai_object_id_t reportId;
+        sai_deserialize_object_id(serializedObjectId, reportId);
+        sai_status_t status = updateStelReportInterval(reportId);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            restoreAttr(backup);
+        }
+        return status;
+    }
+
     if (objectType == SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER)
     {
         sai_object_id_t objectId;
@@ -2741,6 +2845,13 @@ sai_status_t SwitchVpp::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setAclEntry(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_TAM_TEL_TYPE)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setTamTelType(objectId, attr);
     }
 
     if (objectType == SAI_OBJECT_TYPE_MACSEC_SA)
