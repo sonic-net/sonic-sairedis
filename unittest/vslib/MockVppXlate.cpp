@@ -600,6 +600,13 @@ extern "C" int __wrap_set_sw_interface_l2_bridge(const char *name, uint32_t bd_i
     return 0;
 }
 
+extern "C" int __wrap_set_l2_interface_flags(const char *name, vpp_bd_flags_t flags, bool enable)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({"set_l2_interface_flags", name, (uint32_t)flags, 0, enable});
+    return vppMock().l2FlagsResult;
+}
+
 extern "C" int __wrap_refresh_interfaces_list() {
     SWSS_LOG_ENTER();
     return 0;

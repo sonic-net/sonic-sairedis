@@ -6491,6 +6491,22 @@ int set_l2_interface_flags_by_index(uint32_t sw_if_index,
     return ret;
 }
 
+int set_l2_interface_flags(const char *hwif_name, vpp_bd_flags_t flags, bool enable)
+{
+    vat_main_t *vam = &vat_main;
+    u32 idx;
+
+    if (!hwif_name) {
+        return -EINVAL;
+    }
+    idx = get_swif_idx(vam, hwif_name);
+    if (idx == (u32) -1) {
+        SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
+        return -EINVAL;
+    }
+    return set_l2_interface_flags_by_index(idx, flags, enable);
+}
+
 int set_sw_interface_l2_bridge(const char *hwif_name, uint32_t bridge_id, bool l2_mode, uint32_t port_type)
 {
     vat_main_t *vam = &vat_main;
