@@ -4993,10 +4993,12 @@ TamTemplateKey SwitchStateBase::nextTamTemplateKey(
 {
     SWSS_LOG_ENTER();
 
+    // Object indexes start at zero, while an IPFIX observation domain of zero
+    // means that no specific observation domain is identified.
     auto it = m_tamTemplateKeys.emplace(
             tam_tel_type_id,
             TamTemplateKey{
-                    static_cast<uint32_t>(tam_tel_type_id & 0xffffffff),
+                    static_cast<uint32_t>(tam_tel_type_id & 0xffffffff) + 1,
                     255}).first;
     auto& key = it->second;
 
@@ -5054,11 +5056,6 @@ sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(
     SWSS_LOG_ENTER();
 
     const auto subscriptions = getTamCounterSubscriptions(tam_tel_type_id);
-    if (subscriptions.empty())
-    {
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
     const size_t setSize = 12 + subscriptions.size() * 8;
     const size_t messageSize = 16 + setSize;
 
