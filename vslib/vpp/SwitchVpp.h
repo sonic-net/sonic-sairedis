@@ -153,7 +153,8 @@ namespace saivs
                     _In_ sai_stats_mode_t mode,
                     _Out_ uint64_t *counters);
 
-            /* Translate SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION into
+            /* Translate SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, or the
+             * SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION of an IPINIP tunnel, into
              * the sonic_ext plugin call. Returns SAI_STATUS_NOT_SUPPORTED for
              * any action other than FORWARD/DROP, SAI_STATUS_FAILURE if the
              * feature query or action call fails. */
@@ -163,6 +164,13 @@ namespace saivs
 
             static sai_status_t validateLoopbackAction(
                     _In_ int32_t packet_action);
+
+            /* Set SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION and apply it to the
+             * VPP IPIP tunnels of the tunnel's encap nexthops. The attribute
+             * keeps its previous value if VPP does not take the new one. */
+            sai_status_t setTunnelLoopbackAction(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr);
 
             // Only resources acquired by this CREATE may be unwound on failure.
             struct RifCreateState
@@ -260,6 +268,26 @@ namespace saivs
                     _In_ const std::unordered_map<std::string, std::shared_ptr<SaiObject>>& routes,
                     _Inout_ nexthop_grp_member_t& member,
                     _In_ bool isAdd);
+
+            struct DetachedNexthopRoutes
+            {
+                struct SavedCounterStats
+                {
+                    bool has_old_stats = false;
+                    std::map<sai_stat_id_t, uint64_t> old_stats;
+                };
+
+                std::vector<std::shared_ptr<SaiObject>> direct_routes;
+                std::vector<std::pair<std::shared_ptr<SaiObject>, std::shared_ptr<SaiDBObject>>> nhg_members;
+                std::map<std::string, SavedCounterStats> counter_stats;
+            };
+
+            void detachRoutesForNexthops(
+                    _In_ const std::vector<sai_object_id_t>& nh_oids,
+                    _Out_ DetachedNexthopRoutes& state);
+
+            void reattachRoutesForNexthops(
+                    _In_ const DetachedNexthopRoutes& state);
 
             sai_status_t setRouteCounterBinding(
                     _In_ const std::string &serializedObjectId,
@@ -481,6 +509,13 @@ namespace saivs
             static sai_status_t add_tc_filter_redirect(
                     _In_ const std::string& tap,
                     _In_ const std::string& hostIfname);
+
+            sai_status_t add_tc_filter_redirect_to_vrf(
+                    _In_ const std::string& tap,
+                    _In_ const std::string& vrf);
+
+            void del_tc_filter_redirect(
+                    _In_ const std::string& tap);
 
             virtual bool hostif_create_tap_veth_forwarding(
                     _In_ const std::string &tapname,
@@ -857,6 +892,13 @@ namespace saivs
             sai_status_t vpp_remove_router_interface(
                     _In_ sai_object_id_t objectId);
 
+            sai_status_t vpp_router_interface_set_vrf(
+                    _In_ sai_object_id_t vr_oid,
+                    _In_ const char *hwif_name,
+                    _In_ uint32_t sub_id,
+                    _In_ const char *linux_ifname,
+                    _Inout_ RifCreateState *state = nullptr);
+
             sai_status_t vpp_add_del_intf_ip_addr_norif (
                     _In_ const std::string& ip_prefix_key,
                     _In_ sai_route_entry_t& route_entry,
@@ -942,7 +984,16 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+            sai_status_t createVrf(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
             sai_status_t removeVrf(
+                    _In_ sai_object_id_t objectId);
+
+            sai_status_t vpp_create_vrf_table(
                     _In_ sai_object_id_t objectId);
 
             std::shared_ptr<IpVrfInfo> vpp_get_ip_vrf(
@@ -955,6 +1006,14 @@ namespace saivs
                     _In_ bool is_add,
                     _In_ bool program_adjacency = true,
                     _In_ bool program_host_route = false);
+
+            // hwif name -> number of subnet broadcast neighbors on it, refcounts the
+            // per-interface ip4 directed-broadcast flag.
+            std::map<std::string, uint32_t> m_directed_bcast_hwif;
+
+            sai_status_t updateDirectedBroadcast(
+                    _In_ const std::string &hwif_name,
+                    _In_ bool is_add);
 
             sai_status_t addIpNbr(
                     _In_ const std::string &serializedObjectId,
@@ -1739,6 +1798,17 @@ namespace saivs
             static const uint16_t dynamic_bd_id_pool_size =  12*1024;
 
             BitResourcePool dynamic_bd_id_pool = BitResourcePool(dynamic_bd_id_pool_size, dynamic_bd_id_base);
+
+            // VPP ip table ids for virtual routers created through SAI; the
+            // default virtual router uses table 0. The only other tables come
+            // from kernel VRF table ids (linux-cp route sync, and the fallback
+            // in vpp_router_interface_set_vrf), which SONiC allocates from 1001
+            // (the management VRF is 6000). The range starts far above those,
+            // and the fallback refuses a kernel id inside it.
+            static const uint32_t vrf_table_id_base = 0x100000;
+            static const uint16_t vrf_table_id_pool_size = 16*1024;
+
+            BitResourcePool vrf_table_id_pool = BitResourcePool(vrf_table_id_pool_size, vrf_table_id_base);
 
             // Snapshot of VPP L2FIB: {mac, bd_id} -> sw_if_index.
             // Kept in sync with MAC events from VPP to support flush operations

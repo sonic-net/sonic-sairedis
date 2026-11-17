@@ -8,6 +8,8 @@
 #include "swss/notificationconsumer.h"
 #include "swss/select.h"
 
+#include <cinttypes>
+
 using namespace sairedis;
 
 RedisChannel::RedisChannel(
@@ -186,6 +188,20 @@ sai_status_t RedisChannel::wait(
 
             SWSS_LOG_DEBUG("response: op = %s, key = %s", opkey.c_str(), op.c_str());
 
+            auto late = m_lateResponses.find(op);
+
+            if (late != m_lateResponses.end() && late->second > 0)
+            {
+                // response of an earlier request whose wait failed
+
+                late->second--;
+
+                SWSS_LOG_WARN("dropping late %s response (status: %s), %" PRIu64 " more expected",
+                        op.c_str(), opkey.c_str(), late->second);
+
+                continue;
+            }
+
             if (op != command)
             {
                 SWSS_LOG_WARN("got not expected response: %s:%s", opkey.c_str(), op.c_str());
@@ -203,10 +219,25 @@ sai_status_t RedisChannel::wait(
         }
 
         SWSS_LOG_ERROR("SELECT operation result: %s on %s", swss::Select::resultToString(result).c_str(), command.c_str());
+
+        /*
+         * The request is already sent, so syncd answers it later and that
+         * response must not be paired with the next request. If syncd never
+         * answers (killed, exception, sync mode mismatch), every later wait
+         * of this type fails until the client restarts.
+         */
+
+        m_lateResponses[command]++;
+
         break;
     }
 
-    SWSS_LOG_ERROR("failed to get response for %s", command.c_str());
+    SWSS_LOG_ERROR("failed to get response for %s, %" PRIu64 " late responses expected",
+            command.c_str(), m_lateResponses[command]);
+
+    // do not return a response which this wait popped but did not accept
+
+    kco = swss::KeyOpFieldsValuesTuple();
 
     return SAI_STATUS_FAILURE;
 }

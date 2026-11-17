@@ -6,6 +6,7 @@
 
 #include <array>
 #include <chrono>
+#include <functional>
 #include <initializer_list>
 #include <map>
 #include <set>
@@ -90,6 +91,8 @@ struct VppMock
     unsigned int loopbackCalls = 0;
     int loopbackAction = -1;
     int loopbackResult = 0;
+    // The interfaces VPP fails to set a loopback packet action on, with that action
+    std::set<std::pair<std::string, int>> loopbackFailures;
     int featureResult = 0;
     unsigned int featureCalls = 0;
     int statsResult = 0;
@@ -103,6 +106,7 @@ struct VppMock
     int kernelLinkResult = 0;
     std::vector<std::string> kernelCommands;
     std::set<std::string> kernelInterfaces;
+    std::function<int(const std::string&, std::string&)> execHook;
     int getVrfResult = 0;
     int setVrfResult = 0;
     unsigned int vrfSetCalls = 0;
@@ -123,9 +127,14 @@ struct VppMock
     // sw_interface_set_mac() result, and the MAC each interface carries.
     int macResult = 0;
     std::map<std::string, std::string> macs;
+    // sw_interface_set_ip_directed_broadcast() result, for the ref-counted
+    // directed-broadcast flag of the sub-net broadcast neighbors.
+    int directedBcastResult = 0;
     uint32_t routeStatsIndex = 42;
     std::vector<int> routeResults;
     std::vector<VppRouteCall> routeCalls;
+    // Active FIB next hop sw_if_index list per (table, prefix)
+    std::map<std::pair<uint32_t, std::string>, std::vector<uint32_t>> fibRoutePaths;
 
     // sonic-ext features reported as enabled. "iface-loopback" keeps its own
     // flag because the loopback tests predate this set.
@@ -186,6 +195,12 @@ struct VppMock
     bool natSupported = true;
     // NAT sessions VPP reports, by inside address (network order)
     std::map<uint32_t, std::vector<vpp_nat44_session_t>> natSessions;
+    // Names of the interfaces the mock creates, by sw_if_index: IP-in-IP tunnels
+    std::map<uint32_t, std::string> swifNames;
+    // vpp_ipip_tunnel_del() result: on failure, VPP keeps the tunnel
+    int ipipDelResult = 0;
+    // vpp_sw_interface_find_by_ip() result: -1 when no interface owns the IP
+    int findByIpResult = -1;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;

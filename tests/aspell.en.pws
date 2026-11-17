@@ -485,9 +485,14 @@ subtree
 iface
 loopback
 resync
+BVI
+bvi
 DHCPv
 LLDP
 cp
 ethertype
 fixup
 nexts
+SVI
+VNIs
+decapsulate
