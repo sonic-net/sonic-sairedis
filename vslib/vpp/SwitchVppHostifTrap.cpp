@@ -89,6 +89,13 @@ namespace
         return trap_type == SAI_HOSTIF_TRAP_TYPE_BGP || trap_type == SAI_HOSTIF_TRAP_TYPE_BGPV6;
     }
 
+    bool isOspfTrap(sai_hostif_trap_type_t trap_type)
+    {
+        SWSS_LOG_ENTER();
+
+        return trap_type == SAI_HOSTIF_TRAP_TYPE_OSPF || trap_type == SAI_HOSTIF_TRAP_TYPE_OSPFV6;
+    }
+
 }
 
 
@@ -146,6 +153,39 @@ sai_status_t SwitchVpp::installTrapClassifyNow(
             {
                 SWSS_LOG_NOTICE("bound BGP policer %s for trap 0x%lx", policer_name, (unsigned long)trap_oid);
             }
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (isOspfTrap(trap.trap_type))
+    {
+        // OSPFv2/OSPFv3 both use IP protocol 89. Keep the address family in
+        // the VPP binding key so either SAI trap can be changed independently.
+        sai_object_id_t policer_oid = SAI_NULL_OBJECT_ID;
+        {
+            std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+            auto git = m_trap_group_map.find(trap.trap_group_oid);
+            policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
+        }
+
+        if (policer_oid != SAI_NULL_OBJECT_ID)
+        {
+            char policer_name[64];
+            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
+
+            bool is_ipv6 = trap.trap_type == SAI_HOSTIF_TRAP_TYPE_OSPFV6;
+            int pret = vpp_sonic_ext_copp_ip_protocol_bind(policer_name, 89, is_ipv6, true);
+
+            if (pret != 0)
+            {
+                SWSS_LOG_ERROR("failed to bind %s policer %s: ret %d",
+                        is_ipv6 ? "OSPFv3" : "OSPFv2", policer_name, pret);
+                return SAI_STATUS_FAILURE;
+            }
+
+            SWSS_LOG_NOTICE("bound %s policer %s for trap 0x%lx",
+                    is_ipv6 ? "OSPFv3" : "OSPFv2", policer_name, (unsigned long)trap_oid);
         }
 
         return SAI_STATUS_SUCCESS;
@@ -288,6 +328,35 @@ sai_status_t SwitchVpp::uninstallTrapClassifyNow(
             {
                 SWSS_LOG_ERROR("failed to unbind BGP policer %s for trap 0x%lx: ret %d",
                         policer_name, (unsigned long)trap_oid, pret);
+                return SAI_STATUS_FAILURE;
+            }
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (isOspfTrap(trap.trap_type))
+    {
+        sai_object_id_t policer_oid = SAI_NULL_OBJECT_ID;
+        {
+            std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+            auto git = m_trap_group_map.find(trap.trap_group_oid);
+            policer_oid = (git != m_trap_group_map.end()) ? git->second.policer_oid : SAI_NULL_OBJECT_ID;
+        }
+
+        if (policer_oid != SAI_NULL_OBJECT_ID)
+        {
+            char policer_name[64];
+            snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx", (unsigned long)policer_oid);
+
+            bool is_ipv6 = trap.trap_type == SAI_HOSTIF_TRAP_TYPE_OSPFV6;
+            int pret = vpp_sonic_ext_copp_ip_protocol_bind(policer_name, 89, is_ipv6, false);
+
+            if (pret != 0)
+            {
+                SWSS_LOG_ERROR("failed to unbind %s policer %s for trap 0x%lx: ret %d",
+                        is_ipv6 ? "OSPFv3" : "OSPFv2", policer_name,
+                        (unsigned long)trap_oid, pret);
                 return SAI_STATUS_FAILURE;
             }
         }

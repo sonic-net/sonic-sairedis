@@ -69,6 +69,9 @@
 #include <vpp_plugins/sonic_ext/sonic_ext.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext.api_types.h>
 
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api_enum.h>
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api_types.h>
+
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api_types.h>
 
@@ -204,6 +207,25 @@
 #define vl_api_version(n, v) static u32 sonic_ext_api_version = v;
 #include <vpp_plugins/sonic_ext/sonic_ext.api.h>
 #undef vl_api_version
+
+/* compatibility-isolated sonic_ext CoPP API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_copp_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext_copp.api.h>
+#undef vl_api_version
+
 /* sonic_ext packet-trim API inclusion */
 
 #define vl_typedefs
@@ -2028,6 +2050,14 @@ vl_api_sonic_ext_copp_ip2me_bind_condition_reply_t_handler(vl_api_sonic_ext_copp
 }
 
 static void
+vl_api_sonic_ext_copp_ip_protocol_bind_reply_t_handler(
+        vl_api_sonic_ext_copp_ip_protocol_bind_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+}
+
+static void
 vl_api_sonic_ext_copp_ttl_punt_bind_reply_t_handler(vl_api_sonic_ext_copp_ttl_punt_bind_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -2443,6 +2473,7 @@ static u16 sflow_msg_id_base;
  */
 static u16 nat44_ed_msg_id_base = (u16) ~0;
 static u16 sonic_ext_msg_id_base;
+static u16 sonic_ext_copp_msg_id_base;
 static u16 policer_msg_id_base;
 
 static void vpp_ext_vpe_init(void)
@@ -2619,6 +2650,9 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
 #define SONIC_EXT_MSG_ID(id) \
     (VL_API_##id + sonic_ext_msg_id_base)
 
+#define SONIC_EXT_COPP_MSG_ID(id) \
+    (VL_API_##id + sonic_ext_copp_msg_id_base)
+
 #define foreach_vpe_plugin_api_reply_msg                                \
     _(LCP_MSG_ID(LCP_ITF_PAIR_ADD_DEL_REPLY), lcp_itf_pair_add_del_reply) \
     _(LCP_MSG_ID(LCP_ETHERTYPE_ENABLE_REPLY), lcp_ethertype_enable_reply) \
@@ -2636,6 +2670,7 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_ADDR_ADD_DEL_REPLY), sonic_ext_copp_ip2me_addr_add_del_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_REPLY), sonic_ext_copp_ip2me_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_IP2ME_BIND_CONDITION_REPLY), sonic_ext_copp_ip2me_bind_condition_reply) \
+    _(SONIC_EXT_COPP_MSG_ID(SONIC_EXT_COPP_IP_PROTOCOL_BIND_REPLY), sonic_ext_copp_ip_protocol_bind_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_COPP_TTL_PUNT_BIND_REPLY), sonic_ext_copp_ttl_punt_bind_reply) \
     _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_V2_REPLY), sr_localsid_add_del_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
@@ -2795,6 +2830,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "sonic_ext_%08x%c", sonic_ext_api_version, 0);
     sonic_ext_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sonic_ext_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "sonic_ext_copp_%08x%c", sonic_ext_copp_api_version, 0);
+    sonic_ext_copp_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(sonic_ext_copp_msg_id_base != (u16) ~0);
 
     msg_base_lookup_name = format (0, "nat44_ed_%08x%c", nat44_ed_api_version, 0);
     nat44_ed_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
@@ -4581,6 +4620,45 @@ int vpp_sonic_ext_copp_ip2me_bind_condition(
     ret = vpp_normalize_ret(ret, false, __func__);
 
     if (ret) { SAIVPP_ERROR("%s failed(%d) policer %s tcp_port %u is_bind %d", __func__, ret, policer_name, tcp_port, is_bind); }
+
+    VPP_UNLOCK();
+
+    return ret;
+}
+
+int vpp_sonic_ext_copp_ip_protocol_bind(
+        const char *policer_name,
+        uint8_t ip_protocol,
+        bool is_ipv6,
+        bool is_bind)
+{
+    vat_main_t *vam = &vat_main;
+    vl_api_sonic_ext_copp_ip_protocol_bind_t *mp;
+    int ret;
+
+    init_vpp_client();
+
+    VPP_LOCK();
+
+    __plugin_msg_base = sonic_ext_copp_msg_id_base;
+
+    M (SONIC_EXT_COPP_IP_PROTOCOL_BIND, mp);
+
+    snprintf((char *)mp->policer_name, sizeof(mp->policer_name), "%s", policer_name ? policer_name : "");
+    mp->ip_protocol = ip_protocol;
+    mp->is_ipv6 = is_ipv6;
+    mp->is_bind = is_bind;
+
+    S (mp);
+    WR (ret);
+
+    ret = vpp_normalize_ret(ret, false, __func__);
+
+    if (ret)
+    {
+        SAIVPP_ERROR("%s failed(%d) policer %s ip_protocol %u is_ipv6 %d is_bind %d",
+                __func__, ret, policer_name, ip_protocol, is_ipv6, is_bind);
+    }
 
     VPP_UNLOCK();
 

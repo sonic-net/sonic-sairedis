@@ -557,6 +557,8 @@ typedef enum {
     extern int vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add);
     extern int vpp_sonic_ext_copp_ip2me_bind(const char *policer_name, bool is_bind);
     extern int vpp_sonic_ext_copp_ip2me_bind_condition(const char *policer_name, uint16_t tcp_port, bool is_bind);
+    extern int vpp_sonic_ext_copp_ip_protocol_bind(const char *policer_name,
+            uint8_t ip_protocol, bool is_ipv6, bool is_bind);
     extern int vpp_sonic_ext_copp_ttl_punt_bind(bool is_bind);
     extern int vpp_acl_interface_bind(const char *hwif_name, uint32_t acl_index,
 				      bool is_input);
