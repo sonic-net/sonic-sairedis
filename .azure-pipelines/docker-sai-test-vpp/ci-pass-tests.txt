@@ -1,5 +1,6 @@
 # Stable SAIVPP PR baseline. Keep selectors fully qualified as module.Class.
 sai_ecmp_test.EcmpHashFieldSportTestV4
+sai_ecmp_test.EcmpIngressDisableTestV4
 sai_ecmp_test.EcmpIngressDisableTestV6
 sai_ecmp_test.EcmpLagDisableTestV4
 sai_ecmp_test.EcmpLagDisableTestV6
