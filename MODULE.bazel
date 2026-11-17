@@ -17,16 +17,16 @@ bazel_dep(name = "libnl3", version = "3.7.0.sonic.7")
 bazel_dep(name = "patchelf", version = "0.18.0.bcr.1")
 bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "rules_cc", version = "0.2.20")
-bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.16")
+bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.20")
 bazel_dep(name = "rules_perl", version = "1.1.2")
-bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "rules_python", version = "1.9.0.sonic.1")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 
 bazel_dep(name = "rules_rs", version = "0.1.0", dev_dependency = True)
 
 bazel_dep(name = "swig", version = "4.3.0.bcr.2")
-bazel_dep(name = "tar.bzl", version = "0.10.5-sonic.1")
-bazel_dep(name = "sonic-build-infra", version = "0.0.25-3ee15ec9b4d99d7f8eae3e324cead79b203b451e", repo_name = "sonic_build_infra")
+bazel_dep(name = "tar.bzl", version = "0.10.5.sonic.2")
+bazel_dep(name = "sonic-build-infra", version = "0.0.37-316e298e77ab5cfa69af9b0c05ec24d5d94bbe1e", repo_name = "sonic_build_infra")
 bazel_dep(name = "sonic-swss-common", version = "0.0.9-334389eae54afd1f4f5ee69f89c3a7ad2062ee61", repo_name = "sonic_swss_common")
 bazel_dep(name = "sai", version = "1.18.0-sonic.1", repo_name = "sai_source")
 
@@ -34,7 +34,7 @@ bazel_dep(name = "sai", version = "1.18.0-sonic.1", repo_name = "sai_source")
 # the existing snapshot-based Trixie inputs and required native interfaces.
 single_version_override(
     module_name = "sonic-build-infra",
-    version = "0.0.25-3ee15ec9b4d99d7f8eae3e324cead79b203b451e",
+    version = "0.0.37-316e298e77ab5cfa69af9b0c05ec24d5d94bbe1e",
 )
 
 gcc = use_extension("@sonic_build_infra//toolchains/gcc:extensions.bzl", "gcc")
@@ -63,11 +63,10 @@ use_repo(apt, "trixie")
 rust = use_extension("@rules_rs//rs:rules_rust_reexported_extensions.bzl", "rust", dev_dependency = True)
 rust.toolchain(versions = [])
 
-# Keep SONiC's reproducible TAR timestamps selected over upstream's stable
-# version, which sorts after the historical patched prerelease name.
+# Select the SONiC tar implementation with reproducible timestamps.
 single_version_override(
     module_name = "tar.bzl",
-    version = "0.10.5-sonic.1",
+    version = "0.10.5.sonic.2",
 )
 
 # Distroless uses rules_cc's private cc_import implementation; 0.2.21+ needs
