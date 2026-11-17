@@ -246,6 +246,8 @@ struct VppMock
     std::map<std::string, uint8_t> encapTtls;
     // The interfaces VPP fails to set an encap TTL on, with that TTL
     std::set<std::pair<std::string, int>> encapTtlFailures;
+    // tunnel_encap_decap_flags of the IP-in-IP tunnels, by name
+    std::map<std::string, uint8_t> ipipFlags;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;

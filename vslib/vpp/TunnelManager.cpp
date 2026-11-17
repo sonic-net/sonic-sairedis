@@ -3034,12 +3034,11 @@ TunnelManagerIpIp::map_sai_to_vpp_flags(const SaiObject* tunnel_obj)
         }
     }
 
-    // Encap TTL mode (uniform = copy from inner)
+    // Encap TTL mode: UNIFORM, the SAI default, copies the inner TTL
     attr.id = SAI_TUNNEL_ATTR_ENCAP_TTL_MODE;
-    if (tunnel_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
-        if (attr.value.s32 == SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL) {
-            vpp_flags |= 0x40; // TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_HOP_LIMIT
-        }
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS ||
+        attr.value.s32 == SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL) {
+        vpp_flags |= 0x40; // TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_HOP_LIMIT
     }
 
     // Encap DSCP mode (uniform = copy from inner)
@@ -3233,6 +3232,7 @@ sai_status_t TunnelManagerIpIp::create_ipip_vpp_tunnel(
     IpIpTunnelRef ref_data;
     ref_data.sw_if_index = sw_if_index;
     ref_data.refcount = 1;
+    ref_data.flags = req.flags;
     m_ipip_tunnel_refcount[key] = ref_data;
 
     return SAI_STATUS_SUCCESS;
@@ -3557,11 +3557,22 @@ sai_status_t TunnelManagerIpIp::ipip_encap_nexthop_action(
         sai_object_id_t tunnel_oid;
         sai_deserialize_object_id(tunnel_obj->get_id(), tunnel_oid);
 
-        if (has_other_encap_ttl(sw_if_index, tunnel_oid, get_encap_ttl(tunnel_oid))) {
-            SWSS_LOG_ERROR("IpIp Encap: nexthop %s not supported: VPP tunnel sw_if=%u has a nexthop of a tunnel with another encap TTL",
-                           tunnel_nh_obj->get_id().c_str(), sw_if_index);
-            // A nexthop of another tunnel uses the VPP tunnel, so this only
-            // drops the reference just taken
+        uint8_t encap_ttl = get_encap_ttl(tunnel_oid);
+        const char *conflict = nullptr;
+        if (has_other_encap_ttl(sw_if_index, tunnel_oid, encap_ttl)) {
+            conflict = "has a nexthop of a tunnel with another encap TTL";
+        } else if (encap_ttl == 0 &&
+                   !(get_vpp_tunnel_flags(sw_if_index) & 0x40)) { // TUNNEL_API_ENCAP_DECAP_FLAG_ENCAP_COPY_HOP_LIMIT
+            // VPP takes the flag that copies the inner TTL, the uniform model,
+            // when it creates the tunnel: one created for a tunnel in the pipe
+            // model keeps the stock outer TTL once its encap nexthops are gone
+            conflict = "does not copy the inner TTL, as the uniform model of the nexthop's tunnel needs";
+        }
+        if (conflict) {
+            SWSS_LOG_ERROR("IpIp Encap: nexthop %s not supported: VPP tunnel sw_if=%u %s",
+                           tunnel_nh_obj->get_id().c_str(), sw_if_index, conflict);
+            // Another SAI object uses the VPP tunnel, so this only drops the
+            // reference just taken
             remove_ipip_vpp_tunnel(sw_if_index);
             return SAI_STATUS_NOT_SUPPORTED;
         }
@@ -3737,6 +3748,17 @@ uint8_t TunnelManagerIpIp::get_encap_ttl(_In_ sai_object_id_t tunnel_oid)
     }
 
     return attr.value.u8;
+}
+
+uint8_t TunnelManagerIpIp::get_vpp_tunnel_flags(_In_ uint32_t sw_if_index) const
+{
+    SWSS_LOG_ENTER();
+
+    auto it = std::find_if(m_ipip_tunnel_refcount.begin(), m_ipip_tunnel_refcount.end(),
+                           [sw_if_index](const auto &entry)
+                           { return entry.second.sw_if_index == sw_if_index; });
+
+    return it == m_ipip_tunnel_refcount.end() ? 0 : it->second.flags;
 }
 
 bool TunnelManagerIpIp::has_other_encap_ttl(

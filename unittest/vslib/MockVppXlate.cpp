@@ -511,9 +511,9 @@ extern "C" int __wrap_vpp_iface_loopback_set_action(const char *name, int action
  * IP-in-IP tunnels, named for their instance as VPP names them. Like VPP, the
  * mock reuses the lowest free instance and the sw_if_index of a deleted tunnel
  * (1000 on, here). A call is recorded with the tunnel's name, its sw_if_index
- * as id and, for an add, its mode as sub_id. Deleting a tunnel resets its
- * loopback packet action and encap TTL, as the sonic_ext plugin does for any
- * interface VPP deletes.
+ * as id and, for an add, its mode as sub_id; the flags of a tunnel are kept by
+ * its name. Deleting a tunnel resets its loopback packet action and encap TTL,
+ * as the sonic_ext plugin does for any interface VPP deletes.
  */
 extern "C" int __wrap_vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index)
 {
@@ -525,6 +525,7 @@ extern "C" int __wrap_vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *s
     }
     uint32_t idx = 1000 + instance;
     vppMock().swifNames[idx] = "ipip" + std::to_string(instance);
+    vppMock().ipipFlags[vppMock().swifNames[idx]] = tunnel->flags;
     *sw_if_index = idx;
     vppMock().calls.push_back({"vpp_ipip_tunnel_add", vppMock().swifNames[idx], idx, tunnel->mode, false});
     return 0;
@@ -540,6 +541,7 @@ extern "C" int __wrap_vpp_ipip_tunnel_del(uint32_t sw_if_index)
     }
     vppMock().actions.erase(vppMock().swifNames[sw_if_index]);
     vppMock().encapTtls.erase(vppMock().swifNames[sw_if_index]);
+    vppMock().ipipFlags.erase(vppMock().swifNames[sw_if_index]);
     vppMock().swifNames.erase(sw_if_index);
     return 0;
 }
