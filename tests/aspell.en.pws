@@ -44,6 +44,7 @@ FEC
 FIXME
 FlexCounter
 gbsyncd
+gearsyncd
 GCM
 GRE
 GUID
@@ -178,6 +179,7 @@ dest
 destructor
 dev
 didn
+dlopen
 doesn
 dscp
 ecn
@@ -285,6 +287,7 @@ performTransition
 pfc
 PHY
 phy
+PHYs
 plaintext
 pn
 policer

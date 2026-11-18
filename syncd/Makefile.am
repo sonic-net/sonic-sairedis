@@ -28,6 +28,7 @@ libSyncd_a_SOURCES = \
 				FlexCounter.cpp \
 				FlexCounterManager.cpp \
 				FlowDump.cpp \
+				GearboxMdioAccess.cpp \
 				GlobalSwitchId.cpp \
 				HardReiniter.cpp \
 				MdioIpcServer.cpp \
