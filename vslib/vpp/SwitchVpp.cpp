@@ -2782,22 +2782,34 @@ sai_status_t SwitchVpp::set(
                 {
                     // SflowOrch arms sFlow drop monitoring by binding its TAM
                     // object to the switch, and disarms it by clearing the
-                    // list. The TAM object graph itself has no VPP counterpart
-                    // (the sflow plugin reports drops to hsflowd over NET_DM),
-                    // so only the global plugin flag and the drop_monitor_limit
-                    // policer binding are driven from here. The policer goes in
-                    // first so no drop is reported unlimited. Fall through to
-                    // set_internal() below so the attribute is also cached.
-                    bool enable = attr->value.objlist.count > 0;
+                    // list. Other TAM objects may share the list, so drop
+                    // monitoring follows whether one of them is a drop monitor
+                    // TAM, not whether the list is empty. The TAM object graph
+                    // itself has no VPP counterpart (the sflow plugin reports
+                    // drops to hsflowd over NET_DM), so only the global plugin
+                    // flag and the drop_monitor_limit policer binding are
+                    // driven from here. The policer goes in first so no drop is
+                    // reported unlimited. Fall through to set_internal() below
+                    // so the attribute is also cached.
+                    sai_object_id_t drop_tam = SAI_NULL_OBJECT_ID;
 
-                    if (enable)
+                    for (uint32_t i = 0; i < attr->value.objlist.count; i++)
                     {
-                        m_sflow_drop_tam = attr->value.objlist.list[0];
+                        if (sflowIsDropMonitorTam(attr->value.objlist.list[i]))
+                        {
+                            drop_tam = attr->value.objlist.list[i];
+                            break;
+                        }
+                    }
+
+                    if (drop_tam != SAI_NULL_OBJECT_ID)
+                    {
+                        m_sflow_drop_tam = drop_tam;
                         m_sflow_drop_policer = sflowDropMonitorPolicer(m_sflow_drop_tam);
                         CHECK_STATUS(sflowDropPolicerApply());
                         CHECK_STATUS(sflowDropMonitoringSet(true));
                     }
-                    else
+                    else if (m_sflow_drop_tam != SAI_NULL_OBJECT_ID)
                     {
                         CHECK_STATUS(sflowDropMonitoringSet(false));
                         m_sflow_drop_tam = SAI_NULL_OBJECT_ID;

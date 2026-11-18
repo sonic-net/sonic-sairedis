@@ -161,6 +161,43 @@ namespace
              * builds, as SAI state only. Returns the TAM object.
              */
 
+            /*
+             * A TAM object that is not a drop monitor, like the high
+             * frequency telemetry TAM, optionally with one non-drop event.
+             */
+            sai_object_id_t createNonDropTam(
+                    bool with_event)
+            {
+                SWSS_LOG_ENTER();
+
+                if (!with_event)
+                {
+                    return createObject(SAI_OBJECT_TYPE_TAM, {});
+                }
+
+                sai_attribute_t attr;
+                attr.id = SAI_TAM_EVENT_ATTR_TYPE;
+                attr.value.s32 = SAI_TAM_EVENT_TYPE_FLOW_STATE;
+                sai_object_id_t event = createObject(SAI_OBJECT_TYPE_TAM_EVENT, {attr});
+
+                attr.id = SAI_TAM_ATTR_EVENT_OBJECTS_LIST;
+                attr.value.objlist.count = 1;
+                attr.value.objlist.list = &event;
+                return createObject(SAI_OBJECT_TYPE_TAM, {attr});
+            }
+
+            sai_status_t bindTams(
+                    std::vector<sai_object_id_t> tams)
+            {
+                SWSS_LOG_ENTER();
+
+                sai_attribute_t attr;
+                attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
+                attr.value.objlist.count = (uint32_t)tams.size();
+                attr.value.objlist.list = tams.data();
+                return setSwitch(attr);
+            }
+
             sai_object_id_t createDropMonitorChain(
                     uint64_t limit,
                     sai_object_id_t& policer,
@@ -359,12 +396,13 @@ TEST_F(SwitchVppSflowTest, sflowDropMonitoringSet)
 }
 
 /*
- * SflowOrch arms drop monitoring by binding a TAM object to the switch and
- * disarms it by clearing the list; only the list being non-empty matters.
+ * SflowOrch arms drop monitoring by binding its drop monitor TAM object to the
+ * switch and disarms it by clearing the list.
  */
 TEST_F(SwitchVppSflowTest, tamObjectIdDrivesDropMonitoring)
 {
-    sai_object_id_t tam = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM, m_switchId);
+    sai_object_id_t policer;
+    sai_object_id_t tam = createDropMonitorChain(500, policer);
 
     sai_attribute_t attr;
 
@@ -410,7 +448,8 @@ TEST_F(SwitchVppSflowTest, tamObjectIdPropagatesVppFailure)
 {
     drop_monitoring_results.push_back(-1);
 
-    sai_object_id_t tam = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM, m_switchId);
+    sai_object_id_t policer;
+    sai_object_id_t tam = createDropMonitorChain(500, policer);
 
     sai_attribute_t attr;
 
@@ -530,4 +569,58 @@ TEST_F(SwitchVppSflowTest, dropPolicerWithoutVppPolicerIsUnlimited)
 
     ASSERT_EQ(1u, drop_policer_calls.size());
     EXPECT_EQ("", drop_policer_calls[0].name);
+}
+
+/*
+ * High frequency telemetry binds its TAM through the same switch attribute; a TAM
+ * without a PACKET_DROP event neither arms nor disarms drop monitoring.
+ */
+TEST_F(SwitchVppSflowTest, tamObjectIdIgnoresNonDropTam)
+{
+    sai_object_id_t telemetry = createNonDropTam(false);
+    sai_object_id_t flow_state = createNonDropTam(true);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bindTams({telemetry, flow_state}));
+
+    EXPECT_TRUE(drop_monitoring_calls.empty());
+    EXPECT_TRUE(drop_policer_calls.empty());
+    EXPECT_EQ((sai_object_id_t)SAI_NULL_OBJECT_ID, m_sw->m_sflow_drop_tam);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bindTams({}));
+
+    EXPECT_TRUE(drop_monitoring_calls.empty());
+    EXPECT_TRUE(drop_policer_calls.empty());
+}
+
+/*
+ * The drop monitor TAM is found wherever it sits in the list, and removing it
+ * from the list disarms drop monitoring while other TAM objects stay bound.
+ */
+TEST_F(SwitchVppSflowTest, tamObjectIdFindsDropTamInList)
+{
+    sai_object_id_t telemetry = createNonDropTam(false);
+    sai_object_id_t policer;
+    sai_object_id_t drop = createDropMonitorChain(500, policer);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bindTams({telemetry, drop}));
+
+    ASSERT_EQ(1u, drop_monitoring_calls.size());
+    EXPECT_TRUE(drop_monitoring_calls[0]);
+    ASSERT_EQ(1u, drop_policer_calls.size());
+    EXPECT_EQ(vppPolicerName(policer), drop_policer_calls[0].name);
+    EXPECT_EQ(drop, m_sw->m_sflow_drop_tam);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bindTams({telemetry}));
+
+    ASSERT_EQ(2u, drop_monitoring_calls.size());
+    EXPECT_FALSE(drop_monitoring_calls[1]);
+    ASSERT_EQ(2u, drop_policer_calls.size());
+    EXPECT_EQ("", drop_policer_calls[1].name);
+    EXPECT_EQ((sai_object_id_t)SAI_NULL_OBJECT_ID, m_sw->m_sflow_drop_tam);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, bindTams({drop, telemetry}));
+
+    ASSERT_EQ(3u, drop_monitoring_calls.size());
+    EXPECT_TRUE(drop_monitoring_calls[2]);
+    EXPECT_EQ(drop, m_sw->m_sflow_drop_tam);
 }

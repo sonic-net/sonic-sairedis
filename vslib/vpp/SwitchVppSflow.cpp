@@ -117,6 +117,34 @@ sai_status_t SwitchVpp::sflowDropMonitoringSet(
     return SAI_STATUS_SUCCESS;
 }
 
+// SAI_SWITCH_ATTR_TAM_OBJECT_ID is not SflowOrch's alone (HFTelOrch binds its
+// telemetry TAM to the switch too), so a bound TAM is SflowOrch's drop monitor
+// only if one of its events is a PACKET_DROP event.
+bool SwitchVpp::sflowIsDropMonitorTam(
+    _In_ sai_object_id_t tam_id)
+{
+    SWSS_LOG_ENTER();
+
+    auto tam_obj = get_sai_object(SAI_OBJECT_TYPE_TAM, sai_serialize_object_id(tam_id));
+    if (!tam_obj)
+    {
+        return false;
+    }
+
+    for (auto& event: tam_obj->get_linked_objects(SAI_OBJECT_TYPE_TAM_EVENT, SAI_TAM_ATTR_EVENT_OBJECTS_LIST))
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_EVENT_ATTR_TYPE;
+        if (event->get_attr(attr) == SAI_STATUS_SUCCESS &&
+                attr.value.s32 == SAI_TAM_EVENT_TYPE_PACKET_DROP)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // SflowOrch does not hand the drop_monitor_limit policer to the switch
 // directly; it hangs off the chain it builds before binding the TAM object:
 // TAM -> TAM_EVENT (PACKET_DROP) -> TAM_COLLECTOR -> HOSTIF_USER_DEFINED_TRAP

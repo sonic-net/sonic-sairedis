@@ -1643,6 +1643,9 @@ namespace saivs
             sai_status_t sflowDropMonitoringSet(
                     _In_ bool enable);
 
+            bool sflowIsDropMonitorTam(
+                    _In_ sai_object_id_t tam_id);
+
             sai_object_id_t sflowDropMonitorPolicer(
                     _In_ sai_object_id_t tam_id);
 
