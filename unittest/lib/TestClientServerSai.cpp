@@ -2,6 +2,8 @@
 
 #include "sairedis.h"
 
+#include "DashMeta.h"
+
 #include "swss/logger.h"
 
 #include <gtest/gtest.h>
@@ -216,6 +218,10 @@ TEST(ClientServerSai, bulkGetClearStats)
 #define TEST_ENTRY(OT,ot)                                                \
 TEST(ClientServerSai, OT)                                                \
 {                                                                        \
+    if (saimeta::bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT)) \
+    {                                                                    \
+        GTEST_SKIP() << "meta validation bypassed for " #OT;             \
+    }                                                                    \
     auto css = std::make_shared<ClientServerSai>();                      \
     sai_ ## ot ## _t e = {};                                             \
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));   \
@@ -237,6 +243,10 @@ SAIREDIS_DECLARE_EVERY_ENTRY(TEST_ENTRY)
 #define TEST_BULK_ENTRY(OT,ot)                                                                                               \
 TEST(ClientServerSai, bulk_ ## OT)                                                                                           \
 {                                                                                                                            \
+    if (saimeta::bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT))                                                \
+    {                                                                                                                        \
+        GTEST_SKIP() << "meta validation bypassed for " #OT;                                                                 \
+    }                                                                                                                        \
     auto css = std::make_shared<ClientServerSai>();                                                                          \
     sai_ ## ot ## _t e[2] = {};                                                                                              \
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));                                                       \

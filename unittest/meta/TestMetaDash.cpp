@@ -1377,3 +1377,217 @@ TEST(Meta, bulk_dash_outbound_ca_to_pa_entry)
     remove_counter(m, counter0);
     remove_counter(m, counter1);
 }
+
+
+// ---------------------------------------------------------------------------
+// DashMeta behavior tests.
+// ---------------------------------------------------------------------------
+
+#include "DashMeta.h"
+
+namespace
+{
+    constexpr sai_object_type_t kDashEntryType =
+        (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY;
+
+    bool dashBypassActive()
+    {
+        // SWSS_LOG_ENTER() is disabled for performance reasons
+        return bypassValidation(kDashEntryType);
+    }
+}
+
+TEST(DashMeta, dashEntryCreate_ObjectCachingMatchesPolicy)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchid = create_switch(m);
+    sai_object_id_t vnet = create_vnet(m, switchid, 10);
+    sai_object_id_t eni = create_eni(m, switchid, vnet);
+
+    sai_ip_address_t sip, sip_mask;
+    sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "192.168.0.1", &sip.addr.ip4);
+    sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "255.255.255.0", &sip_mask.addr.ip4);
+
+    sai_inbound_routing_entry_t entry = {
+        .switch_id = switchid, .eni_id = eni, .vni = 10,
+        .sip = sip, .sip_mask = sip_mask, .priority = 1
+    };
+
+    sai_attribute_t attr;
+    attr.id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
+    attr.value.s32 = SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, 1, &attr));
+
+    sai_object_meta_key_t meta_key = {
+        .objecttype = kDashEntryType,
+        .objectkey = { .key = { .inbound_routing_entry = entry } }
+    };
+
+    EXPECT_EQ(!dashBypassActive(), m.objectExists(meta_key))
+            << "policy=" << dashCacheModeName();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
+
+    EXPECT_FALSE(m.objectExists(meta_key));
+
+    remove_eni(m, eni);
+    remove_vnet(m, vnet);
+}
+
+TEST(DashMeta, dashEntryCreate_OidReferenceCountMatchesPolicy)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchid = create_switch(m);
+    sai_object_id_t vnet = create_vnet(m, switchid, 10);
+    sai_object_id_t eni = create_eni(m, switchid, vnet);
+
+    const int32_t vnet_refs_before = m.getObjectReferenceCount(vnet);
+    EXPECT_EQ(1, vnet_refs_before);
+
+    sai_ip_address_t sip, sip_mask;
+    sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "192.168.0.1", &sip.addr.ip4);
+    sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "255.255.255.0", &sip_mask.addr.ip4);
+
+    sai_inbound_routing_entry_t entry = {
+        .switch_id = switchid, .eni_id = eni, .vni = 10,
+        .sip = sip, .sip_mask = sip_mask, .priority = 1
+    };
+
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
+    attrs[0].value.s32 = SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP_PA_VALIDATE;
+    attrs[1].id = SAI_INBOUND_ROUTING_ENTRY_ATTR_SRC_VNET_ID;
+    attrs[1].value.oid = vnet;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, 2, attrs));
+
+    const int32_t expected_delta = dashBypassActive() ? 0 : 1;
+    EXPECT_EQ(vnet_refs_before + expected_delta, m.getObjectReferenceCount(vnet))
+            << "policy=" << dashCacheModeName();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
+
+    EXPECT_EQ(vnet_refs_before, m.getObjectReferenceCount(vnet));
+
+    remove_eni(m, eni);
+    remove_vnet(m, vnet);
+}
+
+TEST(DashMeta, dashEntryRemove_MissingResultMatchesPolicy)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchid = create_switch(m);
+    sai_object_id_t vnet = create_vnet(m, switchid, 99);
+    sai_object_id_t eni = create_eni(m, switchid, vnet);
+
+    sai_ip_address_t sip, sip_mask;
+    sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "10.0.0.1", &sip.addr.ip4);
+    sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "255.255.255.255", &sip_mask.addr.ip4);
+
+    sai_inbound_routing_entry_t entry = {
+        .switch_id = switchid, .eni_id = eni, .vni = 99,
+        .sip = sip, .sip_mask = sip_mask, .priority = 1
+    };
+
+    const sai_status_t expected = dashBypassActive()
+        ? SAI_STATUS_SUCCESS
+        : SAI_STATUS_INVALID_PARAMETER;
+
+    EXPECT_EQ(expected, m.remove(&entry))
+            << "policy=" << dashCacheModeName();
+
+    remove_eni(m, eni);
+    remove_vnet(m, vnet);
+}
+
+TEST(DashMeta, dashEntryCreate_DuplicateResultMatchesPolicy)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchid = create_switch(m);
+    sai_object_id_t vnet = create_vnet(m, switchid, 10);
+    sai_object_id_t eni = create_eni(m, switchid, vnet);
+
+    sai_ip_address_t sip, sip_mask;
+    sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "192.168.0.1", &sip.addr.ip4);
+    sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "255.255.255.0", &sip_mask.addr.ip4);
+
+    sai_inbound_routing_entry_t entry = {
+        .switch_id = switchid, .eni_id = eni, .vni = 10,
+        .sip = sip, .sip_mask = sip_mask, .priority = 1
+    };
+
+    sai_attribute_t attr;
+    attr.id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
+    attr.value.s32 = SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, 1, &attr));
+
+    const sai_status_t expected = dashBypassActive()
+        ? SAI_STATUS_SUCCESS
+        : SAI_STATUS_ITEM_ALREADY_EXISTS;
+
+    EXPECT_EQ(expected, m.create(&entry, 1, &attr))
+            << "policy=" << dashCacheModeName();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
+    remove_eni(m, eni);
+    remove_vnet(m, vnet);
+}
+
+TEST(DashMeta, dashEntryVnetRemoveProtectionMatchesPolicy)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchid = create_switch(m);
+    sai_object_id_t vnet = create_vnet(m, switchid, 10);
+    sai_object_id_t eni = create_eni(m, switchid, vnet);
+
+    sai_ip_address_t sip, sip_mask;
+    sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "192.168.0.1", &sip.addr.ip4);
+    sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "255.255.255.0", &sip_mask.addr.ip4);
+
+    sai_inbound_routing_entry_t entry = {
+        .switch_id = switchid, .eni_id = eni, .vni = 10,
+        .sip = sip, .sip_mask = sip_mask, .priority = 1
+    };
+
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
+    attrs[0].value.s32 = SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP_PA_VALIDATE;
+    attrs[1].id = SAI_INBOUND_ROUTING_ENTRY_ATTR_SRC_VNET_ID;
+    attrs[1].value.oid = vnet;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, 2, attrs));
+
+    const int32_t expected_refs_with_entry = dashBypassActive() ? 1 : 2;
+    EXPECT_EQ(expected_refs_with_entry, m.getObjectReferenceCount(vnet))
+            << "policy=" << dashCacheModeName();
+
+    EXPECT_EQ(SAI_STATUS_OBJECT_IN_USE,
+              m.remove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
+
+    EXPECT_EQ(1, m.getObjectReferenceCount(vnet));
+    EXPECT_EQ(SAI_STATUS_OBJECT_IN_USE,
+              m.remove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet));
+
+    remove_eni(m, eni);
+    EXPECT_EQ(0, m.getObjectReferenceCount(vnet));
+    remove_vnet(m, vnet);
+}
