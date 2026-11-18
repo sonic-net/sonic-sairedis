@@ -16,7 +16,8 @@ namespace syncd
             FlexCounterManager(
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
                     _In_ const std::string& dbCounters,
-                    _In_ const std::string& supportingBulkInstances);
+                    _In_ const std::string& supportingBulkInstances,
+                    _In_ std::shared_ptr<VirtualOidTranslator> translator);
 
             virtual ~FlexCounterManager() = default;
 
@@ -73,6 +74,8 @@ namespace syncd
                 std::string m_dbCounters;
 
                 std::string m_supportingBulkGroups;
+
+                std::shared_ptr<VirtualOidTranslator> m_translator;
     };
 }
 
