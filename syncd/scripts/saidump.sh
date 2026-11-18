@@ -23,21 +23,11 @@ with open('$filepath') as json_file:
   logger "saidump.sh: hostname:$hostname, port:$port, redis_dir:$redis_dir"
 
   logger "saidump.sh: [1] Get the remote backups of RDB file."
-  python3 - "$hostname" "$port" "${redis_config[2]}" "$redis_dir/dump.rdb" <<'PY'
-import subprocess
-import sys
-
-hostname, port, socket_path, destination = sys.argv[1:]
-if int(port) == 0:
-    from swsscommon.swsscommon import exportRedisRdb
-    exportRedisRdb(socket_path, destination, 60000, True)
-else:
-    command = ['redis-cli', '-h', hostname, '-p', port, '--rdb', destination]
-    subprocess.run(command, stdout=subprocess.DEVNULL,
-                   stderr=subprocess.DEVNULL, check=True)
-
-PY
-  [ $? -eq 0 ] || return 1
+  local -a rdb_args=()
+  if [ "$port" -eq 0 ]; then
+    rdb_args=(-s --authenticate)
+  fi
+  sonic-db-cli "${rdb_args[@]}" --rdb "$redis_dir/dump.rdb" ASIC_DB > /dev/null 2>&1 || return 1
 
   logger "saidump.sh: [2] Run rdb-cli command to convert the dump files into JSON files."
   rdb-cli "$redis_dir/dump.rdb" json | tee "$redis_dir/dump.json" > /dev/null
