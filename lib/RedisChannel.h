@@ -16,6 +16,8 @@
 
 #include <memory>
 #include <functional>
+#include <map>
+#include <string>
 
 namespace sairedis
 {
@@ -77,6 +79,15 @@ namespace sairedis
             std::shared_ptr<swss::DBConnector> m_db;
 
             std::shared_ptr<swss::RedisPipeline> m_redisPipeline;
+
+            /**
+             * @brief Late responses still expected, per response command.
+             *
+             * Responses carry no request identity, so the response of a
+             * request whose wait() failed is dropped when it arrives,
+             * instead of being returned to the next request.
+             */
+            std::map<std::string, uint64_t> m_lateResponses;
 
         private: // notification
 

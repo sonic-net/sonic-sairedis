@@ -10,6 +10,7 @@
 #include "TunnelManager.h"
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
+#include "VppAclInterfacePolicy.h"
 #include "SwitchVppPbh.h"
 #include "SwitchVppTrim.h"
 #include "SwitchVppPolicer.h"
@@ -34,6 +35,7 @@
 #include <queue>
 #include <set>
 #include <string>
+#include <tuple>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -342,6 +344,26 @@ namespace saivs
                     _Inout_ nexthop_grp_member_t& member,
                     _In_ bool isAdd);
 
+            struct DetachedNexthopRoutes
+            {
+                struct SavedCounterStats
+                {
+                    bool has_old_stats = false;
+                    std::map<sai_stat_id_t, uint64_t> old_stats;
+                };
+
+                std::vector<std::shared_ptr<SaiObject>> direct_routes;
+                std::vector<std::pair<std::shared_ptr<SaiObject>, std::shared_ptr<SaiDBObject>>> nhg_members;
+                std::map<std::string, SavedCounterStats> counter_stats;
+            };
+
+            void detachRoutesForNexthops(
+                    _In_ const std::vector<sai_object_id_t>& nh_oids,
+                    _Out_ DetachedNexthopRoutes& state);
+
+            void reattachRoutesForNexthops(
+                    _In_ const DetachedNexthopRoutes& state);
+
             sai_status_t setRouteCounterBinding(
                     _In_ const std::string &serializedObjectId,
                     _In_ sai_object_id_t counter_oid);
@@ -562,6 +584,13 @@ namespace saivs
             static sai_status_t add_tc_filter_redirect(
                     _In_ const std::string& tap,
                     _In_ const std::string& hostIfname);
+
+            sai_status_t add_tc_filter_redirect_to_vrf(
+                    _In_ const std::string& tap,
+                    _In_ const std::string& vrf);
+
+            void del_tc_filter_redirect(
+                    _In_ const std::string& tap);
 
             virtual bool hostif_create_tap_veth_forwarding(
                     _In_ const std::string &tapname,
@@ -938,6 +967,13 @@ namespace saivs
             sai_status_t vpp_remove_router_interface(
                     _In_ sai_object_id_t objectId);
 
+            sai_status_t vpp_router_interface_set_vrf(
+                    _In_ sai_object_id_t vr_oid,
+                    _In_ const char *hwif_name,
+                    _In_ uint32_t sub_id,
+                    _In_ const char *linux_ifname,
+                    _Inout_ RifCreateState *state = nullptr);
+
             sai_status_t vpp_add_del_intf_ip_addr_norif (
                     _In_ const std::string& ip_prefix_key,
                     _In_ sai_route_entry_t& route_entry,
@@ -1023,7 +1059,16 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+            sai_status_t createVrf(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
             sai_status_t removeVrf(
+                    _In_ sai_object_id_t objectId);
+
+            sai_status_t vpp_create_vrf_table(
                     _In_ sai_object_id_t objectId);
 
             std::shared_ptr<IpVrfInfo> vpp_get_ip_vrf(
@@ -1171,12 +1216,11 @@ namespace saivs
             // and, via getPortsWithAclTable(), a reverse (table -> ports)
             // lookup for anything that needs to map ports to ACL tables (the
             // ip2me hook today, egress features tomorrow).
-            struct PortAclTables
-            {
-                std::set<sai_object_id_t> ingress;
-                std::set<sai_object_id_t> egress;
-            };
+            using PortAclTables = VppAclInterfacePolicy;
             std::map<std::string, PortAclTables> m_port_acl_tables;
+            // Successful ACL API calls may precede a failed tunterm bind.
+            // Retain that outstanding operation so an identical retry repairs it.
+            std::map<std::tuple<std::string, sai_object_id_t, bool>, bool> m_acl_tunterm_pending;
 
             // ip2me (receive-DPO check before ACL) tracking.
             //
@@ -1608,10 +1652,76 @@ namespace saivs
                     _In_ bool is_input,
                     _In_ bool is_bind);
 
+            sai_status_t aclSetPortTableGroup(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_object_id_t port_oid,
+                    _In_ sai_attr_id_t attr_id,
+                    _In_ sai_object_id_t group_oid,
+                    _In_ bool is_input);
+
             sai_status_t aclBindUnbindPorts(
                     _In_ sai_object_id_t tbl_grp_oid,
                     _In_ sai_object_id_t tbl_oid,
                     _In_ bool is_bind);
+
+            sai_status_t aclBindInterfaceTable(
+                    _In_ const std::string &hwif_name,
+                    _In_ sai_object_id_t tbl_oid,
+                    _In_ bool is_input,
+                    _In_ bool is_bind);
+
+            sai_status_t aclApplyInterfacePolicy(
+                    _In_ const std::string &hwif_name,
+                    _In_ const PortAclTables &desired,
+                    _In_ bool change_input = true,
+                    _In_ bool change_output = true);
+
+            sai_status_t aclReadInterfacePolicy(
+                    _In_ const std::string &hwif_name);
+
+            // Port/LAG ACLs cover the parent and its bridged children.
+            // Routed sub-ports keep their own RIF policy.
+            std::vector<std::string> resolveAclInterfaces(
+                    _In_ sai_object_id_t port_oid) const;
+
+            sai_status_t aclReconcileGroupPbh(
+                    _In_ sai_object_id_t port_oid,
+                    _In_ sai_object_id_t group_oid,
+                    _In_ const std::set<sai_object_id_t> &desired);
+
+            sai_status_t aclReconcileInterfacePbh(
+                    _In_ sai_object_id_t port_oid,
+                    _In_ sai_object_id_t group_oid,
+                    _In_ const std::string &hwif_name,
+                    _In_ const std::set<sai_object_id_t> &desired);
+
+            sai_status_t aclRestorePbhRegularPolicy(
+                    _In_ sai_object_id_t port_oid,
+                    _In_ sai_object_id_t group_oid,
+                    _In_ bool is_input);
+
+            void aclRecordInterfacePolicy(
+                    _In_ const std::string &hwif_name,
+                    _In_ const PortAclTables &policy);
+
+            sai_status_t aclBindInterfaceDefault(
+                    _In_ const std::string &hwif_name,
+                    _In_ bool is_input,
+                    _In_ bool is_bind);
+
+            sai_status_t aclInheritInterfacePolicy(
+                    _In_ const std::string &parent_hwif,
+                    _In_ const std::string &child_hwif);
+
+            sai_status_t aclRemoveInterfacePolicy(
+                    _In_ const std::string &hwif_name);
+
+            sai_status_t aclRemoveInterfacePbh(
+                    _In_ const std::string &hwif_name);
+
+            // Called only after VPP has successfully deleted the interface.
+            void aclForgetInterfacePolicy(
+                    _In_ const std::string &hwif_name);
 
             /*
              * Generic port <-> ACL-table binding bookkeeping (both
@@ -1705,7 +1815,7 @@ namespace saivs
                     _Out_ uint32_t *num_rules);
 
             /*
-             * VPP interface name of a PORT, on the port create/update path.
+             * VPP interface name of a PORT, resolving its identity when needed.
              *
              * Registry first, falling back to the hardware lane list, which is
              * also what registers the port: create_ports() makes ports with no
@@ -1716,9 +1826,9 @@ namespace saivs
              * attribute list -- during a set, the new lane list is in attr_list
              * and not yet in the object store.
              *
-             * Everywhere else the interface is necessarily already known, and
-             * the plain index lookup, VppInterfaceRegistry::resolveHwIfName(),
-             * is what should be used.
+             * Default VLAN member removal can also need this fallback before
+             * its port is registered. Paths that require an existing record
+             * use VppInterfaceRegistry::resolveHwIfName().
              */
             bool vppGetHwIfNameForPort (
                     _In_ sai_object_id_t object_id,
@@ -1828,6 +1938,17 @@ namespace saivs
             static const uint16_t dynamic_bd_id_pool_size =  12*1024;
 
             BitResourcePool dynamic_bd_id_pool = BitResourcePool(dynamic_bd_id_pool_size, dynamic_bd_id_base);
+
+            // VPP ip table ids for virtual routers created through SAI; the
+            // default virtual router uses table 0. The only other tables come
+            // from kernel VRF table ids (linux-cp route sync, and the fallback
+            // in vpp_router_interface_set_vrf), which SONiC allocates from 1001
+            // (the management VRF is 6000). The range starts far above those,
+            // and the fallback refuses a kernel id inside it.
+            static const uint32_t vrf_table_id_base = 0x100000;
+            static const uint16_t vrf_table_id_pool_size = 16*1024;
+
+            BitResourcePool vrf_table_id_pool = BitResourcePool(vrf_table_id_pool_size, vrf_table_id_base);
 
             // Snapshot of VPP L2FIB: {mac, bd_id} -> sw_if_index.
             // Kept in sync with MAC events from VPP to support flush operations
@@ -2133,6 +2254,20 @@ namespace saivs
             sai_status_t bindMirrorPort(
                     _In_ sai_object_id_t portId,
                     _In_ const sai_attribute_t* attr);
+        private:
+
+            // A failed list replacement can commit one direction. Do not use
+            // an unverified opposite-direction snapshot until readback succeeds.
+            std::set<std::string> m_acl_interface_state_unknown;
+            // Successful PBH attachments, per owner and interface (including
+            // bridged VLAN children), are independent of regular ACL lists.
+            // Retain rejected/partial updates here until cleanup succeeds.
+            std::map<std::pair<sai_object_id_t, sai_object_id_t>,
+                std::map<std::string, std::set<sai_object_id_t>>> m_acl_group_pbh_tables;
+            // PBH-only groups leave independently installed regular policy
+            // intact. Retain its rollback intent if restoration also fails.
+            std::map<std::tuple<sai_object_id_t, sai_object_id_t, bool>,
+                std::map<std::string, PortAclTables>> m_acl_pbh_regular_restore;
 
         private: // VPP NAT
 
