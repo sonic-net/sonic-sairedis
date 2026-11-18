@@ -72,6 +72,9 @@
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api_enum.h>
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api_types.h>
 
+#include <vpp_plugins/sonic_ext/sonic_ext_tunnel.api_enum.h>
+#include <vpp_plugins/sonic_ext/sonic_ext_tunnel.api_types.h>
+
 #include <vlibmemory/vlib.api_types.h>
 #include <vlibmemory/memclnt.api_enum.h>
 
@@ -220,6 +223,24 @@
 
 #define vl_api_version(n, v) static u32 sonic_ext_trim_api_version = v;
 #include <vpp_plugins/sonic_ext/sonic_ext_trim.api.h>
+#undef vl_api_version
+
+/* sonic_ext tunnel API inclusion */
+
+#define vl_typedefs
+#include <vpp_plugins/sonic_ext/sonic_ext_tunnel.api.h>
+#undef vl_typedefs
+
+#define vl_endianfun
+#include <vpp_plugins/sonic_ext/sonic_ext_tunnel.api.h>
+#undef vl_endianfun
+
+#define vl_calcsizefun
+#include <vpp_plugins/sonic_ext/sonic_ext_tunnel.api.h>
+#undef vl_calcsizefun
+
+#define vl_api_version(n, v) static u32 sonic_ext_tunnel_api_version = v;
+#include <vpp_plugins/sonic_ext/sonic_ext_tunnel.api.h>
 #undef vl_api_version
 
 /* interface API inclusion */
@@ -2306,6 +2327,7 @@ static __thread u16 __plugin_msg_base;
 static u16 l2_msg_id_base, vxlan_msg_id_base, ipip_msg_id_base;
 static u16 tunterm_msg_id_base;
 static u16 sonic_ext_trim_msg_id_base;
+static u16 sonic_ext_tunnel_msg_id_base;
 static u16 bfd_msg_id_base;
 static u16 sr_msg_id_base;
 static u16 mpls_msg_id_base;
@@ -2611,6 +2633,9 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
 #define SONIC_EXT_TRIM_MSG_ID(id) \
     (VL_API_##id + sonic_ext_trim_msg_id_base)
 
+#define SONIC_EXT_TUNNEL_MSG_ID(id) \
+    (VL_API_##id + sonic_ext_tunnel_msg_id_base)
+
 #define VXLAN_MSG_ID(id) \
     (VL_API_##id + vxlan_msg_id_base)
 
@@ -2655,7 +2680,7 @@ vl_api_sonic_ext_pbh_interface_attach_detach_reply_t_handler (vl_api_sonic_ext_p
     _(SFLOW_MSG_ID(SFLOW_INTERFACE_DIRECTION_SET_REPLY), sflow_interface_direction_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IP2ME_ENABLE_DISABLE_REPLY), sonic_ext_ip2me_enable_disable_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_IFACE_LOOPBACK_SET_ACTION_REPLY), sonic_ext_iface_loopback_set_action_reply) \
-    _(SONIC_EXT_MSG_ID(SONIC_EXT_TUNNEL_ENCAP_TTL_SET_REPLY), sonic_ext_tunnel_encap_ttl_set_reply) \
+    _(SONIC_EXT_TUNNEL_MSG_ID(SONIC_EXT_TUNNEL_ENCAP_TTL_SET_REPLY), sonic_ext_tunnel_encap_ttl_set_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_FEATURE_GET_REPLY), sonic_ext_feature_get_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_PROFILE_ADD_DEL_REPLY), sonic_ext_pbh_profile_add_del_reply) \
     _(SONIC_EXT_MSG_ID(SONIC_EXT_PBH_TABLE_ADD_REPLACE_REPLY), sonic_ext_pbh_table_add_replace_reply) \
@@ -2787,6 +2812,10 @@ static void get_base_msg_id()
     msg_base_lookup_name = format (0, "sonic_ext_trim_%08x%c", sonic_ext_trim_api_version, 0);
     sonic_ext_trim_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
     assert(sonic_ext_trim_msg_id_base != (u16) ~0);
+
+    msg_base_lookup_name = format (0, "sonic_ext_tunnel_%08x%c", sonic_ext_tunnel_api_version, 0);
+    sonic_ext_tunnel_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
+    assert(sonic_ext_tunnel_msg_id_base != (u16) ~0);
 
     msg_base_lookup_name = format (0, "classify_%08x%c", classify_api_version, 0);
     classify_msg_id_base = vl_client_get_first_plugin_msg_id ((char *) msg_base_lookup_name);
@@ -4238,7 +4267,7 @@ int vpp_sonic_ext_tunnel_encap_ttl_set(uint32_t sw_if_index, uint8_t ttl)
 
     VPP_LOCK();
 
-    __plugin_msg_base = sonic_ext_msg_id_base;
+    __plugin_msg_base = sonic_ext_tunnel_msg_id_base;
 
     M (SONIC_EXT_TUNNEL_ENCAP_TTL_SET, mp);
     mp->sw_if_index = htonl(sw_if_index);
