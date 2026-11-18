@@ -1,6 +1,7 @@
 #include "SwitchVpp.h"
 #include "HostInterfaceInfo.h"
 #include "EventPayloadNotification.h"
+#include "SwitchVppUtils.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/NotificationPortStateChange.h"
@@ -17,6 +18,7 @@
 #include <sys/ioctl.h>
 #include <net/if_arp.h>
 #include <unistd.h>
+#include <cctype>
 #include <net/ethernet.h>
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
@@ -96,6 +98,60 @@ int SwitchVpp::vs_set_dev_mac_address(
     return err;
 }
 
+int SwitchVpp::vs_set_dev_admin_up(
+        _In_ const char *dev,
+        _In_ bool up)
+{
+    SWSS_LOG_ENTER();
+
+    int s = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (s < 0)
+    {
+        SWSS_LOG_ERROR("failed to create socket, errno: %d", errno);
+
+        return -1;
+    }
+
+    struct ifreq ifr;
+
+    memset(&ifr, 0, sizeof(ifr));
+
+    strncpy(ifr.ifr_name, dev, MAX_INTERFACE_NAME_LEN);
+
+    int err = ioctl(s, SIOCGIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCGIFFLAGS on %s failed, err %d", dev, err);
+
+        close(s);
+
+        return err;
+    }
+
+    if (up)
+    {
+        ifr.ifr_flags |= IFF_UP;
+    }
+    else
+    {
+        ifr.ifr_flags &= ~IFF_UP;
+    }
+
+    err = ioctl(s, SIOCSIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCSIFFLAGS %s on %s failed, err %d",
+                (up ? "UP" : "DOWN"), dev, err);
+    }
+
+    close(s);
+
+    return err;
+}
+
 int SwitchVpp::promisc(
         _In_ const char *dev)
 {
@@ -132,6 +188,64 @@ sai_status_t SwitchVpp::add_tc_filter_redirect(
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::add_tc_filter_redirect_to_vrf(
+        _In_ const std::string& tap,
+        _In_ const std::string& vrf)
+{
+    SWSS_LOG_ENTER();
+
+    std::string res;
+    std::string qdisc_cmd = "tc qdisc add dev " + tap + " clsact";
+    int ret = exec(qdisc_cmd, res);
+    if (ret != 0)
+    {
+        SWSS_LOG_INFO("Command '%s' returned rc %d", qdisc_cmd.c_str(), ret);
+    }
+
+    // Decap BVIs and their taps carry m_router_mac, whereas EVPN peers address
+    // inner frames to the switch's source MAC. Rewriting the packet type to
+    // host before redirecting into the VRF device prevents the kernel IP
+    // receive path from dropping the frame as addressed to another host.
+    std::string cmd = "tc filter add dev " + tap +
+        " ingress protocol all prio 10 matchall action skbedit ptype host pipe"
+        " action mirred ingress redirect dev " + vrf;
+    ret = exec(cmd, res);
+    if (ret == 0)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SWSS_LOG_WARN("Command '%s' failed with rc %d, falling back to plain redirect",
+                  cmd.c_str(), ret);
+
+    std::string fallback = "tc filter add dev " + tap +
+        " ingress protocol all prio 10 u32 match u32 0 0"
+        " action mirred ingress redirect dev " + vrf;
+    ret = exec(fallback, res);
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", fallback.c_str(), ret);
+        del_tc_filter_redirect(tap);
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::del_tc_filter_redirect(
+        _In_ const std::string& tap)
+{
+    SWSS_LOG_ENTER();
+
+    std::string res;
+    std::string cmd = "tc qdisc del dev " + tap + " clsact";
+    int ret = exec(cmd, res);
+    if (ret != 0)
+    {
+        SWSS_LOG_DEBUG("Command '%s' returned rc %d", cmd.c_str(), ret);
+    }
 }
 
 bool SwitchVpp::hostif_create_tap_veth_forwarding(
@@ -354,9 +468,52 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
 
     SWSS_LOG_NOTICE("created TAP device for %s, fd: %d", name.c_str(), tapfd);
     const char *dev = name.c_str();
-    const char *hwif_name = tap_to_hwif_name(dev);
+    const std::string hwif = m_ifaceRegistry.resolveHwIfByOsIf(name);
+
+    if (hwif.empty())
+    {
+        /*
+         * Every use of hwif_name below either calls into VPP or formats it with
+         * "%s", so there is nothing useful to do without it. This used to run on
+         * with the literal "Unknown" and fail later at sw_interface_set_mac();
+         * failing here reports the actual cause.
+         */
+        SWSS_LOG_ERROR("no hwif mapping for hostif %s, cannot attach it to VPP", dev);
+
+        close(tapfd);
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    const char *hwif_name = hwif.c_str();
 
     configure_lcp_interface(hwif_name, dev, true);
+    interface_set_promiscuous(hwif_name, true);
+
+    /*
+     * Re-apply the port's configured admin state to the freshly created VPP host
+     * interface. The SAI port admin state may have been set (e.g. during port
+     * bring-up) before this host interface existed; at that point
+     * vpp_set_interface_state() could not resolve the hwif name (no tap yet) and
+     * the admin-up was silently dropped. Without re-applying it here the VPP
+     * host-interface stays admin-down, which keeps the paired kernel netdev (and
+     * therefore the PTF-side veth carrier) down, causing ENETDOWN on transmit.
+     */
+    {
+        sai_attribute_t admin_attr;
+        admin_attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+        if (get(SAI_OBJECT_TYPE_PORT, obj_id, 1, &admin_attr) == SAI_STATUS_SUCCESS &&
+            admin_attr.value.booldata)
+        {
+            if (interface_set_state(hwif_name, true) == 0)
+            {
+                vpp_resync_sub_interface_admin_state(hwif);
+            }
+
+            SWSS_LOG_NOTICE("Applied admin-up to VPP host interface %s for port %s",
+                    hwif_name, sai_serialize_object_id(obj_id).c_str());
+        }
+    }
 
     {
         bool link_up = false;
@@ -432,8 +589,34 @@ sai_status_t SwitchVpp::vs_create_hostif_tap_interface(
         return SAI_STATUS_FAILURE;
     }
 
+    /*
+     * Write-only from the VPP backend's point of view: nothing under vslib/vpp/
+     * reads these two maps any more, every VPP lookup goes through
+     * m_ifaceRegistry instead. They are kept in step purely so the inherited
+     * SwitchState/SwitchStateBase paths that still consult them -- getPortStat()
+     * being the one VPP actually reaches -- see the same state they always did.
+     */
     setIfNameToPortId(name, obj_id);
     setPortIdToTapName(obj_id, name);
+
+    /*
+     * The port record is created by the lane based resolution, which may not
+     * have run yet for this port -- so force it once here before attaching the
+     * tap. VPP is definitely up at this point, we have just been calling it.
+     */
+    std::string reg_hwif_name = hwif_name;
+    //@todo: can we use lane to report hwif_name?
+    if (!m_ifaceRegistry.findByHwif(reg_hwif_name))
+    {
+        std::string resolved;
+
+        if (getPortHwifNameFromLane(obj_id, resolved))
+        {
+            reg_hwif_name = resolved;
+        }
+    }
+
+    m_ifaceRegistry.setTapName(reg_hwif_name, name);
 
     SWSS_LOG_INFO("created tap interface %s", name.c_str());
 
@@ -506,28 +689,15 @@ sai_status_t SwitchVpp::vs_remove_hostif_tap_interface(
     std::string name = std::string(attr.value.chardata);
 
     /*
-       auto it = m_hostif_info_map.find(name);
+     * Only needed to undo the compatibility writes in
+     * vs_create_hostif_tap_interface(). Resolved through the registry rather
+     * than getPortIdFromIfName(), and taken before clearTapName() below drops
+     * the tap index.
+     */
+    auto rec = m_ifaceRegistry.findByTap(name);
 
-       if (it == m_hostif_info_map.end())
-       {
-       SWSS_LOG_ERROR("failed to find host info entry for tap device: %s", name.c_str());
+    sai_object_id_t port_id = rec ? rec->getOid() : SAI_NULL_OBJECT_ID;
 
-       return SAI_STATUS_FAILURE;
-       }
-
-       SWSS_LOG_NOTICE("attempting to remove tap device: %s", name.c_str());
-
-       auto info = it->second; // destructor will stop threads
-       */
-    // remove host info entry from map
-
-    // m_hostif_info_map.erase(it);
-
-    // remove interface mapping
-
-    // std::string vname = vpp_get_veth_name(name, info->m_portId);
-
-    sai_object_id_t port_id = getPortIdFromIfName(name);
     auto it = m_hostif_info_map.find(name);
 
     if (it != m_hostif_info_map.end())
@@ -538,6 +708,31 @@ sai_status_t SwitchVpp::vs_remove_hostif_tap_interface(
         m_hostif_info_map.erase(it);
     }
 
+    /*
+     * Tear down the VPP state that vs_create_hostif_tap_interface() set up, so a
+     * later re-create of the same host interface in the SAME saiserver process
+     * starts from a clean slate. Without this the leftover linux-cp pair and
+     * enabled IPv6 make the next create fail (config_lcp_hostif / ip6-enable
+     * return VALUE_EXIST), which previously required a full backend restart per
+     * test to avoid. Both calls are idempotent (vpp_normalize_ret tolerates
+     * NO_SUCH_ENTRY on delete), so removing a partially-created hostif is safe.
+     */
+    const std::string hwif_name = m_ifaceRegistry.resolveHwIfByOsIf(name);
+
+    if (!hwif_name.empty())
+    {
+        sw_interface_ip6_enable_disable(hwif_name.c_str(), false);
+        configure_lcp_interface(hwif_name.c_str(), name.c_str(), false);
+
+        /*
+         * Only the tap goes away. The port itself still exists in VPP and is
+         * still reachable through the lane based lookup, so the record must
+         * survive -- clearTapName(), never remove().
+         */
+        m_ifaceRegistry.clearTapName(hwif_name);
+    }
+
+    /* Compatibility only, see vs_create_hostif_tap_interface(). */
     removeIfNameToPortId(name);
 
     if (port_id != SAI_NULL_OBJECT_ID)
@@ -573,87 +768,3 @@ bool SwitchVpp::hasIfIndex(
 
 // VPP
 
-// TODO to config
-static const char *sonic_vpp_ifmap = "/usr/share/sonic/hwsku/sonic_vpp_ifmap.ini";
-
-void SwitchVpp::populate_if_mapping()
-{
-    SWSS_LOG_ENTER();
-
-    if (mapping_init)
-    {
-        return;
-    }
-
-    FILE *fp;
-    char sonic_name[64], vpp_name[64];
-
-    fp = fopen(sonic_vpp_ifmap, "r");
-
-    if (!fp)
-    {
-        return;
-    }
-
-    while (fscanf(fp, "%s %s", sonic_name, vpp_name) != EOF)
-    {
-        std::string tap_name, hwif_name;
-
-        tap_name = std::string(sonic_name);
-        hwif_name = std::string(vpp_name);
-
-        m_hostif_hwif_map[tap_name] = hwif_name;
-        m_hwif_hostif_map[hwif_name] = tap_name;
-    }
-
-    mapping_init = 1;
-
-    fclose(fp);
-}
-
-const char* SwitchVpp::tap_to_hwif_name(
-        _In_ const char *name)
-{
-    SWSS_LOG_ENTER();
-
-    populate_if_mapping();
-
-    std::string tap_name = std::string(name);
-
-    auto it = m_hostif_hwif_map.find(tap_name);
-
-    if (it == m_hostif_hwif_map.end())
-    {
-        SWSS_LOG_ERROR("failed to find hwif info entry for hostif device: %s", tap_name.c_str());
-
-        return "Unknown";
-    }
-
-    SWSS_LOG_DEBUG("Found hwif %s info entry for hostif device: %s", it->second.c_str(), tap_name.c_str());
-
-    return it->second.c_str();
-}
-
-const char* SwitchVpp::hwif_to_tap_name(
-        _In_ const char *name)
-{
-    SWSS_LOG_ENTER();
-
-    populate_if_mapping();
-
-    std::string tap_name = std::string(name);
-
-    auto it = m_hwif_hostif_map.find(tap_name);
-
-    if (it == m_hwif_hostif_map.end())
-    {
-        // not all hwif are mapped to hostif, e.g. vxlan tunnel interface, bvi interface.
-        SWSS_LOG_NOTICE("failed to find hostif info entry for hwif device: %s", tap_name.c_str());
-
-        return "Unknown";
-    }
-
-    SWSS_LOG_DEBUG("Found  hostif %s info entry for hwif device: %s", it->second.c_str(), tap_name.c_str());
-
-    return it->second.c_str();
-}

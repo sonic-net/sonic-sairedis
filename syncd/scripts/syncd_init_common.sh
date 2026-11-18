@@ -19,6 +19,7 @@ VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
 # Retrieve vars from sonic-cfggen
 SYNCD_VARS=$(sonic-cfggen -d -y /etc/sonic/sonic_version.yml -t $VARS_FILE) || exit 1
 SONIC_ASIC_TYPE=$(echo $SYNCD_VARS | jq -r '.asic_type')
+SONIC_ASIC_SUBTYPE=$(echo $SYNCD_VARS | jq -r '.asic_subtype // empty')
 
 if [ -x $CMD_DSSERVE ]; then
     CMD=$CMD_DSSERVE
@@ -42,13 +43,19 @@ mkdir -p /var/log/sai_failure_dump/
 # Otherwise, set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
 SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
-SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.orch_southbound_zmq_enabled')
+SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.swss_zmq')
+ASYNC_REC=$(sonic-db-cli CONFIG_DB hget "SYSTEM_DEFAULTS|async_rec" "status")
+
 if [ "$SWITCH_TYPE" == "dpu" ]; then
     CMD_ARGS+=" -z zmq_sync -x $CONTEXT_CONFIG_FILE"
 elif [ "$SOUTHBOUND_ZMQ" == "true" ]; then
     CMD_ARGS+=" -z zmq_sync"
     if [ -f "$CONTEXT_CONFIG_FILE" ]; then
         CMD_ARGS+=" -x $CONTEXT_CONFIG_FILE"
+    fi
+    # Enable async ASIC_DB writes only when ZMQ southbound is active and async_rec is opted in
+    if [ "$ASYNC_REC" == "enabled" ]; then
+        CMD_ARGS+=" -R"
     fi
 elif [ "$SYNC_MODE" == "enable" ]; then
     CMD_ARGS+=" -s"
@@ -57,6 +64,17 @@ fi
 SUPPORTING_BULK_COUNTER_GROUPS=$(echo $SYNCD_VARS | jq -r '.supporting_bulk_counter_groups')
 if [ "$SUPPORTING_BULK_COUNTER_GROUPS" != "" ]; then
     CMD_ARGS+=" -B $SUPPORTING_BULK_COUNTER_GROUPS"
+fi
+
+ENABLE_PER_PORT_COUNTER_DISCOVERY=$(echo $SYNCD_VARS | jq -r 'if has("enable_per_port_counter_discovery") then .enable_per_port_counter_discovery else "" end')
+if [ "$ENABLE_PER_PORT_COUNTER_DISCOVERY" == "true" ]; then
+    CMD_ARGS+=" -G"
+elif [ -z "$ENABLE_PER_PORT_COUNTER_DISCOVERY" ]; then
+    case "$SONIC_ASIC_TYPE" in
+        broadcom)
+            CMD_ARGS+=" -G"
+            ;;
+    esac
 fi
 
 case "$(cat /proc/cmdline)" in
@@ -98,6 +116,17 @@ function check_warm_boot()
     # else
         WARM_BOOT="false"
     # fi
+}
+
+
+function cleanup_stale_flow_dump_files()
+{
+    # Flows are to a file based on their VID.
+    # Clean up all files in the directory to avoid updates to stale files.
+    local flow_dump_dir=/var/dump/flows
+    if [ -d "$flow_dump_dir" ]; then
+        rm -f "$flow_dump_dir"/*gz 2>/dev/null || true
+    fi
 }
 
 
@@ -269,6 +298,61 @@ function merge_config_yml_files()
     echo "Merged $from_file to $to_file"
 }
 
+# Generic, vendor-agnostic helper: append the SAI_PROFILE CONFIG_DB table
+# (see sonic-buildimage's src/sonic-yang-models/yang-models/sonic-sai-profile.yang)
+# to the given sai.profile-style file, one KEY=VALUE line per entry, using the
+# shared "sai_profile_dynamic.j2" template installed by sonic-config-engine
+# under $TEMPLATES_DIR. This is a no-op (appends nothing) when the SAI_PROFILE
+# table is absent/empty or the shared template isn't installed, so it is
+# always safe for any config_syncd_* function to call unconditionally.
+#
+# Since Syncd::loadProfileMap() (syncd/Syncd.cpp) parses the final profile
+# file into a std::map keyed by name, later lines always win over earlier
+# ones regardless of any vendor-specific de-duplication done in this script.
+# Calling this function as the very last step before a vendor's profile file
+# is handed to syncd (via "-p <file>") therefore guarantees SAI_PROFILE
+# CONFIG_DB entries take precedence over that vendor's static defaults.
+apply_sai_profile_configdb()
+{
+    local profile_file="$1"
+    local runtime_file="${2:-}"
+    local dynamic_template="$TEMPLATES_DIR/sai_profile_dynamic.j2"
+    local rendered
+
+    if [[ -f "$dynamic_template" ]]; then
+        rendered="$(sonic-cfggen -d -t "$dynamic_template")" || return 1
+        if [[ -n "$rendered" ]]; then
+            # Only create a separate runtime profile when overrides are present.
+            if [[ -n "$runtime_file" ]]; then
+                mkdir -p "$(dirname "$runtime_file")" || return 1
+                if [[ -f "$profile_file" ]]; then
+                    cp -f "$profile_file" "$runtime_file" || return 1
+                else
+                    : > "$runtime_file" || return 1
+                fi
+                profile_file="$runtime_file"
+            fi
+            # ">>" creates profile_file if it does not already exist, so
+            # SAI_PROFILE CONFIG_DB entries are still applied even when a
+            # vendor has no pre-existing static sai.profile at all.
+            if [[ -s "$profile_file" && -n "$(tail -c 1 "$profile_file")" ]]; then
+                printf '\n' >> "$profile_file" || return 1
+            fi
+            printf '%s\n' "$rendered" >> "$profile_file" || return 1
+            # Surface exactly which CONFIG_DB-sourced key/value pairs were
+            # applied (and to which file) in syslog, since these override
+            # any static default with the same key and are otherwise not
+            # visible without enabling syncd's own debug-level logging.
+            logger -t syncd_init_common "SAI_PROFILE CONFIG_DB entries applied to $profile_file: $(echo "$rendered" | tr '\n' ' ' | sed 's/ *$//')"
+        fi
+    fi
+
+    # With a runtime destination, return the selected profile to the caller.
+    if [[ -n "$runtime_file" ]]; then
+        printf '%s\n' "$profile_file"
+    fi
+}
+
 config_syncd_bcm()
 {
     PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
@@ -336,12 +420,25 @@ config_syncd_bcm()
        cp -f /tmp/*.yml /var/run/sswsyncd/
     fi
 
+    local BCM_SAI_PROFILE_FILE
     if [ -f "/tmp/sai.profile" ]; then
-        CMD_ARGS+=" -p /tmp/sai.profile"
-	elif [ -f "/etc/sai.d/sai.profile" ]; then
-        CMD_ARGS+=" -p /etc/sai.d/sai.profile"
+        BCM_SAI_PROFILE_FILE="/tmp/sai.profile"
+    elif [ -f "/etc/sai.d/sai.profile" ]; then
+        BCM_SAI_PROFILE_FILE="/etc/sai.d/sai.profile"
     else
-        CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+        BCM_SAI_PROFILE_FILE="$HWSKU_DIR/sai.profile"
+    fi
+
+    # Apply the generic SAI_PROFILE CONFIG_DB table last, so a hwsku's
+    # sai.profile[.j2] does not need its own
+    # '{% include "sai_profile_dynamic.j2" %}' to pick up CONFIG_DB-driven
+    # overrides - this alone is enough to support SAI_PROFILE on Broadcom.
+    BCM_SAI_PROFILE_FILE="$(apply_sai_profile_configdb "$BCM_SAI_PROFILE_FILE" "$SAI_PROFILE_DIR/sai-runtime.profile")" || exit 1
+
+    CMD_ARGS+=" -p $BCM_SAI_PROFILE_FILE"
+
+    if [ "$SONIC_ASIC_SUBTYPE" = "broadcom" ]; then
+        CMD_ARGS+=" -l"
     fi
 
     if [ -f "$HWSKU_DIR/context_config.json" ]; then
@@ -402,9 +499,29 @@ config_syncd_mlnx()
     awk -F= '!seen[$1]++' /tmp/sai-temp.profile > /tmp/sai.profile
     rm -f /tmp/sai-temp.profile
 
-    # Update sai.profile with MAC_ADDRESS and WARM_BOOT settings
+    # Update sai.profile with MAC_ADDRESS settings
     echo "DEVICE_MAC_ADDRESS=$MAC_ADDRESS" >> /tmp/sai.profile
-    echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
+
+    # Derive warm-boot paths from SAI XML <issu-enabled> (0/1/2)
+    # NVIDIA warmboot (2): isolate under /var/warmboot/sai_warmboot_nvda/
+    # NVIDIA fastfast (1) / disabled (0) / unset: keep legacy /var/warmboot/
+    SAI_INIT_CONFIG_FILE=$(awk -F= '/^SAI_INIT_CONFIG_FILE=/{print $2; exit}' /tmp/sai.profile)
+    ISSU_ENABLED=""
+    if [[ -f "${SAI_INIT_CONFIG_FILE}" ]]; then
+        ISSU_ENABLED=$(
+            sed -n 's:.*<issu-enabled>\([0-9]*\)</issu-enabled>.*:\1:p' "${SAI_INIT_CONFIG_FILE}" |
+            head -n1
+        )
+    fi
+
+    # Update sai.profile with WARM_BOOT settings
+    if [[ "${ISSU_ENABLED}" == "2" ]]; then
+        WARM_BOOT_FILE="/var/warmboot/sai_warmboot_nvda/"
+        echo "SAI_WARM_BOOT_WRITE_FILE=${WARM_BOOT_FILE}" >> /tmp/sai.profile
+        echo "SAI_WARM_BOOT_READ_FILE=${WARM_BOOT_FILE}" >> /tmp/sai.profile
+    else
+        echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
+    fi
 
     if [[ "$DUAL_TOR" == "enable" ]] && [[ "$DSCP_REMAPPING" == "enable" ]]; then
        echo "SAI_DSCP_REMAPPING_ENABLED=1" >> /tmp/sai.profile
@@ -419,18 +536,27 @@ config_syncd_mlnx()
         echo "SAI_KEY_MULTI_ASIC_DEVICE_ID=$DEV" >> /tmp/sai.profile
     fi
 
-    SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
-    if [ ! -d "$SDK_DUMP_PATH" ]; then
-        mkdir -p "$SDK_DUMP_PATH"
-    fi
-
     # Pick extra SAI profile parameters generated by other applications
     if [[ -f /tmp/sai_extra.profile ]]; then
         cat /tmp/sai_extra.profile >> /tmp/sai.profile
     fi
 
+    # Apply the generic SAI_PROFILE CONFIG_DB table last, so its entries
+    # take precedence over all of the static/derived settings above.
+    apply_sai_profile_configdb /tmp/sai.profile || exit 1
+
+    # Other profile consumers also need one value per key, with the last winning.
+    printf '\n' >> /tmp/sai.profile || exit 1
+    tac /tmp/sai.profile | awk -F= '!seen[$1]++' | tac > /tmp/sai-temp.profile
+    mv /tmp/sai-temp.profile /tmp/sai.profile
+
     # Ensure no redundant newlines
     sed -i '/^$/d' /tmp/sai.profile
+
+    SDK_DUMP_PATH=$(sed -n 's/^SAI_DUMP_STORE_PATH=//p' /tmp/sai.profile | tail -n 1)
+    if [ -n "$SDK_DUMP_PATH" ] && [ ! -d "$SDK_DUMP_PATH" ]; then
+        mkdir -p "$SDK_DUMP_PATH"
+    fi
 
     # As long as sonic does not support PTP which can be enabled/disabled, Nvidia platforms enables
     # phcsync for all systems. If HW does not support it, it will do nothing.
@@ -550,7 +676,45 @@ config_syncd_soda()
 
 config_syncd_marvell_teralynx()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    if [ -f $HWSKU_DIR/common_config_support ]; then
+
+        MRVL_CMN_DIR=/usr/share/sonic/device/x86_64-marvell_common
+        SDK_CONFIG_DIR=/tmp/sdk_config
+        MRVL_MERGE_INFRA_SCRIPT=/usr/local/bin/mrvl_merge_infra_script.sh
+
+        # Cleanup older merged config
+        [ -d "$SDK_CONFIG_DIR" ] && rm -rf "$SDK_CONFIG_DIR/"
+        mkdir $SDK_CONFIG_DIR
+
+        # Prepare new sai.profile which points to merged sdk config
+        cp "$HWSKU_DIR/sai.profile" "$SDK_CONFIG_DIR/sai.profile"
+
+        # Invoke merge infra script
+        bash "${MRVL_MERGE_INFRA_SCRIPT}" "$HWSKU_DIR" "$MRVL_CMN_DIR" "$SDK_CONFIG_DIR"
+
+        # Replace the value in the copied sai.profile to point to the merged config
+        sed -i "s|SAI_INIT_CONFIG_FILE=.*|SAI_INIT_CONFIG_FILE=$SDK_CONFIG_DIR/ivm.sai.config.yaml|" $SDK_CONFIG_DIR/sai.profile
+
+        # copy the final config files to the shared folder for 'show tech'
+
+        [[ -f $SDK_CONFIG_DIR/sai.profile ]] \
+            && { cp -f $SDK_CONFIG_DIR/sai.profile /var/run/syncd/ && echo "Copied sai.profile"; } \
+            || echo "Missing $SDK_CONFIG_DIR/sai.profile"
+
+        if compgen -G "$SDK_CONFIG_DIR/*.yaml" > /dev/null; then
+            cp -f $SDK_CONFIG_DIR/*.yaml /var/run/syncd/
+            echo "Copied YAML files"
+        else
+            echo "No YAML files found in $SDK_CONFIG_DIR/"
+        fi
+
+        [[ -f "$SDK_CONFIG_DIR/sai.profile" ]] \
+            && CMD_ARGS+=" -p $SDK_CONFIG_DIR/sai.profile" \
+            || echo "Missing: $SDK_CONFIG_DIR/sai.profile"
+    else
+        CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    fi
+
     ulimit -s 65536
     export II_ROOT="/var/log/mrvl_teralynx"
     export II_APPEND_LOG=1
@@ -559,6 +723,13 @@ config_syncd_marvell_teralynx()
 
 config_syncd_nvidia_bluefield()
 {
+    # SDK techsupport CT dump sentinel path. Keep in sync across:
+    #   sonic-utilities/config/plugins/nvidia_bluefield.py (SDK_TECHSUPPORT_CT_DUMP_SENTINEL)
+    #   sonic-utilities/scripts/generate_dump (sdk_techsupport_ct_dump_sentinel)
+    #   syncd/scripts/syncd_init_common.sh (config_syncd_nvidia_bluefield)
+    mkdir -p /var/run/sonic-platform-nvidia-bluefield
+    rm -f /var/run/sonic-platform-nvidia-bluefield/sdk-techsupport-ct-dump.enabled
+
     # Read MAC addresses
     base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
     hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')
@@ -597,7 +768,7 @@ config_syncd_nvidia_bluefield()
         mkdir -p "$SDK_DUMP_PATH"
     fi
 
-    echo 11700 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    echo 16000 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
     mkdir -p /mnt/huge
     mount -t hugetlbfs pagesize=1GB /mnt/huge
 
@@ -647,12 +818,18 @@ config_syncd_clounix()
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
+config_syncd_grandtrans()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
+
 config_syncd()
 {
     check_warm_boot
 
+    cleanup_stale_flow_dump_files
 
-    if [ "$SONIC_ASIC_TYPE" == "cisco-8000" ]; then
+    if [ "$SONIC_ASIC_TYPE" == "cisco-8000" ] || [ "$SONIC_ASIC_TYPE" == "cisco" ]; then
         config_syncd_cisco_8000
     elif [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
         config_syncd_bcm
@@ -672,6 +849,8 @@ config_syncd()
         config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "nokia-vs" ]; then
         config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "micas-vs" ]; then
+        config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "vpp" ]; then
         config_syncd_vpp
     elif [ "$SONIC_ASIC_TYPE" == "marvell-teralynx" ]; then
@@ -688,6 +867,10 @@ config_syncd()
 	config_syncd_pensando
     elif [ "$SONIC_ASIC_TYPE" == "clounix" ]; then
         config_syncd_clounix
+    elif [ "$SONIC_ASIC_TYPE" == "otn-kvm" ]; then
+        config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "grandtrans" ]; then
+        config_syncd_grandtrans
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
@@ -697,7 +880,32 @@ config_syncd()
     set_start_type
 
     if [ ${ENABLE_SAITHRIFT} == 1 ]; then
-        CMD_ARGS+=" -r -m $HWSKU_DIR/port_config.ini"
+        local port_config="$HWSKU_DIR/port_config.ini"
+        if [ ! -e "$port_config" ]; then
+            if ! mkdir -p -m 0755 /var/run/syncd; then
+                echo "Failed to create SAI Thrift port map directory /var/run/syncd" >&2
+                exit 1
+            fi
+            port_config=/var/run/syncd/port_config.ini
+            if ! (
+                set -o pipefail
+                sonic-db-cli CONFIG_DB EVAL '
+                    local rows = {}
+                    for _, key in ipairs(redis.call("KEYS", "PORT|*")) do
+                        local name = key:sub(6)
+                        local values = redis.call("HMGET", key, "lanes", "alias")
+                        local row = {name, values[1], values[2] or name}
+                        table.insert(rows, table.concat(row, "\t"))
+                    end
+                    return rows
+                ' 0 | sort -k1,1V > "$port_config"
+            ) || ! grep -q '[^[:space:]]' "$port_config"; then
+                rm -f "$port_config"
+                echo "Failed to generate SAI Thrift port map from CONFIG_DB" >&2
+                exit 1
+            fi
+        fi
+        CMD_ARGS+=" -r -m $port_config"
     fi
 
     [ -r $PLATFORM_DIR/syncd.conf ] && . $PLATFORM_DIR/syncd.conf

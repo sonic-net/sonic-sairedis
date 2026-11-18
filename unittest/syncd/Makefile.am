@@ -9,6 +9,8 @@ tests_SOURCES = main.cpp \
                 MockHelper.cpp \
 				MockableSaiSwitchInterface.cpp \
 				TestBestCandidateFinder.cpp \
+				TestComparisonLogicValidOnly.cpp \
+				TestMySidWarmboot.cpp \
 				TestAttrVersionChecker.cpp \
 				TestCommandLineOptions.cpp \
 				TestConcurrentQueue.cpp \
@@ -22,12 +24,15 @@ tests_SOURCES = main.cpp \
 				TestNotificationHandler.cpp \
 				TestMdioIpcServer.cpp \
 				TestPortStateChangeHandler.cpp \
+				TestSelectablesTracker.cpp \
 				TestWorkaround.cpp \
 				TestSyncd.cpp \
 				TestVendorSai.cpp \
-				TestFlowDump.cpp
+				TestFlowDump.cpp \
+				TestAsan.cpp \
+				$(top_srcdir)/syncd/Asan.cpp
 
-tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
+tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
 tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/syncd/libSyncdRequestShutdown.a $(top_srcdir)/syncd/libSyncd.a $(top_srcdir)/vslib/libSaiVS.a $(top_srcdir)/syncd/libMdioIpcClient.a \
 			  -lhiredis -lswsscommon -lnl-genl-3 -lnl-nf-3 -lnl-route-3 -lnl-3 -lpthread -L$(top_srcdir)/lib/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq -lz $(CODE_COVERAGE_LIBS) $(VPP_LIBS)

@@ -277,6 +277,7 @@ namespace syncd
             StrObjectIdToSaiObjectHash m_soRoutes;
             StrObjectIdToSaiObjectHash m_soNatEntries;
             StrObjectIdToSaiObjectHash m_soInsegs;
+            StrObjectIdToSaiObjectHash m_soMySidEntries;
             StrObjectIdToSaiObjectHash m_soOids;
             StrObjectIdToSaiObjectHash m_soAll;
 

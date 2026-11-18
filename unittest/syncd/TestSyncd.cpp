@@ -1,5 +1,7 @@
 #include "Syncd.h"
+#include "DisabledRedisClient.h"
 #include "RedisClient.h"
+#include "ZmqRedisClient.h"
 #include "sai_serialize.h"
 #include "RequestShutdown.h"
 #include "vslib/ContextConfigContainer.h"
@@ -20,6 +22,12 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+
+#include <chrono>
+#include <cstring>
+#include <thread>
+
+#include "swss/table.h"
 
 using namespace syncd;
 using namespace saivs;
@@ -211,6 +219,327 @@ TEST(Syncd, inspectAsic)
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai->apiUninitialize());
 }
 
+static sai_s8_list_t toS8List(
+        _In_ const std::string& str)
+{
+    SWSS_LOG_ENTER();
+
+    sai_s8_list_t list;
+
+    list.count = (uint32_t)str.size();
+    list.list = (int8_t*)const_cast<char*>(str.data());
+
+    return list;
+}
+
+static sai_status_t setFlexCounterGroup(
+        _In_ std::shared_ptr<sairedis::Sai> sai,
+        _In_ sai_object_id_t switchId,
+        _In_ const std::string& group)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string pollInterval = "100";
+    const std::string operation = "enable";
+    const std::string statsMode = STATS_MODE_READ;
+
+    sai_redis_flex_counter_group_parameter_t param;
+
+    memset(&param, 0, sizeof(param));
+
+    param.counter_group_name = toS8List(group);
+    param.poll_interval = toS8List(pollInterval);
+    param.operation = toS8List(operation);
+    param.stats_mode = toS8List(statsMode);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP;
+    attr.value.ptr = &param;
+
+    return sai->set(SAI_OBJECT_TYPE_SWITCH, switchId, &attr);
+}
+
+static sai_status_t startFlexCounter(
+        _In_ std::shared_ptr<sairedis::Sai> sai,
+        _In_ sai_object_id_t switchId,
+        _In_ const std::string& group,
+        _In_ sai_object_id_t vid,
+        _In_ const std::string& fieldName,
+        _In_ const std::string& counterIds)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string key = group + ":" + sai_serialize_object_id(vid);
+
+    sai_redis_flex_counter_parameter_t param;
+
+    memset(&param, 0, sizeof(param));
+
+    param.counter_key = toS8List(key);
+    param.counter_field_name = toS8List(fieldName);
+    param.counter_ids = toS8List(counterIds);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER;
+    attr.value.ptr = &param;
+
+    return sai->set(SAI_OBJECT_TYPE_SWITCH, switchId, &attr);
+}
+
+static bool waitForKey(
+        _In_ swss::Table& table,
+        _In_ const std::string& key,
+        _In_ bool present)
+{
+    SWSS_LOG_ENTER();
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        std::vector<swss::FieldValueTuple> values;
+
+        if (table.get(key, values) == present)
+        {
+            return true;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    return false;
+}
+
+TEST(Syncd, applyViewRemovesStaleFlexCounters)
+{
+    // Syncd keeps running when only its user restarts. Objects matched in
+    // apply view take VIDs from the new view, and objects missing in the new
+    // view are removed. Flex counters registered with the previous VIDs must
+    // be dropped then, since the user can't unregister them anymore, while
+    // counters of objects which kept their VIDs must be polled as before.
+
+    auto db = std::make_shared<swss::DBConnector>("ASIC_DB", 0, true);
+
+    swss::RedisReply r(db.get(), "FLUSHALL", REDIS_REPLY_STATUS);
+
+    r.checkStatusOK();
+
+    sai_service_method_table_t smt;
+
+    smt.profile_get_value = &profileGetValue;
+    smt.profile_get_next_value = &profileGetNextValue;
+
+    auto vssai = std::make_shared<saivs::Sai>();
+
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+    cmd->m_enableTempView = true;
+    cmd->m_profileMapFile = "profile.ini";
+
+    auto syncd = std::make_shared<Syncd>(vssai, cmd, false);
+
+    std::thread thread(syncd_thread, syncd);
+
+    auto sai = std::make_shared<sairedis::Sai>();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->apiInitialize(0, &smt));
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE;
+    attr.value.s32 = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr));
+
+    auto notifySyncd = [&](sai_redis_notify_syncd_t notify)
+    {
+        sai_attribute_t a;
+
+        a.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+        a.value.s32 = notify;
+
+        return sai->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &a);
+    };
+
+    auto createSwitch = [&](sai_object_id_t& switchId)
+    {
+        sai_attribute_t a;
+
+        a.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+        a.value.booldata = true;
+
+        return sai->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &a);
+    };
+
+    auto createRif = [&](sai_object_id_t switchId, sai_object_id_t routerId, sai_object_id_t portId, sai_object_id_t& rifId)
+    {
+        sai_attribute_t attrs[3];
+
+        attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+        attrs[0].value.oid = routerId;
+        attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+        attrs[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+        attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+        attrs[2].value.oid = portId;
+
+        return sai->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, &rifId, switchId, 3, attrs);
+    };
+
+    // first view is applied directly
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, notifySyncd(SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW));
+
+    sai_object_id_t switchId = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createSwitch(switchId));
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sai->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, &attr));
+
+    sai_object_id_t routerId = attr.value.oid;
+
+    sai_object_id_t ports[32];
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = 32;
+    attr.value.objlist.list = ports;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sai->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, &attr));
+
+    sai_object_id_t rifKept = SAI_NULL_OBJECT_ID;
+    sai_object_id_t rifRemoved = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createRif(switchId, routerId, ports[0], rifKept));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createRif(switchId, routerId, ports[1], rifRemoved));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, notifySyncd(SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW));
+
+    const std::string rifGroup = "RIF_STAT_COUNTER";
+    const std::string portGroup = "PORT_STAT_COUNTER";
+    const std::string rifCounters = "SAI_ROUTER_INTERFACE_STAT_IN_OCTETS,SAI_ROUTER_INTERFACE_STAT_IN_PACKETS";
+    const std::string portCounters = "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_UCAST_PKTS";
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setFlexCounterGroup(sai, switchId, rifGroup));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, setFlexCounterGroup(sai, switchId, portGroup));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, startFlexCounter(sai, switchId, rifGroup, rifKept, RIF_COUNTER_ID_LIST, rifCounters));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, startFlexCounter(sai, switchId, rifGroup, rifRemoved, RIF_COUNTER_ID_LIST, rifCounters));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, startFlexCounter(sai, switchId, portGroup, ports[0], PORT_COUNTER_ID_LIST, portCounters));
+
+    swss::DBConnector countersDb("COUNTERS_DB", 0, true);
+    swss::Table countersTable(&countersDb, COUNTERS_TABLE);
+
+    swss::DBConnector flexCounterDb("FLEX_COUNTER_DB", 0, true);
+    swss::Table flexCounterTable(&flexCounterDb, FLEX_COUNTER_TABLE);
+
+    const auto strRifKept = sai_serialize_object_id(rifKept);
+    const auto strRifRemoved = sai_serialize_object_id(rifRemoved);
+    const auto strPort = sai_serialize_object_id(ports[0]);
+
+    EXPECT_TRUE(waitForKey(countersTable, strRifKept, true));
+    EXPECT_TRUE(waitForKey(countersTable, strRifRemoved, true));
+    EXPECT_TRUE(waitForKey(countersTable, strPort, true));
+
+    EXPECT_TRUE(waitForKey(flexCounterTable, rifGroup + ":" + strRifKept, true));
+    EXPECT_TRUE(waitForKey(flexCounterTable, rifGroup + ":" + strRifRemoved, true));
+    EXPECT_TRUE(waitForKey(flexCounterTable, portGroup + ":" + strPort, true));
+
+    // new view: one router interface is created again and is matched to the
+    // existing one, the other router interface is missing
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, notifySyncd(SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW));
+
+    sai_object_id_t newSwitchId = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createSwitch(newSwitchId));
+
+    EXPECT_EQ(switchId, newSwitchId);
+
+    // read the default objects again, so they are known in the new view
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sai->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, &attr));
+
+    EXPECT_EQ(routerId, attr.value.oid);
+
+    sai_object_id_t newPorts[32];
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = 32;
+    attr.value.objlist.list = newPorts;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sai->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, &attr));
+
+    EXPECT_EQ(ports[0], newPorts[0]);
+
+    sai_object_id_t rifNew = SAI_NULL_OBJECT_ID;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createRif(switchId, routerId, ports[0], rifNew));
+
+    EXPECT_NE(rifNew, rifKept);
+    EXPECT_NE(rifNew, rifRemoved);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, notifySyncd(SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW));
+
+    // counters registered with the previous VIDs are gone
+
+    EXPECT_TRUE(waitForKey(flexCounterTable, rifGroup + ":" + strRifKept, false));
+    EXPECT_TRUE(waitForKey(flexCounterTable, rifGroup + ":" + strRifRemoved, false));
+    EXPECT_TRUE(waitForKey(countersTable, strRifKept, false));
+    EXPECT_TRUE(waitForKey(countersTable, strRifRemoved, false));
+
+    // the port kept its VID and is still polled
+
+    std::vector<swss::FieldValueTuple> values;
+
+    EXPECT_TRUE(flexCounterTable.get(portGroup + ":" + strPort, values));
+
+    countersTable.del(strPort);
+
+    EXPECT_TRUE(waitForKey(countersTable, strPort, true));
+
+    // previous VIDs are not polled anymore
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    EXPECT_FALSE(countersTable.get(strRifKept, values));
+    EXPECT_FALSE(countersTable.get(strRifRemoved, values));
+
+    // the new VID can be registered and is polled
+
+    const auto strRifNew = sai_serialize_object_id(rifNew);
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, startFlexCounter(sai, switchId, rifGroup, rifNew, RIF_COUNTER_ID_LIST, rifCounters));
+
+    EXPECT_TRUE(waitForKey(countersTable, strRifNew, true));
+    EXPECT_TRUE(waitForKey(flexCounterTable, rifGroup + ":" + strRifNew, true));
+
+    // request shutdown
+
+    auto opt = std::make_shared<RequestShutdownCommandLineOptions>();
+
+    opt->setRestartType(SYNCD_RESTART_TYPE_COLD);
+
+    RequestShutdown rs(opt);
+
+    rs.send();
+
+    thread.join();
+
+    syncd = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->apiUninitialize());
+
+    swss::RedisReply flush(db.get(), "FLUSHALL", REDIS_REPLY_STATUS);
+
+    flush.checkStatusOK();
+}
+
 TEST(Syncd, zmqSyncWithJsonDisabledFallsBackToRedisSync)
 {
     auto sai = std::make_shared<MockableSaiInterface>();
@@ -237,6 +566,131 @@ TEST(Syncd, zmqSyncWithJsonEnabledUsesZmq)
 
     EXPECT_EQ(cmd->m_redisCommunicationMode, SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC);
     EXPECT_TRUE(syncd->m_enableSyncMode);
+}
+
+// Cmdline requests ZMQ_SYNC and the context file omits zmq_enable.
+// The reconciler defers to the command line and the resolved mode
+// stays at ZMQ_SYNC. An absent zmq_enable means "no opinion from the
+// file," distinct from an explicit false (which demotes to REDIS_SYNC,
+// covered by zmqSyncWithJsonDisabledFallsBackToRedisSync).
+TEST(Syncd, zmqSyncWithJsonEmptyDefersToCmdline)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_empty.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(cmd->m_redisCommunicationMode, SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC);
+    EXPECT_TRUE(syncd->m_enableSyncMode);
+}
+
+// The reconciliation in Syncd's constructor must not mutate
+// m_zmqEnable. That field reflects what context_config.json said at
+// parse time and stays that way for the life of the ContextConfig, so
+// future consumers (warm boot, diagnostic dumps, per-context override
+// logic) can still distinguish "the file said ZMQ" from "the operator
+// passed -z zmq_sync on a file-silent context." This is the same
+// invariant the orchagent-side RedisRemoteSaiInterface code honors.
+TEST(Syncd, contextConfigZmqEnablePreservedAfterCmdlinePromotion)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_empty.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    // The cmdline promoted the transport to ZMQ_SYNC, but the parsed
+    // file opinion remains untouched.
+    EXPECT_EQ(syncd->m_contextConfig->m_zmqEnable, sairedis::CONTEXT_CONFIG_ZMQ_EMPTY);
+}
+
+// Symmetric assertion for the demote path: file explicitly disables
+// ZMQ, cmdline requests ZMQ_SYNC. The reconciler demotes to REDIS_SYNC,
+// but m_zmqEnable still reflects the file's explicit false rather than
+// being overwritten by the resolved decision.
+TEST(Syncd, contextConfigZmqEnablePreservedAfterCmdlineDemote)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_disabled.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(syncd->m_contextConfig->m_zmqEnable, sairedis::CONTEXT_CONFIG_ZMQ_DISABLED);
+}
+
+// And the file-authoritative-ZMQ case: file says zmq_enable: true, no
+// cmdline override. m_zmqEnable stays ENABLED, which is what the file
+// said and also what the reconciler resolved to. The point of this
+// assertion is that the value matches even though the reconcile blocks
+// did not fire.
+TEST(Syncd, contextConfigZmqEnablePreservedForFileEnabled)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_contextConfig = "files/ctx_zmq_enabled.json";
+
+    auto syncd = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_EQ(syncd->m_contextConfig->m_zmqEnable, sairedis::CONTEXT_CONFIG_ZMQ_ENABLED);
+}
+
+TEST(Syncd, zmqWithAsyncRecUsesZmqRedisClient)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_enableAsyncRec = true;
+    cmd->m_contextConfig = "files/ctx_zmq_enabled.json";
+
+    auto syncdObj = std::make_shared<Syncd>(sai, cmd, false);
+
+    EXPECT_NE(std::dynamic_pointer_cast<ZmqRedisClient>(syncdObj->m_client), nullptr);
+}
+
+TEST(Syncd, zmqWithoutAsyncRecUsesSyncRedisClient)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_enableAsyncRec = false;
+    cmd->m_contextConfig = "files/ctx_zmq_enabled.json";
+
+    auto syncdObj = std::make_shared<Syncd>(sai, cmd, false);
+
+    // ZMQ active but async_rec disabled: fall back to the synchronous RedisClient,
+    // not the async ZmqRedisClient subclass.
+    EXPECT_EQ(std::dynamic_pointer_cast<ZmqRedisClient>(syncdObj->m_client), nullptr);
+    EXPECT_NE(std::dynamic_pointer_cast<RedisClient>(syncdObj->m_client), nullptr);
+}
+
+TEST(Syncd, asyncRecIgnoredWhenContextConfigDisablesZmq)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    cmd->m_enableAsyncRec = true;
+    cmd->m_contextConfig = "files/ctx_zmq_disabled.json";
+
+    auto syncdObj = std::make_shared<Syncd>(sai, cmd, false);
+
+    // context_config.json disables ZMQ (zmq_enable=false): demote to REDIS_SYNC, so
+    // --async-rec is harmlessly ignored and the synchronous RedisClient is used.
+    EXPECT_EQ(cmd->m_redisCommunicationMode, SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC);
+    EXPECT_EQ(std::dynamic_pointer_cast<ZmqRedisClient>(syncdObj->m_client), nullptr);
+    EXPECT_NE(std::dynamic_pointer_cast<RedisClient>(syncdObj->m_client), nullptr);
 }
 
 using namespace syncd;
@@ -274,6 +728,12 @@ public:
     MOCK_METHOD(void, eraseRidAndVid, (sai_object_id_t rid, sai_object_id_t vid));
 };
 
+class MockDisabledRedisClient : public DisabledRedisClient
+{
+public:
+    MOCK_METHOD(sai_object_id_t, getRidForVid, (sai_object_id_t vid), (override));
+};
+
 class SyncdTest : public ::testing::Test
 {
 protected:
@@ -296,6 +756,250 @@ protected:
     std::shared_ptr<CommandLineOptions> m_opt;
     std::shared_ptr<Syncd> m_syncd;
 };
+
+TEST_F(SyncdTest, GetResponseClearsPointerValue)
+{
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_get = [switchRid](sai_object_type_t objectType, sai_object_id_t objectId,
+            uint32_t attrCount, sai_attribute_t *attrList) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(switchRid, objectId);
+        EXPECT_EQ(1u, attrCount);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrList[0].id);
+        attrList[0].value.ptr = reinterpret_cast<void *>(0x1234);
+        return SAI_STATUS_SUCCESS;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_SUCCESS), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:oid:0x21000000000000",
+        REDIS_ASIC_STATE_COMMAND_GET,
+        {{"SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", "0x0"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(1u, responseValues.size());
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", fvField(responseValues[0]));
+    EXPECT_EQ("0x0", fvValue(responseValues[0]));
+}
+
+TEST_F(SyncdTest, BulkGetResponseClearsPointerValue)
+{
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_get = [switchRid](sai_object_type_t objectType, sai_object_id_t objectId,
+            uint32_t attrCount, sai_attribute_t *attrList) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(switchRid, objectId);
+        EXPECT_EQ(1u, attrCount);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrList[0].id);
+        attrList[0].value.ptr = reinterpret_cast<void *>(0x1234);
+        return SAI_STATUS_SUCCESS;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_SUCCESS), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:1",
+        REDIS_ASIC_STATE_COMMAND_BULK_GET,
+        {{"oid:0x21000000000000", "SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(1u, responseValues.size());
+    EXPECT_EQ(sai_serialize_status(SAI_STATUS_SUCCESS), fvField(responseValues[0]));
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0", fvValue(responseValues[0]));
+}
+
+TEST_F(SyncdTest, GetOverflowResponseClearsPointerValue)
+{
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_get = [switchRid](sai_object_type_t objectType, sai_object_id_t objectId,
+            uint32_t attrCount, sai_attribute_t *attrList) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(switchRid, objectId);
+        EXPECT_EQ(2u, attrCount);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrList[0].id);
+        EXPECT_EQ(SAI_SWITCH_ATTR_PORT_LIST, attrList[1].id);
+        EXPECT_EQ(nullptr, attrList[1].value.objlist.list);
+        attrList[0].value.ptr = reinterpret_cast<void *>(0x1234);
+        attrList[1].value.objlist.count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_BUFFER_OVERFLOW), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:oid:0x21000000000000",
+        REDIS_ASIC_STATE_COMMAND_GET,
+        {{"SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", "0x0"},
+         {"SAI_SWITCH_ATTR_PORT_LIST", "0:null"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(2u, responseValues.size());
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY", fvField(responseValues[0]));
+    EXPECT_EQ("0x0", fvValue(responseValues[0]));
+    EXPECT_EQ("SAI_SWITCH_ATTR_PORT_LIST", fvField(responseValues[1]));
+    EXPECT_EQ("2", fvValue(responseValues[1]));
+}
+
+TEST_F(SyncdTest, BulkGetOverflowResponseClearsPointerValue)
+{
+    m_opt->m_enableSaiBulkSupport = true;
+
+    const sai_object_id_t switchVid = 0x21000000000000;
+    const sai_object_id_t switchRid = 0x11000000000001;
+    m_syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+
+    m_sai->mock_bulkGet = [switchRid](sai_object_type_t objectType, uint32_t objectCount,
+            const sai_object_id_t *objectIds, const uint32_t *attrCounts,
+            sai_attribute_t **attrLists, sai_bulk_op_error_mode_t mode, sai_status_t *statuses) {
+        EXPECT_EQ(SAI_OBJECT_TYPE_SWITCH, objectType);
+        EXPECT_EQ(1u, objectCount);
+        EXPECT_EQ(switchRid, objectIds[0]);
+        EXPECT_EQ(2u, attrCounts[0]);
+        EXPECT_EQ(SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, mode);
+        EXPECT_EQ(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, attrLists[0][0].id);
+        EXPECT_EQ(SAI_SWITCH_ATTR_PORT_LIST, attrLists[0][1].id);
+        EXPECT_EQ(nullptr, attrLists[0][1].value.objlist.list);
+        attrLists[0][0].value.ptr = reinterpret_cast<void *>(0x1234);
+        attrLists[0][1].value.objlist.count = 2;
+        statuses[0] = SAI_STATUS_BUFFER_OVERFLOW;
+        return SAI_STATUS_FAILURE;
+    };
+
+    std::vector<swss::FieldValueTuple> responseValues;
+    auto responseChannel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*responseChannel, set(sai_serialize_status(SAI_STATUS_FAILURE), testing::_, REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .WillOnce(testing::Invoke([&responseValues](const std::string&, const std::vector<swss::FieldValueTuple>& values, const std::string&) {
+            responseValues = values;
+        }));
+    m_syncd->m_selectableChannel = responseChannel;
+
+    swss::KeyOpFieldsValuesTuple request = {
+        "SAI_OBJECT_TYPE_SWITCH:1",
+        REDIS_ASIC_STATE_COMMAND_BULK_GET,
+        {{"oid:0x21000000000000", "SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0|SAI_SWITCH_ATTR_PORT_LIST=0:null"}}
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+    m_syncd->processEvent(consumer);
+
+    ASSERT_EQ(1u, responseValues.size());
+    EXPECT_EQ(sai_serialize_status(SAI_STATUS_BUFFER_OVERFLOW), fvField(responseValues[0]));
+    EXPECT_EQ("SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY=0x0|SAI_SWITCH_ATTR_PORT_LIST=2", fvValue(responseValues[0]));
+}
+
+TEST_F(SyncdTest, FlexCounterRemoveDoesNotRequireVidToRidTranslation)
+{
+    auto client = std::make_shared<MockDisabledRedisClient>();
+    EXPECT_CALL(*client, getRidForVid(testing::_)).Times(0);
+
+    m_syncd->m_translator = std::make_shared<VirtualOidTranslator>(
+            client,
+            m_syncd->m_virtualObjectIdManager,
+            m_sai);
+
+    EXPECT_EQ(m_syncd->processFlexCounterEvent(
+                "PORT_PHY_SERDES_ATTR:oid:0x57000000000001",
+                DEL_COMMAND,
+                {},
+                false),
+            SAI_STATUS_SUCCESS);
+}
+
+TEST_F(SyncdTest, FlexCounterRemoveFromAsicChannelDoesNotRequireVidToRidTranslation)
+{
+    auto client = std::make_shared<MockDisabledRedisClient>();
+    EXPECT_CALL(*client, getRidForVid(testing::_)).Times(0);
+
+    m_syncd->m_translator = std::make_shared<VirtualOidTranslator>(
+            client,
+            m_syncd->m_virtualObjectIdManager,
+            m_sai);
+
+    auto channel = std::make_shared<MockSelectableChannel>();
+    m_syncd->m_selectableChannel = channel;
+    m_syncd->m_enableSyncMode = true;
+
+    EXPECT_CALL(*channel, set(
+                sai_serialize_status(SAI_STATUS_SUCCESS),
+                testing::IsEmpty(),
+                REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .Times(1);
+
+    const std::string key =
+        "PORT_PHY_SERDES_ATTR:oid:0x57000000000001";
+    const std::vector<swss::FieldValueTuple> values = {
+        {"TEST_FIELD", "TEST_VALUE"}
+    };
+
+    m_syncd->m_flexCounterTable->set(key, values);
+
+    std::string value;
+    ASSERT_TRUE(m_syncd->m_flexCounterTable->hget(
+                key,
+                "TEST_FIELD",
+                value));
+
+    EXPECT_EQ(m_syncd->processFlexCounterEvent(
+                key,
+                DEL_COMMAND,
+                {},
+                true),
+            SAI_STATUS_SUCCESS);
+
+    EXPECT_FALSE(m_syncd->m_flexCounterTable->hget(
+                key,
+                "TEST_FIELD",
+                value));
+}
 
 TEST_F(SyncdTest, processNotifySyncd)
 {
@@ -524,6 +1228,115 @@ TEST_F(SyncdTest, BulkCreateTest)
     };
 
     m_syncd->processEvent(*channel);
+}
+
+static void switchMacDefaultsTest(
+        std::shared_ptr<MockableSaiInterface> sai,
+        std::shared_ptr<Syncd> syncd,
+        bool switchTypeKnown,
+        sai_switch_type_t switchType,
+        bool routerMacGettable)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switchVid = 0x21000000000000;
+    sai_object_id_t switchRid = 0x11000000000001;
+    sai_object_id_t portVid = 0x10000000000002;
+    sai_object_id_t portRid = 0x11000000000002;
+
+    syncd->m_translator->insertRidAndVid(switchRid, switchVid);
+    syncd->m_translator->insertRidAndVid(portRid, portVid);
+    syncd->m_client->setPortLanes(switchVid, portRid, {52, 53});
+
+    sai->mock_objectTypeQuery = [switchRid, portRid](sai_object_id_t oid) {
+        if (oid == switchRid)
+            return SAI_OBJECT_TYPE_SWITCH;
+        return oid == portRid ? SAI_OBJECT_TYPE_PORT : SAI_OBJECT_TYPE_QUEUE;
+    };
+    sai->mock_switchIdQuery = [switchVid](sai_object_id_t) { return switchVid; };
+    sai->mock_get = [=](sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attrCount,
+                        sai_attribute_t* attrList) -> sai_status_t {
+        if (attrCount != 1)
+            return SAI_STATUS_INVALID_PARAMETER;
+        if (objectType == SAI_OBJECT_TYPE_SWITCH && objectId == switchRid)
+        {
+            switch (attrList[0].id)
+            {
+                case SAI_SWITCH_ATTR_TYPE:
+                    if (!switchTypeKnown)
+                        return SAI_STATUS_NOT_SUPPORTED;
+                    attrList[0].value.s32 = switchType;
+                    return SAI_STATUS_SUCCESS;
+                case SAI_SWITCH_ATTR_PORT_NUMBER:
+                    attrList[0].value.u32 = 1;
+                    return SAI_STATUS_SUCCESS;
+                case SAI_SWITCH_ATTR_PORT_LIST:
+                    attrList[0].value.objlist.count = 1;
+                    attrList[0].value.objlist.list[0] = portRid;
+                    return SAI_STATUS_SUCCESS;
+                case SAI_SWITCH_ATTR_SRC_MAC_ADDRESS:
+                {
+                    sai_mac_t mac = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+                    memcpy(attrList[0].value.mac, mac, sizeof(sai_mac_t));
+                    return SAI_STATUS_SUCCESS;
+                }
+                case SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC:
+                {
+                    if (!routerMacGettable)
+                        return SAI_STATUS_ATTR_NOT_IMPLEMENTED_0;
+                    sai_mac_t mac = {0x00, 0x11, 0x22, 0x33, 0x44, 0x66};
+                    memcpy(attrList[0].value.mac, mac, sizeof(sai_mac_t));
+                    return SAI_STATUS_SUCCESS;
+                }
+                default:
+                    return SAI_STATUS_NOT_SUPPORTED;
+            }
+        }
+        if (objectType == SAI_OBJECT_TYPE_PORT && objectId == portRid)
+        {
+            if (attrList[0].id == SAI_PORT_ATTR_HW_LANE_LIST)
+            {
+                if (attrList[0].value.u32list.list == nullptr || attrList[0].value.u32list.count < 2)
+                {
+                    attrList[0].value.u32list.count = 2;
+                    return SAI_STATUS_BUFFER_OVERFLOW;
+                }
+                attrList[0].value.u32list.count = 2;
+                attrList[0].value.u32list.list[0] = 52;
+                attrList[0].value.u32list.list[1] = 53;
+                return SAI_STATUS_SUCCESS;
+            }
+            if (attrList[0].id == SAI_PORT_ATTR_PORT_SERDES_ID)
+            {
+                attrList[0].value.oid = SAI_NULL_OBJECT_ID;
+                return SAI_STATUS_SUCCESS;
+            }
+        }
+        return SAI_STATUS_NOT_SUPPORTED;
+    };
+
+    auto sw = std::make_shared<SaiSwitch>(switchVid, switchRid, syncd->m_client, syncd->m_translator, sai, false);
+
+    sai_mac_t mac;
+    sw->getDefaultMacAddress(mac);
+    EXPECT_EQ(sai_serialize_mac(mac), "00:11:22:33:44:55");
+    sw->getVxlanDefaultRouterMacAddress(mac);
+    EXPECT_EQ(sai_serialize_mac(mac), routerMacGettable ? "00:11:22:33:44:66" : "00:00:00:00:00:00");
+}
+
+TEST_F(SyncdTest, SwitchMacDefaultsNpu)
+{
+    switchMacDefaultsTest(m_sai, m_syncd, false, SAI_SWITCH_TYPE_NPU, true);
+}
+
+TEST_F(SyncdTest, SwitchMacDefaultsVoq)
+{
+    switchMacDefaultsTest(m_sai, m_syncd, true, SAI_SWITCH_TYPE_VOQ, true);
+}
+
+TEST_F(SyncdTest, SwitchMacDefaultsRouterMacNotGettable)
+{
+    switchMacDefaultsTest(m_sai, m_syncd, true, SAI_SWITCH_TYPE_VOQ, false);
 }
 
 TEST_F(SyncdTest, BulkSetTest)
@@ -771,5 +1584,538 @@ TEST_F(SyncdTest, processEventInShutdownWaitMode_NonNotifyCommand)
         .Times(0);
 
     m_syncd->processEventInShutdownWaitMode(*channel);
+}
+
+// ----------------------------------------------------------------------------
+// Link event damping tests
+//
+// These tests exercise the real damping call chain:
+//
+//   NotificationProcessor::syncProcessNotification
+//     -> handle_port_state_change
+//     -> process_on_port_state_change
+//     -> m_linkEventDampingApplier (bound to Syncd::applyLinkEventDamping)
+//     -> applyAiedAlgorithm / decayPenalty / writeDampingCountersToStateDb
+//
+// Notes:
+// - Notifications must carry the port RID (the processor translates RID->VID).
+// - Damping config is applied through Syncd::processEvent with op
+//   REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET, which covers
+//   processLinkEventDampingConfigSet as well.
+// - Results are asserted via the LINK_EVENT_DAMPING_STATS table in STATE_DB,
+//   which is written by writeDampingCountersToStateDb.
+// ----------------------------------------------------------------------------
+
+class SyncdLinkEventDampingTest : public SyncdTest
+{
+protected:
+    static constexpr sai_object_id_t PORT_VID = 0x10000000000002;
+    static constexpr sai_object_id_t PORT_RID = 0x11000000000002;
+
+    void SetUp() override
+    {
+        SWSS_LOG_ENTER();
+
+        SyncdTest::SetUp();
+
+        m_syncd->m_translator->insertRidAndVid(PORT_RID, PORT_VID);
+    }
+
+    // Apply damping config via the regular command path
+    // (covers Syncd::processLinkEventDampingConfigSet).
+    void setDampingConfig(
+            const sai_redis_link_event_damping_algo_aied_config_t& config)
+    {
+        SWSS_LOG_ENTER();
+
+        std::string key = sai_serialize_object_type(SAI_OBJECT_TYPE_PORT)
+                        + ":" + sai_serialize_object_id(PORT_VID);
+
+        std::vector<swss::FieldValueTuple> values = {
+            { sai_serialize_redis_port_attr_id(SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM),
+              sai_serialize_redis_link_event_damping_algorithm(SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED) },
+            { sai_serialize_redis_port_attr_id(SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG),
+              sai_serialize_redis_link_event_damping_aied_config(config) },
+        };
+
+        swss::KeyOpFieldsValuesTuple kco(key, REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET, values);
+
+        MockSelectableChannel consumer;
+        EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+        EXPECT_CALL(consumer, pop(testing::_, testing::_))
+            .WillOnce(testing::SetArgReferee<0>(kco));
+
+        m_syncd->processEvent(consumer);
+    }
+
+    // Inject a port state change notification the same way the vendor SAI
+    // callback path would deliver it (using the port RID).
+    void sendPortStateChange(
+            sai_port_oper_status_t status)
+    {
+        SWSS_LOG_ENTER();
+
+        sai_port_oper_status_notification_t n;
+
+        memset(&n, 0, sizeof(n));
+
+        n.port_id = PORT_RID; // notification carries RID, processor translates to VID
+        n.port_state = status;
+
+        std::string data = sai_serialize_port_oper_status_ntf(1, &n);
+
+        std::vector<swss::FieldValueTuple> entry;
+        swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, data, entry);
+
+        m_syncd->m_processor->syncProcessNotification(item);
+    }
+
+    // Read a damping counter field from STATE_DB written by
+    // writeDampingCountersToStateDb.
+    std::string getDampingField(
+            const std::string& field)
+    {
+        SWSS_LOG_ENTER();
+
+        swss::DBConnector db("STATE_DB", 0);
+        swss::Table table(&db, "LINK_EVENT_DAMPING_STATS");
+
+        std::string value;
+        bool found = table.hget(sai_serialize_object_id(PORT_VID), field, value);
+
+        return found ? value : "";
+    }
+
+    std::mutex& dampingStateMutex()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_linkEventDampingMutex;
+    }
+
+    std::map<sai_object_id_t, LinkEventDampingPortState>& portDampingStates()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_portLinkEventDampingStates;
+    }
+
+    std::mutex& pendingNotificationsMutex()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_pendingNotificationsMutex;
+    }
+
+    std::queue<std::vector<sai_port_oper_status_notification_t>>& pendingNotifications()
+    {
+        SWSS_LOG_ENTER();
+
+        return m_syncd->m_pendingNotifications;
+    }
+
+    void invokeProcessPendingDampingSync()
+    {
+        SWSS_LOG_ENTER();
+
+        m_syncd->processPendingDampingSync();
+    }
+
+    void invokeFlushPendingDampingNotifications()
+    {
+        SWSS_LOG_ENTER();
+
+        m_syncd->flushPendingDampingNotifications();
+    }
+};
+
+// Define static constant expression members for linkage
+constexpr sai_object_id_t SyncdLinkEventDampingTest::PORT_VID;
+constexpr sai_object_id_t SyncdLinkEventDampingTest::PORT_RID;
+
+TEST_F(SyncdLinkEventDampingTest, flapsEnterDampingAndSuppress)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 10000;
+    config.suppress_threshold = 1500;
+    config.reuse_threshold    = 1000;
+    config.decay_half_life    = 5000;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // UNKNOWN -> DOWN: no penalty (penalty only on UP -> DOWN), propagated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    // DOWN -> UP: propagated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    // UP -> DOWN: penalty = 1000 < 1500, propagated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    // UP -> DOWN: penalty ~2000 >= 1500 -> damping activated,
+    // threshold-crossing event itself is propagated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    // damping active -> this UP must be suppressed
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    EXPECT_EQ(getDampingField("is_damping_active"), "true");
+
+    // physical status followed the flaps, advertised stayed at last
+    // propagated state (DOWN), proving the UP was suppressed
+    EXPECT_EQ(getDampingField("physical_status"), "SAI_PORT_OPER_STATUS_UP");
+    EXPECT_EQ(getDampingField("advertised_status"), "SAI_PORT_OPER_STATUS_DOWN");
+
+    // pre-damping counters see all transitions, post-damping counters
+    // miss the suppressed UP
+    EXPECT_EQ(getDampingField("pre_damping_down_events"), "3");
+    EXPECT_EQ(getDampingField("pre_damping_up_events"), "3");
+    EXPECT_EQ(getDampingField("post_damping_down_events"), "3");
+    EXPECT_EQ(getDampingField("post_damping_up_events"), "2");
+}
+
+TEST_F(SyncdLinkEventDampingTest, maxSuppressTimeoutExitsDamping)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 200;  // short timeout for the test
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 100;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    // UP -> DOWN: penalty 1000 >= 100 -> damping activated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    // suppressed, physical becomes UP while advertised stays DOWN
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    ASSERT_EQ(getDampingField("is_damping_active"), "true");
+
+    // wait past max_suppress_time
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    // same-state event (no DOWN, so damping timer is not reset):
+    // timeout branch in applyAiedAlgorithm exits damping and the event
+    // is propagated, synchronizing advertised with physical state
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    EXPECT_EQ(getDampingField("is_damping_active"), "false");
+    EXPECT_EQ(getDampingField("physical_status"), "SAI_PORT_OPER_STATUS_UP");
+    EXPECT_EQ(getDampingField("advertised_status"), "SAI_PORT_OPER_STATUS_UP");
+}
+
+TEST_F(SyncdLinkEventDampingTest, penaltyDecayExitsDamping)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 10000; // large, so decay exit wins
+    config.suppress_threshold = 1000;
+    config.reuse_threshold    = 600;
+    config.decay_half_life    = 1000;   // fast decay
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    // UP -> DOWN: penalty 1000 >= 1000 -> damping activated
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    // suppressed
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    EXPECT_EQ(getDampingField("is_damping_active"), "true");
+
+    // wait ~3 half lives: penalty 1000 -> ~125 < reuse_threshold (600)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    // same-state event triggers decayPenalty + reuse-threshold exit branch
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    EXPECT_EQ(getDampingField("is_damping_active"), "false");
+    EXPECT_EQ(getDampingField("advertised_status"), "SAI_PORT_OPER_STATUS_UP");
+}
+
+TEST_F(SyncdLinkEventDampingTest, noDampingConfiguredPropagates)
+{
+    // No damping config applied: applyLinkEventDamping returns early
+    // (port not in m_portLinkEventDampingStates) and events propagate
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    // no STATE_DB entry is written for non-configured ports
+    EXPECT_EQ(getDampingField("is_damping_active"), "");
+}
+
+TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncWithNotifications)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 2000;
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 500;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Create the scenario: port goes DOWN (advertised), then UP (suppressed)
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_DOWN);
+    sendPortStateChange(SAI_PORT_OPER_STATUS_UP);
+
+    // Verify damping is active (UP was suppressed)
+    EXPECT_EQ(getDampingField("is_damping_active"), "true");
+
+    // Set up preconditions
+    {
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+
+        auto it = portDampingStates().find(PORT_VID);
+        ASSERT_NE(it, portDampingStates().end())
+            << "Port damping state not found";
+
+        auto& state = it->second;
+
+        // Simulate what the timer thread does when damping exits via timeout
+        state.pending_state_sync = true;
+        state.is_damping_active = false;
+
+        // Verify the mismatch exists (this is what triggers the notification)
+        EXPECT_NE(state.advertised_status, state.physical_status)
+            << "Expected status mismatch for notification generation";
+    }
+
+    // Call the function
+    invokeProcessPendingDampingSync();
+
+    // Verify the notification was enqueued
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 1)
+            << "Expected 1 notification batch to be enqueued";
+
+        if (!pendingNotifications().empty())
+        {
+            auto& batch = pendingNotifications().front();
+            EXPECT_EQ(batch.size(), 1) << "Expected 1 notification in batch";
+            EXPECT_EQ(batch[0].port_id, PORT_VID) << "Notification for wrong port";
+        }
+    }
+
+    // flush the notifications
+    invokeFlushPendingDampingNotifications();
+
+    // Verify pending_state_sync was cleared and advertised was updated
+    {
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+        auto& state = portDampingStates()[PORT_VID];
+        EXPECT_FALSE(state.pending_state_sync) << "pending_state_sync should be cleared";
+        EXPECT_EQ(state.advertised_status, state.physical_status)
+            << "Advertised should match physical after sync";
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncQueueOverflow)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 2000;
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 500;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Directly populate the queue to 1000 entries
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+
+        sai_port_oper_status_notification_t dummy_ntf;
+        dummy_ntf.port_id = PORT_VID;
+        dummy_ntf.port_state = SAI_PORT_OPER_STATUS_UP;
+
+        std::vector<sai_port_oper_status_notification_t> batch = {dummy_ntf};
+
+        // Fill queue to exactly 1000 entries
+        for (int i = 0; i < 1000; ++i)
+        {
+            pendingNotifications().push(batch);
+        }
+
+        EXPECT_EQ(pendingNotifications().size(), 1000);
+    }
+
+    // Set up the scenario to trigger one more notification
+    {
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+
+        auto& state = portDampingStates().at(PORT_VID);
+
+        // Set up the condition for processPendingDampingSync to queue a notification
+        state.pending_state_sync = true;
+        state.advertised_status = SAI_PORT_OPER_STATUS_DOWN;
+        state.physical_status = SAI_PORT_OPER_STATUS_UP;
+    }
+
+    // This should trigger overflow protection
+    invokeProcessPendingDampingSync();
+
+    // Verify the overflow protection worked
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+
+        // Queue should still be 1000 (dropped oldest, added newest)
+        EXPECT_EQ(pendingNotifications().size(), 1000)
+            << "Queue should be capped at 1000 after overflow";
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsWithBatches)
+{
+    // Directly populate the queue with multiple batches
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+
+        // Create 3 different notification batches
+        for (int batch_num = 0; batch_num < 3; ++batch_num)
+        {
+            sai_port_oper_status_notification_t ntf;
+            ntf.port_id = PORT_VID;
+            ntf.port_state = (batch_num % 2 == 0)
+                ? SAI_PORT_OPER_STATUS_DOWN
+                : SAI_PORT_OPER_STATUS_UP;
+
+            std::vector<sai_port_oper_status_notification_t> batch = {ntf};
+            pendingNotifications().push(batch);
+        }
+
+        EXPECT_EQ(pendingNotifications().size(), 3);
+    }
+
+    invokeFlushPendingDampingNotifications();
+
+    // Verify all batches were flushed
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0)
+            << "All batches should be flushed";
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsDrainsQueue)
+{
+    // Queue 2 notification batches
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+
+        for (int i = 0; i < 2; ++i)
+        {
+            sai_port_oper_status_notification_t ntf;
+            ntf.port_id = PORT_VID;
+            ntf.port_state = SAI_PORT_OPER_STATUS_UP;
+
+            std::vector<sai_port_oper_status_notification_t> batch = {ntf};
+            pendingNotifications().push(batch);
+        }
+    }
+
+    // Tests normal path
+    invokeFlushPendingDampingNotifications();
+
+    // Verify all batches were processed
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, fullNotificationFlowIntegrated)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 2000;
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 500;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Set up with pending notification
+    {
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+
+        auto& state = portDampingStates().at(PORT_VID);
+        state.pending_state_sync = true;
+        state.advertised_status = SAI_PORT_OPER_STATUS_DOWN;
+        state.physical_status = SAI_PORT_OPER_STATUS_UP;
+    }
+
+    // Step 1: processPendingDampingSync queues the notification
+    invokeProcessPendingDampingSync();
+
+    // Verify notification was queued
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 1);
+    }
+
+    // Step 2: flushPendingDampingNotifications sends it
+    invokeFlushPendingDampingNotifications();
+
+    // Verify queue was flushed
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, flushPendingNotificationsEmptyQueue)
+{
+    // Ensure queue is empty
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
+    }
+
+    // Call flush with empty queue
+    invokeFlushPendingDampingNotifications();
+
+    // Queue should still be empty
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0);
+    }
+}
+
+TEST_F(SyncdLinkEventDampingTest, processPendingDampingSyncNoPending)
+{
+    sai_redis_link_event_damping_algo_aied_config_t config;
+    config.max_suppress_time  = 2000;
+    config.suppress_threshold = 100;
+    config.reuse_threshold    = 50;
+    config.decay_half_life    = 500;
+    config.flap_penalty       = 1000;
+
+    setDampingConfig(config);
+
+    // Set up state WITHOUT pending_state_sync
+    {
+        std::lock_guard<std::mutex> lock(dampingStateMutex());
+
+        auto& state = portDampingStates().at(PORT_VID);
+        state.pending_state_sync = false;  // No pending sync
+        state.advertised_status = SAI_PORT_OPER_STATUS_DOWN;
+        state.physical_status = SAI_PORT_OPER_STATUS_UP;
+    }
+
+    // Call the function - should NOT queue any notifications
+    invokeProcessPendingDampingSync();
+
+    // Verify NO notification was queued
+    {
+        std::lock_guard<std::mutex> lock(pendingNotificationsMutex());
+        EXPECT_EQ(pendingNotifications().size(), 0)
+            << "No notification should be queued when pending_state_sync=false";
+    }
 }
 #endif

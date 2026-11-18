@@ -14,6 +14,7 @@ extern "C" {
 #include <unordered_map>
 #include <memory>
 #include <type_traits>
+#include <cstdint>
 
 // Placeholder type for attributes not requiring data allocation
 // Used as default template parameter for simple attributes
@@ -60,10 +61,22 @@ namespace syncd
 
         void removePlugins() {m_plugins.clear();}
 
+        virtual void addObjectWithCounterGroups(
+                _In_ sai_object_id_t vid,
+                _In_ sai_object_id_t rid,
+                _In_ const std::vector<std::string> &idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
         virtual void addObject(
                 _In_ sai_object_id_t vid,
                 _In_ sai_object_id_t rid,
                 _In_ const std::vector<std::string> &idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
+        virtual void bulkAddObjectWithCounterGroups(
+                _In_ const std::vector<sai_object_id_t>& vids,
+                _In_ const std::vector<sai_object_id_t>& rids,
+                _In_ const std::vector<std::string>& idStrings,
                 _In_ const std::string &per_object_stats_mode) = 0;
 
         virtual void bulkAddObject(
@@ -84,11 +97,15 @@ namespace syncd
 
         virtual bool hasObject() const = 0;
 
+        virtual void getObjectVids(
+                _Out_ std::set<sai_object_id_t> &vids) const = 0;
+
     protected:
         std::string m_name;
         std::string m_instanceId;
         std::set<std::string> m_plugins;
         std::string m_bulkChunkSizePerPrefix;
+        std::map<std::pair<sai_object_id_t, sai_object_id_t>, uint32_t> m_failedPolls;
 
     public:
         bool always_check_supported_counters = false;
@@ -133,6 +150,11 @@ namespace syncd
             void removeCounter(
                     _In_ sai_object_id_t vid);
 
+            /**
+             * @brief Get VIDs of all objects that are polled by this instance.
+             */
+            std::set<sai_object_id_t> getCounterVids();
+
             bool isEmpty();
 
             bool isDiscarded();
@@ -141,6 +163,9 @@ namespace syncd
 
             void setPollInterval(
                     _In_ uint32_t pollInterval);
+
+            void setSecondaryPollFactor(
+                    _In_ uint32_t secondaryPollFactor);
 
             void setStatus(
                     _In_ const std::string& status);
@@ -176,7 +201,9 @@ namespace syncd
                     _In_ swss::Table &countersTable);
 
             void runPlugins(
-                    _In_ swss::DBConnector& db);
+                    _In_ swss::DBConnector& db,
+                    _In_ int64_t cycleStartUs,
+                    _In_ int64_t collectUs);
 
             void startFlexCounterThread();
 
@@ -205,6 +232,8 @@ namespace syncd
             bool m_readyToPoll;
 
             uint32_t m_pollInterval;
+
+            uint32_t m_secondaryPollFactor;
 
             std::string m_instanceId;
 

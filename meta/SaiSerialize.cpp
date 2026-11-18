@@ -254,9 +254,9 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.u64, dst_attr.value.u64);
             break;
 
-//        case SAI_ATTR_VALUE_TYPE_INT64:
-//            transfer_primitive(src_attr.value.s64, dst_attr.value.s64);
-//            break;
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            transfer_primitive(src_attr.value.s64, dst_attr.value.s64);
+            break;
 
         case SAI_ATTR_VALUE_TYPE_MAC:
             transfer_primitive(src_attr.value.mac, dst_attr.value.mac);
@@ -348,6 +348,10 @@ sai_status_t transfer_attribute(
 
         case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.portlanelatchstatuslist, dst_attr.value.portlanelatchstatuslist, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.port_ilt_lane_training_status_list, dst_attr.value.port_ilt_lane_training_status_list, countOnly));
             break;
 
         case SAI_ATTR_VALUE_TYPE_LATCH_STATUS:
@@ -1894,6 +1898,32 @@ std::string sai_serialize_port_snr_list(
     return j.dump();
 }
 
+std::string sai_serialize_port_ilt_lane_training_status_list(
+        _In_ const sai_port_ilt_lane_training_status_list_t& status_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::object();
+
+    if (status_list.list == NULL || countOnly)
+    {
+        return j.dump();
+    }
+
+    // Create dictionary format keyed by lane, with each training status by name
+    for (uint32_t i = 0; i < status_list.count; ++i)
+    {
+        std::string lane_key = std::to_string(status_list.list[i].lane);
+
+        j[lane_key] = sai_serialize_enum(
+                static_cast<int32_t>(status_list.list[i].training_status),
+                &sai_metadata_enum_sai_port_ilt_lane_training_status_t);
+    }
+
+    return j.dump();
+}
+
 std::string sai_serialize_taps_list(
         _In_ const sai_taps_list_t& port_serdes_taps_list,
         _In_ bool countOnly)
@@ -2432,8 +2462,8 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_UINT64:
             return sai_serialize_number(attr.value.u64);
 
-//        case SAI_ATTR_VALUE_TYPE_INT64:
-//            return sai_serialize_number(attr.value.s64);
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            return sai_serialize_number(attr.value.s64);
 
         case SAI_ATTR_VALUE_TYPE_MAC:
             return sai_serialize_mac(attr.value.mac);
@@ -2470,6 +2500,9 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
             return sai_serialize_port_lane_latch_status_list(attr.value.portlanelatchstatuslist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
+            return sai_serialize_port_ilt_lane_training_status_list(attr.value.port_ilt_lane_training_status_list, countOnly);
 
         case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             return sai_serialize_port_snr_list(attr.value.portsnrlist, countOnly);
@@ -3055,32 +3088,34 @@ std::string sai_serialize_flow_bulk_get_session_event_ntf(
 {
     SWSS_LOG_ENTER();
 
-    if (data == NULL)
-    {
-        SWSS_LOG_THROW("flow_bulk_get_session_event_data_t pointer is null");
-    }
-
     /*
-     * NOTE: Only event_type is serialized here. The flow_entry, attr_count, and attr
-     * fields are NOT serialized as they are only populated for Flow Dump
-     * Due to performance reasons, they are not serialized and are not sent to orchagent.
+     * Only SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED is placed
+     * in data for the SaiRedis client; FLOW_ENTRY handled in syncd. data may be empty.
      */
+
+    json arr = json::array();
+
+    if (data != nullptr && count > 0)
+    {
+        for (int i = static_cast<int>(count) - 1; i >= 0; --i)
+        {
+            if (data[static_cast<uint32_t>(i)].event_type == SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED)
+            {
+                json item;
+
+                item["event_type"] = sai_serialize_flow_bulk_get_session_event(
+                        data[static_cast<uint32_t>(i)].event_type);
+
+                arr.push_back(item);
+
+                break;
+            }
+        }
+    }
 
     json j;
 
     j["bulk_session_id"] = sai_serialize_object_id(flow_bulk_session_id);
-
-    json arr = json::array();
-
-    for (uint32_t i = 0; i < count; ++i)
-    {
-        json item;
-
-        item["event_type"] = sai_serialize_flow_bulk_get_session_event(data[i].event_type);
-
-        arr.push_back(item);
-    }
-
     j["data"] = arr;
 
     return j.dump();
@@ -3630,6 +3665,24 @@ std::string sai_serialize_macsec_post_status_ntf(
     j["macsec_post_status"] = sai_serialize_macsec_post_status(macsec_post_status);
 
     return j.dump();
+}
+
+// serialize OTN
+
+std::string sai_serialize_otn_attenuator_attr(
+        _In_ const sai_otn_attenuator_attr_t attr)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(attr, &sai_metadata_enum_sai_otn_attenuator_attr_t);
+}
+
+std::string sai_serialize_otn_oa_attr(
+        _In_ const sai_otn_oa_attr_t attr)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(attr, &sai_metadata_enum_sai_otn_oa_attr_t);
 }
 
 // deserialize
@@ -4870,6 +4923,80 @@ void sai_deserialize_port_snr_list(
     }
 }
 
+void sai_deserialize_port_ilt_lane_training_status_list(
+        _In_ const std::string& s,
+        _Out_ sai_port_ilt_lane_training_status_list_t& status_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    // Entries are collected here first so that a malformed lane key or training
+    // status, both of which throw, cannot leak a partially populated list.
+
+    sai_ilt_lane_training_status_t *list = NULL;
+
+    try
+    {
+        json j = json::parse(s);
+
+        if (j.empty() || !j.is_object())
+        {
+            status_list.count = 0;
+            status_list.list = NULL;
+            return;
+        }
+
+        status_list.count = static_cast<uint32_t>(j.size());
+
+        if (countOnly)
+        {
+            return;
+        }
+
+        list = sai_alloc_n_of_ptr_type(status_list.count, list);
+
+        uint32_t idx = 0;
+        for (auto it = j.begin(); it != j.end(); ++it, ++idx)
+        {
+            // Populate defaults first so a rejected entry never leaves this
+            // element uninitialized for the caller.
+            list[idx].lane = static_cast<uint32_t>(std::stoul(it.key()));
+            list[idx].training_status = SAI_PORT_ILT_LANE_TRAINING_STATUS_RESERVED;
+
+            if (!it.value().is_string())
+            {
+                SWSS_LOG_ERROR("Invalid training status value type for lane %s", it.key().c_str());
+                continue;
+            }
+
+            int32_t training_status = 0;
+
+            sai_deserialize_enum(
+                    it.value().get<std::string>(),
+                    &sai_metadata_enum_sai_port_ilt_lane_training_status_t,
+                    training_status);
+
+            list[idx].training_status = static_cast<sai_port_ilt_lane_training_status_t>(training_status);
+        }
+
+        status_list.list = list;
+    }
+    catch (const json::parse_error& e)
+    {
+        SWSS_LOG_ERROR("JSON parse error in sai_deserialize_port_ilt_lane_training_status_list: %s", e.what());
+        delete[] list;
+        status_list.count = 0;
+        status_list.list = NULL;
+    }
+    catch (const std::exception& e)
+    {
+        SWSS_LOG_ERROR("Error in sai_deserialize_port_ilt_lane_training_status_list: %s", e.what());
+        delete[] list;
+        status_list.count = 0;
+        status_list.list = NULL;
+    }
+}
+
 void sai_deserialize_taps_list(
         _In_ const std::string& s,
         _Out_ sai_taps_list_t& port_serdes_taps_list,
@@ -5075,8 +5202,8 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_UINT64:
             return sai_deserialize_number(s, attr.value.u64);
 
-//        case SAI_ATTR_VALUE_TYPE_INT64:
-//            return sai_deserialize_number(s, attr.value.s64);
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            return sai_deserialize_number(s, attr.value.s64);
 
         case SAI_ATTR_VALUE_TYPE_MAC:
             return sai_deserialize_mac(s, attr.value.mac);
@@ -5113,6 +5240,9 @@ void sai_deserialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
             return sai_deserialize_port_lane_latch_status_list(s, attr.value.portlanelatchstatuslist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
+            return sai_deserialize_port_ilt_lane_training_status_list(s, attr.value.port_ilt_lane_training_status_list, countOnly);
 
         case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             return sai_deserialize_port_snr_list(s, attr.value.portsnrlist, countOnly);
@@ -6579,6 +6709,10 @@ void sai_deserialize_free_attribute_value(
             sai_free_list(attr.value.portlanelatchstatuslist);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
+            sai_free_list(attr.value.port_ilt_lane_training_status_list);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             sai_free_list(attr.value.portsnrlist);
             break;
@@ -7218,4 +7352,24 @@ void sai_deserialize_macsec_post_status_ntf(
     sai_deserialize_object_id(j["macsec_id"], macsec_id);
     sai_deserialize_macsec_post_status(j["macsec_post_status"],
                                        macsec_post_status);
+}
+
+// deserialize OTN
+
+void sai_deserialize_otn_attenuator_attr(
+        _In_ const std::string& s,
+        _Out_ sai_otn_attenuator_attr_t& attr)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_otn_attenuator_attr_t, (int32_t&)attr);
+}
+
+void sai_deserialize_otn_oa_attr(
+        _In_ const std::string& s,
+        _Out_ sai_otn_oa_attr_t& attr)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_otn_oa_attr_t, (int32_t&)attr);
 }

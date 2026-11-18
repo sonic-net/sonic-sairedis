@@ -1,5 +1,6 @@
 #include "Meta.h"
 
+#include "DashMeta.h"
 #include "swss/logger.h"
 #include "sai_serialize.h"
 
@@ -165,6 +166,8 @@ Meta::Meta(
     // then warm boot must be per each switch
 
     m_warmBoot = false;
+
+    saimeta::logDashPolicy();
 }
 
 sai_status_t Meta::apiInitialize(
@@ -1572,6 +1575,11 @@ sai_status_t Meta::meta_generic_validation_remove(
 {
     SWSS_LOG_ENTER();
 
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     if (!m_saiObjectCollection.objectExists(meta_key))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
@@ -1869,6 +1877,11 @@ void Meta::meta_generic_validation_post_remove(
 {
     SWSS_LOG_ENTER();
 
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return;
+    }
+
     if (meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
     {
         /*
@@ -2023,6 +2036,7 @@ void Meta::meta_generic_validation_post_remove(
                 break;
 
             case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+            case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
                 // no special action required
@@ -3037,6 +3051,11 @@ sai_status_t Meta::meta_sai_validate_inbound_routing_entry(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    if (saimeta::bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     sai_object_meta_key_t meta_key_inbound_routing_entry = {
         .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY,
         .objectkey = {
@@ -3129,6 +3148,11 @@ sai_status_t Meta::meta_sai_validate_outbound_routing_entry(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    if (saimeta::bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     sai_object_meta_key_t meta_key_outbound_routing_entry = {
         .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY,
         .objectkey = {
@@ -3173,6 +3197,11 @@ sai_status_t Meta::meta_sai_validate_outbound_ca_to_pa_entry(
         SWSS_LOG_ERROR("outbound_ca_to_pa_entry pointer is NULL");
 
         return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (saimeta::bypassValidation((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY))
+    {
+        return SAI_STATUS_SUCCESS;
     }
 
     sai_object_meta_key_t meta_key_outbound_ca_to_pa_entry = {
@@ -3321,6 +3350,82 @@ sai_status_t Meta::meta_sai_validate_eni_trusted_vni_entry(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t Meta::meta_generic_validation_chardata(
+        _In_ const sai_attr_metadata_t& md,
+        _In_ const char* chardata)
+{
+    SWSS_LOG_ENTER();
+
+    // The value is a 32-byte buffer. Stop at the first NUL when one is
+    // present. When there is no NUL, all 32 bytes are part of the value.
+    constexpr size_t chardata_size = sizeof(sai_attribute_value_t::chardata);
+
+    size_t len = strnlen(chardata, chardata_size);
+
+    for (size_t i = 0; i < len; ++i)
+    {
+        unsigned char c = static_cast<unsigned char>(chardata[i]);
+
+        // Allow printable ASCII only: space (0x20) through tilde (0x7e).
+        // Control bytes and bytes above 0x7e are rejected.
+        if (c < 0x20 || c > 0x7e)
+        {
+            META_LOG_ERROR(md, "invalid character 0x%02x in chardata", c);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_hostif_chardata_validation(
+        _In_ const sai_attr_metadata_t& md,
+        _In_ const char* chardata)
+{
+    SWSS_LOG_ENTER();
+
+    size_t name_size;
+    const char* name_kind;
+
+    switch (md.attrid)
+    {
+        case SAI_HOSTIF_ATTR_NAME:
+            name_size = SAI_HOSTIF_NAME_SIZE;
+            name_kind = "host interface name";
+            break;
+
+        case SAI_HOSTIF_ATTR_GENETLINK_MCGRP_NAME:
+            name_size = SAI_HOSTIF_GENETLINK_MCGRP_NAME_SIZE;
+            name_kind = "generic netlink multicast group name";
+            break;
+
+        default:
+            META_LOG_ERROR(md, "attribute is not a host interface CHARDATA name");
+            return SAI_STATUS_FAILURE;
+    }
+
+    size_t name_len = strnlen(chardata, name_size);
+
+    // The name fills the whole 16 bytes, so there is no terminating NUL.
+    if (name_len == name_size)
+    {
+        META_LOG_ERROR(md, "%s is too long", name_kind);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // The name starts with a NUL, so it is empty.
+    if (name_len == 0)
+    {
+        META_LOG_ERROR(md, "%s is zero", name_kind);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t Meta::meta_generic_validation_create(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ sai_object_id_t switch_id,
@@ -3328,6 +3433,11 @@ sai_status_t Meta::meta_generic_validation_create(
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
 
     if (attr_count > MAX_LIST_COUNT)
     {
@@ -3485,37 +3595,19 @@ sai_status_t Meta::meta_generic_validation_create(
             case SAI_ATTR_VALUE_TYPE_CHARDATA:
 
                 {
-                    const char* chardata = value.chardata;
+                    status = meta_generic_validation_chardata(md, value.chardata);
 
-                    size_t len = strnlen(chardata, SAI_HOSTIF_NAME_SIZE);
+                    CHECK_STATUS_SUCCESS(status)
 
-                    if (len == SAI_HOSTIF_NAME_SIZE)
+                    if (md.objecttype == SAI_OBJECT_TYPE_HOSTIF &&
+                            (md.attrid == SAI_HOSTIF_ATTR_NAME ||
+                             md.attrid == SAI_HOSTIF_ATTR_GENETLINK_MCGRP_NAME))
                     {
-                        META_LOG_ERROR(md, "host interface name is too long");
+                        status = meta_hostif_chardata_validation(md, value.chardata);
 
-                        return SAI_STATUS_INVALID_PARAMETER;
+                        CHECK_STATUS_SUCCESS(status)
                     }
 
-                    if (len == 0)
-                    {
-                        META_LOG_ERROR(md, "host interface name is zero");
-
-                        return SAI_STATUS_INVALID_PARAMETER;
-                    }
-
-                    for (size_t i = 0; i < len; ++i)
-                    {
-                        char c = chardata[i];
-
-                        if (c < 0x20 || c > 0x7e)
-                        {
-                            META_LOG_ERROR(md, "interface name contains invalid character 0x%02x", c);
-
-                            return SAI_STATUS_INVALID_PARAMETER;
-                        }
-                    }
-
-                    // TODO check whether name is not used by other host interface
                     break;
                 }
 
@@ -3794,6 +3886,10 @@ sai_status_t Meta::meta_generic_validation_create(
                 VALIDATION_LIST(md, value.portlanelatchstatuslist);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
+                VALIDATION_LIST(md, value.port_ilt_lane_training_status_list);
+                break;
+
             case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
                 VALIDATION_LIST(md, value.portsnrlist);
                 break;
@@ -4068,6 +4164,11 @@ sai_status_t Meta::meta_generic_validation_set(
 {
     SWSS_LOG_ENTER();
 
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     if (attr == NULL)
     {
         SWSS_LOG_ERROR("attribute pointer is NULL");
@@ -4160,21 +4261,9 @@ sai_status_t Meta::meta_generic_validation_set(
         case SAI_ATTR_VALUE_TYPE_CHARDATA:
 
             {
-                size_t len = strnlen(value.chardata, sizeof(sai_attribute_value_t::chardata)/sizeof(char));
+                sai_status_t status = meta_generic_validation_chardata(md, value.chardata);
 
-                // for some attributes, length can be zero
-
-                for (size_t i = 0; i < len; ++i)
-                {
-                    char c = value.chardata[i];
-
-                    if (c < 0x20 || c > 0x7e)
-                    {
-                        META_LOG_ERROR(md, "invalid character 0x%02x in chardata", c);
-
-                        return SAI_STATUS_INVALID_PARAMETER;
-                    }
-                }
+                CHECK_STATUS_SUCCESS(status)
 
                 break;
             }
@@ -4442,6 +4531,10 @@ sai_status_t Meta::meta_generic_validation_set(
             VALIDATION_LIST(md, value.portlanelatchstatuslist);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
+            VALIDATION_LIST(md, value.port_ilt_lane_training_status_list);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             VALIDATION_LIST(md, value.portsnrlist);
             break;
@@ -4575,6 +4668,11 @@ sai_status_t Meta::meta_generic_validation_get(
         _In_ sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
 
     if (attr_count < 1)
     {
@@ -4847,6 +4945,10 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.portlanelatchstatuslist);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
+                VALIDATION_LIST(md, value.port_ilt_lane_training_status_list);
+                break;
+
             case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
                 VALIDATION_LIST(md, value.portsnrlist);
                 break;
@@ -4916,6 +5018,11 @@ void Meta::meta_generic_validation_post_get(
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return;
+    }
 
     switch_id = meta_extract_switch_id(meta_key, switch_id);
 
@@ -5158,6 +5265,10 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
                 VALIDATION_LIST_GET(md, value.portlanelatchstatuslist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
+                VALIDATION_LIST_GET(md, value.port_ilt_lane_training_status_list);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
@@ -5766,6 +5877,11 @@ void Meta::meta_generic_validation_post_create(
 {
     SWSS_LOG_ENTER();
 
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return;
+    }
+
     bool connectToSwitch = false;
 
     if (meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
@@ -6070,7 +6186,10 @@ void Meta::meta_generic_validation_post_create(
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
 
-        m_saiObjectCollection.setObjectAttr(meta_key, md, attr);
+        if (saimeta::shouldCacheAttribute(meta_key.objecttype, md))
+        {
+            m_saiObjectCollection.setObjectAttr(meta_key, md, attr);
+        }
     }
 
     if (haskeys)
@@ -6088,6 +6207,11 @@ void Meta::meta_generic_validation_post_set(
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
+
+    if (saimeta::bypassValidation(meta_key.objecttype))
+    {
+        return;
+    }
 
     auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 
@@ -6314,7 +6438,16 @@ void Meta::meta_generic_validation_post_set(
     // only on create we need to increase entry object types members
     // save actual attributes and values to local db
 
-    m_saiObjectCollection.setObjectAttr(meta_key, md, attr);
+    // For DASH allow-listed types under EXISTENCE_REFCOUNT, non-OID
+    // attributes set after create are intentionally NOT cached here.
+    // The OID-reference-count side effects above still run, so the cache
+    // and live OID refcounts stay consistent. Meta-layer gets on a
+    // non-OID attribute set this way would miss the cache, but the
+    // vendor SAI layer remains the source of truth for real gets.
+    if (saimeta::shouldCacheAttribute(meta_key.objecttype, md))
+    {
+        m_saiObjectCollection.setObjectAttr(meta_key, md, attr);
+    }
 }
 
 bool Meta::meta_unittests_get_and_erase_set_readonly_flag(
@@ -6771,7 +6904,7 @@ void Meta::meta_sai_on_port_host_tx_ready_change(
 
     if (!m_oids.objectReferenceExists(port_id))
     {
-        SWSS_LOG_NOTICE("port_id new object spotted %s not present in local DB (snoop!)",
+        SWSS_LOG_INFO("port_id new object spotted %s not present in local DB (snoop!)",
                 sai_serialize_object_id(port_id).c_str());
 
         sai_object_meta_key_t host_tx_ready_key = { .objecttype = ot, .objectkey = { .key = { .object_id = port_id } } };
@@ -6915,7 +7048,7 @@ void Meta::meta_sai_on_port_state_change_single(
 
     if (valid && !m_oids.objectReferenceExists(data.port_id))
     {
-        SWSS_LOG_NOTICE("data.port_id new object spotted %s not present in local DB (snoop!)",
+        SWSS_LOG_INFO("data.port_id new object spotted %s not present in local DB (snoop!)",
                 sai_serialize_object_id(data.port_id).c_str());
 
         sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = data.port_id } } };
@@ -7413,6 +7546,22 @@ bool Meta::objectExists(
     SWSS_LOG_ENTER();
 
     return m_saiObjectCollection.objectExists(mk);
+}
+
+bool Meta::objectHasAttribute(
+        _In_ const sai_object_meta_key_t& mk,
+        _In_ sai_attr_id_t attr_id) const
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_saiObjectCollection.objectExists(mk))
+    {
+        return false;
+    }
+
+    auto obj = m_saiObjectCollection.getObject(mk);
+
+    return obj && obj->hasAttr(attr_id);
 }
 
 void Meta::populate(

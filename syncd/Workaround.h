@@ -44,6 +44,10 @@ namespace syncd
              * warm-boot. For workaround that should apply at all times see
              * isSetAttributeWorkaround.
              *
+             * A failed SET of a valid only attribute whose condition is not
+             * met on the object is ignored: the attribute has no effect in
+             * that state, and some vendor SAI implementations reject such a SET.
+             *
              * @param[in] currentView Current ASIC view that the op will apply to.
              * @param[in] objectId Virtual Object ID.
              * @param[in] attrId Attribute Id.

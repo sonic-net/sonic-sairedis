@@ -8,6 +8,7 @@
 #include <inttypes.h>
 
 #include <algorithm>
+#include <map>
 
 using namespace syncd;
 
@@ -22,6 +23,75 @@ BestCandidateFinder::BestCandidateFinder(
     SWSS_LOG_ENTER();
 
     // empty
+}
+
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForVirtualRouter(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    auto getVlanIds = [](
+            const AsicView& view,
+            sai_object_id_t virtualRouterId)
+    {
+        std::vector<sai_vlan_id_t> vlanIds;
+
+        for (const auto& rif: view.getObjectsByObjectType(SAI_OBJECT_TYPE_ROUTER_INTERFACE))
+        {
+            auto type = rif->tryGetSaiAttr(SAI_ROUTER_INTERFACE_ATTR_TYPE);
+            auto vr = rif->tryGetSaiAttr(SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID);
+            auto vlan = rif->tryGetSaiAttr(SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
+
+            if (type == nullptr || vr == nullptr || vlan == nullptr ||
+                    type->getSaiAttr()->value.s32 != SAI_ROUTER_INTERFACE_TYPE_VLAN ||
+                    vr->getOid() != virtualRouterId)
+            {
+                continue;
+            }
+
+            auto vlanObject = view.m_oOids.find(vlan->getOid());
+
+            if (vlanObject == view.m_oOids.end())
+                continue;
+
+            auto vlanId = vlanObject->second->tryGetSaiAttr(SAI_VLAN_ATTR_VLAN_ID);
+
+            if (vlanId != nullptr)
+                vlanIds.push_back(vlanId->getSaiAttr()->value.u16);
+        }
+
+        std::sort(vlanIds.begin(), vlanIds.end());
+
+        return vlanIds;
+    };
+
+    auto temporaryVlanIds = getVlanIds(m_temporaryView, temporaryObj->getVid());
+
+    if (temporaryVlanIds.empty())
+        return nullptr;
+
+    std::shared_ptr<SaiObj> match = nullptr;
+
+    for (const auto& candidate: candidateObjects)
+    {
+        if (getVlanIds(m_currentView, candidate.obj->getVid()) != temporaryVlanIds)
+            continue;
+
+        if (match != nullptr)
+            return nullptr;
+
+        match = candidate.obj;
+    }
+
+    if (match != nullptr)
+    {
+        SWSS_LOG_NOTICE("matched virtual router %s to %s by VLAN interfaces",
+                temporaryObj->m_str_object_id.c_str(),
+                match->m_str_object_id.c_str());
+    }
+
+    return match;
 }
 
 std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForLag(
@@ -210,6 +280,189 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForNextHopGroup
     }
 
     SWSS_LOG_NOTICE("failed to find best candidate for NEXT_HOP_GROUP using route_entry");
+
+    return nullptr;
+}
+
+std::string BestCandidateFinder::getNextHopGroupsSignature(
+        _In_ const AsicView &view,
+        _In_ sai_object_id_t nextHopVid)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Describes the groups a next hop is a member of without using any VID:
+     * per group its dependency tree size and the non object id attributes of
+     * each of its members' next hops.
+     */
+
+    const auto members = view.getObjectsByObjectType(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER);
+
+    std::vector<std::string> groups;
+
+    for (const auto &member: members)
+    {
+        auto nhAttr = member->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID);
+        auto groupAttr = member->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID);
+
+        if (!nhAttr || !groupAttr || nhAttr->getOid() != nextHopVid)
+            continue;
+
+        sai_object_id_t groupVid = groupAttr->getOid();
+
+        auto groupIt = view.m_oOids.find(groupVid);
+
+        if (groupIt == view.m_oOids.end())
+            continue;
+
+        std::vector<std::string> nextHops;
+
+        for (const auto &peer: members)
+        {
+            auto peerGroupAttr = peer->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID);
+            auto peerNhAttr = peer->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID);
+
+            if (!peerGroupAttr || !peerNhAttr || peerGroupAttr->getOid() != groupVid)
+                continue;
+
+            auto nhIt = view.m_oOids.find(peerNhAttr->getOid());
+
+            if (nhIt == view.m_oOids.end())
+                continue;
+
+            std::map<sai_attr_id_t, std::string> attrs;
+
+            for (const auto &attr: nhIt->second->getAllAttributes())
+            {
+                auto valueType = attr.second->getAttrMetadata()->attrvaluetype;
+
+                if (valueType == SAI_ATTR_VALUE_TYPE_OBJECT_ID || valueType == SAI_ATTR_VALUE_TYPE_OBJECT_LIST)
+                    continue;
+
+                attrs[attr.first] = attr.second->getStrAttrId() + "=" + attr.second->getStrAttrValue();
+            }
+
+            std::string nh;
+
+            for (const auto &attr: attrs)
+                nh += attr.second + ",";
+
+            nextHops.push_back(nh);
+        }
+
+        std::sort(nextHops.begin(), nextHops.end());
+
+        std::string group = std::to_string(findAllChildsInDependencyTreeCount(view, groupIt->second)) + ":";
+
+        for (const auto &nh: nextHops)
+            group += "[" + nh + "]";
+
+        groups.push_back(group);
+    }
+
+    std::sort(groups.begin(), groups.end());
+
+    std::string signature;
+
+    for (const auto &group: groups)
+        signature += "{" + group + "}";
+
+    return signature;
+}
+
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForNextHop(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Next hops with equal attributes (for example one bridge port next hop
+     * per next hop group for the same remote tunnel endpoint) differ only in
+     * the groups they are members of. Picking the wrong one turns into
+     * NEXT_HOP_ID sets that swap members between groups. Match through a
+     * member whose group is already matched, otherwise through the shape of
+     * the groups.
+     */
+
+    const auto tmpMembers = m_temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER);
+    const auto curMembers = m_currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER);
+
+    for (const auto &tmpMember: tmpMembers)
+    {
+        auto nhAttr = tmpMember->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID);
+        auto groupAttr = tmpMember->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID);
+
+        if (!nhAttr || !groupAttr || nhAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        auto tmpGroupIt = m_temporaryView.m_oOids.find(groupAttr->getOid());
+
+        if (tmpGroupIt == m_temporaryView.m_oOids.end() ||
+            tmpGroupIt->second->getObjectStatus() != SAI_OBJECT_STATUS_FINAL)
+            continue;
+
+        auto ridIt = m_temporaryView.m_vidToRid.find(groupAttr->getOid());
+
+        if (ridIt == m_temporaryView.m_vidToRid.end())
+            continue;
+
+        auto curGroupIt = m_currentView.m_ridToVid.find(ridIt->second);
+
+        if (curGroupIt == m_currentView.m_ridToVid.end())
+            continue;
+
+        for (const auto &curMember: curMembers)
+        {
+            auto curGroupAttr = curMember->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID);
+            auto curNhAttr = curMember->tryGetSaiAttr(SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID);
+
+            if (!curGroupAttr || !curNhAttr || curGroupAttr->getOid() != curGroupIt->second)
+                continue;
+
+            for (const auto &c: candidateObjects)
+            {
+                if (c.obj->getVid() == curNhAttr->getOid())
+                {
+                    SWSS_LOG_NOTICE("found best candidate for next hop %s via matched group: %s",
+                            temporaryObj->m_str_object_id.c_str(),
+                            c.obj->m_str_object_id.c_str());
+
+                    return c.obj;
+                }
+            }
+        }
+    }
+
+    const std::string tmpSignature = getNextHopGroupsSignature(m_temporaryView, temporaryObj->getVid());
+
+    if (tmpSignature.empty())
+        return nullptr;
+
+    std::vector<std::shared_ptr<SaiObj>> matches;
+
+    for (const auto &c: candidateObjects)
+    {
+        if (getNextHopGroupsSignature(m_currentView, c.obj->getVid()) == tmpSignature)
+            matches.push_back(c.obj);
+    }
+
+    if (matches.size() > 1)
+    {
+        SWSS_LOG_NOTICE("next hop %s: several candidates in groups of the same shape",
+                temporaryObj->m_str_object_id.c_str());
+
+        return nullptr;
+    }
+
+    if (matches.size() == 1)
+    {
+        SWSS_LOG_NOTICE("found best candidate for next hop %s via group shape: %s",
+                temporaryObj->m_str_object_id.c_str(),
+                matches[0]->m_str_object_id.c_str());
+
+        return matches[0];
+    }
 
     return nullptr;
 }
@@ -1496,12 +1749,20 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
 
     switch (temporaryObj->getObjectType())
     {
+        case SAI_OBJECT_TYPE_VIRTUAL_ROUTER:
+            candidate = findCurrentBestMatchForVirtualRouter(temporaryObj, candidateObjects);
+            break;
+
         case SAI_OBJECT_TYPE_LAG:
             candidate = findCurrentBestMatchForLag(temporaryObj, candidateObjects);
             break;
 
         case SAI_OBJECT_TYPE_NEXT_HOP_GROUP:
             candidate = findCurrentBestMatchForNextHopGroup(temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_NEXT_HOP:
+            candidate = findCurrentBestMatchForNextHop(temporaryObj, candidateObjects);
             break;
 
         case SAI_OBJECT_TYPE_ACL_TABLE_GROUP:
@@ -2275,6 +2536,83 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForInsegEntry(
 }
 
 /**
+ * @brief Find current best match for my sid entry.
+ *
+ * For my sid entry we don't need to iterate via all current my sid entries, we
+ * can do dictionary lookup, but we need to do smart trick, since temporary
+ * object was processed we just need to check whether VID in my_sid_entry struct
+ * is matched/final and it has RID assigned from current view. If RID exists, we
+ * can use that RID to get VID of current view, exchange in my_sid_entry struct
+ * and do dictionary lookup on serialized my_sid_entry.
+ *
+ * With this approach for many entries this is the quickest possible way. In
+ * case when RID doesn't exist, that means we have invalid my sid entry, so we
+ * must return null.
+ *
+ * @param temporaryObj Temporary object.
+ *
+ * @return Best match object if found or nullptr.
+ */
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForMySidEntry(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Make a copy here to not destroy object data, later
+     * on this data should be read only.
+     */
+
+    sai_object_meta_key_t mk = temporaryObj->m_meta_key;
+
+    if (!exchangeTemporaryVidToCurrentVid(mk))
+    {
+        /*
+         * Not all oids inside struct object were translated, so there is no
+         * matching object in current view, we need to return null.
+         */
+
+        return nullptr;
+    }
+
+    std::string str_my_sid_entry = sai_serialize_my_sid_entry(mk.objectkey.key.my_sid_entry);
+
+    /*
+     * Now when we have serialized my sid entry with temporary vr_id VID
+     * replaced to current vr_id VID we can do dictionary lookup for my sid entry.
+     */
+    auto currentMySidIt = m_currentView.m_soMySidEntries.find(str_my_sid_entry);
+
+    if (currentMySidIt == m_currentView.m_soMySidEntries.end())
+    {
+        SWSS_LOG_DEBUG("unable to find my sid entry %s in current asic view", str_my_sid_entry.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same my sid entry in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentMySidObj = currentMySidIt->second;
+
+    if (currentMySidObj->getObjectStatus() == SAI_OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentMySidObj;
+    }
+
+    /*
+     * If we are here, that means this my sid entry was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_THROW("found my sid entry %s in current view, but it status is %d, FATAL",
+            str_my_sid_entry.c_str(),
+            currentMySidObj->getObjectStatus());
+}
+
+/**
  * @brief Find current best match for FDB.
  *
  * For FDB we don't need to iterate via all current FDBs, we can do dictionary
@@ -2516,6 +2854,9 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatch(
 
         case SAI_OBJECT_TYPE_INSEG_ENTRY:
             return findCurrentBestMatchForInsegEntry(temporaryObj);
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+            return findCurrentBestMatchForMySidEntry(temporaryObj);
 
             /*
              * We can have special case for switch since we know there should

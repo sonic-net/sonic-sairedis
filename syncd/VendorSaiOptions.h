@@ -13,5 +13,6 @@ namespace syncd
         public:
 
             bool m_checkAttrVersion = false;
+            bool m_enablePerPortCounterDiscovery = false;
     };
 }

@@ -17,40 +17,36 @@ static std::string fullnull = "[]";
 
 TEST(NotificationPortHostTxReadyEvent, ctr)
 {
-    NotificationPortHostTxReadyEvent n(s);
+    NotificationPortHostTxReady n(s);
 }
 
 TEST(NotificationPortHostTxReadyEvent, getSwitchId)
 {
-    NotificationPortHostTxReadyEvent n(s);
+    NotificationPortHostTxReady n(s);
 
     EXPECT_EQ(n.getSwitchId(), 0x2100000000);
 
-    NotificationSwitchStateChange n2(null);
+    NotificationPortHostTxReady n2(null);
 
     EXPECT_EQ(n2.getSwitchId(), 0);
 }
 
 TEST(NotificationPortHostTxReadyEvent, getAnyObjectId)
 {
-    NotificationPortHostTxReadyEvent n(s);
+    NotificationPortHostTxReady n(s);
 
     EXPECT_EQ(n.getAnyObjectId(), 0x100000000001a);
 
-    NotificationPortHostTxReadyEvent n2(null);
+    NotificationPortHostTxReady n2(null);
 
     EXPECT_EQ(n2.getAnyObjectId(), 0);
 
-    NotificationPortHostTxReadyEvent n3(fullnull);
-
-    EXPECT_EQ(n3.getSwitchId(), 0);
-
-    EXPECT_EQ(n3.getAnyObjectId(), 0);
+    EXPECT_THROW(NotificationPortHostTxReady n3(fullnull), std::exception);
 }
 
 TEST(NotificationPortHostTxReadyEvent, processMetadata)
 {
-    NotificationPortHostTxReadyEvent n(s);
+    NotificationPortHostTxReady n(s);
 
     auto sai = std::make_shared<MetaTestSaiInterface>();
     auto meta = std::make_shared<Meta>(sai);
@@ -68,11 +64,11 @@ static void on_port_host_tx_ready_change_notification(
 
 TEST(NotificationPortHostTxReadyEvent, executeCallback)
 {
-    NotificationPortHostTxReadyEvent n(s);
+    NotificationPortHostTxReady n(s);
 
     sai_switch_notifications_t ntfs;
 
-    ntfs.on_port_host_tx_ready_change = &on_port_host_tx_ready_change_notification;
+    ntfs.on_port_host_tx_ready = &on_port_host_tx_ready_change_notification;
 
     n.executeCallback(ntfs);
 }

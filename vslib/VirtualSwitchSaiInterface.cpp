@@ -14,6 +14,7 @@
 #include "SwitchBCM56850.h"
 #include "SwitchBCM56971B0.h"
 #include "SwitchMLNX2700.h"
+#include "SwitchMicas48CON2SFP.h"
 #include "SwitchNvdaMBF2H536C.h"
 #include "SwitchNokiaVS.h"
 #ifdef USE_VPP
@@ -338,12 +339,26 @@ sai_status_t VirtualSwitchSaiInterface::create(
 
     std::string str_object_id = sai_serialize_object_id(*objectId);
 
-    return create(
+    sai_status_t status = create(
             switchId,
             objectType,
             str_object_id,
             attr_count,
             attr_list);
+
+    if (objectType == SAI_OBJECT_TYPE_SWITCH && status != SAI_STATUS_SUCCESS)
+    {
+        auto config = m_contextConfig->m_scc->getConfig(
+                RealObjectIdManager::getSwitchIndex(switchId));
+        // A failed warm CREATE must not discard recovered state.
+        if (!config || config->m_bootType != SAI_VS_BOOT_TYPE_WARM)
+        {
+            m_switchStateMap.erase(switchId);
+            m_realObjectIdManager->releaseObjectId(switchId);
+        }
+        *objectId = SAI_NULL_OBJECT_ID;
+    }
+    return status;
 }
 
 sai_status_t VirtualSwitchSaiInterface::remove(
@@ -610,6 +625,11 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
             m_switchStateMap[switch_id] = std::make_shared<SwitchNokiaVS>(switch_id, m_realObjectIdManager, config, warmBootState);
             break;
 
+        case SAI_VS_SWITCH_TYPE_MICAS_48CON2SFP:
+
+            m_switchStateMap[switch_id] = std::make_shared<SwitchMicas48CON2SFP>(switch_id, m_realObjectIdManager, config, warmBootState);
+            break;
+
         case SAI_VS_SWITCH_TYPE_VPP:
 
 #ifdef USE_VPP
@@ -630,6 +650,11 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
     auto ss = m_switchStateMap.at(switch_id);
 
     ss->setMeta(meta);
+
+    if (m_fdbEventFn)
+    {
+        ss->initFdbEventHandling(m_fdbEventFn);
+    }
 
     if (warmBootState != nullptr)
     {
@@ -1647,4 +1672,25 @@ void VirtualSwitchSaiInterface::syncProcessEventNetLinkMsg(
     }
 
     it->second->syncOnLinkMsg(payload);
+}
+
+void VirtualSwitchSaiInterface::syncProcessEventPlatformEvent(
+        _In_ std::shared_ptr<EventPayloadPlatformEvent> payload)
+{
+    SWSS_LOG_ENTER();
+
+    auto switchId = payload->getSwitchId();
+
+    auto it = m_switchStateMap.find(switchId);
+
+    if (it == m_switchStateMap.end())
+    {
+        // the switch was removed after its platform posted the event
+        SWSS_LOG_NOTICE("switch %s doesn't exist in switch state map",
+                sai_serialize_object_id(switchId).c_str());
+
+        return;
+    }
+
+    it->second->syncOnPlatformEvent(payload);
 }

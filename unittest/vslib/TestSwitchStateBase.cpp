@@ -15,6 +15,7 @@
 #include "ContextConfigContainer.h"
 
 #include "SwitchStateBase.h"
+#include "SwitchBCM56850.h"
 
 using namespace saimeta;
 using namespace saivs;
@@ -56,6 +57,60 @@ protected:
     const std::uint32_t m_guid = 0; // default context config id
     const std::uint32_t m_scid = 0; // default switch config id
 };
+
+TEST_F(SwitchStateBaseTest, portSamplePacketDefaults)
+{
+    m_sc->m_useTapDevice = false;
+    m_sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    m_ss = std::make_shared<SwitchBCM56850>(m_swid, m_ridmgr, m_sc);
+    ASSERT_EQ(m_ss->initialize_default_objects(0, nullptr), SAI_STATUS_SUCCESS);
+
+    sai_attribute_t attr{};
+    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+    std::vector<sai_object_id_t> ports(attr.value.u32);
+    ASSERT_FALSE(ports.empty());
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = static_cast<uint32_t>(ports.size());
+    attr.value.objlist.list = ports.data();
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+
+    for (auto port : ports)
+    {
+        for (auto id : { SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE,
+                         SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE })
+        {
+            attr.id = id;
+            attr.value.oid = m_swid;
+            ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_PORT, port, 1, &attr), SAI_STATUS_SUCCESS);
+            EXPECT_EQ(attr.value.oid, SAI_NULL_OBJECT_ID);
+        }
+    }
+
+    // Dynamic creation must default missing attributes without overwriting
+    // either direction's explicitly supplied SamplePacket.
+    sai_object_id_t sample;
+    attr.id = SAI_SAMPLEPACKET_ATTR_SAMPLE_RATE;
+    attr.value.u32 = 1000;
+    ASSERT_EQ(m_ss->create(SAI_OBJECT_TYPE_SAMPLEPACKET, &sample, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+    for (int configured = -1; configured < 2; ++configured)
+    {
+        sai_attribute_t attrs[2]{};
+        attrs[0].id = SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
+        attrs[1].id = SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE;
+        const auto port = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_swid);
+        if (configured >= 0)
+            attrs[configured].value.oid = sample;
+        ASSERT_EQ(m_ss->create(SAI_OBJECT_TYPE_PORT, sai_serialize_object_id(port), m_swid,
+                               configured < 0 ? 0 : 1,
+                               configured < 0 ? nullptr : &attrs[configured]), SAI_STATUS_SUCCESS);
+        for (int direction = 0; direction < 2; ++direction)
+        {
+            ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_PORT, port, 1, &attrs[direction]), SAI_STATUS_SUCCESS);
+            EXPECT_EQ(attrs[direction].value.oid, direction == configured ? sample : SAI_NULL_OBJECT_ID);
+        }
+    }
+}
 
 TEST_F(SwitchStateBaseTest, switchHashGet)
 {
@@ -312,6 +367,38 @@ TEST_F(SwitchStateBaseTest, tamBindPointTypeCapabilitiesGet)
     ASSERT_EQ(static_cast<sai_tam_bind_point_type_t>(values[0]), SAI_TAM_BIND_POINT_TYPE_SWITCH);
 }
 
+TEST_F(SwitchStateBaseTest, tamTelTypeModeCapabilitiesGet)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_TAM_TEL_TYPE, SAI_TAM_TEL_TYPE_ATTR_MODE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+    ASSERT_EQ(data.count, 2U);
+
+    std::vector<sai_int32_t> values(data.count);
+    data.list = values.data();
+
+    status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_TAM_TEL_TYPE, SAI_TAM_TEL_TYPE_ATTR_MODE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    ASSERT_EQ(data.count, 2U);
+
+    const std::set<sai_tam_tel_type_mode_t> expected = {
+        SAI_TAM_TEL_TYPE_MODE_SINGLE_TYPE,
+        SAI_TAM_TEL_TYPE_MODE_MIXED_TYPE,
+    };
+
+    std::set<sai_tam_tel_type_mode_t> actual;
+    std::transform(
+        values.cbegin(), values.cend(), std::inserter(actual, actual.begin()),
+        [](sai_int32_t value) { return static_cast<sai_tam_tel_type_mode_t>(value); }
+    );
+    ASSERT_EQ(expected, actual);
+}
+
 TEST_F(SwitchStateBaseTest, switchQoSMaxNumOfTrafficClasses)
 {
     ASSERT_EQ(m_ss->set_maximum_number_of_traffic_classes(), SAI_STATUS_SUCCESS);
@@ -454,7 +541,7 @@ TEST(SwitchStateBase, query_stats_st_capability)
 
     sai_stat_st_capability_list_t stats_capability;
     std::vector<sai_stat_st_capability_t> buffer;
-    buffer.resize(96);
+    buffer.resize(128);
     stats_capability.count = static_cast<uint32_t>(buffer.size());
     stats_capability.list = buffer.data();
 
@@ -489,4 +576,100 @@ TEST(SwitchStateBase, getObjectTypeAvailability_standalone)
     // Test that default implementation logs warning and returns 0
     uint64_t availability = ss.getObjectTypeAvailability(SAI_OBJECT_TYPE_MY_SID_ENTRY);
     EXPECT_EQ(availability, 0);
+}
+
+// --- LLR profile attribute capability tests ---
+
+// Verify CREATE_ONLY attributes (create=true, set=false, get=true)
+TEST_F(SwitchStateBaseTest, queryLlrProfileCapability_CreateOnly)
+{
+    sai_attr_capability_t cap;
+
+    EXPECT_EQ(m_ss->queryAttributeCapability(m_swid,
+                  SAI_OBJECT_TYPE_PORT_LLR_PROFILE,
+                  SAI_PORT_LLR_PROFILE_ATTR_OUTSTANDING_FRAMES_MAX,
+                  &cap),
+              SAI_STATUS_SUCCESS);
+    EXPECT_TRUE(cap.create_implemented);
+    EXPECT_FALSE(cap.set_implemented);
+    EXPECT_TRUE(cap.get_implemented);
+
+    EXPECT_EQ(m_ss->queryAttributeCapability(m_swid,
+                  SAI_OBJECT_TYPE_PORT_LLR_PROFILE,
+                  SAI_PORT_LLR_PROFILE_ATTR_OUTSTANDING_BYTES_MAX,
+                  &cap),
+              SAI_STATUS_SUCCESS);
+    EXPECT_TRUE(cap.create_implemented);
+    EXPECT_FALSE(cap.set_implemented);
+    EXPECT_TRUE(cap.get_implemented);
+}
+
+// Verify set not supported attributes (create=true, set=false, get=true)
+TEST_F(SwitchStateBaseTest, queryLlrProfileCapability_NoSet)
+{
+    sai_attr_capability_t cap;
+
+    EXPECT_EQ(m_ss->queryAttributeCapability(m_swid,
+                  SAI_OBJECT_TYPE_PORT_LLR_PROFILE,
+                  SAI_PORT_LLR_PROFILE_ATTR_REPLAY_COUNT_MAX,
+                  &cap),
+              SAI_STATUS_SUCCESS);
+    EXPECT_TRUE(cap.create_implemented);
+    EXPECT_FALSE(cap.set_implemented);
+    EXPECT_TRUE(cap.get_implemented);
+
+    EXPECT_EQ(m_ss->queryAttributeCapability(m_swid,
+                  SAI_OBJECT_TYPE_PORT_LLR_PROFILE,
+                  SAI_PORT_LLR_PROFILE_ATTR_PCS_LOST_TIMEOUT,
+                  &cap),
+              SAI_STATUS_SUCCESS);
+    EXPECT_TRUE(cap.create_implemented);
+    EXPECT_FALSE(cap.set_implemented);
+    EXPECT_TRUE(cap.get_implemented);
+}
+
+// Verify fully unsupported attribute (create=false, set=false, get=false)
+TEST_F(SwitchStateBaseTest, queryLlrProfileCapability_Unsupported)
+{
+    sai_attr_capability_t cap;
+
+    EXPECT_EQ(m_ss->queryAttributeCapability(m_swid,
+                  SAI_OBJECT_TYPE_PORT_LLR_PROFILE,
+                  SAI_PORT_LLR_PROFILE_ATTR_DATA_AGE_TIMEOUT,
+                  &cap),
+              SAI_STATUS_SUCCESS);
+    EXPECT_FALSE(cap.create_implemented);
+    EXPECT_FALSE(cap.set_implemented);
+    EXPECT_FALSE(cap.get_implemented);
+}
+
+// Verify fully supported CREATE_AND_SET attrs: create=true, set=true, get=true (default path)
+TEST_F(SwitchStateBaseTest, queryLlrProfileCapability_FullySupported)
+{
+    const std::vector<std::pair<sai_attr_id_t, std::string>> fully_supported_attrs = {
+        {SAI_PORT_LLR_PROFILE_ATTR_REPLAY_TIMER_MAX,       "REPLAY_TIMER_MAX"},
+        {SAI_PORT_LLR_PROFILE_ATTR_INIT_LLR_FRAME_ACTION,  "INIT_LLR_FRAME_ACTION"},
+        {SAI_PORT_LLR_PROFILE_ATTR_FLUSH_LLR_FRAME_ACTION, "FLUSH_LLR_FRAME_ACTION"},
+        {SAI_PORT_LLR_PROFILE_ATTR_RE_INIT_ON_FLUSH,       "RE_INIT_ON_FLUSH"},
+        {SAI_PORT_LLR_PROFILE_ATTR_CTLOS_TARGET_SPACING,   "CTLOS_TARGET_SPACING"},
+    };
+
+    for (const auto &p : fully_supported_attrs)
+    {
+        SCOPED_TRACE(p.second);
+        sai_attr_capability_t cap;
+
+        EXPECT_EQ(m_ss->queryAttributeCapability(m_swid,
+                      SAI_OBJECT_TYPE_PORT_LLR_PROFILE,
+                      p.first,
+                      &cap),
+                  SAI_STATUS_SUCCESS);
+        EXPECT_TRUE(cap.create_implemented);
+        EXPECT_TRUE(cap.set_implemented);
+        EXPECT_TRUE(cap.get_implemented);
+    }
+}
+TEST_F(SwitchStateBaseTest, hasNativePacketSamplingDefaultsToFalse)
+{
+    EXPECT_FALSE(m_ss->hasNativePacketSampling());
 }

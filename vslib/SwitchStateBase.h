@@ -7,11 +7,13 @@
 #include "SwitchConfig.h"
 #include "RealObjectIdManager.h"
 #include "EventPayloadNetLinkMsg.h"
+#include "EventPayloadPlatformEvent.h"
 #include "MACsecManager.h"
 
 #include <set>
 #include <unordered_set>
 #include <vector>
+#include <functional>
 
 #define SAI_VS_FDB_INFO "SAI_VS_FDB_INFO"
 
@@ -52,6 +54,10 @@ namespace saivs
                     std::shared_ptr<WarmBootState> warmBootState);
 
             virtual ~SwitchStateBase();
+
+            // Derived switch implementations may perform packet sampling directly.
+            // The base virtual switch keeps the kernel sampling path enabled.
+            virtual bool hasNativePacketSampling() const { return false; }
 
         protected:
 
@@ -377,6 +383,17 @@ namespace saivs
 
             virtual void processFdbEntriesForAging();
 
+            // Called by Switch instance to pass a wake function that signals the FDB aging
+            // thread immediately when MAC events arrive. Default is a no-op;
+            virtual void initFdbEventHandling(std::function<void()> /*wakeFn*/) {}
+            virtual void deinitFdbEventHandling() {}
+
+            // Applies an event the switch platform posted on the event queue
+            // (EVENT_TYPE_PLATFORM_EVENT). Called from the event queue thread
+            // with the API mutex held. Default is a no-op.
+            virtual void syncOnPlatformEvent(
+                    _In_ std::shared_ptr<EventPayloadPlatformEvent> /*payload*/) {}
+
         private: // fdb related
 
             void updateLocalDB(
@@ -387,18 +404,20 @@ namespace saivs
                     _In_ const FdbInfo &fi,
                     _In_ sai_fdb_event_t fdb_event);
 
-            void findBridgeVlanForPortVlan(
-                    _In_ sai_object_id_t port_id,
-                    _In_ sai_vlan_id_t vlan_id,
-                    _Inout_ sai_object_id_t &bv_id,
-                    _Inout_ sai_object_id_t &bridge_port_id);
+            bool isLagOrPortRifBased(
+                    _In_ sai_object_id_t lag_or_port_id);
+
+        protected:
 
             bool getLagFromPort(
                     _In_ sai_object_id_t port_id,
                     _Inout_ sai_object_id_t& lag_id);
 
-            bool isLagOrPortRifBased(
-                    _In_ sai_object_id_t lag_or_port_id);
+            void findBridgeVlanForPortVlan(
+                    _In_ sai_object_id_t port_id,
+                    _In_ sai_vlan_id_t vlan_id,
+                    _Inout_ sai_object_id_t &bv_id,
+                    _Inout_ sai_object_id_t &bridge_port_id);
 
         public:
 
@@ -753,6 +772,8 @@ namespace saivs
             constexpr static const int m_maxAclTableEntries = 1000;
             constexpr static const int m_maxAclTableCounters = 1000;
 
+            constexpr static const int m_maxMirrorSessions = 10;
+
         protected:
 
             virtual sai_status_t queryTunnelPeerModeCapability(
@@ -783,6 +804,9 @@ namespace saivs
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
             virtual sai_status_t queryTamBindPointTypeCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
+            virtual sai_status_t queryTamTelTypeModeCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
             virtual sai_status_t queryIcmpEchoSessionStatsCountModeCapability(

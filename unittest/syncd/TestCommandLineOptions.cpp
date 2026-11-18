@@ -7,7 +7,7 @@
 using namespace syncd;
 
 const std::string expected_usage =
-R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-h]
+R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-R] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-G] [-h]
     -d --diag
         Enable diagnostic shell
     -p --profile profile
@@ -28,6 +28,8 @@ R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [
         Redis communication mode (redis_async|redis_sync|zmq_sync), default: redis_async
     -l --enableBulk
         Enable SAI Bulk support
+    -R --asyncRec
+        Enable asynchronous ASIC_DB writes (only effective with ZMQ southbound)
     -g --globalContext
         Global context index to load from context config file
     -x --contextConfig
@@ -40,6 +42,8 @@ R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [
         Watchdog time span (in microseconds) for init phase (default: same as -w)
     -B --supportingBulkCounters
         Counter groups those support bulk polling
+    -G --enablePerPortCounterDiscovery
+        Enable counter-group discovery during counter add operations
     -a --enableAttrVersionCheck
         Enable attribute SAI version check when performing SAI discovery
     -h --help
@@ -53,9 +57,10 @@ TEST(CommandLineOptions, getCommandLineString)
     auto str = opt.getCommandLineString();
 
     EXPECT_EQ(str, " EnableDiagShell=NO EnableTempView=NO DisableExitSleep=NO EnableUnittests=NO"
-            " EnableConsistencyCheck=NO EnableSyncMode=NO RedisCommunicationMode=redis_async"
+            " EnableConsistencyCheck=NO EnableSyncMode=NO EnableAsyncRec=NO RedisCommunicationMode=redis_async"
             " EnableSaiBulkSuport=NO StartType=cold ProfileMapFile= GlobalContext=0 ContextConfig= BreakConfig="
-            " WatchdogWarnTimeSpan=30000000 WatchdogInitTimeSpan=30000000 SupportingBulkCounters= EnableAttrVersionCheck=NO");
+            " WatchdogWarnTimeSpan=30000000 WatchdogInitTimeSpan=30000000 SupportingBulkCounters="
+            " EnablePerPortCounterDiscovery=NO EnableAttrVersionCheck=NO");
 }
 
 TEST(CommandLineOptions, startTypeStringToStartType)
@@ -83,12 +88,33 @@ TEST(CommandLineOptionsParser, parseCommandLine)
     char arg3[] = "1000";
     char arg4[] = "-B";
     char arg5[] = "WATERMARK";
-    std::vector<char *> args = {arg1, arg2, arg3, arg4, arg5};
+    char arg6[] = "-G";
+    std::vector<char *> args = {arg1, arg2, arg3, arg4, arg5, arg6};
 
     auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
     EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 1000);
     EXPECT_EQ(opt->m_watchdogInitTimeSpan, 1000);
     EXPECT_EQ(opt->m_supportingBulkCounterGroups, "WATERMARK");
+    EXPECT_TRUE(opt->m_enablePerPortCounterDiscovery);
+}
+
+TEST(CommandLineOptionsParser, parseCommandLineAsyncRec)
+{
+    char arg1[] = "test";
+    char arg2[] = "-R";
+    std::vector<char *> args = {arg1, arg2};
+
+    auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+    EXPECT_TRUE(opt->m_enableAsyncRec);
+}
+
+TEST(CommandLineOptionsParser, parseCommandLineAsyncRecDefaultsOff)
+{
+    char arg1[] = "test";
+    std::vector<char *> args = {arg1};
+
+    auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+    EXPECT_FALSE(opt->m_enableAsyncRec);
 }
 
 TEST(CommandLineOptionsParser, parseCommandLineInitTimeout)
@@ -125,4 +151,45 @@ TEST(CommandLineOptionsParser, parseCommandLineOnlyInitTimeout)
     auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
     EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 30000000);
     EXPECT_EQ(opt->m_watchdogInitTimeSpan, 150000000);
+}
+
+TEST(CommandLineOptionsParser, parseCommandLineIsRepeatable)
+{
+    // Each parseCommandLine call must be independent of any earlier call in the same
+    // process: parsing one argument vector must fully reset the parser so a later parse
+    // sees only its own arguments. Exercise several parses back to back and check that
+    // each yields exactly its own result.
+
+    {
+        char arg1[] = "test";
+        char arg2[] = "-R";
+        std::vector<char *> args = {arg1, arg2};
+
+        auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+        EXPECT_TRUE(opt->m_enableAsyncRec);
+    }
+
+    {
+        char arg1[] = "test";
+        char arg2[] = "-w";
+        char arg3[] = "30000000";
+        char arg4[] = "-W";
+        char arg5[] = "150000000";
+        std::vector<char *> args = {arg1, arg2, arg3, arg4, arg5};
+
+        auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+        EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 30000000);
+        EXPECT_EQ(opt->m_watchdogInitTimeSpan, 150000000);
+        EXPECT_FALSE(opt->m_enableAsyncRec);
+    }
+
+    {
+        char arg1[] = "test";
+        std::vector<char *> args = {arg1};
+
+        auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+        EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 30000000);
+        EXPECT_EQ(opt->m_watchdogInitTimeSpan, 30000000);
+        EXPECT_FALSE(opt->m_enableAsyncRec);
+    }
 }

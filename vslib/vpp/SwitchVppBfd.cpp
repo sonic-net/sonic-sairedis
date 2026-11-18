@@ -15,6 +15,15 @@
 
 using namespace saivs;
 
+static constexpr uint8_t SONIC_BFD_DEFAULT_TOS = 192;
+
+// VPP's BFD dataplane stamps every emitted packet with bfd_main.tos,
+// a single global written by the bfd_udp_set_tos API; there is no
+// per-session TOS in VPP today. Track the last value we programmed so
+// we can (a) skip redundant RPCs and (b) warn the operator when
+// concurrent sessions request mismatched values.
+static int s_last_bfd_tos = -1;
+
 sai_status_t SwitchVpp::bfd_session_add(
     _In_ const std::string &serializedObjectId,
     _In_ sai_object_id_t switch_id,
@@ -167,7 +176,18 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
         multihop = attr->value.booldata;
     }
 
-    const char *hwif_name = NULL;
+    uint8_t tos = SONIC_BFD_DEFAULT_TOS;
+    attr = sai_metadata_get_attr_by_id(SAI_BFD_SESSION_ATTR_TOS, attr_count, attr_list);
+    if (attr)
+    {
+        tos = attr->value.u8;
+    }
+
+    /*
+     * By value, not a const char*: this outlives the block below, and the
+     * strings it used to point into did not.
+     */
+    std::string hwif_name;
     if (!multihop) {
         /* Attribute#7 */
         std::string ifname = "";
@@ -177,8 +197,22 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
             SWSS_LOG_INFO("Port attribute not passed as parameter: get if name from ip address");
             if (vpp_get_ifname_from_ip_address(local_addr, ifname) == true)
             {
-                hwif_name = tap_to_hwif_name(ifname.c_str());
-                SWSS_LOG_INFO("interface name for BFD session create is %s", hwif_name);
+                /*
+                 * ifname comes from "ip addr show", so it is a kernel netdev
+                 * name: "Ethernet0", but equally "PortChannel102" or "Vlan200".
+                 * Resolving it is not optional -- an unresolved name used to
+                 * reach bfd_udp_add() as the literal "Unknown".
+                 */
+                hwif_name = m_ifaceRegistry.resolveHwIfByOsIf(ifname);
+
+                if (hwif_name.empty())
+                {
+                    SWSS_LOG_ERROR("BFD session create request FAILED, no hwif for interface %s",
+                            ifname.c_str());
+                    return SAI_STATUS_FAILURE;
+                }
+
+                SWSS_LOG_INFO("interface name for BFD session create is %s", hwif_name.c_str());
             }
             else
             {
@@ -197,11 +231,9 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
                         sai_serialize_object_type(obj_type).c_str());
                 return SAI_STATUS_FAILURE;
             }
-            if (vpp_get_hwif_name(port_id, 0, ifname) == true)
-            {
-                hwif_name = ifname.c_str();
-            }
-            else
+            hwif_name = m_ifaceRegistry.resolveHwIfName(port_id, 0);
+
+            if (hwif_name.empty())
             {
                 SWSS_LOG_ERROR("BFD session create request FAILED due to invalid hwif name");
 
@@ -210,10 +242,33 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
         }
     }
 
-    if (multihop || hwif_name) {
-        SWSS_LOG_NOTICE("BFD session create request sent to VS, hwif: %s, multihop: %d, oid: %ld",  hwif_name, multihop, bfd_oid);
+    if (multihop || !hwif_name.empty()) {
+        SWSS_LOG_NOTICE("BFD session create request sent to VS, hwif: %s, multihop: %d, oid: %ld",  hwif_name.c_str(), multihop, bfd_oid);
+        /* VPP exposes only a global BFD TOS; sync it before adding a
+         * session that disagrees with the last-programmed value. Warn
+         * (but proceed) when active sessions had a different TOS --
+         * VPP applies the latest globally, which implicitly retags
+         * those too. */
+        {
+            BFD_MUTEX;
+            if (s_last_bfd_tos != static_cast<int>(tos))
+            {
+                if (s_last_bfd_tos != -1 && !m_bfd_info_map.empty())
+                {
+                    SWSS_LOG_WARN("BFD session oid %ld requests TOS 0x%02x but %zu existing "
+                                  "session(s) were programmed with TOS 0x%02x. VPP applies "
+                                  "BFD TOS globally; the new value will affect ALL sessions.",
+                                  bfd_oid, tos, m_bfd_info_map.size(),
+                                  static_cast<uint8_t>(s_last_bfd_tos));
+                }
+                if (bfd_udp_set_tos(tos) >= 0)
+                {
+                    s_last_bfd_tos = tos;
+                }
+            }
+        }
         /*vpp call to add bfd session*/
-        ret = bfd_udp_add(multihop, hwif_name, &vpp_local_addr, &vpp_peer_addr, detect_mult, required_min_tx, required_min_rx);
+        ret = bfd_udp_add(multihop, hwif_name.empty() ? nullptr : hwif_name.c_str(), &vpp_local_addr, &vpp_peer_addr, detect_mult, required_min_tx, required_min_rx);
         if (ret >= 0)
         {
             BFD_MUTEX;
@@ -279,7 +334,11 @@ sai_status_t SwitchVpp::vpp_bfd_session_del(
         multihop = attr.value.booldata;
     }
 
-    const char *hwif_name = NULL;
+    /*
+     * By value, not a const char*: this outlives the block below, and the
+     * strings it used to point into did not.
+     */
+    std::string hwif_name;
     if (!multihop) {
         /* Attribute#4 */
         attr.id = SAI_BFD_SESSION_ATTR_PORT;
@@ -293,11 +352,9 @@ sai_status_t SwitchVpp::vpp_bfd_session_del(
                         sai_serialize_object_type(obj_type).c_str());
                 return SAI_STATUS_FAILURE;
             }
-            std::string ifname = "";
-            if (vpp_get_hwif_name(port_id, 0, ifname) == true) {
-                hwif_name = ifname.c_str();
-            }
-            else
+            hwif_name = m_ifaceRegistry.resolveHwIfName(port_id, 0);
+
+            if (hwif_name.empty())
             {
                 SWSS_LOG_ERROR("BFD session delete request FAILED due to invalid hwif name");
                 return SAI_STATUS_FAILURE;
@@ -308,8 +365,16 @@ sai_status_t SwitchVpp::vpp_bfd_session_del(
             */
             std::string ifname = "";
             if (vpp_get_ifname_from_ip_address(local_addr, ifname) == true) {
-                hwif_name = tap_to_hwif_name(ifname.c_str());
-                SWSS_LOG_NOTICE("interface name for BFD session delete is %s", hwif_name);
+                hwif_name = m_ifaceRegistry.resolveHwIfByOsIf(ifname);
+
+                if (hwif_name.empty())
+                {
+                    SWSS_LOG_ERROR("BFD session delete request FAILED, no hwif for interface %s",
+                            ifname.c_str());
+                    return SAI_STATUS_FAILURE;
+                }
+
+                SWSS_LOG_NOTICE("interface name for BFD session delete is %s", hwif_name.c_str());
             }
             else
             {
@@ -319,10 +384,10 @@ sai_status_t SwitchVpp::vpp_bfd_session_del(
         }
     }
 
-    if (multihop || hwif_name) {
-        SWSS_LOG_NOTICE("BFD session delete request sent to VS, hwif: %s, multihop: %d, oid: %ld",  hwif_name, multihop, bfd_oid);
+    if (multihop || !hwif_name.empty()) {
+        SWSS_LOG_NOTICE("BFD session delete request sent to VS, hwif: %s, multihop: %d, oid: %ld",  hwif_name.c_str(), multihop, bfd_oid);
         /*vpp call to add bfd session*/
-        ret = bfd_udp_del(multihop, hwif_name, &vpp_local_addr, &vpp_peer_addr);
+        ret = bfd_udp_del(multihop, hwif_name.empty() ? nullptr : hwif_name.c_str(), &vpp_local_addr, &vpp_peer_addr);
         if (ret >= 0)
         {
             BFD_MUTEX;

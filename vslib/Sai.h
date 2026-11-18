@@ -261,6 +261,9 @@ namespace saivs
             void syncProcessEventNetLinkMsg(
                     _In_ std::shared_ptr<EventPayloadNetLinkMsg> payload);
 
+            void syncProcessEventPlatformEvent(
+                    _In_ std::shared_ptr<EventPayloadPlatformEvent> payload);
+
             void asyncProcessEventNotification(
                     _In_ std::shared_ptr<EventPayloadNotification> payload);
 
@@ -281,6 +284,10 @@ namespace saivs
             bool m_fdbAgingThreadRun;
 
             std::shared_ptr<swss::SelectableEvent> m_fdbAgingThreadEvent;
+
+            // Signaled by the platform MAC event callback to wake the aging thread
+            // immediately instead of waiting for the 1s timeout.
+            std::shared_ptr<swss::SelectableEvent> m_fdbAgingWakeEvent;
 
             std::shared_ptr<std::thread> m_fdbAgingThread;
 

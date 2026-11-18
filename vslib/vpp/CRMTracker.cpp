@@ -172,20 +172,12 @@ void CRMTracker::onRouteRemoved(bool ipv4)
 
 // FDB tracking
 
-void CRMTracker::onFdbCreated()
+void CRMTracker::syncFdbCount(uint32_t count)
 {
     SWSS_LOG_ENTER();
 
-    m_fdbCount++;
-    SWSS_LOG_DEBUG("CRM: FDB entry created, count: %u", m_fdbCount);
-}
-
-void CRMTracker::onFdbRemoved()
-{
-    SWSS_LOG_ENTER();
-
-    if (m_fdbCount > 0) m_fdbCount--;
-    SWSS_LOG_DEBUG("CRM: FDB entry removed, count: %u", m_fdbCount);
+    m_fdbCount = count;
+    SWSS_LOG_DEBUG("CRM: FDB entry count: %u", m_fdbCount);
 }
 
 // Neighbor tracking

@@ -150,3 +150,29 @@ TEST(MetaKeyHasher, operator_eq_ipck)
 
     EXPECT_TRUE(mh.operator()(ma, mb));
 }
+
+TEST(MetaKeyHasher, operator_eq_meter_bucket_entry)
+{
+    sai_object_meta_key_t ma;
+    sai_object_meta_key_t mb;
+
+    memset(&ma, 0, sizeof(ma));
+    memset(&mb, 0, sizeof(mb));
+
+    ma.objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_METER_BUCKET_ENTRY;
+    mb.objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_METER_BUCKET_ENTRY;
+
+    ma.objectkey.key.meter_bucket_entry.eni_id = 0x1;
+    ma.objectkey.key.meter_bucket_entry.meter_class = 7;
+
+    mb.objectkey.key.meter_bucket_entry.eni_id = 0x1;
+    mb.objectkey.key.meter_bucket_entry.meter_class = 7;
+
+    MetaKeyHasher mh;
+
+    EXPECT_TRUE(mh.operator()(ma, mb));
+    EXPECT_NO_THROW(mh.operator()(ma));
+
+    mb.objectkey.key.meter_bucket_entry.meter_class = 8;
+    EXPECT_FALSE(mh.operator()(ma, mb));
+}

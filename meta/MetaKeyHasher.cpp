@@ -357,6 +357,15 @@ static bool operator==(
     return a.switch_id == b.switch_id && a.eni_id == b.eni_id && a.vni_range == b.vni_range;
 }
 
+static bool operator==(
+        _In_ const sai_meter_bucket_entry_t& a,
+        _In_ const sai_meter_bucket_entry_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    return a.switch_id == b.switch_id && a.eni_id == b.eni_id && a.meter_class == b.meter_class;
+}
+
 bool MetaKeyHasher::operator()(
         _In_ const sai_object_meta_key_t& a,
         _In_ const sai_object_meta_key_t& b) const
@@ -427,6 +436,9 @@ bool MetaKeyHasher::operator()(
 
     if ((sai_object_type_extensions_t)a.objecttype == SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY)
         return a.objectkey.key.eni_trusted_vni_entry == b.objectkey.key.eni_trusted_vni_entry;
+
+    if ((sai_object_type_extensions_t)a.objecttype == SAI_OBJECT_TYPE_METER_BUCKET_ENTRY)
+        return a.objectkey.key.meter_bucket_entry == b.objectkey.key.meter_bucket_entry;
 
     SWSS_LOG_THROW("not implemented: %s",
             sai_serialize_object_meta_key(a).c_str());
@@ -783,6 +795,18 @@ static inline std::size_t sai_get_hash(
     return hash;
 }
 
+static inline std::size_t sai_get_hash(
+        _In_ const sai_meter_bucket_entry_t & oe)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    std::size_t hash = 0;
+    boost::hash_combine(hash, oe.eni_id);
+    boost::hash_combine(hash, oe.meter_class);
+
+    return hash;
+}
+
 std::size_t MetaKeyHasher::operator()(
         _In_ const sai_object_meta_key_t& k) const
 {
@@ -860,6 +884,9 @@ std::size_t MetaKeyHasher::operator()(
 
         case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
             return sai_get_hash(k.objectkey.key.eni_trusted_vni_entry);
+
+        case SAI_OBJECT_TYPE_METER_BUCKET_ENTRY:
+            return sai_get_hash(k.objectkey.key.meter_bucket_entry);
 
         default:
             SWSS_LOG_THROW("not handled: %s", sai_serialize_object_type(k.objecttype).c_str());

@@ -7,6 +7,7 @@
 #include "EventQueue.h"
 #include "EventPayloadPacket.h"
 #include "EventPayloadNetLinkMsg.h"
+#include "EventPayloadPlatformEvent.h"
 #include "ContextConfig.h"
 
 #include "meta/SaiInterface.h"
@@ -16,6 +17,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <functional>
 
 namespace saivs
 {
@@ -324,6 +326,11 @@ namespace saivs
 
             void ageFdbs();
 
+            // Set the wake function used to signal the FDB
+            // aging thread immediately on MAC events.
+            void initFdbEventHandling(std::function<void()> fn);
+            void deinitFdbEventHandling();
+
             void debugSetStats(
                     _In_ sai_object_id_t oid,
                     _In_ const std::map<sai_stat_id_t, uint64_t>& stats);
@@ -333,6 +340,9 @@ namespace saivs
 
             void syncProcessEventNetLinkMsg(
                     _In_ std::shared_ptr<EventPayloadNetLinkMsg> payload);
+
+            void syncProcessEventPlatformEvent(
+                    _In_ std::shared_ptr<EventPayloadPlatformEvent> payload);
 
         private:
 
@@ -347,5 +357,7 @@ namespace saivs
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
 
             SwitchStateBase::SwitchStateMap m_switchStateMap;
+
+            std::function<void()> m_fdbEventFn;
     };
 }
