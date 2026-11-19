@@ -98,6 +98,22 @@ class SwitchVppDebugCounterTest : public SwitchVppTest
             return counter;
         }
 
+        void setReasons(
+                sai_object_id_t counter,
+                std::vector<int32_t> reasons)
+        {
+            SWSS_LOG_ENTER();
+
+            sai_attribute_t attr;
+
+            attr.id = SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST;
+            attr.value.s32list.count = static_cast<uint32_t>(reasons.size());
+            attr.value.s32list.list = reasons.data();
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS,
+                    m_sw->set(SAI_OBJECT_TYPE_DEBUG_COUNTER, sai_serialize_object_id(counter), &attr));
+        }
+
         uint32_t counterIndex(
                 sai_object_id_t counter)
         {
@@ -305,29 +321,100 @@ TEST_F(SwitchVppDebugCounterTest, counterSumsAllOfItsReasons)
     EXPECT_EQ(10u, portValue(m_port0, counter));
 }
 
-TEST_F(SwitchVppDebugCounterTest, reasonChangeRestartsFromZero)
+/*
+ * dropstat shows a counter less the value it saved at sonic-clear
+ * dropcounters, so a counter whose reasons change must not go backwards.
+ */
+TEST_F(SwitchVppDebugCounterTest, reasonChangeKeepsTheCount)
 {
-    auto counter = createCounter(SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS, { SAI_IN_DROP_REASON_DIP_LINK_LOCAL });
+    setDrops("SIP_LINK_LOCAL", PORT0_IDX, { 500 });
+    setDrops("DIP_LINK_LOCAL", PORT0_IDX, { 1500, 500 });
 
-    setDrops("DIP_LINK_LOCAL", PORT0_IDX, { 9 });
+    auto counter = createCounter(SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS, { SAI_IN_DROP_REASON_SIP_LINK_LOCAL });
+
+    setDrops("SIP_LINK_LOCAL", PORT0_IDX, { 600 });
+
+    ASSERT_EQ(100u, portValue(m_port0, counter));
+
+    // An added reason counts from now, not the drops VPP counted before.
+    setReasons(counter, { SAI_IN_DROP_REASON_SIP_LINK_LOCAL, SAI_IN_DROP_REASON_DIP_LINK_LOCAL });
+
+    EXPECT_EQ(100u, portValue(m_port0, counter));
+
+    setDrops("SIP_LINK_LOCAL", PORT0_IDX, { 630 });
+    setDrops("DIP_LINK_LOCAL", PORT0_IDX, { 1505, 505 });
+
+    EXPECT_EQ(140u, portValue(m_port0, counter));
+
+    // A removed reason keeps what it counted, and counts no more.
+    setReasons(counter, { SAI_IN_DROP_REASON_SIP_LINK_LOCAL });
+
+    EXPECT_EQ(140u, portValue(m_port0, counter));
+
+    setDrops("SIP_LINK_LOCAL", PORT0_IDX, { 631 });
+    setDrops("DIP_LINK_LOCAL", PORT0_IDX, { 1550, 505 });
+
+    EXPECT_EQ(141u, portValue(m_port0, counter));
+
+    // Added back, it counts from its value then.
+    setReasons(counter, { SAI_IN_DROP_REASON_SIP_LINK_LOCAL, SAI_IN_DROP_REASON_DIP_LINK_LOCAL });
+
+    setDrops("DIP_LINK_LOCAL", PORT0_IDX, { 1555, 505 });
+
+    EXPECT_EQ(146u, portValue(m_port0, counter));
+    EXPECT_EQ(0u, portValue(m_port1, counter));
+}
+
+TEST_F(SwitchVppDebugCounterTest, reasonChangeKeepsTheSwitchCount)
+{
+    setDrops("SIP_LINK_LOCAL", PORT0_IDX, { 5 });
+    setDrops("DIP_LINK_LOCAL", PORT1_IDX, { 50 });
+    setDrops("DIP_LINK_LOCAL", 0, { 7 });
+
+    auto counter = createCounter(SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS, { SAI_IN_DROP_REASON_SIP_LINK_LOCAL });
+
+    setDrops("SIP_LINK_LOCAL", PORT0_IDX, { 8 });
+
+    ASSERT_EQ(3u, switchValue(counter));
+
+    setReasons(counter, { SAI_IN_DROP_REASON_SIP_LINK_LOCAL, SAI_IN_DROP_REASON_DIP_LINK_LOCAL });
+
+    EXPECT_EQ(3u, switchValue(counter));
+
+    setDrops("DIP_LINK_LOCAL", PORT1_IDX, { 52 });
+    setDrops("DIP_LINK_LOCAL", 0, { 8 });
+
+    EXPECT_EQ(6u, switchValue(counter));
+
+    setReasons(counter, { SAI_IN_DROP_REASON_DIP_LINK_LOCAL });
+
+    EXPECT_EQ(6u, switchValue(counter));
+
+    setDrops("SIP_LINK_LOCAL", PORT0_IDX, { 20 });
+
+    EXPECT_EQ(6u, switchValue(counter));
+    EXPECT_EQ(6u, switchValue(counter, SAI_STATS_MODE_READ_AND_CLEAR));
+    EXPECT_EQ(0u, switchValue(counter));
+}
+
+TEST_F(SwitchVppDebugCounterTest, readAndClearClearsWhatRemovedReasonsCounted)
+{
+    auto counter = createCounter(SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS,
+            { SAI_IN_DROP_REASON_SIP_LINK_LOCAL, SAI_IN_DROP_REASON_DIP_LINK_LOCAL });
+
+    setDrops("SIP_LINK_LOCAL", PORT0_IDX, { 4 });
+    setDrops("DIP_LINK_LOCAL", PORT0_IDX, { 6 });
+    setDrops("DIP_LINK_LOCAL", PORT1_IDX, { 2 });
+
+    setReasons(counter, { SAI_IN_DROP_REASON_SIP_LINK_LOCAL });
+
+    EXPECT_EQ(10u, portValue(m_port0, counter, SAI_STATS_MODE_READ_AND_CLEAR));
+    EXPECT_EQ(0u, portValue(m_port0, counter));
+    EXPECT_EQ(2u, portValue(m_port1, counter));
+
     setDrops("SIP_LINK_LOCAL", PORT0_IDX, { 5 });
 
-    ASSERT_EQ(9u, portValue(m_port0, counter));
-
-    std::vector<int32_t> reasons = { SAI_IN_DROP_REASON_SIP_LINK_LOCAL, SAI_IN_DROP_REASON_DIP_LINK_LOCAL };
-    sai_attribute_t attr;
-
-    attr.id = SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST;
-    attr.value.s32list.count = static_cast<uint32_t>(reasons.size());
-    attr.value.s32list.list = reasons.data();
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_DEBUG_COUNTER, sai_serialize_object_id(counter), &attr));
-
-    EXPECT_EQ(0u, portValue(m_port0, counter));
-
-    setDrops("SIP_LINK_LOCAL", PORT0_IDX, { 7 });
-
-    EXPECT_EQ(2u, portValue(m_port0, counter));
+    EXPECT_EQ(1u, portValue(m_port0, counter));
 }
 
 TEST_F(SwitchVppDebugCounterTest, countsNeverGoBackwards)
