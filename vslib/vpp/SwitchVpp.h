@@ -31,6 +31,7 @@
 #include <queue>
 #include <set>
 #include <string>
+#include <tuple>
 
 #define BFD_MUTEX std::lock_guard<std::mutex> lock(bfdMapMutex);
 
@@ -104,6 +105,12 @@ namespace saivs
 
             virtual sai_status_t refresh_port_oper_speed(
                     _In_ sai_object_id_t port_id) override;
+
+            virtual sai_status_t refresh_macsec_sa_stat(
+                    _In_ sai_object_id_t object_id) override;
+
+            virtual sai_status_t refresh_macsec_sci_in_ingress_macsec_acl(
+                    _In_ sai_object_id_t object_id) override;
 
         private: // from vpp VirtualSwitchSaiInterface
 
@@ -999,6 +1006,13 @@ namespace saivs
                     _In_ const sai_stat_id_t *counter_ids,
                     _Out_ uint64_t *counters);
 
+            sai_status_t getMacsecSaStats(
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Out_ uint64_t *counters);
+
         protected: // CoPP: HOSTIF_TRAP / HOSTIF_TRAP_GROUP
 
             std::map<sai_object_id_t, vpp_trap_group_entry_t> m_trap_group_map;
@@ -1067,6 +1081,9 @@ namespace saivs
 
             sai_status_t getAclTableId(
                     _In_ sai_object_id_t entry_id, sai_object_id_t *tbl_oid);
+
+            bool isMacsecAclTable(
+                    _In_ sai_object_id_t tbl_oid);
 
             sai_status_t AclTblConfig(
                     _In_ sai_object_id_t tbl_oid);
@@ -1725,5 +1742,122 @@ namespace saivs
             sai_status_t bindMirrorPort(
                     _In_ sai_object_id_t portId,
                     _In_ const sai_attribute_t* attr);
+
+        protected: // VPP MACsec (hides SwitchStateBase MACsecManager)
+
+            sai_status_t createMACsecPort(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t createMACsecFlow(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t createMACsecSC(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t createMACsecSA(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeMACsecFlow(
+                    _In_ sai_object_id_t macsec_flow_id);
+
+            sai_status_t removeMACsecPort(
+                    _In_ sai_object_id_t macsec_port_id);
+
+            sai_status_t removeMACsecSC(
+                    _In_ sai_object_id_t macsec_sc_id);
+
+            sai_status_t removeMACsecSA(
+                    _In_ sai_object_id_t macsec_sa_id);
+
+            sai_status_t setMACsecSA(
+                    _In_ sai_object_id_t macsec_sa_id,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t setAclEntryMACsecFlowActive(
+                    _In_ sai_object_id_t entry_id,
+                    _In_ const sai_attribute_t *attr);
+
+        private:
+
+            struct VppMacsecPortState {
+                uint32_t sw_if_index = ~0u;
+                uint8_t direction = 0;
+                sai_object_id_t port_id = SAI_NULL_OBJECT_ID;
+                sai_object_id_t flow_id = SAI_NULL_OBJECT_ID;
+                bool vpp_programmed = false;
+            };
+
+            struct VppMacsecFlowState {
+                uint32_t sw_if_index = ~0u;
+                sai_object_id_t port_id = SAI_NULL_OBJECT_ID;
+                uint8_t direction = 0;
+            };
+
+            struct VppMacsecScState {
+                uint32_t sw_if_index = ~0u;
+                uint8_t direction = 0;
+                uint64_t sci = 0;
+                uint8_t cipher_suite = 0;
+                uint8_t encrypt = 1;
+                uint8_t send_sci = 0;
+                uint8_t replay_protect = 0;
+                uint32_t replay_window = 0;
+                uint8_t conf_offset = 0;
+                sai_object_id_t flow_id = SAI_NULL_OBJECT_ID;
+                bool vpp_programmed = false;
+            };
+
+            struct VppMacsecSaState {
+                uint32_t sw_if_index = ~0u;
+                uint8_t direction = 0;
+                uint64_t sci = 0;
+                uint8_t an = 0;
+                uint32_t sa_index = ~0u;
+            };
+
+            std::map<sai_object_id_t, VppMacsecPortState> m_vppMacsecPorts;
+            std::map<sai_object_id_t, VppMacsecFlowState> m_vppMacsecFlows;
+            std::map<sai_object_id_t, VppMacsecScState> m_vppMacsecScs;
+            std::map<sai_object_id_t, VppMacsecSaState> m_vppMacsecSas;
+            // orchagent deletes the old egress SA before creating the new one
+            // (setEncodingAN). Keep the VPP SA as encoding until the replacement
+            // is programmed, then destroy it. Key is (sw_if_index, direction, sci).
+            std::map<std::tuple<uint32_t, uint8_t, uint64_t>, VppMacsecSaState> m_vppMacsecRetiredEgressSas;
+
+            void destroyVppMacsecSa(
+                    _In_ const VppMacsecSaState &sa);
+
+            void retireVppMacsecEgressSa(
+                    _In_ const VppMacsecSaState &sa);
+
+            void commitRetiredVppMacsecEgressSa(
+                    _In_ const VppMacsecSaState &new_sa);
+
+            void dropRetiredVppMacsecEgressSa(
+                    _In_ uint32_t sw_if_index,
+                    _In_ uint8_t direction,
+                    _In_ uint64_t sci);
+
+            sai_status_t resolveMacsecSwIfIndex(
+                    _In_ sai_object_id_t port_id,
+                    _Out_ uint32_t &sw_if_index);
+
+            sai_status_t bindMacsecScToPort(
+                    _Inout_ VppMacsecScState &sc);
+
+            sai_status_t programVppMacsecPortAndSc(
+                    _Inout_ VppMacsecScState &sc);
     };
 }

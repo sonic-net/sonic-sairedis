@@ -733,6 +733,24 @@ sai_status_t SwitchVpp::getAclTableId(
     return SAI_STATUS_SUCCESS;
 }
 
+bool SwitchVpp::isMacsecAclTable(
+    _In_ sai_object_id_t tbl_oid)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_ACL_TABLE_ATTR_ACL_STAGE;
+
+    if (get(SAI_OBJECT_TYPE_ACL_TABLE, tbl_oid, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        return false;
+    }
+
+    return attr.value.s32 == SAI_ACL_STAGE_INGRESS_MACSEC
+        || attr.value.s32 == SAI_ACL_STAGE_EGRESS_MACSEC;
+}
+
 sai_status_t SwitchVpp::acl_range_attr_get (
     _In_ const std::string &serializedObjectId,
     _In_ uint32_t attr_count,
@@ -1880,6 +1898,11 @@ sai_status_t SwitchVpp::aclTableCreate(
 
     SWSS_LOG_NOTICE("ACL table %s created", sid.c_str());
 
+    if (isMacsecAclTable(object_id))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     return emptyAclCreate(object_id);
 }
 
@@ -1892,7 +1915,14 @@ sai_status_t SwitchVpp::aclTableRemove(
 
     sai_deserialize_object_id(serializedObjectId, tbl_oid);
 
+    const bool macsec_tbl = isMacsecAclTable(tbl_oid);
+
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_ACL_TABLE, serializedObjectId));
+
+    if (macsec_tbl)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
 
     return AclTblRemove(tbl_oid);
 }
@@ -2121,6 +2151,11 @@ sai_status_t SwitchVpp::createAclEntry(
         remove_internal(SAI_OBJECT_TYPE_ACL_ENTRY, sid);
         return SAI_STATUS_FAILURE;
     }
+
+    if (isMacsecAclTable(tbl_oid)) {
+        return SAI_STATUS_SUCCESS;
+    }
+
     sai_status_t status;
 
     status = addRemoveAclEntrytoMap(object_id, tbl_oid, true);
@@ -2161,6 +2196,11 @@ sai_status_t SwitchVpp::removeAclEntry(
 
     if (getAclTableId(entry_oid, &tbl_oid) != SAI_STATUS_SUCCESS) {
         return SAI_STATUS_FAILURE;
+    }
+
+    if (isMacsecAclTable(tbl_oid)) {
+        remove_internal(SAI_OBJECT_TYPE_ACL_ENTRY, serializedObjectId);
+        return SAI_STATUS_SUCCESS;
     }
 
     sai_status_t status = addRemoveAclEntrytoMap(entry_oid, tbl_oid, false);
