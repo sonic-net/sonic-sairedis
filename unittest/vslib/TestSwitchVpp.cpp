@@ -2732,6 +2732,16 @@ class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
             EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
             EXPECT_TRUE(bviReceivesDhcp6());
         }
+
+        // No trap: normal bridge flooding, without a BVI receive route.
+        void expectNoTrap6()
+        {
+            SWSS_LOG_ENTER();
+
+            EXPECT_EQ(MISS, onMember("bobm0", false, dhcp6OnWire(false)));
+            EXPECT_EQ(MISS, onMember("bobm1.100", true, dhcp6OnWire(true)));
+            EXPECT_TRUE(g_ip6LocalMroutes.empty());
+        }
 };
 
 TEST_F(SwitchVppDhcp6Trap, TrapPuntsOnTheMembersWithNoRoute)
@@ -2743,12 +2753,12 @@ TEST_F(SwitchVppDhcp6Trap, TrapPuntsOnTheMembersWithNoRoute)
     expectTrap6();
 }
 
-TEST_F(SwitchVppDhcp6Trap, NoDhcp6TrapDefaultsToTrap)
+TEST_F(SwitchVppDhcp6Trap, NoDhcp6TrapFloodsWithoutBviReceive)
 {
     addMembers();
     createBvi();
 
-    expectTrap6();
+    expectNoTrap6();
 }
 
 TEST_F(SwitchVppDhcp6Trap, CopyBeforeAnyMemberFloodsAndTheBviCopyIsReceived)
@@ -2790,7 +2800,7 @@ TEST_F(SwitchVppDhcp6Trap, OtherActionsKeepTheTrapBehavior)
     expectTrap6();
 }
 
-TEST_F(SwitchVppDhcp6Trap, RemovingTheCopyTrapRevertsToTrap)
+TEST_F(SwitchVppDhcp6Trap, RemovingTheCopyTrapRestoresDefaultFlooding)
 {
     auto trap = createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
     addMembers();
@@ -2798,7 +2808,7 @@ TEST_F(SwitchVppDhcp6Trap, RemovingTheCopyTrapRevertsToTrap)
     expectCopy6();
 
     removeTrap(trap);
-    expectTrap6();
+    expectNoTrap6();
 }
 
 TEST_F(SwitchVppDhcp6Trap, ReplacementCopyTrapWinsOnlyOnceTheOldTrapIsGone)
@@ -2878,7 +2888,7 @@ TEST_F(SwitchVppDhcp6Trap, ReceiveRouteFailuresRollBackCreateSetAndRemove)
     auto stored_traps = m_sw->m_objectHash.find(SAI_OBJECT_TYPE_HOSTIF_TRAP);
     EXPECT_TRUE(stored_traps == m_sw->m_objectHash.end() ||
             stored_traps->second.count(sai_serialize_object_id(trap)) == 0);
-    expectTrap6();
+    expectNoTrap6();
 
     ASSERT_EQ(SAI_STATUS_SUCCESS,
             m_sw->create(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap),
@@ -2916,7 +2926,7 @@ TEST_F(SwitchVppDhcp6Trap, ReceiveRouteFailuresRollBackCreateSetAndRemove)
 
     ASSERT_EQ(SAI_STATUS_SUCCESS,
             m_sw->remove(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
-    expectTrap6();
+    expectNoTrap6();
 }
 
 TEST_F(SwitchVppDhcp6Trap, AdminDownBviDoesNotReceiveDhcp6Copy)

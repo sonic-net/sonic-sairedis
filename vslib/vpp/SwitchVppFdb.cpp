@@ -1191,7 +1191,9 @@ sai_status_t SwitchVpp::vpp_set_dhcp6_trap_state(
     }
 
     const bool old_sessions = s_dhcp6_member_sessions;
-    const bool new_sessions = !copy;
+    // With no DHCPv6 trap, preserve normal bridge flooding without punting a
+    // member copy to the CPU. Member classifier sessions emulate TRAP only.
+    const bool new_sessions = active && !copy;
     bool sessions_changed = false;
     std::vector<RouteTransition> applied;
 
