@@ -1673,7 +1673,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * up, but control-plane punt on this member is not enabled.
          */
         if (l2_punt_classify_apply(hw_ifname, true /*tagged*/, punt_arp, punt_ip6mc,
-                                   !m_dhcp_trap_copy, !m_dhcp6_trap_copy) != 0) {
+                                   !m_dhcp_trap_copy,
+                                   m_dhcp6_trap_active && !m_dhcp6_trap_copy) != 0) {
             SWSS_LOG_WARN("l2_punt_classify_apply failed for tagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
         }
@@ -1699,7 +1700,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
          * Treated as best-effort; see the tagged branch above.
          */
         if (l2_punt_classify_apply(hw_ifname, false /*untagged*/, punt_arp, punt_ip6mc,
-                                   !m_dhcp_trap_copy, !m_dhcp6_trap_copy) != 0) {
+                                   !m_dhcp_trap_copy,
+                                   m_dhcp6_trap_active && !m_dhcp6_trap_copy) != 0) {
             SWSS_LOG_WARN("l2_punt_classify_apply failed for untagged member %s (vlan %u)",
                           hw_ifname, vlan_id);
         }
@@ -2262,7 +2264,8 @@ sai_status_t SwitchVpp::vpp_set_vlan_attribute(
 
                 if (l2_punt_classify_apply(member_hwif.c_str(), member_tagged,
                                            punt_arp, punt_ip6mc,
-                                           !m_dhcp_trap_copy, !m_dhcp6_trap_copy) != 0)
+                                           !m_dhcp_trap_copy,
+                                           m_dhcp6_trap_active && !m_dhcp6_trap_copy) != 0)
                 {
                     SWSS_LOG_WARN("Failed to update punt classify tables on %s (vlan %u)",
                             member_hwif.c_str(), bridge_id);
