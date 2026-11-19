@@ -961,52 +961,7 @@ sai_status_t VirtualSwitchSaiInterface::queryAttributeEnumValuesCapability(
     // TODO: We should generate this metadata for the virtual switch rather
     // than hard-coding it here.
 
-    if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER && attr_id == SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST)
-    {
-        if (enum_values_capability->count < 3)
-        {
-            enum_values_capability->count = 3;
-            return SAI_STATUS_BUFFER_OVERFLOW;
-        }
-
-        enum_values_capability->count = 3;
-        enum_values_capability->list[0] = SAI_IN_DROP_REASON_L2_ANY;
-        enum_values_capability->list[1] = SAI_IN_DROP_REASON_L3_ANY;
-        enum_values_capability->list[2] = SAI_IN_DROP_REASON_ACL_ANY;
-
-        return SAI_STATUS_SUCCESS;
-    }
-    else if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER && attr_id == SAI_DEBUG_COUNTER_ATTR_OUT_DROP_REASON_LIST)
-    {
-        if (enum_values_capability->count < 2)
-        {
-            enum_values_capability->count = 2;
-            return SAI_STATUS_BUFFER_OVERFLOW;
-        }
-
-        enum_values_capability->count = 2;
-        enum_values_capability->list[0] = SAI_OUT_DROP_REASON_L2_ANY;
-        enum_values_capability->list[1] = SAI_OUT_DROP_REASON_L3_ANY;
-
-        return SAI_STATUS_SUCCESS;
-    }
-    else if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER && attr_id == SAI_DEBUG_COUNTER_ATTR_TYPE)
-    {
-        if (enum_values_capability->count < 4)
-        {
-            enum_values_capability->count = 4;
-            return SAI_STATUS_BUFFER_OVERFLOW;
-        }
-
-        enum_values_capability->count = 4;
-        enum_values_capability->list[0] = SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS;
-        enum_values_capability->list[1] = SAI_DEBUG_COUNTER_TYPE_PORT_OUT_DROP_REASONS;
-        enum_values_capability->list[2] = SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS;
-        enum_values_capability->list[3] = SAI_DEBUG_COUNTER_TYPE_SWITCH_OUT_DROP_REASONS;
-
-        return SAI_STATUS_SUCCESS;
-    }
-    else if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP && attr_id == SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE)
+    if (object_type == SAI_OBJECT_TYPE_HOSTIF_TRAP && attr_id == SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE)
     {
         auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_HOSTIF_TRAP, SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
 
