@@ -348,7 +348,7 @@ TunnelManager::tunnel_encap_nexthop_action(
                            tunnel_nh_obj->get_id().c_str());
             return SAI_STATUS_FAILURE;
         }
-        sai_status_t status = remove_vxlan_encap_entries(it->second);
+        sai_status_t status = remove_vxlan_encap_entries(object_id, it->second);
         if (status == SAI_STATUS_SUCCESS) {
             m_tunnel_encap_nexthop_map.erase(it);
         }
@@ -467,38 +467,28 @@ TunnelManager::tunnel_encap_nexthop_action(
                 }
                 SWSS_LOG_ERROR("VXLAN VNI %u already belongs to another VRF on next hop %s",
                                pair.first, tunnel_nh_obj->get_id().c_str());
-                remove_vxlan_encap_entries(created);
+                remove_vxlan_encap_entries(object_id, created);
                 return SAI_STATUS_FAILURE;
             }
         }
-        VxlanEncapEntry entry{};
-        entry.req.dst_port = m_vxlan_port;
-        entry.req.src_port = m_vxlan_port;
-        entry.req.instance = ~0u;
-        entry.req.decap_next_index = ~0u;
-        entry.req.vni = pair.first;
-        entry.req.decap_any = tunnel_is_p2mp && pair.second != nullptr;
-        sai_ip_address_t_to_vpp_ip_addr_t(src_ip, entry.req.src_address);
-        sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, entry.req.dst_address);
-        entry.tunnel_data.ip_vrf = pair.second;
-        entry.tunnel_data.vni = pair.first;
-        entry.dst_mac = dst_mac;
-        entry.any_vrf = override_vni != 0;
+        vpp_vxlan_tunnel_t req{};
+        req.dst_port = m_vxlan_port;
+        req.src_port = m_vxlan_port;
+        req.instance = ~0u;
+        req.decap_next_index = ~0u;
+        req.vni = pair.first;
+        req.decap_any = tunnel_is_p2mp && pair.second != nullptr;
+        sai_ip_address_t_to_vpp_ip_addr_t(src_ip, req.src_address);
+        sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.dst_address);
 
-        if (create_vpp_vxlan_encap(entry.req, entry.tunnel_data, false,
-                                   entry.dst_mac.data()) != SAI_STATUS_SUCCESS) {
-            remove_vxlan_encap_entries(created);
-            return SAI_STATUS_FAILURE;
+        VxlanEncapEntry entry{};
+        sai_status_t acq_status = acquire_shared_vxlan_encap(
+            object_id, src_ip, dst_ip, req, pair.second, dst_mac, entry);
+        if (acq_status != SAI_STATUS_SUCCESS) {
+            remove_vxlan_encap_entries(object_id, created);
+            return acq_status;
         }
-        if (pair.second) {
-            if (create_vpp_vxlan_decap(entry.tunnel_data) != SAI_STATUS_SUCCESS) {
-                remove_vpp_vxlan_encap(entry.req, entry.tunnel_data, false,
-                                       entry.dst_mac.data());
-                remove_vxlan_encap_entries(created);
-                return SAI_STATUS_FAILURE;
-            }
-            entry.has_decap = true;
-        }
+        entry.any_vrf = override_vni != 0;
         created.push_back(entry);
     }
 
@@ -637,6 +627,7 @@ TunnelManager::recreate_vpp_vxlan_encap_with_decap_any(
         return SAI_STATUS_FAILURE;
     }
 
+    auto shared_it = m_shared_encap_tunnels.find(entry.key);
     entry.req.decap_any = decap_any;
     if (create_vpp_vxlan_encap(entry.req, entry.tunnel_data, false,
                                entry.dst_mac.data()) != SAI_STATUS_SUCCESS) {
@@ -649,11 +640,19 @@ TunnelManager::recreate_vpp_vxlan_encap_with_decap_any(
                 shared->req.decap_any = old_decap_any;
                 shared->tunnel_data.sw_if_index = entry.tunnel_data.sw_if_index;
             }
+            if (shared_it != m_shared_encap_tunnels.end()) {
+                shared_it->second.req.decap_any = old_decap_any;
+                shared_it->second.tunnel_data.sw_if_index = entry.tunnel_data.sw_if_index;
+            }
             m_switch_db->reattachRoutesForNexthops(detached_routes);
         } else {
             for (auto* shared : shared_entries) {
                 shared->req.decap_any = old_decap_any;
                 shared->tunnel_data.sw_if_index = UINT32_MAX;
+            }
+            if (shared_it != m_shared_encap_tunnels.end()) {
+                shared_it->second.req.decap_any = old_decap_any;
+                shared_it->second.tunnel_data.sw_if_index = UINT32_MAX;
             }
             SWSS_LOG_ERROR("Failed to restore VXLAN tunnel for VNI %u with decap_any=%d",
                            entry.req.vni, old_decap_any);
@@ -664,6 +663,10 @@ TunnelManager::recreate_vpp_vxlan_encap_with_decap_any(
     for (auto* shared : shared_entries) {
         shared->req.decap_any = decap_any;
         shared->tunnel_data.sw_if_index = entry.tunnel_data.sw_if_index;
+    }
+    if (shared_it != m_shared_encap_tunnels.end()) {
+        shared_it->second.req.decap_any = decap_any;
+        shared_it->second.tunnel_data.sw_if_index = entry.tunnel_data.sw_if_index;
     }
     m_switch_db->reattachRoutesForNexthops(detached_routes);
     return SAI_STATUS_SUCCESS;
@@ -717,6 +720,15 @@ TunnelManager::install_nexthop_vxlan_decap_for_vni(
                 }
             }
 
+            auto shared_it = m_shared_encap_tunnels.find(entry.key);
+            if (shared_it != m_shared_encap_tunnels.end() &&
+                !shared_it->second.decap_owners.empty()) {
+                entry.tunnel_data = shared_it->second.tunnel_data;
+                entry.has_decap = true;
+                shared_it->second.decap_owners.insert(nh_pair.first);
+                continue;
+            }
+
             // VPP reads decap_any only when creating the VXLAN tunnel, so a
             // P2MP tunnel created before its VNI was mapped must be recreated
             // with decap_any enabled while any routes referencing it are rebound.
@@ -733,6 +745,10 @@ TunnelManager::install_nexthop_vxlan_decap_for_vni(
             entry.tunnel_data.ip_vrf = ip_vrf;
             if (create_vpp_vxlan_decap(entry.tunnel_data) == SAI_STATUS_SUCCESS) {
                 entry.has_decap = true;
+                if (shared_it != m_shared_encap_tunnels.end()) {
+                    shared_it->second.tunnel_data = entry.tunnel_data;
+                    shared_it->second.decap_owners.insert(nh_pair.first);
+                }
             } else {
                 entry.tunnel_data.ip_vrf.reset();
                 if (flipped_decap_any &&
@@ -815,24 +831,24 @@ TunnelManager::remove_nexthop_vxlan_decap_for_map_entry(
             if (find_l3_vxlan_vrf_for_vni(tunnel_obj.get(), vni, map_entry_oid) != nullptr) {
                 continue;
             }
-            remove_vpp_vxlan_decap(entry.tunnel_data);
+            auto shared_it = m_shared_encap_tunnels.find(entry.key);
+            if (shared_it != m_shared_encap_tunnels.end()) {
+                shared_it->second.decap_owners.erase(nh_pair.first);
+            }
+            const bool shared_still_has_decap =
+                shared_it != m_shared_encap_tunnels.end() &&
+                !shared_it->second.decap_owners.empty();
+            if (!shared_still_has_decap) {
+                remove_vpp_vxlan_decap(entry.tunnel_data);
+                if (shared_it != m_shared_encap_tunnels.end()) {
+                    shared_it->second.tunnel_data.bd_id = 0;
+                    shared_it->second.tunnel_data.ip_vrf.reset();
+                }
+            }
             entry.has_decap = false;
             entry.tunnel_data.ip_vrf.reset();
             entry.tunnel_data.bd_id = 0;
 
-            bool shared_still_has_decap = false;
-            for (const auto& other_nh : m_tunnel_encap_nexthop_map) {
-                for (const auto& other : other_nh.second) {
-                    if (other.tunnel_data.sw_if_index == entry.tunnel_data.sw_if_index &&
-                        other.has_decap) {
-                        shared_still_has_decap = true;
-                        break;
-                    }
-                }
-                if (shared_still_has_decap) {
-                    break;
-                }
-            }
             if (entry.req.decap_any && !shared_still_has_decap) {
                 if (recreate_vpp_vxlan_encap_with_decap_any(entry, false) != SAI_STATUS_SUCCESS) {
                     SWSS_LOG_ERROR("Failed to clear decap_any for VNI %u on next hop %s",
@@ -844,21 +860,230 @@ TunnelManager::remove_nexthop_vxlan_decap_for_map_entry(
 }
 
 sai_status_t
+TunnelManager::set_vpp_vxlan_encap_neighbor(
+    _In_ vpp_vxlan_tunnel_t& req,
+    _In_ uint32_t sw_if_index,
+    _In_ const std::array<uint8_t, 6>& dst_mac,
+    _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    std::array<uint8_t, 6> mac_copy = dst_mac;
+    int status;
+    if (req.dst_address.sa_family == AF_INET6) {
+        status = ip6_nbr_add_del(NULL, sw_if_index, &req.dst_address.addr.ip6,
+                                 false, true /*no_fib_entry*/, mac_copy.data(), is_add ? 1 : 0);
+    } else {
+        status = ip4_nbr_add_del(NULL, sw_if_index, &req.dst_address.addr.ip4,
+                                 false, true /*no_fib_entry*/, mac_copy.data(), is_add ? 1 : 0);
+    }
+    if (status != 0) {
+        SWSS_LOG_ERROR("Failed to %s inner destination MAC on VXLAN tunnel sw_if %u",
+                       is_add ? "set" : "remove", sw_if_index);
+        return SAI_STATUS_FAILURE;
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t
+TunnelManager::acquire_shared_vxlan_encap(
+    _In_ sai_object_id_t nexthop_oid,
+    _In_ const sai_ip_address_t& src_ip,
+    _In_ const sai_ip_address_t& dst_ip,
+    _In_ vpp_vxlan_tunnel_t& req,
+    _In_ const std::shared_ptr<IpVrfInfo>& vrf,
+    _In_ const std::array<uint8_t, 6>& dst_mac,
+    _Out_ VxlanEncapEntry& out_entry)
+{
+    SWSS_LOG_ENTER();
+
+    L2TunnelKey key = l2_tunnel_key(src_ip, dst_ip, req.vni);
+    auto shared_it = m_shared_encap_tunnels.find(key);
+
+    if (shared_it == m_shared_encap_tunnels.end()) {
+        TunnelVPPData tunnel_data;
+        tunnel_data.ip_vrf = vrf;
+        tunnel_data.vni = req.vni;
+
+        if (create_vpp_vxlan_encap(req, tunnel_data, false, dst_mac.data()) != SAI_STATUS_SUCCESS) {
+            return SAI_STATUS_FAILURE;
+        }
+        if (vrf) {
+            if (create_vpp_vxlan_decap(tunnel_data) != SAI_STATUS_SUCCESS) {
+                remove_vpp_vxlan_encap(req, tunnel_data, false, dst_mac.data());
+                return SAI_STATUS_FAILURE;
+            }
+        }
+
+        SharedVxlanEncapTunnel shared{};
+        shared.req = req;
+        shared.tunnel_data = tunnel_data;
+        shared.encap_owners.emplace_back(nexthop_oid, dst_mac);
+        if (vrf) {
+            shared.decap_owners.insert(nexthop_oid);
+        }
+        m_shared_encap_tunnels.emplace(key, std::move(shared));
+
+        out_entry.key = key;
+        out_entry.req = req;
+        out_entry.tunnel_data = tunnel_data;
+        out_entry.dst_mac = dst_mac;
+        out_entry.has_decap = (vrf != nullptr);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SharedVxlanEncapTunnel& shared = shared_it->second;
+    if (req.decap_any && !shared.req.decap_any) {
+        SWSS_LOG_ERROR("Existing VXLAN encap tunnel VNI %u lacks source-independent decap", req.vni);
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+    if (vrf && !shared.decap_owners.empty() &&
+        shared.tunnel_data.ip_vrf && shared.tunnel_data.ip_vrf->m_obj_id != vrf->m_obj_id) {
+        SWSS_LOG_ERROR("VXLAN encap tunnel VNI %u already bound to another VRF", req.vni);
+        return SAI_STATUS_FAILURE;
+    }
+
+    bool created_decap = false;
+    TunnelVPPData decap_data = shared.tunnel_data;
+    if (vrf && shared.decap_owners.empty()) {
+        decap_data.ip_vrf = vrf;
+        if (create_vpp_vxlan_decap(decap_data) != SAI_STATUS_SUCCESS) {
+            return SAI_STATUS_FAILURE;
+        }
+        created_decap = true;
+    }
+
+    if (shared.encap_owners.empty() || shared.encap_owners.back().second != dst_mac) {
+        if (set_vpp_vxlan_encap_neighbor(shared.req, shared.tunnel_data.sw_if_index,
+                                         dst_mac, true) != SAI_STATUS_SUCCESS) {
+            if (created_decap) {
+                remove_vpp_vxlan_decap(decap_data);
+            }
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    if (created_decap) {
+        shared.tunnel_data = decap_data;
+    }
+    if (vrf) {
+        shared.decap_owners.insert(nexthop_oid);
+    }
+
+    auto owner_it = std::find_if(shared.encap_owners.begin(), shared.encap_owners.end(),
+        [&](const std::pair<sai_object_id_t, std::array<uint8_t, 6>>& p) {
+            return p.first == nexthop_oid;
+        });
+    if (owner_it != shared.encap_owners.end()) {
+        shared.encap_owners.erase(owner_it);
+    }
+    shared.encap_owners.emplace_back(nexthop_oid, dst_mac);
+
+    out_entry.key = key;
+    out_entry.req = shared.req;
+    out_entry.tunnel_data = shared.tunnel_data;
+    out_entry.tunnel_data.ip_vrf = vrf;
+    out_entry.dst_mac = dst_mac;
+    out_entry.has_decap = (vrf != nullptr);
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t
+TunnelManager::release_shared_vxlan_encap(
+    _In_ sai_object_id_t nexthop_oid,
+    _In_ VxlanEncapEntry& entry)
+{
+    SWSS_LOG_ENTER();
+
+    auto shared_it = m_shared_encap_tunnels.find(entry.key);
+    if (shared_it == m_shared_encap_tunnels.end()) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SharedVxlanEncapTunnel& shared = shared_it->second;
+    auto owner_it = std::find_if(shared.encap_owners.begin(), shared.encap_owners.end(),
+        [&](const std::pair<sai_object_id_t, std::array<uint8_t, 6>>& p) {
+            return p.first == nexthop_oid;
+        });
+    const bool owns_decap = entry.has_decap && shared.decap_owners.count(nexthop_oid) != 0;
+    const bool last_decap = owns_decap && shared.decap_owners.size() == 1;
+    const bool last_encap = owner_it != shared.encap_owners.end() && shared.encap_owners.size() == 1;
+
+    if (last_encap) {
+        // VPP deletes the decap bridge domain only once the tunnel has left it,
+        // so the decap goes first, and comes back if the tunnel delete fails,
+        // leaving the next hop as it was for the retry
+        if (last_decap && remove_vpp_vxlan_decap(shared.tunnel_data) != SAI_STATUS_SUCCESS) {
+            return SAI_STATUS_FAILURE;
+        }
+        const auto active_mac = shared.encap_owners.back().second;
+        if (remove_vpp_vxlan_encap(shared.req, shared.tunnel_data, false,
+                                   active_mac.data()) != SAI_STATUS_SUCCESS) {
+            if (last_decap && create_vpp_vxlan_decap(shared.tunnel_data) != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to restore decap of VXLAN tunnel sw_if %u VNI %u",
+                               shared.tunnel_data.sw_if_index, shared.req.vni);
+            }
+            return SAI_STATUS_FAILURE;
+        }
+        m_shared_encap_tunnels.erase(shared_it);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    bool updated_mac = false;
+    std::array<uint8_t, 6> prev_mac{};
+    if (owner_it != shared.encap_owners.end() &&
+        shared.encap_owners.back().first == nexthop_oid) {
+        prev_mac = shared.encap_owners.back().second;
+        const auto& next_mac = shared.encap_owners[shared.encap_owners.size() - 2].second;
+        if (next_mac != prev_mac) {
+            if (set_vpp_vxlan_encap_neighbor(shared.req, shared.tunnel_data.sw_if_index,
+                                             next_mac, true) != SAI_STATUS_SUCCESS) {
+                return SAI_STATUS_FAILURE;
+            }
+            updated_mac = true;
+        }
+    }
+
+    if (last_decap && remove_vpp_vxlan_decap(shared.tunnel_data) != SAI_STATUS_SUCCESS) {
+        if (updated_mac &&
+            set_vpp_vxlan_encap_neighbor(shared.req, shared.tunnel_data.sw_if_index,
+                                         prev_mac, true) != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to revert inner destination MAC on VXLAN tunnel sw_if %u",
+                           shared.tunnel_data.sw_if_index);
+        }
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (last_decap) {
+        shared.tunnel_data.bd_id = 0;
+        shared.tunnel_data.ip_vrf = nullptr;
+    }
+    if (owns_decap) {
+        shared.decap_owners.erase(nexthop_oid);
+    }
+    if (owner_it != shared.encap_owners.end()) {
+        shared.encap_owners.erase(owner_it);
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t
 TunnelManager::remove_vxlan_encap_entries(
+    _In_ sai_object_id_t nexthop_oid,
     _Inout_ std::vector<VxlanEncapEntry>& entries)
 {
     SWSS_LOG_ENTER();
 
     sai_status_t result = SAI_STATUS_SUCCESS;
+    std::vector<VxlanEncapEntry> remaining;
     for (auto it = entries.rbegin(); it != entries.rend(); ++it) {
-        if (it->has_decap && remove_vpp_vxlan_decap(it->tunnel_data) != SAI_STATUS_SUCCESS) {
+        if (release_shared_vxlan_encap(nexthop_oid, *it) != SAI_STATUS_SUCCESS) {
             result = SAI_STATUS_FAILURE;
-        }
-        if (remove_vpp_vxlan_encap(it->req, it->tunnel_data, false,
-                                   it->dst_mac.data()) != SAI_STATUS_SUCCESS) {
-            result = SAI_STATUS_FAILURE;
+            remaining.push_back(*it);
         }
     }
+    std::reverse(remaining.begin(), remaining.end());
+    entries.swap(remaining);
     return result;
 }
 sai_status_t

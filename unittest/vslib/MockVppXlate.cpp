@@ -883,6 +883,29 @@ int __wrap_sw_interface_set_mac(const char *hwif_name, uint8_t *mac_address)
     return ret;
 }
 
+int __wrap_sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address)
+{
+    SWSS_LOG_ENTER();
+
+    char mac[18] = {};
+    if (mac_address)
+    {
+        snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+                mac_address[0], mac_address[1], mac_address[2],
+                mac_address[3], mac_address[4], mac_address[5]);
+    }
+    vppMock().calls.push_back({"sw_interface_set_mac_by_index", mac, sw_if_index, 0, true});
+    return 0;
+}
+
+int __wrap_interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    vppMock().calls.push_back({"interface_ip_address_add_del", hw_ifname ? hw_ifname : "", 0, 0, is_add});
+    return 0;
+}
+
 /*
  * Neighbor programming. Recorded as name: interface for the interface flag and
  * the adjacency, empty for a route; id: the route's prefix length; sub_id: the
@@ -905,10 +928,47 @@ int __wrap_ip4_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct s
 {
     SWSS_LOG_ENTER();
 
-    vppMock().calls.push_back({"ip4_nbr_add_del", hwif_name ? hwif_name : "",
-            addr ? addr->sin_addr.s_addr : 0, 0, is_add});
+    std::string label;
+    if (hwif_name)
+    {
+        label = hwif_name;
+    }
+    else if (mac)
+    {
+        char buf[18];
+        snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        label = buf;
+    }
 
-    return 0;
+    int ret = vppMock().nbrAddDelResult;
+    vppMock().calls.push_back({"ip4_nbr_add_del", label,
+            addr ? addr->sin_addr.s_addr : 0, sw_if_index, is_add});
+
+    return ret;
+}
+
+int __wrap_ip6_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct sockaddr_in6 *,
+        bool, bool, uint8_t *mac, bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    std::string label;
+    if (hwif_name)
+    {
+        label = hwif_name;
+    }
+    else if (mac)
+    {
+        char buf[18];
+        snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        label = buf;
+    }
+
+    int ret = vppMock().nbrAddDelResult;
+    vppMock().calls.push_back({"ip6_nbr_add_del", label, 0, sw_if_index, is_add});
+    return ret;
 }
 
 int __wrap_set_l2_interface_vlan_tag_rewrite(const char *hwif_name, uint32_t tag1, uint32_t tag2, uint32_t push_dot1q, uint32_t vtr_op) {

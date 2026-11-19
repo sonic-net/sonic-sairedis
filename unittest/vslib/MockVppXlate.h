@@ -221,6 +221,11 @@ struct VppMock
     int ipipDelResult = 0;
     // vpp_sw_interface_find_by_ip() result: -1 when no interface owns the IP
     int findByIpResult = -1;
+    // When true, vpp_vxlan_tunnel_add_del rejects duplicate (source, destination, VNI) adds
+    bool rejectDuplicateVxlanTunnels = false;
+    std::set<std::string> activeVxlanTunnels;
+    int vxlanTunnelDelResult = 0;
+    int nbrAddDelResult = 0;
 
     void reset();
     bool isAdminUp(const std::string& hwif) const;
