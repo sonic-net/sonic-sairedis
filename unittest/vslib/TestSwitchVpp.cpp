@@ -2787,17 +2787,17 @@ TEST_F(SwitchVppDhcp6Trap, SetAttributeSwitchesBetweenTrapAndCopyOnExistingMembe
     expectCopy6();
 }
 
-TEST_F(SwitchVppDhcp6Trap, OtherActionsKeepTheTrapBehavior)
+TEST_F(SwitchVppDhcp6Trap, InactiveActionsRestoreDefaultFlooding)
 {
     auto trap = createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
     addMembers();
     createBvi();
 
     setTrapAction(trap, SAI_PACKET_ACTION_FORWARD);
-    expectTrap6();
+    expectNoTrap6();
 
     setTrapAction(trap, SAI_PACKET_ACTION_DROP);
-    expectTrap6();
+    expectNoTrap6();
 }
 
 TEST_F(SwitchVppDhcp6Trap, RemovingTheCopyTrapRestoresDefaultFlooding)
