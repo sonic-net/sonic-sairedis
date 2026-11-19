@@ -17,6 +17,12 @@ namespace
     const std::map<int32_t, std::string> g_vppInDropReasons = {
         { SAI_IN_DROP_REASON_SIP_LINK_LOCAL, "SIP_LINK_LOCAL" },
         { SAI_IN_DROP_REASON_DIP_LINK_LOCAL, "DIP_LINK_LOCAL" },
+        { SAI_IN_DROP_REASON_SIP_LOOPBACK, "SIP_LOOPBACK" },
+        { SAI_IN_DROP_REASON_SIP_MC, "SIP_MC" },
+        { SAI_IN_DROP_REASON_SIP_CLASS_E, "SIP_CLASS_E" },
+        { SAI_IN_DROP_REASON_SIP_UNSPECIFIED, "SIP_UNSPECIFIED" },
+        { SAI_IN_DROP_REASON_DIP_LOOPBACK, "DIP_LOOPBACK" },
+        { SAI_IN_DROP_REASON_UC_DIP_MC_DMAC, "UC_DIP_MC_DMAC" },
     };
 
     // One flex counter poll reads every port; serve them all from one dump.

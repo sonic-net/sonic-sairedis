@@ -4,11 +4,27 @@
 
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 #include <unistd.h>
 
 using namespace saivs;
 using namespace saivs_test;
+
+namespace
+{
+    // Every SAI reason VPP counts, with its /sonic-ext/drop-reason/ leaf.
+    const std::vector<std::pair<int32_t, std::string>> g_countedReasons = {
+        { SAI_IN_DROP_REASON_SIP_LINK_LOCAL, "SIP_LINK_LOCAL" },
+        { SAI_IN_DROP_REASON_DIP_LINK_LOCAL, "DIP_LINK_LOCAL" },
+        { SAI_IN_DROP_REASON_SIP_LOOPBACK, "SIP_LOOPBACK" },
+        { SAI_IN_DROP_REASON_SIP_MC, "SIP_MC" },
+        { SAI_IN_DROP_REASON_SIP_CLASS_E, "SIP_CLASS_E" },
+        { SAI_IN_DROP_REASON_SIP_UNSPECIFIED, "SIP_UNSPECIFIED" },
+        { SAI_IN_DROP_REASON_DIP_LOOPBACK, "DIP_LOOPBACK" },
+        { SAI_IN_DROP_REASON_UC_DIP_MC_DMAC, "UC_DIP_MC_DMAC" },
+    };
+}
 
 /*
  * SAI debug counters (SONiC configurable drop counters) on VPP. VPP exports
@@ -175,8 +191,14 @@ TEST_F(SwitchVppDebugCounterTest, advertisesOnlyReasonsVppCounts)
 {
     auto in = enumCapability(SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST);
 
-    EXPECT_EQ((std::set<int32_t>{ SAI_IN_DROP_REASON_SIP_LINK_LOCAL, SAI_IN_DROP_REASON_DIP_LINK_LOCAL }),
-            std::set<int32_t>(in.begin(), in.end()));
+    std::set<int32_t> expected;
+
+    for (const auto& reason: g_countedReasons)
+    {
+        expected.insert(reason.first);
+    }
+
+    EXPECT_EQ(expected, std::set<int32_t>(in.begin(), in.end()));
 
     auto types = enumCapability(SAI_DEBUG_COUNTER_ATTR_TYPE);
 
@@ -250,6 +272,26 @@ TEST_F(SwitchVppDebugCounterTest, portCounterStartsAtZeroAndCountsItsPortOnly)
 
     EXPECT_EQ(12u, portValue(m_port0, counter));
     EXPECT_EQ(3u, portValue(m_port1, counter));
+}
+
+TEST_F(SwitchVppDebugCounterTest, everyReasonReadsItsOwnVppCounter)
+{
+    std::vector<sai_object_id_t> counters;
+
+    for (const auto& reason: g_countedReasons)
+    {
+        counters.push_back(createCounter(SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS, { reason.first }));
+    }
+
+    for (size_t i = 0; i < g_countedReasons.size(); i++)
+    {
+        setDrops(g_countedReasons[i].second, PORT0_IDX, { static_cast<uint64_t>(i + 1) });
+    }
+
+    for (size_t i = 0; i < g_countedReasons.size(); i++)
+    {
+        EXPECT_EQ(static_cast<uint64_t>(i + 1), portValue(m_port0, counters[i])) << g_countedReasons[i].second;
+    }
 }
 
 TEST_F(SwitchVppDebugCounterTest, counterSumsAllOfItsReasons)
