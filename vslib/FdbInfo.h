@@ -54,6 +54,8 @@ namespace saivs
             void setTimestamp(
                     _In_ uint32_t timestamp);
 
+            static uint32_t currentEpochTimeSec();
+
         public: // serialize
 
             std::string serialize() const;
