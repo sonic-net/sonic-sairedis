@@ -146,11 +146,16 @@ namespace saivs
                 int32_t type;
 
                 // Stats segment leaf names under /sonic-ext/drop-reason/.
-                std::vector<std::string> reasons;
+                std::set<std::string> reasons;
 
-                // Raw VPP count per sw_if_index when the counter was created or
-                // its reasons last changed, so that it reads 0 from then on.
-                std::map<uint32_t, uint64_t> base;
+                // Raw VPP count per reason and sw_if_index when the reason was
+                // added or the counter last cleared, so that each reason counts
+                // only its drops since.
+                std::map<std::string, std::map<uint32_t, uint64_t>> base;
+
+                // Per sw_if_index, what reasons since removed had counted, so
+                // that removing a reason does not lower the count.
+                std::map<uint32_t, uint64_t> removed;
             };
 
             sai_status_t debugCounterCreate(
@@ -170,16 +175,29 @@ namespace saivs
             void refreshDropReasonStats(
                     _In_ bool force);
 
-            uint64_t debugCounterRawCount(
-                    _In_ const VppDebugCounter &counter,
+            uint64_t dropReasonRawCount(
+                    _In_ const std::string &reason,
                     _In_ uint32_t sw_if_index) const;
+
+            uint64_t debugCounterReasonValue(
+                    _Inout_ VppDebugCounter &counter,
+                    _In_ const std::string &reason,
+                    _In_ uint32_t sw_if_index);
 
             uint64_t debugCounterValue(
                     _Inout_ VppDebugCounter &counter,
                     _In_ uint32_t sw_if_index);
 
+            std::set<uint32_t> debugCounterIndices(
+                    _In_ const VppDebugCounter &counter,
+                    _In_ const std::string &reason) const;
+
             void rebaseDebugCounter(
                     _Inout_ VppDebugCounter &counter);
+
+            void setDebugCounterReasons(
+                    _Inout_ VppDebugCounter &counter,
+                    _In_ const std::set<std::string> &reasons);
 
             void addPortDebugCounterStats(
                     _In_ const std::string &if_name,

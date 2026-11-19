@@ -28,12 +28,12 @@ namespace
     // One flex counter poll reads every port; serve them all from one dump.
     const auto g_dropReasonStatsMaxAge = std::chrono::milliseconds(200);
 
-    std::vector<std::string> vppDropReasonNames(
+    std::set<std::string> vppDropReasonNames(
             _In_ const sai_s32_list_t &list)
     {
         SWSS_LOG_ENTER();
 
-        std::vector<std::string> names;
+        std::set<std::string> names;
 
         for (uint32_t i = 0; i < list.count; i++)
         {
@@ -45,7 +45,7 @@ namespace
                 continue;
             }
 
-            names.push_back(it->second);
+            names.insert(it->second);
         }
 
         return names;
@@ -234,10 +234,8 @@ sai_status_t SwitchVpp::debugCounterSet(
         return SAI_STATUS_SUCCESS;
     }
 
-    it->second.reasons = vppDropReasonNames(attr->value.s32list);
-
     refreshDropReasonStats(true);
-    rebaseDebugCounter(it->second);
+    setDebugCounterReasons(it->second, vppDropReasonNames(attr->value.s32list));
 
     return SAI_STATUS_SUCCESS;
 }
@@ -276,45 +274,36 @@ void SwitchVpp::refreshDropReasonStats(
     m_dropReasonStatsValid = true;
 }
 
-uint64_t SwitchVpp::debugCounterRawCount(
-        _In_ const VppDebugCounter &counter,
+uint64_t SwitchVpp::dropReasonRawCount(
+        _In_ const std::string &reason,
         _In_ uint32_t sw_if_index) const
 {
     SWSS_LOG_ENTER();
 
-    uint64_t total = 0;
+    auto rit = m_dropReasonStats.find(reason);
 
-    for (auto &reason: counter.reasons)
+    if (rit == m_dropReasonStats.end())
     {
-        auto rit = m_dropReasonStats.find(reason);
-
-        if (rit == m_dropReasonStats.end())
-        {
-            continue;
-        }
-
-        auto pit = rit->second.find(sw_if_index);
-
-        if (pit != rit->second.end())
-        {
-            total += pit->second;
-        }
+        return 0;
     }
 
-    return total;
+    auto pit = rit->second.find(sw_if_index);
+
+    return pit == rit->second.end() ? 0 : pit->second;
 }
 
-uint64_t SwitchVpp::debugCounterValue(
+uint64_t SwitchVpp::debugCounterReasonValue(
         _Inout_ VppDebugCounter &counter,
+        _In_ const std::string &reason,
         _In_ uint32_t sw_if_index)
 {
     SWSS_LOG_ENTER();
 
-    uint64_t raw = debugCounterRawCount(counter, sw_if_index);
+    uint64_t raw = dropReasonRawCount(reason, sw_if_index);
 
-    // An interface first seen after the counter was created starts from 0 in
+    // An interface first seen after the reason was added starts from 0 in
     // VPP, so its missing base is 0 too.
-    auto &base = counter.base[sw_if_index];
+    auto &base = counter.base[reason][sw_if_index];
 
     // VPP restarted or its counters were cleared: start over rather than
     // report a negative difference.
@@ -326,27 +315,114 @@ uint64_t SwitchVpp::debugCounterValue(
     return raw - base;
 }
 
+uint64_t SwitchVpp::debugCounterValue(
+        _Inout_ VppDebugCounter &counter,
+        _In_ uint32_t sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    auto rit = counter.removed.find(sw_if_index);
+
+    uint64_t total = rit == counter.removed.end() ? 0 : rit->second;
+
+    for (auto &reason: counter.reasons)
+    {
+        total += debugCounterReasonValue(counter, reason, sw_if_index);
+    }
+
+    return total;
+}
+
+std::set<uint32_t> SwitchVpp::debugCounterIndices(
+        _In_ const VppDebugCounter &counter,
+        _In_ const std::string &reason) const
+{
+    SWSS_LOG_ENTER();
+
+    std::set<uint32_t> indices;
+
+    auto bit = counter.base.find(reason);
+
+    if (bit != counter.base.end())
+    {
+        for (auto &kvp: bit->second)
+        {
+            indices.insert(kvp.first);
+        }
+    }
+
+    auto rit = m_dropReasonStats.find(reason);
+
+    if (rit != m_dropReasonStats.end())
+    {
+        for (auto &kvp: rit->second)
+        {
+            indices.insert(kvp.first);
+        }
+    }
+
+    return indices;
+}
+
 void SwitchVpp::rebaseDebugCounter(
         _Inout_ VppDebugCounter &counter)
 {
     SWSS_LOG_ENTER();
 
     counter.base.clear();
+    counter.removed.clear();
 
     for (auto &reason: counter.reasons)
     {
         auto rit = m_dropReasonStats.find(reason);
 
-        if (rit == m_dropReasonStats.end())
+        if (rit != m_dropReasonStats.end())
+        {
+            counter.base[reason] = rit->second;
+        }
+    }
+}
+
+void SwitchVpp::setDebugCounterReasons(
+        _Inout_ VppDebugCounter &counter,
+        _In_ const std::set<std::string> &reasons)
+{
+    SWSS_LOG_ENTER();
+
+    // dropstat shows the count less the one saved at sonic-clear
+    // dropcounters, so a reason change must not lower the count.
+    for (auto &reason: counter.reasons)
+    {
+        if (reasons.count(reason))
         {
             continue;
         }
 
-        for (auto &kvp: rit->second)
+        for (auto sw_if_index: debugCounterIndices(counter, reason))
         {
-            counter.base[kvp.first] = debugCounterRawCount(counter, kvp.first);
+            counter.removed[sw_if_index] += debugCounterReasonValue(counter, reason, sw_if_index);
+        }
+
+        counter.base.erase(reason);
+    }
+
+    // An added reason counts from now, not the drops VPP counted before.
+    for (auto &reason: reasons)
+    {
+        if (counter.reasons.count(reason))
+        {
+            continue;
+        }
+
+        auto rit = m_dropReasonStats.find(reason);
+
+        if (rit != m_dropReasonStats.end())
+        {
+            counter.base[reason] = rit->second;
         }
     }
+
+    counter.reasons = reasons;
 }
 
 void SwitchVpp::addPortDebugCounterStats(
@@ -408,33 +484,19 @@ void SwitchVpp::setSwitchDebugCounterStats(
 
         // Every sw_if_index the counter has seen, including index 0, where
         // VPP keeps the drops it cannot attribute to a port.
-        std::set<uint32_t> indices;
+        uint64_t total = 0;
 
-        for (auto &base: counter.base)
+        for (auto &removed: counter.removed)
         {
-            indices.insert(base.first);
+            total += removed.second;
         }
 
         for (auto &reason: counter.reasons)
         {
-            auto rit = m_dropReasonStats.find(reason);
-
-            if (rit == m_dropReasonStats.end())
+            for (auto sw_if_index: debugCounterIndices(counter, reason))
             {
-                continue;
+                total += debugCounterReasonValue(counter, reason, sw_if_index);
             }
-
-            for (auto &port: rit->second)
-            {
-                indices.insert(port.first);
-            }
-        }
-
-        uint64_t total = 0;
-
-        for (auto sw_if_index: indices)
-        {
-            total += debugCounterValue(counter, sw_if_index);
         }
 
         stats[static_cast<sai_stat_id_t>(SAI_SWITCH_STAT_IN_DROP_REASON_RANGE_BASE + counter.index)] = total;
@@ -511,7 +573,12 @@ void SwitchVpp::clearDebugCounterStats(
 
             if (object_type == SAI_OBJECT_TYPE_PORT)
             {
-                counter.base[sw_if_index] = debugCounterRawCount(counter, sw_if_index);
+                counter.removed.erase(sw_if_index);
+
+                for (auto &reason: counter.reasons)
+                {
+                    counter.base[reason][sw_if_index] = dropReasonRawCount(reason, sw_if_index);
+                }
             }
             else
             {
