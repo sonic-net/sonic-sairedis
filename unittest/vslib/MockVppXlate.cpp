@@ -106,6 +106,43 @@ void VppMock::reset()
     *this = VppMock{};
 }
 
+extern "C" int __wrap_vpp_acl_interface_set_acl_list(const char *name,
+        const uint32_t *ingress, uint32_t ingressCount,
+        const uint32_t *egress, uint32_t egressCount)
+{
+    SWSS_LOG_ENTER();
+    VppAclListCall call{name, {}, {}};
+    if (ingressCount) call.ingress.assign(ingress, ingress + ingressCount);
+    if (egressCount) call.egress.assign(egress, egress + egressCount);
+    vppMock().aclListCalls.push_back(call);
+    vppMock().aclListAdminUp.push_back(vppMock().isAdminUp(name));
+    if (ingressCount + egressCount > 255) return -1;
+    VppAclListResult response{vppMock().aclListResult, false};
+    if (!vppMock().aclListResults.empty())
+    {
+        response = vppMock().aclListResults.front();
+        vppMock().aclListResults.erase(vppMock().aclListResults.begin());
+    }
+    if (response.result == 0 || response.commitOnError)
+    {
+        vppMock().aclLists[name] = call;
+    }
+    return response.result;
+}
+
+extern "C" int __wrap_vpp_acl_interface_get_acl_list(const char *name,
+        uint32_t *ingress, uint32_t *ingressCount, uint32_t *egress, uint32_t *egressCount)
+{
+    SWSS_LOG_ENTER();
+    if (vppMock().aclListReadResult != 0) return vppMock().aclListReadResult;
+    const auto &call = vppMock().aclLists[name];
+    std::copy(call.ingress.begin(), call.ingress.end(), ingress);
+    std::copy(call.egress.begin(), call.egress.end(), egress);
+    *ingressCount = static_cast<uint32_t>(call.ingress.size());
+    *egressCount = static_cast<uint32_t>(call.egress.size());
+    return 0;
+}
+
 bool VppMock::isAdminUp(const std::string& hwif) const
 {
     SWSS_LOG_ENTER();
@@ -550,6 +587,13 @@ extern "C" int __wrap_create_sub_interface(const char *parent, uint32_t id, uint
     return vppMock().interfaces.insert(std::string(parent) + "." + std::to_string(id)).second ? 0 : -1;
 }
 
+extern "C" int __wrap_create_vlan_sub_interface(const char *parent, uint32_t id, uint16_t vlan)
+{
+    SWSS_LOG_ENTER();
+
+    return __wrap_create_sub_interface(parent, id, vlan);
+}
+
 extern "C" int __wrap_delete_sub_interface(const char *parent, uint32_t id)
 {
     SWSS_LOG_ENTER();
@@ -900,6 +944,10 @@ uint32_t __wrap_vpp_get_swif_idx_by_name(const char *hwif_name)
     SWSS_LOG_ENTER();
 
     ++vppMock().interfaceLookups;
+    if (vppMock().missingInterfaces.count(hwif_name))
+    {
+        return static_cast<uint32_t>(-1);
+    }
     return vppMock().nextSwIfIndex++;
 }
 

@@ -1080,16 +1080,8 @@ sai_status_t SwitchVpp::UpdatePort(
 
     if (attr_type != NULL)
     {
-        if (attr_type->value.oid == SAI_NULL_OBJECT_ID) {
-            sai_attribute_t attr;
-
-            attr.id = SAI_PORT_ATTR_INGRESS_ACL;
-            if (get(SAI_OBJECT_TYPE_PORT, object_id, 1, &attr) != SAI_STATUS_SUCCESS) {
-                aclBindUnbindPort(object_id, attr.value.oid, true, false);
-            }
-        } else {
-            aclBindUnbindPort(object_id, attr_type->value.oid, true, true);
-        }
+        CHECK_STATUS(aclSetPortTableGroup(SAI_OBJECT_TYPE_PORT, object_id,
+                    SAI_PORT_ATTR_INGRESS_ACL, attr_type->value.oid, true));
     }
 
     attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE, attr_count, attr_list);
@@ -1110,16 +1102,8 @@ sai_status_t SwitchVpp::UpdatePort(
 
     if (attr_type != NULL)
     {
-        if (attr_type->value.oid == SAI_NULL_OBJECT_ID) {
-            sai_attribute_t attr;
-
-            attr.id = SAI_PORT_ATTR_EGRESS_ACL;
-            if (get(SAI_OBJECT_TYPE_PORT, object_id, 1, &attr) != SAI_STATUS_SUCCESS) {
-                aclBindUnbindPort(object_id, attr.value.oid, false, false);
-            }
-        } else {
-            aclBindUnbindPort(object_id, attr_type->value.oid, false, true);
-        }
+        CHECK_STATUS(aclSetPortTableGroup(SAI_OBJECT_TYPE_PORT, object_id,
+                    SAI_PORT_ATTR_EGRESS_ACL, attr_type->value.oid, false));
     }
 
     attr_type = sai_metadata_get_attr_by_id(SAI_PORT_ATTR_INGRESS_MIRROR_SESSION, attr_count, attr_list);
