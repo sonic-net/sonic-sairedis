@@ -1214,6 +1214,10 @@ class SwitchVppL2TrapLearn : public SwitchVppSubIfAdminState
                 vppMock().enabledFeatures = features;
                 vppMock().nodeNexts = nodes;
 
+                // This fixture verifies where active trap sessions point. A
+                // DHCPv6 session exists only while a DHCPv6 TRAP is active.
+                EXPECT_EQ(SAI_STATUS_SUCCESS,
+                        m_sw->vpp_set_dhcp6_trap_state(true, false));
                 addTaggedMember(m_bridgePort);
 
                 auto nexts = puntNexts();
