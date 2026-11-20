@@ -151,10 +151,21 @@ protected:
         return attrs;
     }
 
+    // Settles the transaction as SwitchVpp::create does
     sai_status_t create(sai_object_id_t rif, const std::vector<sai_attribute_t>& attrs)
     {
         SWSS_LOG_ENTER();
-        return sw->createRouterif(rif, switchId, static_cast<uint32_t>(attrs.size()), attrs.data());
+        TxnScope scope;
+        sai_status_t status = sw->createRouterif(rif, switchId, static_cast<uint32_t>(attrs.size()), attrs.data());
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            scope.commit();
+        }
+        else
+        {
+            scope.rollback();
+        }
+        return status;
     }
 
     std::vector<sai_attribute_t> settingsAttributes(sai_object_id_t backing, bool enabled)
@@ -387,19 +398,100 @@ TEST_F(SwitchVppRifTest, failedSubPortCreateDoesNotApplyDeferredAdminToReplaceme
 
 TEST_F(SwitchVppRifTest, rollbackRetainsDeferredAdminOnlyIfOwnedInterfaceDeletionFails)
 {
-    SwitchVpp::RifCreateState state;
-    state.hwif = "port0.10";
-    state.parent = "port0";
-    state.vlan = 10;
-    state.interface_created = true;
-    vppMock().interfaces.insert(state.hwif);
-    sw->m_sub_if_admin_up_pending.insert(state.hwif);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, port);
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    admin.value.booldata = true;
+    attrs.push_back(admin);
+
+    // port0 is down, so the admin up is deferred before the counters fail
+    vppMock().statsResult = -1;
     vppMock().deleteResult = -1;
-    EXPECT_EQ(SAI_STATUS_FAILURE, sw->rollbackRifCreate(state));
-    EXPECT_EQ(1u, sw->m_sub_if_admin_up_pending.count(state.hwif));
-    vppMock().deleteResult = 0;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, sw->rollbackRifCreate(state));
+    EXPECT_EQ(SAI_STATUS_FAILURE, create(allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE), attrs));
+    EXPECT_EQ(1u, vppMock().interfaces.count("port0.10"));
+    EXPECT_EQ(1u, sw->m_sub_if_admin_up_pending.count("port0.10"));
+}
+
+// A deferred admin up that a parent CREATE applies belongs to that request:
+// rolling the request back defers it again.
+TEST_F(SwitchVppRifTest, rolledBackParentCreateDefersChildAdminAgain)
+{
+    vppMock().interfaces.insert("port0.10");
+    sw->m_sub_if_admin_up_pending.insert("port0.10");
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+
+    {
+        TxnScope request;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, settingsAttributes(port, true)));
+        EXPECT_TRUE(vppMock().isAdminUp("port0"));
+        EXPECT_TRUE(vppMock().isAdminUp("port0.10"));
+        EXPECT_TRUE(sw->m_sub_if_admin_up_pending.empty());
+        EXPECT_EQ(SAI_STATUS_SUCCESS, request.rollback());
+    }
+
+    EXPECT_FALSE(vppMock().isAdminUp("port0.10"));
+    EXPECT_FALSE(vppMock().isAdminUp("port0"));
+    EXPECT_EQ(1u, sw->m_sub_if_admin_up_pending.count("port0.10"));
+    EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
+    EXPECT_EQ(0u, sw->m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE).count(sai_serialize_object_id(rif)));
+
+    // the parent coming up again applies it again
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, settingsAttributes(port, true)));
+    EXPECT_TRUE(vppMock().isAdminUp("port0.10"));
     EXPECT_TRUE(sw->m_sub_if_admin_up_pending.empty());
+}
+
+TEST_F(SwitchVppRifTest, failedCreateUnregistersKernelVrfTableAfterUnbinding)
+{
+    vppMock().kernelInterfaces = {"Ethernet0.10"};
+    vppMock().kernelVrfId = 100;
+    const auto kernelVrf = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_SUB_PORT, port);
+    attrs[2].value.oid = kernelVrf;
+
+    vppMock().statsResult = -1;
+    ASSERT_EQ(SAI_STATUS_FAILURE, create(allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE), attrs));
+    EXPECT_EQ(nullptr, sw->vpp_get_ip_vrf(kernelVrf));
+    EXPECT_EQ(0u, vppMock().vrfTables.count(100));
+    EXPECT_EQ(0u, vppMock().interfaces.count("port0.10"));
+
+    // the sub-interface leaves table 100 before the table is deleted
+    const auto& calls = vppMock().calls;
+    auto unbind = std::find_if(calls.begin(), calls.end(), [](const VppCall& call)
+            {
+                return call.api == "set_interface_vrf" && call.name == "port0.10" && call.id == 0;
+            });
+    auto tableDelete = std::find_if(calls.begin(), calls.end(), [](const VppCall& call)
+            {
+                return call.api == "ip_vrf_del" && call.id == 100;
+            });
+    ASSERT_NE(calls.end(), unbind);
+    ASSERT_NE(calls.end(), tableDelete);
+    EXPECT_LT(unbind - calls.begin(), tableDelete - calls.begin());
+
+    vppMock().statsResult = 0;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE), attrs));
+    ASSERT_NE(nullptr, sw->vpp_get_ip_vrf(kernelVrf));
+    EXPECT_EQ(1u, vppMock().vrfTables.count(100));
+    EXPECT_EQ(100u, vppMock().interfaceVrfs["port0.10"]);
+}
+
+// Without state, the caller does not undo what it binds to the table, so the
+// registration has to outlive a rolled back request.
+TEST_F(SwitchVppRifTest, rollbackKeepsVrfRegistrationWithoutState)
+{
+    vppMock().kernelVrfId = 100;
+    const auto kernelVrf = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+
+    {
+        TxnScope request;
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->vpp_router_interface_set_vrf(kernelVrf, "port0", 0, "Ethernet0"));
+        EXPECT_EQ(SAI_STATUS_SUCCESS, request.rollback());
+    }
+
+    EXPECT_NE(nullptr, sw->vpp_get_ip_vrf(kernelVrf));
+    EXPECT_EQ(1u, vppMock().vrfTables.count(100));
+    EXPECT_EQ(100u, vppMock().interfaceVrfs["port0"]);
 }
 
 TEST_F(SwitchVppRifTest, metadataCounterInjectionAndReadsUseBaseImplementation)
@@ -1032,20 +1124,22 @@ TEST_F(SwitchVppRifTest, ipv6EnableToleratesAlreadyEnabledButNotOtherErrors)
 // A create that fails after the enable has to give the lock back itself.
 TEST_F(SwitchVppRifTest, createRollbackReleasesIpv6Lock)
 {
-    SwitchVpp::RifCreateState state;
-    state.hwif = "port0";
-    state.ip6_enabled = true;
-    vppMock().ip6Locks["port0"] = 1;
-
-    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->rollbackRifCreate(state));
-    ASSERT_EQ(1u, vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").size());
-    EXPECT_FALSE(vppMock().callsTo("sw_interface_ip6_enable_disable", "port0")[0].flag);
+    vppMock().statsResult = -1;
+    ASSERT_EQ(SAI_STATUS_FAILURE, create(allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE),
+            attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
+    auto calls = vppMock().callsTo("sw_interface_ip6_enable_disable", "port0");
+    ASSERT_EQ(2u, calls.size());
+    EXPECT_TRUE(calls[0].flag);
+    EXPECT_FALSE(calls[1].flag);
     EXPECT_EQ(0, vppMock().ip6Locks.at("port0"));
 
     // nothing was taken for an IPv6 admin-down RIF, so nothing is given back
     vppMock().calls.clear();
-    SwitchVpp::RifCreateState untouched;
-    untouched.hwif = "port0";
-    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->rollbackRifCreate(untouched));
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    sai_attribute_t v6{};
+    v6.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    v6.value.booldata = false;
+    attrs.push_back(v6);
+    ASSERT_EQ(SAI_STATUS_FAILURE, create(allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE), attrs));
     EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").empty());
 }

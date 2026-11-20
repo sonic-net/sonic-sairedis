@@ -56,6 +56,7 @@ tests_SOURCES = main.cpp \
 
 if USE_VPP
 tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry.cpp \
+				TestVppTransaction.cpp \
 				TestSwitchVppRoute.cpp \
 				TestSwitchVppPbh.cpp \
 				TestSwitchVppTrim.cpp \
