@@ -286,3 +286,44 @@ TEST(VirtualOidTranslator, translateRidsToVidsDisabledRedisClient)
 
     sai->apiUninitialize();
 }
+
+TEST(VirtualOidTranslator, eraseRidsAndVids)
+{
+    auto dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+    auto client = std::make_shared<RedisClient>(dbAsic);
+    auto sai = std::make_shared<saivs::Sai>();
+
+    auto switchConfigContainer = std::make_shared<sairedis::SwitchConfigContainer>();
+    auto redisVidIndexGenerator = std::make_shared<sairedis::RedisVidIndexGenerator>(dbAsic, REDIS_KEY_VIDCOUNTER);
+    auto virtualObjectIdManager = std::make_shared<sairedis::VirtualObjectIdManager>(
+            0,
+            switchConfigContainer,
+            redisVidIndexGenerator);
+
+    VirtualOidTranslator vot(client, virtualObjectIdManager, sai);
+
+    // ports of switch index 8, which no other test uses
+    std::vector<sai_object_id_t> vids = {0x0801000000000001ULL, 0x0801000000000002ULL, 0x0801000000000003ULL};
+    std::vector<sai_object_id_t> rids = {0x7800000000000001ULL, 0x7800000000000002ULL, 0x7800000000000003ULL};
+
+    vot.insertRidsAndVids(rids.size(), rids.data(), vids.data());
+
+    // all but the last one
+    vot.eraseRidsAndVids(2, rids.data(), vids.data());
+
+    for (size_t idx = 0; idx < 2; idx++)
+    {
+        EXPECT_FALSE(vot.checkRidExists(rids[idx]));
+        EXPECT_TRUE(vot.checkRidExists(rids[idx], true));
+
+        EXPECT_EQ(client->getVidForRid(rids[idx]), SAI_NULL_OBJECT_ID);
+        EXPECT_EQ(client->getRidForVid(vids[idx]), SAI_NULL_OBJECT_ID);
+    }
+
+    EXPECT_TRUE(vot.checkRidExists(rids[2]));
+    EXPECT_EQ(client->getVidForRid(rids[2]), vids[2]);
+
+    vot.eraseRidAndVid(rids[2], vids[2]);
+
+    EXPECT_EQ(client->getVidForRid(rids[2]), SAI_NULL_OBJECT_ID);
+}

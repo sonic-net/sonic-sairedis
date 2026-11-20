@@ -117,6 +117,11 @@ namespace syncd
                     _In_ sai_object_id_t rid,
                     _In_ sai_object_id_t vid);
 
+            void eraseRidsAndVids(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* rids,
+                    _In_ const sai_object_id_t* vids);
+
             void insertRidAndVid(
                     _In_ const sai_object_id_t rid,
                     _In_ const sai_object_id_t vid);

@@ -39,6 +39,8 @@ libSyncd_a_SOURCES = \
 				PortMapParser.cpp \
 				PortStateChangeHandler.cpp \
 				RedisClient.cpp \
+				RedisCommandArgs.cpp \
+				RedisConnectionPipeline.cpp \
 				RedisNotificationProducer.cpp \
 				RequestShutdownCommandLineOptions.cpp \
 				SaiAttr.cpp \
