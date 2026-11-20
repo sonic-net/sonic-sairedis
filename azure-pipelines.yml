@@ -116,8 +116,7 @@ stages:
   jobs:
   - job: ResolveVpp
     displayName: Resolve VPP build
-    pool:
-      vmImage: 'ubuntu-22.04'
+    pool: sonicso1ES-amd64
     steps:
     - ${{ if eq(parameters.vpp_run_id, '') }}:
       - task: DownloadPipelineArtifact@2
