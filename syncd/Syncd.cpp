@@ -3582,13 +3582,28 @@ sai_status_t Syncd::processBulkOidRemove(
      * remove all related objects from REDIS DB and also from existing
      * object references since at this point they are no longer valid
      */
+    std::vector<sai_object_id_t> removedRids;
+    std::vector<sai_object_id_t> removedVids;
+
+    removedRids.reserve(object_count);
+    removedVids.reserve(object_count);
+
+    for (size_t idx = 0; idx < object_count; idx++)
+    {
+        if (statuses[idx] == SAI_STATUS_SUCCESS)
+        {
+            removedRids.push_back(objectRids[idx]);
+            removedVids.push_back(objectVids[idx]);
+        }
+    }
+
+    m_translator->eraseRidsAndVids(removedRids.size(), removedRids.data(), removedVids.data());
+
     sai_object_id_t switchVid;
     for (size_t idx = 0; idx < object_count; idx++)
     {
         if (statuses[idx] == SAI_STATUS_SUCCESS)
         {
-            m_translator->eraseRidAndVid(objectRids[idx], objectVids[idx]);
-
             switchVid = VidManager::switchIdQuery(objectVids[idx]);
 
             if (m_switches.at(switchVid)->isDiscoveredRid(objectRids[idx]))
