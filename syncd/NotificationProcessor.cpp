@@ -100,7 +100,8 @@ sai_fdb_entry_type_t NotificationProcessor::getFdbEntryType(
 }
 
 void NotificationProcessor::redisPutFdbEntryToAsicView(
-        _In_ const sai_fdb_event_notification_data_t *fdb)
+        _In_ const sai_fdb_event_notification_data_t *fdb,
+        _Inout_ FdbEntriesHash& learned)
 {
     SWSS_LOG_ENTER();
 
@@ -119,18 +120,18 @@ void NotificationProcessor::redisPutFdbEntryToAsicView(
     metaKey.objecttype = SAI_OBJECT_TYPE_FDB_ENTRY;
     metaKey.objectkey.key.fdb_entry = fdb->fdb_entry;
 
-    std::string strFdbEntry = sai_serialize_fdb_entry(fdb->fdb_entry);
-
     if ((fdb->fdb_entry.switch_id == SAI_NULL_OBJECT_ID ||
          fdb->fdb_entry.bv_id == SAI_NULL_OBJECT_ID) &&
         (fdb->event_type != SAI_FDB_EVENT_FLUSHED))
     {
-        SWSS_LOG_WARN("skipped to put int db: %s", strFdbEntry.c_str());
+        SWSS_LOG_WARN("skipped to put int db: %s", sai_serialize_fdb_entry(fdb->fdb_entry).c_str());
         return;
     }
 
     if (fdb->event_type == SAI_FDB_EVENT_AGED)
     {
+        redisPutLearnedFdbEntriesToAsicView(learned);
+
         SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_AGED",
                 sai_serialize_object_meta_key(metaKey).c_str());
 
@@ -140,6 +141,8 @@ void NotificationProcessor::redisPutFdbEntryToAsicView(
 
     if (fdb->event_type == SAI_FDB_EVENT_FLUSHED)
     {
+        redisPutLearnedFdbEntriesToAsicView(learned);
+
         sai_object_id_t bv_id = fdb->fdb_entry.bv_id;
         sai_object_id_t port_oid = 0;
 
@@ -167,6 +170,8 @@ void NotificationProcessor::redisPutFdbEntryToAsicView(
     {
         if (fdb->event_type == SAI_FDB_EVENT_MOVE)
         {
+            redisPutLearnedFdbEntriesToAsicView(learned);
+
             SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_MOVE",
                     sai_serialize_object_meta_key(metaKey).c_str());
 
@@ -198,12 +203,32 @@ void NotificationProcessor::redisPutFdbEntryToAsicView(
 
         entry.emplace_back(strAttrId, strAttrValue);
 
-        m_client->createAsicObject(metaKey, entry);
+        // an entry created twice keeps the last value of each attribute, as
+        // with an HSET per creation
+
+        auto& attrs = learned[sai_serialize_object_meta_key(metaKey)];
+
+        attrs.insert(attrs.end(), entry.begin(), entry.end());
         return;
     }
 
     SWSS_LOG_ERROR("event type %s not supported, FIXME",
             sai_serialize_fdb_event(fdb->event_type).c_str());
+}
+
+void NotificationProcessor::redisPutLearnedFdbEntriesToAsicView(
+        _Inout_ FdbEntriesHash& learned)
+{
+    SWSS_LOG_ENTER();
+
+    if (learned.empty())
+    {
+        return;
+    }
+
+    m_client->createAsicObjects(learned);
+
+    learned.clear();
 }
 
 /**
@@ -316,6 +341,8 @@ void NotificationProcessor::process_on_fdb_event(
 
     bool sendntf = true;
 
+    FdbEntriesHash learned;
+
     for (uint32_t i = 0; i < count; i++)
     {
         sai_fdb_event_notification_data_t *fdb = &data[i];
@@ -342,8 +369,10 @@ void NotificationProcessor::process_on_fdb_event(
          * required on creation.
          */
 
-        redisPutFdbEntryToAsicView(fdb);
+        redisPutFdbEntryToAsicView(fdb, learned);
     }
+
+    redisPutLearnedFdbEntriesToAsicView(learned);
 
     if (sendntf)
     {
