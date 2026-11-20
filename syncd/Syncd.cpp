@@ -25,6 +25,7 @@
 #include "swss/exec.h"
 #include "swss/dbconnector.h"
 #include "swss/table.h"
+#include "swss/warm_restart.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/ZeroMQSelectableChannel.h"
@@ -39,9 +40,12 @@
 #include <unistd.h>
 #include <inttypes.h>
 
+#include <chrono>
 #include <iterator>
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <tuple>
 #include <unordered_set>
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
@@ -6114,6 +6118,21 @@ void Syncd::onSyncdStart(
 
         performWarmRestart();
 
+        /*
+         * The client sends its flex counters once, when it creates the
+         * objects. A client kept across a syncd-only warm restart does not
+         * send them again, so they are taken from FLEX_COUNTER_DB. A client
+         * that restarts too registers them again, which adds nothing twice.
+         */
+        if (swss::WarmStart::isSystemWarmRebootEnabled())
+        {
+            SWSS_LOG_NOTICE("system warm reboot: flex counters are left to the client to register");
+        }
+        else
+        {
+            restoreFlexCounters();
+        }
+
         SWSS_LOG_NOTICE("skipping hard reinit since WARM start was performed");
         return;
     }
@@ -6419,6 +6438,108 @@ void Syncd::performWarmRestartSingleSwitch(
     auto sw = m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai, true);
 
     startDiagShell(switchRid);
+}
+
+/*
+ * Registers again the flex counter groups and counters this syncd's
+ * predecessor recorded in FLEX_COUNTER_DB. Counters of the same group, object
+ * type and fields go back in one bulk add, as the client sent them; a counter
+ * whose object has no RID any more is dropped from the table.
+ */
+void Syncd::restoreFlexCounters()
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> groups;
+    m_flexCounterGroupTable->getKeys(groups);
+
+    size_t restoredGroups = 0;
+
+    for (auto& group: groups)
+    {
+        std::vector<swss::FieldValueTuple> values;
+
+        if (!m_flexCounterGroupTable->get(group, values))
+        {
+            continue;
+        }
+
+        try
+        {
+            m_manager->addCounterPlugin(group, values);
+            restoredGroups++;
+        }
+        catch (const std::exception& e)
+        {
+            SWSS_LOG_ERROR("flex counter group %s not restored: %s", group.c_str(), e.what());
+        }
+    }
+
+    typedef std::tuple<std::string, sai_object_type_t, std::vector<swss::FieldValueTuple>> BatchKey;
+
+    std::map<BatchKey, std::pair<std::vector<sai_object_id_t>, std::vector<sai_object_id_t>>> batches;
+
+    std::vector<std::string> keys;
+    m_flexCounterTable->getKeys(keys);
+
+    size_t restored = 0;
+    size_t dropped = 0;
+
+    for (auto& key: keys)
+    {
+        auto delimiter = key.find_first_of(":");
+
+        std::vector<swss::FieldValueTuple> values;
+
+        if (delimiter == std::string::npos || !m_flexCounterTable->get(key, values))
+        {
+            continue;
+        }
+
+        sai_object_id_t vid = SAI_NULL_OBJECT_ID;
+        sai_object_id_t rid = SAI_NULL_OBJECT_ID;
+
+        try
+        {
+            sai_deserialize_object_id(key.substr(delimiter + 1), vid);
+        }
+        catch (const std::exception& e)
+        {
+            SWSS_LOG_WARN("flex counter key %s: %s, not restored", key.c_str(), e.what());
+            continue;
+        }
+
+        if (!m_translator->tryTranslateVidToRid(vid, rid))
+        {
+            SWSS_LOG_WARN("flex counter %s: VID has no RID, removed", key.c_str());
+
+            m_flexCounterTable->del(key);
+            dropped++;
+            continue;
+        }
+
+        auto& batch = batches[BatchKey(key.substr(0, delimiter), VidManager::objectTypeQuery(vid), values)];
+
+        batch.first.push_back(vid);
+        batch.second.push_back(rid);
+    }
+
+    for (auto& batch: batches)
+    {
+        try
+        {
+            m_manager->bulkAddCounter(batch.second.first, batch.second.second, std::get<0>(batch.first), std::get<2>(batch.first));
+            restored += batch.second.first.size();
+        }
+        catch (const std::exception& e)
+        {
+            SWSS_LOG_ERROR("%zu flex counters of group %s not restored: %s",
+                    batch.second.first.size(), std::get<0>(batch.first).c_str(), e.what());
+        }
+    }
+
+    SWSS_LOG_NOTICE("restored %zu of %zu flex counter groups and %zu counters from FLEX_COUNTER_DB, %zu removed",
+            restoredGroups, groups.size(), restored, dropped);
 }
 
 void Syncd::performWarmRestart()
@@ -6847,6 +6968,8 @@ void Syncd::run()
 
     volatile bool runMainLoop = true;
 
+    bool preShutdown = false;
+
     bool inShutdownWaitMode = false;
 
     std::shared_ptr<swss::Select> s = std::make_shared<swss::Select>();
@@ -7002,6 +7125,8 @@ void Syncd::run()
                 {
                     warmRestartTable.setPreShutdown(true);
 
+                    preShutdown = true;
+
                     s = std::make_shared<swss::Select>(); // make sure previous select is destroyed
 
                     s->addSelectable(m_restartQuery.get());
@@ -7073,6 +7198,15 @@ void Syncd::run()
 
     WatchdogScope ws(m_timerWatchdog, "shutting down syncd");
 
+    if (shutdownType == SYNCD_RESTART_TYPE_WARM ||
+        shutdownType == SYNCD_RESTART_TYPE_FAST ||
+        shutdownType == SYNCD_RESTART_TYPE_EXPRESS)
+    {
+        s = nullptr;
+
+        handOverRequestChannel(!preShutdown);
+    }
+
     if (shutdownType == SYNCD_RESTART_TYPE_WARM)
     {
         const char *warmBootWriteFile = profileGetValue(0, SAI_KEY_WARM_BOOT_WRITE_FILE);
@@ -7133,6 +7267,47 @@ void Syncd::run()
     }
 
     SWSS_LOG_NOTICE("uninitialize finished");
+}
+
+void Syncd::handOverRequestChannel(
+        _In_ bool answerPending)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * The client keeps running across a warm/fast/express syncd restart and
+     * the next syncd serves the same endpoint. A request that the ZMQ REP
+     * socket has accepted but this syncd never answers is dropped when the
+     * socket closes, and the client then times out on it. Answer what has
+     * already arrived while the switch is still usable, then close the
+     * channel before the switch is torn down, so that later requests wait at
+     * the client for the next syncd.
+     */
+
+    if (answerPending)
+    {
+        swss::Select sel;
+
+        sel.addSelectable(m_selectableChannel.get());
+
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            swss::Selectable *ready = nullptr;
+
+            if (sel.select(&ready, 100) != swss::Select::OBJECT)
+                break;
+
+            SWSS_LOG_NOTICE("answering request received after the shutdown request");
+
+            processEvent(*m_selectableChannel.get());
+        }
+    }
+
+    m_selectableChannel = nullptr;
+
+    SWSS_LOG_NOTICE("request channel closed, further requests go to the next syncd");
 }
 
 syncd_restart_type_t Syncd::handleRestartQuery(
