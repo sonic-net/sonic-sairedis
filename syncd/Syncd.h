@@ -455,6 +455,8 @@ namespace syncd
 
             void performWarmRestart();
 
+            void restoreFlexCounters();
+
             void performWarmRestartSingleSwitch(
                     _In_ const std::string& key);
 
