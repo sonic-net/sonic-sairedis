@@ -946,10 +946,12 @@ int SwitchVpp::vpp_set_sub_interface_state(
     return ret;
 }
 
-void SwitchVpp::vpp_resync_sub_interface_admin_state(
+std::vector<std::pair<std::string, bool>> SwitchVpp::vpp_resync_sub_interface_admin_state(
         _In_ const std::string& parent_hwif)
 {
     SWSS_LOG_ENTER();
+
+    std::vector<std::pair<std::string, bool>> applied;
 
     /*
      * The set is ordered, so the sub-interfaces of one parent ("<parent>.<vlan>")
@@ -973,7 +975,30 @@ void SwitchVpp::vpp_resync_sub_interface_admin_state(
             SWSS_LOG_ERROR("deferred admin up of %s failed (%d)", it->c_str(), ret);
         }
 
+        applied.emplace_back(*it, ret == 0);
+
         it = m_sub_if_admin_up_pending.erase(it);
+    }
+
+    return applied;
+}
+
+void SwitchVpp::deferSubInterfaceAdminUp(
+        _In_ const std::vector<std::pair<std::string, bool>>& applied)
+{
+    SWSS_LOG_ENTER();
+
+    for (const auto& sub : applied)
+    {
+        const std::string sub_hwif = sub.first;
+        const bool admin_up = sub.second;
+
+        VppTransaction::current().onRollback("deferred admin up of " + sub_hwif,
+                [this, sub_hwif, admin_up]()
+                {
+                    m_sub_if_admin_up_pending.insert(sub_hwif);
+                    return admin_up ? interface_set_state(sub_hwif.c_str(), false) : 0;
+                });
     }
 }
 
@@ -1956,6 +1981,23 @@ sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
     uint32_t vrf_id = 0;
     auto vrf = vpp_get_ip_vrf(vr_oid);
 
+    // Only callers that pass state undo what they leave bound to the table,
+    // so only they may undo its registration.
+    bool registered = false;
+    auto register_vrf = [&](uint32_t table)
+    {
+        int ret = vpp_add_ip_vrf(vr_oid, table);
+
+        if (ret == 0 && state != nullptr)
+        {
+            registered = true;
+            VppTransaction::current().onRollback("registration of VRF(" + sai_serialize_object_id(vr_oid) + ")",
+                    [this, vr_oid]() { return vpp_del_ip_vrf(vr_oid); });
+        }
+
+        return ret;
+    };
+
     if (vrf != nullptr)
     {
         vrf_id = vrf->m_vrf_id;
@@ -1969,7 +2011,7 @@ sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
             attr.value.oid == vr_oid)
         {
             // registering the default table sets its flow hash
-            vpp_add_ip_vrf(vr_oid, 0);
+            register_vrf(0);
         }
         else
         {
@@ -1994,7 +2036,7 @@ sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
                 return SAI_STATUS_FAILURE;
             }
 
-            if (vpp_add_ip_vrf(vr_oid, vrf_id) != 0)
+            if (register_vrf(vrf_id) != 0)
             {
                 return SAI_STATUS_FAILURE;
             }
@@ -2002,16 +2044,16 @@ sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
     }
 
     uint32_t previous_vrf = 0;
+    const bool restore = state != nullptr && !state->interface_created;
 
-    if (state != nullptr && !state->interface_created)
+    if (restore)
     {
-        int ret = get_interface_vrf(state->hwif.c_str(), false, &state->previous_vrf);
+        int ret = get_interface_vrf(state->hwif.c_str(), false, &previous_vrf);
         if (ret != 0)
         {
             SWSS_LOG_ERROR("Failed to query IPv4 VRF for %s (%d)", state->hwif.c_str(), ret);
             return SAI_STATUS_FAILURE;
         }
-        previous_vrf = state->previous_vrf;
     }
 
     if (vrf_id == previous_vrf)
@@ -2028,9 +2070,16 @@ sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
         return SAI_STATUS_FAILURE;
     }
 
-    if (state != nullptr)
+    // an interface created by this request is normally unbound by its delete,
+    // but that runs after the table registered above is deleted
+    if (restore || registered)
     {
-        state->vrf_changed = !state->interface_created;
+        const std::string hwif = state->hwif;
+
+        VppTransaction::current().onRollback("VRF of " + hwif, [hwif, previous_vrf]()
+                {
+                    return vpp_set_interface_table(hwif.c_str(), 0, previous_vrf);
+                });
     }
 
     return SAI_STATUS_SUCCESS;
@@ -2202,85 +2251,6 @@ sai_status_t SwitchVpp::vpp_apply_loopback_action(
     return (ret != 0) ? SAI_STATUS_FAILURE : SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchVpp::rollbackRifCreate(
-        _In_ const RifCreateState& state)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status = SAI_STATUS_SUCCESS;
-    auto check = [&](int result, const char *operation) {
-        if (result != 0)
-        {
-            SWSS_LOG_ERROR("RIF create rollback: %s failed on %s (%d)",
-                    operation, state.hwif.c_str(), result);
-            status = SAI_STATUS_FAILURE;
-        }
-    };
-
-    if (state.bridge_attached)
-    {
-        check(set_sw_interface_l2_bridge(state.hwif.c_str(), state.vlan,
-                    false, VPP_API_PORT_TYPE_BVI), "detach bridge");
-    }
-    if (state.lcp_created)
-    {
-        check(configure_lcp_interface(state.hwif.c_str(), state.tap.c_str(), false),
-                "delete LCP pair");
-    }
-    if (state.interface_created)
-    {
-        int ret = state.bvi ? delete_bvi_interface(state.hwif.c_str()) :
-            delete_sub_interface(state.parent.c_str(), state.vlan);
-        check(ret, "delete interface");
-        if (ret == 0)
-        {
-            m_ifaceRegistry.remove(state.hwif);
-            if (!state.bvi)
-            {
-                m_sub_if_admin_up_pending.erase(state.hwif);
-            }
-        }
-        check(refresh_interfaces_list(), "refresh interfaces");
-    }
-    else
-    {
-        if (state.admin_changed)
-        {
-            check(interface_set_state(state.hwif.c_str(), state.previous_state.admin_up),
-                    "restore admin state");
-        }
-        if (state.loopback_applied)
-        {
-            check(vpp_apply_loopback_action(state.hwif, SAI_PACKET_ACTION_FORWARD),
-                    "restore loopback action");
-        }
-        if (state.ip6_enabled)
-        {
-            // through the wrapper, so an interface something else already
-            // dropped the last lock on is not reported as a rollback failure
-            check(vpp_rif_ip6_enable_disable(state.hwif, false),
-                    "release IPv6 reference");
-        }
-        if (state.mpls_changed)
-        {
-            check(sw_interface_set_mpls_enable(state.hwif.c_str(), state.previous_mpls),
-                    "restore MPLS state");
-        }
-        if (state.mtu_changed)
-        {
-            check(sw_interface_set_mtu_all(state.hwif.c_str(), state.previous_state.mtu),
-                    "restore MTU");
-        }
-        if (state.vrf_changed)
-        {
-            check(vpp_set_interface_table(state.hwif.c_str(), 0, state.previous_vrf),
-                    "restore VRF");
-        }
-    }
-
-    return status;
-}
-
 /*
  * VPP only materialises an interface's IPv6 link-local address inside
  * ip6_link_enable() (src/vnet/ip/ip6_link.c), and the only thing that used to
@@ -2342,6 +2312,8 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 {
     SWSS_LOG_ENTER();
 
+    auto& txn = VppTransaction::current();
+
     auto attr_loopback = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
     if (attr_loopback != nullptr)
     {
@@ -2373,10 +2345,10 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
         // The BVI MAC is programmed by create_bvi_interface() above, so the
         // link-local VPP derives here already matches the kernel's Vlan<N>.
+        // If a later step fails, the lock goes away with the BVI.
         if (want_ip6 && !state.hwif.empty())
         {
             CHECK_STATUS(vpp_rif_ip6_enable_disable(state.hwif, true));
-            state.ip6_enabled = true;
         }
 
         return SAI_STATUS_SUCCESS;
@@ -2494,11 +2466,9 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         }
 
         const std::string subif_tap = tap_name + suffix;
+        const std::string sub_hwif = parent_hwif + suffix;
 
-        state.hwif = parent_hwif + suffix;
-        state.parent = parent_hwif;
-        state.vlan = vlan_id;
-        state.tap = subif_tap;
+        state.hwif = sub_hwif;
 
         if (create_sub_interface(parent_hwif.c_str(), vlan_id, vlan_id) != 0)
         {
@@ -2506,6 +2476,22 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
             return SAI_STATUS_FAILURE;
         }
         state.interface_created = true;
+
+        txn.onRollback("sub-interface " + sub_hwif, [this, parent_hwif, vlan_id, sub_hwif]()
+                {
+                    int ret = delete_sub_interface(parent_hwif.c_str(), vlan_id);
+
+                    // a deferred admin up is only dropped with the interface
+                    if (ret == 0)
+                    {
+                        m_ifaceRegistry.remove(sub_hwif);
+                        m_sub_if_admin_up_pending.erase(sub_hwif);
+                    }
+
+                    int refresh = refresh_interfaces_list();
+
+                    return ret != 0 ? ret : refresh;
+                });
 
         /*
          * lcp-auto-subint is disabled in VPP startup config (vlan-bvi HLD §3.6),
@@ -2515,14 +2501,16 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
          * port-channel). Without this the sub-interface will not show up in
          * `vppctl show lcp` and host punt will not work for the SUB_PORT RIF.
          */
-        const std::string sub_hwif = parent_hwif + suffix;
-
-        if (configure_lcp_interface(sub_hwif.c_str(), subif_tap.c_str(), true) != 0)
+        if (txn.run("LCP pair " + sub_hwif,
+                    [&]() { return configure_lcp_interface(sub_hwif.c_str(), subif_tap.c_str(), true); },
+                    [sub_hwif, subif_tap]()
+                    {
+                        return configure_lcp_interface(sub_hwif.c_str(), subif_tap.c_str(), false);
+                    }) != 0)
         {
             SWSS_LOG_ERROR("Failed to create LCP pair for %s", sub_hwif.c_str());
             return SAI_STATUS_FAILURE;
         }
-        state.lcp_created = true;
 
         {
             auto parent_rec = m_ifaceRegistry.findByHwif(parent_hwif);
@@ -2584,29 +2572,42 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
     auto attr_type_v6 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, attr_count, attr_list);
     const bool program_interface = is_ip_nbr_active();
 
-    if (!state.interface_created &&
+    // Settings changed on an interface this CREATE did not make are restored
+    // on failure; a new interface is deleted instead, so it needs no snapshot.
+    const bool restore = !state.interface_created;
+    const std::string hwif = state.hwif;
+    vpp_interface_state_t previous_state{};
+    bool previous_mpls = false;
+
+    if (restore &&
         (attr_type_mpls || (program_interface && (attr_type_mtu || attr_type_v4 || attr_type_v6))))
     {
-        if (get_interface_state(state.hwif.c_str(), &state.previous_state) != 0 ||
-            (attr_type_mpls && get_interface_mpls_enabled(state.hwif.c_str(), &state.previous_mpls) != 0))
+        if (get_interface_state(hwif.c_str(), &previous_state) != 0 ||
+            (attr_type_mpls && get_interface_mpls_enabled(hwif.c_str(), &previous_mpls) != 0))
         {
-            SWSS_LOG_ERROR("Failed to snapshot interface settings for %s", state.hwif.c_str());
+            SWSS_LOG_ERROR("Failed to snapshot interface settings for %s", hwif.c_str());
             return SAI_STATUS_FAILURE;
         }
     }
 
     if (attr_type_mtu && program_interface)
     {
-        if (sw_interface_set_mtu(state.hwif.c_str(), attr_type_mtu->value.u32) != 0)
+        if (sw_interface_set_mtu(hwif.c_str(), attr_type_mtu->value.u32) != 0)
         {
-            SWSS_LOG_ERROR("Failed to set RIF MTU for %s", state.hwif.c_str());
+            SWSS_LOG_ERROR("Failed to set RIF MTU for %s", hwif.c_str());
             return SAI_STATUS_FAILURE;
         }
-        state.mtu_changed = !state.interface_created;
+        if (restore)
+        {
+            txn.onRollback("MTU of " + hwif, [hwif, previous_state]()
+                    {
+                        return sw_interface_set_mtu_all(hwif.c_str(), previous_state.mtu);
+                    });
+        }
     }
 
     // VPP counts MPLS enable references; matching state must not change that count.
-    if (attr_type_mpls != NULL && attr_type_mpls->value.booldata != state.previous_mpls)
+    if (attr_type_mpls != NULL && attr_type_mpls->value.booldata != previous_mpls)
     {
         std::string mpls_hwif_name = m_ifaceRegistry.resolveHwIfName(obj_id, vlan_id);
 
@@ -2621,7 +2622,13 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
                                mpls_hwif_name.c_str(), mpls_ret);
                 return SAI_STATUS_FAILURE;
             }
-            state.mpls_changed = !state.interface_created;
+            if (restore)
+            {
+                txn.onRollback("MPLS state of " + hwif, [hwif, previous_mpls]()
+                        {
+                            return sw_interface_set_mpls_enable(hwif.c_str(), previous_mpls);
+                        });
+            }
             bool mpls_enabled = false;
             if (get_interface_mpls_enabled(mpls_hwif_name.c_str(), &mpls_enabled) != 0)
             {
@@ -2654,7 +2661,13 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
         }
 
         CHECK_STATUS(vpp_apply_loopback_action(loopback_hwif, attr_loopback->value.s32));
-        state.loopback_applied = true;
+        if (restore)
+        {
+            txn.onRollback("loopback action of " + hwif, [hwif]()
+                    {
+                        return vpp_apply_loopback_action(hwif, SAI_PACKET_ACTION_FORWARD);
+                    });
+        }
     }
 
     /*
@@ -2705,8 +2718,16 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
     if (want_ip6)
     {
-        CHECK_STATUS(vpp_rif_ip6_enable_disable(state.hwif, true));
-        state.ip6_enabled = true;
+        CHECK_STATUS(vpp_rif_ip6_enable_disable(hwif, true));
+        if (restore)
+        {
+            // through the wrapper, so an interface something else already
+            // dropped the last lock on is not reported as a rollback failure
+            txn.onRollback("IPv6 reference on " + hwif, [this, hwif]()
+                    {
+                        return vpp_rif_ip6_enable_disable(hwif, false);
+                    });
+        }
     }
 
     bool v4_is_up = false, v6_is_up = false;
@@ -2722,14 +2743,20 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
 
     if (attr_type_v4 != NULL || attr_type_v6 != NULL)
     {
-        if (!state.interface_created && program_interface)
+        if (restore && program_interface)
         {
-            if (interface_set_state(state.hwif.c_str(), v4_is_up || v6_is_up) != 0)
+            const bool previous_admin_up = previous_state.admin_up;
+
+            if (txn.run("admin state of " + hwif,
+                        [&]() { return interface_set_state(hwif.c_str(), v4_is_up || v6_is_up); },
+                        [hwif, previous_admin_up]()
+                        {
+                            return interface_set_state(hwif.c_str(), previous_admin_up);
+                        }) != 0)
             {
-                SWSS_LOG_ERROR("Failed to set RIF admin state for %s", state.hwif.c_str());
+                SWSS_LOG_ERROR("Failed to set RIF admin state for %s", hwif.c_str());
                 return SAI_STATUS_FAILURE;
             }
-            state.admin_changed = true;
             // Replay child requests only after this parent CREATE commits.
             state.resync_children = v4_is_up || v6_is_up;
             return SAI_STATUS_SUCCESS;
@@ -3076,6 +3103,7 @@ sai_status_t SwitchVpp::createRouterif(
 {
     SWSS_LOG_ENTER();
 
+    auto& txn = VppTransaction::current();
     bool new_binding = m_ifaceRegistry.resolveHwIfByRifOid(object_id).empty();
     RifCreateState state;
     sai_status_t status = SAI_STATUS_SUCCESS;
@@ -3111,6 +3139,16 @@ sai_status_t SwitchVpp::createRouterif(
             status = vpp_update_router_interface(object_id, attr_count, attr_list);
         }
 
+        // recorded before the calls, which can fail after a partial update
+        if (status == SAI_STATUS_SUCCESS && new_binding)
+        {
+            txn.onRollback("RIF binding", [this, object_id]()
+                    {
+                        m_ifaceRegistry.clearRifOid(object_id);
+                        m_rifStatsBaseMap.erase(object_id);
+                        return 0;
+                    });
+        }
         if (status == SAI_STATUS_SUCCESS)
         {
             status = vpp_register_router_interface(object_id, attr_count, attr_list);
@@ -3128,9 +3166,18 @@ sai_status_t SwitchVpp::createRouterif(
         status = create_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, switch_id, attr_count, attr_list);
     }
 
+    // an enclosing scope can still roll back after this CREATE succeeds
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        txn.onRollback("SAI object " + sid, [this, sid]()
+                {
+                    return remove_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid);
+                });
+    }
+
     if (status == SAI_STATUS_SUCCESS && state.resync_children)
     {
-        vpp_resync_sub_interface_admin_state(state.hwif);
+        deferSubInterfaceAdminUp(vpp_resync_sub_interface_admin_state(state.hwif));
     }
 
     if (status == SAI_STATUS_SUCCESS)
@@ -3147,19 +3194,6 @@ sai_status_t SwitchVpp::createRouterif(
         if (attr_vr != NULL)
         {
             m_tunnel_mgr.install_pending_decap_host_paths(attr_vr->value.oid);
-        }
-    }
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        if (new_binding)
-        {
-            m_ifaceRegistry.clearRifOid(object_id);
-            m_rifStatsBaseMap.erase(object_id);
-        }
-        if (rollbackRifCreate(state) != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("Incomplete VPP cleanup after failed RIF create %s", sid.c_str());
         }
     }
 

@@ -1536,7 +1536,34 @@ sai_status_t SwitchVpp::create(
 {
     SWSS_LOG_ENTER();
 
+    // not part of the request, so outside its transaction
     serviceDeferredOperStatusResync();
+
+    TxnScope scope;
+
+    sai_status_t status = create_dispatch(object_type, serializedObjectId, switch_id, attr_count, attr_list);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        scope.commit();
+    }
+    else if (scope.rollback() != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Incomplete VPP cleanup after failed create of %s",
+                serializedObjectId.c_str());
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::create_dispatch(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &serializedObjectId,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
 
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
@@ -2108,7 +2135,31 @@ sai_status_t SwitchVpp::remove(
 {
     SWSS_LOG_ENTER();
 
+    // not part of the request, so outside its transaction
     serviceDeferredOperStatusResync();
+
+    TxnScope scope;
+
+    sai_status_t status = remove_dispatch(object_type, serializedObjectId);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        scope.commit();
+    }
+    else if (scope.rollback() != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Incomplete VPP cleanup after failed remove of %s",
+                serializedObjectId.c_str());
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::remove_dispatch(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
 
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
     {
@@ -2607,7 +2658,32 @@ sai_status_t SwitchVpp::set(
 {
     SWSS_LOG_ENTER();
 
+    // not part of the request, so outside its transaction
     serviceDeferredOperStatusResync();
+
+    TxnScope scope;
+
+    sai_status_t status = set_dispatch(objectType, serializedObjectId, attr);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        scope.commit();
+    }
+    else if (scope.rollback() != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Incomplete VPP cleanup after failed set of %s",
+                serializedObjectId.c_str());
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::set_dispatch(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::string &serializedObjectId,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
 
     if (objectType == SAI_OBJECT_TYPE_PORT)
     {

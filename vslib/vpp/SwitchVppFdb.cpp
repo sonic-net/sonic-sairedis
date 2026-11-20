@@ -1879,48 +1879,61 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 	    SWSS_LOG_NOTICE("RIF src MAC not provided; using switch src MAC for BVI of vlan %u", vlan_id);
     }
 
+    auto& txn = VppTransaction::current();
+
     //Create BVI interface
     if (create_bvi_interface(mac_addr, vlan_id) != 0)
     {
         SWSS_LOG_ERROR("Failed to create BVI for VLAN %u", vlan_id);
         return SAI_STATUS_FAILURE;
     }
-    state.hwif = VppVlanInterface::hwifNameFor(static_cast<uint16_t>(vlan_id));
-    state.tap = "tap_Vlan" + std::to_string(vlan_id);
-    state.vlan = vlan_id;
-    state.bvi = true;
+    const std::string bvi_hwif = VppVlanInterface::hwifNameFor(static_cast<uint16_t>(vlan_id));
+    state.hwif = bvi_hwif;
     state.interface_created = true;
+
+    txn.onRollback("BVI " + bvi_hwif, [this, bvi_hwif]()
+            {
+                int ret = delete_bvi_interface(bvi_hwif.c_str());
+
+                if (ret == 0)
+                {
+                    m_ifaceRegistry.remove(bvi_hwif);
+                }
+
+                int refresh = refresh_interfaces_list();
+
+                return ret != 0 ? ret : refresh;
+            });
 
     // Get new list of physical interfaces from VS
     refresh_interfaces_list();
-
-    char hw_bviifname[32];
-    const char *hw_ifname;
-    snprintf(hw_bviifname, sizeof(hw_bviifname), "bvi%u",vlan_id);
-    hw_ifname = hw_bviifname;
 
     // Put the BVI in its virtual router's table, in both address families,
     // while it has no address yet; the SVI addresses arrive later, from the
     // IP2ME routes.
     std::string linux_ifname = "Vlan" + std::to_string(vlan_id);
 
-    if (vpp_router_interface_set_vrf(attr_vrf->value.oid, hw_ifname, 0, linux_ifname.c_str()) != SAI_STATUS_SUCCESS)
+    if (vpp_router_interface_set_vrf(attr_vrf->value.oid, bvi_hwif.c_str(), 0, linux_ifname.c_str(), &state) != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to bind %s to the table of VRF(%s)", hw_ifname,
+        SWSS_LOG_ERROR("Failed to bind %s to the table of VRF(%s)", bvi_hwif.c_str(),
                        sai_serialize_object_id(attr_vrf->value.oid).c_str());
         return SAI_STATUS_FAILURE;
     }
 
     //Create bridge and set the l2 port as BVI
-    if (set_sw_interface_l2_bridge(hw_ifname, vlan_id, true, VPP_API_PORT_TYPE_BVI) != 0)
+    if (txn.run("bridge port " + bvi_hwif,
+                [&]() { return set_sw_interface_l2_bridge(bvi_hwif.c_str(), vlan_id, true, VPP_API_PORT_TYPE_BVI); },
+                [bvi_hwif, vlan_id]()
+                {
+                    return set_sw_interface_l2_bridge(bvi_hwif.c_str(), vlan_id, false, VPP_API_PORT_TYPE_BVI);
+                }) != 0)
     {
-        SWSS_LOG_ERROR("Failed to attach BVI %s to bridge %u", hw_ifname, vlan_id);
+        SWSS_LOG_ERROR("Failed to attach BVI %s to bridge %u", bvi_hwif.c_str(), vlan_id);
         return SAI_STATUS_FAILURE;
     }
-    state.bridge_attached = true;
 
     //Set interface state up
-    interface_set_state(hw_ifname, true);
+    interface_set_state(bvi_hwif.c_str(), true);
 
     // BVI is the L3 endpoint of the BD and exchanges *untagged* frames
     // with the BD, matching the Linux model where Vlan<id> is presented
@@ -1937,17 +1950,20 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     // SONiC; data-plane punts land on the originating member tap via
     // aggr-tap-redirect, not on tap_Vlan<id>, so no tc mirror is required.
     {
-        std::string vpp_ifname = std::string("bvi") + std::to_string(vlan_id);
-        std::string tap_name    = std::string("tap_Vlan") + std::to_string(vlan_id);
+        std::string tap_name = std::string("tap_Vlan") + std::to_string(vlan_id);
 
         SWSS_LOG_NOTICE("configure_lcp_interface vpp_name:%s tap:%s",
-                        vpp_ifname.c_str(), tap_name.c_str());
-        if (configure_lcp_interface(vpp_ifname.c_str(), tap_name.c_str(), true) != 0)
+                        bvi_hwif.c_str(), tap_name.c_str());
+        if (txn.run("LCP pair " + bvi_hwif,
+                    [&]() { return configure_lcp_interface(bvi_hwif.c_str(), tap_name.c_str(), true); },
+                    [bvi_hwif, tap_name]()
+                    {
+                        return configure_lcp_interface(bvi_hwif.c_str(), tap_name.c_str(), false);
+                    }) != 0)
         {
-            SWSS_LOG_ERROR("Failed to create LCP pair for %s", vpp_ifname.c_str());
+            SWSS_LOG_ERROR("Failed to create LCP pair for %s", bvi_hwif.c_str());
             return SAI_STATUS_FAILURE;
         }
-        state.lcp_created = true;
 
         refresh_interfaces_list();
         interface_set_state(tap_name.c_str(), true);
@@ -1975,7 +1991,6 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 
     if (attr_loopback != NULL)
     {
-        std::string bvi_hwif = std::string("bvi") + std::to_string(vlan_id);
         CHECK_STATUS(vpp_apply_loopback_action(bvi_hwif, attr_loopback->value.s32));
     }
 
