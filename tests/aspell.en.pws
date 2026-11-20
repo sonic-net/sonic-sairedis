@@ -78,6 +78,7 @@ ObjectHash
 PN
 PORTs
 QUEUEs
+README
 REQ
 RID
 RIDTOVID
@@ -94,6 +95,7 @@ SCs
 SDK
 SGs
 SHA
+SIGPIPE
 SIGTERM
 SONiC
 SPDX
@@ -142,6 +144,7 @@ attridname
 attribs
 attrs
 attrvalue
+benchmarking
 bool
 booldata
 brcm
@@ -344,6 +347,7 @@ ss
 ssci
 SSCI
 stateful
+stdin
 stdint
 stdlib
 stdout
