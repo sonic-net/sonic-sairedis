@@ -12,6 +12,7 @@ import pytest
 
 from harness.bench import Bench
 from harness.env import BenchEnv, check_prerequisites
+from harness.profile import check_perf
 from harness.report import Report, run_meta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +44,14 @@ def pytest_addoption(parser):
     group.addoption("--bench-label", default="", help="report name (default: the communication mode)")
     group.addoption("--bench-report-dir", default=os.path.join(HERE, "report"), help="where reports go")
     group.addoption("--bench-workdir", default="/tmp/syncd-bench", help="scratch directory")
+    group.addoption("--bench-perf", default="",
+                    help="profile these processes with perf during each measured phase: syncd, redis, client, "
+                         "comma separated (default: none); needs perf, CAP_SYS_ADMIN and CAP_IPC_LOCK")
+    group.addoption("--bench-perf-freq", type=int, default=999, help="perf samples per second")
+    group.addoption("--bench-perf-event", default="cpu-clock", choices=("cpu-clock", "task-clock"),
+                    help="perf event: a clock, as the profiles weigh samples in nanoseconds of CPU")
+    group.addoption("--bench-perf-callgraph", default="dwarf,32768",
+                    help="perf call graph mode (32 KB of stack: hiredis reads into a 16 KB stack buffer)")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -85,6 +94,10 @@ def _options(config):
         workdir=_abspath(config.getoption("--bench-workdir")),
         report_dir=_abspath(config.getoption("--bench-report-dir")),
         label=config.getoption("--bench-label") or config.getoption("--bench-comm"),
+        perf=[p.strip() for p in config.getoption("--bench-perf").split(",") if p.strip()],
+        perf_freq=config.getoption("--bench-perf-freq"),
+        perf_event=config.getoption("--bench-perf-event"),
+        perf_callgraph=config.getoption("--bench-perf-callgraph"),
     )
 
 
@@ -94,6 +107,13 @@ def options(request):
     for path in (opts.syncd, opts.mock_lib, opts.saibench):
         if not os.path.exists(path):
             pytest.exit("{} does not exist: build the tree, then make -C tests/blackbox".format(path), 2)
+    unknown = set(opts.perf) - {"syncd", "redis", "client"}
+    if unknown:
+        pytest.exit("--bench-perf: unknown processes {}".format(", ".join(sorted(unknown))), 2)
+    if opts.perf:
+        reason = check_perf()
+        if reason:
+            pytest.exit("--bench-perf: {}".format(reason), 2)
     return opts
 
 

@@ -69,7 +69,10 @@ pytest takes a separate value that is a path outside this directory, as in
 | `--bench-cpus` | CPUs to pin processes to, as `syncd=2,redis=3,client=4` |
 | `--bench-label` | name of the report (default: the communication mode) |
 | `--bench-report-dir`, `--bench-workdir` | where reports and logs go |
+| `--bench-perf` | processes to profile during each measured phase, among `syncd`, `redis` and `client`, comma separated (default: none) |
+| `--bench-perf-freq`, `--bench-perf-event`, `--bench-perf-callgraph` | sampling frequency (default 999 Hz), event (`cpu-clock`, the default, or `task-clock`) and call graph (default `dwarf,32768`) of the profiles |
 | `SYNCD_BB_IMAGE` | image `run.sh` uses (default `build-env-build:latest`) |
+| `SYNCD_BB_PERF_IMAGE` | image `run.sh` profiles in (default `syncd-bench-perf:latest`, built from `SYNCD_BB_IMAGE` with perf when missing) |
 
 ### Another syncd
 
@@ -105,6 +108,33 @@ tests/blackbox/compare.py tests/blackbox/report/bench-before.json tests/blackbox
 
 Compare runs on the same host only, and with the same options. Several runs show
 how much a host's numbers vary; `--bench-cpus` makes them steadier.
+
+### Profiles
+
+With `--bench-perf`, each measured phase also records a CPU profile of the given
+processes, all their threads, with `perf record`. A profile keeps the samples
+taken between the phase's CPU snapshots, by their monotonic timestamps: it
+covers what the phase's numbers measure.
+`run.sh` then runs the benchmarks in an image with perf and FlameGraph, with
+`CAP_SYS_ADMIN`, which perf needs in a container, and `CAP_IPC_LOCK`, so its
+buffers do not count against the locked memory of the host's root. Per phase
+and process, the benchmark's directory in `tests/blackbox/work` gets the folded stacks,
+`NN-<phase>.<process>.folded` (root first, weighted in nanoseconds of CPU, as
+flamegraph.pl and speedscope read them), and their flame graph, `.svg`; the JSON
+report has the top functions of each profile, by self and inclusive CPU. To dig
+into one:
+
+```sh
+tests/blackbox/run.sh --bench-perf syncd --bench-rounds 1 bench/test_routes.py -k 1000-v4
+python3 tests/blackbox/harness/profile.py tests/blackbox/work/test_routes_1000-v4_/01-routes_create.syncd.folded \
+    --top 30 --match RedisClient --match sai_deserialize
+```
+
+`--match` prints the share of CPU of the stacks with a frame matching a regular
+expression. Profiling slows down what it samples: take numbers from runs without
+it. The DWARF call graph copies 32 KB of stack per sample, which unwinding through
+hiredis's 16 KB read buffer needs; kernel frames are `[unknown]` unless the host
+lets perf resolve kernel symbols (`kernel.kptr_restrict`).
 
 ## Reports
 

@@ -38,4 +38,5 @@ def phase_summary(result, bulk=None):
 def compact(result):
     """What a round keeps in the JSON report, besides its summary."""
     return {k: result[k] for k in ("name", "objects", "wall_s", "client", "sdk", "sdk_all", "cpu",
-                                   "syncd_threads", "redis_commands_total", "redis_commands", "syncd_memory")}
+                                   "syncd_threads", "redis_commands_total", "redis_commands", "syncd_memory",
+                                   "profile") if k in result}

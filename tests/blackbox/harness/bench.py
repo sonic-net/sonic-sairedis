@@ -18,6 +18,7 @@ import time
 from .client import Client
 from .mock import select, summarize
 from .procstat import CpuSnapshot, memory
+from .profile import Profiler
 from .syncd import Syncd
 
 
@@ -34,6 +35,7 @@ class Bench(object):
         self.warnings = []
         self.started = False
         self.comm = options.comm
+        self.phases = 0
 
     def start(self, profile=None, syncd_args=None, comm=None, init=True, cpus=None):
         # the first start clears what an earlier run left; a benchmark that
@@ -90,6 +92,16 @@ class Bench(object):
     def snapshot(self):
         return CpuSnapshot(self.pids(), threads_of=self.syncd.pid)
 
+    def profiler(self, name):
+        """A perf profiler of the processes --bench-perf names, for one phase, or None."""
+        if not self.options.perf:
+            return None
+        self.phases += 1
+        prefix = os.path.join(self.workdir, "{:02d}-{}".format(self.phases, re.sub(r"[^\w.-]+", "_", name)))
+        pids = self.pids()
+        return Profiler({p: pids[p] for p in self.options.perf}, prefix, freq=self.options.perf_freq,
+                        event=self.options.perf_event, callgraph=self.options.perf_callgraph)
+
     def measure(self, name, action, ops=(("*", "*"),), objects=None, timeout=600):
         """Runs one client command, or a function returning a reply, and
         measures it."""
@@ -111,18 +123,34 @@ class Bench(object):
     def measured(self, name, run, ops, objects):
         """Measures run(), a phase returning the client's reply and when it
         ended, or None when run returns: CPU, SDK calls and redis commands
-        over the same window."""
-        self.mock.reset()
-        commands = self.env.redis.command_stats()
-        before = self.snapshot()
-        t0 = time.monotonic_ns()
-        reply, t1 = run()
-        t1 = t1 or time.monotonic_ns()
-        after = self.snapshot()
-        stats = self.mock.stats()
-        after_commands = self.env.redis.command_stats()
-        return self.result(name, reply, stats, before, after, commands, after_commands, (t1 - t0) / 1e9, ops,
-                           reply.get("objects") if objects is None else objects)
+        over the same window, and its profiles with --bench-perf."""
+        profiler = self.profiler(name)
+        if profiler:
+            profiler.start()
+        try:
+            self.mock.reset()
+            commands = self.env.redis.command_stats()
+            w0 = time.monotonic_ns()
+            before = self.snapshot()
+            t0 = time.monotonic_ns()
+            reply, t1 = run()
+            t1 = t1 or time.monotonic_ns()
+            after = self.snapshot()
+            w1 = time.monotonic_ns()
+            stats = self.mock.stats()
+            after_commands = self.env.redis.command_stats()
+        finally:
+            # after the measurements, which perf's exit must not extend, and
+            # also when the phase failed, so perf does not stay attached
+            if profiler:
+                profiler.stop()
+        result = self.result(name, reply, stats, before, after, commands, after_commands, (t1 - t0) / 1e9, ops,
+                             reply.get("objects") if objects is None else objects)
+        if profiler:
+            # the samples between the CPU snapshots, which perf's start and
+            # stop are outside of
+            result["profile"] = profiler.report(window_ns=(w0, w1))
+        return result
 
     def result(self, name, reply, stats, before, after, commands, after_commands, wall_s, ops, objects):
         selected = []

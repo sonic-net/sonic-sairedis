@@ -6,6 +6,7 @@
 #   tests/blackbox/run.sh                                   # every benchmark
 #   tests/blackbox/run.sh bench/test_routes.py -k 1000      # some of them
 #   tests/blackbox/run.sh --bench-comm zmq_sync --bench-label zmq
+#   tests/blackbox/run.sh --bench-perf syncd,redis --bench-rounds 1   # with CPU profiles
 #
 # Arguments go to pytest. The first container builds, as the caller: the tree
 # if syncd is not built yet (optimized, no coverage), then the mock SAI and
@@ -15,6 +16,8 @@
 #
 #   SYNCD_BB_IMAGE    build environment image (default: build-env-build:latest,
 #                     built from build-env/ when missing)
+#   SYNCD_BB_PERF_IMAGE  image of profiling runs (default: syncd-bench-perf:latest,
+#                     built from SYNCD_BB_IMAGE with perf when missing)
 #   DEBIAN_VERSION    Debian of that image when it is built (default: bookworm)
 
 set -e
@@ -51,15 +54,38 @@ OWNER="$(id -u):$(id -g)"
 # conftest.py, which defines them, pytest takes a separate value that is a path
 # outside this directory for a test path, and then misses conftest.py.
 ARGS=()
+PERF=
 while [ $# -gt 0 ]; do
     case "$1" in
         --bench-*=*) ARGS+=("$1") ;;
         --bench-*) ARGS+=("$1=$2"); shift ;;
         *) ARGS+=("$1") ;;
     esac
+    case "${ARGS[-1]}" in
+        --bench-perf=?*) PERF=1 ;;
+    esac
     shift
 done
 
-docker run --rm --init -e SYNCD_BB_ENABLE=1 -e PYTHONDONTWRITEBYTECODE=1 -v "$TOP:/workspace" -w /workspace/tests/blackbox "$IMAGE" \
+# Profiles need perf, CAP_SYS_ADMIN for it, and CAP_IPC_LOCK for its buffers,
+# which otherwise count against the locked memory of the host's root: an image
+# with perf (and FlameGraph, when it can be fetched) derived from the build
+# environment's.
+RUN_IMAGE=$IMAGE
+DOCKER_OPTS=()
+if [ -n "$PERF" ]; then
+    RUN_IMAGE=${SYNCD_BB_PERF_IMAGE:-syncd-bench-perf:latest}
+    if ! docker image inspect "$RUN_IMAGE" > /dev/null 2>&1; then
+        docker build -t "$RUN_IMAGE" - << EOF
+FROM $IMAGE
+RUN apt-get update && apt-get install -y --no-install-recommends linux-perf && rm -rf /var/lib/apt/lists/* \
+ && (git clone --depth 1 https://github.com/brendangregg/FlameGraph /opt/FlameGraph || true)
+EOF
+    fi
+    DOCKER_OPTS=(--cap-add SYS_ADMIN --cap-add IPC_LOCK --security-opt seccomp=unconfined)
+fi
+
+docker run --rm --init "${DOCKER_OPTS[@]}" -e SYNCD_BB_ENABLE=1 -e PYTHONDONTWRITEBYTECODE=1 -v "$TOP:/workspace" \
+    -w /workspace/tests/blackbox "$RUN_IMAGE" \
     bash -c 'python3 -m pytest --bench-workdir=/workspace/tests/blackbox/work "$@"; rc=$?
              chown -R '"$OWNER"' report work 2> /dev/null; exit $rc' bash "${ARGS[@]}"
