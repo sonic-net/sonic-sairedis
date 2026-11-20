@@ -43,10 +43,21 @@ namespace saimeta
 
             std::vector<std::shared_ptr<SaiAttrWrapper>> getAttributes() const;
 
+            /**
+             * @brief Mark the object as added from an FDB LEARNED notification
+             * rather than by an API create.
+             */
+            void setLearned(
+                    _In_ bool learned);
+
+            bool isLearned() const;
+
         private:
 
             sai_object_meta_key_t m_metaKey;
 
             std::unordered_map<sai_attr_id_t, std::shared_ptr<SaiAttrWrapper>> m_attrs;
+
+            bool m_learned;
     };
 }

@@ -4014,7 +4014,8 @@ void Syncd::sendApiResponse(
         _In_ sai_common_api_t api,
         _In_ sai_status_t status,
         _In_ uint32_t object_count,
-        _In_ sai_status_t* object_statuses)
+        _In_ sai_status_t* object_statuses,
+        _In_ swss::Logger::Priority failurePriority)
 {
     SWSS_LOG_ENTER();
 
@@ -4047,7 +4048,7 @@ void Syncd::sendApiResponse(
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("api %s failed in syncd mode: %s",
+        META_LOG_PRIO(failurePriority, "api %s failed in syncd mode: %s",
                     sai_serialize_common_api(api).c_str(),
                     sai_serialize_status(status).c_str());
     }
@@ -4592,7 +4593,9 @@ sai_status_t Syncd::processQuadEvent(
     }
     else if (status != SAI_STATUS_SUCCESS)
     {
-        sendApiResponse(api, status);
+        auto prio = Globals::getApiFailureLogPriority(api, metaKey.objecttype, status);
+
+        sendApiResponse(api, status, 0, nullptr, prio);
 
         if (info->isobjectid && api == SAI_COMMON_API_SET)
         {
@@ -4606,7 +4609,7 @@ sai_status_t Syncd::processQuadEvent(
 
         for (const auto &v: values)
         {
-            SWSS_LOG_ERROR("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+            META_LOG_PRIO(prio, "attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
         }
 
         if (!m_enableSyncMode)

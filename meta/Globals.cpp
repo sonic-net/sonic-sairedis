@@ -88,3 +88,20 @@ std::string Globals::joinFieldValues(
 
     return ss.str();
 }
+
+swss::Logger::Priority Globals::getApiFailureLogPriority(
+        _In_ sai_common_api_t api,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    if (api == SAI_COMMON_API_CREATE &&
+            objectType == SAI_OBJECT_TYPE_FDB_ENTRY &&
+            status == SAI_STATUS_ITEM_ALREADY_EXISTS)
+    {
+        return swss::Logger::SWSS_NOTICE;
+    }
+
+    return swss::Logger::SWSS_ERROR;
+}

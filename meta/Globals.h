@@ -38,6 +38,23 @@ namespace saimeta
 
             static std::string joinFieldValues(
                     _In_ const std::vector<swss::FieldValueTuple>& values);
+
+            /**
+             * @brief Get log priority for a failed API call.
+             *
+             * An FDB entry create that returns SAI_STATUS_ITEM_ALREADY_EXISTS
+             * is an expected race: the switch learned the MAC while the create
+             * was in flight. The caller handles that status, so it is logged
+             * at NOTICE. Every other failure is logged at ERROR. A double
+             * create stops earlier, in the caller's meta, which logs it at
+             * ERROR because the entry it holds came from an API create.
+             *
+             * @return Log priority for the failure.
+             */
+            static swss::Logger::Priority getApiFailureLogPriority(
+                    _In_ sai_common_api_t api,
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_status_t status);
     };
 }
 
@@ -47,3 +64,5 @@ namespace saimeta
 #define META_LOG_NOTICE( md, format, ...)   SWSS_LOG_NOTICE ("%s " format, saimeta::Globals::getAttrInfo(md).c_str(), ##__VA_ARGS__)
 #define META_LOG_INFO(   md, format, ...)   SWSS_LOG_INFO   ("%s " format, saimeta::Globals::getAttrInfo(md).c_str(), ##__VA_ARGS__)
 #define META_LOG_THROW(  md, format, ...)   SWSS_LOG_THROW  ("%s " format, saimeta::Globals::getAttrInfo(md).c_str(), ##__VA_ARGS__)
+
+#define META_LOG_PRIO(prio, format, ...)   swss::Logger::getInstance().write(prio, ":- %s: " format, __FUNCTION__, ##__VA_ARGS__)

@@ -5,6 +5,7 @@
 #include "sairediscommon.h"
 
 #include "meta/sai_serialize.h"
+#include "meta/Globals.h"
 #include "meta/SaiAttributeList.h"
 #include "meta/ZeroMQSelectableChannel.h"
 
@@ -901,14 +902,16 @@ sai_status_t ServerSai::processQuadEvent(
     {
         sendApiResponse(api, status, oid);
 
-        SWSS_LOG_ERROR("api failed: %s (%s): %s",
+        auto prio = Globals::getApiFailureLogPriority(api, metaKey.objecttype, status);
+
+        META_LOG_PRIO(prio, "api failed: %s (%s): %s",
                 key.c_str(),
                 op.c_str(),
                 sai_serialize_status(status).c_str());
 
         for (const auto &v: values)
         {
-            SWSS_LOG_ERROR("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+            META_LOG_PRIO(prio, "attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
         }
     }
     else // non GET api, status is SUCCESS

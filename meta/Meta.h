@@ -477,6 +477,9 @@ namespace saimeta
                     _In_ const sai_object_meta_key_t& meta_key,
                     _In_ const sai_attribute_t *attr);
 
+            void meta_api_set_clears_learned(
+                    _In_ const sai_object_meta_key_t& meta_key);
+
             void meta_generic_validation_post_get(
                     _In_ const sai_object_meta_key_t& meta_key,
                     _In_ sai_object_id_t switch_id,
