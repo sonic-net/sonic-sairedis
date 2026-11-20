@@ -1092,6 +1092,50 @@ TEST_F(SwitchVppRifTest, lagRifProgramsBondMacBeforeEnablingIpv6)
     EXPECT_TRUE(vppMock().callsTo("sw_interface_set_mac", "port0").empty());
 }
 
+TEST_F(SwitchVppRifTest, lagAdminEnableProgramsStoredMacBeforeIpv6)
+{
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, lag);
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    admin.value.booldata = false;
+    attrs.push_back(admin);
+
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_set_mac", "BondEthernet2").empty());
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "BondEthernet2").empty());
+    EXPECT_EQ(0, vppMock().ip6Locks["BondEthernet2"]);
+
+    vppMock().macs["BondEthernet2"] = "02:fe:00:00:00:aa";
+    vppMock().calls.clear();
+    vppMock().macResult = -1;
+    admin.value.booldata = true;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "BondEthernet2").empty());
+    EXPECT_EQ("02:fe:00:00:00:aa", vppMock().macs.at("BondEthernet2"));
+    EXPECT_EQ(0, vppMock().ip6Locks["BondEthernet2"]);
+
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+    EXPECT_FALSE(stored.value.booldata);
+
+    vppMock().macResult = 0;
+    vppMock().calls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_EQ("00:00:00:00:00:01", vppMock().macs.at("BondEthernet2"));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("BondEthernet2"));
+
+    const int mac = saivs_test::vppCallIndex("sw_interface_set_mac", "BondEthernet2");
+    const int ip6 = saivs_test::vppCallIndex("sw_interface_ip6_enable_disable", "BondEthernet2");
+    ASSERT_NE(-1, mac);
+    ASSERT_NE(-1, ip6);
+    EXPECT_LT(mac, ip6);
+}
+
 // Sub-interfaces share the bond MAC, so a sub-port RIF must not rewrite it
 // under the bond and its siblings, whether the create succeeds or fails.
 TEST_F(SwitchVppRifTest, lagSubPortLeavesBondMacUnchanged)

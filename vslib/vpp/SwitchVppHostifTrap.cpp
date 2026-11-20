@@ -122,6 +122,118 @@ namespace
  * still needed by another owner. An empty policer name is deliberately a
  * present, active-but-unpoliced row; is_bind=false means the trap is absent.
  */
+sai_status_t SwitchVpp::applySemanticTrapBinding(
+        _In_ sai_hostif_trap_type_t trap_type,
+        _In_ sai_object_id_t owner_oid,
+        _In_ sai_object_id_t policer_oid,
+        _In_ bool active)
+{
+    SWSS_LOG_ENTER();
+
+    bool copp_enabled = false;
+    CHECK_STATUS(sonicExtFeatureEnabled("copp", copp_enabled));
+
+    if (!copp_enabled)
+    {
+        SWSS_LOG_NOTICE("CoPP is disabled; skipping %s of semantic trap %d for SAI trap 0x%lx",
+                active ? "bind" : "unbind", (int)trap_type,
+                (unsigned long)owner_oid);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    char policer_name[64] = {};
+    if (policer_oid != SAI_NULL_OBJECT_ID)
+    {
+        snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx",
+                (unsigned long)policer_oid);
+    }
+
+    int ret;
+    if (isDhcpTrap(trap_type))
+    {
+        ret = vpp_sonic_ext_copp_dhcp_bind(
+                policer_name,
+                trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6,
+                active);
+    }
+    else
+    {
+        ret = vpp_sonic_ext_copp_neighbor_miss_bind(policer_name, active);
+    }
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("failed to %s semantic trap %d for SAI trap 0x%lx: ret %d",
+                active ? "bind" : "unbind", (int)trap_type,
+                (unsigned long)owner_oid, ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("%s semantic trap %d for SAI trap 0x%lx%s%s",
+            active ? "bound" : "unbound", (int)trap_type,
+            (unsigned long)owner_oid,
+            active ? " with policer " : "",
+            active ? (policer_name[0] ? policer_name : "none") : "");
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_object_id_t SwitchVpp::semanticTrapBindingOwner(
+        _In_ sai_hostif_trap_type_t trap_type)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+    auto owner = m_semantic_trap_binding_owner.find(trap_type);
+    return owner == m_semantic_trap_binding_owner.end() ?
+        SAI_NULL_OBJECT_ID : owner->second;
+}
+
+sai_status_t SwitchVpp::restoreSemanticTrapBinding(
+        _In_ sai_hostif_trap_type_t trap_type,
+        _In_ sai_object_id_t owner_oid)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t policer_oid = SAI_NULL_OBJECT_ID;
+
+    if (owner_oid != SAI_NULL_OBJECT_ID)
+    {
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+        auto owner = m_trap_map.find(owner_oid);
+        if (owner == m_trap_map.end() || owner->second.trap_type != trap_type ||
+                !owner->second.classify_installed || !isActiveTrap(owner->second))
+        {
+            SWSS_LOG_ERROR("Cannot restore semantic trap %d owner 0x%lx",
+                    (int)trap_type, (unsigned long)owner_oid);
+            return SAI_STATUS_FAILURE;
+        }
+
+        auto group = m_trap_group_map.find(owner->second.trap_group_oid);
+        if (group != m_trap_group_map.end())
+        {
+            policer_oid = group->second.policer_oid;
+        }
+    }
+
+    CHECK_STATUS(applySemanticTrapBinding(
+            trap_type, owner_oid, policer_oid, owner_oid != SAI_NULL_OBJECT_ID));
+
+    {
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+        if (owner_oid == SAI_NULL_OBJECT_ID)
+        {
+            m_semantic_trap_binding_owner.erase(trap_type);
+        }
+        else
+        {
+            m_semantic_trap_binding_owner[trap_type] = owner_oid;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::programSemanticTrapBinding(
         _In_ sai_object_id_t trap_oid,
         _In_ const vpp_trap_entry_t &trap,
@@ -136,13 +248,14 @@ sai_status_t SwitchVpp::programSemanticTrapBinding(
 
     bool active = false;
     vpp_trap_entry_t selected{};
+    sai_object_id_t selected_oid = SAI_NULL_OBJECT_ID;
     bool have_selected = false;
     sai_object_id_t policer_oid = SAI_NULL_OBJECT_ID;
 
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
 
-        auto consider = [&](const vpp_trap_entry_t &candidate) {
+        auto consider = [&](sai_object_id_t candidate_oid, const vpp_trap_entry_t &candidate) {
             if (candidate.trap_type != trap.trap_type || !isActiveTrap(candidate))
             {
                 return;
@@ -152,6 +265,7 @@ sai_status_t SwitchVpp::programSemanticTrapBinding(
             if (!have_selected)
             {
                 selected = candidate;
+                selected_oid = candidate_oid;
                 have_selected = true;
             }
         };
@@ -160,15 +274,16 @@ sai_status_t SwitchVpp::programSemanticTrapBinding(
         {
             if (kv.first != trap_oid && kv.second.classify_installed)
             {
-                consider(kv.second);
+                consider(kv.first, kv.second);
             }
         }
 
         if (include_trap && isActiveTrap(trap))
         {
-            consider(trap);
+            consider(trap_oid, trap);
             // A create or explicit update owns the resulting physical row.
             selected = trap;
+            selected_oid = trap_oid;
             have_selected = true;
         }
 
@@ -192,39 +307,20 @@ sai_status_t SwitchVpp::programSemanticTrapBinding(
         }
     }
 
-    char policer_name[64] = {};
-    if (policer_oid != SAI_NULL_OBJECT_ID)
-    {
-        snprintf(policer_name, sizeof(policer_name), "copp-policer-0x%lx",
-                (unsigned long)policer_oid);
-    }
+    CHECK_STATUS(applySemanticTrapBinding(
+            trap.trap_type, active ? selected_oid : trap_oid, policer_oid, active));
 
-    int ret;
-    if (isDhcpTrap(trap.trap_type))
     {
-        ret = vpp_sonic_ext_copp_dhcp_bind(
-                policer_name,
-                trap.trap_type == SAI_HOSTIF_TRAP_TYPE_DHCPV6,
-                active);
+        std::lock_guard<std::mutex> lock(m_copp_state_mutex);
+        if (active)
+        {
+            m_semantic_trap_binding_owner[trap.trap_type] = selected_oid;
+        }
+        else
+        {
+            m_semantic_trap_binding_owner.erase(trap.trap_type);
+        }
     }
-    else
-    {
-        ret = vpp_sonic_ext_copp_neighbor_miss_bind(policer_name, active);
-    }
-
-    if (ret != 0)
-    {
-        SWSS_LOG_ERROR("failed to %s semantic trap %d for SAI trap 0x%lx: ret %d",
-                active ? "bind" : "unbind", (int)trap.trap_type,
-                (unsigned long)trap_oid, ret);
-        return SAI_STATUS_FAILURE;
-    }
-
-    SWSS_LOG_NOTICE("%s semantic trap %d for SAI trap 0x%lx%s%s",
-            active ? "bound" : "unbound", (int)trap.trap_type,
-            (unsigned long)trap_oid,
-            active ? " with policer " : "",
-            active ? (policer_name[0] ? policer_name : "none") : "");
 
     return SAI_STATUS_SUCCESS;
 }
@@ -736,6 +832,8 @@ sai_status_t SwitchVpp::createHostifTrap(
     }
 
     uint32_t vpp_policer_index = (uint32_t)~0;
+    sai_object_id_t previous_semantic_owner = isSemanticTrap(entry.trap_type) ?
+        semanticTrapBindingOwner(entry.trap_type) : SAI_NULL_OBJECT_ID;
 
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
@@ -786,11 +884,16 @@ sai_status_t SwitchVpp::createHostifTrap(
             std::lock_guard<std::mutex> lock(m_copp_state_mutex);
             m_trap_map.erase(object_id);
         }
-        if (entry.classify_installed &&
-                uninstallTrapClassify(object_id, entry) != SAI_STATUS_SUCCESS)
+        if (entry.classify_installed)
         {
-            SWSS_LOG_ERROR("Failed to roll back DHCP semantic binding for trap %s",
-                           sid.c_str());
+            sai_status_t restore_status = isSemanticTrap(entry.trap_type) ?
+                restoreSemanticTrapBinding(entry.trap_type, previous_semantic_owner) :
+                uninstallTrapClassify(object_id, entry);
+            if (restore_status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to roll back classify binding for trap %s",
+                               sid.c_str());
+            }
         }
         remove_internal(SAI_OBJECT_TYPE_HOSTIF_TRAP, sid);
         return update_status;
@@ -829,6 +932,10 @@ sai_status_t SwitchVpp::removeHostifTrap(
         }
     }
 
+    sai_object_id_t previous_semantic_owner =
+        have_trap && isSemanticTrap(trap_copy.trap_type) ?
+        semanticTrapBindingOwner(trap_copy.trap_type) : SAI_NULL_OBJECT_ID;
+
     if (need_uninstall)
     {
         CHECK_STATUS(uninstallTrapClassify(object_id, trap_copy));
@@ -856,11 +963,16 @@ sai_status_t SwitchVpp::removeHostifTrap(
             std::lock_guard<std::mutex> lock(m_copp_state_mutex);
             m_trap_map[object_id] = trap_copy;
         }
-        if (need_uninstall &&
-                installTrapClassify(object_id, trap_copy, (uint32_t)~0) != SAI_STATUS_SUCCESS)
+        if (need_uninstall)
         {
-            SWSS_LOG_ERROR("Failed to restore DHCP semantic binding for trap %s",
-                           serializedObjectId.c_str());
+            sai_status_t restore_status = isSemanticTrap(trap_copy.trap_type) ?
+                restoreSemanticTrapBinding(trap_copy.trap_type, previous_semantic_owner) :
+                installTrapClassify(object_id, trap_copy, (uint32_t)~0);
+            if (restore_status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to restore classify binding for trap %s",
+                               serializedObjectId.c_str());
+            }
         }
         return update_status;
     }
@@ -874,7 +986,14 @@ sai_status_t SwitchVpp::removeHostifTrap(
         }
         if (need_uninstall)
         {
-            installTrapClassify(object_id, trap_copy, (uint32_t)~0);
+            sai_status_t restore_status = isSemanticTrap(trap_copy.trap_type) ?
+                restoreSemanticTrapBinding(trap_copy.trap_type, previous_semantic_owner) :
+                installTrapClassify(object_id, trap_copy, (uint32_t)~0);
+            if (restore_status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to restore classify binding after remove failure for trap %s",
+                               serializedObjectId.c_str());
+            }
         }
         if (is_dhcp)
         {
@@ -960,6 +1079,9 @@ sai_status_t SwitchVpp::setHostifTrap(
         old_policer_index = resolvePolicer(old_trap);
     }
 
+    sai_object_id_t previous_semantic_owner = isSemanticTrap(old_trap.trap_type) ?
+        semanticTrapBindingOwner(old_trap.trap_type) : SAI_NULL_OBJECT_ID;
+
     if (need_install)
     {
         CHECK_STATUS(installTrapClassify(object_id, new_trap, new_policer_index));
@@ -981,7 +1103,12 @@ sai_status_t SwitchVpp::setHostifTrap(
         }
 
         sai_status_t restore_status = SAI_STATUS_SUCCESS;
-        if (need_install)
+        if ((need_install || need_uninstall) && isSemanticTrap(old_trap.trap_type))
+        {
+            restore_status = restoreSemanticTrapBinding(
+                    old_trap.trap_type, previous_semantic_owner);
+        }
+        else if (need_install)
         {
             restore_status = old_trap.classify_installed ?
                 installTrapClassify(object_id, old_trap, old_policer_index) :

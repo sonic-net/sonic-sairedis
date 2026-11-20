@@ -112,10 +112,11 @@ namespace
     // the IP2ME address set: the destinations the IP2ME policer meters on the punt path
     std::set<std::string> g_ip2meAddrs;
 
-    // IPv6 multicast routes VPP holds that accept on an interface and forward to
-    // local: (table, group/length, accepting interface). Tests can inject a
-    // sequence of API results before state is changed.
+    // IPv6 multicast routes VPP holds. Accept paths are keyed by interface;
+    // the shared local Forward path is keyed only by table and group. Tests can
+    // inject a sequence of API results before state is changed.
     std::set<std::tuple<uint32_t, std::string, std::string>> g_ip6LocalMroutes;
+    std::set<std::pair<uint32_t, std::string>> g_ip6LocalForwardMroutes;
     std::vector<int> g_ip6MrouteResults;
 
     uint32_t g_nextSwIfIndex = 100;
@@ -305,7 +306,7 @@ int __wrap_ip_route_add_del(vpp_ip_route_t *route, bool is_add)
 }
 
 int __wrap_ip6_mroute_local_add_del(uint32_t table_id, const uint8_t grp[16], uint8_t grp_len,
-                                    const char *accept_hwif, bool, bool is_add)
+                                    const char *accept_hwif, bool with_local_path, bool is_add)
 {
     SWSS_LOG_ENTER();
 
@@ -323,17 +324,30 @@ int __wrap_ip6_mroute_local_add_del(uint32_t table_id, const uint8_t grp[16], ui
 
     inet_ntop(AF_INET6, grp, addr, sizeof(addr));
 
-    auto key = std::make_tuple(table_id, std::string(addr) + "/" + std::to_string(grp_len),
-                               std::string(accept_hwif));
+    const std::string prefix = std::string(addr) + "/" + std::to_string(grp_len);
+    auto key = std::make_tuple(table_id, prefix, std::string(accept_hwif));
+    auto forward = std::make_pair(table_id, prefix);
 
     if (is_add)
     {
         g_ip6LocalMroutes.insert(key);
+        if (with_local_path)
+        {
+            g_ip6LocalForwardMroutes.insert(forward);
+        }
         return 0;
     }
 
-    // VPP fails the removal of paths that are not there
-    return g_ip6LocalMroutes.erase(key) == 1 ? 0 : -1;
+    // VPP fails the removal of paths that are not there.
+    if (g_ip6LocalMroutes.erase(key) != 1)
+    {
+        return -1;
+    }
+    if (with_local_path)
+    {
+        g_ip6LocalForwardMroutes.erase(forward);
+    }
+    return 0;
 }
 
 int __wrap_vpp_sonic_ext_copp_ip2me_addr_add_del(uint32_t addr, bool is_add)
@@ -1934,7 +1948,7 @@ class SwitchVppDhcpTrap : public ::testing::Test
                     m_sw->create_internal(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), m_switchId, 1, &sattr));
 
             vppMock().reset();
-            vppMock().enabledFeatures = {"l2-trap-fixup", "l2-vlan-filter"};
+            vppMock().enabledFeatures = {"copp", "l2-trap-fixup", "l2-vlan-filter"};
             vppMock().nodeNexts = {
                 {"linux-cp-punt", PUNT},
                 {"sonic-ext-l2-trap-fixup", TRAP_FIXUP},
@@ -1945,6 +1959,7 @@ class SwitchVppDhcpTrap : public ::testing::Test
             g_ip4RouteResults.clear();
             g_ip2meAddrs.clear();
             g_ip6LocalMroutes.clear();
+            g_ip6LocalForwardMroutes.clear();
             g_ip6MrouteResults.clear();
         }
 
@@ -2414,6 +2429,45 @@ TEST_F(SwitchVppDhcpTrap, DhcpSemanticBindingsAreIndependentByFamily)
     EXPECT_FALSE(vppMock().coppDhcpBindCalls.back().isBind);
 }
 
+TEST(SwitchVpp, DisabledCoppKeepsDhcpDeliveryWithoutProgrammingSemanticRows)
+{
+    // sonicExtFeatureEnabled() caches startup state process-wide. Re-exec this
+    // case so it observes a clean cache with control-plane policing absent.
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT({
+        auto sc = std::make_shared<SwitchConfig>(0, "");
+        sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+        sc->m_switchType = SAI_VS_SWITCH_TYPE_VPP;
+        sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+        sc->m_useTapDevice = false;
+        sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+        sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+        auto scc = std::make_shared<SwitchConfigContainer>();
+        scc->insert(sc);
+        auto mgr = std::make_shared<RealObjectIdManager>(0, scc);
+        const sai_object_id_t switch_id = 0x2100000000;
+        auto sw = std::make_shared<SwitchVpp>(switch_id, mgr, sc);
+
+        vppMock().reset();
+        vppMock().enabledFeatures.insert("l2-trap-fixup");
+        vppMock().enabledFeatures.insert("l2-vlan-filter");
+        const auto trap = mgr->allocateNewObjectId(SAI_OBJECT_TYPE_HOSTIF_TRAP, switch_id);
+        sai_attribute_t attrs[2]{};
+        attrs[0].id = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE;
+        attrs[0].value.s32 = SAI_HOSTIF_TRAP_TYPE_DHCP;
+        attrs[1].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+        attrs[1].value.s32 = SAI_PACKET_ACTION_TRAP;
+
+        const auto status = sw->create(SAI_OBJECT_TYPE_HOSTIF_TRAP,
+                sai_serialize_object_id(trap), switch_id, 2, attrs);
+        _exit(status == SAI_STATUS_SUCCESS && sw->m_dhcp_trap_active &&
+                sw->m_trap_map.count(trap) == 1 &&
+                sw->m_semantic_trap_binding_owner.at(SAI_HOSTIF_TRAP_TYPE_DHCP) == trap &&
+                vppMock().queriedFeature == "copp" &&
+                vppMock().coppDhcpBindCalls.empty() ? 0 : 1);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
 TEST_F(SwitchVppDhcpTrap, NeighborMissUsesItsSemanticBinding)
 {
     auto policer = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_POLICER, m_switchId);
@@ -2717,6 +2771,15 @@ class SwitchVppDhcp6Trap : public SwitchVppDhcpTrap
                                                            std::string("bvi100"))) == 1;
         }
 
+        static bool hasDhcp6LocalForward(
+                uint32_t table_id = 0)
+        {
+            SWSS_LOG_ENTER();
+
+            return g_ip6LocalForwardMroutes.count(
+                    std::make_pair(table_id, std::string("ff02::1:2/128"))) == 1;
+        }
+
         // TRAP: punted on both members, so the BVI never sees it and needs no route
         void expectTrap6()
         {
@@ -2854,22 +2917,27 @@ TEST_F(SwitchVppDhcp6Trap, RoutedReceivePersistsAcrossTrapCopyTransitions)
 
     EXPECT_EQ(1u, g_ip6LocalMroutes.count(
             std::make_tuple(0u, std::string("ff02::1:2/128"), std::string("Ethernet42"))));
+    EXPECT_TRUE(hasDhcp6LocalForward());
 
     createBvi();
     EXPECT_FALSE(bviReceivesDhcp6());
+    EXPECT_TRUE(hasDhcp6LocalForward());
 
     setTrapAction(trap, SAI_PACKET_ACTION_COPY);
     EXPECT_TRUE(bviReceivesDhcp6());
+    EXPECT_TRUE(hasDhcp6LocalForward());
     EXPECT_EQ(1u, g_ip6LocalMroutes.count(
             std::make_tuple(0u, std::string("ff02::1:2/128"), std::string("Ethernet42"))));
 
     setTrapAction(trap, SAI_PACKET_ACTION_TRAP);
     EXPECT_FALSE(bviReceivesDhcp6());
+    EXPECT_TRUE(hasDhcp6LocalForward());
     EXPECT_EQ(1u, g_ip6LocalMroutes.count(
             std::make_tuple(0u, std::string("ff02::1:2/128"), std::string("Ethernet42"))));
 
     removeTrap(trap);
     EXPECT_TRUE(g_ip6LocalMroutes.empty());
+    EXPECT_TRUE(g_ip6LocalForwardMroutes.empty());
 }
 
 TEST_F(SwitchVppDhcp6Trap, ReceiveRouteFailuresRollBackCreateSetAndRemove)
@@ -2931,6 +2999,56 @@ TEST_F(SwitchVppDhcp6Trap, ReceiveRouteFailuresRollBackCreateSetAndRemove)
     ASSERT_EQ(SAI_STATUS_SUCCESS,
             m_sw->remove(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(trap)));
     expectNoTrap6();
+}
+
+TEST_F(SwitchVppDhcp6Trap, FailedOverlappingTransitionsRestoreThePreviousPolicer)
+{
+    addMembers();
+    createBvi();
+
+    const auto policerA = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_POLICER, m_switchId);
+    const auto policerB = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_POLICER, m_switchId);
+    const auto groupA = createTrapGroup(policerA);
+    const auto groupB = createTrapGroup(policerB);
+    const auto oldTrap = createTrap(
+            SAI_PACKET_ACTION_TRAP, SAI_HOSTIF_TRAP_TYPE_DHCPV6, groupA);
+    const auto replacement = createTrap(
+            SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6, groupB);
+
+    char expectedB[64];
+    snprintf(expectedB, sizeof(expectedB), "copp-policer-0x%lx",
+            (unsigned long)policerB);
+    ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
+    EXPECT_EQ(expectedB, vppMock().coppDhcpBindCalls.back().policerName);
+    EXPECT_EQ(replacement,
+            m_sw->m_semantic_trap_binding_owner.at(SAI_HOSTIF_TRAP_TYPE_DHCPV6));
+
+    // Removing the old TRAP would expose COPY and add the BVI receive route.
+    // If that route update fails, the provider row must remain owned by the
+    // replacement trap and policer B, not be rebound to the old policer A.
+    g_ip6MrouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->remove(SAI_OBJECT_TYPE_HOSTIF_TRAP, sai_serialize_object_id(oldTrap)));
+    ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isIpv6);
+    EXPECT_EQ(expectedB, vppMock().coppDhcpBindCalls.back().policerName);
+    EXPECT_EQ(replacement,
+            m_sw->m_semantic_trap_binding_owner.at(SAI_HOSTIF_TRAP_TYPE_DHCPV6));
+
+    // The same invariant holds when deactivating the old owner through SET.
+    sai_attribute_t action{};
+    action.id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    action.value.s32 = SAI_PACKET_ACTION_DROP;
+    g_ip6MrouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP,
+                    sai_serialize_object_id(oldTrap), &action));
+    ASSERT_FALSE(vppMock().coppDhcpBindCalls.empty());
+    EXPECT_TRUE(vppMock().coppDhcpBindCalls.back().isBind);
+    EXPECT_EQ(expectedB, vppMock().coppDhcpBindCalls.back().policerName);
+    EXPECT_EQ(replacement,
+            m_sw->m_semantic_trap_binding_owner.at(SAI_HOSTIF_TRAP_TYPE_DHCPV6));
 }
 
 TEST_F(SwitchVppDhcp6Trap, AdminDownBviDoesNotReceiveDhcp6Copy)

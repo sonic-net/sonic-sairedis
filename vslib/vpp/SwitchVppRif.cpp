@@ -2921,6 +2921,31 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
 
             if (v6_changed && v6_is_up)
             {
+                /* A LAG RIF created IPv6-admin-down did not initialize the
+                 * bond MAC on CREATE. Do it before taking the first IPv6 lock:
+                 * VPP derives the link-local address once and will not rebuild
+                 * it after a later MAC change. SUB_PORT RIFs deliberately do
+                 * not rewrite their shared parent bond. */
+                if (ot == SAI_OBJECT_TYPE_LAG &&
+                        rif_type == SAI_ROUTER_INTERFACE_TYPE_PORT)
+                {
+                    sai_attribute_t mac{};
+                    mac.id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+                    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &mac) !=
+                            SAI_STATUS_SUCCESS)
+                    {
+                        mac.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+                        CHECK_STATUS(get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &mac));
+                    }
+
+                    if (sw_interface_set_mac(hwif.c_str(), mac.value.mac) != 0)
+                    {
+                        SWSS_LOG_ERROR("Failed to set MAC %s on %s before enabling IPv6",
+                                sai_serialize_mac(mac.value.mac).c_str(), hwif.c_str());
+                        return SAI_STATUS_FAILURE;
+                    }
+                }
+
                 CHECK_STATUS(vpp_rif_ip6_enable_disable(hwif, true));
                 v6_programmed = true;
             }

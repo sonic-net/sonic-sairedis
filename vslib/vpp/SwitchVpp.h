@@ -1229,6 +1229,13 @@ namespace saivs
             std::map<sai_object_id_t, vpp_trap_group_entry_t> m_trap_group_map;
             std::map<sai_object_id_t, vpp_trap_entry_t> m_trap_map;
 
+            // The provider exposes one physical row per semantic trap type.
+            // Remember which SAI owner most recently programmed that row so a
+            // failed overlapping create/set/remove can restore the exact
+            // pre-operation policer rather than whichever map entry is visited
+            // first. Protected by m_copp_state_mutex.
+            std::map<sai_hostif_trap_type_t, sai_object_id_t> m_semantic_trap_binding_owner;
+
             sai_status_t createHostifTrapGroup(
                     _In_ sai_object_id_t object_id,
                     _In_ sai_object_id_t switch_id,
@@ -1280,6 +1287,19 @@ namespace saivs
                     _In_ sai_object_id_t trap_oid,
                     _In_ const vpp_trap_entry_t &trap,
                     _In_ bool include_trap);
+
+            sai_status_t applySemanticTrapBinding(
+                    _In_ sai_hostif_trap_type_t trap_type,
+                    _In_ sai_object_id_t owner_oid,
+                    _In_ sai_object_id_t policer_oid,
+                    _In_ bool active);
+
+            sai_object_id_t semanticTrapBindingOwner(
+                    _In_ sai_hostif_trap_type_t trap_type);
+
+            sai_status_t restoreSemanticTrapBinding(
+                    _In_ sai_hostif_trap_type_t trap_type,
+                    _In_ sai_object_id_t owner_oid);
 
         protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCP packet action
 
