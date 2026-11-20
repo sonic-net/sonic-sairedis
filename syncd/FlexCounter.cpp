@@ -359,6 +359,29 @@ std::string serializeStat(
     return sai_serialize_ha_set_stat(stat);
 }
 
+/*
+ * Counter name as written to COUNTERS_DB, serialized once per thread, since
+ * each poll writes the names of all counters of all objects, and serializing
+ * an enum value searches all values of the enum.
+ */
+template <typename StatType>
+const std::string& serializeStatCached(
+        _In_ const StatType stat)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons, called per counter
+
+    static thread_local std::unordered_map<int32_t, std::string> names;
+
+    auto it = names.find(static_cast<int32_t>(stat));
+
+    if (it == names.end())
+    {
+        it = names.emplace(static_cast<int32_t>(stat), serializeStat(stat)).first;
+    }
+
+    return it->second;
+}
+
 template <typename StatType>
 void deserializeStat(
         _In_ const char* name,
@@ -1607,7 +1630,7 @@ public:
             std::vector<swss::FieldValueTuple> values;
             for (size_t i = 0; i != statIds.size(); i++)
             {
-                values.emplace_back(serializeStat(statIds[i]), std::to_string(stats[i]));
+                values.emplace_back(serializeStatCached(statIds[i]), std::to_string(stats[i]));
             }
             countersTable.set(sai_serialize_object_id(vid), values, "");
         }
@@ -1872,7 +1895,7 @@ private:
 
             for (size_t j = 0; j < ctx.counter_ids.size(); j++)
             {
-                values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
+                values.emplace_back(serializeStatCached(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
             }
 
             countersTable.set(sai_serialize_object_id(vid), values, "");
@@ -3980,7 +4003,7 @@ private:
             meter_class_hit = false;
             for (size_t j = 0; j < ctx.counter_ids.size(); j++)
             {
-                values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
+                values.emplace_back(serializeStatCached(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
             }
             auto meter_bucket_entry =
                 meterBucketRidToVid(ctx.object_keys[i].key.meter_bucket_entry,
