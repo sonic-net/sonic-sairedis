@@ -818,6 +818,77 @@ TEST_F(SwitchVppRifTest, unsupportedActionsFailBeforeAllocatingInterfaces)
     EXPECT_EQ(0u, vppMock().loopbackCalls);
 }
 
+TEST_F(SwitchVppRifTest, vlanCreateAppliesMtuAndSupportsUpdateAndRecreate)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan);
+    sai_attribute_t mtu{};
+    mtu.id = SAI_ROUTER_INTERFACE_ATTR_MTU;
+    mtu.value.u32 = 9100;
+    attrs.push_back(mtu);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    ASSERT_EQ(1u, vppMock().mtus.count("bvi100"));
+    EXPECT_EQ(9100u, vppMock().mtus.at("bvi100")[0]);
+    EXPECT_EQ(1u, vppMock().lcpPairs.count("bvi100"));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &mtu));
+    EXPECT_EQ(9100u, mtu.value.u32);
+
+    mtu.value.u32 = 1500;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &mtu));
+    EXPECT_EQ(1500u, vppMock().mtus.at("bvi100")[0]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &mtu));
+    EXPECT_EQ(1500u, mtu.value.u32);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    EXPECT_EQ(0u, vppMock().mtus.count("bvi100"));
+    EXPECT_EQ(0u, vppMock().lcpPairs.count("bvi100"));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_EQ(9100u, vppMock().mtus.at("bvi100")[0]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+}
+
+TEST_F(SwitchVppRifTest, vlanCreateWithoutMtuAppliesSaiDefault)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto metadata = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_MTU);
+    ASSERT_NE(nullptr, metadata);
+    ASSERT_NE(nullptr, metadata->defaultvalue);
+    ASSERT_EQ(1514u, metadata->defaultvalue->u32);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan)));
+    ASSERT_EQ(1u, vppMock().mtus.count("bvi100"));
+    EXPECT_EQ(metadata->defaultvalue->u32, vppMock().mtus.at("bvi100")[0]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+}
+
+TEST_F(SwitchVppRifTest, vlanMtuFailureRollsBackAndCanBeRetried)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan);
+    sai_attribute_t mtu{};
+    mtu.id = SAI_ROUTER_INTERFACE_ATTR_MTU;
+    mtu.value.u32 = 9100;
+    attrs.push_back(mtu);
+    vppMock().mtuResult = -1;
+
+    ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
+    EXPECT_EQ(0, vppMock().mtuResult);
+    EXPECT_EQ(0u, vppMock().interfaces.count("bvi100"));
+    EXPECT_EQ(0u, vppMock().lcpPairs.count("bvi100"));
+    EXPECT_EQ(0u, vppMock().bridgePorts.count("bvi100"));
+    EXPECT_EQ(0u, vppMock().mtus.count("bvi100"));
+    EXPECT_EQ(nullptr, sw->m_ifaceRegistry.findByHwif("bvi100"));
+    EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
+    EXPECT_EQ(0u, sw->m_rifStatsBaseMap.count(rif));
+    EXPECT_EQ(0u, sw->m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE).count(sai_serialize_object_id(rif)));
+    EXPECT_EQ(1u, sw->m_objectHash.at(SAI_OBJECT_TYPE_VLAN).count(sai_serialize_object_id(vlan)));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_EQ(9100u, vppMock().mtus.at("bvi100")[0]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+}
+
 TEST_F(SwitchVppRifTest, failedCreatesUnwindOwnedResourcesAndCanBeRetried)
 {
     const auto parentRif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);

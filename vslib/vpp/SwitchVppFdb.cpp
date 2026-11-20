@@ -1899,6 +1899,19 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     snprintf(hw_bviifname, sizeof(hw_bviifname), "bvi%u",vlan_id);
     hw_ifname = hw_bviifname;
 
+    // LCP copies the BVI's MTU into its tap when the pair is created, so
+    // apply the SAI MTU first instead of inheriting VPP's Ethernet default.
+    auto attr_mtu = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_MTU, attr_count, attr_list);
+    auto md_mtu = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_MTU);
+    uint32_t mtu = attr_mtu != NULL ? attr_mtu->value.u32 : md_mtu->defaultvalue->u32;
+    int mtu_ret = sw_interface_set_mtu(hw_ifname, mtu);
+    if (mtu_ret != 0)
+    {
+        SWSS_LOG_ERROR("Failed to set MTU %u on BVI %s (ret %d)", mtu, hw_ifname, mtu_ret);
+        return SAI_STATUS_FAILURE;
+    }
+    SWSS_LOG_NOTICE("Set MTU %u on BVI %s", mtu, hw_ifname);
+
     // Put the BVI in its virtual router's table, in both address families,
     // while it has no address yet; the SVI addresses arrive later, from the
     // IP2ME routes.
