@@ -3,12 +3,32 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <thread>
 
 #include <memory>
 
 using namespace saivs;
+
+namespace
+{
+class PlatformEventCountingSwitchState final : public SwitchStateBase
+{
+public:
+    using SwitchStateBase::SwitchStateBase;
+
+    void syncOnPlatformEvent(
+            _In_ std::shared_ptr<EventPayloadPlatformEvent> payload) override
+    {
+        SWSS_LOG_ENTER();
+
+        m_events++;
+    }
+
+    std::atomic<int> m_events{0};
+};
+}
 
 static const char* profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
@@ -116,5 +136,57 @@ TEST(Sai, fdbAgingWakeEvent)
     // remove(SWITCH) triggers stopFdbAgingThread() which joins the thread.
     // If the wake/shutdown paths are broken this would hang; the test passing
     // confirms the aging thread terminates correctly.
+    EXPECT_EQ(sai.remove(SAI_OBJECT_TYPE_SWITCH, switch_id), SAI_STATUS_SUCCESS);
+}
+
+TEST(Sai, platformEventAppliedUnderApiMutex)
+{
+    Sai sai;
+
+    EXPECT_EQ(sai.apiInitialize(0, &test_services), SAI_STATUS_SUCCESS);
+
+    sai_attribute_t attr;
+    sai_object_id_t switch_id = SAI_NULL_OBJECT_ID;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    ASSERT_EQ(sai.create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 1, &attr), SAI_STATUS_SUCCESS);
+
+    auto& switchStateMap = sai.m_vsSai->m_switchStateMap;
+    auto original = switchStateMap.at(switch_id);
+    auto state = std::make_shared<PlatformEventCountingSwitchState>(
+            switch_id,
+            sai.m_vsSai->m_realObjectIdManager,
+            original->m_switchConfig);
+
+    {
+        // While an API call holds the mutex, the event queue thread waits for it
+        std::lock_guard<std::recursive_mutex> lock(sai.m_apimutex);
+
+        switchStateMap.at(switch_id) = state;
+
+        sai.m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_PLATFORM_EVENT,
+                    std::make_shared<EventPayloadPlatformEvent>(switch_id)));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        EXPECT_EQ(state->m_events.load(), 0);
+    }
+
+    // and applies the event once the call returns
+    for (int i = 0; i < 200 && state->m_events.load() == 0; i++)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_EQ(state->m_events.load(), 1);
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(sai.m_apimutex);
+
+        switchStateMap.at(switch_id) = original;
+    }
+
     EXPECT_EQ(sai.remove(SAI_OBJECT_TYPE_SWITCH, switch_id), SAI_STATUS_SUCCESS);
 }

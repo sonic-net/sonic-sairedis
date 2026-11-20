@@ -47,7 +47,15 @@ namespace syncd
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
                     _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
 
+            std::shared_ptr<SaiObj> findCurrentBestMatchForVirtualRouter(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+                    _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
+
             std::shared_ptr<SaiObj> findCurrentBestMatchForNextHopGroup(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+                    _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
+
+            std::shared_ptr<SaiObj> findCurrentBestMatchForNextHop(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
                     _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
 
@@ -152,6 +160,10 @@ namespace syncd
             static int findAllChildsInDependencyTreeCount(
                     _In_ const AsicView &view,
                     _In_ const std::shared_ptr<const SaiObj> &obj);
+
+            static std::string getNextHopGroupsSignature(
+                    _In_ const AsicView &view,
+                    _In_ sai_object_id_t nextHopVid);
 
             static std::vector<std::shared_ptr<const SaiObj>> findUsageCount(
                     _In_ const AsicView &view,

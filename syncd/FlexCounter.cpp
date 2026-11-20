@@ -1658,6 +1658,22 @@ public:
         return !m_objectIdsMap.empty() || !m_bulkContexts.empty();
     }
 
+    void getObjectVids(
+            _Out_ std::set<sai_object_id_t> &vids) const override
+    {
+        SWSS_LOG_ENTER();
+
+        for (const auto &kv : m_objectIdsMap)
+        {
+            vids.insert(kv.first);
+        }
+
+        for (const auto &kv : m_bulkContexts)
+        {
+            vids.insert(kv.second->object_vids.begin(), kv.second->object_vids.end());
+        }
+    }
+
 private:
     std::set<StatType> setupBaseCounterGroup(
             _In_ sai_object_id_t rid,
@@ -2768,23 +2784,28 @@ public:
             SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
 
-            for (size_t i = 0; i < attrIds.size(); i++)
+            auto initializeAttrData = [&]()
             {
-                sai_attribute_t attr = {};
-                attr.id = attrIds[i];
-                if (!initAttrData(rid, &attr, &attrData))
+                attrs.clear();
+                for (size_t i = 0; i < attrIds.size(); i++)
                 {
-                    SWSS_LOG_WARN(
-                        "PORT_PHY_ATTR: Failed to initialize attribute"
-                        " %d for RID:0x%" PRIx64 ", "
-                        "skipping this attribute only",
-                        attrIds[i], rid);
-                    continue;
+                    sai_attribute_t attr = {};
+                    attr.id = attrIds[i];
+                    if (!initAttrData(rid, &attr, &attrData))
+                    {
+                        SWSS_LOG_WARN(
+                            "PORT_PHY_ATTR: Failed to initialize attribute"
+                            " %d for RID:0x%" PRIx64 ", "
+                            "skipping this attribute only",
+                            attrIds[i], rid);
+                        continue;
+                    }
+                    attrs.push_back(attr);
                 }
-                attrs.push_back(attr);
-            }
+                return !attrs.empty();
+            };
 
-            if (attrs.empty())
+            if (!initializeAttrData())
             {
                 SWSS_LOG_WARN(
                     "PORT_PHY_ATTR: No attributes could be initialized"
@@ -2798,6 +2819,58 @@ public:
                     rid,
                     static_cast<uint32_t>(attrs.size()),
                     attrs.data());
+
+            if (status == SAI_STATUS_BUFFER_OVERFLOW)
+            {
+                bool laneCountUpdated = false;
+
+                // Retry if SAI reports a larger PHY list. The FEC alignment lock list size is
+                // physical lane count * logical FEC lanes per physical lane. The multiplier
+                // can be 1 while the port is down and depends on speed when active. Cache the
+                // required size as high-water capacity. On a decrease, SAI returns the actual
+                // count and only those lanes are serialized.
+                for (size_t i = 0; i < attrs.size(); i++)
+                {
+                    auto attrId = static_cast<sai_port_attr_t>(attrs[i].id);
+                    auto &cachedLaneCount = m_portLaneCountMap.at(rid).at(attrId);
+                    auto laneCount = extractLaneCount(attrs[i]);
+
+                    if (laneCount > cachedLaneCount)
+                    {
+                        SWSS_LOG_NOTICE(
+                                "PORT_PHY_ATTR: Updating m_portLaneCountMap[rid:0x%" PRIx64
+                                "][%d] from %u to %u",
+                                rid, attrs[i].id, cachedLaneCount, laneCount);
+
+                        cachedLaneCount = laneCount;
+                        laneCountUpdated = true;
+                    }
+                }
+
+                if (laneCountUpdated)
+                {
+                    if (!initializeAttrData())
+                    {
+                        SWSS_LOG_WARN(
+                            "PORT_PHY_ATTR: No attributes could be initialized"
+                            " for RID:0x%" PRIx64 ", skipping object", rid);
+                        continue;
+                    }
+
+                    status = Base::m_vendorSai->get(
+                            Base::m_objectType,
+                            rid,
+                            static_cast<uint32_t>(attrs.size()),
+                            attrs.data());
+
+                    if (status == SAI_STATUS_SUCCESS)
+                    {
+                        SWSS_LOG_NOTICE(
+                                "PORT_PHY_ATTR: Retry succeeded for VID 0x%" PRIx64 ", RID 0x%" PRIx64,
+                                vid, rid);
+                    }
+                }
+            }
 
             if (status != SAI_STATUS_SUCCESS)
             {
@@ -3595,6 +3668,17 @@ public:
         return !m_bulkMeterContexts.empty();
     }
 
+    void getObjectVids(
+            _Out_ std::set<sai_object_id_t> &vids) const override
+    {
+        SWSS_LOG_ENTER();
+
+        for (const auto &kv : m_bulkMeterContexts)
+        {
+            vids.insert(kv.first);
+        }
+    }
+
 private:
     struct BulkMeterStatsContext
     {
@@ -4060,6 +4144,22 @@ void FlexCounter::addCounterPlugin(
 
     // notify thread to start polling
     notifyPoll();
+}
+
+std::set<sai_object_id_t> FlexCounter::getCounterVids()
+{
+    MUTEX;
+
+    SWSS_LOG_ENTER();
+
+    std::set<sai_object_id_t> vids;
+
+    for (const auto &kv : m_counterContext)
+    {
+        kv.second->getObjectVids(vids);
+    }
+
+    return vids;
 }
 
 bool FlexCounter::isEmpty()

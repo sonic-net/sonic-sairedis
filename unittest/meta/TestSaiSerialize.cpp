@@ -41,6 +41,12 @@ TEST(SaiSerialize, transfer_attributes)
     {
         auto meta = sai_metadata_attr_sorted_by_id_name[idx];
 
+        // values that currently don't have transfer methods
+        if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_FW_LIST)
+        {
+            continue;
+        }
+
         src.id = meta->attrid;
         dst.id = meta->attrid;
 
@@ -379,6 +385,7 @@ TEST(SaiSerialize, sai_serialize_attr_value)
             case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
             case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
             case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+            case SAI_ATTR_VALUE_TYPE_FW_LIST:
                 continue;
 
             default:
