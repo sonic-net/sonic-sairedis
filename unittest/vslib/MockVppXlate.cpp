@@ -490,9 +490,9 @@ extern "C" int __wrap_vpp_iface_loopback_set_action(const char *name, int action
  * IP-in-IP tunnels, named for their instance as VPP names them. Like VPP, the
  * mock reuses the lowest free instance and the sw_if_index of a deleted tunnel
  * (1000 on, here). A call is recorded with the tunnel's name, its sw_if_index
- * as id and, for an add, its mode as sub_id. Deleting a tunnel resets its
- * loopback packet action, as the sonic_ext plugin does for any interface VPP
- * deletes.
+ * as id and, for an add, its mode as sub_id; the flags of a tunnel are kept by
+ * its name. Deleting a tunnel resets its loopback packet action and encap TTL,
+ * as the sonic_ext plugin does for any interface VPP deletes.
  */
 extern "C" int __wrap_vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *sw_if_index)
 {
@@ -504,6 +504,7 @@ extern "C" int __wrap_vpp_ipip_tunnel_add(vpp_ipip_tunnel_t *tunnel, uint32_t *s
     }
     uint32_t idx = 1000 + instance;
     vppMock().swifNames[idx] = "ipip" + std::to_string(instance);
+    vppMock().ipipFlags[vppMock().swifNames[idx]] = tunnel->flags;
     *sw_if_index = idx;
     vppMock().calls.push_back({"vpp_ipip_tunnel_add", vppMock().swifNames[idx], idx, tunnel->mode, false});
     return 0;
@@ -518,7 +519,34 @@ extern "C" int __wrap_vpp_ipip_tunnel_del(uint32_t sw_if_index)
         return vppMock().ipipDelResult;
     }
     vppMock().actions.erase(vppMock().swifNames[sw_if_index]);
+    vppMock().encapTtls.erase(vppMock().swifNames[sw_if_index]);
+    vppMock().ipipFlags.erase(vppMock().swifNames[sw_if_index]);
     vppMock().swifNames.erase(sw_if_index);
+    return 0;
+}
+
+/*
+ * Encap TTL, recorded with the interface's name, its sw_if_index as id and the
+ * TTL as sub_id. As in the sonic_ext plugin, TTL 0 removes it.
+ */
+extern "C" int __wrap_vpp_sonic_ext_tunnel_encap_ttl_set(uint32_t sw_if_index, uint8_t ttl)
+{
+    SWSS_LOG_ENTER();
+    auto it = vppMock().swifNames.find(sw_if_index);
+    const std::string name = it == vppMock().swifNames.end() ? "" : it->second;
+    vppMock().calls.push_back({"vpp_sonic_ext_tunnel_encap_ttl_set", name, sw_if_index, ttl, false});
+    if (vppMock().encapTtlFailures.count({name, ttl}))
+    {
+        return -1;
+    }
+    if (ttl != 0)
+    {
+        vppMock().encapTtls[name] = ttl;
+    }
+    else
+    {
+        vppMock().encapTtls.erase(name);
+    }
     return 0;
 }
 
