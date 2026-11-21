@@ -236,6 +236,14 @@ void DisabledRedisClient::removeVidAndRid(
     SWSS_LOG_ENTER();
 }
 
+void DisabledRedisClient::removeVidsAndRids(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* vids,
+        _In_ const sai_object_id_t* rids)
+{
+    SWSS_LOG_ENTER();
+}
+
 void DisabledRedisClient::insertVidAndRid(
         _In_ sai_object_id_t vid,
         _In_ sai_object_id_t rid)

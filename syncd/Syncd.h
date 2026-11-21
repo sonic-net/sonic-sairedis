@@ -394,6 +394,7 @@ namespace syncd
             void syncUpdateRedisQuadEvent(
                     _In_ sai_status_t status,
                     _In_ sai_common_api_t api,
+                    _In_ const sai_object_meta_key_t& metaKey,
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
             void syncUpdateRedisBulkQuadEvent(

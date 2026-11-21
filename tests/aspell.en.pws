@@ -207,6 +207,8 @@ github
 gSwitchId
 hardcoded
 hasEqualAttribute
+hdel
+hiredis
 hostif
 hpp
 htonl

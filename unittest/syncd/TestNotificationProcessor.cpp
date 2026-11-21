@@ -166,3 +166,75 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     EXPECT_NO_THROW(notificationProcessor->syncProcessNotification(hostTxReadyItem));
     translator->eraseRidAndVid(0x10000000000fd, 0x1000000000019);
 }
+
+static std::string fdbEventData(
+        _In_ const std::string& mac,
+        _In_ const std::string& event)
+{
+    SWSS_LOG_ENTER();
+
+    return "{\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x2600000001\\\",\\\"mac\\\":\\\"" + mac +
+        "\\\",\\\"switch_id\\\":\\\"oid:0x21000000000000\\\"}\",\"fdb_event\":\"" + event +
+        "\",\"list\":[{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"value\":\"oid:0x1003a0000004a\"}]}";
+}
+
+TEST(NotificationProcessor, fdbEventsOfOneNotificationKeepTheirOrder)
+{
+    auto sai = std::make_shared<saivs::Sai>();
+    auto dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+    auto client = std::make_shared<RedisClient>(dbAsic);
+    auto producer = std::make_shared<syncd::RedisNotificationProducer>("ASIC_DB");
+
+    auto notificationProcessor = std::make_shared<NotificationProcessor>(producer, client,
+                                                             [](const swss::KeyOpFieldsValuesTuple&){});
+
+    auto switchConfigContainer = std::make_shared<sairedis::SwitchConfigContainer>();
+    auto redisVidIndexGenerator = std::make_shared<sairedis::RedisVidIndexGenerator>(dbAsic, REDIS_KEY_VIDCOUNTER);
+    auto virtualObjectIdManager = std::make_shared<sairedis::VirtualObjectIdManager>(0, switchConfigContainer, redisVidIndexGenerator);
+
+    auto translator = std::make_shared<VirtualOidTranslator>(client, virtualObjectIdManager, sai);
+    notificationProcessor->m_translator = translator;
+
+    translator->insertRidAndVid(0x21000000000000, 0x210000000000);
+    translator->insertRidAndVid(0x1003a0000004a, 0x3a000000000a99);
+    translator->insertRidAndVid(0x2600000001, 0x26000000000001);
+
+    auto key = [](const std::string& mac) {
+        SWSS_LOG_ENTER();
+        return "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x26000000000001\",\"mac\":\"" + mac +
+            "\",\"switch_id\":\"oid:0x210000000000\"}";
+    };
+
+    // events in one notification, to be applied in order
+    std::string data = "[" +
+        fdbEventData("00:00:00:00:00:11", "SAI_FDB_EVENT_LEARNED") + "," +
+        fdbEventData("00:00:00:00:00:12", "SAI_FDB_EVENT_LEARNED") + "," +
+        fdbEventData("00:00:00:00:00:11", "SAI_FDB_EVENT_AGED") + "," +
+        fdbEventData("00:00:00:00:00:13", "SAI_FDB_EVENT_LEARNED") + "," +
+        fdbEventData("00:00:00:00:00:12", "SAI_FDB_EVENT_MOVE") + "]";
+
+    std::vector<swss::FieldValueTuple> values;
+    swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, data, values);
+
+    notificationProcessor->syncProcessNotification(item);
+
+    EXPECT_FALSE(dbAsic->exists(key("00:00:00:00:00:11")));
+
+    for (auto mac: {"00:00:00:00:00:12", "00:00:00:00:00:13"})
+    {
+        auto bridgePort = dbAsic->hget(key(mac), "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
+        auto type = dbAsic->hget(key(mac), "SAI_FDB_ENTRY_ATTR_TYPE");
+
+        ASSERT_NE(bridgePort, nullptr);
+        ASSERT_NE(type, nullptr);
+
+        EXPECT_EQ(*bridgePort, "oid:0x3a000000000a99");
+        EXPECT_EQ(*type, "SAI_FDB_ENTRY_TYPE_DYNAMIC");
+
+        dbAsic->del(key(mac));
+    }
+
+    translator->eraseRidAndVid(0x21000000000000, 0x210000000000);
+    translator->eraseRidAndVid(0x1003a0000004a, 0x3a000000000a99);
+    translator->eraseRidAndVid(0x2600000001, 0x26000000000001);
+}

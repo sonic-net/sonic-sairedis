@@ -876,17 +876,16 @@ void SaiSwitch::helperSaveDiscoveredObjectsToRedis()
 
     SWSS_LOG_NOTICE("putting ALL discovered objects to redis");
 
-    for (sai_object_id_t rid: m_discovered_rids)
-    {
-        /*
-         * We also could thing of optimizing this since it's one call to redis
-         * per rid, and probably this should be ATOMIC.
-         *
-         * NOTE: We are also storing read only object's here, like default
-         * virtual router, CPU, default trap group, etc.
-         */
+    /*
+     * NOTE: We are also storing read only object's here, like default
+     * virtual router, CPU, default trap group, etc.
+     */
 
-        redisSetDummyAsicStateForRealObjectId(rid);
+    if (m_discovered_rids.size())
+    {
+        std::vector<sai_object_id_t> rids(m_discovered_rids.begin(), m_discovered_rids.end());
+
+        redisSetDummyAsicStateForRealObjectIds(rids.size(), rids.data());
     }
 
     /*
