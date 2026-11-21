@@ -352,6 +352,15 @@ namespace sairedis
             virtual sai_log_level_t logGet(
                     _In_ sai_api_t api);
 
+            /**
+             * @brief Signal that the caller is shutting down.
+             *
+             * This allows blocking operations (e.g. zmq_poll) to be
+             * interrupted promptly instead of waiting for full timeout.
+             * Safe to call from a signal handler context.
+             */
+            virtual void shutdown() { /* default: no-op */ }
+
         public: // non SAI API
 
             // BROADCOM_LEGACY_SAI_COMPAT: Platforms that crash when sai_get_stats_ext is called on
