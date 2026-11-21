@@ -6,6 +6,20 @@
 
 using namespace saimeta;
 
+namespace
+{
+    struct RefBatch
+    {
+        bool active;
+        OidRefCounter* counter;
+        sai_object_id_t oid[8];
+        uint32_t n[8];
+        int count;
+    };
+
+    thread_local RefBatch g_ref_batch;
+}
+
 void OidRefCounter::clear()
 {
     SWSS_LOG_ENTER();
@@ -25,6 +39,53 @@ bool OidRefCounter::objectReferenceExists(
     return exists;
 }
 
+void OidRefCounter::startBulkReferenceIncrements()
+{
+    SWSS_LOG_ENTER();
+
+    if (g_ref_batch.active && g_ref_batch.counter == this)
+    {
+        flushBulkReferenceIncrements();
+    }
+
+    g_ref_batch.active = true;
+    g_ref_batch.counter = this;
+    g_ref_batch.count = 0;
+}
+
+void OidRefCounter::flushBulkReferenceIncrements()
+{
+    SWSS_LOG_ENTER();
+
+    const bool mine = g_ref_batch.active && g_ref_batch.counter == this;
+
+    g_ref_batch.active = false;
+
+    if (!mine)
+    {
+        return;
+    }
+
+    for (int i = 0; i < g_ref_batch.count; ++i)
+    {
+        const sai_object_id_t oid = g_ref_batch.oid[i];
+        auto it = m_hash.find(oid);
+
+        if (it == m_hash.end())
+        {
+            g_ref_batch.count = 0;
+            g_ref_batch.counter = nullptr;
+
+            SWSS_LOG_THROW("FATAL: object oid 0x%" PRIx64 " not in reference map", oid);
+        }
+
+        it->second += (int32_t)g_ref_batch.n[i];
+    }
+
+    g_ref_batch.count = 0;
+    g_ref_batch.counter = nullptr;
+}
+
 void OidRefCounter::objectReferenceIncrement(
         _In_ sai_object_id_t oid)
 {
@@ -34,6 +95,33 @@ void OidRefCounter::objectReferenceIncrement(
     {
         // We don't keep track of NULL object id's.
         return;
+    }
+
+    if (g_ref_batch.active && g_ref_batch.counter == this)
+    {
+        for (int i = 0; i < g_ref_batch.count; ++i)
+        {
+            if (g_ref_batch.oid[i] == oid)
+            {
+                g_ref_batch.n[i]++;
+
+                return;
+            }
+        }
+
+        if (g_ref_batch.count < 8)
+        {
+            if (!objectReferenceExists(oid))
+            {
+                SWSS_LOG_THROW("FATAL: object oid 0x%" PRIx64 " not in reference map", oid);
+            }
+
+            g_ref_batch.oid[g_ref_batch.count] = oid;
+            g_ref_batch.n[g_ref_batch.count] = 1;
+            g_ref_batch.count++;
+
+            return;
+        }
     }
 
     if (!objectReferenceExists(oid))

@@ -75,6 +75,22 @@ struct BulkOidCacheGuard
         g_bulk_oids = BulkOidCache{};
     }
 };
+
+struct BulkRefGuard
+{
+    saimeta::OidRefCounter& refs;
+
+    explicit BulkRefGuard(saimeta::OidRefCounter& ref)
+        : refs(ref)
+    {
+        refs.startBulkReferenceIncrements();
+    }
+
+    ~BulkRefGuard()
+    {
+        refs.flushBulkReferenceIncrements();
+    }
+};
 }
 
 // TODO add validation for all oids belong to the same switch
@@ -713,11 +729,14 @@ sai_status_t Meta::bulkCreate(                                                  
         CHECK_STATUS_SUCCESS_AND_UPDATE(status, object_statuses, idx);                                                  \
     }                                                                                                                   \
     auto status = m_implementation->bulkCreate(object_count, ot, attr_count, attr_list, mode, object_statuses);         \
-    for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
-        if (object_statuses[idx] == SAI_STATUS_SUCCESS)                                                                 \
+        BulkRefGuard bulk_ref_guard(m_oids);                                                                            \
+        for (uint32_t idx = 0; idx < object_count; idx++)                                                               \
         {                                                                                                               \
-            meta_generic_validation_post_create(vmk[idx], ot[idx].switch_id, attr_count[idx], attr_list[idx]);          \
+            if (object_statuses[idx] == SAI_STATUS_SUCCESS)                                                             \
+            {                                                                                                           \
+                meta_generic_validation_post_create(vmk[idx], ot[idx].switch_id, attr_count[idx], attr_list[idx]);      \
+            }                                                                                                           \
         }                                                                                                               \
     }                                                                                                                   \
     return status;                                                                                                      \

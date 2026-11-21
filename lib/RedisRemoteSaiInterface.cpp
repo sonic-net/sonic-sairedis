@@ -27,6 +27,76 @@ using namespace saimeta;
 using namespace sairediscommon;
 using namespace std::placeholders;
 
+static bool bulk_attr_value_equal(
+        _In_ const sai_attr_metadata_t* meta,
+        _In_ const sai_attribute_t& a,
+        _In_ const sai_attribute_t& b)
+{
+    switch (meta->attrvaluetype)
+    {
+        case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+            return a.value.oid == b.value.oid;
+
+        case SAI_ATTR_VALUE_TYPE_BOOL:
+            return a.value.booldata == b.value.booldata;
+
+        case SAI_ATTR_VALUE_TYPE_INT32:
+            return a.value.s32 == b.value.s32;
+
+        case SAI_ATTR_VALUE_TYPE_UINT32:
+            return a.value.u32 == b.value.u32;
+
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            return a.value.s64 == b.value.s64;
+
+        case SAI_ATTR_VALUE_TYPE_UINT64:
+            return a.value.u64 == b.value.u64;
+
+        default:
+            return false;
+    }
+}
+
+static bool bulk_attr_list_equal(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t count_a,
+        _In_ const sai_attribute_t* list_a,
+        _In_ uint32_t count_b,
+        _In_ const sai_attribute_t* list_b)
+{
+    if (count_a != count_b)
+    {
+        return false;
+    }
+
+    if (count_a == 0)
+    {
+        return true;
+    }
+
+    if (list_a == nullptr || list_b == nullptr)
+    {
+        return false;
+    }
+
+    for (uint32_t idx = 0; idx < count_a; ++idx)
+    {
+        if (list_a[idx].id != list_b[idx].id)
+        {
+            return false;
+        }
+
+        const auto* meta = sai_metadata_get_attr_metadata(object_type, list_a[idx].id);
+
+        if (meta == nullptr || !bulk_attr_value_equal(meta, list_a[idx], list_b[idx]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 std::vector<swss::FieldValueTuple> serialize_counter_id_list(
         _In_ const sai_enum_metadata_t *stats_enum,
         _In_ uint32_t count,
@@ -1914,6 +1984,17 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
 
     if (m_syncMode)
     {
+        auto zmq = std::dynamic_pointer_cast<ZeroMQChannel>(m_communicationChannel);
+
+        if (zmq)
+        {
+            auto status = zmq->waitBulkResponse(object_count, object_statuses);
+
+            m_recorder->recordBulkGenericResponse(status, object_count, object_statuses);
+
+            return status;
+        }
+
         swss::KeyOpFieldsValuesTuple kco;
 
         auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
@@ -2237,20 +2318,39 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
     std::vector<swss::FieldValueTuple> entries;
     entries.reserve(serialized_object_ids.size());
 
+    std::string cached_attr;
+    uint32_t cached_count = 0;
+    const sai_attribute_t* cached_list = nullptr;
+    bool have_cached_attr = false;
+
     for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
-        auto entry = SaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
+        std::string str_attr;
 
-        if (entry.empty())
+        if (have_cached_attr &&
+            bulk_attr_list_equal(object_type, cached_count, cached_list, attr_count[idx], attr_list[idx]))
         {
-            // make sure that we put object into db
-            // even if there are no attributes set
-            swss::FieldValueTuple null("NULL", "NULL");
-
-            entry.push_back(null);
+            str_attr = cached_attr;
         }
+        else
+        {
+            auto entry = SaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
 
-        std::string str_attr = Globals::joinFieldValues(entry);
+            if (entry.empty())
+            {
+                // make sure that we put object into db
+                // even if there are no attributes set
+                swss::FieldValueTuple null("NULL", "NULL");
+
+                entry.push_back(null);
+            }
+
+            str_attr = Globals::joinFieldValues(entry);
+            cached_attr = str_attr;
+            cached_count = attr_count[idx];
+            cached_list = attr_list[idx];
+            have_cached_attr = true;
+        }
 
         swss::FieldValueTuple fvtNoStatus(serialized_object_ids[idx] , str_attr);
 

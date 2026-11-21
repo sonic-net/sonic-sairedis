@@ -44,6 +44,17 @@ namespace saimeta
                     _In_ const sai_object_list_t& list);
 
             /**
+             * @brief Coalesce increments on this thread into one hash update.
+             *
+             * start/flush must be paired. A later increment of an oid already
+             * seen since start adds to the pending count. flush applies each
+             * distinct oid once.
+             */
+            void startBulkReferenceIncrements();
+
+            void flushBulkReferenceIncrements();
+
+            /**
              * @brief Decrement reference count on object.
              *
              * Throws if after decrement reference count becomes negative or
