@@ -1767,6 +1767,46 @@ TEST(SaiSerialize, serialize_stat_st_capability_list)
     EXPECT_EQ(stats_capability.list[1].minimal_polling_interval, 200);
 }
 
+TEST(SaiSerialize, serialize_stat_capability_list_unnamed_range_id)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_object_type_info(SAI_OBJECT_TYPE_PORT);
+
+    // 0x1010 is inside the ingress drop reason range but has no enum name.
+
+    const sai_stat_id_t unnamed = SAI_PORT_STAT_IN_DROP_REASON_RANGE_BASE + 0x10;
+
+    ASSERT_EQ(nullptr, sai_metadata_get_enum_value_name(meta->statenum, unnamed));
+
+    std::vector<sai_stat_capability_t> caps = {
+        { SAI_PORT_STAT_IF_IN_OCTETS, SAI_STATS_MODE_READ },
+        { unnamed, SAI_STATS_MODE_READ },
+    };
+
+    sai_stat_capability_list_t list = { .count = 2, .list = caps.data() };
+
+    std::vector<sai_stat_st_capability_t> stCaps = {
+        { caps[0], 100 },
+        { caps[1], 200 },
+    };
+
+    sai_stat_st_capability_list_t stList = { .count = 2, .list = stCaps.data() };
+
+    swss::Logger::swssOutputNotify("", "STDOUT");
+    testing::internal::CaptureStdout();
+
+    auto str = sai_serialize_stats_capability_list(list, meta->statenum, false);
+    auto stStr = sai_serialize_stats_st_capability_list(stList, meta->statenum, false);
+
+    auto output = testing::internal::GetCapturedStdout();
+    swss::Logger::swssOutputNotify("", "SYSLOG");
+
+    EXPECT_EQ(str, "{\"count\":2,\"list\":[{\"stat_enum\":\"SAI_PORT_STAT_IF_IN_OCTETS\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"stat_enum\":\"4112\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}");
+    EXPECT_EQ(stStr, "{\"count\":2,\"list\":[{\"minimal_polling_interval\":\"100\",\"stat_enum\":\"SAI_PORT_STAT_IF_IN_OCTETS\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"minimal_polling_interval\":\"200\",\"stat_enum\":\"4112\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}");
+    EXPECT_EQ(std::string::npos, output.find("not found in enum"));
+}
+
 TEST(SaiSerialize, sai_serialize_flow_bulk_get_session_event_ntf_null_data)
 {
     SWSS_LOG_ENTER();
