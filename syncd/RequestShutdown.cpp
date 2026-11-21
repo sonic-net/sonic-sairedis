@@ -35,7 +35,7 @@ void RequestShutdown::send()
 {
     SWSS_LOG_ENTER();
 
-    swss::DBConnector db(m_contextConfig->m_dbAsic, 0);
+    swss::DBConnector db(m_contextConfig->m_dbAsic, 0, false, "", true);
 
     swss::NotificationProducer restartQuery(&db, SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY_PER_DB(m_contextConfig->m_dbAsic));
 

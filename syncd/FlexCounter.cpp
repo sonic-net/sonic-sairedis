@@ -2769,7 +2769,7 @@ public:
         SWSS_LOG_ENTER();
 
         // Create dedicated PORT_PHY_ATTR table
-        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
+        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn, "", !m_isTcpConn);
         swss::RedisPipeline pipeline(&db);
         swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
 
@@ -3094,7 +3094,7 @@ public:
 
         try
         {
-            swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
+            swss::DBConnector db(m_dbCounters, 0, m_isTcpConn, "", !m_isTcpConn);
             swss::Table portSerdesIdToPortIdTable(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
 
             std::string port_serdes_vid_str = sai_serialize_object_id(port_serdes_vid);
@@ -3551,7 +3551,7 @@ public:
         SWSS_LOG_ENTER();
 
         // Collected port phy serdes attrs data will be written to PORT_PHY_ATTR_TABLE (shared with port phy attrs)
-        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
+        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn, "", !m_isTcpConn);
         swss::RedisPipeline pipeline(&db);
         swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
 
@@ -3825,7 +3825,7 @@ public:
             return;
         }
         // delete all meter bucket stats for this object from counters DB
-        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
+        swss::DBConnector db(m_dbCounters, 0, m_isTcpConn, "", !m_isTcpConn);
         swss::RedisPipeline pipeline(&db);
         swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
         for (const auto& object_key: it->second.object_keys) {
@@ -4255,7 +4255,7 @@ void FlexCounter::removeDataFromCountersDB(
         _In_ const std::string &ratePrefix)
 {
     SWSS_LOG_ENTER();
-    swss::DBConnector db(m_dbCounters, 0, m_isTcpConn);
+    swss::DBConnector db(m_dbCounters, 0, m_isTcpConn, "", !m_isTcpConn);
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
 
@@ -4717,7 +4717,7 @@ void FlexCounter::flexCounterThreadRunFunction()
         pipeline.reset();
         db.reset();
 
-        db.reset(new swss::DBConnector(m_dbCounters, 0, m_isTcpConn));
+        db.reset(new swss::DBConnector(m_dbCounters, 0, m_isTcpConn, "", !m_isTcpConn));
         pipeline.reset(new swss::RedisPipeline(db.get()));
         countersTable.reset(new swss::Table(pipeline.get(), COUNTERS_TABLE, true));
     };
