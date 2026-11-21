@@ -284,6 +284,14 @@ namespace sairedis
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Inout_ sai_status_t *object_statuses);
 
+            sai_status_t bulkCreateRouteEntries(
+                    _In_ uint32_t object_count,
+                    _In_ const sai_route_entry_t* route_entry,
+                    _In_ const uint32_t *attr_count,
+                    _In_ const sai_attribute_t **attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Inout_ sai_status_t *object_statuses);
+
             sai_status_t bulkRemove(
                     _In_ sai_object_type_t object_type,
                     _In_ const std::vector<std::string> &serialized_object_ids,

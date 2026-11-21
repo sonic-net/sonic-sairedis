@@ -288,6 +288,14 @@ void ZeroMQChannel::set(
         msg = swss::JSon::buildJson(copy);
     }
 
+    send(msg);
+}
+
+void ZeroMQChannel::send(
+        _In_ const std::string& msg)
+{
+    SWSS_LOG_ENTER();
+
     SWSS_LOG_DEBUG("sending: %s", msg.c_str());
 
     for (int i = 0; true ; ++i)

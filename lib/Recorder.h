@@ -391,6 +391,11 @@ namespace sairedis
             void enableRecording(
                     _In_ bool enabled);
 
+            bool isEnabled() const
+            {
+                return m_enabled;
+            }
+
             bool setRecordingOutputDirectory(
                     _In_ const sai_attribute_t &attr);
 

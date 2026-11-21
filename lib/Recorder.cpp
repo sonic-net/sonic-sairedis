@@ -463,6 +463,11 @@ void Recorder::recordBulkGenericCreate(
 {
     SWSS_LOG_ENTER();
 
+    if (!m_enabled)
+    {
+        return;
+    }
+
     std::string joined;
 
     for (const auto &e: entriesWithStatus)

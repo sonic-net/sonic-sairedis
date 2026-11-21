@@ -39,6 +39,9 @@ namespace sairedis
                     _In_ const std::vector<swss::FieldValueTuple>& values,
                     _In_ const std::string& command) override;
 
+            void send(
+                    _In_ const std::string& msg);
+
             virtual void del(
                     _In_ const std::string& key,
                     _In_ const std::string& command) override;
