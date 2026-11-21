@@ -10,6 +10,8 @@
 #include "CorePortIndexMapFileParser.h"
 #include "ContextConfigContainer.h"
 
+#include "meta/sai_serialize.h"
+
 #include "swss/logger.h"
 
 #include "swss/notificationconsumer.h"
@@ -377,7 +379,49 @@ sai_status_t Sai::remove(
     SWSS_LOG_ENTER();
     VS_CHECK_API_INITIALIZED();
 
+    if (objectType == SAI_OBJECT_TYPE_BRIDGE_PORT)
+    {
+        sai_object_meta_key_t mk = { .objecttype = objectType, .objectkey = { .key = { .object_id = objectId } } };
+
+        if (m_meta->objectExists(mk) && m_meta->getObjectReferenceCount(objectId) > 0)
+        {
+            flushLearnedOnBridgePort(objectId);
+        }
+    }
+
     return m_meta->remove(objectType, objectId);
+}
+
+void Sai::flushLearnedOnBridgePort(
+        _In_ sai_object_id_t bridgePortId)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * On hardware a learned FDB entry does not hold its bridge port, but the
+     * virtual switch counts it as a reference. A bridge port that learned
+     * while nobody tracked it (syncd hard reinit replays the view while
+     * ports are up and the default bridge ports still exist) could then
+     * never be removed: its learned entries go first, as they would with
+     * the bridge port on hardware.
+     */
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID;
+    attrs[0].value.oid = bridgePortId;
+
+    attrs[1].id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+    attrs[1].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+
+    sai_status_t status = m_meta->flushFdbEntries(switchIdQuery(bridgePortId), 2, attrs);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_WARN("failed to flush learned FDB entries of bridge port %s: %s",
+                sai_serialize_object_id(bridgePortId).c_str(),
+                sai_serialize_status(status).c_str());
+    }
 }
 
 sai_status_t Sai::set(
