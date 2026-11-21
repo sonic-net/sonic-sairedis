@@ -212,6 +212,24 @@ void ZeroMQChannel::flush()
     // not supported
 }
 
+static bool json_needs_escape(const std::string& s)
+{
+    for (unsigned char c : s)
+    {
+        if (c < 0x20 || c == '"' || c == '\\')
+            return true;
+    }
+
+    return false;
+}
+
+static void json_append_plain(std::string& out, const std::string& s)
+{
+    out.push_back('"');
+    out.append(s);
+    out.push_back('"');
+}
+
 void ZeroMQChannel::set(
         _In_ const std::string& key,
         _In_ const std::vector<swss::FieldValueTuple>& values,
@@ -219,13 +237,55 @@ void ZeroMQChannel::set(
 {
     SWSS_LOG_ENTER();
 
-    std::vector<swss::FieldValueTuple> copy = values;
+    bool plain = !json_needs_escape(key) && !json_needs_escape(command);
 
-    swss::FieldValueTuple opdata(key, command);
+    if (plain)
+    {
+        for (const auto& item : values)
+        {
+            if (json_needs_escape(fvField(item)) || json_needs_escape(fvValue(item)))
+            {
+                plain = false;
+                break;
+            }
+        }
+    }
 
-    copy.insert(copy.begin(), opdata);
+    std::string msg;
 
-    std::string msg = swss::JSon::buildJson(copy);
+    if (plain)
+    {
+        size_t bytes = key.size() + command.size() + 5;
+
+        for (const auto& item : values)
+            bytes += fvField(item).size() + fvValue(item).size() + 6;
+
+        msg.reserve(bytes);
+        msg.push_back('[');
+        json_append_plain(msg, key);
+        msg.push_back(',');
+        json_append_plain(msg, command);
+
+        for (const auto& item : values)
+        {
+            msg.push_back(',');
+            json_append_plain(msg, fvField(item));
+            msg.push_back(',');
+            json_append_plain(msg, fvValue(item));
+        }
+
+        msg.push_back(']');
+    }
+    else
+    {
+        std::vector<swss::FieldValueTuple> copy = values;
+
+        swss::FieldValueTuple opdata(key, command);
+
+        copy.insert(copy.begin(), opdata);
+
+        msg = swss::JSon::buildJson(copy);
+    }
 
     SWSS_LOG_DEBUG("sending: %s", msg.c_str());
 

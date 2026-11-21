@@ -13,6 +13,70 @@
 
 #include <set>
 
+namespace
+{
+struct BulkOidCache
+{
+    bool active;
+    bool have_sw;
+    sai_object_id_t sw;
+    sai_object_id_t oid[4];
+    int n;
+};
+
+thread_local BulkOidCache g_bulk_oids;
+
+bool bulk_oid_seen(sai_object_id_t oid, sai_object_id_t sw)
+{
+    if (!g_bulk_oids.active || !g_bulk_oids.have_sw || g_bulk_oids.sw != sw)
+        return false;
+
+    for (int i = 0; i < g_bulk_oids.n; ++i)
+    {
+        if (g_bulk_oids.oid[i] == oid)
+            return true;
+    }
+
+    return false;
+}
+
+void bulk_oid_remember(sai_object_id_t oid, sai_object_id_t sw)
+{
+    if (!g_bulk_oids.active || oid == SAI_NULL_OBJECT_ID)
+        return;
+
+    if (!g_bulk_oids.have_sw)
+    {
+        g_bulk_oids.sw = sw;
+        g_bulk_oids.have_sw = true;
+    }
+    else if (g_bulk_oids.sw != sw)
+    {
+        return;
+    }
+
+    if (bulk_oid_seen(oid, sw))
+        return;
+
+    if (g_bulk_oids.n < 4)
+        g_bulk_oids.oid[g_bulk_oids.n++] = oid;
+}
+
+struct BulkOidCacheGuard
+{
+    BulkOidCacheGuard()
+    {
+        g_bulk_oids = BulkOidCache{};
+        g_bulk_oids.active = true;
+    }
+
+    ~BulkOidCacheGuard()
+    {
+        g_bulk_oids = BulkOidCache{};
+    }
+};
+}
+
 // TODO add validation for all oids belong to the same switch
 
 #define MAX_LIST_COUNT (0x1<<24) // 16M
@@ -619,6 +683,7 @@ sai_status_t Meta::bulkCreate(                                                  
         _Out_ sai_status_t *object_statuses)                                                                            \
 {                                                                                                                       \
     SWSS_LOG_ENTER();                                                                                                   \
+    BulkOidCacheGuard bulk_oid_guard;                                                                                   \
     PARAMETER_CHECK_IF_NOT_NULL(object_statuses);                                                                       \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
@@ -634,6 +699,7 @@ sai_status_t Meta::bulkCreate(                                                  
         return SAI_STATUS_INVALID_PARAMETER;                                                                            \
     }                                                                                                                   \
     std::vector<sai_object_meta_key_t> vmk;                                                                             \
+    vmk.reserve(object_count);                                                                                          \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], true);                                                 \
@@ -2408,34 +2474,37 @@ sai_status_t Meta::meta_sai_validate_route_entry(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    sai_object_type_t object_type = objectTypeQuery(vr);
-
-    if (object_type == SAI_OBJECT_TYPE_NULL)
+    if (!bulk_oid_seen(vr, route_entry->switch_id))
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " is not valid object type, returned null object type", vr);
+        sai_object_type_t object_type = objectTypeQuery(vr);
 
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
+        if (object_type == SAI_OBJECT_TYPE_NULL)
+        {
+            SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " is not valid object type, returned null object type", vr);
 
-    sai_object_type_t expected = SAI_OBJECT_TYPE_VIRTUAL_ROUTER;
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
 
-    if (object_type != expected)
-    {
-        SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " type %d is wrong type, expected object type %d", vr, object_type, expected);
+        sai_object_type_t expected = SAI_OBJECT_TYPE_VIRTUAL_ROUTER;
 
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
+        if (object_type != expected)
+        {
+            SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " type %d is wrong type, expected object type %d", vr, object_type, expected);
 
-    // check if virtual router exists
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
 
-    sai_object_meta_key_t meta_key_vr = { .objecttype = expected, .objectkey = { .key = { .object_id = vr } } };
+        // check if virtual router exists
 
-    if (!m_saiObjectCollection.objectExists(meta_key_vr))
-    {
-        SWSS_LOG_ERROR("object key %s doesn't exist",
-                sai_serialize_object_meta_key(meta_key_vr).c_str());
+        sai_object_meta_key_t meta_key_vr = { .objecttype = expected, .objectkey = { .key = { .object_id = vr } } };
 
-        return SAI_STATUS_ITEM_NOT_FOUND;
+        if (!m_saiObjectCollection.objectExists(meta_key_vr))
+        {
+            SWSS_LOG_ERROR("object key %s doesn't exist",
+                    sai_serialize_object_meta_key(meta_key_vr).c_str());
+
+            return SAI_STATUS_ITEM_NOT_FOUND;
+        }
     }
 
     // check if route entry exists
@@ -3426,34 +3495,37 @@ sai_status_t Meta::meta_generic_validation_create(
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
-        sai_object_type_t sw_type = objectTypeQuery(switch_id);
-
-        if (sw_type != SAI_OBJECT_TYPE_SWITCH)
+        if (!bulk_oid_seen(switch_id, switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%" PRIx64 " type is %s, expected SWITCH", switch_id, sai_serialize_object_type(sw_type).c_str());
+            sai_object_type_t sw_type = objectTypeQuery(switch_id);
 
-            return SAI_STATUS_INVALID_PARAMETER;
+            if (sw_type != SAI_OBJECT_TYPE_SWITCH)
+            {
+                SWSS_LOG_ERROR("switch id 0x%" PRIx64 " type is %s, expected SWITCH", switch_id, sai_serialize_object_type(sw_type).c_str());
+
+                return SAI_STATUS_INVALID_PARAMETER;
+            }
+
+            // check if switch exists
+
+            sai_object_meta_key_t switch_meta_key = { .objecttype = SAI_OBJECT_TYPE_SWITCH, .objectkey = { .key = { .object_id = switch_id } } };
+
+            if (!m_saiObjectCollection.objectExists(switch_meta_key))
+            {
+                SWSS_LOG_ERROR("switch id 0x%" PRIx64 " doesn't exist yet", switch_id);
+
+                return SAI_STATUS_INVALID_PARAMETER;
+            }
+
+            if (!m_oids.objectReferenceExists(switch_id))
+            {
+                SWSS_LOG_ERROR("switch id 0x%" PRIx64 " doesn't exist yet", switch_id);
+
+                return SAI_STATUS_INVALID_PARAMETER;
+            }
+
+            bulk_oid_remember(switch_id, switch_id);
         }
-
-        // check if switch exists
-
-        sai_object_meta_key_t switch_meta_key = { .objecttype = SAI_OBJECT_TYPE_SWITCH, .objectkey = { .key = { .object_id = switch_id } } };
-
-        if (!m_saiObjectCollection.objectExists(switch_meta_key))
-        {
-            SWSS_LOG_ERROR("switch id 0x%" PRIx64 " doesn't exist yet", switch_id);
-
-            return SAI_STATUS_INVALID_PARAMETER;
-        }
-
-        if (!m_oids.objectReferenceExists(switch_id))
-        {
-            SWSS_LOG_ERROR("switch id 0x%" PRIx64 " doesn't exist yet", switch_id);
-
-            return SAI_STATUS_INVALID_PARAMETER;
-        }
-
-        // ok
     }
 
     sai_status_t status = meta_generic_validate_non_object_on_create(meta_key, switch_id);
@@ -5316,6 +5388,11 @@ sai_status_t Meta::meta_generic_validation_objlist(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    if (count == 1 && bulk_oid_seen(list[0], switch_id))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     /*
      * We need oids set and object type to check whether oids are not repeated
      * on list and whether all oids are same object type.
@@ -5402,6 +5479,9 @@ sai_status_t Meta::meta_generic_validation_objlist(
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
+
+        if (count == 1)
+            bulk_oid_remember(oid, switch_id);
 
         object_type = ot;
     }
@@ -5492,6 +5572,11 @@ sai_status_t Meta::meta_generic_validate_non_object_on_create(
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
+        if (bulk_oid_seen(oid, switch_id))
+        {
+            continue;
+        }
+
         if (!m_oids.objectReferenceExists(oid))
         {
             SWSS_LOG_ERROR("object don't exist %s (%s)",
@@ -5542,6 +5627,8 @@ sai_status_t Meta::meta_generic_validate_non_object_on_create(
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
+
+        bulk_oid_remember(oid, switch_id);
     }
 
     return SAI_STATUS_SUCCESS;

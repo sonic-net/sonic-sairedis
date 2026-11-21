@@ -74,17 +74,23 @@ std::string Globals::joinFieldValues(
 {
     SWSS_LOG_ENTER();
 
-    std::stringstream ss;
+    size_t bytes = values.empty() ? 0 : values.size() - 1;
+
+    for (const auto& item : values)
+        bytes += fvField(item).size() + 1 + fvValue(item).size();
+
+    std::string out;
+    out.reserve(bytes);
 
     for (size_t i = 0; i < values.size(); ++i)
     {
         if (i != 0)
-        {
-            ss << "|";
-        }
+            out.push_back('|');
 
-        ss << fvField(values[i]) << "=" << fvValue(values[i]);
+        out.append(fvField(values[i]));
+        out.push_back('=');
+        out.append(fvValue(values[i]));
     }
 
-    return ss.str();
+    return out;
 }

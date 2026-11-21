@@ -892,6 +892,7 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(                               
     static PerformanceIntervalTimer timer("RedisRemoteSaiInterface::bulkCreate(" #ot ")");   \
     timer.start();                                                                           \
     std::vector<std::string> serialized_object_ids;                                          \
+    serialized_object_ids.reserve(object_count);                                             \
     for (uint32_t idx = 0; idx < object_count; idx++)                                        \
     {                                                                                        \
         std::string str_object_id = sai_serialize_ ##ot (ot[idx]);                           \
@@ -2234,6 +2235,7 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
     std::string str_object_type = sai_serialize_object_type(object_type);
 
     std::vector<swss::FieldValueTuple> entries;
+    entries.reserve(serialized_object_ids.size());
 
     for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
