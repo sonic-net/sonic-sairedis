@@ -58,6 +58,7 @@ static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
 static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
 static const std::string COUNTER_TYPE_WRED_ECN_QUEUE = "WRED Queue Counter";
 static const std::string COUNTER_TYPE_WRED_ECN_PORT = "WRED Port Counter";
+static const std::string COUNTER_TYPE_ICMP_ECHO_SESSION = "ICMP Echo Session Counter";
 static const std::string ATTR_TYPE_OTN_ATTENUATOR_ATTR = "OTN Attenuator Attributes";
 static const std::string ATTR_TYPE_OTN_OA_ATTR = "OTN OA Attributes";
 
@@ -110,6 +111,7 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
     {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
     {{SAI_OBJECT_TYPE_SWITCH, SWITCH_COUNTER_ID_LIST}, COUNTER_TYPE_SWITCH},
+    {{SAI_OBJECT_TYPE_ICMP_ECHO_SESSION, ICMP_ECHO_SESSION_COUNTER_ID_LIST}, COUNTER_TYPE_ICMP_ECHO_SESSION},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, OTN_ATTENUATOR_ATTR_ID_LIST}, ATTR_TYPE_OTN_ATTENUATOR_ATTR},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, OTN_OA_ATTR_ID_LIST}, ATTR_TYPE_OTN_OA_ATTR},
 };
@@ -359,6 +361,14 @@ std::string serializeStat(
     return sai_serialize_ha_set_stat(stat);
 }
 
+template <>
+std::string serializeStat(
+        _In_ const sai_icmp_echo_session_stat_t stat)
+{
+    SWSS_LOG_ENTER();
+    return sai_serialize_icmp_echo_session_stat(stat);
+}
+
 template <typename StatType>
 void deserializeStat(
         _In_ const char* name,
@@ -492,6 +502,15 @@ void deserializeStat(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_ha_set_stat(name, stat);
+}
+
+template <>
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_icmp_echo_session_stat_t *stat)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_icmp_echo_session_stat(name, stat);
 }
 template <typename AttrType>
 void deserializeAttr(
@@ -4597,6 +4616,16 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->use_sai_stats_ext = m_vendorSai->isSwitchStatsExtSupported();
         return context;
     }
+    else if (context_name == COUNTER_TYPE_ICMP_ECHO_SESSION)
+    {
+        // Native FlexCounter path for ICMP echo session stats, used when the
+        // platform does not support SAI selective counters for ICMP echo.
+        auto context = std::make_shared<CounterContext<sai_icmp_echo_session_stat_t>>(
+                context_name, instance, SAI_OBJECT_TYPE_ICMP_ECHO_SESSION, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
+        context->use_sai_stats_ext = true;
+        return context;
+    }
     else if (context_name == ATTR_TYPE_OTN_ATTENUATOR_ATTR)
     {
         return std::make_shared<AttrContext<sai_otn_attenuator_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, m_vendorSai.get(), m_statsMode);
@@ -5107,6 +5136,13 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR))
         {
             getCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR)->removeObject(vid);
+        }
+    }
+    else if (objectType == SAI_OBJECT_TYPE_ICMP_ECHO_SESSION)
+    {
+        if (hasCounterContext(COUNTER_TYPE_ICMP_ECHO_SESSION))
+        {
+            getCounterContext(COUNTER_TYPE_ICMP_ECHO_SESSION)->removeObject(vid);
         }
     }
     else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR)
