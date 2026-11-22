@@ -233,7 +233,28 @@ namespace syncd
             void asicRemoveObject(
                     _In_ const std::shared_ptr<SaiObj> &currentObj);
 
+            /**
+             * @brief Keep a later remove of vid after the last generated operation.
+             *
+             * Optimizing remove operations moves a remove up to the last
+             * operation that released a reference on the object. This keeps
+             * it after the last generated operation too, for an object that
+             * must outlive another object that does not reference it.
+             *
+             * @param vid Virtual ID of the object to be removed later.
+             */
+            void asicKeepRemoveAfterLastOperation(
+                    _In_ sai_object_id_t vid);
+
             std::vector<AsicOperation> asicGetWithOptimizedRemoveOperations() const;
+
+        private:
+
+            size_t getRemoveAfterIndex(
+                    _In_ const std::vector<AsicOperation>& ops,
+                    _In_ sai_object_id_t vid) const;
+
+        public:
 
             std::vector<AsicOperation> asicGetOperations() const;
 
@@ -341,6 +362,11 @@ namespace syncd
              * after asic operation id pointed by this VID.
              */
             std::map<sai_object_id_t, int> m_vidToAsicOperationId;
+
+            /**
+             * @brief Operation after which the remove of each VID must stay.
+             */
+            std::map<sai_object_id_t, int> m_vidRemoveAfterAsicOperationId;
 
             /**
              * @brief ASIC operation list.
