@@ -215,6 +215,8 @@ void ZeroMQChannel::flush()
 
 static bool json_needs_escape(const std::string& s)
 {
+    SWSS_LOG_ENTER();
+
     for (unsigned char c : s)
     {
         if (c < 0x20 || c == '"' || c == '\\')
@@ -226,6 +228,8 @@ static bool json_needs_escape(const std::string& s)
 
 static void json_append_plain(std::string& out, const std::string& s)
 {
+    SWSS_LOG_ENTER();
+
     out.push_back('"');
     out.append(s);
     out.push_back('"');
@@ -409,6 +413,8 @@ static bool bulk_reply_all_success(
         _In_ int length,
         _In_ uint32_t object_count)
 {
+    SWSS_LOG_ENTER();
+
     const std::string prefix = std::string("[\"SAI_STATUS_SUCCESS\",\"") + REDIS_ASIC_STATE_COMMAND_GETRESPONSE + "\"";
     const char item[] = ",\"SAI_STATUS_SUCCESS\",\"\"";
     const size_t item_len = sizeof(item) - 1;

@@ -1051,6 +1051,8 @@ size_t sai_serialize_route_entry(
 std::string sai_serialize_route_entry(
         _In_ const sai_route_entry_t& route_entry)
 {
+    SWSS_LOG_ENTER();
+
     char buffer[256];
 
     size_t length = sai_serialize_route_entry(buffer, route_entry);

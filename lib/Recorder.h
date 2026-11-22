@@ -5,6 +5,7 @@ extern "C" {
 }
 
 #include "swss/table.h"
+#include "swss/logger.h"
 
 #include "sairedis.h"
 #include "meta/SaiInterface.h"
@@ -393,6 +394,8 @@ namespace sairedis
 
             bool isEnabled() const
             {
+                SWSS_LOG_ENTER();
+
                 return m_enabled;
             }
 

@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <string>
 
+#include "swss/logger.h"
+
 namespace sairedis
 {
     // One copy from the already formatted bytes into the JSON string.
@@ -13,6 +15,8 @@ namespace sairedis
             const char* data,
             size_t length)
     {
+        SWSS_LOG_ENTER();
+
         size_t begin = out.size();
 
         out.push_back('"');
@@ -50,6 +54,8 @@ namespace sairedis
             const char* data,
             size_t length)
     {
+        SWSS_LOG_ENTER();
+
         for (size_t i = 0; i < length; ++i)
         {
             unsigned char c = (unsigned char)data[i];

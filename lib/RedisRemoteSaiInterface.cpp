@@ -34,6 +34,8 @@ static bool bulk_attr_value_equal(
         _In_ const sai_attribute_t& a,
         _In_ const sai_attribute_t& b)
 {
+    SWSS_LOG_ENTER();
+
     switch (meta->attrvaluetype)
     {
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
@@ -66,6 +68,8 @@ static bool bulk_attr_list_equal(
         _In_ uint32_t count_b,
         _In_ const sai_attribute_t* list_b)
 {
+    SWSS_LOG_ENTER();
+
     if (count_a != count_b)
     {
         return false;
@@ -2333,11 +2337,11 @@ sai_status_t RedisRemoteSaiInterface::bulkCreateRouteEntries(
     std::string msg;
     std::vector<swss::FieldValueTuple> recorded;
 
-    // Route keys are unique, so each one is written from the serializer stack
-    // buffer into the ZMQ message. Attributes are reused only when this route's
+    // Route keys are unique, so each one is written into the ZMQ message from the route formatter's stack
+    // buffer. Attributes are reused only when this route's
     // list compares equal to the previous route. A different next hop, a
-    // different attribute, or a type this compare does not cover reserializes
-    // that route and replaces the one cached string. RedisChannel keeps the
+    // different attribute, or a type this compare does not cover is serialized again
+    // for that route and replaces the one cached string. RedisChannel keeps the
     // string bulkCreate path below.
     if (zmq)
     {
@@ -2404,7 +2408,7 @@ sai_status_t RedisRemoteSaiInterface::bulkCreateRouteEntries(
                 }
             }
 
-            // The prefix is formatted into buffer and copied into msg once.
+            // The prefix is formatted into buffer and copied into the message once.
             // A different next hop fails the compare above and replaces cached_attr.
             msg.push_back(',');
 

@@ -28,6 +28,8 @@ thread_local BulkOidCache g_bulk_oids;
 
 bool bulk_oid_seen(sai_object_id_t oid, sai_object_id_t sw)
 {
+    SWSS_LOG_ENTER();
+
     if (!g_bulk_oids.active || !g_bulk_oids.have_sw || g_bulk_oids.sw != sw)
         return false;
 
@@ -42,6 +44,8 @@ bool bulk_oid_seen(sai_object_id_t oid, sai_object_id_t sw)
 
 void bulk_oid_remember(sai_object_id_t oid, sai_object_id_t sw)
 {
+    SWSS_LOG_ENTER();
+
     if (!g_bulk_oids.active || oid == SAI_NULL_OBJECT_ID)
         return;
 
@@ -83,6 +87,8 @@ struct BulkRefGuard
     explicit BulkRefGuard(saimeta::OidRefCounter& ref)
         : refs(ref)
     {
+        SWSS_LOG_ENTER();
+
         refs.startBulkReferenceIncrements();
     }
 
