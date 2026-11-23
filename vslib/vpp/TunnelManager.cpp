@@ -663,10 +663,14 @@ TunnelManager::recreate_vpp_vxlan_encap_with_decap_any(
     for (auto* shared : shared_entries) {
         shared->req.decap_any = decap_any;
         shared->tunnel_data.sw_if_index = entry.tunnel_data.sw_if_index;
+        shared->tunnel_data.has_encap_router_mac = entry.tunnel_data.has_encap_router_mac;
+        shared->tunnel_data.encap_router_mac = entry.tunnel_data.encap_router_mac;
     }
     if (shared_it != m_shared_encap_tunnels.end()) {
         shared_it->second.req.decap_any = decap_any;
         shared_it->second.tunnel_data.sw_if_index = entry.tunnel_data.sw_if_index;
+        shared_it->second.tunnel_data.has_encap_router_mac = entry.tunnel_data.has_encap_router_mac;
+        shared_it->second.tunnel_data.encap_router_mac = entry.tunnel_data.encap_router_mac;
     }
     m_switch_db->reattachRoutesForNexthops(detached_routes);
     return SAI_STATUS_SUCCESS;
@@ -749,6 +753,7 @@ TunnelManager::install_nexthop_vxlan_decap_for_vni(
                     shared_it->second.tunnel_data = entry.tunnel_data;
                     shared_it->second.decap_owners.insert(nh_pair.first);
                 }
+                refresh_l3_vni_router_mac(ip_vrf->m_obj_id);
             } else {
                 entry.tunnel_data.ip_vrf.reset();
                 if (flipped_decap_any &&
@@ -965,6 +970,7 @@ TunnelManager::acquire_shared_vxlan_encap(
 
     if (created_decap) {
         shared.tunnel_data = decap_data;
+        refresh_l3_vni_router_mac(vrf->m_obj_id);
     }
     if (vrf) {
         shared.decap_owners.insert(nexthop_oid);
@@ -1057,6 +1063,7 @@ TunnelManager::release_shared_vxlan_encap(
     if (last_decap) {
         shared.tunnel_data.bd_id = 0;
         shared.tunnel_data.ip_vrf = nullptr;
+        shared.tunnel_data.has_decap_router_mac = false;
     }
     if (owns_decap) {
         shared.decap_owners.erase(nexthop_oid);
@@ -1131,17 +1138,21 @@ TunnelManager::create_vpp_vxlan_encap(
     if (inner_dst_mac) {
         std::copy(inner_dst_mac, inner_dst_mac + dst_mac.size(), dst_mac.begin());
     }
-    sai_attribute_t             switch_mac_attr{};
+    std::array<uint8_t, 6>      local_mac = {};
 
     if (!skip_neighbor) {
-        switch_mac_attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
-        sai_status_t status = m_switch_db->get(SAI_OBJECT_TYPE_SWITCH,
-                                                m_switch_db->m_switch_id, 1,
-                                                &switch_mac_attr);
-        if (status != SAI_STATUS_SUCCESS) {
-            SWSS_LOG_ERROR("Failed to read switch source MAC for VXLAN encapsulation: %d",
-                           status);
-            return status;
+        if (!tunnel_data.ip_vrf || !get_vr_router_mac(tunnel_data.ip_vrf->m_obj_id, local_mac)) {
+            sai_attribute_t switch_mac_attr{};
+            switch_mac_attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+            sai_status_t status = m_switch_db->get(SAI_OBJECT_TYPE_SWITCH,
+                                                    m_switch_db->m_switch_id, 1,
+                                                    &switch_mac_attr);
+            if (status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to read switch source MAC for VXLAN encapsulation: %d",
+                               status);
+                return status;
+            }
+            memcpy(local_mac.data(), switch_mac_attr.value.mac, local_mac.size());
         }
     }
 
@@ -1175,8 +1186,8 @@ TunnelManager::create_vpp_vxlan_encap(
         }
         // VPP uses the tunnel interface MAC as the inner Ethernet source.
         // The VXLAN default router MAC is the inner destination, not source.
-        if (sw_interface_set_mac_by_index(sw_if_index, switch_mac_attr.value.mac) != 0) {
-            SWSS_LOG_ERROR("Failed to set switch MAC on VXLAN tunnel sw_if %u",
+        if (sw_interface_set_mac_by_index(sw_if_index, local_mac.data()) != 0) {
+            SWSS_LOG_ERROR("Failed to set router MAC on VXLAN tunnel sw_if %u",
                            sw_if_index);
             if (req.dst_address.sa_family == AF_INET6) {
                 ip6_nbr_add_del(NULL, sw_if_index, &req.dst_address.addr.ip6, false,
@@ -1188,6 +1199,8 @@ TunnelManager::create_vpp_vxlan_encap(
             vpp_vxlan_tunnel_add_del(&req, 0, &sw_if_index);
             return SAI_STATUS_FAILURE;
         }
+        tunnel_data.encap_router_mac = local_mac;
+        tunnel_data.has_encap_router_mac = true;
     }
 
     SWSS_LOG_INFO("successfully created encap for vxlan tunnel %d", sw_if_index);
@@ -1240,7 +1253,10 @@ TunnelManager::create_vpp_vxlan_decap(
 
     int                         vpp_status;
     char                        hw_bvi_ifname[32];
-    auto                        router_mac = get_router_mac();
+    std::array<uint8_t, 6>      router_mac = get_router_mac();
+    if (tunnel_data.ip_vrf) {
+        get_vr_router_mac(tunnel_data.ip_vrf->m_obj_id, router_mac);
+    }
     auto                        bvi_mac = router_mac.data();
     vpp_ip_route_t              bvi_ip_prefix;
     uint32_t                    tunnel_if_index = tunnel_data.sw_if_index;
@@ -1260,6 +1276,8 @@ TunnelManager::create_vpp_vxlan_decap(
         m_switch_db->dynamic_bd_id_pool.free(bd_id);
         return SAI_STATUS_FAILURE;
     }
+    tunnel_data.decap_router_mac = router_mac;
+    tunnel_data.has_decap_router_mac = true;
     bool bridge_created = false;
     auto rollback = [&]() -> sai_status_t {
         remove_decap_host_path(tunnel_data, hw_bvi_ifname);
@@ -1679,6 +1697,231 @@ TunnelManager::install_pending_decap_host_paths(
         if (set_sw_interface_l2_bridge(hw_bvi_ifname, td->bd_id, true, VPP_API_PORT_TYPE_BVI) != 0) {
             SWSS_LOG_ERROR("Failed to re-attach %s to bridge domain %u after pairing host tap",
                 hw_bvi_ifname, td->bd_id);
+        }
+    }
+}
+
+bool
+TunnelManager::get_vr_router_mac(
+    _In_ sai_object_id_t vr_oid,
+    _Out_ std::array<uint8_t, 6>& mac)
+{
+    SWSS_LOG_ENTER();
+
+    if (vr_oid == SAI_NULL_OBJECT_ID) {
+        return false;
+    }
+
+    // Prefer an explicit router MAC configured on the virtual router itself.
+    auto vr_mac = m_switch_db->stored_attr(
+        SAI_OBJECT_TYPE_VIRTUAL_ROUTER,
+        sai_serialize_object_id(vr_oid),
+        SAI_VIRTUAL_ROUTER_ATTR_SRC_MAC_ADDRESS);
+    if (vr_mac != nullptr) {
+        memcpy(mac.data(), vr_mac->value.mac, mac.size());
+        return true;
+    }
+
+    // Otherwise inherit the MAC of the VRF's unnumbered L3VNI VLAN RIF.
+    // vxlanorch maps L2VNIs via SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID and skips
+    // that mapping for L3VNI VLANs; numbered SVIs carry connected routes whose
+    // NEXT_HOP_ID is the RIF OID. Excluding both isolates the L3VNI transit SVI
+    // without touching anycast-gateway L2VNI or numbered customer SVIs.
+    auto& objects = m_switch_db->m_objectHash;
+    auto rifs = objects.find(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    if (rifs == objects.end()) {
+        return false;
+    }
+
+    std::set<uint16_t> l2vni_vlans;
+    auto map_entries = objects.find(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY);
+    if (map_entries != objects.end()) {
+        for (const auto& entry : map_entries->second) {
+            auto map_type = m_switch_db->stored_attr(
+                SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, entry.first,
+                SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE);
+            if (map_type == nullptr || map_type->value.s32 != SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID) {
+                continue;
+            }
+            auto vlan_val = m_switch_db->stored_attr(
+                SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, entry.first,
+                SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE);
+            if (vlan_val != nullptr && vlan_val->value.u16 != 0) {
+                l2vni_vlans.insert(vlan_val->value.u16);
+            }
+        }
+    }
+
+    std::set<sai_object_id_t> routed_rifs;
+    auto routes = objects.find(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+    if (routes != objects.end()) {
+        for (const auto& route : routes->second) {
+            auto nh = m_switch_db->stored_attr(
+                SAI_OBJECT_TYPE_ROUTE_ENTRY, route.first,
+                SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
+            if (nh != nullptr &&
+                nh->value.oid != SAI_NULL_OBJECT_ID &&
+                RealObjectIdManager::objectTypeQuery(nh->value.oid) == SAI_OBJECT_TYPE_ROUTER_INTERFACE) {
+                routed_rifs.insert(nh->value.oid);
+            }
+        }
+    }
+
+    bool found = false;
+    uint16_t best_vlan_id = 0;
+    std::array<uint8_t, 6> best_mac = {};
+
+    for (const auto& rif : rifs->second) {
+        auto type = m_switch_db->stored_attr(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif.first,
+            SAI_ROUTER_INTERFACE_ATTR_TYPE);
+        auto vr = m_switch_db->stored_attr(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif.first,
+            SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID);
+        auto vlan = m_switch_db->stored_attr(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif.first,
+            SAI_ROUTER_INTERFACE_ATTR_VLAN_ID);
+        if (type == nullptr || vr == nullptr || vlan == nullptr ||
+            type->value.s32 != SAI_ROUTER_INTERFACE_TYPE_VLAN ||
+            vr->value.oid != vr_oid) {
+            continue;
+        }
+
+        sai_object_id_t rif_oid = SAI_NULL_OBJECT_ID;
+        sai_deserialize_object_id(rif.first, rif_oid);
+        if (routed_rifs.count(rif_oid)) {
+            continue;
+        }
+
+        auto vid = m_switch_db->stored_attr(
+            SAI_OBJECT_TYPE_VLAN,
+            sai_serialize_object_id(vlan->value.oid),
+            SAI_VLAN_ATTR_VLAN_ID);
+        if (vid == nullptr || vid->value.u16 == 0 || l2vni_vlans.count(vid->value.u16)) {
+            continue;
+        }
+
+        auto src_mac = m_switch_db->stored_attr(
+            SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif.first,
+            SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS);
+        if (src_mac == nullptr) {
+            continue;
+        }
+
+        if (!found || vid->value.u16 < best_vlan_id) {
+            found = true;
+            best_vlan_id = vid->value.u16;
+            memcpy(best_mac.data(), src_mac->value.mac, best_mac.size());
+        }
+    }
+
+    if (found) {
+        mac = best_mac;
+        return true;
+    }
+
+    return false;
+}
+
+void
+TunnelManager::refresh_l3_vni_router_mac(
+    _In_ sai_object_id_t vr_oid)
+{
+    SWSS_LOG_ENTER();
+
+    bool have_switch_mac = false;
+    std::array<uint8_t, 6> switch_mac = {};
+    auto read_switch_mac = [&]() -> bool {
+        if (have_switch_mac) {
+            return true;
+        }
+        sai_attribute_t attr{};
+        attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+        if (m_switch_db->get(SAI_OBJECT_TYPE_SWITCH, m_switch_db->m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS) {
+            return false;
+        }
+        memcpy(switch_mac.data(), attr.value.mac, switch_mac.size());
+        have_switch_mac = true;
+        return true;
+    };
+
+    struct CachedVrMac {
+        bool has_mac = false;
+        std::array<uint8_t, 6> mac = {};
+    };
+    std::unordered_map<sai_object_id_t, CachedVrMac> vr_mac_cache;
+    auto resolve_vr_mac = [&](sai_object_id_t cur_vr_oid, std::array<uint8_t, 6>& out) -> bool {
+        auto it = vr_mac_cache.find(cur_vr_oid);
+        if (it == vr_mac_cache.end()) {
+            CachedVrMac entry;
+            entry.has_mac = get_vr_router_mac(cur_vr_oid, entry.mac);
+            it = vr_mac_cache.emplace(cur_vr_oid, entry).first;
+        }
+        out = it->second.mac;
+        return it->second.has_mac;
+    };
+
+    for (auto& kv : m_shared_encap_tunnels) {
+        TunnelVPPData& td = kv.second.tunnel_data;
+        if (!td.ip_vrf) {
+            continue;
+        }
+        if (vr_oid != SAI_NULL_OBJECT_ID && td.ip_vrf->m_obj_id != vr_oid) {
+            continue;
+        }
+
+        std::array<uint8_t, 6> vr_mac = {};
+        bool has_vr_mac = resolve_vr_mac(td.ip_vrf->m_obj_id, vr_mac);
+
+        if (has_vr_mac || read_switch_mac()) {
+            std::array<uint8_t, 6> encap_mac = has_vr_mac ? vr_mac : switch_mac;
+            if (!td.has_encap_router_mac || td.encap_router_mac != encap_mac) {
+                if (sw_interface_set_mac_by_index(td.sw_if_index, encap_mac.data()) == 0) {
+                    td.encap_router_mac = encap_mac;
+                    td.has_encap_router_mac = true;
+                } else {
+                    SWSS_LOG_ERROR("Failed to update router MAC on vxlan tunnel sw_if %u", td.sw_if_index);
+                }
+            }
+        }
+
+        if (td.bd_id != 0) {
+            std::array<uint8_t, 6> decap_mac = has_vr_mac ? vr_mac : get_router_mac();
+            if (!td.has_decap_router_mac || td.decap_router_mac != decap_mac) {
+                char hw_bvi_ifname[32];
+                snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", td.bd_id);
+                if (sw_interface_set_mac(hw_bvi_ifname, decap_mac.data()) == 0) {
+                    td.decap_router_mac = decap_mac;
+                    td.has_decap_router_mac = true;
+                } else {
+                    SWSS_LOG_ERROR("Failed to update router MAC on decap BVI %s", hw_bvi_ifname);
+                }
+            }
+        }
+    }
+
+    for (auto& kv : m_vxlan_decap_term_map) {
+        for (auto& td : kv.second) {
+            if (!td.ip_vrf || td.bd_id == 0) {
+                continue;
+            }
+            if (vr_oid != SAI_NULL_OBJECT_ID && td.ip_vrf->m_obj_id != vr_oid) {
+                continue;
+            }
+
+            std::array<uint8_t, 6> vr_mac = {};
+            bool has_vr_mac = resolve_vr_mac(td.ip_vrf->m_obj_id, vr_mac);
+            std::array<uint8_t, 6> decap_mac = has_vr_mac ? vr_mac : get_router_mac();
+            if (!td.has_decap_router_mac || td.decap_router_mac != decap_mac) {
+                char hw_bvi_ifname[32];
+                snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", td.bd_id);
+                if (sw_interface_set_mac(hw_bvi_ifname, decap_mac.data()) == 0) {
+                    td.decap_router_mac = decap_mac;
+                    td.has_decap_router_mac = true;
+                } else {
+                    SWSS_LOG_ERROR("Failed to update router MAC on decap BVI %s", hw_bvi_ifname);
+                }
+            }
         }
     }
 }
@@ -3031,7 +3274,10 @@ TunnelManager::create_vxlan_decap_term(
     SWSS_LOG_ENTER();
 
     char            hw_bvi_ifname[32];
-    auto            router_mac = get_router_mac();
+    std::array<uint8_t, 6> router_mac = get_router_mac();
+    if (ip_vrf) {
+        get_vr_router_mac(ip_vrf->m_obj_id, router_mac);
+    }
     auto            bvi_mac = router_mac.data();
     vpp_ip_route_t  bvi_ip_prefix;
 
@@ -3069,6 +3315,8 @@ TunnelManager::create_vxlan_decap_term(
         m_switch_db->dynamic_bd_id_pool.free(bd_id);
         return SAI_STATUS_FAILURE;
     }
+    tunnel_data.decap_router_mac = router_mac;
+    tunnel_data.has_decap_router_mac = true;
     refresh_interfaces_list();
 
     snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", bd_id);

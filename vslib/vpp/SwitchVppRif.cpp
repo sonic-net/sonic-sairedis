@@ -3163,6 +3163,12 @@ sai_status_t SwitchVpp::createRouterif(
         if (attr_vr != NULL)
         {
             m_tunnel_mgr.install_pending_decap_host_paths(attr_vr->value.oid);
+
+            auto attr_type = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_TYPE, attr_count, attr_list);
+            if (attr_type != NULL && attr_type->value.s32 == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+            {
+                m_tunnel_mgr.refresh_l3_vni_router_mac(attr_vr->value.oid);
+            }
         }
     }
 
@@ -3187,6 +3193,18 @@ sai_status_t SwitchVpp::removeRouterif(
 {
     SWSS_LOG_ENTER();
 
+    sai_object_id_t removed_vlan_rif_vr = SAI_NULL_OBJECT_ID;
+    {
+        sai_attribute_t rif_attrs[2]{};
+        rif_attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+        rif_attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, objectId, 2, rif_attrs) == SAI_STATUS_SUCCESS &&
+            rif_attrs[0].value.s32 == SAI_ROUTER_INTERFACE_TYPE_VLAN)
+        {
+            removed_vlan_rif_vr = rif_attrs[1].value.oid;
+        }
+    }
+
     // the outside feature goes before the interface does
     m_nat.removeRouterInterface(objectId);
 
@@ -3201,6 +3219,11 @@ sai_status_t SwitchVpp::removeRouterif(
 
     m_ifaceRegistry.clearRifOid(objectId);
     m_rifStatsBaseMap.erase(objectId);
+
+    if (removed_vlan_rif_vr != SAI_NULL_OBJECT_ID)
+    {
+        m_tunnel_mgr.refresh_l3_vni_router_mac(removed_vlan_rif_vr);
+    }
 
     return SAI_STATUS_SUCCESS;
 }

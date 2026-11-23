@@ -1932,6 +1932,13 @@ sai_status_t SwitchVpp::vpp_update_bvi_interface(
         SWSS_LOG_INFO("Set MAC %s on BVI %s",
                       sai_serialize_mac(attr_mac->value.mac).c_str(), hwif_name);
         set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_mac);
+
+        sai_attribute_t vr_attr{};
+        vr_attr.id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+        if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_obj_id, 1, &vr_attr) == SAI_STATUS_SUCCESS)
+        {
+            m_tunnel_mgr.refresh_l3_vni_router_mac(vr_attr.value.oid);
+        }
     }
 
     // Apply the MTU update

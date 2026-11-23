@@ -42,6 +42,14 @@ namespace saivs
         // kernel; empty when the BVI has none.
         std::string decap_host_if;
 
+        // Local router MAC programmed on the VPP tunnel interface (inner source
+        // MAC) and decap BVI; tracked so refresh_l3_vni_router_mac only calls
+        // VPP when the resolved router MAC actually changes.
+        bool has_encap_router_mac = false;
+        std::array<uint8_t, 6> encap_router_mac = {};
+        bool has_decap_router_mac = false;
+        std::array<uint8_t, 6> decap_router_mac = {};
+
         // L2 VXLAN fields
         u_int32_t vni = 0;
         u_int16_t vlan_id = 0;
@@ -314,10 +322,22 @@ namespace saivs
         void install_pending_decap_host_paths(
             _In_ sai_object_id_t vr_oid);
 
+        /**
+         * @brief Recompute and apply the local EVPN router MAC on existing L3
+         * VXLAN tunnels and their decap BVIs for @p vr_oid (or all virtual
+         * routers when @p vr_oid is SAI_NULL_OBJECT_ID).
+         */
+        void refresh_l3_vni_router_mac(
+            _In_ sai_object_id_t vr_oid);
+
     private:
         SwitchVpp* m_switch_db;
         std::array<uint8_t, 6> m_router_mac;
         u_int16_t m_vxlan_port;
+
+        bool get_vr_router_mac(
+            _In_ sai_object_id_t vr_oid,
+            _Out_ std::array<uint8_t, 6>& mac);
 
         /**
          * @brief Kernel-side hooks of the decap host path. The constructor

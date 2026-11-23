@@ -703,6 +703,16 @@ sai_status_t SwitchVpp::addIpRoute(
         return status;
     }
 
+    auto attr_nh = sai_metadata_get_attr_by_id(SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID, attr_count, attr_list);
+    if (attr_nh != nullptr &&
+        attr_nh->value.oid != SAI_NULL_OBJECT_ID &&
+        RealObjectIdManager::objectTypeQuery(attr_nh->value.oid) == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
+    {
+        sai_route_entry_t route_entry{};
+        sai_deserialize_route_entry(serializedObjectId, route_entry);
+        m_tunnel_mgr.refresh_l3_vni_router_mac(route_entry.vr_id);
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -1006,6 +1016,16 @@ sai_status_t SwitchVpp::removeIpRoute(
 	    }
     }
 
+    bool isRifRoute = false;
+    if (route_obj) {
+        attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+        if (route_obj->get_attr(attr) == SAI_STATUS_SUCCESS &&
+            attr.value.oid != SAI_NULL_OBJECT_ID &&
+            RealObjectIdManager::objectTypeQuery(attr.value.oid) == SAI_OBJECT_TYPE_ROUTER_INTERFACE) {
+            isRifRoute = true;
+        }
+    }
+
     // Capture the bound counter before remove_internal tears down the route's
     // SaiObjectDB relationship, so its base/carry tables can still be cleaned up.
     // route_obj is the committed object fetched above; reuse it to avoid a
@@ -1018,6 +1038,13 @@ sai_status_t SwitchVpp::removeIpRoute(
     {
         m_routeCounterStatsBaseMap.erase(counter_oid);
         m_routeCounterStatsCarryMap.erase(counter_oid);
+    }
+
+    if (isRifRoute)
+    {
+        sai_route_entry_t route_entry{};
+        sai_deserialize_route_entry(serializedObjectId, route_entry);
+        m_tunnel_mgr.refresh_l3_vni_router_mac(route_entry.vr_id);
     }
     m_routeStatsIndexMap.erase(serializedObjectId);
 

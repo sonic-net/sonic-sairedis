@@ -1859,6 +1859,10 @@ sai_status_t SwitchVpp::create(
                                "data-plane create failure: status=%d",
                                serializedObjectId.c_str(), rollback_status);
             }
+        } else {
+            // An L2VNI VNI_TO_VLAN_ID mapping disqualifies that VLAN RIF from
+            // being chosen as a VRF's unnumbered L3VNI SVI.
+            m_tunnel_mgr.refresh_l3_vni_router_mac(SAI_NULL_OBJECT_ID);
         }
         return status;
     }
@@ -2357,9 +2361,18 @@ sai_status_t SwitchVpp::remove(
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
+        auto map_type = stored_attr(
+            SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, serializedObjectId,
+            SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE);
+        bool is_l2_vni_to_vlan =
+            (map_type != nullptr && map_type->value.s32 == SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID);
         CHECK_STATUS(m_tunnel_mgr.handle_l2_vxlan_tunnel_map_entry_removal(
             serializedObjectId));
-        return remove_internal(object_type, serializedObjectId);
+        CHECK_STATUS(remove_internal(object_type, serializedObjectId));
+        if (is_l2_vni_to_vlan) {
+            m_tunnel_mgr.refresh_l3_vni_router_mac(SAI_NULL_OBJECT_ID);
+        }
+        return SAI_STATUS_SUCCESS;
     }
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY)
@@ -2823,6 +2836,17 @@ sai_status_t SwitchVpp::set(
     if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP)
     {
         return setHostifTrap(serializedObjectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_VIRTUAL_ROUTER &&
+        attr != nullptr &&
+        attr->id == SAI_VIRTUAL_ROUTER_ATTR_SRC_MAC_ADDRESS)
+    {
+        CHECK_STATUS(set_internal(objectType, serializedObjectId, attr));
+        sai_object_id_t vr_oid = SAI_NULL_OBJECT_ID;
+        sai_deserialize_object_id(serializedObjectId, vr_oid);
+        m_tunnel_mgr.refresh_l3_vni_router_mac(vr_oid);
+        return SAI_STATUS_SUCCESS;
     }
 
     return set_internal(objectType, serializedObjectId, attr);
