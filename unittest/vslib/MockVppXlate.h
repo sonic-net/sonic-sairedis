@@ -73,6 +73,13 @@ struct VppRuleStatsCall
     uint32_t rule_index;
 };
 
+struct VppAclListCall
+{
+    std::string hwif_name;
+    std::vector<uint32_t> ingress;
+    std::vector<uint32_t> egress;
+};
+
 /**
  * @brief One vpp_classify_session_add() call: the node a frame the session
  * matches goes to, and its match, which tells what it is for.
@@ -82,6 +89,12 @@ struct VppClassifySession
     uint32_t table_index;
     uint32_t hit_next_index;
     std::vector<uint8_t> match;
+};
+
+struct VppAclListResult
+{
+    int result;
+    bool commitOnError;
 };
 
 struct VppMock
@@ -164,12 +177,19 @@ struct VppMock
     std::vector<uint32_t> pbhTableDels;
     std::vector<VppPbhAttachCall> pbhAttachCalls;
     std::vector<VppRuleStatsCall> ruleStatsCalls;
+    int aclListResult = 0;
+    int aclListReadResult = 0;
+    std::vector<VppAclListResult> aclListResults;
+    std::vector<VppAclListCall> aclListCalls;
+    std::vector<bool> aclListAdminUp;
+    std::map<std::string, VppAclListCall> aclLists;
 
     std::map<std::string, uint32_t> interfaceVrfs;
     std::set<uint32_t> vrfTables;
     std::map<std::string, vpp_interface_stats_t> interfaceStats;
     std::map<std::string, int> actions;
     std::set<std::string> interfaces;
+    std::set<std::string> missingInterfaces;
     std::set<std::string> lcpPairs;
     std::set<std::string> bridgePorts;
     // VPP's bridge domains: the interfaces in each, a VLAN's bridge virtual
