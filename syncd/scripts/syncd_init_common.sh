@@ -849,6 +849,9 @@ config_syncd()
         config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "nokia-vs" ]; then
         config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "nxp-lx2160" ]; then
+        # NXP LX2160A control-plane CPU with the switch ASIC emulated by SAI-VS
+        config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "micas-vs" ]; then
         config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "vpp" ]; then
