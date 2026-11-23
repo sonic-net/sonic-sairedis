@@ -4,6 +4,8 @@ extern "C" {
 #include "sai.h"
 }
 
+#include "swss/logger.h"
+
 #include <cstddef>
 #include <functional>
 #include <string>
@@ -75,7 +77,7 @@ namespace saivs
                     _In_ UndoFn&& undo)
             {
                 SWSS_LOG_ENTER();
-                
+
                 int ret = step();
 
                 if (ret == 0)
