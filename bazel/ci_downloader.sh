@@ -3,9 +3,9 @@ set -euo pipefail
 
 # Local builds and CI share pinned inputs and public mirror defaults.
 # Pin the shared reader and configuration to a landed registry revision.
-revision=0f459395f8852b5c89e9895afeeea01b95b281ea
-config_digest=622830b8adf42d229a53b60ea0956de4a4a3c119d0639479be78817994d67327
-reader_digest=9c1ad2a9548608d06e49de0c9c119ae19d97ab95cca2505fc1e7e233e62e9b3d
+revision=b5907cdbdf6489f248cdd79eb4c6e2fdf7445eb9
+config_digest=c28e6882aa9ebed84fd32586112e5fbfe9684af4e4aaa9942170919a3cbd308e
+reader_digest=06836c38c56aa0e77e1f7adac68b6463f8f1e920e0beb000061cec5b7f5ec1f2
 manifest_digest=1579ad34288945a28a2d77f96f4764b8910dd3d856d688971e46e63e58119af5
 
 if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
