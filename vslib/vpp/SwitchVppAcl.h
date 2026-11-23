@@ -59,5 +59,32 @@ typedef struct ordered_ace_list_ {
 
 #ifdef __cplusplus
 }
+
+#include "vppxlate/SaiVppXlate.h"
+
+#include <vector>
+
+namespace saivs
+{
+    sai_status_t setAclRuleIpFamilyWildcard(
+            vpp_acl_rule_t &rule,
+            int family);
+
+    sai_status_t acl_rule_set_outer_vlan(
+            const sai_attribute_value_t *value,
+            vpp_acl_rule_t *rule);
+
+    sai_status_t getAclRuleIpFamily(
+            const acl_tbl_entries_t &ace,
+            int &family);
+
+    sai_status_t expandAclRuleVariants(
+            const vpp_acl_rule_t &rule,
+            int family,
+            bool table_has_v4,
+            bool table_has_v6,
+            bool has_ports,
+            std::vector<vpp_acl_rule_t> &variants);
+}
 #endif
 

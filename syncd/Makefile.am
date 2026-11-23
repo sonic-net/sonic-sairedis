@@ -31,6 +31,7 @@ libSyncd_a_SOURCES = \
 				GearboxMdioAccess.cpp \
 				GlobalSwitchId.cpp \
 				HardReiniter.cpp \
+				ImplicitDependency.cpp \
 				MdioIpcServer.cpp \
 				MetadataLogger.cpp \
 				NotificationHandler.cpp \
