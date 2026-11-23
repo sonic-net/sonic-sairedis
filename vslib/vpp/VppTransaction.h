@@ -74,6 +74,8 @@ namespace saivs
                     _In_ Do&& step,
                     _In_ UndoFn&& undo)
             {
+                SWSS_LOG_ENTER();
+                
                 int ret = step();
 
                 if (ret == 0)
