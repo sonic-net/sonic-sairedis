@@ -19,6 +19,7 @@
 
 #include <vpp-api/client/stat_client.h>
 #include <vlib/vlib.h>
+#include <string.h>
 #include "SaiVppStats.h"
 
 static int is_stats_inited = 0;
@@ -122,7 +123,15 @@ vpp_stats_dump (char *query_path, vpp_stat_one one, vpp_stat_two two, void *data
 	  break;
 
 	case STAT_DIR_TYPE_SCALAR_INDEX:
+	case STAT_DIR_TYPE_GAUGE:
 	  SAIVPP_STAT_DBG("%.2f %s\n", res[i].scalar_value, res[i].name);
+	  sname = strrchr(res[i].name, '/');
+	  if (sname)
+	    {
+	      sname++;
+	      if (one)
+		one(sname, 0, (uint64_t) res[i].scalar_value, data);
+	    }
 	  break;
 
 	case STAT_DIR_TYPE_NAME_VECTOR:
