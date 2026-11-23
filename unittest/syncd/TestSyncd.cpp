@@ -1381,6 +1381,71 @@ TEST_F(SyncdTest, BulkSetTest)
     m_syncd->processEvent(*channel);
 }
 
+TEST_F(SyncdTest, BulkCreateSplitsAttributesOfEachObject)
+{
+    m_opt->m_enableSaiBulkSupport = true;
+
+    m_syncd->m_translator->insertRidAndVid(0x11000000000001, 0x21000000000000); // Switch
+
+    swss::KeyOpFieldsValuesTuple kco;
+    std::string key = "SAI_OBJECT_TYPE_VIRTUAL_ROUTER:bulk:3";
+    std::string op = "bulkcreate";
+    std::vector<swss::FieldValueTuple> values = {
+        {"oid:0x3000000000101", "SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V4_STATE=false|SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V6_STATE=true"},
+        {"oid:0x3000000000102", ""},
+        {"oid:0x3000000000103", "SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V6_STATE=false"}
+    };
+    kco = std::make_tuple(key, op, values);
+
+    auto channel = std::make_shared<MockSelectableChannel>();
+    EXPECT_CALL(*channel, empty())
+        .WillRepeatedly(testing::Return(true));
+    EXPECT_CALL(*channel, pop(testing::_, testing::_))
+        .Times(testing::AnyNumber())
+        .WillRepeatedly(testing::DoAll(
+            testing::SetArgReferee<0>(kco),
+            testing::Return()
+    ));
+
+    typedef std::vector<std::pair<sai_attr_id_t, bool>> Attrs;
+
+    std::vector<Attrs> received;
+
+    m_sai->mock_bulkCreate = [&received](
+        sai_object_type_t,
+        sai_object_id_t,
+        uint32_t objectCount,
+        const uint32_t* attrCount,
+        const sai_attribute_t** attrList,
+        sai_bulk_op_error_mode_t,
+        sai_object_id_t* objectId,
+        sai_status_t* statuses) -> sai_status_t {
+            for (uint32_t idx = 0; idx < objectCount; idx++)
+            {
+                Attrs attrs;
+
+                for (uint32_t i = 0; i < attrCount[idx]; i++)
+                {
+                    attrs.emplace_back(attrList[idx][i].id, attrList[idx][i].value.booldata);
+                }
+
+                received.push_back(attrs);
+
+                objectId[idx] = 0x1103000000000101 + idx;
+                statuses[idx] = SAI_STATUS_SUCCESS;
+            }
+
+            return SAI_STATUS_SUCCESS;
+    };
+
+    m_syncd->processEvent(*channel);
+
+    ASSERT_EQ(received.size(), 3u);
+    EXPECT_EQ(received[0], (Attrs{{SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V4_STATE, false}, {SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V6_STATE, true}}));
+    EXPECT_EQ(received[1], Attrs{});
+    EXPECT_EQ(received[2], (Attrs{{SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V6_STATE, false}}));
+}
+
 TEST_F(SyncdTest, BulkRemoveTest)
 {
     m_opt->m_enableSaiBulkSupport = true;
