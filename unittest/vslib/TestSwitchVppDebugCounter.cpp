@@ -497,6 +497,26 @@ TEST_F(SwitchVppDebugCounterTest, unavailableStatsReadAsZero)
     EXPECT_EQ(0u, portValue(m_port0, counter));
 }
 
+TEST_F(SwitchVppDebugCounterTest, failedDumpKeepsTheCount)
+{
+    setDrops("DIP_LINK_LOCAL", PORT0_IDX, { 500 });
+
+    auto counter = createCounter(SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS, { SAI_IN_DROP_REASON_DIP_LINK_LOCAL });
+
+    setDrops("DIP_LINK_LOCAL", PORT0_IDX, { 600 });
+
+    ASSERT_EQ(100u, portValue(m_port0, counter));
+
+    vppMock().dropReasonDumpResult = -1;
+
+    EXPECT_EQ(100u, portValue(m_port0, counter));
+
+    vppMock().dropReasonDumpResult = 0;
+    setDrops("DIP_LINK_LOCAL", PORT0_IDX, { 601 });
+
+    EXPECT_EQ(101u, portValue(m_port0, counter));
+}
+
 TEST_F(SwitchVppDebugCounterTest, removeForgetsTheCounterAndFreesItsIndex)
 {
     auto first = createCounter(SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS, { SAI_IN_DROP_REASON_DIP_LINK_LOCAL });
