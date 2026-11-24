@@ -459,7 +459,7 @@ TEST_F(SwitchVppRifTest, failedCreateUnregistersKernelVrfTableAfterUnbinding)
     const auto& calls = vppMock().calls;
     auto unbind = std::find_if(calls.begin(), calls.end(), [](const VppCall& call)
             {
-                return call.api == "set_interface_vrf" && call.name == "port0.10" && call.id == 0;
+                return call.api == "set_interface_vrf" && call.name == "port0" && call.sub_id == 10 && call.id == 0;
             });
     auto tableDelete = std::find_if(calls.begin(), calls.end(), [](const VppCall& call)
             {
@@ -474,6 +474,95 @@ TEST_F(SwitchVppRifTest, failedCreateUnregistersKernelVrfTableAfterUnbinding)
     ASSERT_NE(nullptr, sw->vpp_get_ip_vrf(kernelVrf));
     EXPECT_EQ(1u, vppMock().vrfTables.count(100));
     EXPECT_EQ(100u, vppMock().interfaceVrfs["port0.10"]);
+}
+
+TEST_F(SwitchVppRifTest, failedVrfTableDeleteFailsRollbackAfterTryingBothFamilies)
+{
+    vppMock().kernelVrfId = 100;
+
+    for (bool ipv6Fails : {false, true})
+    {
+        SCOPED_TRACE(ipv6Fails ? "IPv6 delete fails" : "IPv4 delete fails");
+        const auto kernelVrf = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+        SwitchVpp::RifCreateState state;
+        state.hwif = "port0";
+        vppMock().calls.clear();
+        vppMock().vrfDelResult = -1;
+        vppMock().vrfDelFailsIpv6 = ipv6Fails;
+
+        {
+            TxnScope request;
+            ASSERT_EQ(SAI_STATUS_SUCCESS, sw->vpp_router_interface_set_vrf(kernelVrf, "port0", 0, "Ethernet0", &state));
+            EXPECT_EQ(SAI_STATUS_FAILURE, request.rollback());
+        }
+
+        auto deletes = vppMock().callsTo("ip_vrf_del", "vrf_100");
+        ASSERT_EQ(2u, deletes.size());
+        EXPECT_FALSE(deletes[0].flag);
+        EXPECT_TRUE(deletes[1].flag);
+        EXPECT_EQ(nullptr, sw->vpp_get_ip_vrf(kernelVrf));
+        EXPECT_EQ(0u, vppMock().interfaceVrfs["port0"]);
+        vppMock().vrfDelResult = 0;
+    }
+}
+
+TEST_F(SwitchVppRifTest, failedIpv6BindRestoresIpv4BeforeTableIsDeleted)
+{
+    vppMock().kernelVrfId = 100;
+
+    for (bool registeredBefore : {true, false})
+    {
+        SCOPED_TRACE(registeredBefore ? "VRF registered before" : "VRF registered by the request");
+        const auto kernelVrf = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+        if (registeredBefore)
+        {
+            ASSERT_EQ(0, sw->vpp_add_ip_vrf(kernelVrf, 100));
+        }
+        SwitchVpp::RifCreateState state;
+        state.hwif = "port0";
+        vppMock().calls.clear();
+        vppMock().setVrfResult = -1;
+        vppMock().setVrfFailsIpv6Only = true;
+
+        {
+            TxnScope request;
+            EXPECT_EQ(SAI_STATUS_FAILURE, sw->vpp_router_interface_set_vrf(kernelVrf, "port0", 0, "Ethernet0", &state));
+            EXPECT_EQ(100u, vppMock().interfaceVrfs["port0"]);
+            vppMock().setVrfResult = 0;
+            vppMock().setVrfFailsIpv6Only = false;
+            EXPECT_EQ(SAI_STATUS_SUCCESS, request.rollback());
+        }
+
+        EXPECT_EQ(0u, vppMock().interfaceVrfs["port0"]);
+        const auto& calls = vppMock().calls;
+        auto restore = std::find_if(calls.begin(), calls.end(), [](const VppCall& call)
+                {
+                    return call.api == "set_interface_vrf" && call.name == "port0" && call.id == 0 && !call.flag;
+                });
+        ASSERT_NE(calls.end(), restore);
+        // only the family that was bound is restored
+        EXPECT_EQ(calls.end(), std::find_if(calls.begin(), calls.end(), [](const VppCall& call)
+                {
+                    return call.api == "set_interface_vrf" && call.flag;
+                }));
+
+        auto tableDelete = std::find_if(calls.begin(), calls.end(), [](const VppCall& call)
+                {
+                    return call.api == "ip_vrf_del" && call.id == 100;
+                });
+        if (registeredBefore)
+        {
+            EXPECT_EQ(calls.end(), tableDelete);
+            EXPECT_NE(nullptr, sw->vpp_get_ip_vrf(kernelVrf));
+            EXPECT_EQ(0, sw->vpp_del_ip_vrf(kernelVrf));
+        }
+        else
+        {
+            ASSERT_NE(calls.end(), tableDelete);
+            EXPECT_LT(restore - calls.begin(), tableDelete - calls.begin());
+            EXPECT_EQ(nullptr, sw->vpp_get_ip_vrf(kernelVrf));
+        }
+    }
 }
 
 // Without state, the caller does not undo what it binds to the table, so the
@@ -698,8 +787,9 @@ TEST_F(SwitchVppRifTest, failedNonDefaultVrfCreateRestoresPortAndLagBeforeDefaul
             EXPECT_EQ(0u, vppMock().interfaceVrfs.at(name));
             EXPECT_NE(nullptr, sw->m_ifaceRegistry.findByOid(backing));
             EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
-            EXPECT_EQ(1u, vppMock().vrfTables.count(100));
-            EXPECT_EQ(1u, sw->vrf_objMap.count(nonDefaultVrf));
+            // the kernel VRF table this create registered goes with it
+            EXPECT_EQ(0u, vppMock().vrfTables.count(100));
+            EXPECT_EQ(0u, sw->vrf_objMap.count(nonDefaultVrf));
 
             vppMock().kernelVrfId = 0;
             vppMock().loopbackResult = vppMock().statsResult = 0;
@@ -723,7 +813,7 @@ TEST_F(SwitchVppRifTest, rollbackRestoresActualPreviousVrfAndDefaultCreateBindsT
     ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
     EXPECT_EQ(42u, vppMock().interfaceVrfs.at("port0"));
     EXPECT_EQ(1u, vppMock().vrfTables.count(42));
-    EXPECT_EQ(1u, vppMock().vrfTables.count(100));
+    EXPECT_EQ(0u, vppMock().vrfTables.count(100));
 
     vppMock().kernelVrfId = 0;
     vppMock().statsResult = 0;

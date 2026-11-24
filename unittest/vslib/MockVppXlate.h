@@ -122,6 +122,8 @@ struct VppMock
     std::function<int(const std::string&, std::string&)> execHook;
     int getVrfResult = 0;
     int setVrfResult = 0;
+    // fail only IPv6 binds with setVrfResult, after IPv4 succeeds
+    bool setVrfFailsIpv6Only = false;
     unsigned int vrfSetCalls = 0;
     uint32_t nextSwIfIndex = 200;
     int settingsResult = 0;
@@ -132,6 +134,9 @@ struct VppMock
     int mplsResult = 0;
     int adminResult = 0;
     int deleteResult = 0;
+    // ip_vrf_del() result for the address family that fails, IPv4 or IPv6
+    int vrfDelResult = 0;
+    bool vrfDelFailsIpv6 = false;
     // sw_interface_ip6_enable_disable() result, and the per-interface lock count
     // VPP keeps for IPv6 (ip6_link_t.il_locks), so a test can check that the
     // enables a RIF takes are released again.

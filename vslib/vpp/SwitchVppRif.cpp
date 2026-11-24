@@ -1795,6 +1795,7 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
     SWSS_LOG_ENTER();
 
     auto it = vrf_objMap.find(objectId);
+    int ret = 0;
 
     if (it != vrf_objMap.end()) {
         auto sw = it->second;
@@ -1804,9 +1805,18 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
                 if (m_dhcp_trap_copy) {
                     vpp_ip4_limited_broadcast_receive(sw->m_vrf_id, false);
                 }
-                ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), false);
-                ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), true);
+                int ret4 = ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), false);
+                int ret6 = ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), true);
+                if (ret4 != 0 || ret6 != 0) {
+                    SWSS_LOG_ERROR("Failed to delete VRF(%s) table %u: IPv4 %d, IPv6 %d",
+                                   sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id, ret4, ret6);
+                    ret = ret4 != 0 ? ret4 : ret6;
+                }
             }
+            /*
+             * Forget the VRF even if a delete failed: a kept entry would make
+             * vpp_add_ip_vrf() skip re-creating the family that was deleted.
+             */
             if (sw->m_vrf_id >= vrf_table_id_base &&
                 sw->m_vrf_id < vrf_table_id_base + vrf_table_id_pool_size) {
                 vrf_table_id_pool.free(sw->m_vrf_id);
@@ -1814,7 +1824,7 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
             vrf_objMap.erase(it);
         }
     }
-    return 0;
+    return ret;
 }
 
 /*
@@ -1933,30 +1943,60 @@ sai_status_t SwitchVpp::vpp_create_vrf_table(
 /*
  * Bind an interface to a table in both address families. VPP refuses to move an
  * interface that still has an address (-114).
+ *
+ * With undo, each family's previous table is read first, a family already in
+ * the table is left alone, and each bound family records its restore at once,
+ * so a failure on the other family still moves it back.
  */
 static int vpp_set_interface_table(
         _In_ const char *hwif_name,
         _In_ uint32_t sub_id,
-        _In_ uint32_t vrf_id)
+        _In_ uint32_t vrf_id,
+        _In_ bool undo = false)
 {
     SWSS_LOG_ENTER();
 
-    int ret4 = set_interface_vrf(hwif_name, sub_id, vrf_id, false);
-    if (ret4 != 0)
+    const std::string parent = hwif_name;
+    const std::string name = sub_id ? parent + "." + std::to_string(sub_id) : parent;
+
+    for (bool is_ipv6 : {false, true})
     {
-        SWSS_LOG_ERROR("Failed to bind %s (sub %u) to IPv4 table %u: %d",
-                       hwif_name, sub_id, vrf_id, ret4);
-        return ret4;
+        const char *family = is_ipv6 ? "IPv6" : "IPv4";
+        uint32_t previous = 0;
+
+        if (undo)
+        {
+            int ret = get_interface_vrf(name.c_str(), is_ipv6, &previous);
+            if (ret != 0)
+            {
+                SWSS_LOG_ERROR("Failed to query %s VRF for %s (%d)", family, name.c_str(), ret);
+                return ret;
+            }
+
+            if (previous == vrf_id)
+            {
+                continue;
+            }
+        }
+
+        int ret = set_interface_vrf(hwif_name, sub_id, vrf_id, is_ipv6);
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("Failed to bind %s to %s table %u: %d", name.c_str(), family, vrf_id, ret);
+            return ret;
+        }
+
+        if (undo)
+        {
+            VppTransaction::current().onRollback(std::string(family) + " VRF of " + name,
+                    [parent, sub_id, previous, is_ipv6]()
+                    {
+                        return set_interface_vrf(parent.c_str(), sub_id, previous, is_ipv6);
+                    });
+        }
     }
 
-    int ret6 = set_interface_vrf(hwif_name, sub_id, vrf_id, true);
-    if (ret6 != 0)
-    {
-        SWSS_LOG_ERROR("Failed to bind %s (sub %u) to IPv6 table %u: %d",
-                       hwif_name, sub_id, vrf_id, ret6);
-    }
-
-    return ret6;
+    return 0;
 }
 
 /*
@@ -1982,13 +2022,14 @@ sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
     auto vrf = vpp_get_ip_vrf(vr_oid);
 
     // Only callers that pass state undo what they leave bound to the table,
-    // so only they may undo its registration.
+    // so only they may undo its registration. Table 0 always exists and is
+    // never deleted, so registering it is kept.
     bool registered = false;
     auto register_vrf = [&](uint32_t table)
     {
         int ret = vpp_add_ip_vrf(vr_oid, table);
 
-        if (ret == 0 && state != nullptr)
+        if (ret == 0 && state != nullptr && table != 0)
         {
             registered = true;
             VppTransaction::current().onRollback("registration of VRF(" + sai_serialize_object_id(vr_oid) + ")",
@@ -2043,20 +2084,12 @@ sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
         }
     }
 
-    uint32_t previous_vrf = 0;
+    // An interface created by this request is normally unbound by its delete,
+    // but that runs after the table registered above is deleted.
     const bool restore = state != nullptr && !state->interface_created;
+    const bool undo = restore || registered;
 
-    if (restore)
-    {
-        int ret = get_interface_vrf(state->hwif.c_str(), false, &previous_vrf);
-        if (ret != 0)
-        {
-            SWSS_LOG_ERROR("Failed to query IPv4 VRF for %s (%d)", state->hwif.c_str(), ret);
-            return SAI_STATUS_FAILURE;
-        }
-    }
-
-    if (vrf_id == previous_vrf)
+    if (!undo && vrf_id == 0)
     {
         // a new interface is already in table 0
         return SAI_STATUS_SUCCESS;
@@ -2065,21 +2098,9 @@ sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
     SWSS_LOG_NOTICE("Binding %s (sub %u) to VRF(%s) table %u",
                     hwif_name, sub_id, sai_serialize_object_id(vr_oid).c_str(), vrf_id);
 
-    if (vpp_set_interface_table(hwif_name, sub_id, vrf_id) != 0)
+    if (vpp_set_interface_table(hwif_name, sub_id, vrf_id, undo) != 0)
     {
         return SAI_STATUS_FAILURE;
-    }
-
-    // an interface created by this request is normally unbound by its delete,
-    // but that runs after the table registered above is deleted
-    if (restore || registered)
-    {
-        const std::string hwif = state->hwif;
-
-        VppTransaction::current().onRollback("VRF of " + hwif, [hwif, previous_vrf]()
-                {
-                    return vpp_set_interface_table(hwif.c_str(), 0, previous_vrf);
-                });
     }
 
     return SAI_STATUS_SUCCESS;
