@@ -65,7 +65,8 @@ tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry
 				TestSwitchVppAclRules.cpp TestVppAclInheritance.cpp \
 				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp \
 				TestSwitchVppNbr.cpp TestSwitchVppDebugCounter.cpp
-VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
+VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_sonic_ext_copp_neighbor_miss_bind \
+				vpp_sonic_ext_copp_dhcp_bind vpp_iface_loopback_set_action \
 				vpp_ipip_tunnel_add vpp_ipip_tunnel_del vpp_get_swif_name vpp_sw_interface_find_by_ip \
 				ip_route_add_del_get_stats \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
@@ -87,7 +88,7 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_iface_loopback_set_action \
 				vpp_get_swif_idx_by_name vpp_add_node_next vpp_classify_set_interface_l2_tables \
 				vpp_classify_table_create vpp_classify_table_delete \
 				vpp_classify_session_add vpp_classify_session_del \
-				ip_route_add_del vpp_sonic_ext_copp_ip2me_addr_add_del \
+				ip_route_add_del ip6_mroute_local_add_del vpp_sonic_ext_copp_ip2me_addr_add_del \
 				sw_interface_set_mtu sw_interface_set_mtu_all get_interface_state interface_get_state \
 				sw_interface_set_mpls_enable get_interface_mpls_enabled mpls_table_add_del \
 				vpp_sonic_ext_trim_global_set vpp_sonic_ext_trim_queue_set \
@@ -105,8 +106,12 @@ check_PROGRAMS = sai_vpp_xlate_tests
 sai_vpp_xlate_tests_SOURCES = TestSaiVppXlate.c
 sai_vpp_xlate_tests_CFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I/usr/include/vpp_plugins \
 							-ffunction-sections -fdata-sections
-# Link only the callback/context paths exercised by the standalone test.
-sai_vpp_xlate_tests_LDFLAGS = -Wl,--gc-sections
+# Mock the API socket and inspect the locks at each real cache mutation.
+sai_vpp_xlate_tests_LDFLAGS = -Wl,--gc-sections \
+							-Wl,--wrap=_hash_set3 -Wl,--wrap=_hash_unset \
+							-Wl,--wrap=vl_socket_client_msg_alloc \
+							-Wl,--wrap=vl_socket_client_write -Wl,--wrap=vl_socket_client_read
+sai_vpp_xlate_tests_LDADD = $(VPP_LIBS) -lpthread
 endif
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
