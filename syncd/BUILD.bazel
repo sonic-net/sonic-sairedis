@@ -7,6 +7,16 @@ load("//bazel:packaging.bzl", "multiarch_deploy_tar")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(
+    ["Asan.cpp"],
+    visibility = ["//unittest/syncd:__pkg__"],
+)
+
+exports_files(
+    ["scripts/syncd_init_common.sh"],
+    visibility = ["//unittest:__pkg__"],
+)
+
 filegroup(
     name = "all_headers",
     srcs = glob(["*.h"]),
@@ -81,6 +91,7 @@ cc_library(
         "FlowDump.cpp",
         "GlobalSwitchId.cpp",
         "HardReiniter.cpp",
+        "ImplicitDependency.cpp",
         "MdioIpcServer.cpp",
         "MetadataLogger.cpp",
         "NotificationHandler.cpp",
@@ -123,7 +134,10 @@ cc_library(
 )
 
 SYNCD_SRCS = ["main.cpp"] + select({
-    "//:asan_enabled": ["Asan.cpp"],
+    "//:asan_enabled": [
+        "Asan.cpp",
+        "AsanCtor.cpp",
+    ],
     "//conditions:default": [],
 })
 

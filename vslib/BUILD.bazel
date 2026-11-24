@@ -103,6 +103,7 @@ cc_library(
         "EventPayloadNetLinkMsg.cpp",
         "EventPayloadNotification.cpp",
         "EventPayloadPacket.cpp",
+        "EventPayloadPlatformEvent.cpp",
         "EventQueue.cpp",
         "FdbInfo.cpp",
         "HostInterfaceInfo.cpp",

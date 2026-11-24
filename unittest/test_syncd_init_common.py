@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 
-SOURCE = pathlib.Path(__file__).resolve().parents[1] / "syncd/scripts/syncd_init_common.sh"
+SOURCE = pathlib.Path(__file__).absolute().parents[1] / "syncd/scripts/syncd_init_common.sh"
 
 
 class SyncdInitCommonTest(unittest.TestCase):
@@ -61,6 +61,8 @@ supervisorctl() { :; }
 """
         script += self.functions + "\n" + setup + "\n" + body
         environment = dict(os.environ, RENDERED=rendered)
+        if jq := environment.get("SYNCD_TEST_JQ"):
+            environment["PATH"] = str(pathlib.Path(jq).absolute().parent) + os.pathsep + environment["PATH"]
         return subprocess.run(
             ["bash", "-c", script], env=environment, stdin=subprocess.DEVNULL,
             capture_output=True, text=True, check=check, timeout=10,
