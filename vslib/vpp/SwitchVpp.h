@@ -188,6 +188,7 @@ namespace saivs
                 bool interface_created = false;
                 bool lcp_created = false;
                 bool bridge_attached = false;
+                bool dhcp6_mroute_added = false;
                 bool loopback_applied = false;
                 bool vrf_changed = false;
                 bool mtu_changed = false;
@@ -1232,6 +1233,13 @@ namespace saivs
             std::map<sai_object_id_t, vpp_trap_group_entry_t> m_trap_group_map;
             std::map<sai_object_id_t, vpp_trap_entry_t> m_trap_map;
 
+            // The provider exposes one physical row per semantic trap type.
+            // Remember which SAI owner most recently programmed that row so a
+            // failed overlapping create/set/remove can restore the exact
+            // pre-operation policer rather than whichever map entry is visited
+            // first. Protected by m_copp_state_mutex.
+            std::map<sai_hostif_trap_type_t, sai_object_id_t> m_semantic_trap_binding_owner;
+
             sai_status_t createHostifTrapGroup(
                     _In_ sai_object_id_t object_id,
                     _In_ sai_object_id_t switch_id,
@@ -1276,19 +1284,66 @@ namespace saivs
                     _In_ sai_object_id_t trap_oid,
                     _In_ const vpp_trap_entry_t &trap);
 
+            // Reconciles the singleton provider row used by NEIGHBOR_MISS or
+            // by one DHCP address family.  The candidate trap is included for
+            // create/update and excluded for remove/deactivation.
+            sai_status_t programSemanticTrapBinding(
+                    _In_ sai_object_id_t trap_oid,
+                    _In_ const vpp_trap_entry_t &trap,
+                    _In_ bool include_trap);
+
+            sai_status_t applySemanticTrapBinding(
+                    _In_ sai_hostif_trap_type_t trap_type,
+                    _In_ sai_object_id_t owner_oid,
+                    _In_ sai_object_id_t policer_oid,
+                    _In_ bool active);
+
+            sai_object_id_t semanticTrapBindingOwner(
+                    _In_ sai_hostif_trap_type_t trap_type);
+
+            sai_status_t restoreSemanticTrapBinding(
+                    _In_ sai_hostif_trap_type_t trap_type,
+                    _In_ sai_object_id_t owner_oid);
+
         protected: // CoPP: SAI_HOSTIF_TRAP_TYPE_DHCP packet action
 
-            // True while every DHCP hostif trap has SAI_PACKET_ACTION_COPY
-            // (and there is at least one), which floods DHCPv4 client
-            // broadcasts in their VLAN and copies them to the CPU. Otherwise
-            // they are trapped, as before. See SwitchVppFdb.cpp.
+            // An active DHCPv4 trap makes 255.255.255.255 a local receive on
+            // routed interfaces. COPY additionally floods VLAN members;
+            // TRAP terminates at the member classifier.
+            bool m_dhcp_trap_active = false;
             bool m_dhcp_trap_copy = false;
 
-            // Re-derives m_dhcp_trap_copy from m_trap_map and applies it.
-            void vpp_update_dhcp_trap_action();
+            // Re-derives active/COPY state from m_trap_map and applies it.
+            sai_status_t vpp_update_dhcp_trap_action();
 
-            void vpp_set_dhcp_trap_copy(
+            sai_status_t vpp_set_dhcp_trap_state(
+                    _In_ bool active,
                     _In_ bool copy);
+
+        protected: // Control-plane policing: DHCPv6 packet action
+
+            // An active DHCPv6 trap makes ff02::1:2 a local receive on routed
+            // RIFs. COPY additionally floods VLAN members and installs the
+            // receive on their BVI; TRAP terminates at the member classifier.
+            bool m_dhcp6_trap_active = false;
+            bool m_dhcp6_trap_copy = false;
+
+            // Re-derives active/COPY state from m_trap_map and applies it.
+            sai_status_t vpp_update_dhcp6_trap_action();
+
+            sai_status_t vpp_set_dhcp6_trap_state(
+                    _In_ bool active,
+                    _In_ bool copy);
+
+            // Adds or removes the ff02::1:2 route accepting on one RIF and
+            // forwarding to local, in that interface's IPv6 table.
+            int vpp_dhcp6_mroute(
+                    _In_ const char *accept_hwif,
+                    _In_ bool is_add);
+
+            // Confirmed Accept paths by IPv6 MFIB table. The first owner also
+            // installs the shared local Forward path and the last removes it.
+            std::map<uint32_t, std::set<std::string>> m_dhcp6_mroute_ifaces;
 
 
         protected: // VPP

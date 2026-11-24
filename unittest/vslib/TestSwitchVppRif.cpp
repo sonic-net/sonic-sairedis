@@ -640,6 +640,22 @@ TEST_F(SwitchVppRifTest, rollbackRestoresActualPreviousVrfAndDefaultCreateBindsT
     EXPECT_EQ(0u, vppMock().interfaceVrfs.at("port0"));
 }
 
+TEST_F(SwitchVppRifTest, defaultVrfRouteFailureAbortsCreateAndCanRetry)
+{
+    sw->m_dhcp_trap_active = true;
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+
+    vppMock().ipRouteResults = {-1};
+    EXPECT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
+    EXPECT_EQ(0u, sw->vrf_objMap.count(vrf));
+    EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_EQ(1u, sw->vrf_objMap.count(vrf));
+    EXPECT_EQ("port0", sw->m_ifaceRegistry.resolveHwIfByRifOid(rif));
+}
+
 TEST_F(SwitchVppRifTest, vrfLookupAndProgrammingErrorsAbortBeforeActionProgramming)
 {
     for (const std::string failure : {"kernel", "get", "set"})
@@ -818,6 +834,77 @@ TEST_F(SwitchVppRifTest, unsupportedActionsFailBeforeAllocatingInterfaces)
     EXPECT_EQ(0u, vppMock().loopbackCalls);
 }
 
+TEST_F(SwitchVppRifTest, vlanCreateAppliesMtuAndSupportsUpdateAndRecreate)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan);
+    sai_attribute_t mtu{};
+    mtu.id = SAI_ROUTER_INTERFACE_ATTR_MTU;
+    mtu.value.u32 = 9100;
+    attrs.push_back(mtu);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    ASSERT_EQ(1u, vppMock().mtus.count("bvi100"));
+    EXPECT_EQ(9100u, vppMock().mtus.at("bvi100")[0]);
+    EXPECT_EQ(1u, vppMock().lcpPairs.count("bvi100"));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &mtu));
+    EXPECT_EQ(9100u, mtu.value.u32);
+
+    mtu.value.u32 = 1500;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &mtu));
+    EXPECT_EQ(1500u, vppMock().mtus.at("bvi100")[0]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &mtu));
+    EXPECT_EQ(1500u, mtu.value.u32);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+    EXPECT_EQ(0u, vppMock().mtus.count("bvi100"));
+    EXPECT_EQ(0u, vppMock().lcpPairs.count("bvi100"));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_EQ(9100u, vppMock().mtus.at("bvi100")[0]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+}
+
+TEST_F(SwitchVppRifTest, vlanCreateWithoutMtuAppliesSaiDefault)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto metadata = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_ROUTER_INTERFACE_ATTR_MTU);
+    ASSERT_NE(nullptr, metadata);
+    ASSERT_NE(nullptr, metadata->defaultvalue);
+    ASSERT_EQ(1514u, metadata->defaultvalue->u32);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan)));
+    ASSERT_EQ(1u, vppMock().mtus.count("bvi100"));
+    EXPECT_EQ(metadata->defaultvalue->u32, vppMock().mtus.at("bvi100")[0]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+}
+
+TEST_F(SwitchVppRifTest, vlanMtuFailureRollsBackAndCanBeRetried)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan);
+    sai_attribute_t mtu{};
+    mtu.id = SAI_ROUTER_INTERFACE_ATTR_MTU;
+    mtu.value.u32 = 9100;
+    attrs.push_back(mtu);
+    vppMock().mtuResult = -1;
+
+    ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
+    EXPECT_EQ(0, vppMock().mtuResult);
+    EXPECT_EQ(0u, vppMock().interfaces.count("bvi100"));
+    EXPECT_EQ(0u, vppMock().lcpPairs.count("bvi100"));
+    EXPECT_EQ(0u, vppMock().bridgePorts.count("bvi100"));
+    EXPECT_EQ(0u, vppMock().mtus.count("bvi100"));
+    EXPECT_EQ(nullptr, sw->m_ifaceRegistry.findByHwif("bvi100"));
+    EXPECT_TRUE(sw->m_ifaceRegistry.resolveHwIfByRifOid(rif).empty());
+    EXPECT_EQ(0u, sw->m_rifStatsBaseMap.count(rif));
+    EXPECT_EQ(0u, sw->m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE).count(sai_serialize_object_id(rif)));
+    EXPECT_EQ(1u, sw->m_objectHash.at(SAI_OBJECT_TYPE_VLAN).count(sai_serialize_object_id(vlan)));
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_EQ(9100u, vppMock().mtus.at("bvi100")[0]);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+}
+
 TEST_F(SwitchVppRifTest, failedCreatesUnwindOwnedResourcesAndCanBeRetried)
 {
     const auto parentRif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
@@ -944,6 +1031,111 @@ TEST_F(SwitchVppRifTest, ipv6AdminDownRifTakesNoLock)
     EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").empty());
 }
 
+TEST_F(SwitchVppRifTest, ipv6AdminSetBalancesPersistentInterfaceLock)
+{
+    for (auto backing : {port, lag})
+    {
+        const std::string name = backing == port ? "port0" : "BondEthernet2";
+        SCOPED_TRACE(name);
+        const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+        ASSERT_EQ(SAI_STATUS_SUCCESS,
+                create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, backing)));
+        ASSERT_EQ(1, vppMock().ip6Locks.at(name));
+
+        sai_attribute_t admin{};
+        admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+        admin.value.booldata = false;
+        ASSERT_EQ(SAI_STATUS_SUCCESS,
+                sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+        EXPECT_EQ(0, vppMock().ip6Locks.at(name));
+
+        const auto calls = vppMock().callsTo("sw_interface_ip6_enable_disable", name).size();
+        ASSERT_EQ(SAI_STATUS_SUCCESS,
+                sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+        EXPECT_EQ(calls, vppMock().callsTo("sw_interface_ip6_enable_disable", name).size());
+
+        admin.value.booldata = true;
+        ASSERT_EQ(SAI_STATUS_SUCCESS,
+                sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+        EXPECT_EQ(1, vppMock().ip6Locks.at(name));
+
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->removeRouterif(rif));
+        EXPECT_EQ(0, vppMock().ip6Locks.at(name));
+    }
+}
+
+TEST_F(SwitchVppRifTest, adminV4AndV6SetsUseEachOthersStoredState)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    admin.value.booldata = true;
+    attrs.push_back(admin);
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    attrs.push_back(admin);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    admin.value.booldata = false;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_TRUE(vppMock().isAdminUp("port0"));
+
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+    EXPECT_FALSE(stored.value.booldata);
+
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_FALSE(vppMock().isAdminUp("port0"));
+}
+
+TEST_F(SwitchVppRifTest, failedIpv6AdminSetKeepsStoredStateAndOwnership)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    admin.value.booldata = true;
+    attrs.push_back(admin);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    ASSERT_EQ(1, vppMock().ip6Locks.at("port0"));
+
+    admin.value.booldata = false;
+    vppMock().ip6EnableResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("port0"));
+
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+            sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+    EXPECT_TRUE(stored.value.booldata);
+
+    vppMock().ip6EnableResult = 0;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_EQ(0, vppMock().ip6Locks.at("port0"));
+
+    admin.value.booldata = true;
+    vppMock().ip6EnableResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_EQ(0, vppMock().ip6Locks.at("port0"));
+
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+            sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+    EXPECT_FALSE(stored.value.booldata);
+}
+
 /*
  * create_bond_interface() lets VPP pick the bond MAC, and the bond only
  * inherits a member's MAC once one is enslaved, which can happen after the RIF
@@ -969,6 +1161,50 @@ TEST_F(SwitchVppRifTest, lagRifProgramsBondMacBeforeEnablingIpv6)
     const auto portRif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
     ASSERT_EQ(SAI_STATUS_SUCCESS, create(portRif, attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port)));
     EXPECT_TRUE(vppMock().callsTo("sw_interface_set_mac", "port0").empty());
+}
+
+TEST_F(SwitchVppRifTest, lagAdminEnableProgramsStoredMacBeforeIpv6)
+{
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, lag);
+    sai_attribute_t admin{};
+    admin.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    admin.value.booldata = false;
+    attrs.push_back(admin);
+
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_set_mac", "BondEthernet2").empty());
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "BondEthernet2").empty());
+    EXPECT_EQ(0, vppMock().ip6Locks["BondEthernet2"]);
+
+    vppMock().macs["BondEthernet2"] = "02:fe:00:00:00:aa";
+    vppMock().calls.clear();
+    vppMock().macResult = -1;
+    admin.value.booldata = true;
+    EXPECT_EQ(SAI_STATUS_FAILURE,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "BondEthernet2").empty());
+    EXPECT_EQ("02:fe:00:00:00:aa", vppMock().macs.at("BondEthernet2"));
+    EXPECT_EQ(0, vppMock().ip6Locks["BondEthernet2"]);
+
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored));
+    EXPECT_FALSE(stored.value.booldata);
+
+    vppMock().macResult = 0;
+    vppMock().calls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, &admin));
+    EXPECT_EQ("00:00:00:00:00:01", vppMock().macs.at("BondEthernet2"));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("BondEthernet2"));
+
+    const int mac = saivs_test::vppCallIndex("sw_interface_set_mac", "BondEthernet2");
+    const int ip6 = saivs_test::vppCallIndex("sw_interface_ip6_enable_disable", "BondEthernet2");
+    ASSERT_NE(-1, mac);
+    ASSERT_NE(-1, ip6);
+    EXPECT_LT(mac, ip6);
 }
 
 // Sub-interfaces share the bond MAC, so a sub-port RIF must not rewrite it
