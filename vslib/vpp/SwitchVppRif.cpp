@@ -1764,17 +1764,19 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
         }
     }
     SWSS_LOG_NOTICE("VRF(%s) with id %u created in VS", sai_serialize_object_id(objectId).c_str(), vrf_id);
-    vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
 
     if (!has_vrf_table) {
         if (vpp_sonic_ext_copp_ip2me_addr_add_del(htonl(INADDR_BROADCAST), true) != 0) {
             SWSS_LOG_ERROR("Failed to add 255.255.255.255 to the CoPP IP2ME addresses, "
                            "so limited broadcasts reach the CPU unpoliced");
         }
-        if (m_dhcp_trap_copy) {
-            vpp_ip4_limited_broadcast_receive(vrf_id, true);
+        if (m_dhcp_trap_active &&
+                vpp_ip4_limited_broadcast_receive(vrf_id, true) != 0) {
+            return -1;
         }
     }
+
+    vrf_objMap[objectId] = std::make_shared<IpVrfInfo>(objectId, vrf_id, vrf_name, false);
 
     uint32_t hash_mask =  VPP_IP_API_FLOW_HASH_SRC_IP | VPP_IP_API_FLOW_HASH_DST_IP | \
         VPP_IP_API_FLOW_HASH_SRC_PORT | VPP_IP_API_FLOW_HASH_DST_PORT | \
@@ -1802,7 +1804,7 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
         if (sw != nullptr) {
             SWSS_LOG_NOTICE("Deleting VRF(%s) with id %u", sai_serialize_object_id(objectId).c_str(), sw->m_vrf_id);
             if (sw->m_vrf_id != 0) {
-                if (m_dhcp_trap_copy) {
+                if (m_dhcp_trap_active) {
                     vpp_ip4_limited_broadcast_receive(sw->m_vrf_id, false);
                 }
                 int ret4 = ip_vrf_del(sw->m_vrf_id, sw->m_vrf_name.c_str(), false);
@@ -1842,16 +1844,14 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
  * to the interface's host tap. For a VLAN that is the BVI's copy of a
  * flooded broadcast, and it is how a DHCPv4 client broadcast reaches the
  * DHCP relay when the SAI_HOSTIF_TRAP_TYPE_DHCP action is COPY (see
- * SwitchVppFdb.cpp). Under TRAP (or when no DHCP trap is configured) the
- * client broadcast is punted at the VLAN member and never reaches the BVI,
- * while routed ports keep VPP's default drop on 255.255.255.255/32 so a
- * switch without a COPY DHCP trap (such as a T1 spine) does not punt limited
- * broadcasts to the CPU.
+ * SwitchVppFdb.cpp). Under TRAP the client broadcast is punted at a VLAN
+ * member, but the same local route is required when it arrives on a routed
+ * interface. With no active DHCP trap, routed ports keep VPP's default drop.
  *
- * While COPY is active a limited broadcast is to-me traffic, and
+ * While a DHCP trap is active a limited broadcast is to-me traffic, and
  * vpp_add_ip_vrf() adds 255.255.255.255 to sonic-ext-copp-ip2me's address set
- * with the switch's own addresses so the IP2ME trap group's policer meters
- * limited broadcasts on the punt path regardless of trap mode.
+ * with the switch's own addresses. The semantic DHCP row makes copp-ip2me
+ * defer these packets to the DHCP trap-group policer at copp-ifout.
  */
 int SwitchVpp::vpp_ip4_limited_broadcast_receive(
         _In_ uint32_t vrf_id,
@@ -2052,7 +2052,10 @@ sai_status_t SwitchVpp::vpp_router_interface_set_vrf(
             attr.value.oid == vr_oid)
         {
             // registering the default table sets its flow hash
-            register_vrf(0);
+            if (register_vrf(0) != 0)
+            {
+                return SAI_STATUS_FAILURE;
+            }
         }
         else
         {
@@ -2749,6 +2752,16 @@ sai_status_t SwitchVpp::vpp_create_router_interface(
                         return vpp_rif_ip6_enable_disable(hwif, false);
                     });
         }
+
+        // the route's bookkeeping outlives the interface, so it is undone even
+        // for an interface this CREATE made
+        if (m_dhcp6_trap_active &&
+            txn.run("dhcpv6 mroute on " + hwif,
+                    [&]() { return vpp_dhcp6_mroute(hwif.c_str(), true); },
+                    [this, hwif]() { return vpp_dhcp6_mroute(hwif.c_str(), false); }) != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
     }
 
     bool v4_is_up = false, v6_is_up = false;
@@ -2912,7 +2925,17 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
                      sai_serialize_object_id(object_id), attr_loopback);
     }
 
-    bool v4_is_up = false, v6_is_up = false;
+    auto storedAdminState = [this, object_id](sai_attr_id_t id) {
+        sai_attribute_t stored{};
+        stored.id = id;
+        return get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &stored) !=
+            SAI_STATUS_SUCCESS || stored.value.booldata;
+    };
+
+    bool previous_v4 = storedAdminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE);
+    bool previous_v6 = storedAdminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE);
+    bool v4_is_up = previous_v4;
+    bool v6_is_up = previous_v6;
 
     auto attr_type_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
 
@@ -2929,7 +2952,135 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
 
     if (attr_type_v4 != NULL || attr_type_v6 != NULL)
     {
-        return vpp_set_interface_state(obj_id, vlan_id, (v4_is_up || v6_is_up));
+        std::string hwif;
+        bool v6_changed = attr_type_v6 != NULL && previous_v6 != v6_is_up;
+        bool v6_programmed = false;
+
+        if (attr_type_v6 != NULL)
+        {
+            hwif = m_ifaceRegistry.resolveHwIfName(obj_id, vlan_id);
+            if (hwif.empty())
+            {
+                return SAI_STATUS_FAILURE;
+            }
+
+            if (v6_changed && v6_is_up)
+            {
+                /* A LAG RIF created IPv6-admin-down did not initialize the
+                 * bond MAC on CREATE. Do it before taking the first IPv6 lock:
+                 * VPP derives the link-local address once and will not rebuild
+                 * it after a later MAC change. SUB_PORT RIFs deliberately do
+                 * not rewrite their shared parent bond. */
+                if (ot == SAI_OBJECT_TYPE_LAG &&
+                        rif_type == SAI_ROUTER_INTERFACE_TYPE_PORT)
+                {
+                    sai_attribute_t mac{};
+                    mac.id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+                    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, object_id, 1, &mac) !=
+                            SAI_STATUS_SUCCESS)
+                    {
+                        mac.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+                        CHECK_STATUS(get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &mac));
+                    }
+
+                    if (sw_interface_set_mac(hwif.c_str(), mac.value.mac) != 0)
+                    {
+                        SWSS_LOG_ERROR("Failed to set MAC %s on %s before enabling IPv6",
+                                sai_serialize_mac(mac.value.mac).c_str(), hwif.c_str());
+                        return SAI_STATUS_FAILURE;
+                    }
+                }
+
+                CHECK_STATUS(vpp_rif_ip6_enable_disable(hwif, true));
+                v6_programmed = true;
+            }
+
+            if (vpp_dhcp6_mroute(hwif.c_str(), v6_is_up && m_dhcp6_trap_active) != 0)
+            {
+                if (v6_programmed &&
+                        vpp_rif_ip6_enable_disable(hwif, false) != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to restore IPv6 ownership on %s", hwif.c_str());
+                }
+                return SAI_STATUS_FAILURE;
+            }
+
+            if (v6_changed && !v6_is_up)
+            {
+                if (vpp_rif_ip6_enable_disable(hwif, false) != SAI_STATUS_SUCCESS)
+                {
+                    if (previous_v6 && m_dhcp6_trap_active &&
+                            vpp_dhcp6_mroute(hwif.c_str(), true) != 0)
+                    {
+                        SWSS_LOG_ERROR("Failed to restore DHCPv6 receive state on %s", hwif.c_str());
+                    }
+                    return SAI_STATUS_FAILURE;
+                }
+                v6_programmed = true;
+            }
+        }
+
+        sai_status_t admin_status = vpp_set_interface_state(obj_id, vlan_id, (v4_is_up || v6_is_up));
+
+        if (admin_status != SAI_STATUS_SUCCESS)
+        {
+            if (v6_programmed)
+            {
+                if (vpp_rif_ip6_enable_disable(hwif, previous_v6) != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to restore IPv6 ownership on %s", hwif.c_str());
+                }
+                if (vpp_dhcp6_mroute(hwif.c_str(), previous_v6 && m_dhcp6_trap_active) != 0)
+                {
+                    SWSS_LOG_ERROR("Failed to restore DHCPv6 receive state on %s", hwif.c_str());
+                }
+            }
+            return admin_status;
+        }
+
+        auto restoreProgramming = [&]() {
+            vpp_set_interface_state(obj_id, vlan_id, previous_v4 || previous_v6);
+            if (v6_programmed)
+            {
+                vpp_rif_ip6_enable_disable(hwif, previous_v6);
+                vpp_dhcp6_mroute(hwif.c_str(), previous_v6 && m_dhcp6_trap_active);
+            }
+        };
+
+        const std::string sid = sai_serialize_object_id(object_id);
+        bool v4_persisted = false;
+
+        if (attr_type_v4 != NULL)
+        {
+            sai_status_t persist_status = set_internal(
+                    SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_type_v4);
+            if (persist_status != SAI_STATUS_SUCCESS)
+            {
+                restoreProgramming();
+                return persist_status;
+            }
+            v4_persisted = true;
+        }
+
+        if (attr_type_v6 != NULL)
+        {
+            sai_status_t persist_status = set_internal(
+                    SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_type_v6);
+            if (persist_status != SAI_STATUS_SUCCESS)
+            {
+                if (v4_persisted)
+                {
+                    sai_attribute_t previous_attr{};
+                    previous_attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
+                    previous_attr.value.booldata = previous_v4;
+                    set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, &previous_attr);
+                }
+                restoreProgramming();
+                return persist_status;
+            }
+        }
+
+        return SAI_STATUS_SUCCESS;
     } else {
         return SAI_STATUS_SUCCESS;
     }
@@ -3012,6 +3163,11 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
 
     if (rif_type != SAI_ROUTER_INTERFACE_TYPE_SUB_PORT)
     {
+        if (vpp_dhcp6_mroute(hwif_name.c_str(), false) != 0)
+        {
+            return SAI_STATUS_FAILURE;
+        }
+
         // Clear any loopback (hairpin) DROP so a persistent port/LAG whose RIF
         // is removed does not keep dropping if a later RIF is created on it
         // without the attribute. A failed clear is propagated instead of
@@ -3102,6 +3258,11 @@ sai_status_t SwitchVpp::vpp_remove_router_interface(sai_object_id_t rif_id)
      */
     std::string sub_hwif = hwif_name + "." + std::to_string(vlan_id);
     std::string sub_tap = tap_name.empty() ? "" : tap_name + "." + std::to_string(vlan_id);
+
+    if (vpp_dhcp6_mroute(sub_hwif.c_str(), false) != 0)
+    {
+        return SAI_STATUS_FAILURE;
+    }
 
     configure_lcp_interface(sub_hwif.c_str(), sub_tap.c_str(), false);
 

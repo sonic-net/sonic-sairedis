@@ -97,6 +97,19 @@ struct VppAclListResult
     bool commitOnError;
 };
 
+struct VppCoppNeighborMissBindCall
+{
+    std::string policerName;
+    bool isBind;
+};
+
+struct VppCoppDhcpBindCall
+{
+    std::string policerName;
+    bool isIpv6;
+    bool isBind;
+};
+
 struct VppMock
 {
     bool loopbackEnabled = false;
@@ -150,6 +163,8 @@ struct VppMock
     int directedBcastResult = 0;
     uint32_t routeStatsIndex = 42;
     std::vector<int> routeResults;
+    // Results returned by ip_route_add_del(), consumed in call order.
+    std::vector<int> ipRouteResults;
     std::vector<VppRouteCall> routeCalls;
     // Active FIB next hop sw_if_index list per (table, prefix)
     std::map<std::pair<uint32_t, std::string>, std::vector<uint32_t>> fibRoutePaths;
@@ -164,6 +179,12 @@ struct VppMock
     std::map<std::string, uint32_t> nodeNexts;
     uint32_t nextClassifyTable = 0;
     std::vector<VppClassifySession> classifySessions;
+
+    // Semantic trap rows supplied by sonic_ext_copp.api.
+    int coppNeighborMissBindResult = 0;
+    int coppDhcpBindResult = 0;
+    std::vector<VppCoppNeighborMissBindCall> coppNeighborMissBindCalls;
+    std::vector<VppCoppDhcpBindCall> coppDhcpBindCalls;
 
     // Policy Based Hashing.
     int pbhProfileResult = 0;

@@ -2035,38 +2035,56 @@ sai_status_t Syncd::processBulkQuadEvent(
 
     std::vector<std::shared_ptr<SaiAttributeList>> attributes;
 
+    objectIds.reserve(values.size());
+    strAttributes.reserve(values.size());
+    attributes.reserve(values.size());
+
     for (const auto &fvt: values)
     {
-        std::string strObjectId = fvField(fvt);
-        std::string joined = fvValue(fvt);
+        objectIds.push_back(fvField(fvt));
 
-        // decode values
+        const std::string& joined = fvValue(fvt);
 
-        auto v = swss::tokenize(joined, '|');
-
-        objectIds.push_back(strObjectId);
+        // decode values, split on '|' as swss::tokenize splits them, but
+        // without a string stream per object
 
         std::vector<swss::FieldValueTuple> entries; // attributes per object id
 
-        for (size_t i = 0; i < v.size(); ++i)
+        for (size_t pos = 0; pos < joined.size(); )
         {
-            const std::string item = v.at(i);
+            size_t end = joined.find('|', pos);
 
-            auto start = item.find_first_of("=");
+            if (end == std::string::npos)
+            {
+                end = joined.size();
+            }
 
-            auto field = item.substr(0, start);
-            auto value = item.substr(start + 1);
+            auto itemBegin = joined.cbegin() + (std::ptrdiff_t)pos;
+            auto itemEnd = joined.cbegin() + (std::ptrdiff_t)end;
 
-            entries.emplace_back(field, value);
+            auto eq = std::find(itemBegin, itemEnd, '=');
+
+            if (eq == itemEnd)
+            {
+                // no '=', the item is both field and value
+
+                entries.emplace_back(std::string(itemBegin, itemEnd), std::string(itemBegin, itemEnd));
+            }
+            else
+            {
+                entries.emplace_back(std::string(itemBegin, eq), std::string(eq + 1, itemEnd));
+            }
+
+            pos = end + 1;
         }
-
-        strAttributes.push_back(entries);
 
         // since now we converted this to proper list, we can extract attributes
 
         auto list = std::make_shared<SaiAttributeList>(objectType, entries, false);
 
         attributes.push_back(list);
+
+        strAttributes.push_back(std::move(entries));
     }
 
     SWSS_LOG_INFO("bulk %s executing with %zu items",
@@ -4260,6 +4278,7 @@ sai_status_t Syncd::processFlexCounterEvent(
 void Syncd::syncUpdateRedisQuadEvent(
         _In_ sai_status_t status,
         _In_ sai_common_api_t api,
+        _In_ const sai_object_meta_key_t& metaKey,
         _In_ const swss::KeyOpFieldsValuesTuple &kco)
 {
     SWSS_LOG_ENTER();
@@ -4279,12 +4298,7 @@ void Syncd::syncUpdateRedisQuadEvent(
     // changes and we only want to apply changes when api succeeded. This
     // applies to init view mode and apply view mode.
 
-    const std::string& key = kfvKey(kco);
-
     auto& values = kfvFieldsValues(kco);
-
-    sai_object_meta_key_t metaKey;
-    sai_deserialize_object_meta_key(key, metaKey);
 
     const bool initView = isInitViewMode();
 
@@ -4514,7 +4528,7 @@ sai_status_t Syncd::processQuadEvent(
     {
         sai_status_t status = processQuadEventInInitViewMode(metaKey.objecttype, strObjectId, api, attr_count, attr_list);
 
-        syncUpdateRedisQuadEvent(status, api, kco);
+        syncUpdateRedisQuadEvent(status, api, metaKey, kco);
 
         return status;
     }
@@ -4610,7 +4624,7 @@ sai_status_t Syncd::processQuadEvent(
         sendApiResponse(api, status);
     }
 
-    syncUpdateRedisQuadEvent(status, api, kco);
+    syncUpdateRedisQuadEvent(status, api, metaKey, kco);
 
     return status;
 }
