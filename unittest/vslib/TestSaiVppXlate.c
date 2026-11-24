@@ -300,6 +300,6 @@ int main(void)
     vl_api_sflow_drop_monitoring_set_reply_t_handler(&drop);
     if (!vat_main.result_ready || vat_main.retval)
         return 15;
-  
+
     return test_subinterface_cache();
 }
