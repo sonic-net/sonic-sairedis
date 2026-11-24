@@ -353,13 +353,33 @@ extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabl
     return vppMock().featureResult;
 }
 
-// recorded with api "<arc>/<feature>" and flag = enable
 extern "C" int __wrap_sw_interface_feature_enable_disable(const char *name, const char *arc,
         const char *feature, bool enable)
 {
     SWSS_LOG_ENTER();
     vppMock().calls.push_back({std::string(arc) + "/" + feature, name, 0, 0, enable});
     return vppMock().featureEnableResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_neighbor_miss_bind(
+        const char *policer_name,
+        bool is_bind)
+{
+    SWSS_LOG_ENTER();
+    vppMock().coppNeighborMissBindCalls.push_back({
+        policer_name ? policer_name : "", is_bind});
+    return vppMock().coppNeighborMissBindResult;
+}
+
+extern "C" int __wrap_vpp_sonic_ext_copp_dhcp_bind(
+        const char *policer_name,
+        bool is_ipv6,
+        bool is_bind)
+{
+    SWSS_LOG_ENTER();
+    vppMock().coppDhcpBindCalls.push_back({
+        policer_name ? policer_name : "", is_ipv6, is_bind});
+    return vppMock().coppDhcpBindResult;
 }
 
 /*
