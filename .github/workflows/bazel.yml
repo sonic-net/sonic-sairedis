@@ -147,6 +147,9 @@ jobs:
           //unittest/proxylib:tests
           //unittest/saidump:tests
           //unittest/saisdkdump:tests
+          //unittest:test_syncd_init_common
+          //unittest/syncd:service_free_regressions
+          //unittest/vslib:platform_event_test
 
       - name: Check component source reachability
         run: |
