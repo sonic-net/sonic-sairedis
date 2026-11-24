@@ -27,7 +27,7 @@ bazel_dep(name = "rules_rs", version = "0.1.0", dev_dependency = True)
 bazel_dep(name = "swig", version = "4.3.0.bcr.2")
 bazel_dep(name = "tar.bzl", version = "0.10.5.sonic.2")
 bazel_dep(name = "sonic-build-infra", version = "0.0.44-35726399908a3beb947174e9359f902077928289", repo_name = "sonic_build_infra")
-bazel_dep(name = "sonic-swss-common", version = "0.0.9-334389eae54afd1f4f5ee69f89c3a7ad2062ee61", repo_name = "sonic_swss_common")
+bazel_dep(name = "sonic-swss-common", version = "0.0.8-2a4ddd070edb719f2e969a880a5cfff711e64e72", repo_name = "sonic_swss_common")
 bazel_dep(name = "sai", version = "1.18.0.sonic.2", repo_name = "sai_source")
 
 # Select one landed infrastructure version for this root and Common. It keeps
