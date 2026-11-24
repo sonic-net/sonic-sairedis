@@ -11,7 +11,9 @@ namespace syncd
             FlexCounterManager(
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
                     _In_ const std::string& dbCounters,
-                    _In_ const std::string& supportingBulkInstances);
+                    _In_ const std::string& supportingBulkInstances,
+                    _In_ bool isTcpConn,
+                    _In_ bool authenticate);
 
             virtual ~FlexCounterManager() = default;
 
@@ -59,6 +61,10 @@ namespace syncd
                 std::string m_dbCounters;
 
                 std::string m_supportingBulkGroups;
+
+                bool m_isTcpConn;
+
+                bool m_authenticate;
     };
 }
 

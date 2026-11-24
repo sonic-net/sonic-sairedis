@@ -183,7 +183,7 @@ Syncd::Syncd(
 
     m_vendorSai->setOptions(VendorSaiOptions::OPTIONS_KEY, vso);
 
-    m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters, m_commandLineOptions->m_supportingBulkCounterGroups);
+    m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters, m_commandLineOptions->m_supportingBulkCounterGroups, false, true);
 
     loadProfileMap();
 
