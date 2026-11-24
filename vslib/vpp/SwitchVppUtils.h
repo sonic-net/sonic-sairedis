@@ -71,8 +71,9 @@ namespace saivs
 
     bool sai_ip_address_equal(const sai_ip_address_t &a, const sai_ip_address_t &b);
 
-    /* Is a sonic-ext feature enabled in VPP's startup.conf?  A reply is cached
-     * for the life of the process.  A failed query answers "disabled" and is
-     * not cached, so the next caller asks VPP again. */
+    // Cache successful startup-state queries only; errors remain retryable.
+    sai_status_t sonicExtFeatureEnabled(const char *feature, bool& enabled);
+
+    // Legacy optional-feature callers treat query failures as disabled.
     bool sonicExtFeatureEnabled(const char *feature);
 }

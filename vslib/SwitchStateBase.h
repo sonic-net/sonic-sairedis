@@ -7,6 +7,7 @@
 #include "SwitchConfig.h"
 #include "RealObjectIdManager.h"
 #include "EventPayloadNetLinkMsg.h"
+#include "EventPayloadPlatformEvent.h"
 #include "MACsecManager.h"
 
 #include <set>
@@ -386,6 +387,12 @@ namespace saivs
             // thread immediately when MAC events arrive. Default is a no-op;
             virtual void initFdbEventHandling(std::function<void()> /*wakeFn*/) {}
             virtual void deinitFdbEventHandling() {}
+
+            // Applies an event the switch platform posted on the event queue
+            // (EVENT_TYPE_PLATFORM_EVENT). Called from the event queue thread
+            // with the API mutex held. Default is a no-op.
+            virtual void syncOnPlatformEvent(
+                    _In_ std::shared_ptr<EventPayloadPlatformEvent> /*payload*/) {}
 
         private: // fdb related
 
@@ -797,6 +804,9 @@ namespace saivs
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
             virtual sai_status_t queryTamBindPointTypeCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
+            virtual sai_status_t queryTamTelTypeModeCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
             virtual sai_status_t queryIcmpEchoSessionStatsCountModeCapability(
