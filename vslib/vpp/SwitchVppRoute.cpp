@@ -150,6 +150,21 @@ const char* SwitchVpp::resolveNexthopMemberHwif(
         }
     }
 
+    // A VLAN RIF has no PORT_ID and egresses through the BVI of its VLAN. Without
+    // an interface the path is recursive, and a host route whose nexthop is its own
+    // address (a dual-ToR prefix-route mux neighbor) then resolves through itself,
+    // which VPP installs as a drop.
+    rif_attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
+    if (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, member->rif_oid, 1, &rif_attr) == SAI_STATUS_SUCCESS)
+    {
+        member_hwif = m_ifaceRegistry.resolveHwIfName(rif_attr.value.oid, 0);
+
+        if (!member_hwif.empty())
+        {
+            return member_hwif.c_str();
+        }
+    }
+
     return NULL;
 }
 
@@ -283,6 +298,18 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
         size_t i;
         for (i = 0; i < nxthop_group->nmembers; i++) {
+            if (nxt_grp_member->tunnel_nh_oid != SAI_NULL_OBJECT_ID &&
+                m_tunnel_mgr.get_tunnel_if(nxt_grp_member->tunnel_nh_oid,
+                                           route_entry.vr_id,
+                                           nxt_grp_member->sw_if_index,
+                                           is_add) != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("No tunnel interface for route %s next hop %s",
+                               serializedObjectId.c_str(),
+                               sai_serialize_object_id(nxt_grp_member->tunnel_nh_oid).c_str());
+                free(ip_route);
+                free(nxthop_group);
+                return SAI_STATUS_FAILURE;
+            }
             const char *member_hwif = hwif_name;
             std::string resolved_hwif;
 
@@ -473,6 +500,15 @@ sai_status_t SwitchVpp::IpRoutePathAddRemove(
         vrf_id = vrf->m_vrf_id;
     }
 
+    if (member->tunnel_nh_oid != SAI_NULL_OBJECT_ID &&
+        m_tunnel_mgr.get_tunnel_if(member->tunnel_nh_oid, route_entry.vr_id,
+                                   member->sw_if_index, is_add) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("No tunnel interface for route %s next hop %s",
+                       serializedObjectId.c_str(),
+                       sai_serialize_object_id(member->tunnel_nh_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
     // Allocate route with single nexthop
     vpp_ip_route_t *ip_route = (vpp_ip_route_t *)
         calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
@@ -631,15 +667,22 @@ sai_status_t SwitchVpp::addIpRoute(
         m_routeStatsIndexMap[serializedObjectId] = stats_index;
     }
 
-    status = setRouteCounterBinding(serializedObjectId, counter_oid);
-    if (status != SAI_STATUS_SUCCESS)
+    // A route being created has no committed COUNTER_ID relationship yet, so a
+    // NULL binding is already the state. Calling setRouteCounterBinding() here
+    // would only unbind, and its lookup of the not-yet-created route logs a
+    // spurious "not found" for every counter-less route.
+    if (counter_oid != SAI_NULL_OBJECT_ID)
     {
-        m_routeStatsIndexMap.erase(serializedObjectId);
-        if (removeProgrammedRoute() != SAI_STATUS_SUCCESS)
+        status = setRouteCounterBinding(serializedObjectId, counter_oid);
+        if (status != SAI_STATUS_SUCCESS)
         {
-            return SAI_STATUS_FAILURE;
+            m_routeStatsIndexMap.erase(serializedObjectId);
+            if (removeProgrammedRoute() != SAI_STATUS_SUCCESS)
+            {
+                return SAI_STATUS_FAILURE;
+            }
+            return status;
         }
-        return status;
     }
 
     status = create_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, switch_id, attr_count, attr_list);
@@ -773,6 +816,28 @@ sai_status_t SwitchVpp::updateIpRoute(
             has_old_counter_stats = true;
         }
 
+        auto is_replaceable_nexthop = [this](sai_object_id_t next_hop) {
+            if (RealObjectIdManager::objectTypeQuery(next_hop) != SAI_OBJECT_TYPE_NEXT_HOP)
+            {
+                return false;
+            }
+            auto nh_obj = get_sai_object(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(next_hop));
+            sai_attribute_t nh_type = {};
+            nh_type.id = SAI_NEXT_HOP_ATTR_TYPE;
+            return nh_obj && nh_obj->get_attr(nh_type) == SAI_STATUS_SUCCESS &&
+                (nh_type.value.s32 == SAI_NEXT_HOP_TYPE_IP ||
+                 nh_type.value.s32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP);
+        };
+        sai_attribute_t old_next_hop = {};
+        old_next_hop.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+        const bool replace_nexthop = attr->id == SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID &&
+            route_db_obj->get_attr(old_next_hop) == SAI_STATUS_SUCCESS &&
+            is_replaceable_nexthop(old_next_hop.value.oid) &&
+            is_replaceable_nexthop(attr->value.oid);
+
+        // Single-next-hop adds replace the FIB entry. Withdrawing it first
+        // creates a forwarding gap during a prefix-route mux switchover.
+        if (!replace_nexthop)
         {
             auto status = IpRouteAddRemove(route_db_obj.get(), false, NULL);
             if (status != SAI_STATUS_SUCCESS)
@@ -785,6 +850,10 @@ sai_status_t SwitchVpp::updateIpRoute(
         auto status = IpRouteAddRemove(&route_mod_obj, true, &stats_index);
         if (status != SAI_STATUS_SUCCESS)
         {
+            if (replace_nexthop)
+            {
+                return status;
+            }
             auto rollback_status = rollbackRoute(route_db_obj.get(), NULL, old_stats_index);
             if (rollback_status != SAI_STATUS_SUCCESS)
             {

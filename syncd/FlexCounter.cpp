@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <algorithm>
 #include <unordered_map>
 #include <map>
 #include <vector>
@@ -57,6 +58,8 @@ static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
 static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
 static const std::string COUNTER_TYPE_WRED_ECN_QUEUE = "WRED Queue Counter";
 static const std::string COUNTER_TYPE_WRED_ECN_PORT = "WRED Port Counter";
+static const std::string ATTR_TYPE_OTN_ATTENUATOR_ATTR = "OTN Attenuator Attributes";
+static const std::string ATTR_TYPE_OTN_OA_ATTR = "OTN OA Attributes";
 
 static const std::unordered_map<std::string, bool> statusMap =
 {
@@ -79,7 +82,10 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
     {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW},
     {WRED_QUEUE_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_QUEUE},
-    {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT}};
+    {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT},
+    {OTN_ATTENUATOR_PLUGIN_FIELD, ATTR_TYPE_OTN_ATTENUATOR_ATTR},
+    {OTN_OA_PLUGIN_FIELD, ATTR_TYPE_OTN_OA_ATTR},
+};
 
 const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
     {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
@@ -104,6 +110,8 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
     {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
     {{SAI_OBJECT_TYPE_SWITCH, SWITCH_COUNTER_ID_LIST}, COUNTER_TYPE_SWITCH},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, OTN_ATTENUATOR_ATTR_ID_LIST}, ATTR_TYPE_OTN_ATTENUATOR_ATTR},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, OTN_OA_ATTR_ID_LIST}, ATTR_TYPE_OTN_OA_ATTR},
 };
 
 BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
@@ -351,6 +359,29 @@ std::string serializeStat(
     return sai_serialize_ha_set_stat(stat);
 }
 
+/*
+ * Counter name as written to COUNTERS_DB, serialized once per thread, since
+ * each poll writes the names of all counters of all objects, and serializing
+ * an enum value searches all values of the enum.
+ */
+template <typename StatType>
+const std::string& serializeStatCached(
+        _In_ const StatType stat)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons, called per counter
+
+    static thread_local std::unordered_map<int32_t, std::string> names;
+
+    auto it = names.find(static_cast<int32_t>(stat));
+
+    if (it == names.end())
+    {
+        it = names.emplace(static_cast<int32_t>(stat), serializeStat(stat)).first;
+    }
+
+    return it->second;
+}
+
 template <typename StatType>
 void deserializeStat(
         _In_ const char* name,
@@ -537,6 +568,24 @@ void deserializeAttr(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_port_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_otn_attenuator_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_otn_attenuator_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_otn_oa_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_otn_oa_attr(name, attr);
 }
 
 template <typename StatType>
@@ -820,8 +869,11 @@ public:
                 for (auto &token: tokens)
                 {
                     auto counter_name_bulk_size = swss::tokenize(token, ':');
-                    SWSS_LOG_INFO("New partition %s bulk chunk size %s", counter_name_bulk_size[0].c_str(), counter_name_bulk_size[1].c_str());
-                    m_counterChunkSizeMapFromPrefix[counter_name_bulk_size[0]] = stoi(counter_name_bulk_size[1]);
+
+                    SWSS_LOG_INFO("New partition %s bulk chunk size %s",
+                            counter_name_bulk_size.at(0).c_str(),
+                            counter_name_bulk_size.at(1).c_str());
+                    m_counterChunkSizeMapFromPrefix[counter_name_bulk_size.at(0)] = stoi(counter_name_bulk_size.at(1));
                 }
             }
             catch (...)
@@ -1578,7 +1630,7 @@ public:
             std::vector<swss::FieldValueTuple> values;
             for (size_t i = 0; i != statIds.size(); i++)
             {
-                values.emplace_back(serializeStat(statIds[i]), std::to_string(stats[i]));
+                values.emplace_back(serializeStatCached(statIds[i]), std::to_string(stats[i]));
             }
             countersTable.set(sai_serialize_object_id(vid), values, "");
         }
@@ -1628,6 +1680,22 @@ public:
     {
         SWSS_LOG_ENTER();
         return !m_objectIdsMap.empty() || !m_bulkContexts.empty();
+    }
+
+    void getObjectVids(
+            _Out_ std::set<sai_object_id_t> &vids) const override
+    {
+        SWSS_LOG_ENTER();
+
+        for (const auto &kv : m_objectIdsMap)
+        {
+            vids.insert(kv.first);
+        }
+
+        for (const auto &kv : m_bulkContexts)
+        {
+            vids.insert(kv.second->object_vids.begin(), kv.second->object_vids.end());
+        }
     }
 
 private:
@@ -1827,7 +1895,7 @@ private:
 
             for (size_t j = 0; j < ctx.counter_ids.size(); j++)
             {
-                values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
+                values.emplace_back(serializeStatCached(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
             }
 
             countersTable.set(sai_serialize_object_id(vid), values, "");
@@ -2336,6 +2404,11 @@ public:
     {
         SWSS_LOG_ENTER();
 
+        if (m_bulkGetSupported && collectDataBulk(countersTable))
+        {
+            return;
+        }
+
         for (const auto &kv : Base::m_objectIdsMap)
         {
             const auto &vid = kv.first;
@@ -2362,18 +2435,139 @@ public:
                 continue;
             }
 
-            std::vector<swss::FieldValueTuple> values;
-            for (size_t i = 0; i != attrIds.size(); i++)
-            {
-                auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
-                if (!meta)
-                {
-                    SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
-                }
-                values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
-            }
-            countersTable.set(sai_serialize_object_id(vid), values, "");
+            publishAttrs(countersTable, vid, attrIds, attrs.data());
         }
+    }
+
+private:
+
+    // Whether the vendor SAI implements a bulk get for this object type.  Latched
+    // off on the first NOT_IMPLEMENTED / NOT_SUPPORTED so a vendor without it is
+    // not asked again on every poll.
+    bool m_bulkGetSupported = true;
+
+    void publishAttrs(
+            _In_ swss::Table &countersTable,
+            _In_ sai_object_id_t vid,
+            _In_ const std::vector<AttrType> &attrIds,
+            _In_ const sai_attribute_t *attrs)
+    {
+        SWSS_LOG_ENTER();
+
+        std::vector<swss::FieldValueTuple> values;
+
+        for (size_t i = 0; i != attrIds.size(); i++)
+        {
+            auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
+            if (!meta)
+            {
+                SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
+            }
+            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
+        }
+
+        countersTable.set(sai_serialize_object_id(vid), values, "");
+    }
+
+    // Read every object's attributes in one SAI call.
+    //
+    // The per-object loop above calls VendorSai::get() once per object, and that
+    // takes the process-wide m_apimutex each time.  One bulk call takes the lock
+    // once, which bounds the wait at a single in-flight get rather than a whole
+    // foreign sweep.
+    //
+    // Returns false if the caller should fall back to the per-object loop.
+    bool collectDataBulk(
+            _In_ swss::Table &countersTable)
+    {
+        SWSS_LOG_ENTER();
+
+        const size_t count = Base::m_objectIdsMap.size();
+
+        if (count == 0)
+        {
+            return true;
+        }
+
+        std::vector<sai_object_id_t> vids;
+        std::vector<sai_object_id_t> rids;
+        std::vector<uint32_t> attrCounts;
+        std::vector<std::vector<sai_attribute_t>> attrStorage;
+
+        vids.reserve(count);
+        rids.reserve(count);
+        attrCounts.reserve(count);
+        attrStorage.reserve(count);
+
+        for (const auto &kv : Base::m_objectIdsMap)
+        {
+            const auto &attrIds = kv.second->counter_ids;
+
+            std::vector<sai_attribute_t> attrs(attrIds.size());
+            for (size_t i = 0; i < attrIds.size(); i++)
+            {
+                attrs[i].id = attrIds[i];
+            }
+
+            vids.push_back(kv.first);
+            rids.push_back(kv.second->rid);
+            attrCounts.push_back(static_cast<uint32_t>(attrIds.size()));
+            attrStorage.push_back(std::move(attrs));
+        }
+
+        std::vector<sai_attribute_t*> attrList;
+        attrList.reserve(count);
+        for (auto &attrs : attrStorage)
+        {
+            attrList.push_back(attrs.data());
+        }
+
+        std::vector<sai_status_t> statuses(count, SAI_STATUS_SUCCESS);
+
+        sai_status_t status = Base::m_vendorSai->bulkGet(
+                Base::m_objectType,
+                static_cast<uint32_t>(count),
+                rids.data(),
+                attrCounts.data(),
+                attrList.data(),
+                SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+                statuses.data());
+
+        if (status == SAI_STATUS_NOT_IMPLEMENTED || status == SAI_STATUS_NOT_SUPPORTED)
+        {
+            m_bulkGetSupported = false;
+
+            SWSS_LOG_NOTICE("Bulk get not available for %s, using per object get",
+                    sai_serialize_object_type(Base::m_objectType).c_str());
+
+            return false;
+        }
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_WARN("Failed to bulk get attr of %s: %d",
+                    sai_serialize_object_type(Base::m_objectType).c_str(), status);
+
+            return false;
+        }
+
+        size_t n = 0;
+        for (const auto &kv : Base::m_objectIdsMap)
+        {
+            if (statuses[n] != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to get attr of %s 0x%" PRIx64 ": %d",
+                        sai_serialize_object_type(Base::m_objectType).c_str(),
+                        kv.first, statuses[n]);
+                n++;
+                continue;
+            }
+
+            publishAttrs(countersTable, vids[n], kv.second->counter_ids, attrStorage[n].data());
+            n++;
+        }
+
+        return true;
     }
 };
 
@@ -2449,7 +2643,7 @@ public:
 
         for (size_t i = 0; i < counter_ids.size(); i++)
         {
-            sai_attribute_t attr;
+            sai_attribute_t attr = {};
             attr.id = static_cast<sai_port_attr_t>(counter_ids[i]);
 
             if (!initAttrForLaneCountQuery(attr))
@@ -2614,23 +2808,28 @@ public:
             SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
 
-            for (size_t i = 0; i < attrIds.size(); i++)
+            auto initializeAttrData = [&]()
             {
-                sai_attribute_t attr = {};
-                attr.id = attrIds[i];
-                if (!initAttrData(rid, &attr, &attrData))
+                attrs.clear();
+                for (size_t i = 0; i < attrIds.size(); i++)
                 {
-                    SWSS_LOG_WARN(
-                        "PORT_PHY_ATTR: Failed to initialize attribute"
-                        " %d for RID:0x%" PRIx64 ", "
-                        "skipping this attribute only",
-                        attrIds[i], rid);
-                    continue;
+                    sai_attribute_t attr = {};
+                    attr.id = attrIds[i];
+                    if (!initAttrData(rid, &attr, &attrData))
+                    {
+                        SWSS_LOG_WARN(
+                            "PORT_PHY_ATTR: Failed to initialize attribute"
+                            " %d for RID:0x%" PRIx64 ", "
+                            "skipping this attribute only",
+                            attrIds[i], rid);
+                        continue;
+                    }
+                    attrs.push_back(attr);
                 }
-                attrs.push_back(attr);
-            }
+                return !attrs.empty();
+            };
 
-            if (attrs.empty())
+            if (!initializeAttrData())
             {
                 SWSS_LOG_WARN(
                     "PORT_PHY_ATTR: No attributes could be initialized"
@@ -2644,6 +2843,58 @@ public:
                     rid,
                     static_cast<uint32_t>(attrs.size()),
                     attrs.data());
+
+            if (status == SAI_STATUS_BUFFER_OVERFLOW)
+            {
+                bool laneCountUpdated = false;
+
+                // Retry if SAI reports a larger PHY list. The FEC alignment lock list size is
+                // physical lane count * logical FEC lanes per physical lane. The multiplier
+                // can be 1 while the port is down and depends on speed when active. Cache the
+                // required size as high-water capacity. On a decrease, SAI returns the actual
+                // count and only those lanes are serialized.
+                for (size_t i = 0; i < attrs.size(); i++)
+                {
+                    auto attrId = static_cast<sai_port_attr_t>(attrs[i].id);
+                    auto &cachedLaneCount = m_portLaneCountMap.at(rid).at(attrId);
+                    auto laneCount = extractLaneCount(attrs[i]);
+
+                    if (laneCount > cachedLaneCount)
+                    {
+                        SWSS_LOG_NOTICE(
+                                "PORT_PHY_ATTR: Updating m_portLaneCountMap[rid:0x%" PRIx64
+                                "][%d] from %u to %u",
+                                rid, attrs[i].id, cachedLaneCount, laneCount);
+
+                        cachedLaneCount = laneCount;
+                        laneCountUpdated = true;
+                    }
+                }
+
+                if (laneCountUpdated)
+                {
+                    if (!initializeAttrData())
+                    {
+                        SWSS_LOG_WARN(
+                            "PORT_PHY_ATTR: No attributes could be initialized"
+                            " for RID:0x%" PRIx64 ", skipping object", rid);
+                        continue;
+                    }
+
+                    status = Base::m_vendorSai->get(
+                            Base::m_objectType,
+                            rid,
+                            static_cast<uint32_t>(attrs.size()),
+                            attrs.data());
+
+                    if (status == SAI_STATUS_SUCCESS)
+                    {
+                        SWSS_LOG_NOTICE(
+                                "PORT_PHY_ATTR: Retry succeeded for VID 0x%" PRIx64 ", RID 0x%" PRIx64,
+                                vid, rid);
+                    }
+                }
+            }
 
             if (status != SAI_STATUS_SUCCESS)
             {
@@ -2845,7 +3096,7 @@ public:
     {
         SWSS_LOG_ENTER();
 
-        sai_attribute_t attr;
+        sai_attribute_t attr = {};
         attr.id = SAI_PORT_SERDES_ATTR_PORT_ID;
         sai_status_t status = Base::m_vendorSai->get(Base::m_objectType, port_serdes_rid, 1, &attr);
 
@@ -2916,7 +3167,7 @@ public:
 
         sai_object_id_t port_rid;
         uint32_t laneCount;
-        sai_attribute_t attr;
+        sai_attribute_t attr = {};
 
         auto it = m_portSerdesIdToPortIdMap.find(port_serdes_rid);
         if (it == m_portSerdesIdToPortIdMap.end())
@@ -2940,10 +3191,22 @@ public:
 
         laneCount = attr.value.u32list.count;
 
-        // Store the lane count in the map
-        m_portSerdesIdToLaneCountMap[port_serdes_rid] = laneCount;
+        if (laneCount > kMaxSaneLaneCount)
+        {
+            SWSS_LOG_ERROR(
+                "PORT_PHY_SERDES_ATTR: HW_LANE_LIST count %u for "
+                "RID:0x%" PRIx64 " exceeds sanity limit %u; ignoring",
+                laneCount, port_serdes_rid, kMaxSaneLaneCount);
+            return;
+        }
+
+        // Defensive high-water mark; the lane count is CREATE_ONLY and
+        // should not change, but retain the largest value observed in
+        // case of an unexpected query result.
+        auto &cachedLaneCount = m_portSerdesIdToLaneCountMap[port_serdes_rid];
+        cachedLaneCount = std::max(cachedLaneCount, laneCount);
         SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Stored lane count for port_serdes_rid:0x%" PRIx64 " = %u lanes",
-                      port_serdes_rid, laneCount);
+                      port_serdes_rid, cachedLaneCount);
     }
 
     void updatePortSerdesTapsCountMap(sai_object_id_t port_serdes_rid)
@@ -2960,7 +3223,7 @@ public:
         for (const auto& attrId : countAttrs)
         {
             uint32_t count;
-            sai_attribute_t attr;
+            sai_attribute_t attr = {};
             attr.id = attrId;
 
             sai_status_t status = Base::m_vendorSai->get(
@@ -2978,9 +3241,22 @@ public:
 
             count = attr.value.u32;
 
-            m_portSerdesTapsCountMap[port_serdes_rid][attrId] = count;
+            if (count > kMaxSaneTapCount)
+            {
+                SWSS_LOG_ERROR(
+                    "PORT_PHY_SERDES_ATTR: %s count %u for "
+                    "RID:0x%" PRIx64 " exceeds sanity limit %u; ignoring",
+                    sai_serialize_port_serdes_attr(attrId).c_str(),
+                    count, port_serdes_rid, kMaxSaneTapCount);
+                continue;
+            }
+
+            // A larger buffer is valid when the active tap mode later uses
+            // fewer taps, so retain the largest count observed.
+            auto &cachedCount = m_portSerdesTapsCountMap[port_serdes_rid][attrId];
+            cachedCount = std::max(cachedCount, count);
             SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Stored %s for port_serdes_rid:0x%" PRIx64 " = %u",
-                          sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, count);
+                          sai_serialize_port_serdes_attr(attrId).c_str(), port_serdes_rid, cachedCount);
         }
     }
 
@@ -3130,10 +3406,167 @@ public:
                 SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: Removing port_serdes RID:0x%" PRIx64 " from m_portSerdesTapsCountMap", port_serdes_rid);
                 m_portSerdesTapsCountMap.erase(count_it);
             }
+
+            m_fallbackExhausted.erase(port_serdes_rid);
         }
 
         // Call base class to remove from m_objectIdsMap
         Base::removeObject(vid);
+    }
+
+    uint32_t getCachedLaneCount(sai_object_id_t rid) const
+    {
+        SWSS_LOG_ENTER();
+
+        auto it = m_portSerdesIdToLaneCountMap.find(rid);
+        return it == m_portSerdesIdToLaneCountMap.end() ? 0 : it->second;
+    }
+
+    uint32_t getCachedTapCount(sai_object_id_t rid) const
+    {
+        SWSS_LOG_ENTER();
+
+        auto countIt = m_portSerdesTapsCountMap.find(rid);
+        if (countIt == m_portSerdesTapsCountMap.end())
+        {
+            return 0;
+        }
+
+        auto tapIt = countIt->second.find(SAI_PORT_SERDES_ATTR_TX_FIR_COUNT);
+        return tapIt == countIt->second.end() ? 0 : tapIt->second;
+    }
+
+    bool updateCachedBufferRequirementsAfterOverflow(
+            sai_object_id_t vid,
+            sai_object_id_t rid,
+            const std::vector<sai_attribute_t> &attrs,
+            const PortPhySerdesAttributeData &data)
+    {
+        SWSS_LOG_ENTER();
+
+        const uint32_t oldLaneCount = getCachedLaneCount(rid);
+        const uint32_t oldTapCount = getCachedTapCount(rid);
+        uint32_t requiredLaneCount = oldLaneCount;
+        uint32_t requiredTapCount = oldTapCount;
+
+        bool hasLaneAttr = false;
+        bool hasTapAttr = false;
+
+        for (const auto &attr : attrs)
+        {
+            switch (attr.id)
+            {
+                case SAI_PORT_SERDES_ATTR_RX_VGA:
+                    hasLaneAttr = true;
+                    // SAI returns the required size when the list is too small.
+                    requiredLaneCount = std::max(requiredLaneCount, attr.value.u32list.count);
+                    break;
+
+                case SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST:
+                    hasLaneAttr = true;
+                    hasTapAttr = true;
+                    // The outer count is the required number of taps.
+                    requiredTapCount = std::max(requiredTapCount, attr.value.portserdestaps.count);
+
+                    // An inner lane list can overflow independently. Inspect
+                    // only allocated entries since the returned outer count
+                    // can be greater than txFirTapsList.size().
+                    for (const auto &tapList : data.txFirTapsList)
+                    {
+                        requiredLaneCount = std::max(requiredLaneCount, tapList.count);
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        // Check each dimension independently so a bad count in one
+        // does not block a valid resize in the other.
+        if (requiredLaneCount > kMaxSaneLaneCount)
+        {
+            SWSS_LOG_ERROR(
+                "PORT_PHY_SERDES_ATTR: BUFFER_OVERFLOW lane count %u for "
+                "VID 0x%" PRIx64 ", RID:0x%" PRIx64
+                " exceeds sanity limit %u; ignoring lane resize",
+                requiredLaneCount, vid, rid, kMaxSaneLaneCount);
+            requiredLaneCount = oldLaneCount;
+        }
+
+        if (requiredTapCount > kMaxSaneTapCount)
+        {
+            SWSS_LOG_ERROR(
+                "PORT_PHY_SERDES_ATTR: BUFFER_OVERFLOW tap count %u for "
+                "VID 0x%" PRIx64 ", RID:0x%" PRIx64
+                " exceeds sanity limit %u; ignoring tap resize",
+                requiredTapCount, vid, rid, kMaxSaneTapCount);
+            requiredTapCount = oldTapCount;
+        }
+
+        if (requiredLaneCount > oldLaneCount)
+        {
+            m_portSerdesIdToLaneCountMap[rid] = requiredLaneCount;
+        }
+
+        if (requiredTapCount > oldTapCount)
+        {
+            m_portSerdesTapsCountMap[rid][SAI_PORT_SERDES_ATTR_TX_FIR_COUNT] = requiredTapCount;
+        }
+
+        bool requirementsUpdated =
+                (hasLaneAttr && requiredLaneCount > oldLaneCount) ||
+                (hasTapAttr && requiredTapCount > oldTapCount);
+        const char *sizeSource = "BUFFER_OVERFLOW list counts";
+
+        if (!requirementsUpdated && hasTapAttr)
+        {
+            if (m_fallbackExhausted.count(rid) == 0)
+            {
+                SWSS_LOG_NOTICE(
+                    "PORT_PHY_SERDES_ATTR: BUFFER_OVERFLOW did not report larger "
+                    "list counts for VID 0x%" PRIx64 ", RID:0x%" PRIx64
+                    "; querying current tap count",
+                    vid, rid);
+            }
+
+            // Compatibility fallback for a vendor implementation that returns
+            // BUFFER_OVERFLOW without updating the required list counts.
+            // Always query -- the tap count may change between polls.
+            updatePortSerdesTapsCountMap(rid);
+            requiredTapCount = getCachedTapCount(rid);
+
+            requirementsUpdated = requiredTapCount > oldTapCount;
+            sizeSource = "explicit count queries";
+        }
+
+        if (!requirementsUpdated)
+        {
+            if (m_fallbackExhausted.insert(rid).second)
+            {
+                SWSS_LOG_ERROR(
+                    "PORT_PHY_SERDES_ATTR: SAI returned BUFFER_OVERFLOW for VID 0x%" PRIx64
+                    ", RID:0x%" PRIx64 " but neither the returned list counts nor "
+                    "explicit count queries reported larger buffer requirements; "
+                    "suppressing further logs until a poll succeeds",
+                    vid, rid);
+            }
+            return false;
+        }
+
+        m_fallbackExhausted.erase(rid);
+
+        SWSS_LOG_NOTICE(
+            "PORT_PHY_SERDES_ATTR: Updated cached buffer requirements for "
+            "VID 0x%" PRIx64 ", RID:0x%" PRIx64
+            ": lanes %u->%u, taps %u->%u using %s; buffers will be rebuilt "
+            "before the next GET",
+            vid, rid,
+            oldLaneCount, requiredLaneCount,
+            oldTapCount, requiredTapCount,
+            sizeSource);
+
+        return true;
     }
 
     void collectData(_In_ swss::Table &countersTable) override
@@ -3151,7 +3584,7 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-            std::vector<sai_attribute_t> attrs = {};
+            std::vector<sai_attribute_t> attrs;
             PortPhySerdesAttributeData attrData;
 
             SWSS_LOG_DEBUG(
@@ -3159,43 +3592,92 @@ public:
                 "with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                 attrIds.size(), vid, rid);
 
-            // Initialize attributes - only collect successfully initialized ones
-            for (size_t i = 0; i < attrIds.size(); i++)
+            // sai_taps_list_t has two independently sized levels: the outer
+            // tap list and each inner lane list. A vendor may report them in
+            // separate BUFFER_OVERFLOW responses, so allow one retry for each
+            // level in addition to the initial GET.
+            constexpr uint32_t maxBufferResizeRetries = 2;
+            constexpr uint32_t maxGetAttempts = maxBufferResizeRetries + 1;
+            bool getSucceeded = false;
+
+            for (uint32_t attempt = 1; attempt <= maxGetAttempts; ++attempt)
             {
-                sai_attribute_t attr = {};
-                attr.id = attrIds[i];
-                if (!initAttrData(rid, &attr, &attrData))
+                // attrs contains pointers into attrData. Release the
+                // attributes before resetting their backing storage. On a
+                // retry, initAttrData() rebuilds the buffers using the updated
+                // cached requirements.
+                attrs.clear();
+                attrData = PortPhySerdesAttributeData{};
+
+                // Initialize attributes - only collect successfully initialized ones.
+                for (const auto attrId : attrIds)
+                {
+                    sai_attribute_t attr = {};
+                    attr.id = attrId;
+                    if (!initAttrData(rid, &attr, &attrData))
+                    {
+                        SWSS_LOG_WARN(
+                            "PORT_PHY_SERDES_ATTR: Failed to initialize "
+                            "attribute %s for RID:0x%" PRIx64 ", "
+                            "skipping this attribute only",
+                            sai_serialize_port_serdes_attr(attrId).c_str(),
+                            rid);
+                        continue;
+                    }
+                    attrs.push_back(attr);
+                }
+
+                if (attrs.empty())
                 {
                     SWSS_LOG_WARN(
-                        "PORT_PHY_SERDES_ATTR: Failed to initialize "
-                        "attribute %s for RID:0x%" PRIx64 ", "
-                        "skipping this attribute only",
-                        sai_serialize_port_serdes_attr(attrIds[i]).c_str(),
-                        rid);
-                    continue;
+                        "PORT_PHY_SERDES_ATTR: No attributes could be "
+                        "initialized for RID:0x%" PRIx64 ", "
+                        "skipping object", rid);
+                    break;
                 }
-                attrs.push_back(attr);
+
+                sai_status_t status = Base::m_vendorSai->get(
+                        Base::m_objectType,
+                        rid,
+                        static_cast<uint32_t>(attrs.size()),
+                        attrs.data());
+
+                if (status == SAI_STATUS_SUCCESS)
+                {
+                    getSucceeded = true;
+                    break;
+                }
+
+                if (status != SAI_STATUS_BUFFER_OVERFLOW)
+                {
+                    SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes attr for VID 0x%" PRIx64 ", status: %d",
+                            vid, status);
+                    break;
+                }
+
+                if (!updateCachedBufferRequirementsAfterOverflow(
+                            vid, rid, attrs, attrData))
+                {
+                    break;
+                }
+
+                if (attempt == maxGetAttempts)
+                {
+                    SWSS_LOG_ERROR(
+                        "PORT_PHY_SERDES_ATTR: BUFFER_OVERFLOW persisted for "
+                        "VID 0x%" PRIx64 " after %u GET attempts",
+                        vid, maxGetAttempts);
+                    break;
+                }
+
+                SWSS_LOG_NOTICE(
+                    "PORT_PHY_SERDES_ATTR: Rebuilding buffers and retrying GET "
+                    "for VID 0x%" PRIx64 ", attempt %u/%u",
+                    vid, attempt + 1, maxGetAttempts);
             }
 
-            if (attrs.empty())
+            if (!getSucceeded)
             {
-                SWSS_LOG_WARN(
-                    "PORT_PHY_SERDES_ATTR: No attributes could be "
-                    "initialized for RID:0x%" PRIx64 ", "
-                    "skipping object", rid);
-                continue;
-            }
-
-            sai_status_t status = Base::m_vendorSai->get(
-                    Base::m_objectType,
-                    rid,
-                    static_cast<uint32_t>(attrs.size()),
-                    attrs.data());
-
-            if (status != SAI_STATUS_SUCCESS)
-            {
-                SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Failed to get port serdes attr for VID 0x%" PRIx64 ", status: %d",
-                        vid, status);
                 continue;
             }
 
@@ -3206,6 +3688,8 @@ public:
                 SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Port serdes VID 0x%" PRIx64 " has no associated port mapping", vid);
                 continue;
             }
+
+            m_fallbackExhausted.erase(rid);
 
             std::string port_vid_str = sai_serialize_object_id(port_it->second.port_vid);
 
@@ -3260,6 +3744,9 @@ private:
     std::map<sai_object_id_t, PortIdInfo> m_portSerdesIdToPortIdMap;
     std::map<sai_object_id_t, uint32_t> m_portSerdesIdToLaneCountMap;
     std::map<sai_object_id_t, std::map<sai_port_serdes_attr_t, uint32_t>> m_portSerdesTapsCountMap;
+    std::set<sai_object_id_t> m_fallbackExhausted;
+    static constexpr uint32_t kMaxSaneLaneCount = 64;
+    static constexpr uint32_t kMaxSaneTapCount = 64;
 };
 
 const std::unordered_map<sai_port_serdes_attr_t, std::string> PortPhySerdesAttrContext::m_attrAliases = {
@@ -3312,7 +3799,7 @@ public:
                 // need not repeat these global checks for each object
                 return;
             }
-            sai_attribute_t attr;
+            sai_attribute_t attr = {};
             attr.id = SAI_SWITCH_ATTR_DASH_CAPS_MAX_METER_BUCKET_COUNT_PER_ENI;
             auto status = m_vendorSai->get(SAI_OBJECT_TYPE_SWITCH, m_switchId,
                                            1, &attr);
@@ -3441,6 +3928,17 @@ public:
         return !m_bulkMeterContexts.empty();
     }
 
+    void getObjectVids(
+            _Out_ std::set<sai_object_id_t> &vids) const override
+    {
+        SWSS_LOG_ENTER();
+
+        for (const auto &kv : m_bulkMeterContexts)
+        {
+            vids.insert(kv.first);
+        }
+    }
+
 private:
     struct BulkMeterStatsContext
     {
@@ -3505,7 +4003,7 @@ private:
             meter_class_hit = false;
             for (size_t j = 0; j < ctx.counter_ids.size(); j++)
             {
-                values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
+                values.emplace_back(serializeStatCached(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
             }
             auto meter_bucket_entry =
                 meterBucketRidToVid(ctx.object_keys[i].key.meter_bucket_entry,
@@ -3908,6 +4406,22 @@ void FlexCounter::addCounterPlugin(
     notifyPoll();
 }
 
+std::set<sai_object_id_t> FlexCounter::getCounterVids()
+{
+    MUTEX;
+
+    SWSS_LOG_ENTER();
+
+    std::set<sai_object_id_t> vids;
+
+    for (const auto &kv : m_counterContext)
+    {
+        kv.second->getObjectVids(vids);
+    }
+
+    return vids;
+}
+
 bool FlexCounter::isEmpty()
 {
     MUTEX;
@@ -4106,6 +4620,14 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->use_sai_stats_ext = m_vendorSai->isSwitchStatsExtSupported();
         return context;
     }
+    else if (context_name == ATTR_TYPE_OTN_ATTENUATOR_ATTR)
+    {
+        return std::make_shared<AttrContext<sai_otn_attenuator_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR, m_vendorSai.get(), m_statsMode);
+    }
+    else if (context_name == ATTR_TYPE_OTN_OA_ATTR)
+    {
+        return std::make_shared<AttrContext<sai_otn_oa_attr_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA, m_vendorSai.get(), m_statsMode);
+    }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
     // GCC 8.3 requires a return value here
@@ -4172,21 +4694,25 @@ void FlexCounter::collectCounters(
 }
 
 void FlexCounter::runPlugins(
-        _In_ swss::DBConnector& counters_db)
+        _In_ swss::DBConnector& counters_db,
+        _In_ int64_t cycleStartUs,
+        _In_ int64_t collectUs)
 {
     SWSS_LOG_ENTER();
 
-    std::vector<std::string> argv =
+    // Fixed positions so a plugin can index them:
+    //   ARGV[4] secondary poll factor, 0 when unset
+    //   ARGV[5] monotonic start of this cycle, us
+    //   ARGV[6] time spent collecting this cycle, us
+    const std::vector<std::string> argv =
     {
         std::to_string(counters_db.getDbId()),
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval)
+        std::to_string(m_pollInterval),
+        std::to_string(m_secondaryPollFactor),
+        std::to_string(cycleStartUs),
+        std::to_string(collectUs)
     };
-
-    if (m_secondaryPollFactor > 0)
-    {
-        argv.push_back(std::to_string(m_secondaryPollFactor));
-    }
 
     for (const auto &it : m_counterContext)
     {
@@ -4325,9 +4851,17 @@ void FlexCounter::flexCounterThreadRunFunction()
             // abort.
             try
             {
+                // start of this cycle; successive values differ by the true period
+                auto cycleStartUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                        start.time_since_epoch()).count();
+
                 collectCounters(*countersTable);
 
-                runPlugins(*db);
+                // time spent collecting; the term that scales with object count
+                auto collectUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - start).count();
+
+                runPlugins(*db, cycleStartUs, collectUs);
             }
             catch (const std::exception& e)
             {
@@ -4596,6 +5130,20 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR))
         {
             getCounterContext(ATTR_TYPE_PORT_PHY_SERDES_ATTR)->removeObject(vid);
+        }
+    }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OTN_ATTENUATOR)
+    {
+        if (hasCounterContext(ATTR_TYPE_OTN_ATTENUATOR_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_OTN_ATTENUATOR_ATTR)->removeObject(vid);
+        }
+    }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OTN_OA)
+    {
+        if (hasCounterContext(ATTR_TYPE_OTN_OA_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_OTN_OA_ATTR)->removeObject(vid);
         }
     }
     else

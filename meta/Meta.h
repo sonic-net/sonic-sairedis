@@ -316,6 +316,14 @@ namespace saimeta
                     _In_ uint32_t count,
                     _In_ const sai_object_id_t* list);
 
+            sai_status_t meta_generic_validation_chardata(
+                    _In_ const sai_attr_metadata_t& md,
+                    _In_ const char* chardata);
+
+            sai_status_t meta_hostif_chardata_validation(
+                    _In_ const sai_attr_metadata_t& md,
+                    _In_ const char* chardata);
+
             sai_status_t meta_genetic_validation_list(
                     _In_ const sai_attr_metadata_t& md,
                     _In_ uint32_t count,

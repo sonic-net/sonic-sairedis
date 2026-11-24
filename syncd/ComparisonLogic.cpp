@@ -5,6 +5,7 @@
 #include "VirtualOidTranslator.h"
 #include "CommandLineOptions.h"
 #include "Workaround.h"
+#include "ImplicitDependency.h"
 
 #include "swss/logger.h"
 
@@ -12,6 +13,9 @@
 #include "meta/SaiAttributeList.h"
 
 #include <inttypes.h>
+
+#include <algorithm>
+#include <map>
 
 using namespace syncd;
 using namespace saimeta;
@@ -622,6 +626,8 @@ void ComparisonLogic::removeExistingObjectFromCurrentView(
         currentView.asicRemoveObject(currentObj);
 
         currentObj->setObjectStatus(SAI_OBJECT_STATUS_REMOVED);
+
+        keepImplicitProvidersAfterRemove(currentView, currentObj);
     }
 }
 
@@ -1166,6 +1172,77 @@ void ComparisonLogic::updateObjectStatus(
     }
 }
 
+std::vector<std::shared_ptr<SaiAttr>> ComparisonLogic::orderConditionSourcesFirst(
+        _In_ const std::shared_ptr<const SaiObj> obj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Depth of each attribute in the object type's valid only graph: 0 for
+     * an attribute that is not valid only, otherwise one more than its
+     * deepest condition source (mirror session VLAN_ID depends on
+     * VLAN_HEADER_VALID, which depends on TYPE).
+     */
+
+    std::map<sai_attr_id_t, size_t> depth;
+
+    auto info = sai_metadata_get_object_type_info(obj->getObjectType());
+
+    if (info != nullptr)
+    {
+        for (size_t pass = 0; pass < info->attrmetadatalength; pass++)
+        {
+            bool changed = false;
+
+            for (size_t i = 0; i < info->attrmetadatalength; i++)
+            {
+                auto md = info->attrmetadata[i];
+
+                for (size_t j = 0; j < md->validonlylength; j++)
+                {
+                    if (md->validonly[j]->type != SAI_ATTR_CONDITION_TYPE_NONE)
+                    {
+                        continue; // operator entry of a mixed condition, not an attribute
+                    }
+
+                    size_t d = depth[md->validonly[j]->attrid] + 1;
+
+                    if (d > depth[md->attrid])
+                    {
+                        depth[md->attrid] = d;
+                        changed = true;
+                    }
+                }
+            }
+
+            if (!changed)
+            {
+                break;
+            }
+        }
+    }
+
+    std::vector<std::shared_ptr<SaiAttr>> ordered;
+
+    for (auto &at: obj->getAllAttributes())
+    {
+        ordered.push_back(at.second);
+    }
+
+    std::sort(ordered.begin(), ordered.end(),
+            [&depth](const std::shared_ptr<SaiAttr> &a, const std::shared_ptr<SaiAttr> &b)
+            {
+                auto ida = a->getSaiAttr()->id;
+                auto idb = b->getSaiAttr()->id;
+                auto da = depth.count(ida) ? depth.at(ida) : 0;
+                auto db = depth.count(idb) ? depth.at(idb) : 0;
+
+                return (da != db) ? (da < db) : (ida < idb);
+            });
+
+    return ordered;
+}
+
 bool ComparisonLogic::performObjectSetTransition(
         _In_ AsicView &currentView,
         _In_ AsicView &temporaryView,
@@ -1212,10 +1289,19 @@ bool ComparisonLogic::performObjectSetTransition(
      * function must return true, just skip all create only attributes.
      */
 
-    for (auto &at: temporaryObj->getAllAttributes())
-    {
-        auto &temporaryAttr = at.second;
+    /*
+     * Each condition source of a valid only attribute goes before the
+     * attributes that depend on it (for WRED the colour enables and the ECN
+     * mark mode before the thresholds), so that a SET which makes a
+     * condition true is generated, and later executed, before the SET of an
+     * attribute that depends on it; a vendor SAI that enforces the condition
+     * would otherwise reject the dependent SET.
+     */
 
+    auto orderedTemporaryAttributes = orderConditionSourcesFirst(temporaryObj);
+
+    for (auto &temporaryAttr: orderedTemporaryAttributes)
+    {
         SWSS_LOG_INFO("first pass (temp): attr %s", temporaryAttr->getStrAttrId().c_str());
 
         const auto meta = temporaryAttr->getAttrMetadata();
@@ -1760,6 +1846,158 @@ bool ComparisonLogic::performObjectSetTransition(
     return true;
 }
 
+const std::pair<std::string, std::string>& ComparisonLogic::getImplicitKeys(
+        _In_ const std::shared_ptr<SaiObj>& obj) const
+{
+    SWSS_LOG_ENTER();
+
+    static const std::pair<std::string, std::string> none;
+
+    if (!ImplicitDependency::hasImplicitDependencies(obj->getObjectType()))
+    {
+        return none;
+    }
+
+    auto it = m_implicitKeys.find(obj.get());
+
+    if (it != m_implicitKeys.end())
+    {
+        return it->second.second;
+    }
+
+    std::vector<sai_attribute_t> attrs;
+
+    for (const auto& at: obj->getAllAttributes())
+    {
+        attrs.push_back(*at.second->getSaiAttr());
+    }
+
+    std::pair<std::string, std::string> keys(
+            ImplicitDependency::getProviderKey(obj->getObjectType(), (uint32_t)attrs.size(), attrs.data()),
+            ImplicitDependency::getDependantKey(obj->getObjectType(), (uint32_t)attrs.size(), attrs.data()));
+
+    return m_implicitKeys.emplace(obj.get(), std::make_pair(obj, keys)).first->second.second;
+}
+
+const std::string& ComparisonLogic::getImplicitProviderKey(
+        _In_ const std::shared_ptr<SaiObj>& obj) const
+{
+    SWSS_LOG_ENTER();
+
+    return getImplicitKeys(obj).first;
+}
+
+const std::string& ComparisonLogic::getImplicitDependantKey(
+        _In_ const std::shared_ptr<SaiObj>& obj) const
+{
+    SWSS_LOG_ENTER();
+
+    return getImplicitKeys(obj).second;
+}
+
+/*
+ * Objects that the temporary object needs but does not reference (see
+ * ImplicitDependency) are processed first, so any of them that must be
+ * created is created before it.
+ */
+void ComparisonLogic::processImplicitDependenciesForViewTransition(
+        _In_ AsicView &currentView,
+        _In_ AsicView &temporaryView,
+        _In_ const std::shared_ptr<SaiObj> &temporaryObj)
+{
+    SWSS_LOG_ENTER();
+
+    const auto dependantKey = getImplicitDependantKey(temporaryObj);
+
+    if (dependantKey.empty())
+    {
+        return;
+    }
+
+    for (auto objectType: ImplicitDependency::getObjectTypes())
+    {
+        for (auto& obj: temporaryView.getObjectsByObjectType(objectType))
+        {
+            if (obj == temporaryObj || getImplicitProviderKey(obj) != dependantKey)
+            {
+                continue;
+            }
+
+            SWSS_LOG_INFO("processing %s:%s before %s (%s)",
+                    obj->m_str_object_type.c_str(),
+                    obj->m_str_object_id.c_str(),
+                    temporaryObj->m_str_object_id.c_str(),
+                    dependantKey.c_str());
+
+            processObjectForViewTransition(currentView, temporaryView, obj); // recursion
+        }
+    }
+}
+
+/*
+ * True when a current object that needs this one (see ImplicitDependency) is
+ * still to be removed, so this one must be removed after it. A dependant that
+ * is kept (matched) does not hold its provider back: the new view then has a
+ * provider of the same key, created before this one is removed.
+ */
+bool ComparisonLogic::hasImplicitDependantsToRemove(
+        _In_ const AsicView &currentView,
+        _In_ const std::shared_ptr<SaiObj> &currentObj) const
+{
+    SWSS_LOG_ENTER();
+
+    const auto& providerKey = getImplicitProviderKey(currentObj);
+
+    if (providerKey.empty())
+    {
+        return false;
+    }
+
+    for (auto objectType: ImplicitDependency::getObjectTypes())
+    {
+        for (auto& obj: currentView.getObjectsByObjectType(objectType))
+        {
+            if (obj->getObjectStatus() == SAI_OBJECT_STATUS_NOT_PROCESSED &&
+                    getImplicitDependantKey(obj) == providerKey)
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/*
+ * The objects that the removed object needed (see ImplicitDependency) hold no
+ * reference from it, so optimizing the operations would move their removes up
+ * before its remove; keep them after it.
+ */
+void ComparisonLogic::keepImplicitProvidersAfterRemove(
+        _In_ AsicView &currentView,
+        _In_ const std::shared_ptr<SaiObj> &currentObj)
+{
+    SWSS_LOG_ENTER();
+
+    const auto dependantKey = getImplicitDependantKey(currentObj);
+
+    if (dependantKey.empty())
+    {
+        return;
+    }
+
+    for (auto objectType: ImplicitDependency::getObjectTypes())
+    {
+        for (auto& obj: currentView.getObjectsByObjectType(objectType))
+        {
+            if (obj != currentObj && getImplicitProviderKey(obj) == dependantKey)
+            {
+                currentView.asicKeepRemoveAfterLastOperation(obj->getVid());
+            }
+        }
+    }
+}
+
 /**
  * @brief Process SAI object for ASIC view transition
  *
@@ -1809,6 +2047,8 @@ void ComparisonLogic::processObjectForViewTransition(
     }
 
     SWSS_LOG_INFO("processing: %s:%s", temporaryObj->m_str_object_type.c_str(), temporaryObj->m_str_object_id.c_str());
+
+    processImplicitDependenciesForViewTransition(currentView, temporaryView, temporaryObj);
 
     procesObjectAttributesForViewTransition(currentView, temporaryView, temporaryObj);
 
@@ -3257,7 +3497,8 @@ void ComparisonLogic::applyViewTransition(
 
             if (obj->isOidObject())
             {
-                if (current.getVidReferenceCount(obj->getVid()) == 0)
+                if (current.getVidReferenceCount(obj->getVid()) == 0 &&
+                        !hasImplicitDependantsToRemove(current, obj))
                 {
                     /*
                      * Reference count on this VID is zero, so it's safe to

@@ -14,13 +14,19 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Build from the sonic-sairedis repository root:
 # docker build -f .azure-pipelines/docker-sai-test-vpp/Dockerfile -t docker-sai-test-vpp .
 COPY .azure-pipelines/docker-sai-test-vpp /opt/docker-sai-test-vpp
-COPY SAI/test/ptf /opt/ptf
 COPY SAI/test/sai_test /sai_test
+
+# Pinned independently of SAI/test/ptf: needs Python 3.12+ support and the RX-thread fix (p4lang/ptf#259).
+ARG PTF_REPO=https://github.com/p4lang/ptf
+ARG PTF_REF=d5870846f26db47631b0649a6c4b545a0c180a78
+ARG PTF_VERSION=0.12.1.post7+gd587084
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         bash \
+        build-essential \
         ca-certificates \
+        git \
         iproute2 \
         libboost-serialization1.83.0 \
         libpcap0.8 \
@@ -28,6 +34,7 @@ RUN apt-get update && \
         libzmq5 \
         procps \
         python3 \
+        python3-dev \
         python3-pip \
         python3-setuptools \
         python3-thrift \
@@ -38,8 +45,13 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --no-cache-dir scapy==2.5.0 unittest-xml-reporting==3.2.0 && \
-    python3 -m pip install --no-cache-dir --ignore-installed /opt/ptf
+    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PTF="${PTF_VERSION}" \
+        python3 -m pip install --no-cache-dir --ignore-installed "git+${PTF_REPO}@${PTF_REF}" && \
+    apt-get purge -y build-essential git python3-dev && \
+    apt-get autoremove -y
 
+# setuptools 81 and later install the SAI Python client flat into dist-packages;
+# older ones install it as an egg, which saithrift.pth puts on the path.
 RUN set -eux; \
     deb_dir=/opt/docker-sai-test-vpp/debs; \
     require_deb() { \
@@ -91,8 +103,10 @@ RUN set -eux; \
     cp /usr/sbin/sysctl /usr/sbin/sysctl.real; \
     cp /usr/bin/true /usr/sbin/sysctl; \
     apt-get install -y --no-install-recommends --allow-downgrades "${runtime_debs[@]}"; \
-    find /usr/lib/python3/dist-packages -maxdepth 1 -type d -name 'saithrift-*.egg' -print > /usr/lib/python3/dist-packages/saithrift.pth; \
-    test -s /usr/lib/python3/dist-packages/saithrift.pth; \
+    saithrift_eggs="$(find /usr/lib/python3/dist-packages -maxdepth 1 -type d -name 'saithrift-*.egg' -print)"; \
+    if [[ -n "$saithrift_eggs" ]]; then \
+        printf '%s\n' "$saithrift_eggs" > /usr/lib/python3/dist-packages/saithrift.pth; \
+    fi; \
     python3 -c 'import sai_thrift'; \
     mv /usr/sbin/sysctl.real /usr/sbin/sysctl; \
     build_dev_debs=(); \

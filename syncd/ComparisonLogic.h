@@ -12,6 +12,7 @@ extern "C"{
 #include "BreakConfig.h"
 
 #include <set>
+#include <map>
 
 namespace syncd
 {
@@ -137,6 +138,14 @@ namespace syncd
                     _In_ const std::shared_ptr<SaiObj>& currentBestMatch,
                     _In_ const std::shared_ptr<SaiObj>& temporaryObj);
 
+            /**
+             * @brief Object's attributes ordered so that each condition
+             * source of a valid only attribute comes before the attributes
+             * that depend on it.
+             */
+            static std::vector<std::shared_ptr<SaiAttr>> orderConditionSourcesFirst(
+                    _In_ const std::shared_ptr<const SaiObj> obj);
+
             bool performObjectSetTransition(
                     _In_ AsicView& currentView,
                     _In_ AsicView& temporaryView,
@@ -159,6 +168,28 @@ namespace syncd
                     _In_ AsicView& currentView,
                     _In_ AsicView& temporaryView,
                     _Inout_ std::shared_ptr<SaiObj> temporaryObj);
+
+            void processImplicitDependenciesForViewTransition(
+                    _In_ AsicView& currentView,
+                    _In_ AsicView& temporaryView,
+                    _In_ const std::shared_ptr<SaiObj>& temporaryObj);
+
+            bool hasImplicitDependantsToRemove(
+                    _In_ const AsicView& currentView,
+                    _In_ const std::shared_ptr<SaiObj>& currentObj) const;
+
+            void keepImplicitProvidersAfterRemove(
+                    _In_ AsicView& currentView,
+                    _In_ const std::shared_ptr<SaiObj>& currentObj);
+
+            const std::string& getImplicitProviderKey(
+                    _In_ const std::shared_ptr<SaiObj>& obj) const;
+
+            const std::string& getImplicitDependantKey(
+                    _In_ const std::shared_ptr<SaiObj>& obj) const;
+
+            const std::pair<std::string, std::string>& getImplicitKeys(
+                    _In_ const std::shared_ptr<SaiObj>& obj) const;
 
             void checkSwitch(
                     _In_ const AsicView& currentView,
@@ -254,5 +285,14 @@ namespace syncd
             std::shared_ptr<NotificationHandler> m_handler;
 
             std::shared_ptr<BreakConfig> m_breakConfig;
+
+            /**
+             * @brief Implicit dependency keys of each object: {provider, dependant}.
+             *
+             * The keys come from create only attributes, so they never change.
+             * The entry holds the object, so a removed object's address is not
+             * reused while its keys are cached.
+             */
+            mutable std::map<const SaiObj*, std::pair<std::shared_ptr<SaiObj>, std::pair<std::string, std::string>>> m_implicitKeys;
     };
 }

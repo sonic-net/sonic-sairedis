@@ -1443,6 +1443,16 @@ sai_status_t SwitchStateBase::create_ports()
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
+        attr.id = SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE;
+        attr.value.oid = SAI_NULL_OBJECT_ID;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
         attr.id = SAI_PORT_ATTR_SPEED;
         attr.value.u32 = 40 * 1000;     // TODO from config
 
@@ -1544,6 +1554,8 @@ sai_status_t SwitchStateBase::create_default_virtual_router()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
+static const uint32_t DEFAULT_MAX_STP_INSTANCE = 63;
+
 sai_status_t SwitchStateBase::create_default_stp_instance()
 {
     SWSS_LOG_ENTER();
@@ -1558,6 +1570,14 @@ sai_status_t SwitchStateBase::create_default_stp_instance()
 
     attr.id = SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID;
     attr.value.oid = stp_instance_id;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // Orchagent sizes spanning tree from this and does not initialise STP
+    // when the query fails. Broadcom SAI reports 63 (the default instance
+    // plus 62 more), so the limit behaves the same here as on hardware.
+    attr.id = SAI_SWITCH_ATTR_MAX_STP_INSTANCE;
+    attr.value.u32 = DEFAULT_MAX_STP_INSTANCE;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
@@ -2084,6 +2104,18 @@ sai_status_t SwitchStateBase::create_port_dependencies(
 
     // attributes are not required since they will be set outside this function
 
+    // Preserve sampling attributes supplied when the port was created.
+    for (auto id : { SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE,
+                     SAI_PORT_ATTR_EGRESS_SAMPLEPACKET_ENABLE })
+    {
+        attr.id = id;
+        if (get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr) == SAI_STATUS_NOT_IMPLEMENTED)
+        {
+            attr.value.oid = SAI_NULL_OBJECT_ID;
+            CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+        }
+    }
+
     CHECK_STATUS(create_ingress_priority_groups_per_port(port_id));
     CHECK_STATUS(create_qos_queues_per_port(port_id));
     CHECK_STATUS(create_scheduler_groups_per_port(port_id));
@@ -2367,6 +2399,18 @@ sai_status_t SwitchStateBase::warm_update_switch()
     if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
     {
         CHECK_STATUS(set_initial_tam_objects());
+    }
+
+    // check for the STP instance limit, which dumps written before it was
+    // set do not carry
+
+    attr.id = SAI_SWITCH_ATTR_MAX_STP_INSTANCE;
+
+    if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        attr.value.u32 = DEFAULT_MAX_STP_INSTANCE;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
     }
 
     // check for default supported object types
@@ -2744,6 +2788,7 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP:
             case SAI_SWITCH_ATTR_DEFAULT_VLAN_ID:
             case SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID:
+            case SAI_SWITCH_ATTR_MAX_STP_INSTANCE:
             case SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID:
                 return SAI_STATUS_SUCCESS;
 
@@ -4325,6 +4370,27 @@ sai_status_t SwitchStateBase::queryTamBindPointTypeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryTamTelTypeModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    /* SAI_TAM_TEL_TYPE_MODE_SINGLE_TYPE and SAI_TAM_TEL_TYPE_MODE_MIXED_TYPE. */
+    constexpr uint32_t value_count = 2;
+
+    if (enum_values_capability->count < value_count)
+    {
+        enum_values_capability->count = value_count;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = value_count;
+    enum_values_capability->list[0] = SAI_TAM_TEL_TYPE_MODE_SINGLE_TYPE;
+    enum_values_capability->list[1] = SAI_TAM_TEL_TYPE_MODE_MIXED_TYPE;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryIcmpEchoSessionStatsCountModeCapability(
                    _Inout_ sai_s32_list_t *enum_values_capability)
 {
@@ -4393,6 +4459,10 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
     else if (object_type == SAI_OBJECT_TYPE_TAM && attr_id == SAI_TAM_ATTR_TAM_BIND_POINT_TYPE_LIST)
     {
         return queryTamBindPointTypeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_TAM_TEL_TYPE && attr_id == SAI_TAM_TEL_TYPE_ATTR_MODE)
+    {
+        return queryTamTelTypeModeCapability(enum_values_capability);
     }
     else if (object_type == SAI_OBJECT_TYPE_ICMP_ECHO_SESSION && attr_id == SAI_ICMP_ECHO_SESSION_ATTR_STATS_COUNT_MODE)
     {

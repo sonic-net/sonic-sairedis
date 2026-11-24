@@ -4,7 +4,55 @@
 
 #include "vppxlate/SaiVppXlate.h"
 
+#include <map>
+#include <string>
+
 using namespace saivs;
+
+sai_status_t saivs::sonicExtFeatureEnabled(const char *feature, bool& enabled)
+{
+    SWSS_LOG_ENTER();
+
+    static std::map<std::string, bool> s_cache;
+
+    auto it = s_cache.find(feature);
+
+    if (it != s_cache.end())
+    {
+        enabled = it->second;
+        return SAI_STATUS_SUCCESS;
+    }
+
+    enabled = false;
+
+    if (vpp_sonic_ext_feature_get(feature, &enabled) != 0)
+    {
+        SWSS_LOG_ERROR("sonic_ext_feature_get(%s) failed", feature);
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (!enabled)
+    {
+        SWSS_LOG_NOTICE("sonic-ext feature %s disabled in startup.conf", feature);
+    }
+
+    s_cache[feature] = enabled;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+bool saivs::sonicExtFeatureEnabled(const char *feature)
+{
+    SWSS_LOG_ENTER();
+
+    bool enabled = false;
+    if (sonicExtFeatureEnabled(feature, enabled) != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_WARN("Treating sonic-ext feature %s as disabled after query failure", feature);
+        return false;
+    }
+    return enabled;
+}
 
 sai_status_t saivs::find_attrib_in_list(
         _In_ uint32_t                       attr_count,

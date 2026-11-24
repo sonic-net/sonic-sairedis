@@ -1469,6 +1469,26 @@ TEST(VendorSai, bulkGet)
                 attrs,
                 SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
                 statuses));
+
+    EXPECT_NE(SAI_STATUS_NOT_IMPLEMENTED,
+            sai.bulkGet(
+                SAI_OBJECT_TYPE_QUEUE,
+                1,
+                oids,
+                attrcount,
+                attrs,
+                SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
+                statuses));
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED,
+            sai.bulkGet(
+                SAI_OBJECT_TYPE_SWITCH,
+                1,
+                oids,
+                attrcount,
+                attrs,
+                SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
+                statuses));
 }
 
 TEST_F(VendorSaiTest, bulk_flow_entry)
