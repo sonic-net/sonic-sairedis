@@ -11,7 +11,7 @@ import shlex
 import shutil
 import subprocess
 
-MAIN = "https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main"
+MAIN = "https://raw.githubusercontent.com/sonic-net/sonic-bazel-registry/main"
 BCR = "https://bcr.bazel.build/"
 
 
@@ -75,7 +75,7 @@ def main():
     args = parser.parse_args()
     ref = "refs/heads/main"
     advertised = subprocess.check_output([
-        "git", "ls-remote", "https://github.com/securely1g/sonic-bazel-registry.git", ref,
+        "git", "ls-remote", "https://github.com/sonic-net/sonic-bazel-registry.git", ref,
     ], text=True).split()
     if len(advertised) != 2 or advertised[1] != ref:
         raise ValueError("Expected one maintained registry main revision")
