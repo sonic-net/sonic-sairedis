@@ -265,9 +265,12 @@ void SwitchVpp::refreshDropReasonStats(
 
     std::map<std::string, std::map<uint32_t, uint64_t>> fresh;
 
-    // Fails when nothing is exported yet (old plugin, feature off, or no
-    // drops registered), which is the same as every count being 0.
-    vpp_drop_reason_stats_dump(accumulateDropReasonStat, &fresh);
+    // On failure, keep the last counts so that a temporary failure does not
+    // reset the counters.
+    if (vpp_drop_reason_stats_dump(accumulateDropReasonStat, &fresh) != 0)
+    {
+        return;
+    }
 
     m_dropReasonStats.swap(fresh);
     m_dropReasonStatsTime = now;
