@@ -48,11 +48,11 @@ elif command == 'redis-cli':
 
     def run(port, fail=False):
         metadata.write_text(json.dumps({
-            "INSTANCES": {"redis": {
+            "INSTANCES": {"asic": {
                 "hostname": "127.0.0.2", "port": port,
                 "unix_socket_path": str(output / "redis.sock"),
             }},
-            "DATABASES": {"ASIC_DB": {"id": 1, "instance": "redis", "separator": ":"}},
+            "DATABASES": {"ASIC_DB": {"id": 1, "instance": "asic", "separator": ":"}},
         }))
         environment = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
                        "SAIDUMP_TEST_LOG": str(log)}
@@ -67,12 +67,11 @@ elif command == 'redis-cli':
 
 
 @pytest.mark.parametrize("port", [0, 6380])
-def test_rdb_export_selects_unix_or_legacy_tcp(saidump_runner, port):
+def test_rdb_export_uses_unix_independent_of_listener_port(saidump_runner, port):
     result, commands, output = saidump_runner(port)
     assert result.returncode == 0, result.stderr
-    transport = ["-s", "--authenticate"] if port == 0 else []
     assert commands == [
-        ["sonic-db-cli", *transport, "--rdb", str(output / "dump.rdb"), "ASIC_DB"],
+        ["sonic-db-cli", "-s", "--authenticate", "--rdb", str(output / "dump.rdb"), "ASIC_DB"],
         ["rdb-cli", str(output / "dump.rdb"), "json"],
         ["saidump", "-r", str(output / "dump.json"), "-m", "100"],
     ]
