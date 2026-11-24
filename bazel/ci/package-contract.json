@@ -2127,6 +2127,31 @@
           "source_reference": "@sai_source//:experimental/saiexperimentalotnoa.h"
         },
         {
+          "path": "usr/include/sai/saiexperimentalpon.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "//vslib:libsaivs_api_headers"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:experimental/saiexperimentalpon.h"
+        },
+        {
           "path": "usr/include/sai/saiextensions.h",
           "type": "file",
           "role": "header",
@@ -2175,6 +2200,31 @@
             }
           },
           "source_reference": "@sai_source//:inc/saifdb.h"
+        },
+        {
+          "path": "usr/include/sai/saifw.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "//vslib:libsaivs_api_headers"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saifw.h"
         },
         {
           "path": "usr/include/sai/saigenericprogrammable.h",
@@ -2850,6 +2900,31 @@
             }
           },
           "source_reference": "@sai_source//:inc/saiprefixcompression.h"
+        },
+        {
+          "path": "usr/include/sai/saiptppdelay.h",
+          "type": "file",
+          "role": "header",
+          "required_metadata": {},
+          "metadata_evidence": {
+            "classification": "inherited_generated_mtree",
+            "source": "//vslib:libsaivs_api_headers"
+          },
+          "observation_reference": {
+            "make": {
+              "mode": "0644",
+              "uid": 0,
+              "gid": 0
+            },
+            "inherited": {
+              "mode": "0755",
+              "uid": 0,
+              "gid": 0,
+              "source": "@tar.bzl//tar/private:tar.bzl",
+              "symbol": "_mtree_line"
+            }
+          },
+          "source_reference": "@sai_source//:inc/saiptppdelay.h"
         },
         {
           "path": "usr/include/sai/saiqosmap.h",
