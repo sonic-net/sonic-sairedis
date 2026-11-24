@@ -17,7 +17,7 @@ SAI_PROFILE_DIR=/etc/sai.d
 VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
 
 # Retrieve vars from sonic-cfggen
-SYNCD_VARS=$(sonic-cfggen -d -y /etc/sonic/sonic_version.yml -t $VARS_FILE) || exit 1
+SYNCD_VARS=$(sonic-cfggen -d --redis-unix-socket -y /etc/sonic/sonic_version.yml -t $VARS_FILE) || exit 1
 SONIC_ASIC_TYPE=$(echo $SYNCD_VARS | jq -r '.asic_type')
 SONIC_ASIC_SUBTYPE=$(echo $SYNCD_VARS | jq -r '.asic_subtype // empty')
 
@@ -534,7 +534,7 @@ config_syncd_barefoot()
     fi
     CMD_ARGS+=" -l -p $PROFILE_FILE"
     # Check if SDE profile is configured
-    P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
+    P4_PROFILE=$(sonic-cfggen -d --redis-unix-socket -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
     if [[ -n "$P4_PROFILE" ]]; then
         if [[ ( -d /opt/bfn/install_${P4_PROFILE} ) && ( -L /opt/bfn/install || ! -e /opt/bfn/install ) ]]; then
             ln -srfn /opt/bfn/install_${P4_PROFILE} /opt/bfn/install
@@ -659,7 +659,7 @@ config_syncd_nvidia_bluefield()
 
     # Read MAC addresses
     base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
-    hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')
+    hwsku=$(sonic-cfggen -d --redis-unix-socket -v 'DEVICE_METADATA["localhost"]["hwsku"]')
     single_port=$([[ $hwsku == *"-com-dpu" ]] && echo true || echo false)
 
     eth0_mac=$(cat /sys/class/net/Ethernet0/address)
