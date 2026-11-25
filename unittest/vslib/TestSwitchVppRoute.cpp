@@ -154,3 +154,247 @@ TEST_P(SwitchVppRouteTest, EcmpNextHopKeepsDeleteAddPath)
 }
 
 INSTANTIATE_TEST_SUITE_P(AddressFamilies, SwitchVppRouteTest, ::testing::Bool());
+
+class SwitchVppSharedVxlanEncapTest : public SwitchVppTest
+{
+protected:
+    void SetUp() override
+    {
+        SwitchVppTest::SetUp();
+
+        sai_attribute_t sw_mac_attr = {};
+        sw_mac_attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+        const sai_mac_t sw_mac = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+        memcpy(sw_mac_attr.value.mac, sw_mac, sizeof(sai_mac_t));
+        ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set_internal(
+                SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_switchId), &sw_mac_attr));
+
+        vppMock().rejectDuplicateVxlanTunnels = true;
+        vppMock().calls.clear();
+    }
+
+    sai_object_id_t addVxlanTunnel(
+            const std::string& srcIp,
+            sai_object_id_t encapMapper = SAI_NULL_OBJECT_ID,
+            bool p2p = false)
+    {
+        SWSS_LOG_ENTER();
+        auto tunnel = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL, m_switchId);
+        sai_attribute_t attrs[5] = {};
+        uint32_t count = 2;
+        attrs[0].id = SAI_TUNNEL_ATTR_TYPE;
+        attrs[0].value.s32 = SAI_TUNNEL_TYPE_VXLAN;
+        attrs[1].id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+        sai_deserialize_ip_address(srcIp, attrs[1].value.ipaddr);
+        if (encapMapper != SAI_NULL_OBJECT_ID)
+        {
+            attrs[count].id = SAI_TUNNEL_ATTR_ENCAP_MAPPERS;
+            attrs[count].value.objlist.count = 1;
+            attrs[count].value.objlist.list = &encapMapper;
+            count++;
+        }
+        if (p2p)
+        {
+            attrs[count].id = SAI_TUNNEL_ATTR_PEER_MODE;
+            attrs[count].value.s32 = SAI_TUNNEL_PEER_MODE_P2P;
+            count++;
+            attrs[count].id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
+            sai_deserialize_ip_address("192.168.102.13", attrs[count].value.ipaddr);
+            count++;
+        }
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->create(
+                SAI_OBJECT_TYPE_TUNNEL, sai_serialize_object_id(tunnel), m_switchId, count, attrs));
+        return tunnel;
+    }
+
+    sai_object_id_t addEncapNextHop(
+            sai_object_id_t tunnel,
+            const std::string& dstIp,
+            const sai_mac_t mac,
+            uint32_t vni = 0)
+    {
+        SWSS_LOG_ENTER();
+        auto nh = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_NEXT_HOP, m_switchId);
+        sai_attribute_t attrs[5] = {};
+        uint32_t count = 4;
+        attrs[0].id = SAI_NEXT_HOP_ATTR_TYPE;
+        attrs[0].value.s32 = SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP;
+        attrs[1].id = SAI_NEXT_HOP_ATTR_TUNNEL_ID;
+        attrs[1].value.oid = tunnel;
+        attrs[2].id = SAI_NEXT_HOP_ATTR_IP;
+        sai_deserialize_ip_address(dstIp, attrs[2].value.ipaddr);
+        attrs[3].id = SAI_NEXT_HOP_ATTR_TUNNEL_MAC;
+        memcpy(attrs[3].value.mac, mac, sizeof(sai_mac_t));
+        if (vni != 0)
+        {
+            attrs[4].id = SAI_NEXT_HOP_ATTR_TUNNEL_VNI;
+            attrs[4].value.u32 = vni;
+            count = 5;
+        }
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->create(
+                SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh), m_switchId, count, attrs));
+        return nh;
+    }
+
+    // a VR-to-VNI encap mapper whose next hops carry a VRF decap
+    sai_object_id_t addVrfEncapMapper()
+    {
+        SWSS_LOG_ENTER();
+        auto vrf = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_switchId);
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->create_internal(
+                SAI_OBJECT_TYPE_VIRTUAL_ROUTER, sai_serialize_object_id(vrf), m_switchId, 0, nullptr));
+        // what the VRF's first router interface records
+        EXPECT_EQ(0, m_sw->vpp_add_ip_vrf(vrf, 1001));
+
+        auto mapper = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP, m_switchId);
+        sai_attribute_t mattr = {};
+        mattr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+        mattr.value.s32 = SAI_TUNNEL_MAP_TYPE_VIRTUAL_ROUTER_ID_TO_VNI;
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->create(
+                SAI_OBJECT_TYPE_TUNNEL_MAP, sai_serialize_object_id(mapper), m_switchId, 1, &mattr));
+
+        auto mapEntry = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, m_switchId);
+        sai_attribute_t eattrs[4] = {};
+        eattrs[0].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE;
+        eattrs[0].value.s32 = SAI_TUNNEL_MAP_TYPE_VIRTUAL_ROUTER_ID_TO_VNI;
+        eattrs[1].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+        eattrs[1].value.oid = mapper;
+        eattrs[2].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VIRTUAL_ROUTER_ID_KEY;
+        eattrs[2].value.oid = vrf;
+        eattrs[3].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_VALUE;
+        eattrs[3].value.u32 = 4000;
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->create(
+                SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(mapEntry), m_switchId, 4, eattrs));
+
+        return mapper;
+    }
+};
+
+TEST_F(SwitchVppSharedVxlanEncapTest, SharesTunnelAcrossEncapNextHopsWithDistinctTunnelMacs)
+{
+    const sai_mac_t mac1 = {0x02, 0x00, 0x00, 0x00, 0x01, 0x01};
+    const sai_mac_t mac2 = {0x02, 0x00, 0x00, 0x00, 0x01, 0x02};
+    auto tunnel = addVxlanTunnel("192.168.101.13");
+
+    auto nh1 = addEncapNextHop(tunnel, "192.168.102.13", mac1, 3000);
+    auto nh2 = addEncapNextHop(tunnel, "192.168.102.13", mac2, 3000);
+
+    auto tcalls = vppCallsTo("vpp_vxlan_tunnel_add_del");
+    ASSERT_EQ(1u, tcalls.size());
+    EXPECT_TRUE(tcalls[0].flag);
+    EXPECT_EQ(3000u, tcalls[0].id);
+
+    uint32_t swif1 = ~0u;
+    uint32_t swif2 = ~0u;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh1, m_defaultVr, swif1));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh2, m_defaultVr, swif2));
+    EXPECT_EQ(swif1, swif2);
+
+    auto ncalls = vppCallsTo("ip4_nbr_add_del");
+    ASSERT_EQ(2u, ncalls.size());
+    EXPECT_EQ("02:00:00:00:01:01", ncalls[0].name);
+    EXPECT_EQ("02:00:00:00:01:02", ncalls[1].name);
+
+    // Removing the active owner keeps the shared tunnel and restores the first next hop's inner MAC
+    vppMock().calls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh2)));
+    EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
+    ncalls = vppCallsTo("ip4_nbr_add_del");
+    ASSERT_EQ(1u, ncalls.size());
+    EXPECT_EQ("02:00:00:00:01:01", ncalls[0].name);
+    EXPECT_TRUE(ncalls[0].flag);
+
+    // Removing the final owner tears down the VPP tunnel
+    vppMock().calls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh1)));
+    tcalls = vppCallsTo("vpp_vxlan_tunnel_add_del");
+    ASSERT_EQ(1u, tcalls.size());
+    EXPECT_FALSE(tcalls[0].flag);
+    ncalls = vppCallsTo("ip4_nbr_add_del");
+    ASSERT_EQ(1u, ncalls.size());
+    EXPECT_EQ("02:00:00:00:01:01", ncalls[0].name);
+    EXPECT_FALSE(ncalls[0].flag);
+}
+
+TEST_F(SwitchVppSharedVxlanEncapTest, FailedLastOwnerTunnelDeleteKeepsEntryForRetry)
+{
+    const sai_mac_t mac1 = {0x02, 0x00, 0x00, 0x00, 0x01, 0x01};
+    auto tunnel = addVxlanTunnel("192.168.101.13");
+    auto nh1 = addEncapNextHop(tunnel, "192.168.102.13", mac1, 3000);
+
+    vppMock().vxlanTunnelDelResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh1)));
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_NEXT_HOP).count(sai_serialize_object_id(nh1)));
+
+    vppMock().vxlanTunnelDelResult = 0;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh1)));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_NEXT_HOP).count(sai_serialize_object_id(nh1)));
+}
+
+TEST_F(SwitchVppSharedVxlanEncapTest, FailedLastOwnerTunnelDeleteRestoresVrfDecap)
+{
+    auto mapper = addVrfEncapMapper();
+    auto tunnel = addVxlanTunnel("192.168.101.13", mapper);
+    const sai_mac_t mac1 = {0x02, 0x00, 0x00, 0x00, 0x03, 0x01};
+    auto nh1 = addEncapNextHop(tunnel, "192.168.102.13", mac1);
+    ASSERT_EQ(1u, vppMock().interfaces.size());
+
+    vppMock().vxlanTunnelDelResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh1)));
+    EXPECT_EQ(1u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_NEXT_HOP).count(sai_serialize_object_id(nh1)));
+    EXPECT_EQ(1u, vppMock().interfaces.size());
+
+    vppMock().vxlanTunnelDelResult = 0;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh1)));
+    EXPECT_EQ(0u, m_sw->m_objectHash.at(SAI_OBJECT_TYPE_NEXT_HOP).count(sai_serialize_object_id(nh1)));
+    EXPECT_TRUE(vppMock().interfaces.empty());
+}
+
+TEST_F(SwitchVppSharedVxlanEncapTest, RefcountsVrfDecapAcrossSharedMapperNextHops)
+{
+    auto mapper = addVrfEncapMapper();
+    auto tunnel = addVxlanTunnel("192.168.101.13", mapper);
+    vppMock().calls.clear();
+    vppMock().interfaceCreates = 0;
+
+    const sai_mac_t mac1 = {0x02, 0x00, 0x00, 0x00, 0x02, 0x01};
+    const sai_mac_t mac2 = {0x02, 0x00, 0x00, 0x00, 0x02, 0x02};
+    auto nh1 = addEncapNextHop(tunnel, "192.168.102.13", mac1);
+    auto nh2 = addEncapNextHop(tunnel, "192.168.102.13", mac2);
+
+    EXPECT_EQ(1u, vppCallsTo("vpp_vxlan_tunnel_add_del").size());
+    EXPECT_EQ(1u, vppMock().interfaceCreates);
+    EXPECT_EQ(1u, vppMock().interfaces.size());
+
+    vppMock().calls.clear();
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh1)));
+    EXPECT_EQ(1u, vppMock().interfaces.size());
+    EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh2)));
+    EXPECT_TRUE(vppMock().interfaces.empty());
+    ASSERT_EQ(1u, vppCallsTo("vpp_vxlan_tunnel_add_del").size());
+    EXPECT_FALSE(vppCallsTo("vpp_vxlan_tunnel_add_del")[0].flag);
+}
+
+TEST_F(SwitchVppSharedVxlanEncapTest, FailedMacRestoreKeepsSharedVrfDecapForRetry)
+{
+    auto encapTunnel = addVxlanTunnel("192.168.101.13");
+    auto mapper = addVrfEncapMapper();
+    auto vrfTunnel = addVxlanTunnel("192.168.101.13", mapper, true);
+
+    const sai_mac_t mac1 = {0x02, 0x00, 0x00, 0x00, 0x04, 0x01};
+    const sai_mac_t mac2 = {0x02, 0x00, 0x00, 0x00, 0x04, 0x02};
+    auto nh1 = addEncapNextHop(encapTunnel, "192.168.102.13", mac1, 4000);
+    auto nh2 = addEncapNextHop(vrfTunnel, "192.168.102.13", mac2);
+    ASSERT_EQ(1u, vppMock().interfaces.size());
+
+    vppMock().nbrAddDelResult = -1;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh2)));
+    EXPECT_EQ(1u, vppMock().interfaces.size());
+
+    vppMock().nbrAddDelResult = 0;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh2)));
+    EXPECT_TRUE(vppMock().interfaces.empty());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_NEXT_HOP, sai_serialize_object_id(nh1)));
+}
