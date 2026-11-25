@@ -780,7 +780,7 @@ TEST_F(SwitchVppRifTest, failedNonDefaultVrfCreateRestoresPortAndLagBeforeDefaul
             auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, backing);
             attrs[2].value.oid = nonDefaultVrf;
             vppMock().kernelVrfId = 100;
-            vppMock().interfaceVrfs[name] = 0;
+            vppMock().interfaceVrfs[name] = vppMock().interfaceVrfs6[name] = 0;
             vppMock().loopbackResult = failSnapshot ? 0 : -1;
             vppMock().statsResult = failSnapshot ? -1 : 0;
             ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
@@ -806,12 +806,13 @@ TEST_F(SwitchVppRifTest, rollbackRestoresActualPreviousVrfAndDefaultCreateBindsT
     const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
     auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
     attrs[2].value.oid = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
-    vppMock().interfaceVrfs["port0"] = 42;
+    vppMock().interfaceVrfs["port0"] = vppMock().interfaceVrfs6["port0"] = 42;
     vppMock().vrfTables.insert(42);
     vppMock().kernelVrfId = 100;
     vppMock().statsResult = -1;
     ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
     EXPECT_EQ(42u, vppMock().interfaceVrfs.at("port0"));
+    EXPECT_EQ(42u, vppMock().interfaceVrfs6.at("port0"));
     EXPECT_EQ(1u, vppMock().vrfTables.count(42));
     EXPECT_EQ(0u, vppMock().vrfTables.count(100));
 
@@ -847,7 +848,7 @@ TEST_F(SwitchVppRifTest, vrfLookupAndProgrammingErrorsAbortBeforeActionProgrammi
         auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_PORT, port);
         attrs[2].value.oid = allocate(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
         vppMock().kernelVrfId = 100;
-        vppMock().interfaceVrfs["port0"] = 42;
+        vppMock().interfaceVrfs["port0"] = vppMock().interfaceVrfs6["port0"] = 42;
         vppMock().kernelVrfResult = failure == "kernel" ? -1 : 0;
         vppMock().getVrfResult = failure == "get" ? -1 : 0;
         vppMock().setVrfResult = failure == "set" ? -1 : 0;

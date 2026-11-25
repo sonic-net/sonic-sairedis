@@ -729,16 +729,16 @@ extern "C" int __wrap_set_interface_vrf(const char *name, uint32_t subId, uint32
     if (result == 0)
     {
         const auto ifname = std::string(name) + (subId ? "." + std::to_string(subId) : "");
-        vppMock().interfaceVrfs[ifname] = table;
+        (is_ipv6 ? vppMock().interfaceVrfs6 : vppMock().interfaceVrfs)[ifname] = table;
         vppMock().calls.push_back({"set_interface_vrf", name ? name : "", table, subId, is_ipv6});
     }
     return result;
 }
 
-extern "C" int __wrap_get_interface_vrf(const char *name, bool, uint32_t *table)
+extern "C" int __wrap_get_interface_vrf(const char *name, bool is_ipv6, uint32_t *table)
 {
     SWSS_LOG_ENTER();
-    *table = vppMock().interfaceVrfs[name];
+    *table = (is_ipv6 ? vppMock().interfaceVrfs6 : vppMock().interfaceVrfs)[name];
     return vppMock().getVrfResult;
 }
 

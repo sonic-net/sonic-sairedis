@@ -2034,7 +2034,7 @@ class SwitchVppDhcpTrap : public ::testing::Test
 
             auto port = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_switchId);
             EXPECT_NE(nullptr, m_sw->m_ifaceRegistry.addPhysicalPort(hwif, hwif, port));
-            vppMock().interfaceVrfs[hwif] = table_id;
+            vppMock().interfaceVrfs[hwif] = vppMock().interfaceVrfs6[hwif] = table_id;
 
             auto rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
             sai_attribute_t attrs[3];
@@ -2896,7 +2896,7 @@ TEST_F(SwitchVppDhcp6Trap, BviGetsTheRouteInItsIpv6TableAndLosesItWhenDeleted)
     createTrap(SAI_PACKET_ACTION_COPY, SAI_HOSTIF_TRAP_TYPE_DHCPV6);
 
     // the BVI's IPv6 table, whatever its router interface's VRF
-    vppMock().interfaceVrfs["bvi100"] = 7;
+    vppMock().interfaceVrfs6["bvi100"] = 7;
 
     createBvi();
 

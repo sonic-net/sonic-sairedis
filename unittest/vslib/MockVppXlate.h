@@ -209,7 +209,9 @@ struct VppMock
     std::vector<bool> aclListAdminUp;
     std::map<std::string, VppAclListCall> aclLists;
 
+    // IPv4 and IPv6 table of each interface; VPP binds the families separately
     std::map<std::string, uint32_t> interfaceVrfs;
+    std::map<std::string, uint32_t> interfaceVrfs6;
     std::set<uint32_t> vrfTables;
     std::map<std::string, vpp_interface_stats_t> interfaceStats;
     std::map<std::string, int> actions;
