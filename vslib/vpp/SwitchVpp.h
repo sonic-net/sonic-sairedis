@@ -651,6 +651,14 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+            void vpp_rollback_vlan_member(
+                    _In_ sai_object_id_t port_id,
+                    _In_ const char *parent_hwif,
+                    _In_ const char *hw_ifname,
+                    _In_ uint16_t vlan_id,
+                    _In_ uint32_t tagging_mode,
+                    _In_ bool bd_has_member);
+
             sai_status_t removeVlanMember(
                     _In_ sai_object_id_t objectId);
 
@@ -690,6 +698,90 @@ namespace saivs
                     _In_ uint16_t vlan_id,
                     _Out_ std::string &hwif_name,
                     _Out_ bool &is_tagged);
+
+            // Whether VPP learns MAC addresses on a bridge port, from its
+            // SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE (HW when unset).
+            bool bridge_port_learning_enabled(
+                    _In_ sai_object_id_t br_port_id);
+
+            // The VPP interface of every VLAN membership of a bridge port:
+            // the parent for an untagged one, <parent>.<vid> for a tagged one.
+            void bridge_port_vlan_hwifs(
+                    _In_ sai_object_id_t br_port_id,
+                    _Out_ std::vector<std::string> &hwifs);
+
+            // Turns MAC learning on or off on the VPP interface of every
+            // VLAN membership of a bridge port.
+            sai_status_t vpp_set_bridge_port_learning(
+                    _In_ sai_object_id_t br_port_id,
+                    _In_ bool enable);
+
+            sai_status_t setBridgePort(
+                    _In_ sai_object_id_t br_port_id,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t createBridgePort(
+                    _In_ sai_object_id_t br_port_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            // SAI isolation groups (SwitchVppIsolation.cpp)
+            sai_status_t createIsolationGroup(
+                    _In_ sai_object_id_t group_oid,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeIsolationGroup(
+                    _In_ sai_object_id_t group_oid);
+
+            sai_status_t createIsolationGroupMember(
+                    _In_ sai_object_id_t member_oid,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeIsolationGroupMember(
+                    _In_ sai_object_id_t member_oid);
+
+            sai_status_t setIsolationGroupBinding(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_object_id_t object_id,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t vpp_isolation_vlan_member_added(
+                    _In_ sai_object_id_t br_port_id,
+                    _In_ const std::string &hwif);
+
+            sai_status_t vpp_isolation_tunnel_added(
+                    _In_ sai_object_id_t tunnel_oid,
+                    _In_ uint32_t sw_if_index,
+                    _In_ const std::set<sai_object_id_t> &other_tunnels);
+
+            void vpp_isolation_tunnel_released(
+                    _In_ sai_object_id_t tunnel_oid,
+                    _In_ uint32_t sw_if_index,
+                    _In_ const std::set<sai_object_id_t> &remaining_tunnels);
+
+            void restoreIsolationGroups();
+
+            sai_status_t vpp_isolation_member_add_del(
+                    _In_ uint32_t id,
+                    _In_ const std::vector<std::string> &hwifs,
+                    _In_ const std::vector<uint32_t> &sw_ifs,
+                    _In_ bool is_add);
+
+            void isolation_object_targets(
+                    _In_ sai_object_id_t object_id,
+                    _Out_ std::vector<std::string> &hwifs,
+                    _Out_ std::vector<uint32_t> &sw_ifs);
+
+            // The sonic_ext group id of a SAI isolation group, or ~0
+            uint32_t isolation_group_vpp_id(
+                    _In_ sai_object_id_t group_oid);
+
+            std::map<sai_object_id_t, uint32_t> m_isolation_group_ids;
 
             sai_status_t vpp_create_bvi_interface(
                     _In_ uint32_t attr_count,

@@ -1487,7 +1487,16 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
         // Another SAI P2P tunnel to the same VTEP for the VNI (EVPN) shares
         // the VPP tunnel, which stays until the last of them is removed.
         if (!existing_term_owned && !requested_term_owned) {
-            existing_it->second.owners.insert(tunnel_oid);
+            std::set<sai_object_id_t> other_owners = existing_it->second.owners;
+            bool inserted = existing_it->second.owners.insert(tunnel_oid).second;
+            if (inserted) {
+                sai_status_t iso_status = m_switch_db->vpp_isolation_tunnel_added(
+                        tunnel_oid, existing.sw_if_index, other_owners);
+                if (iso_status != SAI_STATUS_SUCCESS) {
+                    existing_it->second.owners.erase(tunnel_oid);
+                    return iso_status;
+                }
+            }
             sw_if_index = existing.sw_if_index;
             SWSS_LOG_INFO("L2 VXLAN tunnel for VNI %u to this VTEP exists (sw_if %u)", vni, sw_if_index);
             return SAI_STATUS_SUCCESS;
@@ -1633,6 +1642,12 @@ TunnelManager::create_l2_vxlan_tunnel_for_vni(
     if (tunnel_term_oid == SAI_NULL_OBJECT_ID) {
         tunnel.owners.insert(tunnel_oid);
 
+        sai_status_t iso_status = m_switch_db->vpp_isolation_tunnel_added(tunnel_oid, sw_if_index, {});
+        if (iso_status != SAI_STATUS_SUCCESS) {
+            remove_l2_vxlan_tunnel(m_l2_tunnel_map.find(key));
+            return iso_status;
+        }
+
         // MAC addresses orchagent already pointed at this VTEP
         m_switch_db->remote_fdb_resync(vlan_id);
     }
@@ -1744,6 +1759,8 @@ TunnelManager::release_l2_vxlan_tunnel(
 
     if (it->second.owners.size() > 1) {
         it->second.owners.erase(tunnel_oid);
+        m_switch_db->vpp_isolation_tunnel_released(
+            tunnel_oid, it->second.data.sw_if_index, it->second.owners);
         return SAI_STATUS_SUCCESS;
     }
 
@@ -1798,6 +1815,22 @@ TunnelManager::find_l2_vxlan_tunnel(
 
     sw_if_index = ~0;
     return false;
+}
+
+void
+TunnelManager::get_l2_vxlan_tunnel_if_indices(
+    _In_ sai_object_id_t tunnel_oid,
+    _Out_ std::vector<uint32_t>& sw_if_indices) const
+{
+    SWSS_LOG_ENTER();
+
+    sw_if_indices.clear();
+
+    for (const auto& kv : m_l2_tunnel_map) {
+        if (kv.second.owners.count(tunnel_oid) > 0) {
+            sw_if_indices.push_back(kv.second.data.sw_if_index);
+        }
+    }
 }
 
 sai_status_t

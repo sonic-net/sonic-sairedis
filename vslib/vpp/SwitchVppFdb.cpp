@@ -1413,10 +1413,18 @@ sai_status_t SwitchVpp::createVlanMember(
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_VLAN_MEMBER, sid, switch_id, attr_count, attr_list));
 
     sai_status_t status = vpp_create_vlan_member(attr_count, attr_list);
+
     if (status != SAI_STATUS_SUCCESS)
     {
-        remove_internal(SAI_OBJECT_TYPE_VLAN_MEMBER, sid);
+        sai_status_t rm_status = remove_internal(SAI_OBJECT_TYPE_VLAN_MEMBER, sid);
+
+        if (rm_status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to roll back VLAN member %s after VPP failure: %s",
+                    sid.c_str(), sai_serialize_status(rm_status).c_str());
+        }
     }
+
     return status;
 
 }
@@ -1711,6 +1719,23 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
+    /* Joining the bridge domain turned learning on for the interface. */
+    if (!bridge_port_learning_enabled(br_port_id) &&
+        set_l2_interface_flags(hw_ifname, VPP_BD_FLAG_LEARN, false) != 0)
+    {
+        SWSS_LOG_ERROR("Failed to turn MAC learning off on %s (vlan %u)", hw_ifname, vlan_id);
+        vpp_rollback_vlan_member(port_id, hwifname, hw_ifname, vlan_id, tagging_mode, bd_has_member);
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_status_t iso_status = vpp_isolation_vlan_member_added(br_port_id, hw_ifname);
+
+    if (iso_status != SAI_STATUS_SUCCESS)
+    {
+        vpp_rollback_vlan_member(port_id, hwifname, hw_ifname, vlan_id, tagging_mode, bd_has_member);
+        return iso_status;
+    }
+
     /* The bridge domain can have any MAC age when the first member joins:
      * VPP keeps the one of a VLAN with a router interface, with its MAC age,
      * when the last member leaves, and creates one in the slot of a deleted
@@ -1718,6 +1743,57 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
     vpp_apply_fdb_aging_time(bridge_id, bd_has_member);
 
     return SAI_STATUS_SUCCESS;
+}
+
+void SwitchVpp::vpp_rollback_vlan_member(
+        _In_ sai_object_id_t port_id,
+        _In_ const char *parent_hwif,
+        _In_ const char *hw_ifname,
+        _In_ uint16_t vlan_id,
+        _In_ uint32_t tagging_mode,
+        _In_ bool bd_has_member)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t bridge_id = (uint32_t)vlan_id;
+
+    l2_punt_classify_remove(hw_ifname);
+
+    if (tagging_mode == SAI_VLAN_TAGGING_MODE_TAGGED)
+    {
+        m_sub_if_admin_up_pending.erase(hw_ifname);
+        interface_set_state(hw_ifname, false);
+        aclRemoveInterfacePolicy(hw_ifname);
+        aclRemoveInterfacePbh(hw_ifname);
+        set_l2_interface_vlan_tag_rewrite(hw_ifname, bridge_id, ~0, VLAN_DOT1Q, L2_VTR_DISABLED);
+    }
+
+    set_sw_interface_l2_bridge(hw_ifname, bridge_id, false, VPP_API_PORT_TYPE_NORMAL);
+    swif_bdid_untrack(hw_ifname);
+
+    if (tagging_mode == SAI_VLAN_TAGGING_MODE_TAGGED)
+    {
+        if (delete_sub_interface(parent_hwif, vlan_id) == 0)
+        {
+            aclForgetInterfacePolicy(hw_ifname);
+            m_ifaceRegistry.remove(hw_ifname);
+            m_sub_if_admin_up_pending.erase(hw_ifname);
+        }
+    }
+
+    if (objectTypeQuery(port_id) == SAI_OBJECT_TYPE_PORT)
+    {
+        interface_set_promiscuous(parent_hwif, true);
+    }
+
+    if (!bd_has_member)
+    {
+        uint32_t member_count = 0;
+        if (bridge_domain_get_member_count(bridge_id, &member_count) == 0 && member_count == 0)
+        {
+            vpp_bridge_domain_add_del(bridge_id, false);
+        }
+    }
 }
 
 sai_status_t SwitchVpp::removeVlanMember(
@@ -2136,6 +2212,195 @@ bool SwitchVpp::vlan_member_hwif(
     }
 
     return true;
+}
+
+/*
+ * SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE.
+ *
+ * VPP has a per-interface learn flag (the l2_flags API), and the bridge domain
+ * member of a bridge port is a different VPP interface per VLAN: the parent
+ * for an untagged membership, <parent>.<vid> for a tagged one. So the mode is
+ * applied to every VLAN membership the bridge port has when it is set, and
+ * again whenever the bridge port joins a VLAN, since VPP turns learning back
+ * on for an interface that joins a bridge domain.
+ *
+ * DISABLE turns learning off. HW, the default, and the modes that learn and
+ * report the MACs (CPU_TRAP, CPU_LOG, FDB_NOTIFICATION) keep it on, which is
+ * what saivpp does already: VPP learns, and saivpp reports each MAC as a SAI
+ * FDB event. DROP also drops frames from unknown source MACs, which VPP cannot
+ * do per interface, so it is rejected rather than half-honoured.
+ *
+ * MC-LAG is the user: iccpd disables learning on the peer link while the ICCP
+ * session is up, since the MACs behind the peer come from ICCP instead.
+ * Tunnel bridge ports are left to TunnelManager, which never learns on them.
+ */
+static bool learning_mode_learns(
+        _In_ int32_t mode)
+{
+    SWSS_LOG_ENTER();
+
+    return mode != SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE;
+}
+
+bool SwitchVpp::bridge_port_learning_enabled(
+        _In_ sai_object_id_t br_port_id)
+{
+    SWSS_LOG_ENTER();
+
+    auto attr = stored_attr(SAI_OBJECT_TYPE_BRIDGE_PORT,
+            sai_serialize_object_id(br_port_id),
+            SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE);
+
+    return attr == nullptr || learning_mode_learns(attr->value.s32);
+}
+
+void SwitchVpp::bridge_port_vlan_hwifs(
+        _In_ sai_object_id_t br_port_id,
+        _Out_ std::vector<std::string> &hwifs)
+{
+    SWSS_LOG_ENTER();
+
+    hwifs.clear();
+
+    for (auto &kv: m_objectHash.at(SAI_OBJECT_TYPE_VLAN_MEMBER))
+    {
+        auto bp = stored_attr(SAI_OBJECT_TYPE_VLAN_MEMBER, kv.first,
+                SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID);
+
+        if (bp == nullptr || bp->value.oid != br_port_id)
+        {
+            continue;
+        }
+
+        auto member = get_sai_object(SAI_OBJECT_TYPE_VLAN_MEMBER, kv.first);
+
+        if (!member)
+        {
+            continue;
+        }
+
+        auto vlan = member->get_linked_object(SAI_OBJECT_TYPE_VLAN, SAI_VLAN_MEMBER_ATTR_VLAN_ID);
+
+        sai_attribute_t vid_attr;
+
+        vid_attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+        if (!vlan || vlan->get_attr(vid_attr) != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_WARN("Cannot resolve the VLAN of vlan member %s", kv.first.c_str());
+            continue;
+        }
+
+        std::string hwif;
+        bool tagged;
+
+        if (vlan_member_hwif(*member, vid_attr.value.u16, hwif, tagged))
+        {
+            hwifs.push_back(hwif);
+        }
+    }
+}
+
+sai_status_t SwitchVpp::vpp_set_bridge_port_learning(
+        _In_ sai_object_id_t br_port_id,
+        _In_ bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> hwifs;
+
+    bridge_port_vlan_hwifs(br_port_id, hwifs);
+
+    for (size_t i = 0; i < hwifs.size(); ++i)
+    {
+        if (set_l2_interface_flags(hwifs[i].c_str(), VPP_BD_FLAG_LEARN, enable) != 0)
+        {
+            SWSS_LOG_ERROR("Failed to turn MAC learning %s on %s",
+                    enable ? "on" : "off", hwifs[i].c_str());
+            for (size_t j = 0; j < i; ++j)
+            {
+                set_l2_interface_flags(hwifs[j].c_str(), VPP_BD_FLAG_LEARN, !enable);
+            }
+            return SAI_STATUS_FAILURE;
+        }
+
+        SWSS_LOG_NOTICE("MAC learning %s on %s (bridge port %s)",
+                enable ? "on" : "off", hwifs[i].c_str(),
+                sai_serialize_object_id(br_port_id).c_str());
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::createBridgePort(
+        _In_ sai_object_id_t br_port_id,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    auto mode = sai_metadata_get_attr_by_id(SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE, attr_count, attr_list);
+
+    if (mode && mode->value.s32 == SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DROP)
+    {
+        SWSS_LOG_ERROR("Bridge port %s: FDB learning mode DROP is not supported",
+                sai_serialize_object_id(br_port_id).c_str());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    /* A new bridge port is in no VLAN yet; its learning mode is applied as
+     * it joins each one, in vpp_create_vlan_member(). */
+    return create_internal(SAI_OBJECT_TYPE_BRIDGE_PORT,
+            sai_serialize_object_id(br_port_id), switch_id, attr_count, attr_list);
+}
+
+sai_status_t SwitchVpp::setBridgePort(
+        _In_ sai_object_id_t br_port_id,
+        _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(br_port_id);
+
+    if (attr->id == SAI_BRIDGE_PORT_ATTR_ISOLATION_GROUP)
+    {
+        return setIsolationGroupBinding(SAI_OBJECT_TYPE_BRIDGE_PORT, br_port_id, attr);
+    }
+
+    if (attr->id != SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE)
+    {
+        return set_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sid, attr);
+    }
+
+    if (attr->value.s32 == SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DROP)
+    {
+        SWSS_LOG_ERROR("Bridge port %s: FDB learning mode DROP is not supported", sid.c_str());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    bool changed = false;
+    bool enable = false;
+
+    if (!is_tunnel_bridge_port(br_port_id))
+    {
+        enable = learning_mode_learns(attr->value.s32);
+
+        if (enable != bridge_port_learning_enabled(br_port_id))
+        {
+            CHECK_STATUS(vpp_set_bridge_port_learning(br_port_id, enable));
+            changed = true;
+        }
+    }
+
+    sai_status_t status = set_internal(SAI_OBJECT_TYPE_BRIDGE_PORT, sid, attr);
+
+    if (status != SAI_STATUS_SUCCESS && changed)
+    {
+        vpp_set_bridge_port_learning(br_port_id, !enable);
+    }
+
+    return status;
 }
 
 /*
