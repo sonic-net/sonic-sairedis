@@ -2599,23 +2599,18 @@ sai_status_t SwitchVpp::vpp_update_bvi_interface(
         set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_mtu);
     }
 
-    for (auto attr_id: {SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE})
+    auto attr_v4 = sai_metadata_get_attr_by_id(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, attr_count, attr_list);
+
+    if (attr_v4 != NULL)
     {
-        auto attr_admin = sai_metadata_get_attr_by_id(attr_id, attr_count, attr_list);
-
-        if (attr_admin == NULL)
-        {
-            continue;
-        }
-
         sai_attribute_t cur;
-        cur.id = attr_id;
+        cur.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
         bool was_up = (get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_obj_id, 1, &cur) != SAI_STATUS_SUCCESS) ||
                       cur.value.booldata;
 
-        CHECK_STATUS(vpp_set_bvi_admin_state(hwif_name, attr_admin, was_up));
+        CHECK_STATUS(vpp_set_bvi_admin_state(hwif_name, attr_v4, was_up));
 
-        set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_admin);
+        set_internal(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_v4);
     }
 
     // Apply the loopback (hairpin) packet action on the BVI, so a VLAN RIF is
@@ -2666,10 +2661,28 @@ sai_status_t SwitchVpp::vpp_update_bvi_interface(
             return SAI_STATUS_FAILURE;
         }
 
-        sai_status_t persist_status = set_internal(
-                SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_v6);
+        // The admin state goes last so that its failure shares the rollback below.
+        sai_status_t persist_status = vpp_set_bvi_admin_state(hwif_name, attr_v6, previous);
+        bool admin_state_applied = (persist_status == SAI_STATUS_SUCCESS);
+
+        if (admin_state_applied)
+        {
+            persist_status = set_internal(
+                    SAI_OBJECT_TYPE_ROUTER_INTERFACE, sid, attr_v6);
+        }
         if (persist_status != SAI_STATUS_SUCCESS)
         {
+            if (admin_state_applied)
+            {
+                sai_attribute_t restore_attr{};
+                restore_attr.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+                restore_attr.value.booldata = previous;
+
+                if (vpp_set_bvi_admin_state(hwif_name, &restore_attr, desired) != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to restore the IPv6 admin state on %s", hwif_name);
+                }
+            }
             if (ownership_changed &&
                     vpp_rif_ip6_enable_disable(hwif_name, previous) != SAI_STATUS_SUCCESS)
             {
