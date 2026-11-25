@@ -91,7 +91,7 @@ For general questions, setup help, or troubleshooting:
 
 - [sonicproject on Google Groups](https://groups.google.com/g/sonicproject)
 
-For bug reports or feature requests, please open an Issue.
+For bug reports or feature requests, please open an issue.
 
 ## Contribution guide
 
