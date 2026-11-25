@@ -42,6 +42,14 @@ namespace saivs
         // kernel; empty when the BVI has none.
         std::string decap_host_if;
 
+        // Local router MAC programmed on the VPP tunnel interface (inner source
+        // MAC) and decap BVI; tracked so refresh_l3_vni_router_mac only calls
+        // VPP when the resolved router MAC actually changes.
+        bool has_encap_router_mac = false;
+        std::array<uint8_t, 6> encap_router_mac = {};
+        bool has_decap_router_mac = false;
+        std::array<uint8_t, 6> decap_router_mac = {};
+
         // L2 VXLAN fields
         u_int32_t vni = 0;
         u_int16_t vlan_id = 0;
@@ -314,10 +322,22 @@ namespace saivs
         void install_pending_decap_host_paths(
             _In_ sai_object_id_t vr_oid);
 
+        /**
+         * @brief Recompute and apply the local EVPN router MAC on existing L3
+         * VXLAN tunnels and their decap BVIs for @p vr_oid (or all virtual
+         * routers when @p vr_oid is SAI_NULL_OBJECT_ID).
+         */
+        void refresh_l3_vni_router_mac(
+            _In_ sai_object_id_t vr_oid);
+
     private:
         SwitchVpp* m_switch_db;
         std::array<uint8_t, 6> m_router_mac;
         u_int16_t m_vxlan_port;
+
+        bool get_vr_router_mac(
+            _In_ sai_object_id_t vr_oid,
+            _Out_ std::array<uint8_t, 6>& mac);
 
         /**
          * @brief Kernel-side hooks of the decap host path. The constructor
@@ -351,6 +371,7 @@ namespace saivs
             _Inout_ TunnelVPPData& tunnel_data,
             _In_ const char* hw_bvi_ifname);
         struct VxlanEncapEntry {
+            L2TunnelKey key;
             vpp_vxlan_tunnel_t req;
             TunnelVPPData tunnel_data;
             std::array<uint8_t, 6> dst_mac;
@@ -362,6 +383,20 @@ namespace saivs
         sai_status_t recreate_vpp_vxlan_encap_with_decap_any(
             _Inout_ VxlanEncapEntry& entry,
             _In_ bool decap_any);
+        /*
+         * Shared VPP VXLAN encap tunnels keyed by (local VTEP, remote VTEP, VNI).
+         * Multiple SAI TUNNEL_ENCAP nexthops (e.g. make-before-break inner router
+         * MAC updates or peer ToR router MACs behind an EVPN anycast VTEP) can
+         * target the same outer VTEP and VNI; VPP identifies a VXLAN tunnel by
+         * (source, destination, VNI) and rejects duplicate creates with TUNNEL_EXIST.
+         */
+        struct SharedVxlanEncapTunnel {
+            vpp_vxlan_tunnel_t req{};
+            TunnelVPPData tunnel_data;
+            std::vector<std::pair<sai_object_id_t, std::array<uint8_t, 6>>> encap_owners;
+            std::set<sai_object_id_t> decap_owners;
+        };
+        std::map<L2TunnelKey, SharedVxlanEncapTunnel> m_shared_encap_tunnels;
         // One next hop can select a different mapped VNI for each route VRF.
         std::unordered_map<sai_object_id_t, std::vector<VxlanEncapEntry>> m_tunnel_encap_nexthop_map;
         /*
@@ -453,7 +488,27 @@ namespace saivs
         void remove_nexthop_vxlan_decap_for_map_entry(
                         _In_ const std::string& serializedObjectId);
 
+        sai_status_t acquire_shared_vxlan_encap(
+                        _In_ sai_object_id_t nexthop_oid,
+                        _In_ const sai_ip_address_t& src_ip,
+                        _In_ const sai_ip_address_t& dst_ip,
+                        _In_ vpp_vxlan_tunnel_t& req,
+                        _In_ const std::shared_ptr<IpVrfInfo>& vrf,
+                        _In_ const std::array<uint8_t, 6>& dst_mac,
+                        _Out_ VxlanEncapEntry& out_entry);
+
+        sai_status_t release_shared_vxlan_encap(
+                        _In_ sai_object_id_t nexthop_oid,
+                        _In_ VxlanEncapEntry& entry);
+
+        sai_status_t set_vpp_vxlan_encap_neighbor(
+                        _In_ vpp_vxlan_tunnel_t& req,
+                        _In_ uint32_t sw_if_index,
+                        _In_ const std::array<uint8_t, 6>& dst_mac,
+                        _In_ bool is_add);
+
         sai_status_t remove_vxlan_encap_entries(
+                        _In_ sai_object_id_t nexthop_oid,
                         _Inout_ std::vector<VxlanEncapEntry>& entries);
 
         /**

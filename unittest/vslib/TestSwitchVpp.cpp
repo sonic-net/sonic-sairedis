@@ -412,15 +412,30 @@ int __wrap_vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, uin
 {
     SWSS_LOG_ENTER();
 
+    char src[INET6_ADDRSTRLEN];
+    char dst[INET6_ADDRSTRLEN];
+    vpp_ip_addr_t_to_string(&tunnel->src_address, src, sizeof(src));
+    vpp_ip_addr_t_to_string(&tunnel->dst_address, dst, sizeof(dst));
+    std::string key = std::string(src) + "|" + dst + "|" + std::to_string(tunnel->vni);
+
     if (is_add)
     {
+        if (vppMock().rejectDuplicateVxlanTunnels && vppMock().activeVxlanTunnels.count(key))
+        {
+            return -13;
+        }
         *sw_if_index = g_nextSwIfIndex++;
-
-        char dst[INET6_ADDRSTRLEN];
-
-        vpp_ip_addr_t_to_string(&tunnel->dst_address, dst, sizeof(dst));
         g_vxlanTunnelDst[*sw_if_index] = dst;
         g_vxlanTunnelDecapAny[*sw_if_index] = tunnel->decap_any;
+        vppMock().activeVxlanTunnels.insert(key);
+    }
+    else
+    {
+        if (vppMock().vxlanTunnelDelResult != 0)
+        {
+            return vppMock().vxlanTunnelDelResult;
+        }
+        vppMock().activeVxlanTunnels.erase(key);
     }
 
     vppMock().calls.push_back({"vpp_vxlan_tunnel_add_del", "", tunnel->vni, is_add ? *sw_if_index : 0, is_add});
@@ -459,12 +474,6 @@ int __wrap_l2fib_add_del_by_index(uint32_t sw_if_index, const uint8_t *mac, uint
     vppMock().calls.push_back({"l2fib_add_del_by_index", std::to_string(sw_if_index) + " " + macStr(mac), bd_id, is_static_mac, is_add});
     return is_add ? 0 : g_l2fibByIndexDelResult;
 }
-
-int __wrap_sw_interface_set_mac_by_index(uint32_t sw_if_index, uint8_t *mac_address) { return 0; }
-int __wrap_interface_ip_address_add_del(const char *hw_ifname, vpp_ip_route_t *prefix, bool is_add) { return 0; }
-
-int __wrap_ip6_nbr_add_del(const char *hwif_name, uint32_t sw_if_index, struct sockaddr_in6 *addr,
-        bool is_static, bool no_fib_entry, uint8_t *mac, bool is_add) { return 0; }
 
 }
 
@@ -4058,7 +4067,9 @@ class SwitchVppVrf : public ::testing::Test
 
         sai_status_t createVlanRif(
                 sai_object_id_t vr,
-                uint16_t vlanId)
+                uint16_t vlanId,
+                const uint8_t *srcMac = nullptr,
+                sai_object_id_t *rifOut = nullptr)
         {
             SWSS_LOG_ENTER();
 
@@ -4074,6 +4085,10 @@ class SwitchVppVrf : public ::testing::Test
 
             sai_attribute_t attrs[4];
             sai_mac_t mac = { 0x02, 0x00, 0x00, 0x00, 0x00, 0x01 };
+            if (srcMac)
+            {
+                memcpy(mac, srcMac, sizeof(sai_mac_t));
+            }
 
             attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
             attrs[0].value.s32 = SAI_ROUTER_INTERFACE_TYPE_VLAN;
@@ -4085,6 +4100,10 @@ class SwitchVppVrf : public ::testing::Test
             memcpy(attrs[3].value.mac, mac, sizeof(sai_mac_t));
 
             auto rif = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_switchId);
+            if (rifOut)
+            {
+                *rifOut = rif;
+            }
 
             return m_sw->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(rif), m_switchId, 4, attrs);
         }
@@ -4913,6 +4932,166 @@ TEST_F(SwitchVppTunnelNexthop, P2pTunnelKeepsSourceCheckWhenMapEntryArrivesLate)
     EXPECT_EQ(1u, vppCallsTo("create_bvi_interface").size());
     EXPECT_TRUE(vppCallsTo("vpp_vxlan_tunnel_add_del").empty());
     EXPECT_FALSE(g_vxlanTunnelDecapAny.at(sw_if_index));
+}
+
+TEST_F(SwitchVppTunnelNexthop, DecapBviAndTunnelUseL3VniSviMacIgnoringL2VniAndNumberedSvis)
+{
+    const uint8_t sagMac[6] = { 0x00, 0x00, 0x5e, 0x00, 0x01, 0x01 };
+    const uint8_t numberedMac[6] = { 0x02, 0x00, 0x11, 0x22, 0x33, 0x44 };
+    const uint8_t l3vniMac[6] = { 0x02, 0x00, 0xc0, 0xa8, 0x65, 0x0d };
+
+    // An L2VNI VLAN RIF mapped in VNI_TO_VLAN_ID must be ignored.
+    sai_object_id_t l2Map = createMap(SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID);
+    sai_object_id_t l2Entry = m_mgr->allocateNewObjectId(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, m_switchId);
+    sai_attribute_t l2Attrs[4]{};
+    l2Attrs[0].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE;
+    l2Attrs[0].value.s32 = SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID;
+    l2Attrs[1].id = SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP;
+    l2Attrs[1].value.oid = l2Map;
+    l2Attrs[2].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+    l2Attrs[2].value.u32 = 100100;
+    l2Attrs[3].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE;
+    l2Attrs[3].value.u16 = 100;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create_internal(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(l2Entry), m_switchId, 4, l2Attrs));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 100, sagMac));
+
+    // A numbered customer VLAN RIF (carrying a connected route) must also be ignored.
+    sai_object_id_t numberedRif = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 200, numberedMac, &numberedRif));
+    sai_route_entry_t connRoute{};
+    connRoute.switch_id = m_switchId;
+    connRoute.vr_id = m_vrB;
+    connRoute.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    ASSERT_EQ(1, inet_pton(AF_INET, "10.200.0.0", &connRoute.destination.addr.ip4));
+    ASSERT_EQ(1, inet_pton(AF_INET, "255.255.255.0", &connRoute.destination.mask.ip4));
+    sai_attribute_t routeAttr{};
+    routeAttr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+    routeAttr.value.oid = numberedRif;
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->create_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, sai_serialize_route_entry(connRoute), m_switchId, 1, &routeAttr));
+
+    // The unnumbered L3VNI VLAN RIF owns the VRF's EVPN router MAC.
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000, l3vniMac));
+
+    vppMock().calls.clear();
+
+    sai_object_id_t nh = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto setMacs = vppCallsTo("sw_interface_set_mac_by_index");
+    ASSERT_EQ(1u, setMacs.size());
+    EXPECT_EQ("02:00:c0:a8:65:0d", setMacs[0].name);
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+    ASSERT_EQ(1u, bvis.size());
+    EXPECT_EQ("02:00:c0:a8:65:0d", bvis[0].name);
+
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createDecapMapEntry(m_vrB, 2000));
+    auto termBvis = vppCallsTo("create_bvi_interface");
+    ASSERT_EQ(1u, termBvis.size());
+    EXPECT_EQ("02:00:c0:a8:65:0d", termBvis[0].name);
+}
+
+TEST_F(SwitchVppTunnelNexthop, UpdatingL3VniSviMacRefreshesExistingDecapBviAndTunnel)
+{
+    const uint8_t initialMac[6] = { 0x02, 0x00, 0xaa, 0xbb, 0xcc, 0x01 };
+    const uint8_t sharedMac[6] = { 0x02, 0x00, 0xc0, 0xa8, 0x66, 0x0d };
+
+    sai_object_id_t l3vniRif = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000, initialMac, &l3vniRif));
+
+    sai_object_id_t nh = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createDecapMapEntry(m_vrB, 2000));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+    ASSERT_EQ(3u, bvis.size()); // Vlan3000 + encap decap BVI + decap term BVI
+    std::string encapBvi = "bvi" + std::to_string(bvis[1].id);
+    std::string termBvi = "bvi" + std::to_string(bvis[2].id);
+
+    vppMock().calls.clear();
+    vppMock().macs.clear();
+
+    sai_attribute_t macAttr{};
+    macAttr.id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+    memcpy(macAttr.value.mac, sharedMac, sizeof(sai_mac_t));
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->set(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(l3vniRif), &macAttr));
+
+    auto tunMacs = vppCallsTo("sw_interface_set_mac_by_index");
+    ASSERT_EQ(1u, tunMacs.size());
+    EXPECT_EQ("02:00:c0:a8:66:0d", tunMacs[0].name);
+    EXPECT_EQ("02:00:c0:a8:66:0d", vppMock().macs.at(encapBvi));
+    EXPECT_EQ("02:00:c0:a8:66:0d", vppMock().macs.at(termBvi));
+}
+
+TEST_F(SwitchVppTunnelNexthop, CreatingAndRemovingL3VniSviRefreshesExistingTunnels)
+{
+    const uint8_t sharedMac[6] = { 0x02, 0x00, 0xc0, 0xa8, 0x67, 0x0d };
+
+    sai_object_id_t nh = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createDecapMapEntry(m_vrB, 2000));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+    ASSERT_EQ(2u, bvis.size());
+    std::string encapBvi = "bvi" + std::to_string(bvis[0].id);
+    std::string termBvi = "bvi" + std::to_string(bvis[1].id);
+
+    vppMock().calls.clear();
+    vppMock().macs.clear();
+
+    sai_object_id_t l3vniRif = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000, sharedMac, &l3vniRif));
+
+    auto tunMacs = vppCallsTo("sw_interface_set_mac_by_index");
+    ASSERT_EQ(1u, tunMacs.size());
+    EXPECT_EQ("02:00:c0:a8:67:0d", tunMacs[0].name);
+    EXPECT_EQ("02:00:c0:a8:67:0d", vppMock().macs.at(encapBvi));
+    EXPECT_EQ("02:00:c0:a8:67:0d", vppMock().macs.at(termBvi));
+
+    vppMock().calls.clear();
+    vppMock().macs.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->remove(SAI_OBJECT_TYPE_ROUTER_INTERFACE, sai_serialize_object_id(l3vniRif)));
+
+    auto revertTun = vppCallsTo("sw_interface_set_mac_by_index");
+    ASSERT_EQ(1u, revertTun.size());
+    EXPECT_EQ("22:fd:e1:99:49:9e", revertTun[0].name);
+    EXPECT_EQ("00:00:00:00:00:01", vppMock().macs.at(encapBvi));
+    EXPECT_EQ("00:00:00:00:00:01", vppMock().macs.at(termBvi));
+}
+
+TEST_F(SwitchVppTunnelNexthop, VirtualRouterSrcMacOverridesSviAndUpdatesTunnels)
+{
+    const uint8_t sviMac[6] = { 0x02, 0x00, 0xc0, 0xa8, 0x65, 0x0d };
+    const uint8_t vrMac[6] = { 0x02, 0x00, 0xde, 0xad, 0xbe, 0xef };
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createVlanRif(m_vrB, 3000, sviMac));
+
+    sai_object_id_t nh = SAI_NULL_OBJECT_ID;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+    ASSERT_EQ(2u, bvis.size());
+    std::string encapBvi = "bvi" + std::to_string(bvis[1].id);
+
+    vppMock().calls.clear();
+    vppMock().macs.clear();
+
+    sai_attribute_t vrMacAttr{};
+    vrMacAttr.id = SAI_VIRTUAL_ROUTER_ATTR_SRC_MAC_ADDRESS;
+    memcpy(vrMacAttr.value.mac, vrMac, sizeof(sai_mac_t));
+    ASSERT_EQ(SAI_STATUS_SUCCESS,
+            m_sw->set(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, sai_serialize_object_id(m_vrB), &vrMacAttr));
+
+    auto tunMacs = vppCallsTo("sw_interface_set_mac_by_index");
+    ASSERT_EQ(1u, tunMacs.size());
+    EXPECT_EQ("02:00:de:ad:be:ef", tunMacs[0].name);
+    EXPECT_EQ("02:00:de:ad:be:ef", vppMock().macs.at(encapBvi));
 }
 
 /*
