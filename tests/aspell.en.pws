@@ -179,6 +179,8 @@ destructor
 dev
 didn
 doesn
+dropcounters
+dropstat
 dscp
 ecn
 eg
