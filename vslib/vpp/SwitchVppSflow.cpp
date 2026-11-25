@@ -201,28 +201,30 @@ sai_object_id_t SwitchVpp::sflowDropMonitorPolicer(
 }
 
 // Meter drop notifications with the VPP policer createPolicer() made for
-// m_sflow_drop_policer. The plugin resolves it by name on use, so in-place
-// replaces by setPolicer() need no re-push. No policer means no limit.
-sai_status_t SwitchVpp::sflowDropPolicerApply()
+// policer, and record it in m_sflow_drop_policer once VPP has taken it. The
+// plugin resolves it by name on use, so in-place replaces by setPolicer()
+// need no re-push. No policer means no limit.
+sai_status_t SwitchVpp::sflowDropPolicerApply(
+    _In_ sai_object_id_t policer)
 {
     SWSS_LOG_ENTER();
 
     std::string vpp_name;
 
-    if (m_sflow_drop_policer != SAI_NULL_OBJECT_ID)
+    if (policer != SAI_NULL_OBJECT_ID)
     {
         std::lock_guard<std::mutex> lock(m_copp_state_mutex);
-        auto it = m_policer_map.find(m_sflow_drop_policer);
+        auto it = m_policer_map.find(policer);
         if (it != m_policer_map.end())
         {
             vpp_name = it->second.vpp_name;
         }
     }
 
-    if (m_sflow_drop_policer != SAI_NULL_OBJECT_ID && vpp_name.empty())
+    if (policer != SAI_NULL_OBJECT_ID && vpp_name.empty())
     {
         SWSS_LOG_WARN("sflow drop monitor policer %s has no VPP policer, not rate-limiting",
-                sai_serialize_object_id(m_sflow_drop_policer).c_str());
+                sai_serialize_object_id(policer).c_str());
     }
 
     int ret = vpp_sflow_drop_policer_set(vpp_name.c_str());
@@ -231,6 +233,8 @@ sai_status_t SwitchVpp::sflowDropPolicerApply()
         SWSS_LOG_ERROR("sflow drop_policer_set failed, status %d", ret);
         return SAI_STATUS_FAILURE;
     }
+
+    m_sflow_drop_policer = policer;
 
     SWSS_LOG_NOTICE("sflow drop policer '%s'", vpp_name.c_str());
 
@@ -270,8 +274,7 @@ sai_status_t SwitchVpp::sflowDropMonitorChainSet(
             sai_serialize_object_id(m_sflow_drop_policer).c_str(),
             sai_serialize_object_id(policer).c_str());
 
-    m_sflow_drop_policer = policer;
-    return sflowDropPolicerApply();
+    return sflowDropPolicerApply(policer);
 }
 
 bool SwitchVpp::getSflowEnumValuesCapability(

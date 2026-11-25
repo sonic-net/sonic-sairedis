@@ -2811,16 +2811,14 @@ sai_status_t SwitchVpp::set(
                     if (drop_tam != SAI_NULL_OBJECT_ID)
                     {
                         m_sflow_drop_tam = drop_tam;
-                        m_sflow_drop_policer = sflowDropMonitorPolicer(m_sflow_drop_tam);
-                        CHECK_STATUS(sflowDropPolicerApply());
+                        CHECK_STATUS(sflowDropPolicerApply(sflowDropMonitorPolicer(m_sflow_drop_tam)));
                         CHECK_STATUS(sflowDropMonitoringSet(true));
                     }
                     else if (m_sflow_drop_tam != SAI_NULL_OBJECT_ID)
                     {
                         CHECK_STATUS(sflowDropMonitoringSet(false));
                         m_sflow_drop_tam = SAI_NULL_OBJECT_ID;
-                        m_sflow_drop_policer = SAI_NULL_OBJECT_ID;
-                        CHECK_STATUS(sflowDropPolicerApply());
+                        CHECK_STATUS(sflowDropPolicerApply(SAI_NULL_OBJECT_ID));
                     }
                     break;
                 }

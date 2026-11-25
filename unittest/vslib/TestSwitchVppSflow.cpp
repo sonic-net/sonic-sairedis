@@ -32,17 +32,20 @@ namespace
 
     std::vector<DropPolicerCall> drop_policer_calls;
 
-    int nextDropMonitoringResult()
+    // Return codes handed to successive calls; empty means success.
+    std::deque<int> drop_policer_results;
+
+    int nextResult(std::deque<int>& results)
     {
         SWSS_LOG_ENTER();
 
-        if (drop_monitoring_results.empty())
+        if (results.empty())
         {
             return 0;
         }
 
-        int result = drop_monitoring_results.front();
-        drop_monitoring_results.pop_front();
+        int result = results.front();
+        results.pop_front();
         return result;
     }
 
@@ -70,7 +73,7 @@ extern "C" int __wrap_vpp_sflow_drop_monitoring_set(bool enable)
     SWSS_LOG_ENTER();
 
     drop_monitoring_calls.push_back(enable);
-    return nextDropMonitoringResult();
+    return nextResult(drop_monitoring_results);
 }
 
 extern "C" int __wrap_vpp_sflow_drop_policer_set(const char *name)
@@ -78,7 +81,7 @@ extern "C" int __wrap_vpp_sflow_drop_policer_set(const char *name)
     SWSS_LOG_ENTER();
 
     drop_policer_calls.push_back({name ? name : "", drop_monitoring_calls.size()});
-    return 0;
+    return nextResult(drop_policer_results);
 }
 
 namespace
@@ -94,6 +97,7 @@ namespace
                 drop_monitoring_calls.clear();
                 drop_monitoring_results.clear();
                 drop_policer_calls.clear();
+                drop_policer_results.clear();
             }
 
             sai_object_id_t createObject(
@@ -551,6 +555,40 @@ TEST_F(SwitchVppSflowTest, dropMonitorChainSetFollowsPolicer)
 }
 
 /*
+ * A policer VPP refuses is not recorded, so the bound policer stays the one
+ * VPP has and a retry of the same set binds the new one.
+ */
+TEST_F(SwitchVppSflowTest, dropMonitorChainSetKeepsPolicerOnFailure)
+{
+    sai_object_id_t policer;
+    sai_object_id_t group;
+    sai_object_id_t tam = createDropMonitorChain(500, policer, &group);
+
+    sai_attribute_t bind;
+    bind.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
+    bind.value.objlist.count = 1;
+    bind.value.objlist.list = &tam;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, setSwitch(bind));
+
+    sai_object_id_t other = createPacketPolicer(100);
+
+    sai_attribute_t attr;
+    attr.id = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER;
+    attr.value.oid = other;
+
+    drop_policer_results.push_back(-1);
+    EXPECT_NE(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP,
+        sai_serialize_object_id(group), &attr));
+    EXPECT_EQ(policer, m_sw->m_sflow_drop_policer);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->set(SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP,
+        sai_serialize_object_id(group), &attr));
+    ASSERT_EQ(3u, drop_policer_calls.size());
+    EXPECT_EQ(vppPolicerName(other), drop_policer_calls[2].name);
+    EXPECT_EQ(other, m_sw->m_sflow_drop_policer);
+}
+
+/*
  * A TAM object without the chain behind it, or a policer VPP has no policer
  * for (createPolicer() failed), leaves drop notifications unlimited.
  */
@@ -564,8 +602,7 @@ TEST_F(SwitchVppSflowTest, dropPolicerWithoutVppPolicerIsUnlimited)
     createDropMonitorChain(500, policer);
     m_sw->m_policer_map.erase(policer);
 
-    m_sw->m_sflow_drop_policer = policer;
-    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->sflowDropPolicerApply());
+    ASSERT_EQ(SAI_STATUS_SUCCESS, m_sw->sflowDropPolicerApply(policer));
 
     ASSERT_EQ(1u, drop_policer_calls.size());
     EXPECT_EQ("", drop_policer_calls[0].name);
