@@ -1471,6 +1471,34 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAfterDeferredCountRefresh)
     portPhyAttrTable.del(expectedKey);
 }
 
+TEST_F(TestPortPhySerdesAttr, NullPortVidIsNotMapped)
+{
+    sai->mock_get = [this](sai_object_type_t type, sai_object_id_t rid,
+                          uint32_t count, sai_attribute_t *attrs) -> sai_status_t
+    {
+        // Registration still queries the tap count
+        if (type == SAI_OBJECT_TYPE_PORT_SERDES && rid == testPortSerdesRid &&
+            count == 1 && attrs[0].id == SAI_PORT_SERDES_ATTR_TX_FIR_COUNT)
+        {
+            attrs[0].value.u32 = TEST_TAP_COUNT;
+            return SAI_STATUS_SUCCESS;
+        }
+        ADD_FAILURE() << "Unexpected GET for a NULL port VID";
+        return SAI_STATUS_FAILURE;
+    };
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table mappingTable(&db, "COUNTERS_PORT_SERDES_ID_TO_PORT_ID_MAP");
+    mappingTable.hset("", toOid(testPortSerdesOid), "oid:0x0");
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT_SERDES);
+    flexCounter->addCounter(testPortSerdesOid, testPortSerdesRid,
+            {{PORT_PHY_SERDES_ATTR_ID_LIST, "SAI_PORT_SERDES_ATTR_RX_VGA"}});
+    flexCounter->removeCounter(testPortSerdesOid);
+
+    mappingTable.hdel("", toOid(testPortSerdesOid));
+}
+
 TEST_F(TestPortPhySerdesAttr, MissingTranslatorDoesNotCrashOrPublish)
 {
     flexCounter.reset();

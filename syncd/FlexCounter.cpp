@@ -3332,7 +3332,7 @@ public:
                 auto count_it = m_portSerdesTapsCountMap.find(rid);
                 if (count_it == m_portSerdesTapsCountMap.end())
                 {
-                 SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no serdes count attribute information", rid);
+                 SWSS_LOG_DEBUG("PORT_PHY_SERDES_ATTR: port_serdes_rid:0x%" PRIx64 " has no serdes count attribute information", rid);
                  return false;
                 }
 
@@ -3627,6 +3627,12 @@ public:
                 "PORT_PHY_SERDES_ATTR: Collecting %zu port serdes attributes "
                 "with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                 attrIds.size(), vid, rid);
+
+            if (m_portSerdesIdToPortIdMap.find(rid) == m_portSerdesIdToPortIdMap.end())
+            {
+                // addObject() logged the failure, and the port mapping is not retried
+                continue;
+            }
 
             // Refresh lane count or tap count once per object if it is missing
             // SAI may still be busy when the SerDes object is registered, causing a missing mapping
