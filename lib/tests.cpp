@@ -795,6 +795,7 @@ static void test_recorder_enum_value_capability_query_request(
         attr_id,
         &enum_values_capability
     );
+    recorder.flush();
 
     auto tokens = parseFirstRecordedAPI();
 
@@ -827,6 +828,7 @@ static void test_recorder_enum_value_capability_query_response(
         attr_id,
         &enum_values_capability
     );
+    recorder.flush();
 
     auto tokens = parseFirstRecordedAPI();
 
