@@ -141,6 +141,7 @@ jobs:
           --jobs=4 --lockfile_mode=update
           --nocache_test_results --test_output=errors
           //lib:tests_test
+          //tests:aspellcheck
           //tests:tests_test
           //saiasiccmp:tests
           //unittest/meta:tests

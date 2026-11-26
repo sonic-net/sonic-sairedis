@@ -29,6 +29,7 @@
   "schema_version": 1,
   "service_free_tests": [
     "//lib:tests_test",
+    "//tests:aspellcheck",
     "//tests:tests_test",
     "//saiasiccmp:tests",
     "//unittest/meta:tests",
