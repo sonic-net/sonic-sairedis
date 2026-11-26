@@ -32,7 +32,7 @@ namespace
     {
         SWSS_LOG_ENTER();
 
-        return "etp" + std::to_string(portNum);
+        return "etp" + std::to_string(portNum + 1);
     }
 
     std::string joinLanes(const std::vector<uint32_t>& lanes)
@@ -597,7 +597,7 @@ sai_status_t SwitchMicas48CON2SFP::create_ports()
 
                 int portNum = -1;
 
-                if (sscanf(ifname.c_str(), "Ethernet%d", &portNum) == 1 && portNum > 0)
+                if (sscanf(ifname.c_str(), "Ethernet%d", &portNum) == 1 && portNum >= 0)
                 {
                     std::string backingName = getBackingInterfaceName(portNum);
                     path = std::string("/sys/class/net/") + backingName + "/operstate";
@@ -745,7 +745,7 @@ void SwitchMicas48CON2SFP::restoreBackingInterfaces()
     {
         int portNum = -1;
 
-        if (sscanf(p->if_name, "Ethernet%d", &portNum) != 1 || portNum <= 0)
+        if (sscanf(p->if_name, "Ethernet%d", &portNum) != 1 || portNum < 0)
         {
             continue;
         }
@@ -850,7 +850,7 @@ sai_status_t SwitchMicas48CON2SFP::vs_create_hostif_tap_interface(
     {
         int portNum = -1;
 
-        if (sscanf(name.c_str(), "Ethernet%d", &portNum) != 1 || portNum <= 0)
+        if (sscanf(name.c_str(), "Ethernet%d", &portNum) != 1 || portNum < 0)
         {
             SWSS_LOG_ERROR("MICAS_VSLIB: cannot parse port number from %s", name.c_str());
             return SAI_STATUS_FAILURE;
@@ -1064,7 +1064,7 @@ sai_status_t SwitchMicas48CON2SFP::vs_remove_hostif_tap_interface(
 
     int portNum = -1;
 
-    if (sscanf(name.c_str(), "Ethernet%d", &portNum) == 1 && portNum > 0)
+    if (sscanf(name.c_str(), "Ethernet%d", &portNum) == 1 && portNum >= 0)
     {
         std::string backingName = getBackingInterfaceName(portNum);
         renameNetIntf(name, backingName);
