@@ -23,7 +23,8 @@ jobs:
   displayName: Build docker-sai-test-vpp
   timeoutInMinutes: ${{ parameters.timeout }}
 
-  pool: sonic-ubuntu-1c
+  pool:
+    vmImage: 'ubuntu-22.04'
 
   steps:
   - checkout: self

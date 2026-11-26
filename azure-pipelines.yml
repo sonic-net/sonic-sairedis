@@ -116,7 +116,8 @@ stages:
   jobs:
   - job: ResolveVpp
     displayName: Resolve VPP build
-    pool: sonic-ubuntu-1c
+    pool:
+      vmImage: 'ubuntu-22.04'
     steps:
     - ${{ if eq(parameters.vpp_run_id, '') }}:
       - task: DownloadPipelineArtifact@2
@@ -246,7 +247,6 @@ stages:
   jobs:
   - template: .azure-pipelines/build-docker-sonic-vs-template.yml@sonic-swss
     parameters:
-      pool: sonic-ubuntu-1c
       repo: sonic-swss
       swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
       sairedis_artifact_name: sonic-sairedis-${{ parameters.debian_version }}
@@ -265,7 +265,6 @@ stages:
   jobs:
   - template: .azure-pipelines/build-docker-sonic-vs-template.yml@sonic-swss
     parameters:
-      pool: sonic-ubuntu-1c
       repo: sonic-swss
       swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
       sairedis_artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
