@@ -4,7 +4,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_distroless//distroless:defs.bzl", "flatten")
 load("@tar.bzl", "mutate", "tar")
-load("//bazel:common.bzl", "CODE_COVERAGE_CPPFLAGS", "CODE_COVERAGE_LINKOPTS", "CXXFLAGS_COMMON", "PRODUCTION_COPTS", "TEST_COPTS", "VPP_COMPATIBLE", "VPP_COPTS", "VPP_DEPS", "multiarch_mtree", "sairedis_shared_library", "working_directory_test")
+load("//bazel:common.bzl", "CODE_COVERAGE_CPPFLAGS", "CODE_COVERAGE_LINKOPTS", "CXXFLAGS_COMMON", "FORTIFY_COPTS", "PRODUCTION_COPTS", "TEST_COPTS", "VPP_COMPATIBLE", "VPP_COPTS", "VPP_DEPS", "multiarch_mtree", "sairedis_shared_library", "working_directory_test")
 load("//bazel:packaging.bzl", "multiarch_deploy_tar")
 
 package(default_visibility = ["//visibility:public"])
@@ -68,7 +68,7 @@ cc_library(
         "-ansi",
         "-std=c++14",
         "-Wredundant-decls",
-    ]] + CODE_COVERAGE_CPPFLAGS,
+    ]] + CODE_COVERAGE_CPPFLAGS + FORTIFY_COPTS,
     target_compatible_with = VPP_COMPATIBLE,
     deps = [
         ":vpp_headers",

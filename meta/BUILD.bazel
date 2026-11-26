@@ -3,7 +3,7 @@ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_distroless//distroless:defs.bzl", "flatten")
 load("@tar.bzl", "mutate", "tar")
-load("//bazel:common.bzl", "CODE_COVERAGE_CFLAGS", "CODE_COVERAGE_CPPFLAGS", "CODE_COVERAGE_LINKOPTS", "DBGFLAGS", "PRODUCTION_COPTS", "multiarch_mtree", "sairedis_shared_library")
+load("//bazel:common.bzl", "CODE_COVERAGE_CFLAGS", "CODE_COVERAGE_CPPFLAGS", "CODE_COVERAGE_LINKOPTS", "DBGFLAGS", "FORTIFY_COPTS", "PRODUCTION_COPTS", "multiarch_mtree", "sairedis_shared_library")
 load("//bazel:packaging.bzl", "multiarch_deploy_tar")
 
 package(default_visibility = ["//visibility:public"])
@@ -50,7 +50,7 @@ cc_library(
     copts = DBGFLAGS + [
         "-ansi",
         "-fPIC",
-    ] + CODE_COVERAGE_CPPFLAGS + CODE_COVERAGE_CFLAGS,
+    ] + CODE_COVERAGE_CPPFLAGS + CODE_COVERAGE_CFLAGS + FORTIFY_COPTS,
     linkopts = CODE_COVERAGE_LINKOPTS,
     deps = ["//:sai_headers"],
     alwayslink = True,
