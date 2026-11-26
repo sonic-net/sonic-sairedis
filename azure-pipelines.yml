@@ -67,7 +67,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      pool: sonicso1ES-amd64
+      pool: sonic-ubuntu-1c
       artifact_name: sonic-sairedis-${{ parameters.debian_version }}
       syslog_artifact_name: sonic-sairedis.syslog
       run_unit_test: true
@@ -81,7 +81,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      pool: sonicso1ES-amd64
+      pool: sonic-ubuntu-1c
       artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
       syslog_artifact_name: sonic-sairedis-asan.syslog
       asan: true
@@ -116,8 +116,7 @@ stages:
   jobs:
   - job: ResolveVpp
     displayName: Resolve VPP build
-    pool:
-      vmImage: 'ubuntu-22.04'
+    pool: sonic-ubuntu-1c
     steps:
     - ${{ if eq(parameters.vpp_run_id, '') }}:
       - task: DownloadPipelineArtifact@2
@@ -172,7 +171,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      pool: sonicso1ES-amd64
+      pool: sonic-ubuntu-1c
       depends_on: ResolveVpp
       staged_upstreams:
       - artifact: vpp-resolved-trixie
@@ -234,7 +233,7 @@ stages:
       repo: sonic-swss
       arch: amd64
       timeout: 90
-      pool: sonicso1ES-amd64
+      pool: sonic-ubuntu-1c
       artifact_name: sonic-swss-${{ parameters.debian_version }}
       debian_version: ${{ parameters.debian_version }}
       staged_upstreams:
@@ -247,6 +246,7 @@ stages:
   jobs:
   - template: .azure-pipelines/build-docker-sonic-vs-template.yml@sonic-swss
     parameters:
+      pool: sonic-ubuntu-1c
       repo: sonic-swss
       swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
       sairedis_artifact_name: sonic-sairedis-${{ parameters.debian_version }}
@@ -265,6 +265,7 @@ stages:
   jobs:
   - template: .azure-pipelines/build-docker-sonic-vs-template.yml@sonic-swss
     parameters:
+      pool: sonic-ubuntu-1c
       repo: sonic-swss
       swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
       sairedis_artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
