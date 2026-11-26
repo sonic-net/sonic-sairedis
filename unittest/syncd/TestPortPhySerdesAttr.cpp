@@ -755,6 +755,21 @@ protected:
     sai_object_id_t secondSerdesOid = SAI_NULL_OBJECT_ID;
 };
 
+TEST_F(TestPortPhySerdesAttrResize, UnknownPortVidIsNotMapped)
+{
+    // The translator has no RID for this port VID
+    mappingTable->hset("", toOid(testPortSerdesOid), toOid(testPortOid + 1));
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT_SERDES);
+    flexCounter->addCounter(testPortSerdesOid, testPortSerdesRid,
+            {{PORT_PHY_SERDES_ATTR_ID_LIST,
+              "SAI_PORT_SERDES_ATTR_RX_VGA,SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST"}});
+
+    poll();
+    EXPECT_EQ(0u, laneQueries);
+    EXPECT_EQ(0u, collectionGets);
+    expectUnchanged();
+}
+
 TEST_F(TestPortPhySerdesAttrResize, TapCountGrowthRetriesAndCachesCapacity)
 {
     registerCounter(false, true);
