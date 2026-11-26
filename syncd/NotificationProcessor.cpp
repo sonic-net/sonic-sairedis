@@ -1011,7 +1011,7 @@ void NotificationProcessor::handle_switch_macsec_post_status(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_MACSEC_POST_STATUS, s);
 
     SWSS_LOG_NOTICE("Sent switch MACSec POST status notificaiton: %s",
-                    sai_serialize_switch_macsec_post_status(switch_macsec_post_status));
+                    sai_serialize_switch_macsec_post_status(switch_macsec_post_status).c_str());
 }
 
 void NotificationProcessor::handle_macsec_post_status(
@@ -1034,7 +1034,7 @@ void NotificationProcessor::handle_macsec_post_status(
 
     SWSS_LOG_NOTICE("Sent MACSec POST status notification: macsec oid %s, status %s",
                     sai_serialize_object_id(macsec_id).c_str(),
-                    sai_serialize_macsec_post_status(macsec_post_status));
+                    sai_serialize_macsec_post_status(macsec_post_status).c_str());
 }
 
 void NotificationProcessor::processNotification(

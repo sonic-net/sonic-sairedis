@@ -1,0 +1,3 @@
+# The Make build owns this legacy submodule. Bazel uses the pinned external
+# SAI archive declared in MODULE.bazel.
+SAI

@@ -5,6 +5,7 @@
 #include "swss/table.h"
 #include "swss/selectableevent.h"
 
+#include <atomic>
 #include <deque>
 #include <thread>
 #include <memory>
@@ -71,9 +72,9 @@ namespace sairedis
 
             std::vector<uint8_t> m_buffer;
 
-            volatile bool m_allowZmqPoll;
+            std::atomic<bool> m_allowZmqPoll;
 
-            volatile bool m_runThread;
+            std::atomic<bool> m_runThread;
 
             std::shared_ptr<std::thread> m_zmlPollThread;
 

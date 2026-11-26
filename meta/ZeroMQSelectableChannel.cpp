@@ -32,7 +32,7 @@ ZeroMQSelectableChannel::ZeroMQSelectableChannel(
     }
     else
     {
-        SWSS_LOG_NOTICE("using default zmq response buffer size of %ld bytes", ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
+        SWSS_LOG_NOTICE("using default zmq response buffer size of %d bytes", ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
     }
 
     m_buffer.resize(m_zmqResponseBufferSize);
@@ -71,12 +71,15 @@ ZeroMQSelectableChannel::~ZeroMQSelectableChannel()
     m_runThread = false;
     m_allowZmqPoll = true;
 
-    zmq_close(m_socket);
-    zmq_ctx_destroy(m_context);
+    // Wake a blocking zmq_poll and keep its socket open until the thread exits.
+    zmq_ctx_shutdown(m_context);
 
     SWSS_LOG_NOTICE("ending zmq poll thread for channel %s", m_endpoint.c_str());
 
     m_zmlPollThread->join();
+
+    zmq_close(m_socket);
+    zmq_ctx_destroy(m_context);
 
     SWSS_LOG_NOTICE("ended zmq poll thread for channel %s", m_endpoint.c_str());
 }
@@ -248,7 +251,7 @@ uint64_t ZeroMQSelectableChannel::readData()
 
     if (rc >= m_zmqResponseBufferSize)
     {
-        SWSS_LOG_THROW("zmq_recv message was truncated (over %d bytes, received %d), increase buffer size, message DROPPED",
+        SWSS_LOG_THROW("zmq_recv message was truncated (over %ld bytes, received %d), increase buffer size, message DROPPED",
                 m_zmqResponseBufferSize,
                 rc);
     }

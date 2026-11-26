@@ -144,3 +144,9 @@ tests/[0-9]*
 pyext/py2/pysairedis.py
 pyext/py3/pysairedis.py
 pyext/pysairedis.py
+
+# Bazel #
+#########
+bazel-*
+/MODULE.bazel.lock
+/artifacts/
