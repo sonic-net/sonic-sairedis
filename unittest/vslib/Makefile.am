@@ -59,6 +59,7 @@ tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry
 				TestSwitchVppRoute.cpp \
 				TestSwitchVppPbh.cpp \
 				TestSwitchVppTrim.cpp \
+				TestSwitchVppSflow.cpp \
 				TestSwitchVppFdb.cpp \
 				TestSwitchVppIpIp.cpp \
 				MockVppXlate.cpp MockVppXlate.h \
@@ -100,7 +101,7 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_sonic_ext_copp_neighbor_miss_bind
 				vpp_nat44_ed_supported vpp_nat44_ed_enable_disable \
 				vpp_nat44_forwarding_enable_disable vpp_nat44_ed_output_interface_add_del \
 				vpp_nat44_static_mapping_add_del vpp_nat44_user_sessions_dump \
-				vpp_drop_reason_stats_dump
+				vpp_sflow_drop_monitoring_set vpp_sflow_drop_policer_set vpp_drop_reason_stats_dump
 tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 
 check_PROGRAMS = sai_vpp_xlate_tests
