@@ -97,31 +97,33 @@ extern "C" int __wrap_vpp_sonic_ext_trim_dscp_map_set(const uint8_t map[64])
 
 TEST(SwitchVpp, getTrimEnumValuesCapability)
 {
-    sai_int32_t value = -1;
+    std::vector<sai_int32_t> values;
 
     // The DSCP resolution mode advertises only DSCP_VALUE (symmetric trim); the
     // asymmetric FROM_TC mode is intentionally not offered on VPP.
     ASSERT_TRUE(SwitchVppTrim::getTrimEnumValuesCapability(
-        SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE, &value));
-    EXPECT_EQ((sai_int32_t)SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE, value);
+        SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE, values));
+    ASSERT_EQ(1u, values.size());
+    EXPECT_EQ((sai_int32_t)SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE, values[0]);
 
     // The queue resolution mode advertises only STATIC.
-    value = -1;
+    values.clear();
     ASSERT_TRUE(SwitchVppTrim::getTrimEnumValuesCapability(
-        SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE, &value));
-    EXPECT_EQ((sai_int32_t)SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC, value);
+        SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE, values));
+    ASSERT_EQ(1u, values.size());
+    EXPECT_EQ((sai_int32_t)SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC, values[0]);
 
-    // Unrelated switch enum attributes fall through to the base metadata.
+    // Unrelated switch enum attributes fall through to the base metadata, and
+    // an unclaimed pair must leave the caller's vector untouched.
+    values.clear();
     EXPECT_FALSE(SwitchVppTrim::getTrimEnumValuesCapability(
-        SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_ECMP_HASH, &value));
+        SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_ECMP_HASH, values));
+    EXPECT_TRUE(values.empty());
 
     // A trim switch attr queried against the wrong object type must not match.
     EXPECT_FALSE(SwitchVppTrim::getTrimEnumValuesCapability(
-        SAI_OBJECT_TYPE_BUFFER_PROFILE, SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE, &value));
-
-    // A null out-pointer is tolerated (predicate still resolves).
-    EXPECT_TRUE(SwitchVppTrim::getTrimEnumValuesCapability(
-        SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE, nullptr));
+        SAI_OBJECT_TYPE_BUFFER_PROFILE, SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE, values));
+    EXPECT_TRUE(values.empty());
 }
 
 TEST(SwitchVpp, isTrimDataplaneAttr)

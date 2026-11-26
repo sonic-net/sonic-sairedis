@@ -265,6 +265,34 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t* attr);
 
+            /* Set SAI_TUNNEL_ATTR_ENCAP_TTL_VAL, the outer TTL of the pipe
+             * model, of an IPINIP tunnel, and apply it to the VPP IPIP tunnels
+             * of the tunnel's encap nexthops. The attribute keeps its previous
+             * value if VPP does not take the new one, and a value a VPP tunnel
+             * the tunnel shares with another one can't take is not supported.
+             * A SET of SAI_TUNNEL_ATTR_ENCAP_TTL_MODE is only taken for the
+             * model the tunnel has. */
+            sai_status_t setTunnelEncapTtl(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr);
+
+            /* SAI_STATUS_NOT_SUPPORTED for an encap TTL of 0, which the
+             * sonic-ext plugin takes as none. */
+            static sai_status_t validateEncapTtl(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ uint8_t ttl);
+
+            bool isIpInIpTunnel(
+                    _In_ const std::string &serializedObjectId);
+
+            /* Store a tunnel attribute and apply it to the VPP IPIP tunnels
+             * of the tunnel's encap nexthops with apply. If that fails, the
+             * previous value is stored again and applied. */
+            sai_status_t setTunnelAttrOfVppTunnels(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr,
+                    _In_ const std::function<sai_status_t(sai_object_id_t)>& apply);
+
             // Only resources acquired by this CREATE may be unwound on failure.
             struct RifCreateState
             {
@@ -1274,6 +1302,10 @@ namespace saivs
             bool m_routeStatsCacheValid = false;
             std::mutex m_routeStatsCacheMutex;
             std::map<sai_object_id_t, sai_object_id_t> m_sflow_port_to_samplepacket;
+            // TAM object bound to the switch for drop monitoring, and the policer
+            // carrying SONiC's drop_monitor_limit, see sflowDropMonitorPolicer()
+            sai_object_id_t m_sflow_drop_tam = SAI_NULL_OBJECT_ID;
+            sai_object_id_t m_sflow_drop_policer = SAI_NULL_OBJECT_ID;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
@@ -1853,6 +1885,29 @@ namespace saivs
 
             sai_status_t sflowSamplingRateSet(
                     _In_ uint32_t rate);
+
+            sai_status_t sflowDropMonitoringSet(
+                    _In_ bool enable);
+
+            bool sflowIsDropMonitorTam(
+                    _In_ sai_object_id_t tam_id);
+
+            sai_object_id_t sflowDropMonitorPolicer(
+                    _In_ sai_object_id_t tam_id);
+
+            sai_status_t sflowDropPolicerApply(
+                    _In_ sai_object_id_t policer);
+
+            sai_status_t sflowDropMonitorChainSet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id);
+
+            // Enum values capability provider for sFlow drop monitoring, see
+            // queryAttrEnumValuesCapability().
+            static bool getSflowEnumValuesCapability(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Inout_ std::vector<sai_int32_t> &values);
 
             sai_status_t sflowHostifTrapSamplePacketCreate(
                      _In_ sai_object_id_t object_id,
