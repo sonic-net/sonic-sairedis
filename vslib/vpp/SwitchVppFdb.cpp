@@ -1717,6 +1717,8 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
      * bridge domain without resetting its MAC age */
     vpp_apply_fdb_aging_time(bridge_id, bd_has_member);
 
+    local_fdb_resync(vlan_id);
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -1846,6 +1848,8 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
     char host_subifname[32];
     if (tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED)
     {
+        local_fdb_drop_hwif(hw_ifname, bridge_id);
+
         /* Disable L2 classify punt before removing the parent
          * from the BD (mirror of the add path).
          */
@@ -1939,6 +1943,7 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         // PBH owns separate attachments; release this child's contribution
         // while it is still a bridge member and keep it down if cleanup fails.
         CHECK_STATUS(aclRemoveInterfacePbh(hw_ifname));
+        local_fdb_drop_hwif(hw_ifname, bridge_id);
 
         /* Disable L2 classify punt on subif before teardown */
         l2_punt_classify_remove(hw_ifname);
@@ -3574,7 +3579,17 @@ sai_status_t SwitchVpp::FdbEntrydel(
         return SAI_STATUS_FAILURE;
     }
 
-    vpp_fdbentry_del(serializedObjectId);
+    if (m_local_fdb.count(serializedObjectId) != 0)
+    {
+        if (!local_fdb_forget(serializedObjectId))
+        {
+            return SAI_STATUS_FAILURE;
+        }
+    }
+    else
+    {
+        CHECK_STATUS(vpp_fdbentry_del(serializedObjectId));
+    }
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId));
 
@@ -3624,10 +3639,30 @@ sai_status_t SwitchVpp::FdbEntryset(
     switch (attr->id)
     {
         case SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID:
+            if (objectTypeQuery(attr->value.oid) == SAI_OBJECT_TYPE_BRIDGE_PORT &&
+                    is_tunnel_bridge_port(attr->value.oid))
+            {
+                remote_fdb_sync(serializedObjectId);
+                local_fdb_sync(serializedObjectId);
+            }
+            else
+            {
+                local_fdb_sync(serializedObjectId);
+                remote_fdb_sync(serializedObjectId);
+            }
+            break;
+
         case SAI_FDB_ENTRY_ATTR_ENDPOINT_IP:
+            remote_fdb_sync(serializedObjectId);
+            break;
+
         case SAI_FDB_ENTRY_ATTR_TYPE:
         case SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE:
             remote_fdb_sync(serializedObjectId);
+            if (m_local_fdb.count(serializedObjectId) != 0)
+            {
+                local_fdb_sync(serializedObjectId);
+            }
             break;
 
         default:
@@ -3643,103 +3678,42 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
-
     SWSS_LOG_ENTER();
 
-    sai_fdb_entry_t fdb_entry;
-    sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
-
-    /* Attribute#1 */
     auto attr_type = sai_metadata_get_attr_by_id(SAI_FDB_ENTRY_ATTR_TYPE, attr_count, attr_list);
 
     if (attr_type == NULL)
     {
         SWSS_LOG_ERROR("attr SAI_FDB_ENTRY_ATTR_TYPE was not passed");
-
         return SAI_STATUS_FAILURE;
     }
 
-    bool is_static = (attr_type->value.s32 == SAI_FDB_ENTRY_TYPE_STATIC ? true : false);
-    bool is_add = true; /* Adding the entry in FDB*/
+    auto attr_bp = sai_metadata_get_attr_by_id(SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID, attr_count, attr_list);
 
-    /* Attribute#2 */
-    sai_object_id_t br_port_id;
-    sai_object_id_t port_id;
-
-    attr_type = sai_metadata_get_attr_by_id(SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID, attr_count, attr_list);
-
-    if (attr_type == NULL)
+    if (attr_bp == NULL)
     {
         SWSS_LOG_ERROR("attr SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID was not passed");
-
         return SAI_STATUS_FAILURE;
     }
 
-    br_port_id = attr_type->value.oid;
+    sai_object_id_t br_port_id = attr_bp->value.oid;
     sai_object_type_t obj_type = objectTypeQuery(br_port_id);
 
     if (obj_type != SAI_OBJECT_TYPE_BRIDGE_PORT)
     {
-        SWSS_LOG_ERROR("SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID=%s expected to be PORT but is: %s",
+        SWSS_LOG_ERROR("SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID=%s expected to be BRIDGE_PORT but is: %s",
                 sai_serialize_object_id(br_port_id).c_str(),
                 sai_serialize_object_type(obj_type).c_str());
-
         return SAI_STATUS_FAILURE;
     }
 
-    // EVPN remote MAC address: held on the L2 tunnel to its remote VTEP
     if (is_tunnel_bridge_port(br_port_id))
     {
         remote_fdb_sync(serializedObjectId);
         return SAI_STATUS_SUCCESS;
     }
 
-    if (!bridge_port_to_port_id(br_port_id, port_id))
-    {
-        return SAI_STATUS_FAILURE;
-    }
-
-    obj_type = objectTypeQuery(port_id);
-
-    if (obj_type != SAI_OBJECT_TYPE_PORT)
-    {
-        SWSS_LOG_NOTICE("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
-                sai_serialize_object_id(port_id).c_str(),
-                sai_serialize_object_type(obj_type).c_str());
-        return SAI_STATUS_FAILURE;
-    }
-
-    /* Need to extract the VLAN ID attached based on the Port_ID */
-    sai_attribute_t attr;
-    attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
-
-    sai_status_t get_status = get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr);
-
-    if (get_status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("failed to get port vlan id from port %s",
-                sai_serialize_object_id(port_id).c_str());
-        return SAI_STATUS_FAILURE;
-    }
-
-    uint32_t bd_id = attr.value.u16; /* bd_id is same as VLAN ID for .1Q bridge */
-
-    std::string ifname = m_ifaceRegistry.resolveHwIfName(port_id, 0);
-
-    if (!ifname.empty())
-    {
-        const char *hwif_name = ifname.c_str();
-        auto ret = l2fib_add_del(hwif_name, fdb_entry.mac_address, bd_id, is_add, is_static);
-        SWSS_LOG_NOTICE("FDB Entry Added on hwif_name %s Successful ret_val: %d", hwif_name, ret);
-
-    }
-    else
-    {
-        SWSS_LOG_ERROR("FDB_ENTRY failed because of INVALID PORT_ID");
-
-        return SAI_STATUS_FAILURE;
-    }
-
+    local_fdb_sync(serializedObjectId);
     return SAI_STATUS_SUCCESS;
 }
 
@@ -3751,55 +3725,23 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
     sai_fdb_entry_t fdb_entry;
     sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
 
-    sai_object_id_t br_port_id;
-    sai_object_id_t port_id;
-    bool is_static = false;
+    sai_attribute_t attr;
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
 
-    sai_attribute_t attr_list[2];
-    /* Attribute#1 */
-    attr_list[0].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
-    /* Attribute#2 */
-    attr_list[1].id = SAI_FDB_ENTRY_ATTR_TYPE;
-
-    if (get(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, 1, &attr_list[0]) == SAI_STATUS_SUCCESS)
+    if (get(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, 1, &attr) != SAI_STATUS_SUCCESS)
     {
-       if (SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID == attr_list[0].id)
-        {
-            br_port_id = attr_list[0].value.oid;
-        }
-        else
-        {
-            SWSS_LOG_ERROR("DELETE FDB_ENTRY failed because of INVALID ATTR BRIDGE_PORT_ID");
-            return SAI_STATUS_FAILURE;
-        }
-
-        if (get(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, 1, &attr_list[1]) == SAI_STATUS_SUCCESS)
-        {
-            if (SAI_FDB_ENTRY_ATTR_TYPE == attr_list[1].id )
-            {
-                is_static = (attr_list[1].value.s32 == SAI_FDB_ENTRY_TYPE_STATIC ? true : false);
-            }
-            else
-            {
-                SWSS_LOG_ERROR("DELETE FDB_ENTRY failed because of INVALID ATTR ENTRY TYPE");
-                return SAI_STATUS_FAILURE;
-            }
-        }
-    }
-    else
-    {
-        SWSS_LOG_ERROR(" Invaid Attribute IDs passed for DELETE FDB_ENTRY");
+        SWSS_LOG_ERROR("Invalid Attribute ID passed for DELETE FDB_ENTRY");
         return SAI_STATUS_FAILURE;
     }
-    bool is_add = false; /* Deleting the entry in FDB*/
 
+    sai_object_id_t br_port_id = attr.value.oid;
     sai_object_type_t obj_type = objectTypeQuery(br_port_id);
+
     if (obj_type != SAI_OBJECT_TYPE_BRIDGE_PORT)
     {
-        SWSS_LOG_ERROR("SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID=%s expected to be PORT but is: %s",
+        SWSS_LOG_ERROR("SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID=%s expected to be BRIDGE_PORT but is: %s",
                 sai_serialize_object_id(br_port_id).c_str(),
                 sai_serialize_object_type(obj_type).c_str());
-
         return SAI_STATUS_FAILURE;
     }
 
@@ -3809,45 +3751,28 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
         return SAI_STATUS_SUCCESS;
     }
 
-    if (!bridge_port_to_port_id(br_port_id, port_id))
+    uint16_t vlan_id = 0;
+    std::string ifname;
+
+    if (!resolve_bridge_port_vlan_hwif(br_port_id, fdb_entry.bv_id, vlan_id, ifname))
     {
+        // never programmed: its VLAN member does not exist (yet, or any more)
+        SWSS_LOG_INFO("FDB entry Delete: bridge port %s has no VPP member in the VLAN, nothing to delete",
+                sai_serialize_object_id(br_port_id).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
+    uint32_t bd_id = vlan_id;
+
+    auto ret = l2fib_add_del(ifname.c_str(), fdb_entry.mac_address, bd_id, false, false);
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("Failed to delete FDB_ENTRY on hwif_name %s bd %u ret_val: %d", ifname.c_str(), bd_id, ret);
         return SAI_STATUS_FAILURE;
     }
 
-    obj_type = objectTypeQuery(port_id);
+    SWSS_LOG_NOTICE("Delete FDB_ENTRY on hwif_name %s bd %u ret_val: %d", ifname.c_str(), bd_id, ret);
 
-    if (obj_type != SAI_OBJECT_TYPE_PORT)
-    {
-        SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
-                sai_serialize_object_id(port_id).c_str(),
-                sai_serialize_object_type(obj_type).c_str());
-        return SAI_STATUS_FAILURE;
-    }
-
-    /* Need the VLAN ID attached based on the Port_ID */
-    sai_attribute_t attr;
-    attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
-
-    sai_status_t get_status = get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr);
-
-    if (get_status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("failed to get port vlan id from port %s",
-                sai_serialize_object_id(port_id).c_str());
-        return SAI_STATUS_FAILURE;
-    }
-
-    uint32_t bd_id = attr.value.u16; /* bd_id is same as VLAN ID for .1Q bridge */
-
-    /*
-     * Remove any stale entry from the m_vpp_fdb_entries dedup snapshot.
-     * This snapshot is used to suppress duplicate LEARNED notifications in
-     * processFdbEntriesForAging(). If we delete the L2FIB entry here (or
-     * orchagent removes it) but leave the snapshot key behind, a subsequent
-     * VPP re-learn of the same MAC is treated as "already known" and no
-     * LEARNED notification is generated -- leaving ASIC_DB/STATE_DB out of
-     * sync with the VPP dataplane until an explicit fdb flush.
-     */
     VppFdbKey snap_key;
     memcpy(snap_key.mac, fdb_entry.mac_address, sizeof(snap_key.mac));
     snap_key.bd_id = bd_id;
@@ -3860,21 +3785,6 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
                 sai_serialize_mac(fdb_entry.mac_address).c_str(), bd_id);
     }
 
-    std::string ifname = m_ifaceRegistry.resolveHwIfName(port_id, 0);
-
-    if (!ifname.empty())
-    {
-        const char *hwif_name = ifname.c_str();
-        auto ret = l2fib_add_del(hwif_name, fdb_entry.mac_address, bd_id, is_add, is_static);
-        SWSS_LOG_NOTICE(" Delete FDB_ENTRY on hwif_name %s Successful ret_val: %d", hwif_name, ret);
-
-    }
-    else
-    {
-        SWSS_LOG_ERROR("FDB entry Delete: Invalid ObjectID for the hwif on this bridge");
-
-        return SAI_STATUS_FAILURE;
-    }
     return SAI_STATUS_SUCCESS;
 }
 
@@ -3904,6 +3814,18 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
         if (m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(it->first) == 0)
         {
             remote_fdb_forget(it->first);
+        }
+
+        it = next;
+    }
+
+    for (auto it = m_local_fdb.begin(); it != m_local_fdb.end();)
+    {
+        auto next = std::next(it);
+
+        if (m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).count(it->first) == 0)
+        {
+            local_fdb_forget(it->first);
         }
 
         it = next;
@@ -4173,8 +4095,9 @@ bool SwitchVpp::generateFdbLearnedOrMoveEvent(const VppFdbKey &key, uint32_t sw_
         m_fdb_info_set.erase(existing_it);
     m_fdb_info_set.insert(fi);
 
-    // VPP moved it off its tunnel, so it is not held as remote any more
+    // VPP moved it in data plane, so it is no longer held as a provisioned target
     m_remote_fdb.erase(sid);
+    m_local_fdb.erase(sid);
 
     send_fdb_event_notification(data);
 
@@ -4270,9 +4193,15 @@ bool SwitchVpp::vppMovesFdbEntry(const std::string &serializedObjectId)
         return true;
     }
 
-    auto it = m_remote_fdb.find(serializedObjectId);
+    auto allow_move = stored_attr(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE);
 
-    return it != m_remote_fdb.end() && !it->second.is_static;
+    if (allow_move && allow_move->value.booldata &&
+            (m_remote_fdb.count(serializedObjectId) || m_local_fdb.count(serializedObjectId)))
+    {
+        return true;
+    }
+
+    return false;
 }
 
 /*
@@ -5062,6 +4991,19 @@ void SwitchVpp::remote_fdb_sync(
 
     m_remote_fdb[serializedObjectId] = want;
 
+    auto lit = m_local_fdb.find(serializedObjectId);
+    if (lit != m_local_fdb.end())
+    {
+        if (lit->second.bd_id == want.bd_id)
+        {
+            m_local_fdb.erase(lit);
+        }
+        else
+        {
+            local_fdb_forget(serializedObjectId);
+        }
+    }
+
     /*
      * VPP no longer holds a MAC address it learned here, so forget it was
      * learned: a flush must not delete or report it, and if the host comes
@@ -5172,4 +5114,348 @@ bool SwitchVpp::remote_fdb_drop_tunnel(
     }
 
     return ok;
+}
+
+bool SwitchVpp::resolve_bridge_port_vlan_hwif(
+        _In_ sai_object_id_t br_port_id,
+        _In_ sai_object_id_t bv_id,
+        _Out_ uint16_t& vlan_id,
+        _Out_ std::string& hwif_name)
+{
+    SWSS_LOG_ENTER();
+
+    vlan_id = 0;
+    hwif_name.clear();
+
+    if (objectTypeQuery(br_port_id) != SAI_OBJECT_TYPE_BRIDGE_PORT ||
+            is_tunnel_bridge_port(br_port_id))
+    {
+        return false;
+    }
+
+    sai_object_id_t port_id = SAI_NULL_OBJECT_ID;
+
+    if (!bridge_port_to_port_id(br_port_id, port_id))
+    {
+        return false;
+    }
+
+    sai_object_type_t obj_type = objectTypeQuery(port_id);
+
+    if (obj_type != SAI_OBJECT_TYPE_PORT && obj_type != SAI_OBJECT_TYPE_LAG)
+    {
+        return false;
+    }
+
+    std::string base_hwif = m_ifaceRegistry.resolveHwIfName(port_id, 0);
+
+    if (base_hwif.empty())
+    {
+        return false;
+    }
+
+    if (!vlan_id_of_bv(bv_id, vlan_id))
+    {
+        if (objectTypeQuery(bv_id) != SAI_OBJECT_TYPE_BRIDGE)
+        {
+            return false;
+        }
+
+        sai_attr_id_t pvid_attr_id = (obj_type == SAI_OBJECT_TYPE_PORT)
+            ? static_cast<sai_attr_id_t>(SAI_PORT_ATTR_PORT_VLAN_ID)
+            : static_cast<sai_attr_id_t>(SAI_LAG_ATTR_PORT_VLAN_ID);
+        auto pvid = stored_attr(obj_type, sai_serialize_object_id(port_id), pvid_attr_id);
+
+        if (pvid == nullptr || pvid->value.u16 == 0)
+        {
+            return false;
+        }
+
+        vlan_id = pvid->value.u16;
+        hwif_name = base_hwif;
+        return true;
+    }
+
+    for (const auto& kv : m_objectHash.at(SAI_OBJECT_TYPE_VLAN_MEMBER))
+    {
+        auto mbr_bp = stored_attr(SAI_OBJECT_TYPE_VLAN_MEMBER, kv.first, SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID);
+        auto mbr_vlan = stored_attr(SAI_OBJECT_TYPE_VLAN_MEMBER, kv.first, SAI_VLAN_MEMBER_ATTR_VLAN_ID);
+
+        if (mbr_bp == nullptr || mbr_bp->value.oid != br_port_id ||
+                mbr_vlan == nullptr || mbr_vlan->value.oid != bv_id)
+        {
+            continue;
+        }
+
+        auto tag_mode = stored_attr(SAI_OBJECT_TYPE_VLAN_MEMBER, kv.first, SAI_VLAN_MEMBER_ATTR_VLAN_TAGGING_MODE);
+
+        if (tag_mode == nullptr)
+        {
+            return false;
+        }
+
+        if (tag_mode->value.s32 == SAI_VLAN_TAGGING_MODE_TAGGED)
+        {
+            std::string sub_hwif = base_hwif + "." + std::to_string(vlan_id);
+
+            if (!m_ifaceRegistry.findByHwif(sub_hwif))
+            {
+                return false;
+            }
+
+            hwif_name = sub_hwif;
+            return true;
+        }
+
+        if (tag_mode->value.s32 == SAI_VLAN_TAGGING_MODE_UNTAGGED)
+        {
+            hwif_name = base_hwif;
+            return true;
+        }
+
+        return false;
+    }
+
+    std::string sub_hwif = base_hwif + "." + std::to_string(vlan_id);
+    auto sub_rec = m_ifaceRegistry.findByHwif(sub_hwif);
+
+    if (sub_rec && sub_rec->hasBdId() && sub_rec->getBdId() == vlan_id)
+    {
+        hwif_name = sub_hwif;
+        return true;
+    }
+
+    auto base_rec = m_ifaceRegistry.findByHwif(base_hwif);
+
+    if (base_rec && base_rec->hasBdId() && base_rec->getBdId() == vlan_id)
+    {
+        hwif_name = base_hwif;
+        return true;
+    }
+
+    sai_attr_id_t pvid_attr_id = (obj_type == SAI_OBJECT_TYPE_PORT)
+        ? static_cast<sai_attr_id_t>(SAI_PORT_ATTR_PORT_VLAN_ID)
+        : static_cast<sai_attr_id_t>(SAI_LAG_ATTR_PORT_VLAN_ID);
+    auto pvid = stored_attr(obj_type, sai_serialize_object_id(port_id), pvid_attr_id);
+
+    if (pvid != nullptr && pvid->value.u16 == vlan_id)
+    {
+        hwif_name = base_hwif;
+        return true;
+    }
+
+    return false;
+}
+
+bool SwitchVpp::local_fdb_target(
+        _In_ const std::string &serializedObjectId,
+        _Out_ LocalFdbTarget& target)
+{
+    SWSS_LOG_ENTER();
+
+    auto bp = stored_attr(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID);
+
+    if (bp == nullptr || objectTypeQuery(bp->value.oid) != SAI_OBJECT_TYPE_BRIDGE_PORT ||
+            is_tunnel_bridge_port(bp->value.oid))
+    {
+        return false;
+    }
+
+    sai_fdb_entry_t fdb_entry;
+    sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+
+    if (objectTypeQuery(fdb_entry.bv_id) == SAI_OBJECT_TYPE_VLAN &&
+            is_vlan_router_mac(fdb_entry.bv_id, fdb_entry.mac_address))
+    {
+        SWSS_LOG_NOTICE("FDB entry %s: the MAC of the VLAN's router interface stays on its BVI, not programmed",
+                serializedObjectId.c_str());
+        return false;
+    }
+
+    uint16_t vlan_id = 0;
+    std::string hwif_name;
+
+    if (!resolve_bridge_port_vlan_hwif(bp->value.oid, fdb_entry.bv_id, vlan_id, hwif_name))
+    {
+        SWSS_LOG_NOTICE("FDB entry %s: bridge port %s has no VPP member in VLAN yet, programmed when it joins",
+                serializedObjectId.c_str(), sai_serialize_object_id(bp->value.oid).c_str());
+        return false;
+    }
+
+    auto type = stored_attr(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, SAI_FDB_ENTRY_ATTR_TYPE);
+    auto allow_move = stored_attr(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE);
+
+    target.hwif_name = hwif_name;
+    target.bd_id = vlan_id;
+    target.is_static = type && type->value.s32 == SAI_FDB_ENTRY_TYPE_STATIC &&
+        !(allow_move && allow_move->value.booldata);
+
+    return true;
+}
+
+void SwitchVpp::local_fdb_sync(
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    LocalFdbTarget want;
+
+    bool wanted = local_fdb_target(serializedObjectId, want);
+
+    auto it = m_local_fdb.find(serializedObjectId);
+
+    if (!wanted)
+    {
+        local_fdb_forget(serializedObjectId);
+        return;
+    }
+
+    if (it != m_local_fdb.end() && it->second == want)
+    {
+        return;
+    }
+
+    sai_fdb_entry_t fdb_entry;
+    sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+
+    auto mac = sai_serialize_mac(fdb_entry.mac_address);
+
+    int ret = l2fib_add_del(want.hwif_name.c_str(), fdb_entry.mac_address, want.bd_id, true, want.is_static);
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("FDB: failed to add local MAC %s bd %u on %s: %d",
+                mac.c_str(), want.bd_id, want.hwif_name.c_str(), ret);
+        return;
+    }
+
+    SWSS_LOG_NOTICE("FDB: local MAC %s bd %u on %s%s%s",
+            mac.c_str(), want.bd_id, want.hwif_name.c_str(), want.is_static ? " (static)" : "",
+            (it != m_local_fdb.end() || m_remote_fdb.count(serializedObjectId)) ? " (moved)" : "");
+
+    // the add replaced the entry in its bridge domain; one in another goes
+    if (it != m_local_fdb.end() && it->second.bd_id != want.bd_id)
+    {
+        ret = l2fib_add_del(it->second.hwif_name.c_str(), fdb_entry.mac_address, it->second.bd_id, false, false);
+
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("FDB: failed to delete local MAC %s from previous bd %u on %s: %d",
+                    mac.c_str(), it->second.bd_id, it->second.hwif_name.c_str(), ret);
+        }
+    }
+
+    m_local_fdb[serializedObjectId] = want;
+
+    auto rit = m_remote_fdb.find(serializedObjectId);
+    if (rit != m_remote_fdb.end())
+    {
+        if (rit->second.bd_id == want.bd_id)
+        {
+            m_remote_fdb.erase(rit);
+        }
+        else
+        {
+            remote_fdb_forget(serializedObjectId);
+        }
+    }
+
+    VppFdbKey key;
+    memcpy(key.mac, fdb_entry.mac_address, sizeof(key.mac));
+    key.bd_id = want.bd_id;
+    m_vpp_fdb_entries.erase(key);
+
+    FdbInfo fi;
+    fi.setVlanId(static_cast<sai_vlan_id_t>(want.bd_id));
+    memcpy(fi.m_fdbEntry.mac_address, fdb_entry.mac_address, sizeof(sai_mac_t));
+    m_fdb_info_set.erase(fi);
+}
+
+bool SwitchVpp::local_fdb_forget(
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_local_fdb.find(serializedObjectId);
+
+    if (it == m_local_fdb.end())
+    {
+        return true;
+    }
+
+    sai_fdb_entry_t fdb_entry;
+
+    try
+    {
+        sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
+    }
+    catch (const std::exception& e)
+    {
+        SWSS_LOG_ERROR("FDB: failed to deserialize local FDB entry %s: %s",
+                serializedObjectId.c_str(), e.what());
+        return false;
+    }
+
+    auto mac = sai_serialize_mac(fdb_entry.mac_address);
+
+    int ret = l2fib_add_del(it->second.hwif_name.c_str(), fdb_entry.mac_address, it->second.bd_id, false, false);
+
+    if (ret != 0)
+    {
+        SWSS_LOG_ERROR("FDB: failed to delete local MAC %s bd %u on %s: %d",
+                mac.c_str(), it->second.bd_id, it->second.hwif_name.c_str(), ret);
+        return false;
+    }
+
+    SWSS_LOG_NOTICE("FDB: deleted local MAC %s bd %u on %s",
+            mac.c_str(), it->second.bd_id, it->second.hwif_name.c_str());
+
+    m_local_fdb.erase(it);
+    return true;
+}
+
+void SwitchVpp::local_fdb_resync(
+        _In_ uint16_t vlan_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> sids;
+
+    for (const auto& kv : m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY))
+    {
+        sai_fdb_entry_t fdb_entry;
+        sai_deserialize_fdb_entry(kv.first, fdb_entry);
+
+        uint16_t entry_vlan_id = 0;
+
+        if (vlan_id_of_bv(fdb_entry.bv_id, entry_vlan_id) && entry_vlan_id == vlan_id &&
+                m_local_fdb.find(kv.first) == m_local_fdb.end())
+        {
+            sids.push_back(kv.first);
+        }
+    }
+
+    for (const auto& sid : sids)
+    {
+        local_fdb_sync(sid);
+    }
+}
+
+void SwitchVpp::local_fdb_drop_hwif(
+        _In_ const std::string &hwif_name,
+        _In_ uint32_t bd_id)
+{
+    SWSS_LOG_ENTER();
+
+    for (auto it = m_local_fdb.begin(); it != m_local_fdb.end();)
+    {
+        auto next = std::next(it);
+
+        if (it->second.hwif_name == hwif_name && it->second.bd_id == bd_id)
+        {
+            local_fdb_forget(it->first);
+        }
+
+        it = next;
+    }
 }

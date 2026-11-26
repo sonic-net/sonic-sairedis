@@ -223,6 +223,7 @@ struct VppMock
     std::map<std::string, bool> adminUp;
     std::map<std::string, std::array<uint32_t, 4>> mtus;
     std::map<std::string, unsigned int> mplsReferences;
+    int l2fibDelResult = 0;
     int l2fibDumpResult = 0;
     // the next dumps that fail, before l2fibDumpResult applies
     unsigned int l2fibDumpFailures = 0;

@@ -376,7 +376,7 @@ int __wrap_l2fib_add_del(const char *hwif_name, const uint8_t *mac, uint32_t bd_
     SWSS_LOG_ENTER();
 
     vppMock().calls.push_back({"l2fib_add_del", std::string(hwif_name ? hwif_name : "") + " " + macStr(mac), bd_id, is_static_mac, is_add});
-    return 0;
+    return is_add ? 0 : vppMock().l2fibDelResult;
 }
 
 int __wrap_l2fib_flush_all()
