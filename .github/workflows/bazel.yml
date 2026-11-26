@@ -199,6 +199,15 @@ jobs:
             --registry-config artifacts/validation/effective.bazelrc \
             --output-dir artifacts
 
+      - name: Verify non-ASan and ASan compiler hardening
+        run: |
+          python3 bazel/ci/check_fortify.py normal "$RUNNER_TEMP/sairedis-actions.json"
+          bazel aquery ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update \
+            --//:enable_asan=true --output=jsonproto --noinclude_artifacts --include_commandline \
+            'mnemonic("CppCompile", set(//lib:sairedis.a //meta:libsaimetadata //pyext:_pysairedis.so //syncd:libsyncd //syncd:syncd))' \
+            > "$RUNNER_TEMP/sairedis-asan-actions.json"
+          python3 bazel/ci/check_fortify.py asan "$RUNNER_TEMP/sairedis-asan-actions.json"
+
       - name: Retain available dependency resolution on failure
         if: failure()
         run: |

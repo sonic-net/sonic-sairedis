@@ -80,8 +80,14 @@ CODE_COVERAGE_LINKOPTS = select({
     "//conditions:default": [],
 })
 
-PRODUCTION_COPTS = DBGFLAGS + CXXFLAGS_COMMON + CODE_COVERAGE_CPPFLAGS + CODE_COVERAGE_CXXFLAGS
-TEST_COPTS = DBGFLAGS + CXXFLAGS_COMMON
+# debian/rules raises the toolchain's fortification level outside ASan builds.
+FORTIFY_COPTS = select({
+    "//:asan_enabled": [],
+    "//conditions:default": ["-U_FORTIFY_SOURCE", "-D_FORTIFY_SOURCE=3"],
+})
+
+PRODUCTION_COPTS = DBGFLAGS + CXXFLAGS_COMMON + CODE_COVERAGE_CPPFLAGS + CODE_COVERAGE_CXXFLAGS + FORTIFY_COPTS
+TEST_COPTS = DBGFLAGS + CXXFLAGS_COMMON + FORTIFY_COPTS
 
 CFLAGS_ASAN = select({
     "//:asan_enabled": [
