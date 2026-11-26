@@ -3628,7 +3628,8 @@ public:
                 "with VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                 attrIds.size(), vid, rid);
 
-            if (m_portSerdesIdToPortIdMap.find(rid) == m_portSerdesIdToPortIdMap.end())
+            auto port_it = m_portSerdesIdToPortIdMap.find(rid);
+            if (port_it == m_portSerdesIdToPortIdMap.end())
             {
                 // addObject() logged the failure, and the port mapping is not retried
                 continue;
@@ -3746,14 +3747,6 @@ public:
 
             if (!getSucceeded)
             {
-                continue;
-            }
-
-            // Get port_vid from the map using port_serdes_rid
-            auto port_it = m_portSerdesIdToPortIdMap.find(rid);
-            if (port_it == m_portSerdesIdToPortIdMap.end())
-            {
-                SWSS_LOG_WARN("PORT_PHY_SERDES_ATTR: Port serdes VID 0x%" PRIx64 " has no associated port mapping", vid);
                 continue;
             }
 
