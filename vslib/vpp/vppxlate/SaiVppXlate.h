@@ -550,6 +550,8 @@ typedef enum {
     extern int vpp_sonic_ext_egress_mirror_enable_disable(bool enable);
     extern int vpp_sonic_ext_mirror_encap_fixup_enable_disable(uint32_t sw_if_index,
 				      uint16_t gre_protocol, uint8_t ttl, bool enable);
+    /* Fixed outer TTL / hop limit of a tunnel's encap (SAI pipe TTL model), 0 = none */
+    extern int vpp_sonic_ext_tunnel_encap_ttl_set(uint32_t sw_if_index, uint8_t ttl);
 
     /* CoPP policer: create/replace, delete, and read counters for a VPP
      * native policer backing a SAI_OBJECT_TYPE_POLICER. */
@@ -720,6 +722,8 @@ typedef enum {
 
     extern int vpp_sflow_enable_disable(const char *hwif_name, bool enable);
     extern int vpp_sflow_sampling_rate_set(uint32_t sampling_n);
+    extern int vpp_sflow_drop_monitoring_set(bool enable);
+    extern int vpp_sflow_drop_policer_set(const char *policer_name);
 
     extern int vpp_sonic_ext_ip2me_enable_disable(const char *hwif_name, bool enable);
     extern int vpp_iface_loopback_set_action(const char *hwif_name, int action);

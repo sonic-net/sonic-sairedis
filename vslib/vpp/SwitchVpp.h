@@ -129,6 +129,97 @@ namespace saivs
             virtual sai_status_t refresh_port_oper_speed(
                     _In_ sai_object_id_t port_id) override;
 
+        protected:
+
+            virtual sai_status_t queryDebugCounterCapability(
+                    _In_ sai_attr_id_t attr_id,
+                    _Inout_ sai_s32_list_t *enum_values_capability) override;
+
+            virtual sai_status_t queryPortStatsCapability(
+                    _Inout_ sai_stat_capability_list_t *stats_capability) override;
+
+        private: // debug (configurable drop) counters, SwitchVppDebugCounter.cpp
+
+            struct VppDebugCounter
+            {
+                uint32_t index;
+
+                int32_t type;
+
+                // Stats segment leaf names under /sonic-ext/drop-reason/.
+                std::set<std::string> reasons;
+
+                // Raw VPP count per reason and sw_if_index when the reason was
+                // added or the counter last cleared, so that each reason counts
+                // only its drops since.
+                std::map<std::string, std::map<uint32_t, uint64_t>> base;
+
+                // Per sw_if_index, what reasons since removed had counted, so
+                // that removing a reason does not lower the count.
+                std::map<uint32_t, uint64_t> removed;
+            };
+
+            sai_status_t debugCounterCreate(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t debugCounterSet(
+                    _In_ sai_object_id_t object_id,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t *attr);
+
+            sai_status_t debugCounterRemove(
+                    _In_ sai_object_id_t object_id);
+
+            void refreshDropReasonStats(
+                    _In_ bool force);
+
+            uint64_t dropReasonRawCount(
+                    _In_ const std::string &reason,
+                    _In_ uint32_t sw_if_index) const;
+
+            uint64_t debugCounterReasonValue(
+                    _Inout_ VppDebugCounter &counter,
+                    _In_ const std::string &reason,
+                    _In_ uint32_t sw_if_index);
+
+            uint64_t debugCounterValue(
+                    _Inout_ VppDebugCounter &counter,
+                    _In_ uint32_t sw_if_index);
+
+            std::set<uint32_t> debugCounterIndices(
+                    _In_ const VppDebugCounter &counter,
+                    _In_ const std::string &reason) const;
+
+            void rebaseDebugCounter(
+                    _Inout_ VppDebugCounter &counter);
+
+            void setDebugCounterReasons(
+                    _Inout_ VppDebugCounter &counter,
+                    _In_ const std::set<std::string> &reasons);
+
+            void addPortDebugCounterStats(
+                    _In_ const std::string &if_name,
+                    _Inout_ std::map<sai_stat_id_t, uint64_t> &stats);
+
+            void setSwitchDebugCounterStats(
+                    _In_ sai_object_id_t switch_id);
+
+            void clearDebugCounterStats(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids);
+
+            std::map<sai_object_id_t, VppDebugCounter> m_debugCounters;
+
+            // reason -> sw_if_index -> drops, summed over VPP threads.
+            std::map<std::string, std::map<uint32_t, uint64_t>> m_dropReasonStats;
+            std::chrono::steady_clock::time_point m_dropReasonStatsTime;
+            bool m_dropReasonStatsValid = false;
+
         private: // from vpp VirtualSwitchSaiInterface
 
             void setPortStats(
@@ -174,6 +265,34 @@ namespace saivs
             sai_status_t setTunnelLoopbackAction(
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t* attr);
+
+            /* Set SAI_TUNNEL_ATTR_ENCAP_TTL_VAL, the outer TTL of the pipe
+             * model, of an IPINIP tunnel, and apply it to the VPP IPIP tunnels
+             * of the tunnel's encap nexthops. The attribute keeps its previous
+             * value if VPP does not take the new one, and a value a VPP tunnel
+             * the tunnel shares with another one can't take is not supported.
+             * A SET of SAI_TUNNEL_ATTR_ENCAP_TTL_MODE is only taken for the
+             * model the tunnel has. */
+            sai_status_t setTunnelEncapTtl(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr);
+
+            /* SAI_STATUS_NOT_SUPPORTED for an encap TTL of 0, which the
+             * sonic-ext plugin takes as none. */
+            static sai_status_t validateEncapTtl(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ uint8_t ttl);
+
+            bool isIpInIpTunnel(
+                    _In_ const std::string &serializedObjectId);
+
+            /* Store a tunnel attribute and apply it to the VPP IPIP tunnels
+             * of the tunnel's encap nexthops with apply. If that fails, the
+             * previous value is stored again and applied. */
+            sai_status_t setTunnelAttrOfVppTunnels(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr,
+                    _In_ const std::function<sai_status_t(sai_object_id_t)>& apply);
 
             /*
              * What a RIF CREATE programs on. The undo actions of its steps are
@@ -1197,6 +1316,10 @@ namespace saivs
             bool m_routeStatsCacheValid = false;
             std::mutex m_routeStatsCacheMutex;
             std::map<sai_object_id_t, sai_object_id_t> m_sflow_port_to_samplepacket;
+            // TAM object bound to the switch for drop monitoring, and the policer
+            // carrying SONiC's drop_monitor_limit, see sflowDropMonitorPolicer()
+            sai_object_id_t m_sflow_drop_tam = SAI_NULL_OBJECT_ID;
+            sai_object_id_t m_sflow_drop_policer = SAI_NULL_OBJECT_ID;
 
             uint32_t m_acl_default_swindex = 0;
             bool m_acl_default_created = false;
@@ -1776,6 +1899,29 @@ namespace saivs
 
             sai_status_t sflowSamplingRateSet(
                     _In_ uint32_t rate);
+
+            sai_status_t sflowDropMonitoringSet(
+                    _In_ bool enable);
+
+            bool sflowIsDropMonitorTam(
+                    _In_ sai_object_id_t tam_id);
+
+            sai_object_id_t sflowDropMonitorPolicer(
+                    _In_ sai_object_id_t tam_id);
+
+            sai_status_t sflowDropPolicerApply(
+                    _In_ sai_object_id_t policer);
+
+            sai_status_t sflowDropMonitorChainSet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id);
+
+            // Enum values capability provider for sFlow drop monitoring, see
+            // queryAttrEnumValuesCapability().
+            static bool getSflowEnumValuesCapability(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Inout_ std::vector<sai_int32_t> &values);
 
             sai_status_t sflowHostifTrapSamplePacketCreate(
                      _In_ sai_object_id_t object_id,

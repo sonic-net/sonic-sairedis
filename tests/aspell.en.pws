@@ -179,6 +179,8 @@ destructor
 dev
 didn
 doesn
+dropcounters
+dropstat
 dscp
 ecn
 eg
@@ -491,6 +493,7 @@ cp
 ethertype
 fixup
 nexts
+sFlow
 SVI
 VNIs
 decapsulate

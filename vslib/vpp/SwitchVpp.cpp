@@ -800,6 +800,8 @@ void SwitchVpp::setPortStats(
         stats[SAI_PORT_STAT_IPV6_IN_RECEIVES] = port_stats.ip6;
     }
 
+    addPortDebugCounterStats(if_name, stats);
+
     debugSetStats(oid, stats);
 }
 
@@ -1237,10 +1239,22 @@ sai_status_t SwitchVpp::queryAttributeCapability(
     {
         CHECK_STATUS(sonicExtFeatureEnabled("iface-loopback", implemented));
     }
+    else if (object_type == SAI_OBJECT_TYPE_TUNNEL &&
+            attr_id == SAI_TUNNEL_ATTR_ENCAP_TTL_VAL)
+    {
+        CHECK_STATUS(sonicExtFeatureEnabled("tunnel-encap-ttl", implemented));
+    }
 
     capability->create_implemented = implemented;
     capability->set_implemented    = implemented;
     capability->get_implemented    = implemented;
+
+    // A tunnel's VPP tunnels take its TTL model when VPP creates them
+    if (object_type == SAI_OBJECT_TYPE_TUNNEL &&
+            attr_id == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE)
+    {
+        capability->set_implemented = false;
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1253,7 +1267,54 @@ sai_status_t SwitchVpp::queryAttrEnumValuesCapability(
 {
     SWSS_LOG_ENTER();
 
-    return m_trim.queryAttrEnumValuesCapability(
+    // A provider answers "do I own this (object_type, attr_id), and which enum
+    // values do I advertise for it?". Returning false means "not mine" and lets
+    // the next provider - ultimately SwitchStateBase - answer.
+    //
+    // Providers append to a vector and never see the sai_s32_list_t buffer
+    // protocol, which is handled once below, so adding a component means
+    // writing one predicate and adding one entry to this table.
+    using Provider = bool (*)(
+            sai_object_type_t object_type,
+            sai_attr_id_t attr_id,
+            std::vector<sai_int32_t> &values);
+
+    static const Provider providers[] =
+    {
+        &SwitchVppTrim::getTrimEnumValuesCapability,
+        &SwitchVpp::getSflowEnumValuesCapability,
+    };
+
+    std::vector<sai_int32_t> values;
+
+    for (auto provider: providers)
+    {
+        values.clear();
+
+        if (!provider(object_type, attr_id, values))
+        {
+            continue;
+        }
+
+        auto count = static_cast<uint32_t>(values.size());
+
+        if (enum_values_capability->count < count)
+        {
+            enum_values_capability->count = count;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        enum_values_capability->count = count;
+
+        for (uint32_t idx = 0; idx < count; idx++)
+        {
+            enum_values_capability->list[idx] = values[idx];
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    return SwitchStateBase::queryAttrEnumValuesCapability(
             switch_id, object_type, attr_id, enum_values_capability);
 }
 
@@ -1315,6 +1376,10 @@ sai_status_t SwitchVpp::getStatsExt(
     {
         setPortStats(object_id);
     }
+    else if (object_type == SAI_OBJECT_TYPE_SWITCH)
+    {
+        setSwitchDebugCounterStats(object_id);
+    }
     else if (object_type == SAI_OBJECT_TYPE_COUNTER)
     {
         std::string route;
@@ -1345,13 +1410,22 @@ sai_status_t SwitchVpp::getStatsExt(
         return getRifStatsExt(object_id, number_of_counters, counter_ids, mode, counters);
     }
 
-    return SwitchStateBase::getStatsExt(
+    CHECK_STATUS(SwitchStateBase::getStatsExt(
             object_type,
             object_id,
             number_of_counters,
             counter_ids,
             mode,
-            counters);
+            counters));
+
+    if (mode == SAI_STATS_MODE_READ_AND_CLEAR ||
+            mode == SAI_STATS_MODE_BULK_READ_AND_CLEAR ||
+            mode == SAI_STATS_MODE_BULK_CLEAR)
+    {
+        clearDebugCounterStats(object_type, object_id, number_of_counters, counter_ids);
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 void SwitchVpp::processFdbEntriesForAging()
@@ -1569,7 +1643,7 @@ sai_status_t SwitchVpp::create_dispatch(
     {
         sai_object_id_t object_id;
         sai_deserialize_object_id(serializedObjectId, object_id);
-        return createDebugCounter(object_id, switch_id, attr_count, attr_list);
+        return debugCounterCreate(object_id, switch_id, attr_count, attr_list);
     }
 
     if (object_type == SAI_OBJECT_TYPE_PORT)
@@ -1807,6 +1881,14 @@ sai_status_t SwitchVpp::create_dispatch(
 
         auto attr_loopback = sai_metadata_get_attr_by_id(SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION, attr_count, attr_list);
         std::vector<sai_attribute_t> effective_attrs;
+
+        auto attr_type = sai_metadata_get_attr_by_id(SAI_TUNNEL_ATTR_TYPE, attr_count, attr_list);
+        auto attr_ttl = sai_metadata_get_attr_by_id(SAI_TUNNEL_ATTR_ENCAP_TTL_VAL, attr_count, attr_list);
+        if (attr_type != nullptr && attr_type->value.s32 == SAI_TUNNEL_TYPE_IPINIP && attr_ttl != nullptr)
+        {
+            CHECK_STATUS(validateEncapTtl(serializedObjectId, attr_ttl->value.u8));
+        }
+
         if (attr_loopback != nullptr)
         {
             CHECK_STATUS(validateLoopbackAction(attr_loopback->value.s32));
@@ -2165,7 +2247,7 @@ sai_status_t SwitchVpp::remove_dispatch(
     {
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
-        return removeDebugCounter(objectId);
+        return debugCounterRemove(objectId);
     }
 
     if (object_type == SAI_OBJECT_TYPE_PORT)
@@ -2692,6 +2774,13 @@ sai_status_t SwitchVpp::set_dispatch(
         return setPort(objectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_DEBUG_COUNTER)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return debugCounterSet(objectId, serializedObjectId, attr);
+    }
+
     if (objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
     {
         sai_object_id_t objectId;
@@ -2711,6 +2800,14 @@ sai_status_t SwitchVpp::set_dispatch(
         attr->id == SAI_TUNNEL_ATTR_LOOPBACK_PACKET_ACTION)
     {
         return setTunnelLoopbackAction(serializedObjectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_TUNNEL &&
+        (attr->id == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE ||
+         attr->id == SAI_TUNNEL_ATTR_ENCAP_TTL_VAL) &&
+        isIpInIpTunnel(serializedObjectId))
+    {
+        return setTunnelEncapTtl(serializedObjectId, attr);
     }
 
     if (objectType == SAI_OBJECT_TYPE_NAT_ENTRY)
@@ -2789,6 +2886,44 @@ sai_status_t SwitchVpp::set_dispatch(
                         return SAI_STATUS_FAILURE;
                     }
                     SWSS_LOG_NOTICE("VPP set ECMP default hash seed=%u", seed);
+                    break;
+                }
+            case SAI_SWITCH_ATTR_TAM_OBJECT_ID:
+                {
+                    // SflowOrch arms sFlow drop monitoring by binding its TAM
+                    // object to the switch, and disarms it by clearing the
+                    // list. Other TAM objects may share the list, so drop
+                    // monitoring follows whether one of them is a drop monitor
+                    // TAM, not whether the list is empty. The TAM object graph
+                    // itself has no VPP counterpart (the sflow plugin reports
+                    // drops to hsflowd over NET_DM), so only the global plugin
+                    // flag and the drop_monitor_limit policer binding are
+                    // driven from here. The policer goes in first so no drop is
+                    // reported unlimited. Fall through to set_internal() below
+                    // so the attribute is also cached.
+                    sai_object_id_t drop_tam = SAI_NULL_OBJECT_ID;
+
+                    for (uint32_t i = 0; i < attr->value.objlist.count; i++)
+                    {
+                        if (sflowIsDropMonitorTam(attr->value.objlist.list[i]))
+                        {
+                            drop_tam = attr->value.objlist.list[i];
+                            break;
+                        }
+                    }
+
+                    if (drop_tam != SAI_NULL_OBJECT_ID)
+                    {
+                        m_sflow_drop_tam = drop_tam;
+                        CHECK_STATUS(sflowDropPolicerApply(sflowDropMonitorPolicer(m_sflow_drop_tam)));
+                        CHECK_STATUS(sflowDropMonitoringSet(true));
+                    }
+                    else if (m_sflow_drop_tam != SAI_NULL_OBJECT_ID)
+                    {
+                        CHECK_STATUS(sflowDropMonitoringSet(false));
+                        m_sflow_drop_tam = SAI_NULL_OBJECT_ID;
+                        CHECK_STATUS(sflowDropPolicerApply(SAI_NULL_OBJECT_ID));
+                    }
                     break;
                 }
         }
@@ -2877,12 +3012,23 @@ sai_status_t SwitchVpp::set_dispatch(
 
     if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP)
     {
-        return setHostifTrapGroup(serializedObjectId, attr);
+        CHECK_STATUS(setHostifTrapGroup(serializedObjectId, attr));
+        return sflowDropMonitorChainSet(objectType, attr->id);
     }
 
     if (objectType == SAI_OBJECT_TYPE_HOSTIF_TRAP)
     {
         return setHostifTrap(serializedObjectId, attr);
+    }
+
+    // Links of the sFlow drop monitor TAM -> POLICER chain, see
+    // sflowDropMonitorPolicer()
+    if (objectType == SAI_OBJECT_TYPE_TAM ||
+            objectType == SAI_OBJECT_TYPE_TAM_COLLECTOR ||
+            objectType == SAI_OBJECT_TYPE_HOSTIF_USER_DEFINED_TRAP)
+    {
+        CHECK_STATUS(set_internal(objectType, serializedObjectId, attr));
+        return sflowDropMonitorChainSet(objectType, attr->id);
     }
 
     return set_internal(objectType, serializedObjectId, attr);
@@ -2909,6 +3055,96 @@ sai_status_t SwitchVpp::setTunnelLoopbackAction(
         }
     }
 
+    return setTunnelAttrOfVppTunnels(serializedObjectId, attr,
+            [this](sai_object_id_t tunnel_oid)
+            { return m_tunnel_mgr_ipip.update_tunnel_loopback_action(tunnel_oid); });
+}
+
+sai_status_t SwitchVpp::setTunnelEncapTtl(
+        _In_ const std::string &serializedObjectId,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (attr->id == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE)
+    {
+        /*
+         * VPP gives the uniform model with a flag of the VPP tunnel when it
+         * creates it, so the model can't change: only a SET of the one the
+         * tunnel has is taken.
+         */
+        auto tunnel_obj = get_sai_object(SAI_OBJECT_TYPE_TUNNEL, serializedObjectId);
+        sai_attribute_t mode;
+        mode.id = SAI_TUNNEL_ATTR_ENCAP_TTL_MODE;
+        int32_t current = (tunnel_obj && tunnel_obj->get_attr(mode) == SAI_STATUS_SUCCESS) ?
+            mode.value.s32 : SAI_TUNNEL_TTL_MODE_UNIFORM_MODEL;
+        if (attr->value.s32 != current)
+        {
+            SWSS_LOG_ERROR("Cannot change the encap TTL mode of tunnel %s: VPP takes it when it creates the tunnel",
+                           serializedObjectId.c_str());
+            return SAI_STATUS_NOT_SUPPORTED;
+        }
+
+        return set_internal(SAI_OBJECT_TYPE_TUNNEL, serializedObjectId, attr);
+    }
+
+    CHECK_STATUS(validateEncapTtl(serializedObjectId, attr->value.u8));
+
+    // VPP can only give a tunnel a fixed outer TTL with the sonic-ext feature
+    bool enabled = false;
+    CHECK_STATUS(sonicExtFeatureEnabled("tunnel-encap-ttl", enabled));
+    if (!enabled)
+    {
+        SWSS_LOG_ERROR("Cannot set tunnel encap TTL on %s: sonic-ext tunnel-encap-ttl is disabled",
+                       serializedObjectId.c_str());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    sai_object_id_t oid;
+    sai_deserialize_object_id(serializedObjectId, oid);
+    CHECK_STATUS(m_tunnel_mgr_ipip.validate_encap_ttl_val(oid, attr->value.u8));
+
+    return setTunnelAttrOfVppTunnels(serializedObjectId, attr,
+            [this](sai_object_id_t tunnel_oid)
+            { return m_tunnel_mgr_ipip.update_tunnel_encap_ttl(tunnel_oid); });
+}
+
+sai_status_t SwitchVpp::validateEncapTtl(
+        _In_ const std::string &serializedObjectId,
+        _In_ uint8_t ttl)
+{
+    SWSS_LOG_ENTER();
+
+    // The sonic-ext plugin takes an encap TTL of 0 as none
+    if (ttl == 0)
+    {
+        SWSS_LOG_ERROR("Tunnel %s: an encap TTL of 0 is not supported", serializedObjectId.c_str());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+bool SwitchVpp::isIpInIpTunnel(
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    auto tunnel_obj = get_sai_object(SAI_OBJECT_TYPE_TUNNEL, serializedObjectId);
+    sai_attribute_t type;
+    type.id = SAI_TUNNEL_ATTR_TYPE;
+
+    return tunnel_obj && tunnel_obj->get_attr(type) == SAI_STATUS_SUCCESS &&
+        type.value.s32 == SAI_TUNNEL_TYPE_IPINIP;
+}
+
+sai_status_t SwitchVpp::setTunnelAttrOfVppTunnels(
+        _In_ const std::string &serializedObjectId,
+        _In_ const sai_attribute_t* attr,
+        _In_ const std::function<sai_status_t(sai_object_id_t)>& apply)
+{
+    SWSS_LOG_ENTER();
+
     auto& tunnels = m_objectHash.at(SAI_OBJECT_TYPE_TUNNEL);
     auto it = tunnels.find(serializedObjectId);
     if (it == tunnels.end())
@@ -2918,9 +3154,9 @@ sai_status_t SwitchVpp::setTunnelLoopbackAction(
     }
 
     /*
-     * The IPIP tunnel manager takes the action from the tunnel object, so
-     * store it first. If VPP does not take it, put the previous one back and
-     * return the VPP tunnels to that.
+     * The IPIP tunnel manager takes the attribute from the tunnel object, so
+     * store it first. If VPP does not take it, put the previous value back
+     * and return the VPP tunnels to that.
      */
     auto& attrHash = it->second;
     const std::string name = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_TUNNEL, attr->id)->attridname;
@@ -2932,7 +3168,7 @@ sai_status_t SwitchVpp::setTunnelLoopbackAction(
     sai_object_id_t tunnel_oid;
     sai_deserialize_object_id(serializedObjectId, tunnel_oid);
 
-    sai_status_t status = m_tunnel_mgr_ipip.update_tunnel_loopback_action(tunnel_oid);
+    sai_status_t status = apply(tunnel_oid);
     if (status != SAI_STATUS_SUCCESS)
     {
         if (saved)
@@ -2945,16 +3181,16 @@ sai_status_t SwitchVpp::setTunnelLoopbackAction(
         }
 
         /*
-         * TunnelManagerIpIp tracks the action each VPP tunnel has, so a VPP
-         * tunnel this can't return to the previous action gets the stored one
-         * at its next sync: a SET of the tunnel, or a next hop created or
-         * removed on it.
+         * TunnelManagerIpIp tracks what each VPP tunnel has, so a VPP tunnel
+         * this can't return to the previous value gets the stored one at its
+         * next sync: a SET of the tunnel, or a next hop created or removed on
+         * it.
          */
-        sai_status_t restored = m_tunnel_mgr_ipip.update_tunnel_loopback_action(tunnel_oid);
+        sai_status_t restored = apply(tunnel_oid);
         if (restored != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Tunnel %s: VPP tunnels not returned to the previous loopback packet action: %s",
-                           serializedObjectId.c_str(), sai_serialize_status(restored).c_str());
+            SWSS_LOG_ERROR("Tunnel %s: VPP tunnels not returned to the previous %s: %s",
+                           serializedObjectId.c_str(), name.c_str(), sai_serialize_status(restored).c_str());
         }
     }
 
