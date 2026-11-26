@@ -439,7 +439,8 @@ namespace saivs
 
             /**
              * @brief Tells whether a bridge port is an EVPN Ethernet segment (ES):
-             * a lag bridge port with a protection next hop group, not switched over.
+             * a lag bridge port with a protection next hop group, not switched over
+             * (PROTECTION_ADMIN_MODE PROTECTION, or the deprecated SET_SWITCHOVER).
              */
             bool isEsLagBridgePort(
                     _In_ sai_object_id_t bridgePortId);

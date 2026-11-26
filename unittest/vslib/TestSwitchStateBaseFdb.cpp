@@ -972,3 +972,36 @@ TEST_F(SwitchStateBaseFdbTest, esPeerEntryIsNotReportedWhileTheEsIsSwitchedOver)
 
     EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
 }
+
+TEST_F(SwitchStateBaseFdbTest, esPeerEntryIsNotReportedWhileTheEsIsInProtectionAdminMode)
+{
+    auto port = m_sw->m_port_list.at(0);
+
+    auto esBridgePort = createLagBridgePort(port, true);
+
+    sai_mac_t mac = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x1f };
+
+    auto fe = fdbEntry(mac, m_vlan1);
+
+    ASSERT_NO_FATAL_FAILURE(createStaticEntry(fe, esBridgePort, true));
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_PORT_PROTECTION_ADMIN_MODE;
+    attr.value.s32 = SAI_BRIDGE_PORT_PROTECTION_ADMIN_MODE_PROTECTION;
+
+    ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_BRIDGE_PORT, esBridgePort, &attr), SAI_STATUS_SUCCESS);
+
+    sendFrame(port, mac);
+
+    EXPECT_TRUE(fdbEvents().empty());
+
+    // PRIMARY holds the bridge port, so the ES is not switched over
+    attr.value.s32 = SAI_BRIDGE_PORT_PROTECTION_ADMIN_MODE_PRIMARY;
+
+    ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_BRIDGE_PORT, esBridgePort, &attr), SAI_STATUS_SUCCESS);
+
+    sendFrame(port, mac);
+
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
+}

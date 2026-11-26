@@ -219,6 +219,15 @@ bool SwitchStateBase::isEsLagBridgePort(
     }
 
     // switched over, the ES's entries forward to its peers, not to the lag
+    attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_PORT_PROTECTION_ADMIN_MODE;
+
+    if (get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridgePortId, 1, &attr) == SAI_STATUS_SUCCESS &&
+            attr.value.s32 == SAI_BRIDGE_PORT_PROTECTION_ADMIN_MODE_PROTECTION)
+    {
+        return false;
+    }
+
+    // deprecated form of ADMIN_MODE_PROTECTION
     attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_PORT_SET_SWITCHOVER;
 
     return get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridgePortId, 1, &attr) != SAI_STATUS_SUCCESS ||
