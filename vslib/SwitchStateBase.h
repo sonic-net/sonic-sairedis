@@ -7,6 +7,7 @@
 #include "SwitchConfig.h"
 #include "RealObjectIdManager.h"
 #include "EventPayloadNetLinkMsg.h"
+#include "EventPayloadPlatformEvent.h"
 #include "MACsecManager.h"
 
 #include <set>
@@ -387,6 +388,12 @@ namespace saivs
             virtual void initFdbEventHandling(std::function<void()> /*wakeFn*/) {}
             virtual void deinitFdbEventHandling() {}
 
+            // Applies an event the switch platform posted on the event queue
+            // (EVENT_TYPE_PLATFORM_EVENT). Called from the event queue thread
+            // with the API mutex held. Default is a no-op.
+            virtual void syncOnPlatformEvent(
+                    _In_ std::shared_ptr<EventPayloadPlatformEvent> /*payload*/) {}
+
         private: // fdb related
 
             void updateLocalDB(
@@ -397,14 +404,14 @@ namespace saivs
                     _In_ const FdbInfo &fi,
                     _In_ sai_fdb_event_t fdb_event);
 
-            bool getLagFromPort(
-                    _In_ sai_object_id_t port_id,
-                    _Inout_ sai_object_id_t& lag_id);
-
             bool isLagOrPortRifBased(
                     _In_ sai_object_id_t lag_or_port_id);
 
         protected:
+
+            bool getLagFromPort(
+                    _In_ sai_object_id_t port_id,
+                    _Inout_ sai_object_id_t& lag_id);
 
             void findBridgeVlanForPortVlan(
                     _In_ sai_object_id_t port_id,
@@ -778,6 +785,14 @@ namespace saivs
             virtual sai_status_t queryNextHopGroupTypeCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
+            virtual sai_status_t queryDebugCounterCapability(
+                                      _In_ sai_attr_id_t attr_id,
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
+            static sai_status_t fillEnumValuesCapability(
+                                      _In_ const std::vector<int32_t> &values,
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
             virtual sai_status_t queryHashNativeHashFieldListCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
@@ -797,6 +812,9 @@ namespace saivs
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
             virtual sai_status_t queryTamBindPointTypeCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
+            virtual sai_status_t queryTamTelTypeModeCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
             virtual sai_status_t queryIcmpEchoSessionStatsCountModeCapability(

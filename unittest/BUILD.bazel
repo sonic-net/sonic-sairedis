@@ -1,4 +1,16 @@
+load("@rules_python//python:defs.bzl", "py_test")
+
 package(default_visibility = ["//visibility:public"])
+
+py_test(
+    name = "test_syncd_init_common",
+    srcs = ["test_syncd_init_common.py"],
+    data = [
+        "//syncd:scripts/syncd_init_common.sh",
+        "@jq_toolchains//:resolved_toolchain",
+    ],
+    env = {"SYNCD_TEST_JQ": "$(rootpath @jq_toolchains//:resolved_toolchain)"},
+)
 
 filegroup(
     name = "all_test_binaries",
@@ -16,7 +28,10 @@ filegroup(
 
 filegroup(
     name = "source_files",
-    srcs = ["Makefile.am"] + [
+    srcs = [
+        "Makefile.am",
+        "test_syncd_init_common.py",
+    ] + [
         "//unittest/lib:source_files",
         "//unittest/meta:source_files",
         "//unittest/proxylib:source_files",

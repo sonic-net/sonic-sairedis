@@ -58,7 +58,7 @@ these public defaults and keep their precedence.
 
 ## Required targets
 
-`required-targets.json` lists the canonical aggregate, seven tests that do not
+`required-targets.json` lists the canonical aggregate, ten tests that do not
 require external services, and all 16 public package labels. The three
 development debug labels alias runtime debug labels, producing 13 unique tar
 outputs.
@@ -86,7 +86,7 @@ Use `set -o pipefail` when running that pipeline in an interactive shell so a
 Bazel failure is preserved. Add `--config=aarch64` to the Bazel command in a
 native Trixie ARM64 environment.
 
-The source manifest contains 358 distinct source paths and 366 reviewed
+The source manifest contains 365 distinct source paths and 373 reviewed
 target/source pairs. Each pair must occur once. This prevents a test compile
 from hiding a missing production compile of the same source. Generated
 metadata, SAI entry stubs, and the Python wrapper must come from their declared
@@ -98,6 +98,14 @@ The checker reports configuration identities for diagnosis. It does not prove
 platform equivalence, compiler execution, or CodeQL extraction. The selected
 source set was measured from the AMD64 Make reference; ARM64 still requires
 native execution evidence.
+
+Upstream Sairedis at `c41b95c`, with SAI v1.19.2, compiled 374 component
+translation units in a native Trixie AMD64 Make build. The 35 configure
+probes are excluded. The seven new sources include the non-ASAN Syncd test
+of `Asan.cpp`; `AsanCtor.cpp` is only linked in ASAN daemon builds. See the
+[Make compiler trace and Bazel source owners](https://gist.github.com/securely1g/a0401a3ae7f432bc3ff66db1eaa151c0/b2e1baf91f1b703283627706a271a52bfbda2439).
+
+The upstream update through `22550fa4` adds VPP debug-counter sources and linker wrappers under `if USE_VPP` in `vslib/Makefile.am` and `unittest/vslib/Makefile.am`. With VPP disabled the two Makefiles have identical active definitions and expanded source lists to the audited `c41b95c` profile. The SAI gitlink and the 373 expected target/source pairs are unchanged.
 
 The manifest guards the exact tracked `Makefile.am` path set, `configure.ac`,
 and the `SAI` gitlink. It checks both Git index bytes and working-tree bytes.

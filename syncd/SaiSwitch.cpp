@@ -38,6 +38,9 @@ SaiSwitch::SaiSwitch(
 
     GlobalSwitchId::setSwitchId(m_switch_rid);
 
+    memset(m_default_mac_address, 0, sizeof(sai_mac_t));
+    memset(m_vxlan_default_router_mac_address, 0, sizeof(sai_mac_t));
+
     m_hardware_info = saiGetHardwareInfo();
 
     /*
@@ -61,14 +64,17 @@ SaiSwitch::SaiSwitch(
 
     helperInternalOids();
 
-    if (getSwitchType() == SAI_SWITCH_TYPE_NPU || getSwitchType() == SAI_SWITCH_TYPE_VOQ)
+    sai_switch_type_t switchType = getSwitchType();
+
+    if (switchType == SAI_SWITCH_TYPE_NPU || switchType == SAI_SWITCH_TYPE_VOQ)
     {
         helperCheckLaneMap();
     }
 
     helperLoadColdVids();
 
-    if (getSwitchType() == SAI_SWITCH_TYPE_NPU)
+    // A VOQ switch routes like an NPU: applyView brings these defaults back when a view stops setting them.
+    if (switchType == SAI_SWITCH_TYPE_NPU || switchType == SAI_SWITCH_TYPE_VOQ)
     {
         saiGetMacAddress(m_default_mac_address);
         saiGetVxlanDefaultRouterMacAddress(m_vxlan_default_router_mac_address);

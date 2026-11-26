@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Local builds and CI share pinned inputs and public mirror defaults.
 # Pin the shared reader and configuration to a landed registry revision.
-revision=e7ee462aaa8fbd137ea2187f175506e308d81dcb
+revision=e73724fb0134430da236e501e0770fe4d273782b
 config_digest=c28e6882aa9ebed84fd32586112e5fbfe9684af4e4aaa9942170919a3cbd308e
 reader_digest=06836c38c56aa0e77e1f7adac68b6463f8f1e920e0beb000061cec5b7f5ec1f2
 manifest_digest=1579ad34288945a28a2d77f96f4764b8910dd3d856d688971e46e63e58119af5
@@ -12,7 +12,7 @@ if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
     printf 'Sairedis download bootstrap needs a landed registry revision.\n' >&2
     exit 1
 fi
-base="https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/$revision"
+base="https://raw.githubusercontent.com/sonic-net/sonic-bazel-registry/$revision"
 inputs="${RUNNER_TEMP:-$PWD/artifacts}/sairedis-github-inputs"
 bootstrap="$inputs/bootstrap"
 evidence="$PWD/artifacts/validation"

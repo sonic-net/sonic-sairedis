@@ -384,7 +384,7 @@ Format per proposed fix:
 - `Local repro: docker load < docker-sonic-vs.gz; pytest -sv tests/test_<x>.py`
   (baseline vs patched on the same host — see "Local repro" section).
 - `End-to-end CI: open a draft sairedis PR pinning the swss fork+branch in
-  azure-pipelines.yml + .azure-pipelines/{build-swss,test-docker-sonic-vs}-template.yml`
+  the azure-pipelines.yml sonic-swss repository resource`
   (see "Validating an sonic-swss test fix").
 
 **Risks / trade-offs** (1 line):
@@ -456,10 +456,9 @@ When the fix lives on a personal `sonic-swss` fork branch, end-to-end CI signal
 can be obtained without merging anything:
 
 1. Open a **draft** PR on a personal `sonic-sairedis` fork pinning the swss repo
-   resource at fork+branch in:
-   - `azure-pipelines.yml` (the `repositories: sonic-swss` block).
-   - `.azure-pipelines/build-swss-template.yml` (`git checkout`).
-   - `.azure-pipelines/test-docker-sonic-vs-template.yml` (`git checkout`).
+   resource at the fork+branch in the `azure-pipelines.yml`
+   `repositories: sonic-swss` block. The shared BuildSwss, BuildDocker, and
+   Test templates and their sonic-swss checkout all resolve from that resource.
 2. Mark `DO NOT MERGE`.
 3. The ADO PR-checker on that sairedis PR runs the affected tests against the
    patched swss.

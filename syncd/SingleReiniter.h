@@ -11,6 +11,7 @@
 #include <string>
 #include <unordered_map>
 #include <map>
+#include <set>
 #include <vector>
 #include <memory>
 
@@ -70,6 +71,12 @@ namespace syncd
             sai_object_id_t processSingleVid(
                     _In_ sai_object_id_t vid);
 
+            void processImplicitDependencies(
+                    _In_ sai_object_id_t vid,
+                    _In_ sai_object_type_t objectType,
+                    _In_ uint32_t attrCount,
+                    _In_ const sai_attribute_t* attrList);
+
             std::shared_ptr<saimeta::SaiAttributeList> redisGetAttributesFromAsicKey(
                     _In_ const std::string &key);
 
@@ -122,6 +129,16 @@ namespace syncd
             std::vector<std::string> m_asicKeys;
 
             std::unordered_map<std::string, std::shared_ptr<saimeta::SaiAttributeList>> m_attributesLists;
+
+            /**
+             * @brief VIDs of the objects that provide each implicit dependency key.
+             */
+            std::unordered_map<std::string, std::vector<sai_object_id_t>> m_implicitProviders;
+
+            /**
+             * @brief VIDs whose implicit dependencies are being processed.
+             */
+            std::set<sai_object_id_t> m_implicitInProgress;
 
             std::map<sai_object_type_t, std::tuple<int,double>> m_perf_create;
             std::map<sai_object_type_t, std::tuple<int,double>> m_perf_set;

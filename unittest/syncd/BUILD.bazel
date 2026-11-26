@@ -25,12 +25,15 @@ cc_binary(
         "MockHelper.cpp",
         "MockableSaiInterface.cpp",
         "MockableSaiSwitchInterface.cpp",
+        "TestAsan.cpp",
         "TestAttrVersionChecker.cpp",
         "TestBestCandidateFinder.cpp",
         "TestCommandLineOptions.cpp",
+        "TestComparisonLogicValidOnly.cpp",
         "TestConcurrentQueue.cpp",
         "TestFlexCounter.cpp",
         "TestFlowDump.cpp",
+        "TestImplicitDependency.cpp",
         "TestMdioIpcServer.cpp",
         "TestMySidWarmboot.cpp",
         "TestNotificationHandler.cpp",
@@ -46,6 +49,7 @@ cc_binary(
         "TestVirtualOidTranslator.cpp",
         "TestWorkaround.cpp",
         "main.cpp",
+        "//syncd:Asan.cpp",
     ] + glob(["*.h"]),
     copts = TEST_COPTS + ["-fno-access-control"],
     includes = ["."],
@@ -82,5 +86,12 @@ working_directory_test(
         "requires-cap-sys-time",
         "requires-redis",
     ],
+    working_directory = "unittest/syncd",
+)
+
+working_directory_test(
+    name = "service_free_regressions",
+    args = ["--gtest_filter=Asan*.*:ComparisonLogicValidOnly.*:ImplicitDependency.*-ImplicitDependency.hard_reinit_*"],
+    program = ":tests_binary",
     working_directory = "unittest/syncd",
 )

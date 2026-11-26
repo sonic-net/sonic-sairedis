@@ -2,7 +2,7 @@ common --check_direct_dependencies=off
 common --noincompatible_disallow_empty_glob
 
 # Resolve SONiC modules from the maintained registry branch, then the BCR.
-common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main
+common --registry=https://raw.githubusercontent.com/sonic-net/sonic-bazel-registry/main
 common --registry=https://bcr.bazel.build/
 
 # Verified public input defaults prepared by bazel/ci_downloader.sh.

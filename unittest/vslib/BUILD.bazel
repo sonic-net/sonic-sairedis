@@ -29,6 +29,7 @@ cc_binary(
         "TestCorePortIndexMapFileParser.cpp",
         "TestEventPayloadNetLinkMsg.cpp",
         "TestEventPayloadPacket.cpp",
+        "TestEventPayloadPlatformEvent.cpp",
         "TestEventQueue.cpp",
         "TestFdbInfo.cpp",
         "TestHostInterfaceInfo.cpp",
@@ -108,5 +109,12 @@ working_directory_test(
         "requires-redis",
         "requires-root",
     ],
+    working_directory = "unittest/vslib",
+)
+
+working_directory_test(
+    name = "platform_event_test",
+    args = ["--gtest_filter=EventPayloadPlatformEvent.*"],
+    program = ":tests_binary",
     working_directory = "unittest/vslib",
 )
