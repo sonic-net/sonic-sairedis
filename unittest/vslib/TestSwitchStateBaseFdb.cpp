@@ -452,20 +452,6 @@ class SwitchStateBaseFdbTest : public ::testing::Test
             ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe), &attr), SAI_STATUS_SUCCESS);
         }
 
-        // moves the last learn reported for an ES peer entry into the past
-        void backdateEsPeerLearn(
-                _In_ const sai_fdb_entry_t& fe,
-                _In_ uint32_t seconds)
-        {
-            SWSS_LOG_ENTER();
-
-            auto it = m_sw->m_es_peer_fdb_learns.find(sai_serialize_fdb_entry(fe));
-
-            ASSERT_NE(it, m_sw->m_es_peer_fdb_learns.end());
-
-            it->second.lastReport -= seconds;
-        }
-
     protected:
 
         const sai_object_id_t m_switchId = 0x2100000000;
@@ -810,28 +796,17 @@ TEST_F(SwitchStateBaseFdbTest, esPeerEntryHitByLocalTrafficIsReportedLearned)
     EXPECT_EQ(events[0].type, SAI_FDB_EVENT_LEARNED);
     EXPECT_EQ(events[0].bridgePortId, esBridgePort);
 
-    // the entry is left as it is, and not aged
-    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_TYPE).value.s32, SAI_FDB_ENTRY_TYPE_STATIC);
-    EXPECT_TRUE(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE).value.booldata);
+    // the entry becomes the dynamic one syncd records for the learn, and is tracked for aging
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_TYPE).value.s32, SAI_FDB_ENTRY_TYPE_DYNAMIC);
     EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID).value.oid, esBridgePort);
-    EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
-
-    // more frames right after it raise nothing
-    sendFrame(port, mac);
-
-    EXPECT_TRUE(fdbEvents().empty());
-
-    // the user makes it a local dynamic entry: traffic refreshes it and it ages
-    ASSERT_NO_FATAL_FAILURE(setFdbAttr(fe, SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE, false));
-    ASSERT_NO_FATAL_FAILURE(setFdbAttr(fe, SAI_FDB_ENTRY_ATTR_TYPE, SAI_FDB_ENTRY_TYPE_DYNAMIC));
-
-    ASSERT_NO_FATAL_FAILURE(backdateEsPeerLearn(fe, 100));
-
-    sendFrame(port, mac);
-
-    EXPECT_TRUE(fdbEvents().empty());
+    EXPECT_EQ(m_sw->m_objectHash.at(SAI_OBJECT_TYPE_FDB_ENTRY).at(sai_serialize_fdb_entry(fe)).count("SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE"), 0u);
     ASSERT_EQ(m_sw->m_fdb_info_set.size(), 1u);
     EXPECT_EQ(m_sw->m_fdb_info_set.begin()->getBridgePortId(), esBridgePort);
+
+    // more frames refresh it and raise nothing
+    sendFrame(port, mac);
+
+    EXPECT_TRUE(fdbEvents().empty());
 
     ASSERT_NO_FATAL_FAILURE(setAgingTime(60));
     ASSERT_NO_FATAL_FAILURE(backdate(mac, 1, 100));
@@ -840,10 +815,9 @@ TEST_F(SwitchStateBaseFdbTest, esPeerEntryHitByLocalTrafficIsReportedLearned)
 
     EXPECT_FALSE(fdbEntryExists(fe));
     EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_AGED });
-    EXPECT_TRUE(m_sw->m_es_peer_fdb_learns.empty());
 }
 
-TEST_F(SwitchStateBaseFdbTest, esPeerEntryLearnIsSentAgainAFewTimes)
+TEST_F(SwitchStateBaseFdbTest, esPeerEntryInstalledAgainIsReportedAgain)
 {
     auto port = m_sw->m_port_list.at(0);
 
@@ -855,46 +829,29 @@ TEST_F(SwitchStateBaseFdbTest, esPeerEntryLearnIsSentAgainAFewTimes)
 
     ASSERT_NO_FATAL_FAILURE(createStaticEntry(fe, esBridgePort, true));
 
-    // the user drops the learn and keeps the static entry: traffic a minute later raises it again, 3 times in all
-    for (int i = 0; i < 3; i++)
-    {
-        sendFrame(port, mac);
-
-        EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED }) << "learn " << i + 1;
-
-        sendFrame(port, mac);
-
-        EXPECT_TRUE(fdbEvents().empty()) << "learn " << i + 1;
-
-        ASSERT_NO_FATAL_FAILURE(backdateEsPeerLearn(fe, 60));
-    }
-
-    sendFrame(port, mac);
-
-    EXPECT_TRUE(fdbEvents().empty());
-    EXPECT_TRUE(m_sw->m_es_peer_fdb_learns.at(sai_serialize_fdb_entry(fe)).warned);
-
-    // the entry installed again on its bridge port is reported again
-    sai_attribute_t attr;
-
-    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
-    attr.value.oid = esBridgePort;
-
-    ASSERT_EQ(m_sw->set(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe), &attr), SAI_STATUS_SUCCESS);
-
     sendFrame(port, mac);
 
     EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
 
-    // so is a static entry made again
+    // the user makes it the ES peer's entry again: the next frame is one more learn
+    ASSERT_NO_FATAL_FAILURE(setFdbAttr(fe, SAI_FDB_ENTRY_ATTR_TYPE, SAI_FDB_ENTRY_TYPE_STATIC));
+    ASSERT_NO_FATAL_FAILURE(setFdbAttr(fe, SAI_FDB_ENTRY_ATTR_ALLOW_MAC_MOVE, true));
+
+    sendFrame(port, mac);
+    sendFrame(port, mac);
+
+    EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_TYPE).value.s32, SAI_FDB_ENTRY_TYPE_DYNAMIC);
+
+    // so does an entry created again
     ASSERT_EQ(m_sw->remove(SAI_OBJECT_TYPE_FDB_ENTRY, sai_serialize_fdb_entry(fe)), SAI_STATUS_SUCCESS);
-    EXPECT_TRUE(m_sw->m_es_peer_fdb_learns.empty());
 
     ASSERT_NO_FATAL_FAILURE(createStaticEntry(fe, esBridgePort, true));
 
     sendFrame(port, mac);
 
     EXPECT_EQ(fdbEvents(), std::vector<sai_fdb_event_t>{ SAI_FDB_EVENT_LEARNED });
+    EXPECT_EQ(getFdbAttr(fe, SAI_FDB_ENTRY_ATTR_TYPE).value.s32, SAI_FDB_ENTRY_TYPE_DYNAMIC);
 }
 
 TEST_F(SwitchStateBaseFdbTest, staticEntryOutsideAnEsIsNotReportedOnTraffic)
@@ -920,7 +877,6 @@ TEST_F(SwitchStateBaseFdbTest, staticEntryOutsideAnEsIsNotReportedOnTraffic)
     sendFrame(port2, portMac);
 
     EXPECT_TRUE(fdbEvents().empty());
-    EXPECT_TRUE(m_sw->m_es_peer_fdb_learns.empty());
     EXPECT_TRUE(m_sw->m_fdb_info_set.empty());
 
     // each of these bridge ports learns a new MAC, so the frames above did reach learning
