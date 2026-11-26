@@ -64,9 +64,10 @@ tests_SOURCES += TestSwitchVpp.cpp TestSwitchVppRif.cpp TestVppInterfaceRegistry
 				MockVppXlate.cpp MockVppXlate.h \
 				TestSwitchVppAclRules.cpp TestVppAclInheritance.cpp \
 				SwitchVppTestHarness.cpp SwitchVppTestHarness.h TestSwitchVppNat.cpp \
-				TestSwitchVppNbr.cpp
+				TestSwitchVppNbr.cpp TestSwitchVppDebugCounter.cpp
 VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_sonic_ext_copp_neighbor_miss_bind \
 				vpp_sonic_ext_copp_dhcp_bind vpp_iface_loopback_set_action \
+				vpp_sonic_ext_tunnel_encap_ttl_set \
 				vpp_ipip_tunnel_add vpp_ipip_tunnel_del vpp_get_swif_name vpp_sw_interface_find_by_ip \
 				ip_route_add_del_get_stats \
 				vpp_intf_stats_query create_bvi_interface delete_bvi_interface \
@@ -98,7 +99,8 @@ VPP_TEST_WRAPS = vpp_sonic_ext_feature_get vpp_sonic_ext_copp_neighbor_miss_bind
 				vpp_acl_interface_set_acl_list vpp_acl_interface_get_acl_list \
 				vpp_nat44_ed_supported vpp_nat44_ed_enable_disable \
 				vpp_nat44_forwarding_enable_disable vpp_nat44_ed_output_interface_add_del \
-				vpp_nat44_static_mapping_add_del vpp_nat44_user_sessions_dump
+				vpp_nat44_static_mapping_add_del vpp_nat44_user_sessions_dump \
+				vpp_drop_reason_stats_dump
 tests_LDFLAGS = $(foreach symbol,$(VPP_TEST_WRAPS),-Wl,--wrap=$(symbol))
 
 check_PROGRAMS = sai_vpp_xlate_tests
