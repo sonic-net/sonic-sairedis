@@ -110,21 +110,24 @@ against 358 reviewed component source paths and 366 target/source pairs.
 
 ## Tests without external services
 
-Run the following seven existing tests without external services:
+Run the component tests and the source comment spelling check without external services:
 
 ```sh
 bazel test --lockfile_mode=update --nocache_test_results --test_output=errors \
   //lib:tests_test \
+  //tests:aspellcheck \
   //tests:tests_test \
   //saiasiccmp:tests \
   //unittest/meta:tests \
   //unittest/proxylib:tests \
   //unittest/saidump:tests \
-  //unittest/saisdkdump:tests
+  //unittest/saisdkdump:tests \
+  //unittest:test_syncd_init_common \
+  //unittest/syncd:service_free_regressions \
+  //unittest/vslib:platform_event_test
 ```
 
-The existing `//vslib:tests` executable requires Redis and is outside this
-seven-test set. Run it in an isolated environment with a disposable Redis
+The existing `//vslib:tests` executable requires Redis and runs separately. Run it in an isolated environment with a disposable Redis
 instance. Coverage of its kernel network setup requires the corresponding
 network capabilities and successful setup operations; the process exit alone
 does not establish that coverage when setup reports errors. The existing Azure
@@ -245,7 +248,7 @@ these component tests do not establish that an installed image boots.
 The Bazel workflow defines `Component (AMD64)` on `ubuntu-24.04` and
 `Component (ARM64)` on `ubuntu-24.04-arm`, each inside a pinned Debian Trixie
 container. Each job is configured to verify its native architecture, check
-Bazel formatting, build `//:canonical_outputs`, run the seven tests listed
+Bazel formatting, build `//:canonical_outputs`, run the service-free tests listed
 above, check configured source ownership against the reviewed Make inventory,
 and build all 16 public package labels. The package verifier checks their 13
 unique tar outputs and the 14 runtime/debug pairs. The workflow keeps the

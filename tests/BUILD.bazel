@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:native_binary.bzl", "native_test")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_distroless//distroless:defs.bzl", "flatten")
@@ -20,8 +21,7 @@ filegroup(
     ]),
 )
 
-# These checks inspect the Make workspace and object filenames. Keep their
-# inputs explicit until a Bazel-aware object/source check is supplied.
+# Inputs for the source policy checks in tests/Makefile.am.
 filegroup(
     name = "source_checks",
     srcs = [
@@ -34,6 +34,23 @@ filegroup(
         "swsslogentercheck.sh",
     ],
     tags = ["manual"],
+)
+
+native_test(
+    name = "aspellcheck",
+    src = "@sonic_build_infra//tools/build_tools:perl",
+    args = [
+        "$(rootpath :aspellcheck.pl)",
+        "$(rootpath @sonic_build_infra//tools/build_tools:aspell)",
+        "./$(rootpath :aspell.en.pws)",
+        "$(rootpaths //:source_files)",
+    ],
+    data = [
+        "aspell.en.pws",
+        "aspellcheck.pl",
+        "//:source_files",
+        "@sonic_build_infra//tools/build_tools:aspell",
+    ],
 )
 
 cc_binary(

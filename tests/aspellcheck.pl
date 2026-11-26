@@ -2,9 +2,13 @@
 
 use strict;
 use warnings;
-use diagnostics;
+use IPC::Open2 qw(open2);
 
 use Term::ANSIColor;
+
+# Make runs in tests/. Bazel supplies the declared tool, dictionary and sources.
+my $aspell = shift // "/usr/bin/aspell";
+my $dictionary = shift // "./aspell.en.pws";
 
 our $errors = 0;
 our $warnings = 0;
@@ -77,9 +81,9 @@ sub RunAspell
 
     my %wordsToCheck = %{ $hash };
 
-    if (not -e "/usr/bin/aspell")
+    if (not -x $aspell)
     {
-        LogError "ASPELL IS NOT PRESENT, please install aspell";
+        LogError "Cannot execute Aspell at $aspell";
         return;
     }
 
@@ -93,7 +97,17 @@ sub RunAspell
 
     LogInfo "Words to check: $count";
 
-    my @result = `echo "$all" | /usr/bin/aspell -l en -a -p ./aspell.en.pws 2>&1`;
+    my $pid = open2(my $output, my $input, $aspell, "-l", "en", "-a", "-p", $dictionary);
+    print {$input} "$all\n";
+    close $input or die "Writing to Aspell failed: $!";
+    my @result = <$output>;
+    close $output;
+    waitpid($pid, 0);
+    if ($? != 0)
+    {
+        LogError "Aspell failed with status $?";
+        return;
+    }
 
     for my $res (@result)
     {
@@ -139,7 +153,8 @@ sub RunAspell
     }
 }
 
-my @files = GetSourceFilesAndHeaders();
+my @files = @ARGV ? grep { /\.(?:cpp|h)\z/ } @ARGV : GetSourceFilesAndHeaders();
+die "No C++ sources or headers to check\n" unless @files;
 
 my %wordsToCheck = ();
 

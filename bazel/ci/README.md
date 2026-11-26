@@ -58,7 +58,7 @@ these public defaults and keep their precedence.
 
 ## Required targets
 
-`required-targets.json` lists the canonical aggregate, ten tests that do not
+`required-targets.json` lists the canonical aggregate, eleven tests that do not
 require external services, and all 16 public package labels. The three
 development debug labels alias runtime debug labels, producing 13 unique tar
 outputs.

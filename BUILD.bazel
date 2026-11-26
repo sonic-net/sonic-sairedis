@@ -315,7 +315,12 @@ filegroup(
         "*.pl",
         "*.sh",
     ]) + glob(
-        ["*.h"],
+        [
+            "*.cpp",
+            "*.h",
+            ".azure-pipelines/**/*.cpp",
+            ".azure-pipelines/**/*.h",
+        ],
         allow_empty = True,
     ) + [
         "//bazel:stamp_vars.sh",

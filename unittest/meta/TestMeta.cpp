@@ -614,7 +614,7 @@ TEST(Meta, quad_mcast_fdb_entry)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&e, &attr));
 
-    // The dummy backend leaves get output values unchanged.
+    // The dummy implementation leaves get output values unchanged.
     sai_attribute_t getAttr = {};
     getAttr.id = SAI_MCAST_FDB_ENTRY_ATTR_GROUP_ID;
     getAttr.value.oid = l2mcGroupId;
@@ -801,7 +801,7 @@ TEST(Meta, quad_impc_entry)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&e, &attr));
 
-    // The dummy backend leaves get output values unchanged.
+    // The dummy implementation leaves get output values unchanged.
     sai_attribute_t getAttr = {};
     getAttr.id = SAI_IPMC_ENTRY_ATTR_RPF_GROUP_ID;
     getAttr.value.oid = rpfGroupId;
