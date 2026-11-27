@@ -1001,6 +1001,55 @@ TEST_F(SyncdTest, FlexCounterRemoveFromAsicChannelDoesNotRequireVidToRidTranslat
                 value));
 }
 
+TEST_F(SyncdTest, restoreFlexCountersRegistersRecordedCounters)
+{
+    // The restore takes the object type from the VID, so these carry SAI_OBJECT_TYPE_PORT in its bits.
+    const sai_object_id_t portVid = 0x1000000000010;
+    const sai_object_id_t portRid = 0x1100000000010;
+    const sai_object_id_t unmappedPortVid = 0x1000000000011;
+
+    m_syncd->m_translator->insertRidAndVid(portRid, portVid);
+
+    m_sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    m_sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t count, const sai_stat_id_t *, uint64_t *counters) {
+        for (uint32_t i = 0; i < count; i++)
+        {
+            counters[i] = 0;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+    m_sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *, uint32_t,
+            const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    const std::string group = "PORT_STAT_COUNTER";
+    const std::string mappedKey = group + ":" + sai_serialize_object_id(portVid);
+    const std::string unmappedKey = group + ":" + sai_serialize_object_id(unmappedPortVid);
+    const std::vector<swss::FieldValueTuple> counterValues = {{PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS"}};
+
+    m_syncd->m_flexCounterGroupTable->set(group, {{POLL_INTERVAL_FIELD, "1000"}, {STATS_MODE_FIELD, STATS_MODE_READ}});
+    m_syncd->m_flexCounterTable->set(mappedKey, counterValues);
+    m_syncd->m_flexCounterTable->set(unmappedKey, counterValues);
+
+    ASSERT_EQ(m_syncd->m_manager->m_flexCounters.count(group), 0u);
+
+    m_syncd->restoreFlexCounters();
+
+    ASSERT_EQ(m_syncd->m_manager->m_flexCounters.count(group), 1u);
+    auto fc = m_syncd->m_manager->m_flexCounters.at(group);
+    EXPECT_FALSE(fc->isEmpty());
+    EXPECT_EQ(fc->m_pollInterval, 1000u);
+
+    std::string value;
+    EXPECT_TRUE(m_syncd->m_flexCounterTable->hget(mappedKey, PORT_COUNTER_ID_LIST, value));
+    EXPECT_FALSE(m_syncd->m_flexCounterTable->hget(unmappedKey, PORT_COUNTER_ID_LIST, value));
+
+    m_syncd->m_manager->removeAllCounters();
+}
+
 TEST_F(SyncdTest, processNotifySyncd)
 {
     auto sai = std::make_shared<MockableSaiInterface>();

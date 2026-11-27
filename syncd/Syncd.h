@@ -72,6 +72,13 @@ namespace syncd
 
             void run();
 
+        private:
+
+            void handOverRequestChannel(
+                    _In_ bool answerPending);
+
+        public:
+
         public: // TODO private
 
             void processEvent(
@@ -447,6 +454,8 @@ namespace syncd
                     _In_ const sai_attribute_t *attr_list);
 
             void performWarmRestart();
+
+            void restoreFlexCounters();
 
             void performWarmRestartSingleSwitch(
                     _In_ const std::string& key);
