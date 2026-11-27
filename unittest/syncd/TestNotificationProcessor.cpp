@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include <map>
+
 using namespace syncd;
 
 static std::string natData =
@@ -165,4 +167,185 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->insertRidAndVid(0x10000000000fd, 0x1000000000019);
     EXPECT_NO_THROW(notificationProcessor->syncProcessNotification(hostTxReadyItem));
     translator->eraseRidAndVid(0x10000000000fd, 0x1000000000019);
+}
+
+// attributes of FDB events, with the RIDs the SDK gives
+static const std::string BRIDGE_PORT_1 = "{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"value\":\"oid:0x1003a0000004a\"}";
+static const std::string BRIDGE_PORT_2 = "{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"value\":\"oid:0x1003a0000004b\"}";
+static const std::string FORWARD = "{\"id\":\"SAI_FDB_ENTRY_ATTR_PACKET_ACTION\",\"value\":\"SAI_PACKET_ACTION_FORWARD\"}";
+
+static std::string fdbEventData(
+        _In_ const std::string& mac,
+        _In_ const std::string& event,
+        _In_ const std::string& attrs = BRIDGE_PORT_1)
+{
+    SWSS_LOG_ENTER();
+
+    return "{\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x2600000001\\\",\\\"mac\\\":\\\"" + mac +
+        "\\\",\\\"switch_id\\\":\\\"oid:0x21000000000000\\\"}\",\"fdb_event\":\"" + event +
+        "\",\"list\":[" + attrs + "]}";
+}
+
+typedef std::map<std::string, std::string> FdbAttrs;
+
+/*
+ * Puts the FDB events of a notification in ASIC DB, with the RIDs of the
+ * events above mapped to their VIDs.
+ */
+class FdbEventsToAsicDb
+{
+    public:
+
+        FdbEventsToAsicDb()
+        {
+            SWSS_LOG_ENTER();
+
+            auto sai = std::make_shared<saivs::Sai>();
+            auto client = std::make_shared<RedisClient>(m_dbAsic);
+            auto producer = std::make_shared<syncd::RedisNotificationProducer>("ASIC_DB");
+
+            m_processor = std::make_shared<NotificationProcessor>(producer, client,
+                    [](const swss::KeyOpFieldsValuesTuple&){});
+
+            auto switchConfigContainer = std::make_shared<sairedis::SwitchConfigContainer>();
+            auto redisVidIndexGenerator = std::make_shared<sairedis::RedisVidIndexGenerator>(m_dbAsic, REDIS_KEY_VIDCOUNTER);
+            auto virtualObjectIdManager = std::make_shared<sairedis::VirtualObjectIdManager>(0, switchConfigContainer, redisVidIndexGenerator);
+
+            m_translator = std::make_shared<VirtualOidTranslator>(client, virtualObjectIdManager, sai);
+            m_processor->m_translator = m_translator;
+
+            for (const auto& ridVid: m_ridVids)
+            {
+                m_translator->insertRidAndVid(ridVid.first, ridVid.second);
+            }
+        }
+
+        ~FdbEventsToAsicDb()
+        {
+            SWSS_LOG_ENTER();
+
+            for (const auto& ridVid: m_ridVids)
+            {
+                m_translator->eraseRidAndVid(ridVid.first, ridVid.second);
+            }
+        }
+
+        void notify(
+                _In_ const std::vector<std::string>& events)
+        {
+            SWSS_LOG_ENTER();
+
+            std::string data;
+
+            for (const auto& event: events)
+            {
+                data += (data.empty() ? "[" : ",") + event;
+            }
+
+            std::vector<swss::FieldValueTuple> values;
+            swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, data + "]", values);
+
+            m_processor->syncProcessNotification(item);
+        }
+
+        // the attributes of the entry of the MAC in ASIC DB, removed from it
+        FdbAttrs takeEntry(
+                _In_ const std::string& mac)
+        {
+            SWSS_LOG_ENTER();
+
+            auto key = "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x26000000000001\",\"mac\":\"" + mac +
+                "\",\"switch_id\":\"oid:0x210000000000\"}";
+
+            auto attrs = m_dbAsic->hgetall<FdbAttrs>(key);
+
+            m_dbAsic->del(key);
+
+            return attrs;
+        }
+
+    private:
+
+        // switch, bridge ports 1 and 2, VLAN
+        const std::vector<std::pair<sai_object_id_t, sai_object_id_t>> m_ridVids = {
+            {0x21000000000000, 0x210000000000},
+            {0x1003a0000004a, 0x3a000000000a99},
+            {0x1003a0000004b, 0x3a000000000a9a},
+            {0x2600000001, 0x26000000000001}};
+
+        std::shared_ptr<swss::DBConnector> m_dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+
+        std::shared_ptr<NotificationProcessor> m_processor;
+
+        std::shared_ptr<VirtualOidTranslator> m_translator;
+};
+
+TEST(NotificationProcessor, fdbEventsOfOneNotificationKeepTheirOrder)
+{
+    FdbEventsToAsicDb fdb;
+
+    fdb.notify({
+        fdbEventData("00:00:00:00:00:11", "SAI_FDB_EVENT_LEARNED"),
+        fdbEventData("00:00:00:00:00:12", "SAI_FDB_EVENT_LEARNED"),
+        fdbEventData("00:00:00:00:00:11", "SAI_FDB_EVENT_AGED"),
+        fdbEventData("00:00:00:00:00:13", "SAI_FDB_EVENT_LEARNED"),
+        fdbEventData("00:00:00:00:00:12", "SAI_FDB_EVENT_MOVE")});
+
+    EXPECT_EQ(fdb.takeEntry("00:00:00:00:00:11"), FdbAttrs{});
+
+    for (auto mac: {"00:00:00:00:00:12", "00:00:00:00:00:13"})
+    {
+        EXPECT_EQ(fdb.takeEntry(mac), (FdbAttrs{
+                    {"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID", "oid:0x3a000000000a99"},
+                    {"SAI_FDB_ENTRY_ATTR_TYPE", "SAI_FDB_ENTRY_TYPE_DYNAMIC"}}));
+    }
+}
+
+TEST(NotificationProcessor, fdbMoveRemovesTheEntryLearnedBefore)
+{
+    FdbEventsToAsicDb fdb;
+
+    // the entry learned in the notification is written before the move
+    // removes it, so its packet action, which the move omits, is gone
+    fdb.notify({
+        fdbEventData("00:00:00:00:00:21", "SAI_FDB_EVENT_LEARNED", BRIDGE_PORT_1 + "," + FORWARD),
+        fdbEventData("00:00:00:00:00:21", "SAI_FDB_EVENT_MOVE", BRIDGE_PORT_2)});
+
+    EXPECT_EQ(fdb.takeEntry("00:00:00:00:00:21"), (FdbAttrs{
+                {"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID", "oid:0x3a000000000a9a"},
+                {"SAI_FDB_ENTRY_ATTR_TYPE", "SAI_FDB_ENTRY_TYPE_DYNAMIC"}}));
+}
+
+TEST(NotificationProcessor, fdbFlushRemovesTheEntriesLearnedBefore)
+{
+    FdbEventsToAsicDb fdb;
+
+    // the entry learned before the flush of the port is written before the
+    // flush removes it; the entry learned after the flush stays
+    fdb.notify({
+        fdbEventData("00:00:00:00:00:41", "SAI_FDB_EVENT_LEARNED"),
+        fdbEventData("00:00:00:00:00:00", "SAI_FDB_EVENT_FLUSHED"),
+        fdbEventData("00:00:00:00:00:42", "SAI_FDB_EVENT_LEARNED")});
+
+    EXPECT_EQ(fdb.takeEntry("00:00:00:00:00:41"), FdbAttrs{});
+
+    EXPECT_EQ(fdb.takeEntry("00:00:00:00:00:42"), (FdbAttrs{
+                {"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID", "oid:0x3a000000000a99"},
+                {"SAI_FDB_ENTRY_ATTR_TYPE", "SAI_FDB_ENTRY_TYPE_DYNAMIC"}}));
+}
+
+TEST(NotificationProcessor, fdbEntryLearnedTwiceKeepsTheLastValues)
+{
+    FdbEventsToAsicDb fdb;
+
+    // as with a write per event, the second learn changes the bridge port
+    // and keeps the packet action it omits
+    fdb.notify({
+        fdbEventData("00:00:00:00:00:31", "SAI_FDB_EVENT_LEARNED", BRIDGE_PORT_1 + "," + FORWARD),
+        fdbEventData("00:00:00:00:00:31", "SAI_FDB_EVENT_LEARNED", BRIDGE_PORT_2)});
+
+    EXPECT_EQ(fdb.takeEntry("00:00:00:00:00:31"), (FdbAttrs{
+                {"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID", "oid:0x3a000000000a9a"},
+                {"SAI_FDB_ENTRY_ATTR_PACKET_ACTION", "SAI_PACKET_ACTION_FORWARD"},
+                {"SAI_FDB_ENTRY_ATTR_TYPE", "SAI_FDB_ENTRY_TYPE_DYNAMIC"}}));
 }

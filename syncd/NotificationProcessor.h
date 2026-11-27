@@ -10,6 +10,7 @@
 
 #include <thread>
 #include <memory>
+#include <unordered_map>
 #include <condition_variable>
 #include <functional>
 
@@ -17,6 +18,10 @@ namespace syncd
 {
     class NotificationProcessor
     {
+        public:
+
+            typedef std::unordered_map<std::string, std::vector<swss::FieldValueTuple>> FdbEntriesHash;
+
         public:
 
             NotificationProcessor(
@@ -54,8 +59,18 @@ namespace syncd
                     _In_ uint32_t count,
                     _In_ const sai_attribute_t *list);
 
+            /*
+             * Created entries go to learned, to be put in ASIC DB with the
+             * other entries of a notification at once, by
+             * redisPutLearnedFdbEntriesToAsicView, which removals and flushes
+             * call first, to keep the order of the events.
+             */
             void redisPutFdbEntryToAsicView(
-                    _In_ const sai_fdb_event_notification_data_t *fdb);
+                    _In_ const sai_fdb_event_notification_data_t *fdb,
+                    _Inout_ FdbEntriesHash& learned);
+
+            void redisPutLearnedFdbEntriesToAsicView(
+                    _Inout_ FdbEntriesHash& learned);
 
             bool check_fdb_event_notification_data(
                     _In_ const sai_fdb_event_notification_data_t& data);
