@@ -19,6 +19,7 @@
 #include "CRMTracker.h"
 #include "PortConfigMap.h"
 #include "VppInterfaceRegistry.h"
+#include "VppTransaction.h"
 
 #include "vppxlate/SaiVppXlate.h"
 #include "vppxlate/SaiRouteStats.h"
@@ -293,32 +294,18 @@ namespace saivs
                     _In_ const sai_attribute_t* attr,
                     _In_ const std::function<sai_status_t(sai_object_id_t)>& apply);
 
-            // Only resources acquired by this CREATE may be unwound on failure.
+            /*
+             * What a RIF CREATE programs on. The undo actions of its steps are
+             * in the request's transaction: only an interface the CREATE made
+             * itself is deleted, and settings it changed on an existing one are
+             * restored.
+             */
             struct RifCreateState
             {
                 std::string hwif;
-                std::string parent;
-                std::string tap;
-                uint32_t vlan = 0;
-                uint32_t previous_vrf = 0;
-                vpp_interface_state_t previous_state{};
-                bool previous_mpls = false;
-                bool bvi = false;
                 bool interface_created = false;
-                bool lcp_created = false;
-                bool bridge_attached = false;
-                bool dhcp6_mroute_added = false;
-                bool loopback_applied = false;
-                bool vrf_changed = false;
-                bool mtu_changed = false;
-                bool mpls_changed = false;
-                bool admin_changed = false;
-                bool ip6_enabled = false;
                 bool resync_children = false;
             };
-
-            sai_status_t rollbackRifCreate(
-                    _In_ const RifCreateState& state);
 
             sai_status_t vpp_register_router_interface(
                     _In_ sai_object_id_t rif_oid,
@@ -502,6 +489,25 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ uint32_t attr_count,
                     _Out_ sai_attribute_t *attr_list) override;
+
+        private:
+
+            // Bodies of create/remove/set, run inside the request's transaction
+            sai_status_t create_dispatch(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t remove_dispatch(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::string &serializedObjectId);
+
+            sai_status_t set_dispatch(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr);
 
         protected:
 
@@ -1082,8 +1088,21 @@ namespace saivs
                     _In_ const std::string& sub_hwif,
                     _In_ bool is_up);
 
-            void vpp_resync_sub_interface_admin_state(
+            /*
+             * Applies the deferred admin ups of a parent's sub-interfaces and
+             * takes them off m_sub_if_admin_up_pending. Returns each one with
+             * whether VPP took the admin up, so a caller that undoes its own
+             * parent admin up can defer them again (deferSubInterfaceAdminUp).
+             */
+            std::vector<std::pair<std::string, bool>> vpp_resync_sub_interface_admin_state(
                     _In_ const std::string& parent_hwif);
+
+            /*
+             * Records the undo of a resync in the active transaction: back to
+             * admin down and back on m_sub_if_admin_up_pending.
+             */
+            void deferSubInterfaceAdminUp(
+                    _In_ const std::vector<std::pair<std::string, bool>>& applied);
 
             // set ethernet interface mtu including L2 header
             sai_status_t vpp_set_port_mtu (

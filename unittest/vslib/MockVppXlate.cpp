@@ -761,19 +761,20 @@ extern "C" int __wrap_set_interface_vrf(const char *name, uint32_t subId, uint32
 {
     SWSS_LOG_ENTER();
     ++vppMock().vrfSetCalls;
-    if (vppMock().setVrfResult == 0)
+    const int result = (vppMock().setVrfFailsIpv6Only && !is_ipv6) ? 0 : vppMock().setVrfResult;
+    if (result == 0)
     {
         const auto ifname = std::string(name) + (subId ? "." + std::to_string(subId) : "");
-        vppMock().interfaceVrfs[ifname] = table;
+        (is_ipv6 ? vppMock().interfaceVrfs6 : vppMock().interfaceVrfs)[ifname] = table;
         vppMock().calls.push_back({"set_interface_vrf", name ? name : "", table, subId, is_ipv6});
     }
-    return vppMock().setVrfResult;
+    return result;
 }
 
-extern "C" int __wrap_get_interface_vrf(const char *name, bool, uint32_t *table)
+extern "C" int __wrap_get_interface_vrf(const char *name, bool is_ipv6, uint32_t *table)
 {
     SWSS_LOG_ENTER();
-    *table = vppMock().interfaceVrfs[name];
+    *table = (is_ipv6 ? vppMock().interfaceVrfs6 : vppMock().interfaceVrfs)[name];
     return vppMock().getVrfResult;
 }
 
@@ -788,8 +789,12 @@ extern "C" int __wrap_ip_vrf_add(uint32_t table, const char *vrf_name, bool is_i
 extern "C" int __wrap_ip_vrf_del(uint32_t table, const char *vrf_name, bool is_ipv6)
 {
     SWSS_LOG_ENTER();
-    vppMock().vrfTables.erase(table);
     vppMock().calls.push_back({"ip_vrf_del", vrf_name ? vrf_name : "", table, 0, is_ipv6});
+    if (vppMock().vrfDelResult != 0 && is_ipv6 == vppMock().vrfDelFailsIpv6)
+    {
+        return vppMock().vrfDelResult;
+    }
+    vppMock().vrfTables.erase(table);
     return 0;
 }
 
