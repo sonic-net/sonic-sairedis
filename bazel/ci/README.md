@@ -105,7 +105,10 @@ probes are excluded. The seven new sources include the non-ASAN Syncd test
 of `Asan.cpp`; `AsanCtor.cpp` is only linked in ASAN daemon builds. See the
 [Make compiler trace and Bazel source owners](https://gist.github.com/securely1g/a0401a3ae7f432bc3ff66db1eaa151c0/b2e1baf91f1b703283627706a271a52bfbda2439).
 
-The upstream update through `22550fa4` adds VPP debug-counter sources and linker wrappers under `if USE_VPP` in `vslib/Makefile.am` and `unittest/vslib/Makefile.am`. With VPP disabled the two Makefiles have identical active definitions and expanded source lists to the audited `c41b95c` profile. The SAI gitlink and the 373 expected target/source pairs are unchanged.
+Through upstream `d2377db5`, the Makefile updates add VPP debug-counter sources,
+the sFlow unit test and linker wrappers under `if USE_VPP`. With VPP disabled,
+the Make source lists still match the 373 target/source pairs audited at
+`c41b95c` with the same SAI gitlink.
 
 The manifest guards the exact tracked `Makefile.am` path set, `configure.ac`,
 and the `SAI` gitlink. It checks both Git index bytes and working-tree bytes.
