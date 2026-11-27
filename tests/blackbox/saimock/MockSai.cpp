@@ -1744,6 +1744,7 @@ sai_status_t MockSai::flushFdbEntries(
         const auto& key = it->first;
 
         if (key.objecttype != SAI_OBJECT_TYPE_FDB_ENTRY ||
+                key.objectkey.key.fdb_entry.switch_id != switchId ||
                 (bvId != SAI_NULL_OBJECT_ID && key.objectkey.key.fdb_entry.bv_id != bvId))
         {
             ++it;
