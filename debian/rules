@@ -25,7 +25,7 @@ endif
 # package maintainers to append CFLAGS
 #export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
 # package maintainers to append LDFLAGS
-#export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
+export DEB_LDFLAGS_MAINT_APPEND = -Wl,-z,noexecstack
 
 configure_opts = --disable-static
 ifeq ($(ENABLE_ASAN), y)
