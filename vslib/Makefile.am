@@ -105,6 +105,7 @@ libSaiVS_a_SOURCES +=\
 					  vpp/SwitchVppMpls.cpp \
 					  vpp/SwitchVppDebugCounter.cpp \
 					  vpp/TunnelManager.cpp \
+					  vpp/VppTransaction.cpp \
 					  vpp/SaiVppLog.cpp \
 					  vpp/vppxlate/SaiVppXlate.c \
 					  vpp/vppxlate/SaiVppStats.c \
