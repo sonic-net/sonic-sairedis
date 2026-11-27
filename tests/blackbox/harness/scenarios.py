@@ -1,4 +1,4 @@
-"""Summaries the benchmarks report, from Bench.measure results."""
+"""Summarizes Bench.measure results for the benchmarks' reports."""
 
 ROUTE = "SAI_OBJECT_TYPE_ROUTE_ENTRY"
 

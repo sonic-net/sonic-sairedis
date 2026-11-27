@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <functional>
 #include <sstream>
 
 #include <errno.h>
@@ -14,6 +15,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 #define MUTEX() std::lock_guard<std::mutex> _lock(m_mutex)
@@ -546,7 +548,7 @@ std::string MockSai::notify(
         }
     }
 
-    std::shared_ptr<std::thread> thread;
+    std::function<void()> notifier;
 
     if (args[1] == "fdb")
     {
@@ -567,19 +569,35 @@ std::string MockSai::notify(
             return jsonError("unknown fdb event " + name);
         }
 
-        m_notifiersRunning++;
-
-        thread = std::make_shared<std::thread>(&MockSai::fdbNotifier, this, count, (uint32_t)batch, rate, event, start);
+        notifier = [this, count, batch, rate, event, start]() {
+            fdbNotifier(count, (uint32_t)batch, rate, event, start);
+        };
     }
     else if (args[1] == "port_state")
     {
-        m_notifiersRunning++;
-
-        thread = std::make_shared<std::thread>(&MockSai::portNotifier, this, count, (uint32_t)batch, rate);
+        notifier = [this, count, batch, rate]() {
+            portNotifier(count, (uint32_t)batch, rate);
+        };
     }
     else
     {
         return jsonError("unknown notification " + args[1]);
+    }
+
+    // before the thread starts, which decrements it when it is done
+    m_notifiersRunning++;
+
+    std::shared_ptr<std::thread> thread;
+
+    try
+    {
+        thread = std::make_shared<std::thread>(notifier);
+    }
+    catch (const std::exception& e)
+    {
+        m_notifiersRunning--;
+
+        return jsonError(std::string("failed to start the notifier: ") + e.what());
     }
 
     std::lock_guard<std::mutex> lock(m_notifierMutex);
@@ -611,7 +629,17 @@ static void paceTo(
 
     if (due > nowNs)
     {
-        usleep((useconds_t)((due - nowNs) / 1000));
+        uint64_t ns = due - nowNs;
+
+        struct timespec ts;
+
+        ts.tv_sec = (time_t)(ns / 1000000000ULL);
+        ts.tv_nsec = (long)(ns % 1000000000ULL);
+
+        while (nanosleep(&ts, &ts) == -1 && errno == EINTR)
+        {
+            // a signal woke it up: ts has the time left
+        }
     }
 }
 
@@ -913,7 +941,7 @@ void MockSai::startControlServer()
         return;
     }
 
-    chmod(m_config.controlSocket.c_str(), 0666);
+    chmod(m_config.controlSocket.c_str(), 0600);
 
     m_stopFd = eventfd(0, EFD_CLOEXEC);
 

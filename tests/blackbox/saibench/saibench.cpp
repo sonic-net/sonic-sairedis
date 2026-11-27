@@ -103,7 +103,7 @@ static int profileGetNextValue(
 
     static auto it = g_profile.begin();
 
-    if (value == nullptr)
+    if (variable == nullptr || value == nullptr)
     {
         it = g_profile.begin();
 
@@ -909,6 +909,9 @@ static void runPhase(
     for (uint64_t first = 0; first < count; first += std::max<uint64_t>(bulk, 1))
     {
         uint32_t n = (uint32_t)std::min<uint64_t>(std::max<uint64_t>(bulk, 1), count - first);
+
+        // a call that fails before it sets them counts as n errors
+        std::fill(statuses.begin(), statuses.begin() + n, SAI_STATUS_NOT_EXECUTED);
 
         uint64_t t0 = nowNs();
 
