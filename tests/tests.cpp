@@ -13,6 +13,8 @@
 
 #include <unistd.h>
 #include <signal.h>
+#include <chrono>
+#include <future>
 #include <thread>
 #include <memory>
 
@@ -100,6 +102,33 @@ static void test_zeromqchannel_first_notification()
     }
 }
 
+static void test_zeromqchannel_drops_oversized_notification()
+{
+    SWSS_LOG_ENTER();
+
+    const std::string endpoint = "ipc://@sairedis-notification-limit-" + std::to_string(getpid());
+    const std::string notifications = endpoint + "-notifications";
+    std::promise<void> last;
+    auto done = last.get_future();
+    std::vector<std::string> delivered;
+    {
+        ZeroMQChannel receiver(endpoint, notifications, [&](const std::string& op,
+                const std::string&, const std::vector<swss::FieldValueTuple>&)
+        {
+            delivered.push_back(op);
+            if (op == "last")
+            {
+                last.set_value();
+            }
+        }, 64);
+        ZeroMQNotificationProducer sender(notifications);
+        sender.send("oversized", std::string(128, 'x'), {});
+        sender.send("last", "ok", {});
+        ASSERT_EQ(done.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+    }
+    ASSERT_EQ(delivered, std::vector<std::string>{"last"});
+}
+
 void send_signals()
 {
     SWSS_LOG_ENTER();
@@ -146,6 +175,8 @@ int main()
     test_zeromqchannel_destructor();
 
     test_zeromqchannel_first_notification();
+
+    test_zeromqchannel_drops_oversized_notification();
 
     test_zeromqchannel_eintr_errno_on_wait();
 
