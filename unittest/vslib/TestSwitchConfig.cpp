@@ -19,6 +19,9 @@ TEST(SwitchConfig, parseSaiSwitchType)
 
     EXPECT_TRUE(SwitchConfig::parseSaiSwitchType(SAI_VALUE_SAI_SWITCH_TYPE_PHY, type));
     EXPECT_EQ(type, SAI_SWITCH_TYPE_PHY);
+
+    EXPECT_TRUE(SwitchConfig::parseSaiSwitchType(SAI_VALUE_SAI_SWITCH_TYPE_POE, type));
+    EXPECT_EQ(type, SAI_SWITCH_TYPE_POE);
 }
 
 TEST(SwitchConfig, parseSwitchType)
@@ -36,6 +39,9 @@ TEST(SwitchConfig, parseSwitchType)
 
     EXPECT_TRUE(SwitchConfig::parseSwitchType(SAI_VALUE_VS_SWITCH_TYPE_MLNX2700, type));
     EXPECT_EQ(type, SAI_VS_SWITCH_TYPE_MLNX2700);
+
+    EXPECT_TRUE(SwitchConfig::parseSwitchType(SAI_VALUE_VS_SWITCH_TYPE_POE, type));
+    EXPECT_EQ(type, SAI_VS_SWITCH_TYPE_POE);
 }
 
 
