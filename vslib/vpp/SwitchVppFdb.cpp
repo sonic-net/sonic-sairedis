@@ -2421,7 +2421,7 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
     {
         auto attr_admin = sai_metadata_get_attr_by_id(attr_id, attr_count, attr_list);
 
-        if (attr_admin != NULL && vpp_set_bvi_admin_state(hw_ifname, attr_admin, true) != SAI_STATUS_SUCCESS)
+        if (attr_admin != NULL && vpp_set_bvi_admin_state(bvi_hwif.c_str(), attr_admin, true) != SAI_STATUS_SUCCESS)
         {
             return SAI_STATUS_FAILURE;
         }
