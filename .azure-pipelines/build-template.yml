@@ -63,6 +63,15 @@ jobs:
     options:  "--privileged"
 
   steps:
+  # Free unused SDKs on the hosted agent, not inside the sonic-slave container.
+  - ${{ if eq(parameters.pool, 'default') }}:
+    - script: |
+        set -ex
+        df -h /
+        sudo rm -rf /usr/local/lib/android /opt/ghc /usr/local/.ghcup
+        df -h /
+      target: host
+      displayName: 'Free disk space on the agent'
   - checkout: self
     clean: true
     submodules: true
