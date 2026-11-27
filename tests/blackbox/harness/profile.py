@@ -205,7 +205,7 @@ def main(argv):
     parser.add_argument("folded", nargs="+")
     parser.add_argument("--top", type=int, default=25)
     parser.add_argument("--match", action="append", default=[],
-                        help="also print the % of CPU in stacks with a frame matching this regex")
+                        help="also print the %% of CPU in stacks with a frame matching this regex")
     args = parser.parse_args(argv)
     for path in args.folded:
         stacks = read_folded(path)
