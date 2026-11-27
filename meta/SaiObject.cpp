@@ -8,7 +8,8 @@ using namespace saimeta;
 
 SaiObject::SaiObject(
         _In_ const sai_object_meta_key_t& metaKey):
-    m_metaKey(metaKey)
+    m_metaKey(metaKey),
+    m_learned(false)
 {
     SWSS_LOG_ENTER();
 
@@ -80,4 +81,19 @@ std::vector<std::shared_ptr<SaiAttrWrapper>> SaiObject::getAttributes() const
         values.push_back(kvp.second);
 
     return values;
+}
+
+void SaiObject::setLearned(
+        _In_ bool learned)
+{
+    SWSS_LOG_ENTER();
+
+    m_learned = learned;
+}
+
+bool SaiObject::isLearned() const
+{
+    SWSS_LOG_ENTER();
+
+    return m_learned;
 }

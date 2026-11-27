@@ -60,6 +60,12 @@
     { SWSS_LOG_DEBUG(msg " status: %s", sai_serialize_status(status).c_str()); }        \
     else { SWSS_LOG_ERROR(msg " status: %s", sai_serialize_status(status).c_str()); }
 
+#define META_LOG_CREATE_STATUS(ot,status)                                               \
+    if ((status) == SAI_STATUS_SUCCESS)                                                 \
+    { SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str()); }      \
+    else { META_LOG_PRIO(saimeta::Globals::getApiFailureLogPriority(SAI_COMMON_API_CREATE,\
+            (ot), (status)), "create status: %s", sai_serialize_status(status).c_str()); }
+
 #define DECLARE_CREATE_ENTRY(OT,ot)                                   \
 sai_status_t Meta::create(                                            \
         _In_ const sai_ ## ot ## _t* ot,                              \
@@ -76,7 +82,7 @@ sai_status_t Meta::create(                                            \
         attr_count, attr_list);                                       \
     CHECK_STATUS_SUCCESS(status);                                     \
     status = m_implementation->create(ot, attr_count, attr_list);     \
-    META_LOG_STATUS(status, "create");                                \
+    META_LOG_CREATE_STATUS(meta_key.objecttype, status);              \
     if (status == SAI_STATUS_SUCCESS)                                 \
     {                                                                 \
         meta_generic_validation_post_create(meta_key, ot->switch_id,  \
@@ -125,6 +131,7 @@ sai_status_t Meta::set(                                               \
     if (status == SAI_STATUS_SUCCESS)                                 \
     {                                                                 \
         meta_generic_validation_post_set(meta_key, attr);             \
+        meta_api_set_clears_learned(meta_key);                        \
     }                                                                 \
     return status;                                                    \
 }
@@ -742,6 +749,7 @@ sai_status_t Meta::bulkSet(                                                     
         if (object_statuses[idx] == SAI_STATUS_SUCCESS)                                                                 \
         {                                                                                                               \
             meta_generic_validation_post_set(vmk[idx], &attr_list[idx]);                                                \
+            meta_api_set_clears_learned(vmk[idx]);                                                                      \
         }                                                                                                               \
     }                                                                                                                   \
     return status;                                                                                                      \
@@ -2157,7 +2165,12 @@ sai_status_t Meta::meta_sai_validate_fdb_entry(
     {
         if (m_saiObjectCollection.objectExists(meta_key_fdb))
         {
-            SWSS_LOG_ERROR("object key %s already exists",
+            // A learn of this MAC can beat the create, and the caller handles the
+            // status; an entry from an API create means a double create.
+            auto prio = m_saiObjectCollection.getObject(meta_key_fdb)->isLearned()
+                ? swss::Logger::SWSS_NOTICE : swss::Logger::SWSS_ERROR;
+
+            META_LOG_PRIO(prio, "object key %s already exists",
                     sai_serialize_object_meta_key(meta_key_fdb).c_str());
 
             return SAI_STATUS_ITEM_ALREADY_EXISTS;
@@ -6202,6 +6215,18 @@ void Meta::meta_generic_validation_post_create(
     }
 }
 
+void Meta::meta_api_set_clears_learned(
+        _In_ const sai_object_meta_key_t& meta_key)
+{
+    SWSS_LOG_ENTER();
+
+    // The caller now owns the entry, so a create of it is a double create.
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_FDB_ENTRY && m_saiObjectCollection.objectExists(meta_key))
+    {
+        m_saiObjectCollection.getObject(meta_key)->setLearned(false);
+    }
+}
+
 void Meta::meta_generic_validation_post_set(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ const sai_attribute_t *attr)
@@ -6728,6 +6753,8 @@ void Meta::meta_sai_on_fdb_event_single(
                 if (status == SAI_STATUS_SUCCESS)
                 {
                     meta_generic_validation_post_create(meta_key_fdb, data.fdb_entry.switch_id, count, list);
+
+                    m_saiObjectCollection.getObject(meta_key_fdb)->setLearned(true);
                 }
                 else
                 {

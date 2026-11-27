@@ -45,3 +45,30 @@ TEST(Globals, getHardwareInfo)
 
     EXPECT_EQ("000", Globals::getHardwareInfo(1, &attr));
 }
+
+TEST(Globals, getApiFailureLogPriority)
+{
+    EXPECT_EQ(swss::Logger::SWSS_NOTICE, Globals::getApiFailureLogPriority(
+                SAI_COMMON_API_CREATE, SAI_OBJECT_TYPE_FDB_ENTRY, SAI_STATUS_ITEM_ALREADY_EXISTS));
+
+    EXPECT_EQ(swss::Logger::SWSS_ERROR, Globals::getApiFailureLogPriority(
+                SAI_COMMON_API_CREATE, SAI_OBJECT_TYPE_FDB_ENTRY, SAI_STATUS_FAILURE));
+
+    EXPECT_EQ(swss::Logger::SWSS_ERROR, Globals::getApiFailureLogPriority(
+                SAI_COMMON_API_CREATE, SAI_OBJECT_TYPE_FDB_ENTRY, SAI_STATUS_TABLE_FULL));
+
+    EXPECT_EQ(swss::Logger::SWSS_ERROR, Globals::getApiFailureLogPriority(
+                SAI_COMMON_API_REMOVE, SAI_OBJECT_TYPE_FDB_ENTRY, SAI_STATUS_ITEM_ALREADY_EXISTS));
+
+    EXPECT_EQ(swss::Logger::SWSS_ERROR, Globals::getApiFailureLogPriority(
+                SAI_COMMON_API_SET, SAI_OBJECT_TYPE_FDB_ENTRY, SAI_STATUS_ITEM_ALREADY_EXISTS));
+
+    EXPECT_EQ(swss::Logger::SWSS_ERROR, Globals::getApiFailureLogPriority(
+                SAI_COMMON_API_BULK_CREATE, SAI_OBJECT_TYPE_FDB_ENTRY, SAI_STATUS_ITEM_ALREADY_EXISTS));
+
+    EXPECT_EQ(swss::Logger::SWSS_ERROR, Globals::getApiFailureLogPriority(
+                SAI_COMMON_API_CREATE, SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, SAI_STATUS_ITEM_ALREADY_EXISTS));
+
+    EXPECT_EQ(swss::Logger::SWSS_ERROR, Globals::getApiFailureLogPriority(
+                SAI_COMMON_API_CREATE, SAI_OBJECT_TYPE_MCAST_FDB_ENTRY, SAI_STATUS_ITEM_ALREADY_EXISTS));
+}

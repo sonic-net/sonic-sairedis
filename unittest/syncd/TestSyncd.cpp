@@ -25,6 +25,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <sstream>
 #include <thread>
 
 #include "swss/table.h"
@@ -999,6 +1000,191 @@ TEST_F(SyncdTest, FlexCounterRemoveFromAsicChannelDoesNotRequireVidToRidTranslat
                 key,
                 "TEST_FIELD",
                 value));
+}
+
+namespace
+{
+    // Redirects swss logger output from syslog for the lifetime of the object.
+    class LogCapture
+    {
+        public:
+
+            LogCapture():
+                m_minPrio(swss::Logger::getMinPrio())
+            {
+                SWSS_LOG_ENTER();
+
+                swss::Logger::setMinPrio(swss::Logger::SWSS_NOTICE);
+                swss::Logger::swssOutputNotify("", "STDERR");
+                testing::internal::CaptureStderr();
+            }
+
+            ~LogCapture()
+            {
+                SWSS_LOG_ENTER();
+
+                stop();
+            }
+
+            std::string stop()
+            {
+                SWSS_LOG_ENTER();
+
+                if (m_capturing)
+                {
+                    m_output = testing::internal::GetCapturedStderr();
+                    swss::Logger::swssOutputNotify("", "SYSLOG");
+                    swss::Logger::setMinPrio(m_minPrio);
+                    m_capturing = false;
+                }
+
+                return m_output;
+            }
+
+        private:
+
+            swss::Logger::Priority m_minPrio;
+
+            bool m_capturing = true;
+
+            std::string m_output;
+    };
+
+    // Returns the log of one quad event.
+    std::string processEventLog(
+            Syncd& syncd,
+            const swss::KeyOpFieldsValuesTuple& request)
+    {
+        SWSS_LOG_ENTER();
+
+        MockSelectableChannel consumer;
+        EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::SetArgReferee<0>(request));
+        EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+
+        LogCapture capture;
+
+        syncd.processEvent(consumer);
+
+        return capture.stop();
+    }
+
+    // Counts log lines that have the given priority and text.
+    size_t countLogLines(
+            const std::string& output,
+            const std::string& prio,
+            const std::string& text)
+    {
+        SWSS_LOG_ENTER();
+
+        std::istringstream in(output);
+        std::string line;
+        size_t count = 0;
+
+        while (std::getline(in, line))
+        {
+            if (line.find(prio + ":-") != std::string::npos && line.find(text) != std::string::npos)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    const std::string fdbEntryKey =
+        "SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x26000000000002\",\"mac\":\"2E:DF:A2:51:EF:65\",\"switch_id\":\"oid:0x21000000000000\"}";
+}
+
+TEST_F(SyncdTest, FdbCreateAlreadyExistsLogsNotice)
+{
+    m_syncd->m_translator->insertRidAndVid(0x11000000000001, 0x21000000000000);
+    m_syncd->m_translator->insertRidAndVid(0x11000000000002, 0x26000000000002);
+
+    auto channel = std::make_shared<MockSelectableChannel>();
+    m_syncd->m_selectableChannel = channel;
+    m_syncd->m_enableSyncMode = true;
+
+    EXPECT_CALL(*channel, set(
+                sai_serialize_status(SAI_STATUS_ITEM_ALREADY_EXISTS),
+                testing::IsEmpty(),
+                REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .Times(1);
+
+    m_sai->setStatus(SAI_STATUS_ITEM_ALREADY_EXISTS);
+
+    swss::KeyOpFieldsValuesTuple request = {
+        fdbEntryKey,
+        REDIS_ASIC_STATE_COMMAND_CREATE,
+        {
+            {"SAI_FDB_ENTRY_ATTR_TYPE", "SAI_FDB_ENTRY_TYPE_STATIC"},
+            {"SAI_FDB_ENTRY_ATTR_PACKET_ACTION", "SAI_PACKET_ACTION_FORWARD"}
+        }
+    };
+
+    auto output = processEventLog(*m_syncd, request);
+
+    EXPECT_EQ(1u, countLogLines(output, "NOTICE", "api SAI_COMMON_API_CREATE failed in syncd mode: SAI_STATUS_ITEM_ALREADY_EXISTS"));
+    EXPECT_EQ(1u, countLogLines(output, "NOTICE", "attr: SAI_FDB_ENTRY_ATTR_TYPE: SAI_FDB_ENTRY_TYPE_STATIC"));
+    EXPECT_EQ(1u, countLogLines(output, "NOTICE", "attr: SAI_FDB_ENTRY_ATTR_PACKET_ACTION: SAI_PACKET_ACTION_FORWARD"));
+    EXPECT_EQ(0u, countLogLines(output, "ERROR", ""));
+}
+
+TEST_F(SyncdTest, FdbCreateOtherFailureLogsError)
+{
+    m_syncd->m_translator->insertRidAndVid(0x11000000000001, 0x21000000000000);
+    m_syncd->m_translator->insertRidAndVid(0x11000000000002, 0x26000000000002);
+
+    auto channel = std::make_shared<MockSelectableChannel>();
+    m_syncd->m_selectableChannel = channel;
+    m_syncd->m_enableSyncMode = true;
+
+    EXPECT_CALL(*channel, set(
+                sai_serialize_status(SAI_STATUS_TABLE_FULL),
+                testing::IsEmpty(),
+                REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .Times(1);
+
+    m_sai->setStatus(SAI_STATUS_TABLE_FULL);
+
+    swss::KeyOpFieldsValuesTuple request = {
+        fdbEntryKey,
+        REDIS_ASIC_STATE_COMMAND_CREATE,
+        {{"SAI_FDB_ENTRY_ATTR_TYPE", "SAI_FDB_ENTRY_TYPE_STATIC"}}
+    };
+
+    auto output = processEventLog(*m_syncd, request);
+
+    EXPECT_EQ(1u, countLogLines(output, "ERROR", "api SAI_COMMON_API_CREATE failed in syncd mode: SAI_STATUS_TABLE_FULL"));
+    EXPECT_EQ(1u, countLogLines(output, "ERROR", "attr: SAI_FDB_ENTRY_ATTR_TYPE: SAI_FDB_ENTRY_TYPE_STATIC"));
+}
+
+TEST_F(SyncdTest, FdbSetAlreadyExistsLogsError)
+{
+    m_syncd->m_translator->insertRidAndVid(0x11000000000001, 0x21000000000000);
+    m_syncd->m_translator->insertRidAndVid(0x11000000000002, 0x26000000000002);
+
+    auto channel = std::make_shared<MockSelectableChannel>();
+    m_syncd->m_selectableChannel = channel;
+    m_syncd->m_enableSyncMode = true;
+
+    EXPECT_CALL(*channel, set(
+                sai_serialize_status(SAI_STATUS_ITEM_ALREADY_EXISTS),
+                testing::IsEmpty(),
+                REDIS_ASIC_STATE_COMMAND_GETRESPONSE))
+        .Times(1);
+
+    m_sai->setStatus(SAI_STATUS_ITEM_ALREADY_EXISTS);
+
+    swss::KeyOpFieldsValuesTuple request = {
+        fdbEntryKey,
+        REDIS_ASIC_STATE_COMMAND_SET,
+        {{"SAI_FDB_ENTRY_ATTR_PACKET_ACTION", "SAI_PACKET_ACTION_DROP"}}
+    };
+
+    auto output = processEventLog(*m_syncd, request);
+
+    EXPECT_EQ(1u, countLogLines(output, "ERROR", "api SAI_COMMON_API_SET failed in syncd mode: SAI_STATUS_ITEM_ALREADY_EXISTS"));
+    EXPECT_EQ(1u, countLogLines(output, "ERROR", "attr: SAI_FDB_ENTRY_ATTR_PACKET_ACTION: SAI_PACKET_ACTION_DROP"));
 }
 
 TEST_F(SyncdTest, processNotifySyncd)

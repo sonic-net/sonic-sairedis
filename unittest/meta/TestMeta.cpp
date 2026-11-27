@@ -10,6 +10,7 @@
 #include <boost/algorithm/string/join.hpp>
 
 #include <memory>
+#include <sstream>
 
 #define VLAN_ID 2
 
@@ -256,6 +257,264 @@ TEST_F(MetaTest, remove_nonexistent_fdb_entry)
     sai_fdb_entry_t fdb_entry = GenFdbEntry();
     sai_status_t status = m_meta->remove(&fdb_entry);
     EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+namespace
+{
+    // Redirects swss logger output from syslog for the lifetime of the object.
+    class LogCapture
+    {
+        public:
+
+            LogCapture():
+                m_minPrio(swss::Logger::getMinPrio())
+            {
+                SWSS_LOG_ENTER();
+
+                swss::Logger::setMinPrio(swss::Logger::SWSS_NOTICE);
+                swss::Logger::swssOutputNotify("", "STDERR");
+                testing::internal::CaptureStderr();
+            }
+
+            ~LogCapture()
+            {
+                SWSS_LOG_ENTER();
+
+                stop();
+            }
+
+            std::string stop()
+            {
+                SWSS_LOG_ENTER();
+
+                if (m_capturing)
+                {
+                    m_output = testing::internal::GetCapturedStderr();
+                    swss::Logger::swssOutputNotify("", "SYSLOG");
+                    swss::Logger::setMinPrio(m_minPrio);
+                    m_capturing = false;
+                }
+
+                return m_output;
+            }
+
+        private:
+
+            swss::Logger::Priority m_minPrio;
+
+            bool m_capturing = true;
+
+            std::string m_output;
+    };
+
+    // Counts log lines that have the given priority and text.
+    size_t countLogLines(
+            const std::string& output,
+            const std::string& prio,
+            const std::string& text)
+    {
+        SWSS_LOG_ENTER();
+
+        std::istringstream in(output);
+        std::string line;
+        size_t count = 0;
+
+        while (std::getline(in, line))
+        {
+            if (line.find(prio + ":-") != std::string::npos && line.find(text) != std::string::npos)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    // Fails every FDB entry create as if the switch already held the entry.
+    class FdbExistsSaiInterface:
+        public MetaTestSaiInterface
+    {
+        public:
+
+            using MetaTestSaiInterface::create;
+
+            virtual sai_status_t create(
+                    _In_ const sai_fdb_entry_t*,
+                    _In_ uint32_t,
+                    _In_ const sai_attribute_t*) override
+            {
+                SWSS_LOG_ENTER();
+
+                return SAI_STATUS_ITEM_ALREADY_EXISTS;
+            }
+    };
+}
+
+static void sendFdbEvent(
+        _In_ Meta& meta,
+        _In_ sai_fdb_event_t eventType,
+        _In_ const sai_fdb_entry_t& fdbEntry)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_PACKET_ACTION;
+    attrs[1].value.s32 = SAI_PACKET_ACTION_FORWARD;
+
+    sai_fdb_event_notification_data_t data;
+
+    data.event_type = eventType;
+    data.fdb_entry = fdbEntry;
+    data.attr_count = 2;
+    data.attr = attrs;
+
+    meta.meta_sai_on_fdb_event(1, &data);
+}
+
+TEST_F(MetaTest, create_duplicate_fdb_entry_logs_error)
+{
+    sai_fdb_entry_t fdb_entry = GenFdbEntry();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(&fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data()));
+
+    LogCapture capture;
+    sai_status_t status = m_meta->create(&fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    auto output = capture.stop();
+
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+    EXPECT_EQ(1u, countLogLines(output, "ERROR", "already exists"));
+    EXPECT_EQ(0u, countLogLines(output, "NOTICE", "already exists"));
+}
+
+TEST_F(MetaTest, create_learned_fdb_entry_logs_notice)
+{
+    sai_fdb_entry_t fdb_entry = GenFdbEntry();
+    sendFdbEvent(*m_meta, SAI_FDB_EVENT_LEARNED, fdb_entry);
+
+    LogCapture capture;
+    sai_status_t status = m_meta->create(&fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    auto output = capture.stop();
+
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+    EXPECT_EQ(1u, countLogLines(output, "NOTICE", "already exists"));
+    EXPECT_EQ(0u, countLogLines(output, "ERROR", ""));
+}
+
+TEST_F(MetaTest, create_duplicate_fdb_entry_after_learn_and_set_logs_error)
+{
+    sai_fdb_entry_t fdb_entry = GenFdbEntry();
+    sendFdbEvent(*m_meta, SAI_FDB_EVENT_LEARNED, fdb_entry);
+
+    sai_attribute_t attr;
+    attr.id = SAI_FDB_ENTRY_ATTR_PACKET_ACTION;
+    attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->set(&fdb_entry, &attr));
+
+    LogCapture capture;
+    sai_status_t status = m_meta->create(&fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    auto output = capture.stop();
+
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+    EXPECT_EQ(1u, countLogLines(output, "ERROR", "already exists"));
+    EXPECT_EQ(0u, countLogLines(output, "NOTICE", "already exists"));
+}
+
+TEST_F(MetaTest, create_duplicate_fdb_entry_after_learn_aged_logs_error)
+{
+    sai_fdb_entry_t fdb_entry = GenFdbEntry();
+    sendFdbEvent(*m_meta, SAI_FDB_EVENT_LEARNED, fdb_entry);
+    sendFdbEvent(*m_meta, SAI_FDB_EVENT_AGED, fdb_entry);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(&fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data()));
+
+    LogCapture capture;
+    sai_status_t status = m_meta->create(&fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    auto output = capture.stop();
+
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+    EXPECT_EQ(1u, countLogLines(output, "ERROR", "already exists"));
+    EXPECT_EQ(0u, countLogLines(output, "NOTICE", "already exists"));
+}
+
+TEST_F(MetaTest, create_duplicate_fdb_entry_after_learn_removed_logs_error)
+{
+    sai_fdb_entry_t fdb_entry = GenFdbEntry();
+    sendFdbEvent(*m_meta, SAI_FDB_EVENT_LEARNED, fdb_entry);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->remove(&fdb_entry));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(&fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data()));
+
+    LogCapture capture;
+    sai_status_t status = m_meta->create(&fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    auto output = capture.stop();
+
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+    EXPECT_EQ(1u, countLogLines(output, "ERROR", "already exists"));
+    EXPECT_EQ(0u, countLogLines(output, "NOTICE", "already exists"));
+}
+
+TEST_F(MetaTest, remove_nonexistent_fdb_entry_logs_error)
+{
+    sai_fdb_entry_t fdb_entry = GenFdbEntry();
+
+    LogCapture capture;
+    sai_status_t status = m_meta->remove(&fdb_entry);
+    auto output = capture.stop();
+
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+    EXPECT_EQ(1u, countLogLines(output, "ERROR", "doesn't exist"));
+}
+
+TEST_F(MetaTest, create_duplicate_neigh_entry_logs_error)
+{
+    sai_neighbor_entry_t neigh_entry = GenNeighEntry();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(&neigh_entry, (uint32_t)m_attrs.size(), m_attrs.data()));
+
+    LogCapture capture;
+    sai_status_t status = m_meta->create(&neigh_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    auto output = capture.stop();
+
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+    EXPECT_EQ(1u, countLogLines(output, "ERROR", "already exists"));
+}
+
+TEST(Meta, create_fdb_entry_exists_in_implementation_logs_notice)
+{
+    Meta meta(std::make_shared<FdbExistsSaiInterface>());
+
+    sai_object_id_t switchId = SAI_NULL_OBJECT_ID;
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, meta.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_object_id_t vlanId = SAI_NULL_OBJECT_ID;
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = VLAN_ID;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, meta.create(SAI_OBJECT_TYPE_VLAN, &vlanId, switchId, 1, &attr));
+
+    sai_fdb_entry_t fdb_entry;
+    memset(&fdb_entry, 0, sizeof(fdb_entry));
+    fdb_entry.switch_id = switchId;
+    fdb_entry.bv_id = vlanId;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attr.value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+
+    LogCapture capture;
+    sai_status_t status = meta.create(&fdb_entry, 1, &attr);
+    auto output = capture.stop();
+
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+    EXPECT_EQ(1u, countLogLines(output, "NOTICE", "create status: SAI_STATUS_ITEM_ALREADY_EXISTS"));
+    EXPECT_EQ(0u, countLogLines(output, "ERROR", ""));
+
+    // the failed create left no entry behind
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, meta.remove(&fdb_entry));
 }
 
 TEST_F(MetaTest, create_duplicate_mcast_fdb_entry)
