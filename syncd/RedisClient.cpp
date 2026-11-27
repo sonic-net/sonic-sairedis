@@ -1,4 +1,6 @@
 #include "RedisClient.h"
+#include "RedisCommandArgs.h"
+#include "RedisConnectionPipeline.h"
 #include "VidManager.h"
 
 #include "sairediscommon.h"
@@ -7,6 +9,10 @@
 
 #include "swss/logger.h"
 #include "swss/redisapi.h"
+#include "swss/rediscommand.h"
+#include "swss/redisreply.h"
+
+#include <algorithm>
 
 using namespace syncd;
 
@@ -18,6 +24,136 @@ using namespace syncd;
 #define LANES                       "LANES"
 #define HIDDEN                      "HIDDEN"
 #define COLDVIDS                    "COLDVIDS"
+
+namespace
+{
+    // keys or fields of one DEL, HDEL or HSET, as swss::DBConnector::del
+    constexpr size_t ELEMENTS_PER_COMMAND = 128;
+
+    /*
+     * Pushes HSET of an object, which needs at least one field: an object
+     * without attributes gets field NULL.
+     */
+    void pushHsetObject(
+            _In_ RedisConnectionPipeline& pipe,
+            _In_ const std::string& key,
+            _In_ const std::vector<swss::FieldValueTuple>& values)
+    {
+        SWSS_LOG_ENTER();
+
+        static const std::string null = "NULL";
+
+        RedisCommandArgs args(2 + 2 * std::max<size_t>(values.size(), 1));
+
+        args.add("HSET", 4);
+        args.add(key);
+
+        for (const auto& fv: values)
+        {
+            args.add(fvField(fv));
+            args.add(fvValue(fv));
+        }
+
+        if (values.empty())
+        {
+            args.add(null);
+            args.add(null);
+        }
+
+        swss::RedisCommand hset;
+
+        args.format(hset);
+
+        pipe.push(hset);
+    }
+
+    /*
+     * Pushes HSET of fields and values when values is given, otherwise HDEL
+     * of fields, ELEMENTS_PER_COMMAND fields per command.
+     */
+    void pushHashFields(
+            _In_ RedisConnectionPipeline& pipe,
+            _In_ const std::string& key,
+            _In_ const std::vector<std::string>& fields,
+            _In_ const std::vector<std::string>* values)
+    {
+        SWSS_LOG_ENTER();
+
+        for (size_t start = 0; start < fields.size(); start += ELEMENTS_PER_COMMAND)
+        {
+            size_t end = std::min(fields.size(), start + ELEMENTS_PER_COMMAND);
+
+            RedisCommandArgs args(2 + (end - start) * (values ? 2 : 1));
+
+            if (values)
+                args.add("HSET", 4);
+            else
+                args.add("HDEL", 4);
+
+            args.add(key);
+
+            for (size_t idx = start; idx < end; idx++)
+            {
+                args.add(fields[idx]);
+
+                if (values)
+                {
+                    args.add(values->at(idx));
+                }
+            }
+
+            swss::RedisCommand command;
+
+            args.format(command);
+
+            pipe.push(command);
+        }
+    }
+
+    void pushDelKeys(
+            _In_ RedisConnectionPipeline& pipe,
+            _In_ const std::vector<std::string>& keys)
+    {
+        SWSS_LOG_ENTER();
+
+        for (size_t start = 0; start < keys.size(); start += ELEMENTS_PER_COMMAND)
+        {
+            size_t end = std::min(keys.size(), start + ELEMENTS_PER_COMMAND);
+
+            RedisCommandArgs args(1 + end - start);
+
+            args.add("DEL", 3);
+
+            for (size_t idx = start; idx < end; idx++)
+            {
+                args.add(keys[idx]);
+            }
+
+            swss::RedisCommand del;
+
+            args.format(del);
+
+            pipe.push(del);
+        }
+    }
+
+    void delKey(
+            _In_ swss::DBConnector& db,
+            _In_ const std::string& key)
+    {
+        SWSS_LOG_ENTER();
+
+        swss::RedisCommand del;
+
+        del.formatDEL(key);
+
+        RedisConnectionPipeline pipe(db);
+
+        pipe.push(del);
+
+        pipe.flush();
+    }
+}
 
 RedisClient::RedisClient(
         _In_ std::shared_ptr<swss::DBConnector> dbAsic):
@@ -235,7 +371,11 @@ void RedisClient::setDummyAsicStateObject(
 
     std::string strKey = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strVid);
 
-    m_dbAsic->hset(strKey, "NULL", "NULL");
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushHsetObject(pipe, strKey, {});
+
+    pipe.flush();
 }
 
 void RedisClient::setDummyAsicStateObjects(
@@ -244,7 +384,7 @@ void RedisClient::setDummyAsicStateObjects(
 {
     SWSS_LOG_ENTER();
 
-    swss::RedisPipeline pipe(m_dbAsic.get(), count);
+    RedisConnectionPipeline pipe(*m_dbAsic);
 
     for (size_t idx = 0; idx < count; idx++)
     {
@@ -256,9 +396,7 @@ void RedisClient::setDummyAsicStateObjects(
 
         std::string strKey = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strVid);
 
-        swss::RedisCommand hset;
-        hset.format("HSET %s %s %s", strKey.c_str(), "NULL", "NULL");
-        pipe.push(hset, REDIS_REPLY_INTEGER);
+        pushHsetObject(pipe, strKey, {});
     }
 
     pipe.flush();
@@ -301,16 +439,26 @@ void RedisClient::saveColdBootDiscoveredVids(
 
     auto key = getRedisColdVidsKey(switchVid);
 
+    std::vector<std::string> strVids;
+    std::vector<std::string> strObjectTypes;
+
+    strVids.reserve(coldVids.size());
+    strObjectTypes.reserve(coldVids.size());
+
     for (auto vid: coldVids)
     {
         sai_object_type_t objectType = VidManager::objectTypeQuery(vid);
 
-        std::string strObjectType = sai_serialize_object_type(objectType);
+        strObjectTypes.push_back(sai_serialize_object_type(objectType));
 
-        std::string strVid = sai_serialize_object_id(vid);
-
-        m_dbAsic->hset(key, strVid, strObjectType);
+        strVids.push_back(sai_serialize_object_id(vid));
     }
+
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushHashFields(pipe, key, strVids, &strObjectTypes);
+
+    pipe.flush();
 }
 
 std::string RedisClient::getRedisHiddenKey(
@@ -383,9 +531,40 @@ std::set<sai_object_id_t> RedisClient::getColdVids(
 
     std::set<sai_object_id_t> coldVids;
 
-    for (auto kvp: hash)
+    if (hash.empty())
     {
-        auto strVid = kvp.first;
+        return coldVids;
+    }
+
+    std::vector<std::string> cmds;
+    cmds.reserve(hash.size() + 2);
+
+    cmds.push_back("HMGET");
+    cmds.push_back(VIDTORID);
+
+    for (const auto& kvp: hash)
+    {
+        cmds.push_back(kvp.first);
+    }
+
+    swss::RedisCommand hmget;
+
+    hmget.format(cmds);
+
+    swss::RedisReply r(m_dbAsic.get(), hmget, REDIS_REPLY_ARRAY);
+
+    auto ctx = r.getContext();
+
+    if (ctx->elements != hash.size())
+    {
+        SWSS_LOG_THROW("expected %zu elements, got %zu", hash.size(), ctx->elements);
+    }
+
+    size_t idx = 0;
+
+    for (const auto& kvp: hash)
+    {
+        const auto& strVid = kvp.first;
 
         sai_object_id_t vid;
         sai_deserialize_object_id(strVid, vid);
@@ -394,9 +573,7 @@ std::set<sai_object_id_t> RedisClient::getColdVids(
          * Just make sure that vid in COLDVIDS is present in current vid2rid map
          */
 
-        auto rid = m_dbAsic->hget(VIDTORID, strVid);
-
-        if (rid == nullptr)
+        if (ctx->element[idx++]->type == REDIS_REPLY_NIL)
         {
             SWSS_LOG_INFO("no RID for VID %s, probably object was removed previously", strVid.c_str());
         }
@@ -500,7 +677,7 @@ void RedisClient::removeAsicObject(
 
     SWSS_LOG_INFO("removing ASIC DB key: %s", key.c_str());
 
-    m_dbAsic->del(key);
+    delKey(*m_dbAsic, key);
 }
 
 void RedisClient::removeAsicObject(
@@ -510,7 +687,7 @@ void RedisClient::removeAsicObject(
 
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_dbAsic->del(key);
+    delKey(*m_dbAsic, key);
 }
 
 void RedisClient::removeTempAsicObject(
@@ -520,7 +697,7 @@ void RedisClient::removeTempAsicObject(
 
     std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_dbAsic->del(key);
+    delKey(*m_dbAsic, key);
 }
 
 void RedisClient::removeAsicObjects(
@@ -530,13 +707,19 @@ void RedisClient::removeAsicObjects(
 
     std::vector<std::string> prefixKeys;
 
+    prefixKeys.reserve(keys.size());
+
     // we need to rewrite keys to add table prefix
     for (const auto& key: keys)
     {
          prefixKeys.push_back((ASIC_STATE_TABLE ":") + key);
     }
 
-    m_dbAsic->del(prefixKeys);
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushDelKeys(pipe, prefixKeys);
+
+    pipe.flush();
 }
 
 void RedisClient::removeTempAsicObjects(
@@ -546,13 +729,19 @@ void RedisClient::removeTempAsicObjects(
 
     std::vector<std::string> prefixKeys;
 
+    prefixKeys.reserve(keys.size());
+
     // we need to rewrite keys to add table prefix
     for (const auto& key: keys)
     {
          prefixKeys.push_back((TEMP_PREFIX ASIC_STATE_TABLE ":") + key);
     }
 
-    m_dbAsic->del(prefixKeys);
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushDelKeys(pipe, prefixKeys);
+
+    pipe.flush();
 }
 
 void RedisClient::setAsicObject(
@@ -564,7 +753,11 @@ void RedisClient::setAsicObject(
 
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_dbAsic->hset(key, attr, value);
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushHsetObject(pipe, key, {{attr, value}});
+
+    pipe.flush();
 }
 
 void RedisClient::setTempAsicObject(
@@ -576,7 +769,11 @@ void RedisClient::setTempAsicObject(
 
     std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_dbAsic->hset(key, attr, value);
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushHsetObject(pipe, key, {{attr, value}});
+
+    pipe.flush();
 }
 
 void RedisClient::createAsicObject(
@@ -587,16 +784,14 @@ void RedisClient::createAsicObject(
 
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    if (attrs.size() == 0)
-    {
-        m_dbAsic->hset(key, "NULL", "NULL");
-        return;
-    }
+    // one HSET of all attributes, a field given twice keeps its last value
+    // as with an HSET per attribute
 
-    for (const auto& e: attrs)
-    {
-        m_dbAsic->hset(key, fvField(e), fvValue(e));
-    }
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushHsetObject(pipe, key, attrs);
+
+    pipe.flush();
 }
 
 void RedisClient::createTempAsicObject(
@@ -607,16 +802,14 @@ void RedisClient::createTempAsicObject(
 
     std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    if (attrs.size() == 0)
-    {
-        m_dbAsic->hset(key, "NULL", "NULL");
-        return;
-    }
+    // one HSET of all attributes, a field given twice keeps its last value
+    // as with an HSET per attribute
 
-    for (const auto& e: attrs)
-    {
-        m_dbAsic->hset(key, fvField(e), fvValue(e));
-    }
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushHsetObject(pipe, key, attrs);
+
+    pipe.flush();
 }
 
 void RedisClient::createAsicObjects(
@@ -624,20 +817,15 @@ void RedisClient::createAsicObjects(
 {
     SWSS_LOG_ENTER();
 
-    std::unordered_map<std::string, std::vector<std::pair<std::string, std::string>>> hash;
+    RedisConnectionPipeline pipe(*m_dbAsic);
 
-    // we need to rewrite hash to add table prefix
     for (const auto& kvp: multiHash)
     {
-        hash[(ASIC_STATE_TABLE ":") + kvp.first] = kvp.second;
-
-        if (kvp.second.size() == 0)
-        {
-            hash[(ASIC_STATE_TABLE ":") + kvp.first].emplace_back(std::make_pair<std::string, std::string>("NULL", "NULL"));
-        }
+        // we need to rewrite key to add table prefix
+        pushHsetObject(pipe, (ASIC_STATE_TABLE ":") + kvp.first, kvp.second);
     }
 
-    m_dbAsic->hmset(hash);
+    pipe.flush();
 }
 
 void RedisClient::createTempAsicObjects(
@@ -645,20 +833,15 @@ void RedisClient::createTempAsicObjects(
 {
     SWSS_LOG_ENTER();
 
-    std::unordered_map<std::string, std::vector<std::pair<std::string, std::string>>> hash;
+    RedisConnectionPipeline pipe(*m_dbAsic);
 
-    // we need to rewrite hash to add table prefix
     for (const auto& kvp: multiHash)
     {
-        hash[(TEMP_PREFIX ASIC_STATE_TABLE ":") + kvp.first] = kvp.second;
-
-        if (kvp.second.size() == 0)
-        {
-            hash[(TEMP_PREFIX ASIC_STATE_TABLE ":") + kvp.first].emplace_back(std::make_pair<std::string, std::string>("NULL", "NULL"));
-        }
+        // we need to rewrite key to add table prefix
+        pushHsetObject(pipe, (TEMP_PREFIX ASIC_STATE_TABLE ":") + kvp.first, kvp.second);
     }
 
-    m_dbAsic->hmset(hash);
+    pipe.flush();
 }
 
 void RedisClient::setVidAndRidMap(
@@ -666,17 +849,26 @@ void RedisClient::setVidAndRidMap(
 {
     SWSS_LOG_ENTER();
 
-    m_dbAsic->del(VIDTORID);
-    m_dbAsic->del(RIDTOVID);
+    std::vector<std::string> strVids;
+    std::vector<std::string> strRids;
+
+    strVids.reserve(map.size());
+    strRids.reserve(map.size());
 
     for (auto &kv: map)
     {
-        std::string strVid = sai_serialize_object_id(kv.first);
-        std::string strRid = sai_serialize_object_id(kv.second);
-
-        m_dbAsic->hset(VIDTORID, strVid, strRid);
-        m_dbAsic->hset(RIDTOVID, strRid, strVid);
+        strVids.push_back(sai_serialize_object_id(kv.first));
+        strRids.push_back(sai_serialize_object_id(kv.second));
     }
+
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushDelKeys(pipe, {VIDTORID, RIDTOVID});
+
+    pushHashFields(pipe, VIDTORID, strVids, &strRids);
+    pushHashFields(pipe, RIDTOVID, strRids, &strVids);
+
+    pipe.flush();
 }
 
 std::vector<std::string> RedisClient::getAsicStateKeys() const
@@ -733,8 +925,42 @@ void RedisClient::removeVidAndRid(
     auto strVid = sai_serialize_object_id(vid);
     auto strRid = sai_serialize_object_id(rid);
 
-    m_dbAsic->hdel(VIDTORID, strVid);
-    m_dbAsic->hdel(RIDTOVID, strRid);
+    swss::RedisCommand hdelVid;
+    hdelVid.formatHDEL(VIDTORID, strVid);
+
+    swss::RedisCommand hdelRid;
+    hdelRid.formatHDEL(RIDTOVID, strRid);
+
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pipe.push(hdelVid);
+    pipe.push(hdelRid);
+
+    pipe.flush();
+}
+
+void RedisClient::removeVidsAndRids(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* vids,
+        _In_ const sai_object_id_t* rids)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> strVids(count);
+    std::vector<std::string> strRids(count);
+
+    for (size_t idx = 0; idx < count; idx++)
+    {
+        strVids[idx] = sai_serialize_object_id(vids[idx]);
+        strRids[idx] = sai_serialize_object_id(rids[idx]);
+    }
+
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushHashFields(pipe, VIDTORID, strVids, nullptr);
+    pushHashFields(pipe, RIDTOVID, strRids, nullptr);
+
+    pipe.flush();
 }
 
 void RedisClient::insertVidAndRid(
@@ -746,8 +972,18 @@ void RedisClient::insertVidAndRid(
     auto strVid = sai_serialize_object_id(vid);
     auto strRid = sai_serialize_object_id(rid);
 
-    m_dbAsic->hset(VIDTORID, strVid, strRid);
-    m_dbAsic->hset(RIDTOVID, strRid, strVid);
+    swss::RedisCommand hsetVid;
+    hsetVid.formatHSET(VIDTORID, strVid, strRid);
+
+    swss::RedisCommand hsetRid;
+    hsetRid.formatHSET(RIDTOVID, strRid, strVid);
+
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pipe.push(hsetVid);
+    pipe.push(hsetRid);
+
+    pipe.flush();
 }
 
 void RedisClient::insertVidsAndRids(
@@ -757,25 +993,19 @@ void RedisClient::insertVidsAndRids(
 {
     SWSS_LOG_ENTER();
 
-    swss::RedisPipeline pipe(m_dbAsic.get(), count * 2);
+    std::vector<std::string> strVids(count);
+    std::vector<std::string> strRids(count);
 
     for (size_t idx = 0; idx < count; idx++)
     {
-        auto strVid = sai_serialize_object_id(vids[idx]);
-        auto strRid = sai_serialize_object_id(rids[idx]);
-
-        {
-            swss::RedisCommand hset;
-            hset.format("HSET %s %s %s", VIDTORID, strVid.c_str(), strRid.c_str());
-            pipe.push(hset, REDIS_REPLY_INTEGER);
-        }
-
-        {
-            swss::RedisCommand hset;
-            hset.format("HSET %s %s %s", RIDTOVID, strRid.c_str(), strVid.c_str());
-            pipe.push(hset, REDIS_REPLY_INTEGER);
-        }
+        strVids[idx] = sai_serialize_object_id(vids[idx]);
+        strRids[idx] = sai_serialize_object_id(rids[idx]);
     }
+
+    RedisConnectionPipeline pipe(*m_dbAsic);
+
+    pushHashFields(pipe, VIDTORID, strVids, &strRids);
+    pushHashFields(pipe, RIDTOVID, strRids, &strVids);
 
     pipe.flush();
 }

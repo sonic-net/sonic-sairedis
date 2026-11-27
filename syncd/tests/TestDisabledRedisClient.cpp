@@ -211,6 +211,8 @@ TEST_F(DisabledRedisClientTest, voidMethodsDoNotThrow)
     sai_object_id_t rids[1] = {rid};
     EXPECT_NO_THROW(m_redisClient->insertVidsAndRids(1, vids, rids));
 
+    EXPECT_NO_THROW(m_redisClient->removeVidsAndRids(1, vids, rids));
+
     sai_object_id_t outVids[1];
     EXPECT_NO_THROW(m_redisClient->getVidsForRids(1, rids, outVids));
     EXPECT_EQ(outVids[0], SAI_NULL_OBJECT_ID);

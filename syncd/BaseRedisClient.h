@@ -128,6 +128,11 @@ namespace syncd
                     _In_ sai_object_id_t vid,
                     _In_ sai_object_id_t rid) = 0;
 
+            virtual void removeVidsAndRids(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* vids,
+                    _In_ const sai_object_id_t* rids) = 0;
+
             virtual void insertVidAndRid(
                     _In_ sai_object_id_t vid,
                     _In_ sai_object_id_t rid) = 0;

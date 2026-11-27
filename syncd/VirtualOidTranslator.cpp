@@ -676,6 +676,28 @@ void VirtualOidTranslator::eraseRidAndVid(
     m_removedRid2vid[rid] = vid;
 }
 
+void VirtualOidTranslator::eraseRidsAndVids(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* rids,
+        _In_ const sai_object_id_t* vids)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    m_client->removeVidsAndRids(count, vids, rids);
+
+    // remove from local vid2rid and rid2vid map
+
+    for (size_t idx = 0; idx < count; idx++)
+    {
+        m_rid2vid.erase(rids[idx]);
+        m_vid2rid.erase(vids[idx]);
+
+        m_removedRid2vid[rids[idx]] = vids[idx];
+    }
+}
+
 void VirtualOidTranslator::clearLocalCache()
 {
     SWSS_LOG_ENTER();
