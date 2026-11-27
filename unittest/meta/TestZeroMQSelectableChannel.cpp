@@ -120,3 +120,52 @@ TEST(ZeroMQSelectableChannel, shutdownWithPendingRequest)
     EXPECT_EQ(peer.wait("reply", message), SAI_STATUS_SUCCESS);
 }
 
+TEST(ZeroMQSelectableChannel, rejectsOversizedRequest)
+{
+    const std::string endpoint = "ipc://@sairedis-request-limit-" + std::to_string(getpid());
+    ZeroMQSelectableChannel channel(endpoint, 64);
+    ZeroMQChannel peer(endpoint, endpoint + "-notifications", cb);
+    peer.set(std::string(128, 'x'), {}, "request");
+
+    pollfd ready = {channel.getFd(), POLLIN, 0};
+    ASSERT_EQ(poll(&ready, 1, 10000), 1);
+    ASSERT_TRUE(ready.revents & POLLIN);
+    try
+    {
+        channel.readData();
+        FAIL() << "Expected the receive buffer limit to reject the request";
+    }
+    catch (const std::runtime_error& e)
+    {
+        EXPECT_NE(std::string(e.what()).find("over 64 bytes"), std::string::npos);
+    }
+    EXPECT_TRUE(channel.empty());
+}
+
+TEST(ZeroMQSelectableChannel, rejectsOversizedReply)
+{
+    const std::string endpoint = "ipc://@sairedis-reply-limit-" + std::to_string(getpid());
+    ZeroMQSelectableChannel channel(endpoint);
+    ZeroMQChannel peer(endpoint, endpoint + "-notifications", cb, 64);
+    peer.setResponseTimeout(10000);
+    peer.set("key", {}, "request");
+
+    swss::Select select;
+    select.addSelectable(&channel);
+    swss::Selectable *selected = nullptr;
+    ASSERT_EQ(select.select(&selected, 10000), swss::Select::OBJECT);
+    swss::KeyOpFieldsValuesTuple message;
+    channel.pop(message, false);
+    channel.set("SAI_STATUS_SUCCESS", {{"payload", std::string(128, 'x')}}, "reply");
+
+    try
+    {
+        peer.wait("reply", message);
+        FAIL() << "Expected the receive buffer limit to reject the reply";
+    }
+    catch (const std::runtime_error& e)
+    {
+        EXPECT_NE(std::string(e.what()).find("over 64 bytes"), std::string::npos);
+    }
+}
+

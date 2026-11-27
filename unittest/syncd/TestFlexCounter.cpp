@@ -8,6 +8,7 @@
 #include "VidManager.h"
 #include "NumberOidIndexGenerator.h"
 #include <algorithm>
+#include <atomic>
 #include <map>
 #include <mutex>
 #include <unistd.h>
@@ -2449,7 +2450,8 @@ TEST(FlexCounter, addRemoveDashMeterCounter)
         return SAI_STATUS_SUCCESS;
     };
 
-    sai->mock_bulkGetStats = [](sai_object_id_t,
+    auto bulkCalls = std::make_shared<std::atomic_uint>(0);
+    sai->mock_bulkGetStats = [bulkCalls](sai_object_id_t,
                                 sai_object_type_t object_type,
                                 uint32_t object_count,
                                 const sai_object_key_t *object_keys,
@@ -2462,6 +2464,14 @@ TEST(FlexCounter, addRemoveDashMeterCounter)
         EXPECT_TRUE(object_type == (sai_object_type_t)SAI_OBJECT_TYPE_METER_BUCKET_ENTRY);
         EXPECT_TRUE(object_count == DASH_NUM_METER_BUCKETS_PER_ENI);
         EXPECT_EQ(number_of_counters, 2);
+        // The first call probes support. Fail the first poll with partial data
+        // in meter class 2, which remains zero in every successful poll.
+        if (++(*bulkCalls) == 2)
+        {
+            object_status[1] = SAI_STATUS_SUCCESS;
+            counters[number_of_counters] = 999;
+            return SAI_STATUS_FAILURE;
+        }
         for (uint32_t i = 0; i < object_count; ++i)
         {
             EXPECT_EQ(object_keys[i].key.meter_bucket_entry.meter_class, i + 1);
@@ -2475,6 +2485,8 @@ TEST(FlexCounter, addRemoveDashMeterCounter)
     {
         std::string value;
         auto switchVid = VidManager::switchIdQuery(eni_id);
+        auto discarded = sai_meter_bucket_entry_t {.switch_id = switchVid, .eni_id = eni_id, .meter_class = 2};
+        EXPECT_FALSE(countersTable.hget(sai_serialize_meter_bucket_entry(discarded), counterIdNames[0], value));
         for (uint32_t i = 0; i < (expectedValues.size()/counterIdNames.size()); i++)
         {
             auto entry_key = sai_meter_bucket_entry_t {.switch_id = switchVid, .eni_id = eni_id,
