@@ -13,7 +13,12 @@ import subprocess
 import threading
 import time
 
-import redis
+try:
+    import redis
+except ImportError:
+    # conftest.py imports this module even when the benchmarks are disabled:
+    # check_prerequisites() skips them instead
+    redis = None
 
 DB_CONFIG = "/var/run/redis/sonic-db/database_config.json"
 REDIS_SOCKET = "/var/run/redis/redis.sock"
@@ -75,6 +80,8 @@ def check_prerequisites():
         return "the benchmark needs root, to own /var/run/redis and /dev/log"
     if subprocess.call(["which", "redis-server"], stdout=subprocess.DEVNULL) != 0:
         return "redis-server is not installed"
+    if redis is None:
+        return "the redis Python module (python3-redis) is not installed"
     return None
 
 
@@ -87,7 +94,8 @@ def write_database_config():
         instance = config["INSTANCES"]["redis"]
         dbs = config["DATABASES"]
         if (instance.get("unix_socket_path") == REDIS_SOCKET and instance.get("port") == REDIS_PORT and
-                all(dbs.get(name, {}).get("id") == db for name, (db, _) in DATABASES.items()
+                all(dbs.get(name, {}).get("id") == db and dbs[name].get("instance") == "redis"
+                    for name, (db, _) in DATABASES.items()
                     if name in ("ASIC_DB", "COUNTERS_DB", "FLEX_COUNTER_DB", "STATE_DB", "CONFIG_DB"))):
             return
     except (OSError, ValueError, KeyError):
