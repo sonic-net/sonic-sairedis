@@ -1470,3 +1470,146 @@ TEST_F(SwitchVppRifTest, createRollbackReleasesIpv6Lock)
     ASSERT_EQ(SAI_STATUS_FAILURE, create(allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE), attrs));
     EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "port0").empty());
 }
+
+/*
+ * SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE and ADMIN_V6_STATE on a VLAN RIF
+ * turn VPP's ip4-not-enabled and ip6-not-enabled drop features on and off on
+ * the VLAN's bridge interface.
+ */
+namespace
+{
+    const std::string IP4_DROP = "ip4-unicast/ip4-not-enabled";
+    const std::string IP6_DROP = "ip6-unicast/ip6-not-enabled";
+
+    sai_attribute_t adminState(sai_attr_id_t id, bool up)
+    {
+        SWSS_LOG_ENTER();
+        sai_attribute_t attr{};
+        attr.id = id;
+        attr.value.booldata = up;
+        return attr;
+    }
+}
+
+TEST_F(SwitchVppRifTest, vlanAdminStateTogglesTheDropOncePerChange)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan)));
+    EXPECT_TRUE(vppMock().callsTo(IP4_DROP, "bvi100").empty());
+
+    // VPP keeps a copy per enable, so a repeated down must not add another
+    for (bool up : {false, false, true, true})
+    {
+        auto attr = adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, up);
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->vpp_update_router_interface(rif, 1, &attr));
+    }
+    const auto calls = vppMock().callsTo(IP4_DROP, "bvi100");
+    ASSERT_EQ(2u, calls.size());
+    EXPECT_TRUE(calls[0].flag);
+    EXPECT_FALSE(calls[1].flag);
+    EXPECT_TRUE(vppMock().callsTo(IP6_DROP, "bvi100").empty());
+}
+
+TEST_F(SwitchVppRifTest, vlanAdminV6DownLeavesV4Alone)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan)));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("bvi100"));
+
+    // a repeated down must neither add a drop nor release the lock again
+    for (int i = 0; i < 2; i++)
+    {
+        auto attr = adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, false);
+        ASSERT_EQ(SAI_STATUS_SUCCESS, sw->vpp_update_router_interface(rif, 1, &attr));
+    }
+    const auto calls = vppMock().callsTo(IP6_DROP, "bvi100");
+    ASSERT_EQ(1u, calls.size());
+    EXPECT_TRUE(calls[0].flag);
+    EXPECT_EQ(0, vppMock().ip6Locks.at("bvi100"));
+    EXPECT_TRUE(vppMock().callsTo(IP4_DROP, "bvi100").empty());
+}
+
+// A failed drop leaves the IPv6 lock and the stored state as they were.
+TEST_F(SwitchVppRifTest, vlanAdminV6DownUnwindsIfTheDropCannotBeSet)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan)));
+    auto attr = adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, false);
+
+    vppMock().featureEnableResult = -1;
+    ASSERT_EQ(SAI_STATUS_FAILURE, sw->vpp_update_router_interface(rif, 1, &attr));
+    EXPECT_EQ(1, vppMock().ip6Locks.at("bvi100"));
+    sai_attribute_t stored{};
+    stored.id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
+    EXPECT_TRUE(sw->get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif, 1, &stored) != SAI_STATUS_SUCCESS ||
+                stored.value.booldata);
+
+    vppMock().featureEnableResult = 0;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->vpp_update_router_interface(rif, 1, &attr));
+    EXPECT_EQ(0, vppMock().ip6Locks.at("bvi100"));
+    const auto calls = vppMock().callsTo(IP6_DROP, "bvi100");
+    ASSERT_EQ(2u, calls.size());
+    EXPECT_TRUE(calls[1].flag);
+}
+
+/*
+ * The admin states are create-and-set attributes: one passed on create was
+ * stored without being applied, so the interface forwarded, and the later up then
+ * removed a drop it never added.
+ */
+TEST_F(SwitchVppRifTest, vlanCreatedAdminDownDropsFromTheStart)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan);
+    attrs.push_back(adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, false));
+    attrs.push_back(adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, true));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    auto calls = vppMock().callsTo(IP4_DROP, "bvi100");
+    ASSERT_EQ(1u, calls.size());
+    EXPECT_TRUE(calls[0].flag);
+    EXPECT_TRUE(vppMock().callsTo(IP6_DROP, "bvi100").empty());
+
+    auto attr = adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, true);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->vpp_update_router_interface(rif, 1, &attr));
+    calls = vppMock().callsTo(IP4_DROP, "bvi100");
+    ASSERT_EQ(2u, calls.size());
+    EXPECT_FALSE(calls[1].flag);
+}
+
+// IPv6 admin-down on create takes no IPv6 lock, so VPP's own ip6-not-enabled
+// copy stays and the drop added for the admin state is a second one.
+TEST_F(SwitchVppRifTest, vlanCreatedV6DownDropsWithoutAnIpv6Lock)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan);
+    attrs.push_back(adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, false));
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+    EXPECT_TRUE(vppMock().callsTo("sw_interface_ip6_enable_disable", "bvi100").empty());
+    auto calls = vppMock().callsTo(IP6_DROP, "bvi100");
+    ASSERT_EQ(1u, calls.size());
+    EXPECT_TRUE(calls[0].flag);
+
+    // coming up takes the lock the create skipped, so the BVI gets a link-local
+    auto attr = adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE, true);
+    ASSERT_EQ(SAI_STATUS_SUCCESS, sw->vpp_update_router_interface(rif, 1, &attr));
+    calls = vppMock().callsTo(IP6_DROP, "bvi100");
+    ASSERT_EQ(2u, calls.size());
+    EXPECT_FALSE(calls[1].flag);
+    EXPECT_EQ(1, vppMock().ip6Locks.at("bvi100"));
+    EXPECT_TRUE(vppMock().callsTo(IP4_DROP, "bvi100").empty());
+}
+
+TEST_F(SwitchVppRifTest, vlanCreateFailsAndUnwindsIfTheDropCannotBeSet)
+{
+    const auto rif = allocate(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+    auto attrs = attributes(SAI_ROUTER_INTERFACE_TYPE_VLAN, vlan);
+    attrs.push_back(adminState(SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE, false));
+    vppMock().featureEnableResult = -1;
+    ASSERT_EQ(SAI_STATUS_FAILURE, create(rif, attrs));
+    EXPECT_EQ(0u, vppMock().interfaces.count("bvi100"));
+    EXPECT_EQ(nullptr, sw->m_ifaceRegistry.findByHwif("bvi100"));
+    EXPECT_EQ(0u, sw->m_objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE).count(sai_serialize_object_id(rif)));
+
+    vppMock().featureEnableResult = 0;
+    ASSERT_EQ(SAI_STATUS_SUCCESS, create(rif, attrs));
+}

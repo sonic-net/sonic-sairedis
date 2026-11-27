@@ -121,6 +121,7 @@ struct VppMock
     std::set<std::pair<std::string, int>> loopbackFailures;
     int featureResult = 0;
     unsigned int featureCalls = 0;
+    int featureEnableResult = 0;
     int statsResult = 0;
     int lcpResult = 0;
     unsigned int statsCalls = 0;

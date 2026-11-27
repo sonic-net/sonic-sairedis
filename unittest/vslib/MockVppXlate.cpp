@@ -353,6 +353,14 @@ extern "C" int __wrap_vpp_sonic_ext_feature_get(const char *feature, bool *enabl
     return vppMock().featureResult;
 }
 
+extern "C" int __wrap_sw_interface_feature_enable_disable(const char *name, const char *arc,
+        const char *feature, bool enable)
+{
+    SWSS_LOG_ENTER();
+    vppMock().calls.push_back({std::string(arc) + "/" + feature, name, 0, 0, enable});
+    return vppMock().featureEnableResult;
+}
+
 extern "C" int __wrap_vpp_sonic_ext_copp_neighbor_miss_bind(
         const char *policer_name,
         bool is_bind)
