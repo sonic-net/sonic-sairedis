@@ -5,32 +5,30 @@ save_saidump_by_rdb()
 {
   local filepath="/var/run/redis/sonic-db/database_config.json"
 
-  # Get hostname, port, redis directory
-  local redis_config=$(python3 -c "
+  local redis_socket redis_dir
+  redis_socket=$(python3 -c '
 import json
-with open('$filepath') as json_file:
-  data = json.load(json_file)
-  print(data['INSTANCES']['redis']['hostname'], data['INSTANCES']['redis']['port'], data['INSTANCES']['redis']['unix_socket_path'])")
+import sys
 
-  # split
-  redis_config=(${redis_config// / })
-  local hostname=${redis_config[0]}
-  local port=${redis_config[1]}
-  local redis_dir=`dirname ${redis_config[2]}`
-  logger "saidump.sh: hostname:$hostname, port:$port, redis_dir:$redis_dir"
+with open(sys.argv[1]) as config_file:
+    config = json.load(config_file)
+instance = config["DATABASES"]["ASIC_DB"]["instance"]
+print(config["INSTANCES"][instance]["unix_socket_path"])
+' "$filepath")
+  redis_dir=$(dirname -- "$redis_socket")
 
-  logger "saidump.sh: [1] Get the remote backups of RDB file."
-  redis-cli -h $hostname -p $port --rdb $redis_dir/dump.rdb > /dev/null 2>&1
+  logger "saidump.sh: [1] Export the local ASIC_DB RDB snapshot."
+  sonic-db-cli -s --authenticate --rdb "$redis_dir/dump.rdb" ASIC_DB > /dev/null 2>&1
 
   logger "saidump.sh: [2] Run rdb-cli command to convert the dump files into JSON files."
-  rdb-cli $redis_dir/dump.rdb json | tee $redis_dir/dump.json > /dev/null
+  rdb-cli "$redis_dir/dump.rdb" json | tee "$redis_dir/dump.json" > /dev/null
 
   logger "saidump.sh: [3] Run saidump -r to get the result at standard output from the JSON file."
-  saidump -r $redis_dir/dump.json -m 100
+  saidump -r "$redis_dir/dump.json" -m 100
 
   logger "saidump.sh: [4] Clear the temporary files."
-  rm -f $redis_dir/dump.rdb
-  rm -f $redis_dir/dump.json
+  rm -f "$redis_dir/dump.rdb"
+  rm -f "$redis_dir/dump.json"
 }
 
 save_saidump_by_rdb

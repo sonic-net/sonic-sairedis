@@ -17,7 +17,7 @@ SAI_PROFILE_DIR=/etc/sai.d
 VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
 
 # Retrieve vars from sonic-cfggen
-SYNCD_VARS=$(sonic-cfggen -d -y /etc/sonic/sonic_version.yml -t $VARS_FILE) || exit 1
+SYNCD_VARS=$(sonic-cfggen -d --redis-unix-socket -y /etc/sonic/sonic_version.yml -t $VARS_FILE) || exit 1
 SONIC_ASIC_TYPE=$(echo $SYNCD_VARS | jq -r '.asic_type')
 SONIC_ASIC_SUBTYPE=$(echo $SYNCD_VARS | jq -r '.asic_subtype // empty')
 
@@ -44,7 +44,7 @@ mkdir -p /var/log/sai_failure_dump/
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
 SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
 SOUTHBOUND_ZMQ=$(echo $SYNCD_VARS | jq -r '.swss_zmq')
-ASYNC_REC=$(sonic-db-cli CONFIG_DB hget "SYSTEM_DEFAULTS|async_rec" "status")
+ASYNC_REC=$(sonic-db-cli -s CONFIG_DB hget "SYSTEM_DEFAULTS|async_rec" "status")
 
 if [ "$SWITCH_TYPE" == "dpu" ]; then
     CMD_ARGS+=" -z zmq_sync -x $CONTEXT_CONFIG_FILE"
@@ -90,7 +90,7 @@ case "$(cat /proc/cmdline)" in
     ;;
   *SONIC_BOOT_TYPE=fast*|*fast-reboot*)
     # check that the key exists
-    SYSTEM_FAST_REBOOT=`sonic-db-cli STATE_DB hget "FAST_RESTART_ENABLE_TABLE|system" enable`
+    SYSTEM_FAST_REBOOT=`sonic-db-cli -s STATE_DB hget "FAST_RESTART_ENABLE_TABLE|system" enable`
     if [[ x"${SYSTEM_FAST_REBOOT}" == x"true" ]]; then
        FAST_REBOOT='yes'
     else
@@ -582,7 +582,7 @@ config_syncd_cavium()
     export XP_ROOT=/usr/bin/
 
     # Wait until redis-server starts
-    until [ $(sonic-db-cli PING | grep -c PONG) -gt 0 ]; do
+    until [ $(sonic-db-cli -s PING | grep -c PONG) -gt 0 ]; do
         sleep 1
     done
 }
@@ -607,7 +607,7 @@ config_syncd_barefoot()
     fi
     CMD_ARGS+=" -l -p $PROFILE_FILE"
     # Check if SDE profile is configured
-    P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
+    P4_PROFILE=$(sonic-cfggen -d --redis-unix-socket -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
     if [[ -n "$P4_PROFILE" ]]; then
         if [[ ( -d /opt/bfn/install_${P4_PROFILE} ) && ( -L /opt/bfn/install || ! -e /opt/bfn/install ) ]]; then
             ln -srfn /opt/bfn/install_${P4_PROFILE} /opt/bfn/install
@@ -640,7 +640,7 @@ config_syncd_nephos()
 
 config_syncd_vs()
 {
-    if [[ $(sonic-db-cli CONFIG_DB hget 'DEVICE_METADATA|localhost' switch_type) == 'dpu' ]]; then
+    if [[ $(sonic-db-cli -s CONFIG_DB hget 'DEVICE_METADATA|localhost' switch_type) == 'dpu' ]]; then
         if [[ -f /usr/bin/syncd_dash ]]; then
             CMD_SYNCD=/usr/bin/syncd_dash
             CMD=$CMD_SYNCD
@@ -732,7 +732,7 @@ config_syncd_nvidia_bluefield()
 
     # Read MAC addresses
     base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
-    hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')
+    hwsku=$(sonic-cfggen -d --redis-unix-socket -v 'DEVICE_METADATA["localhost"]["hwsku"]')
     single_port=$([[ $hwsku == *"-com-dpu" ]] && echo true || echo false)
 
     eth0_mac=$(cat /sys/class/net/Ethernet0/address)
