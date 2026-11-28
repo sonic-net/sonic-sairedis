@@ -470,14 +470,11 @@ sai_status_t SwitchBCM56850::refresh_bridge_port_list(
 {
     SWSS_LOG_ENTER();
 
-    // XXX possible issues with vxlan and lag.
-
     auto &all_bridge_ports = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT);
 
     sai_attribute_t attr;
 
     auto me_port_list = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE, SAI_BRIDGE_ATTR_PORT_LIST);
-    auto m_port_id = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
     auto m_bridge_id = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_BRIDGE_ID);
     auto m_type = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_TYPE);
 
@@ -558,32 +555,7 @@ sai_status_t SwitchBCM56850::refresh_bridge_port_list(
      * Now sort those bridge port id's by port id to be consistent.
      */
 
-    std::vector<sai_object_id_t> bridge_port_list;
-
-    for (const auto &p: m_port_list)
-    {
-        for (const auto &bp: bridge_port_list_on_bridge_id)
-        {
-            auto it = bp.second.find(m_port_id->attridname);
-
-            if (it == bp.second.end())
-            {
-                SWSS_LOG_THROW("bridge port is missing %s, not supported yet, FIXME", m_port_id->attridname);
-            }
-
-            if (p == it->second->getAttr()->value.oid)
-            {
-                bridge_port_list.push_back(bp.first);
-            }
-        }
-    }
-
-    if (bridge_port_list_on_bridge_id.size() != bridge_port_list.size())
-    {
-        SWSS_LOG_THROW("filter by port id failed size on lists is different: %zu vs %zu",
-                bridge_port_list_on_bridge_id.size(),
-                bridge_port_list.size());
-    }
+    std::vector<sai_object_id_t> bridge_port_list = sort_bridge_port_list(bridge_port_list_on_bridge_id);
 
     uint32_t bridge_port_list_count = (uint32_t)bridge_port_list.size();
 
