@@ -117,6 +117,19 @@ sai_status_t Sai::apiUninitialize(void)
     return SAI_STATUS_SUCCESS;
 }
 
+void Sai::shutdown()
+{
+    SWSS_LOG_ENTER();
+
+    for (auto& kvp : m_contextMap)
+    {
+        if (kvp.second && kvp.second->m_redisSai)
+        {
+            kvp.second->m_redisSai->shutdown();
+        }
+    }
+}
+
 // QUAD OID
 
 sai_status_t Sai::create(
