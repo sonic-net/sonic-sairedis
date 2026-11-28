@@ -166,6 +166,36 @@ TEST(VppTransaction, undoDoesNotRecordWhileRollingBack)
     EXPECT_EQ((std::vector<std::string>{"a"}), log);
 }
 
+TEST(VppTransaction, scopeOpenedByAnUndoOwnsItsTransaction)
+{
+    std::vector<std::string> log;
+
+    {
+        TxnScope scope;
+        record(log, "a");
+        scope.txn().onRollback("b", [&log, &scope]()
+                {
+                    log.push_back("b");
+
+                    {
+                        TxnScope helper;
+                        EXPECT_NE(&scope.txn(), &helper.txn());
+                        record(log, "helper failed");
+                    }
+
+                    TxnScope helper;
+                    record(log, "helper done");
+                    helper.commit();
+                    return 0;
+                });
+        EXPECT_EQ(SAI_STATUS_SUCCESS, scope.rollback());
+        EXPECT_EQ(&scope.txn(), &VppTransaction::current());
+        EXPECT_EQ(0u, scope.txn().savepoint());
+    }
+
+    EXPECT_EQ((std::vector<std::string>{"b", "helper failed", "a"}), log);
+}
+
 TEST(VppTransaction, eachThreadHasItsOwn)
 {
     std::vector<std::string> mainLog;

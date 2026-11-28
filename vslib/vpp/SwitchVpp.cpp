@@ -1912,6 +1912,11 @@ sai_status_t SwitchVpp::create_dispatch(
         }
 
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
+        VppTransaction::current().onRollback("SAI object " + serializedObjectId,
+                [this, object_type, sid = serializedObjectId]()
+                {
+                    return remove_internal(object_type, sid);
+                });
 
         uint32_t sw_if_index;
         sai_status_t status = m_tunnel_mgr.create_l2_vxlan_tunnel(object_id, sw_if_index);
@@ -1920,10 +1925,6 @@ sai_status_t SwitchVpp::create_dispatch(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            // the create fails as a whole: no VPP tunnel of it, and no SAI
-            // object that syncd does not know about
-            m_tunnel_mgr.handle_l2_vxlan_tunnel_removal(object_id);
-            remove_internal(object_type, serializedObjectId);
             return status;
         }
 
@@ -1947,6 +1948,11 @@ sai_status_t SwitchVpp::create_dispatch(
     if (object_type == SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY)
     {
         CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
+        VppTransaction::current().onRollback("SAI object " + serializedObjectId,
+                [this, object_type, sid = serializedObjectId]()
+                {
+                    return remove_internal(object_type, sid);
+                });
         bool is_l2_vni_to_vlan = false;
         for (uint32_t i = 0; i < attr_count; ++i) {
             if (attr_list[i].id == SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP_TYPE &&
@@ -1960,14 +1966,6 @@ sai_status_t SwitchVpp::create_dispatch(
             serializedObjectId, attr_count, attr_list);
         if (!is_l2_vni_to_vlan) {
             return SAI_STATUS_SUCCESS;
-        }
-        if (status != SAI_STATUS_SUCCESS) {
-            sai_status_t rollback_status = remove_internal(object_type, serializedObjectId);
-            if (rollback_status != SAI_STATUS_SUCCESS) {
-                SWSS_LOG_ERROR("Failed to roll back tunnel map entry %s after "
-                               "data-plane create failure: status=%d",
-                               serializedObjectId.c_str(), rollback_status);
-            }
         }
         return status;
     }
@@ -1994,20 +1992,11 @@ sai_status_t SwitchVpp::create_dispatch(
             // plane, then publish only after programming succeeds.
             CHECK_STATUS(check_create_internal(object_type, serializedObjectId));
 
-            std::vector<TunnelManager::L2TunnelKey> created_tunnels;
             CHECK_STATUS(m_tunnel_mgr.create_l2_vxlan_tunnel_term(
-                serializedObjectId, attr_count, attr_list, created_tunnels));
+                serializedObjectId, attr_count, attr_list));
 
-            sai_status_t status = create_internal(
+            return create_internal(
                 object_type, serializedObjectId, switch_id, attr_count, attr_list);
-            if (status != SAI_STATUS_SUCCESS) {
-                sai_status_t rollback_status =
-                    m_tunnel_mgr.rollback_l2_vxlan_tunnels(created_tunnels);
-                if (rollback_status != SAI_STATUS_SUCCESS) {
-                    return rollback_status;
-                }
-            }
-            return status;
         }
 
         return create_internal(

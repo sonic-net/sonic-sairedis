@@ -125,6 +125,8 @@ namespace
     // destination address of each VXLAN tunnel the stub created, by sw_if_index
     std::map<uint32_t, std::string> g_vxlanTunnelDst;
     std::map<uint32_t, bool> g_vxlanTunnelDecapAny;
+    // results of the next VXLAN tunnel creates; a failed one creates nothing
+    std::vector<int> g_vxlanTunnelAddResults;
 
     std::string macStr(
             const uint8_t *mac)
@@ -414,6 +416,16 @@ int __wrap_vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, uin
 
     if (is_add)
     {
+        if (!g_vxlanTunnelAddResults.empty())
+        {
+            int result = g_vxlanTunnelAddResults.front();
+            g_vxlanTunnelAddResults.erase(g_vxlanTunnelAddResults.begin());
+            if (result != 0)
+            {
+                return result;
+            }
+        }
+
         *sw_if_index = g_nextSwIfIndex++;
 
         char dst[INET6_ADDRSTRLEN];
@@ -3295,9 +3307,17 @@ class SwitchVppEvpnRemoteMac : public SwitchVppLagFdb
             g_nextSwIfIndex = 100;
             g_l2fibByIndexDelResult = 0;
             g_vxlanTunnelDst.clear();
+            g_vxlanTunnelAddResults.clear();
         }
 
         void addMapEntry()
+        {
+            SWSS_LOG_ENTER();
+
+            ASSERT_EQ(SAI_STATUS_SUCCESS, createMapEntry());
+        }
+
+        sai_status_t createMapEntry()
         {
             SWSS_LOG_ENTER();
 
@@ -3314,8 +3334,7 @@ class SwitchVppEvpnRemoteMac : public SwitchVppLagFdb
             eattrs[3].id = SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE;
             eattrs[3].value.u16 = VLAN_ID;
 
-            ASSERT_EQ(SAI_STATUS_SUCCESS,
-                    m_sw->create(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(m_mapEntry), m_switchId, 4, eattrs));
+            return m_sw->create(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(m_mapEntry), m_switchId, 4, eattrs);
         }
 
         static sai_ip_address_t ipv4(
@@ -3831,6 +3850,86 @@ TEST_F(SwitchVppEvpnRemoteMac, RemovingTheMapEntryRemovesTheTunnelsOfItsVni)
 }
 
 /*
+ * A late map entry whose second tunnel fails fails as a whole: the first
+ * tunnel goes again, with the MAC addresses it programmed, and those wait for
+ * the next attempt.
+ */
+TEST_F(SwitchVppEvpnRemoteMac, FailedLateMapEntryRemovesTheTunnelsItCreated)
+{
+    sai_object_id_t bpA;
+    sai_object_id_t bpB;
+
+    addRemoteVtep(VTEP_A, &bpA);
+    addRemoteVtep(VTEP_B, &bpB);
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, addRemoteMac(bpA, VTEP_A));
+
+    vppMock().calls.clear();
+    g_vxlanTunnelAddResults = {0, -1};
+
+    EXPECT_NE(SAI_STATUS_SUCCESS, createMapEntry());
+
+    EXPECT_EQ(nullptr, m_sw->get_sai_object(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY, sai_serialize_object_id(m_mapEntry)));
+    EXPECT_TRUE(m_sw->m_tunnel_mgr.m_l2_tunnel_map.empty());
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(2u, tunnels.size());
+    EXPECT_TRUE(tunnels[0].flag);
+    EXPECT_FALSE(tunnels[1].flag);
+
+    const uint32_t swifA = tunnels[0].sub_id;
+
+    ASSERT_EQ(VTEP_A, g_vxlanTunnelDst.at(swifA));
+
+    auto bridged = vppCallsTo("set_sw_interface_l2_bridge_shg_by_index", std::to_string(swifA));
+
+    ASSERT_EQ(2u, bridged.size());
+    EXPECT_TRUE(bridged[0].flag);
+    EXPECT_FALSE(bridged[1].flag);
+
+    // VPP keeps a provisioned L2FIB entry after its interface is gone
+    auto macs = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(2u, macs.size());
+    EXPECT_EQ(onTunnel(swifA), macs[0].name);
+    EXPECT_TRUE(macs[0].flag);
+    EXPECT_EQ(onTunnel(swifA), macs[1].name);
+    EXPECT_FALSE(macs[1].flag);
+
+    int macDel = -1;
+    int tunnelDel = -1;
+
+    for (size_t i = 0; i < vppMock().calls.size(); i++)
+    {
+        const auto& call = vppMock().calls[i];
+
+        if (!call.flag && call.api == "l2fib_add_del_by_index")
+        {
+            macDel = (int)i;
+        }
+        if (!call.flag && call.api == "vpp_vxlan_tunnel_add_del")
+        {
+            tunnelDel = (int)i;
+        }
+    }
+
+    EXPECT_LT(macDel, tunnelDel);
+
+    vppMock().calls.clear();
+    g_vxlanTunnelDst.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createMapEntry());
+    EXPECT_EQ(2u, vppCallsTo("vpp_vxlan_tunnel_add_del").size());
+
+    auto adds = vppCallsTo("l2fib_add_del_by_index");
+
+    ASSERT_EQ(1u, adds.size());
+    EXPECT_EQ(onTunnel(tunnelTo(VTEP_A)), adds[0].name);
+    EXPECT_TRUE(adds[0].flag);
+}
+
+/*
  * L2 tunnels do not learn, so a flush of a tunnel bridge port has nothing to
  * take out of VPP. It must not flush the MAC addresses learned on local ports.
  */
@@ -4296,6 +4395,7 @@ class SwitchVppTunnelNexthop : public SwitchVppVrf
             vppMock().fibRoutePaths.clear();
             g_nextSwIfIndex = 100;
             g_vxlanTunnelDecapAny.clear();
+            g_vxlanTunnelAddResults.clear();
         }
 
         static sai_ip_address_t ipv4(
@@ -4631,6 +4731,133 @@ TEST_F(SwitchVppTunnelNexthop, RemovingANexthopWithAVniTearsDownItsDecap)
     EXPECT_FALSE(tunnels[0].flag);
 
     EXPECT_EQ(1u, vppCallsTo("delete_bvi_interface", "bvi" + std::to_string(bvis[0].id)).size());
+}
+
+TEST_F(SwitchVppTunnelNexthop, FailedNexthopDecapLeavesNoTunnelOrBvi)
+{
+    sai_object_id_t nh;
+
+    vppMock().setVrfResult = -1;
+    EXPECT_NE(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+    vppMock().setVrfResult = 0;
+
+    EXPECT_EQ(0u, m_sw->m_tunnel_mgr.m_tunnel_encap_nexthop_map.count(nh));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+
+    const uint32_t bd = bvis[0].id;
+    const std::string bvi = "bvi" + std::to_string(bd);
+
+    EXPECT_EQ(0u, vppMock().interfaces.count(bvi));
+    EXPECT_EQ(0u, vppMock().bdMembers.count(bd));
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(2u, tunnels.size());
+    EXPECT_TRUE(tunnels[0].flag);
+    EXPECT_FALSE(tunnels[1].flag);
+
+    // the bridge domain ID went back to the pool
+    vppMock().calls.clear();
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(2000, nh, REMOTE_ROUTER_MAC));
+
+    bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+    EXPECT_EQ(bd, bvis[0].id);
+}
+
+/*
+ * A decap term that cannot get the local-receive route of its secondary VTEP
+ * is skipped without failing the map entry, and leaves nothing behind.
+ */
+TEST_F(SwitchVppTunnelNexthop, DecapTermWithoutLocalReceiveLeavesNothingBehind)
+{
+    vppMock().ipRouteResults = {-1};
+
+    sai_object_id_t entry;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createDecapMapEntry(m_vrB, 2000, &entry));
+
+    EXPECT_EQ(1u, vppCallsTo("ip_route_add_del", "10.0.0.1/32").size());
+    EXPECT_TRUE(m_sw->m_tunnel_mgr.m_vxlan_decap_term_map.empty());
+    EXPECT_TRUE(m_sw->m_tunnel_mgr.m_vtep_local_receive_refcount.empty());
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+
+    const uint32_t bd = bvis[0].id;
+
+    EXPECT_EQ(0u, vppMock().interfaces.count("bvi" + std::to_string(bd)));
+    EXPECT_EQ(0u, vppMock().bdMembers.count(bd));
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(2u, tunnels.size());
+    EXPECT_TRUE(tunnels[0].flag);
+    EXPECT_FALSE(tunnels[1].flag);
+
+    auto bridged = vppCallsTo("set_sw_interface_l2_bridge_shg_by_index", std::to_string(tunnels[0].sub_id));
+
+    ASSERT_EQ(2u, bridged.size());
+    EXPECT_TRUE(bridged[0].flag);
+    EXPECT_FALSE(bridged[1].flag);
+}
+
+/*
+ * A late decap that fails after its tunnel was recreated with decap_any gets
+ * the tunnel recreated as it was, and the next hop's routes rebound to it.
+ */
+TEST_F(SwitchVppTunnelNexthop, FailedLateDecapRestoresTheTunnel)
+{
+    sai_object_id_t nh;
+
+    ASSERT_EQ(SAI_STATUS_SUCCESS, createNexthop(4000, nh, REMOTE_ROUTER_MAC));
+    createIpv4Route(m_vrA, "192.0.2.0", "255.255.255.0", nh);
+
+    const auto routeKey = std::make_pair(tableOf(m_vrA), std::string("192.0.2.0/24"));
+
+    vppMock().calls.clear();
+    vppMock().setVrfResult = -1;
+
+    createEncapMapEntry(m_vrB, 4000);
+    vppMock().setVrfResult = 0;
+
+    auto tunnels = vppCallsTo("vpp_vxlan_tunnel_add_del");
+
+    ASSERT_EQ(4u, tunnels.size());
+    EXPECT_FALSE(tunnels[0].flag);
+    EXPECT_TRUE(tunnels[1].flag);
+    EXPECT_TRUE(g_vxlanTunnelDecapAny.at(tunnels[1].sub_id));
+    EXPECT_FALSE(tunnels[2].flag);
+    EXPECT_TRUE(tunnels[3].flag);
+
+    const uint32_t restored_sw_if = tunnels[3].sub_id;
+
+    EXPECT_FALSE(g_vxlanTunnelDecapAny.at(restored_sw_if));
+
+    auto bvis = vppCallsTo("create_bvi_interface");
+
+    ASSERT_EQ(1u, bvis.size());
+    EXPECT_EQ(0u, vppMock().interfaces.count("bvi" + std::to_string(bvis[0].id)));
+
+    const auto& entries = m_sw->m_tunnel_mgr.m_tunnel_encap_nexthop_map.at(nh);
+
+    ASSERT_EQ(1u, entries.size());
+    EXPECT_FALSE(entries[0].has_decap);
+    EXPECT_FALSE(entries[0].req.decap_any);
+    EXPECT_EQ(nullptr, entries[0].tunnel_data.ip_vrf);
+    EXPECT_EQ(restored_sw_if, entries[0].tunnel_data.sw_if_index);
+
+    uint32_t after = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sw->m_tunnel_mgr.get_tunnel_if(nh, m_vrA, after));
+    EXPECT_EQ(restored_sw_if, after);
+    EXPECT_EQ((std::vector<uint32_t>{restored_sw_if}), vppMock().fibRoutePaths.at(routeKey));
 }
 
 TEST_F(SwitchVppTunnelNexthop, TunnelMapEntryArrivingAfterNexthopInstallsDecap)

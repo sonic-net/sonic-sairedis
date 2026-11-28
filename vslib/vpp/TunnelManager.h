@@ -192,21 +192,12 @@ namespace saivs
          * shapes remain stored in SAI but are not programmed by this path.
          * Existing ENCAP_DST_IP/EVPN tunnels remain object-owned.
          * Reads the pending term from the request, before SAI publication.
-         * Failure rolls back only tunnels created by this attempt. On success,
-         * created_tunnels records those tunnels for rollback if publication
-         * fails.
+         * The tunnels it creates are undone if the request fails.
          */
         sai_status_t create_l2_vxlan_tunnel_term(
             _In_ const std::string& serializedObjectId,
             _In_ uint32_t attr_count,
-            _In_ const sai_attribute_t *attr_list,
-            _Out_ std::vector<L2TunnelKey>& created_tunnels);
-
-        /**
-         * @brief Roll back only the tunnels created by one programming attempt.
-         */
-        sai_status_t rollback_l2_vxlan_tunnels(
-            _In_ const std::vector<L2TunnelKey>& created_tunnels);
+            _In_ const sai_attribute_t *attr_list);
 
         /**
          * @brief Remove L2 VXLAN decap objects owned by a termination entry.
@@ -362,6 +353,11 @@ namespace saivs
         sai_status_t recreate_vpp_vxlan_encap_with_decap_any(
             _Inout_ VxlanEncapEntry& entry,
             _In_ bool decap_any);
+        // Moves every next hop entry on one VXLAN tunnel to another
+        void repoint_vxlan_encap_entries(
+            _In_ uint32_t from_sw_if_index,
+            _In_ uint32_t to_sw_if_index,
+            _In_ bool decap_any);
         // One next hop can select a different mapped VNI for each route VRF.
         std::unordered_map<sai_object_id_t, std::vector<VxlanEncapEntry>> m_tunnel_encap_nexthop_map;
         /*
@@ -501,8 +497,7 @@ namespace saivs
             _In_ sai_ip_address_t local_ip,
             _In_ sai_ip_address_t remote_ip,
             _In_ sai_object_id_t tunnel_term_oid,
-            _Out_ uint32_t& sw_if_index,
-            _Out_ std::vector<L2TunnelKey>* new_tunnels = nullptr);
+            _Out_ uint32_t& sw_if_index);
 
          /**
          * @brief Create a single VPP VXLAN tunnel for one VNI.
@@ -514,6 +509,9 @@ namespace saivs
          * term-owned one only when term and map entry are the same. Once an
          * EVPN tunnel is created, the FDB entries already waiting for it are
          * programmed on it.
+         *
+         * Records its undo in the current transaction and leaves a failed
+         * attempt to it, so every caller must fail its request on failure.
          *
          * @param tunnel_oid The SAI P2P tunnel the VPP tunnel is created for.
          * @param src_ip Source VTEP IP.

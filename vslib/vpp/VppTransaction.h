@@ -127,6 +127,10 @@ namespace saivs
      * inside another one is a savepoint of it: committing keeps its undo
      * actions for the enclosing scope, rolling back runs only its own. A
      * scope left without commit() rolls back.
+     *
+     * A scope opened by an undo action, while its transaction rolls back,
+     * owns a transaction of its own, so a helper the undo calls still undoes
+     * its partial work if it fails.
      */
     class TxnScope
     {

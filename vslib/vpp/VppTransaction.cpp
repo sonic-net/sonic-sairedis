@@ -122,7 +122,7 @@ TxnScope::TxnScope():
 {
     SWSS_LOG_ENTER();
 
-    if (m_txn == nullptr)
+    if (m_txn == nullptr || m_txn->m_rollingBack)
     {
         m_root.m_active = true;
         m_txn = &m_root;
