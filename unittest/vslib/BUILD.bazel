@@ -75,7 +75,10 @@ cc_binary(
         ["*.h"],
         allow_empty = True,
     ) + select({
-        "//:vpp_enabled": ["TestSwitchVpp.cpp"],
+        "//:vpp_enabled": [
+            "TestSwitchVpp.cpp",
+            "TestVppTransaction.cpp",
+        ],
         "//conditions:default": [],
     }),
     copts = TEST_COPTS + ["-fno-access-control"],
