@@ -2770,8 +2770,8 @@ TEST_F(FlexCounterTcpFallback, tcpFallbackWhenNoUnixSocket)
         return SAI_STATUS_FAILURE;
     };
 
-    // FlexCounter should detect empty socket path and use TCP
-    FlexCounter fc("test_tcp", sai, "COUNTERS_DB");
+    // This caller explicitly selects TCP.
+    FlexCounter fc("test_tcp", sai, "COUNTERS_DB", false, true);
 
     test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
 

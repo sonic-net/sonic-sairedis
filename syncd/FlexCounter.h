@@ -126,7 +126,9 @@ namespace syncd
                     _In_ const std::string& instanceId,
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
                     _In_ const std::string& dbCounters,
-                    _In_ const bool noDoubleCheckBulkCapability=false);
+                    _In_ const bool noDoubleCheckBulkCapability=false,
+                    _In_ bool isTcpConn=false,
+                    _In_ bool authenticate=false);
 
             virtual ~FlexCounter();
 
@@ -246,6 +248,8 @@ namespace syncd
             std::string m_dbCounters;
 
             bool m_isTcpConn;
+
+            bool m_authenticate;
 
             bool m_isDiscarded;
 
