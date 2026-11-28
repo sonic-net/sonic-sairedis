@@ -2098,8 +2098,12 @@ private:
         // Check if a matching counter group already exists
         for (size_t i = 0; i < m_counterGroupsSorted.size(); i++)
         {
-            // Try match
+            // Try match, if the counter group is not a subset of the requested counters, skip it
             const std::set<StatType>& counterSet = m_supportedCounterGroups[m_counterGroupsSorted[i].idx];
+            if (!std::includes(counter_ids.begin(), counter_ids.end(), counterSet.begin(), counterSet.end()))
+            {
+                continue;
+            }
             std::vector<uint64_t> values(counterSet.size(), 0);
             std::vector<StatType> countersToPoll(counterSet.begin(), counterSet.end());
             if (collectData(rid, countersToPoll, stats_mode, false, values))
