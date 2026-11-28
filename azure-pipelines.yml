@@ -67,7 +67,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      pool: sonic-ubuntu-1c
+      pool: sonicso1ES-amd64-submod
       artifact_name: sonic-sairedis-${{ parameters.debian_version }}
       syslog_artifact_name: sonic-sairedis.syslog
       run_unit_test: true
@@ -81,7 +81,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      pool: sonic-ubuntu-1c
+      pool: sonicso1ES-amd64-submod
       artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
       syslog_artifact_name: sonic-sairedis-asan.syslog
       asan: true
@@ -172,7 +172,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      pool: sonic-ubuntu-1c
+      pool: sonicso1ES-amd64-submod
       depends_on: ResolveVpp
       staged_upstreams:
       - artifact: vpp-resolved-trixie
@@ -234,7 +234,7 @@ stages:
       repo: sonic-swss
       arch: amd64
       timeout: 90
-      pool: sonic-ubuntu-1c
+      pool: sonicso1ES-amd64-submod
       artifact_name: sonic-swss-${{ parameters.debian_version }}
       debian_version: ${{ parameters.debian_version }}
       staged_upstreams:
