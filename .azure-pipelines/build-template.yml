@@ -13,6 +13,7 @@ parameters:
 - name: pool
   type: string
   values:
+  - sonicso1ES-amd64-submod
   - sonicso1ES-amd64
   - sonicso1ES-arm64
   - sonicso1ES-armhf
