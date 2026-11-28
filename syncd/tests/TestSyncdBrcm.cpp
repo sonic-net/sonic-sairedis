@@ -986,8 +986,10 @@ TEST_F(SyncdBrcmTest, bulkSetInInitViewForUnsupportedObjects)
     sai_object_id_t oids[1] = {switchId};
     sai_status_t statuses[1] = {SAI_STATUS_NOT_EXECUTED};
 
-    ASSERT_THROW(m_sairedis->bulkSet(SAI_OBJECT_TYPE_SWITCH, 1, oids, attrs,
-        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses), std::runtime_error);
+    status = m_sairedis->bulkSet(SAI_OBJECT_TYPE_SWITCH, 1, oids, attrs,
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses);
+    ASSERT_EQ(status, SAI_STATUS_FAILURE);
+    ASSERT_EQ(statuses[0], SAI_STATUS_FAILURE);
 }
 
 struct GetBulk
