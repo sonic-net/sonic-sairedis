@@ -885,8 +885,8 @@
       "unittest/saidump/Makefile.am": "4ac16bfd156c8129bafbcdc7f08f88b66bcb3aac190269efe5c1e98ba65a29fb",
       "unittest/saisdkdump/Makefile.am": "cd389c61c35b266ee8b2fc9d5e026c895585ce738103ef904b8d2fa85d04ce3a",
       "unittest/syncd/Makefile.am": "a0eff6ccef5df9b8a855ce1a128b85479a308b6f74b60366332e26326b867dd6",
-      "unittest/vslib/Makefile.am": "4ca2d9d349e28c99679767b2cbc45c30bdbba08383d7ce77bb84691cb725d5d4",
-      "vslib/Makefile.am": "512ac51a44bbc7184c771dfc9d127b4a0ddf2c4b7e0ffd4316b2a8992e6387a1"
+      "unittest/vslib/Makefile.am": "bde6da0e76a877c5af4b37c7b3e6d1db388c45d889a19facea16259d7f09409a",
+      "vslib/Makefile.am": "45802dc1ca6c8283c8358b4056ac250c81096ad6bb95fbadaeb4193becf3d3a8"
     }
   },
   "ownership_review": {
