@@ -1,0 +1,5 @@
+build/
+report/
+work/
+__pycache__/
+!Makefile

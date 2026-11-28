@@ -98,3 +98,9 @@ user@288feb4edd39:/sonic/src/sonic-sairedis/tests$ make check
 ```
 
 Diagnosing failures can be aided by inspecting logs in /var/log/syslog
+
+## Benchmarking syncd
+
+`blackbox/` benchmarks syncd on a mock SAI SDK, independent of any vendor's:
+route, neighbor, next hop and FDB programming, switch creation, notifications and
+counter polling. It is not part of `make check`; see [blackbox/README.md](blackbox/README.md).
