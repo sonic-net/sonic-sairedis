@@ -167,6 +167,7 @@ jobs:
           bazel build ${{ matrix.bazel_args }}
           --jobs=4 --lockfile_mode=update
           //:runtime_packages.json
+          //:library_runtime_packages.json
           //lib:libsairedis_pkg
           //lib:libsairedis_pkg.debug_symbols
           //lib:libsairedis_dev_pkg
