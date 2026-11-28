@@ -16,7 +16,7 @@ on:
 jobs:
   analyze:
     name: Analyze
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     permissions:
       actions: read
       contents: read
@@ -106,7 +106,7 @@ jobs:
 
   bazel-cpp:
     name: Analyze native source (cpp, AMD64)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 120
     container:
       image: debian:trixie-20260918@sha256:d5ce19d4736f0ebbacd686d1040271a5aeb0cc920f5990c1bfae1717627f0674
