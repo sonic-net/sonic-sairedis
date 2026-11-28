@@ -9,6 +9,7 @@
 
 #include <zmq.h>
 #include <unistd.h>
+#include <cstring>
 
 using namespace sairedis;
 
@@ -212,6 +213,28 @@ void ZeroMQChannel::flush()
     // not supported
 }
 
+static bool json_needs_escape(const std::string& s)
+{
+    SWSS_LOG_ENTER();
+
+    for (unsigned char c : s)
+    {
+        if (c < 0x20 || c == '"' || c == '\\')
+            return true;
+    }
+
+    return false;
+}
+
+static void json_append_plain(std::string& out, const std::string& s)
+{
+    SWSS_LOG_ENTER();
+
+    out.push_back('"');
+    out.append(s);
+    out.push_back('"');
+}
+
 void ZeroMQChannel::set(
         _In_ const std::string& key,
         _In_ const std::vector<swss::FieldValueTuple>& values,
@@ -219,13 +242,63 @@ void ZeroMQChannel::set(
 {
     SWSS_LOG_ENTER();
 
-    std::vector<swss::FieldValueTuple> copy = values;
+    bool plain = !json_needs_escape(key) && !json_needs_escape(command);
 
-    swss::FieldValueTuple opdata(key, command);
+    if (plain)
+    {
+        for (const auto& item : values)
+        {
+            if (json_needs_escape(fvField(item)) || json_needs_escape(fvValue(item)))
+            {
+                plain = false;
+                break;
+            }
+        }
+    }
 
-    copy.insert(copy.begin(), opdata);
+    std::string msg;
 
-    std::string msg = swss::JSon::buildJson(copy);
+    if (plain)
+    {
+        size_t bytes = key.size() + command.size() + 5;
+
+        for (const auto& item : values)
+            bytes += fvField(item).size() + fvValue(item).size() + 6;
+
+        msg.reserve(bytes);
+        msg.push_back('[');
+        json_append_plain(msg, key);
+        msg.push_back(',');
+        json_append_plain(msg, command);
+
+        for (const auto& item : values)
+        {
+            msg.push_back(',');
+            json_append_plain(msg, fvField(item));
+            msg.push_back(',');
+            json_append_plain(msg, fvValue(item));
+        }
+
+        msg.push_back(']');
+    }
+    else
+    {
+        std::vector<swss::FieldValueTuple> copy = values;
+
+        swss::FieldValueTuple opdata(key, command);
+
+        copy.insert(copy.begin(), opdata);
+
+        msg = swss::JSon::buildJson(copy);
+    }
+
+    send(msg);
+}
+
+void ZeroMQChannel::send(
+        _In_ const std::string& msg)
+{
+    SWSS_LOG_ENTER();
 
     SWSS_LOG_DEBUG("sending: %s", msg.c_str());
 
@@ -259,13 +332,10 @@ void ZeroMQChannel::del(
     set(key, values, command);
 }
 
-sai_status_t ZeroMQChannel::wait(
-        _In_ const std::string& command,
-        _Out_ swss::KeyOpFieldsValuesTuple& kco)
+int ZeroMQChannel::receiveMessage(
+        _In_ const std::string& command)
 {
     SWSS_LOG_ENTER();
-
-    SWSS_LOG_INFO("wait for %s response", command.c_str());
 
     zmq_pollitem_t items [1] = { };
 
@@ -335,6 +405,61 @@ sai_status_t ZeroMQChannel::wait(
 
     m_buffer.at(rc) = 0; // make sure that we end string with zero before parse
 
+    return rc;
+}
+
+static bool bulk_reply_all_success(
+        _In_ const char* message,
+        _In_ int length,
+        _In_ uint32_t object_count)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string prefix = std::string("[\"SAI_STATUS_SUCCESS\",\"") + REDIS_ASIC_STATE_COMMAND_GETRESPONSE + "\"";
+    const char item[] = ",\"SAI_STATUS_SUCCESS\",\"\"";
+    const size_t item_len = sizeof(item) - 1;
+    const size_t expect = prefix.size() + item_len * object_count + 1;
+
+    if (object_count == 0 || (size_t)length != expect)
+    {
+        return false;
+    }
+
+    if (memcmp(message, prefix.data(), prefix.size()) != 0)
+    {
+        return false;
+    }
+
+    const char* cursor = message + prefix.size();
+
+    for (uint32_t idx = 0; idx < object_count; ++idx)
+    {
+        if (memcmp(cursor, item, item_len) != 0)
+        {
+            return false;
+        }
+
+        cursor += item_len;
+    }
+
+    return cursor[0] == ']' && cursor[1] == '\0';
+}
+
+sai_status_t ZeroMQChannel::wait(
+        _In_ const std::string& command,
+        _Out_ swss::KeyOpFieldsValuesTuple& kco)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("wait for %s response", command.c_str());
+
+    const int rc = receiveMessage(command);
+
+    if (rc < 0)
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
     SWSS_LOG_DEBUG("response: %s", m_buffer.data());
 
     std::vector<swss::FieldValueTuple> values;
@@ -367,6 +492,65 @@ sai_status_t ZeroMQChannel::wait(
     sai_deserialize_status(opkey, status);
 
     SWSS_LOG_DEBUG("%s status: %s", command.c_str(), opkey.c_str());
+
+    return status;
+}
+
+sai_status_t ZeroMQChannel::waitBulkResponse(
+        _In_ uint32_t object_count,
+        _Out_ sai_status_t* object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    const int rc = receiveMessage(REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+
+    if (rc < 0)
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (bulk_reply_all_success((const char*)m_buffer.data(), rc, object_count))
+    {
+        for (uint32_t idx = 0; idx < object_count; ++idx)
+        {
+            object_statuses[idx] = SAI_STATUS_SUCCESS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::vector<swss::FieldValueTuple> values;
+
+    swss::JSon::readJson((char*)m_buffer.data(), values);
+
+    swss::FieldValueTuple fvt = values.at(0);
+
+    const std::string& opkey = fvField(fvt);
+    const std::string& op = fvValue(fvt);
+
+    values.erase(values.begin());
+
+    if (op != REDIS_ASIC_STATE_COMMAND_GETRESPONSE)
+    {
+        SWSS_LOG_THROW("got not expected response: %s:%s, expected: %s",
+                opkey.c_str(),
+                op.c_str(),
+                REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+    }
+
+    if (values.size() != object_count)
+    {
+        SWSS_LOG_THROW("wrong number of statuses, got %zu, expected %u", values.size(), object_count);
+    }
+
+    sai_status_t status;
+
+    sai_deserialize_status(opkey, status);
+
+    for (uint32_t idx = 0; idx < object_count; ++idx)
+    {
+        sai_deserialize_status(fvField(values[idx]), object_statuses[idx]);
+    }
 
     return status;
 }

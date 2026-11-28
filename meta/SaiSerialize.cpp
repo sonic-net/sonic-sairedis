@@ -1010,7 +1010,8 @@ std::string sai_serialize_neighbor_entry(
 #define EMIT_QUOTE_CHECK(expr, suffix) {\
     EMIT_QUOTE; EMIT_CHECK(expr, suffix); EMIT_QUOTE; }
 
-std::string sai_serialize_route_entry(
+size_t sai_serialize_route_entry(
+        _Out_ char* buffer,
         _In_ const sai_route_entry_t& route_entry)
 {
     SWSS_LOG_ENTER();
@@ -1021,7 +1022,6 @@ std::string sai_serialize_route_entry(
 
     // {"dest":"0.0.0.0/0","switch_id":"oid:0x21000000000000","vr":"oid:0x3000000000022"}
 
-    char buffer[256];
     char *buf = buffer;
 
     char *begin_buf = buf;
@@ -1045,7 +1045,19 @@ std::string sai_serialize_route_entry(
 
     *buf = 0;
 
-    return std::string(begin_buf, (int)(buf - begin_buf));
+    return (size_t)(buf - begin_buf);
+}
+
+std::string sai_serialize_route_entry(
+        _In_ const sai_route_entry_t& route_entry)
+{
+    SWSS_LOG_ENTER();
+
+    char buffer[256];
+
+    size_t length = sai_serialize_route_entry(buffer, route_entry);
+
+    return std::string(buffer, length);
 }
 
 std::string sai_serialize_ipmc_entry(

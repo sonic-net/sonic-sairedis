@@ -5,6 +5,7 @@ extern "C" {
 }
 
 #include "swss/table.h"
+#include "swss/logger.h"
 
 #include "sairedis.h"
 #include "meta/SaiInterface.h"
@@ -390,6 +391,13 @@ namespace sairedis
 
             void enableRecording(
                     _In_ bool enabled);
+
+            bool isEnabled() const
+            {
+                SWSS_LOG_ENTER();
+
+                return m_enabled;
+            }
 
             bool setRecordingOutputDirectory(
                     _In_ const sai_attribute_t &attr);

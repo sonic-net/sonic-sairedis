@@ -5,6 +5,7 @@
 #include "SkipRecordAttrContainer.h"
 #include "SwitchContainer.h"
 #include "ZeroMQChannel.h"
+#include "JsonQuote.h"
 
 #include "sairediscommon.h"
 
@@ -19,6 +20,7 @@
 #include "config.h"
 
 #include <inttypes.h>
+#include <type_traits>
 
 #define SAI_ZMQ_DEFAULT_RESPONSE_BUFFER_SIZE (128*1024*1024)
 
@@ -26,6 +28,80 @@ using namespace sairedis;
 using namespace saimeta;
 using namespace sairediscommon;
 using namespace std::placeholders;
+
+static bool bulk_attr_value_equal(
+        _In_ const sai_attr_metadata_t* meta,
+        _In_ const sai_attribute_t& a,
+        _In_ const sai_attribute_t& b)
+{
+    SWSS_LOG_ENTER();
+
+    switch (meta->attrvaluetype)
+    {
+        case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+            return a.value.oid == b.value.oid;
+
+        case SAI_ATTR_VALUE_TYPE_BOOL:
+            return a.value.booldata == b.value.booldata;
+
+        case SAI_ATTR_VALUE_TYPE_INT32:
+            return a.value.s32 == b.value.s32;
+
+        case SAI_ATTR_VALUE_TYPE_UINT32:
+            return a.value.u32 == b.value.u32;
+
+        case SAI_ATTR_VALUE_TYPE_INT64:
+            return a.value.s64 == b.value.s64;
+
+        case SAI_ATTR_VALUE_TYPE_UINT64:
+            return a.value.u64 == b.value.u64;
+
+        default:
+            return false;
+    }
+}
+
+static bool bulk_attr_list_equal(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t count_a,
+        _In_ const sai_attribute_t* list_a,
+        _In_ uint32_t count_b,
+        _In_ const sai_attribute_t* list_b)
+{
+    SWSS_LOG_ENTER();
+
+    if (count_a != count_b)
+    {
+        return false;
+    }
+
+    if (count_a == 0)
+    {
+        return true;
+    }
+
+    if (list_a == nullptr || list_b == nullptr)
+    {
+        return false;
+    }
+
+    for (uint32_t idx = 0; idx < count_a; ++idx)
+    {
+        if (list_a[idx].id != list_b[idx].id)
+        {
+            return false;
+        }
+
+        const auto* meta = sai_metadata_get_attr_metadata(object_type, list_a[idx].id);
+
+        if (meta == nullptr || !bulk_attr_value_equal(meta, list_a[idx], list_b[idx]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 std::vector<swss::FieldValueTuple> serialize_counter_id_list(
         _In_ const sai_enum_metadata_t *stats_enum,
@@ -891,19 +967,34 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(                               
     SWSS_LOG_ENTER();                                                                        \
     static PerformanceIntervalTimer timer("RedisRemoteSaiInterface::bulkCreate(" #ot ")");   \
     timer.start();                                                                           \
-    std::vector<std::string> serialized_object_ids;                                          \
-    for (uint32_t idx = 0; idx < object_count; idx++)                                        \
+    sai_status_t status;                                                                     \
+    if (std::is_same<decltype(*ot), const sai_route_entry_t&>::value)                        \
     {                                                                                        \
-        std::string str_object_id = sai_serialize_ ##ot (ot[idx]);                           \
-        serialized_object_ids.push_back(str_object_id);                                      \
+        status = bulkCreateRouteEntries(                                                    \
+                object_count,                                                                \
+                reinterpret_cast<const sai_route_entry_t*>(ot),                              \
+                attr_count,                                                                  \
+                attr_list,                                                                   \
+                mode,                                                                        \
+                object_statuses);                                                            \
     }                                                                                        \
-    auto status = bulkCreate(                                                                \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                       \
-            serialized_object_ids,                                                           \
-            attr_count,                                                                      \
-            attr_list,                                                                       \
-            mode,                                                                            \
-            object_statuses);                                                                \
+    else                                                                                     \
+    {                                                                                        \
+        std::vector<std::string> serialized_object_ids;                                      \
+        serialized_object_ids.reserve(object_count);                                         \
+        for (uint32_t idx = 0; idx < object_count; idx++)                                    \
+        {                                                                                    \
+            std::string str_object_id = sai_serialize_ ##ot (ot[idx]);                       \
+            serialized_object_ids.push_back(str_object_id);                                  \
+        }                                                                                    \
+        status = bulkCreate(                                                                 \
+                (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                   \
+                serialized_object_ids,                                                       \
+                attr_count,                                                                  \
+                attr_list,                                                                   \
+                mode,                                                                        \
+                object_statuses);                                                            \
+    }                                                                                        \
     timer.stop();                                                                            \
     timer.inc(object_count);                                                                 \
     return status;                                                                           \
@@ -1913,6 +2004,17 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
 
     if (m_syncMode)
     {
+        auto zmq = std::dynamic_pointer_cast<ZeroMQChannel>(m_communicationChannel);
+
+        if (zmq)
+        {
+            auto status = zmq->waitBulkResponse(object_count, object_statuses);
+
+            m_recorder->recordBulkGenericResponse(status, object_count, object_statuses);
+
+            return status;
+        }
+
         swss::KeyOpFieldsValuesTuple kco;
 
         auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
@@ -2219,6 +2321,151 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
             object_statuses);
 }
 
+sai_status_t RedisRemoteSaiInterface::bulkCreateRouteEntries(
+        _In_ uint32_t object_count,
+        _In_ const sai_route_entry_t* route_entry,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Inout_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    auto zmq = std::dynamic_pointer_cast<ZeroMQChannel>(m_communicationChannel);
+    bool built = false;
+    bool record = false;
+    std::string msg;
+    std::vector<swss::FieldValueTuple> recorded;
+
+    // Route keys are unique, so each one is written into the ZMQ message from the route formatter's stack
+    // buffer. Attributes are reused only when this route's
+    // list compares equal to the previous route. A different next hop, a
+    // different attribute, or a type this compare does not cover is serialized again
+    // for that route and replaces the one cached string. RedisChannel keeps the
+    // string bulkCreate path below.
+    if (zmq)
+    {
+        record = m_recorder->isEnabled();
+
+        std::string object_type = sai_serialize_object_type(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+        std::string key = object_type + ":" + std::to_string(object_count);
+
+        msg.reserve(key.size() + 32 + (size_t)object_count * 256);
+        msg.push_back('[');
+        append_json_quoted(msg, key.data(), key.size());
+        msg.push_back(',');
+        append_json_quoted(msg, REDIS_ASIC_STATE_COMMAND_BULK_CREATE,
+                sizeof(REDIS_ASIC_STATE_COMMAND_BULK_CREATE) - 1);
+
+        if (record)
+        {
+            recorded.reserve(object_count);
+        }
+
+        std::string cached_attr;
+        uint32_t cached_count = 0;
+        const sai_attribute_t* cached_list = nullptr;
+        bool have_cached_attr = false;
+        bool cached_plain = false;
+        built = true;
+
+        for (uint32_t idx = 0; idx < object_count; idx++)
+        {
+            char buffer[256];
+            size_t length = sai_serialize_route_entry(buffer, route_entry[idx]);
+
+            if (!(have_cached_attr &&
+                  bulk_attr_list_equal(
+                      SAI_OBJECT_TYPE_ROUTE_ENTRY,
+                      cached_count,
+                      cached_list,
+                      attr_count[idx],
+                      attr_list[idx])))
+            {
+                auto entry = SaiAttributeList::serialize_attr_list(
+                        SAI_OBJECT_TYPE_ROUTE_ENTRY,
+                        attr_count[idx],
+                        attr_list[idx],
+                        false);
+
+                if (entry.empty())
+                {
+                    swss::FieldValueTuple null("NULL", "NULL");
+
+                    entry.push_back(null);
+                }
+
+                cached_attr = Globals::joinFieldValues(entry);
+                cached_count = attr_count[idx];
+                cached_list = attr_list[idx];
+                have_cached_attr = true;
+                cached_plain = json_is_plain(cached_attr.data(), cached_attr.size());
+
+                if (!cached_plain)
+                {
+                    built = false;
+                    break;
+                }
+            }
+
+            // The prefix is formatted into buffer and copied into the message once.
+            // A different next hop fails the compare above and replaces cached_attr.
+            msg.push_back(',');
+
+            if (!append_json_quoted(msg, buffer, length))
+            {
+                built = false;
+                break;
+            }
+
+            msg.push_back(',');
+            msg.push_back('"');
+            msg.append(cached_attr);
+            msg.push_back('"');
+
+            if (record)
+            {
+                recorded.emplace_back(std::string(buffer, length), cached_attr);
+            }
+        }
+
+        if (built)
+        {
+            msg.push_back(']');
+        }
+    }
+
+    if (!built)
+    {
+        std::vector<std::string> serialized_object_ids;
+        serialized_object_ids.reserve(object_count);
+
+        for (uint32_t idx = 0; idx < object_count; idx++)
+        {
+            serialized_object_ids.push_back(sai_serialize_route_entry(route_entry[idx]));
+        }
+
+        return bulkCreate(
+                SAI_OBJECT_TYPE_ROUTE_ENTRY,
+                serialized_object_ids,
+                attr_count,
+                attr_list,
+                mode,
+                object_statuses);
+    }
+
+    if (record)
+    {
+        m_recorder->recordBulkGenericCreate(
+                sai_serialize_object_type(SAI_OBJECT_TYPE_ROUTE_ENTRY),
+                recorded);
+    }
+
+    zmq->send(msg);
+
+    return waitForBulkResponse(SAI_COMMON_API_BULK_CREATE, object_count, object_statuses);
+}
+
 sai_status_t RedisRemoteSaiInterface::bulkCreate(
         _In_ sai_object_type_t object_type,
         _In_ const std::vector<std::string> &serialized_object_ids,
@@ -2234,21 +2481,41 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
     std::string str_object_type = sai_serialize_object_type(object_type);
 
     std::vector<swss::FieldValueTuple> entries;
+    entries.reserve(serialized_object_ids.size());
+
+    std::string cached_attr;
+    uint32_t cached_count = 0;
+    const sai_attribute_t* cached_list = nullptr;
+    bool have_cached_attr = false;
 
     for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
-        auto entry = SaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
+        std::string str_attr;
 
-        if (entry.empty())
+        if (have_cached_attr &&
+            bulk_attr_list_equal(object_type, cached_count, cached_list, attr_count[idx], attr_list[idx]))
         {
-            // make sure that we put object into db
-            // even if there are no attributes set
-            swss::FieldValueTuple null("NULL", "NULL");
-
-            entry.push_back(null);
+            str_attr = cached_attr;
         }
+        else
+        {
+            auto entry = SaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
 
-        std::string str_attr = Globals::joinFieldValues(entry);
+            if (entry.empty())
+            {
+                // make sure that we put object into db
+                // even if there are no attributes set
+                swss::FieldValueTuple null("NULL", "NULL");
+
+                entry.push_back(null);
+            }
+
+            str_attr = Globals::joinFieldValues(entry);
+            cached_attr = str_attr;
+            cached_count = attr_count[idx];
+            cached_list = attr_list[idx];
+            have_cached_attr = true;
+        }
 
         swss::FieldValueTuple fvtNoStatus(serialized_object_ids[idx] , str_attr);
 

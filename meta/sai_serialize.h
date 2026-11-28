@@ -55,6 +55,11 @@ std::string sai_serialize_neighbor_entry(
 std::string sai_serialize_route_entry(
         _In_ const sai_route_entry_t &route_entry);
 
+// buffer must hold at least 256 bytes. Returns the length without the NUL.
+size_t sai_serialize_route_entry(
+        _Out_ char* buffer,
+        _In_ const sai_route_entry_t &route_entry);
+
 std::string sai_serialize_nat_entry(
         _In_ const sai_nat_entry_t &nat_entry);
 

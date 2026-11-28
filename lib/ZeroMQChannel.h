@@ -39,6 +39,9 @@ namespace sairedis
                     _In_ const std::vector<swss::FieldValueTuple>& values,
                     _In_ const std::string& command) override;
 
+            void send(
+                    _In_ const std::string& msg);
+
             virtual void del(
                     _In_ const std::string& key,
                     _In_ const std::string& command) override;
@@ -46,6 +49,10 @@ namespace sairedis
             virtual sai_status_t wait(
                     _In_ const std::string& command,
                     _Out_ swss::KeyOpFieldsValuesTuple& kco) override;
+
+            sai_status_t waitBulkResponse(
+                    _In_ uint32_t object_count,
+                    _Out_ sai_status_t* object_statuses);
 
         protected:
 
@@ -68,5 +75,8 @@ namespace sairedis
             void* m_ntfSocket;
 
             long m_zmqResponseBufferSize;
+
+            int receiveMessage(
+                    _In_ const std::string& command);
     };
 }
